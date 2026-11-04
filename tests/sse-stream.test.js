@@ -2,10 +2,10 @@ import { describe, expect, test } from '@jest/globals';
 import vm from 'node:vm';
 import { loadDeclarations } from './util/load-declarations.js';
 
-const names = ['EventSourceStream'];
-const context = vm.createContext({ TextDecoderStream, TransformStream, MessageEvent });
+const names = ['NOT_PRIMARY', 'EventSourceStream', 'getDelay', 'parseStreamData'];
+const context = vm.createContext({ TextDecoderStream, TransformStream, MessageEvent, structuredClone, power_user: { smooth_streaming_speed: 50 } });
 loadDeclarations(context, 'scripts/sse-stream.js', names);
-const [EventSourceStream] = names.map(name => vm.runInContext(name, context));
+const [NOT_PRIMARY, EventSourceStream, getDelay, parseStreamData] = names.map(name => vm.runInContext(name, context));
 
 const encoder = new TextEncoder();
 
@@ -279,5 +279,237 @@ describe('EventSourceStream', () => {
         expect((await reader.read()).value.data).toBe('first');
         source.error(failure);
         await expect(reader.read()).rejects.toBe(failure);
+    });
+});
+
+async function collect(json) {
+    const items = [];
+    for await (const item of parseStreamData(json)) {
+        items.push(item);
+    }
+    return items;
+}
+
+async function failureOf(json) {
+    try {
+        await collect(json);
+    } catch (error) {
+        return error;
+    }
+    throw new Error('parseStreamData finished without an error');
+}
+
+describe('parseStreamData', () => {
+    test('splits Cohere content deltas into one chunk per character', async () => {
+        const json = { type: 'content-delta', index: 0, delta: { message: { content: { text: 'Hé' } } } };
+        expect(await collect(json)).toEqual([
+            { data: { type: 'content-delta', index: 0, delta: { message: { content: { text: 'H' } } } }, chunk: 'H' },
+            { data: { type: 'content-delta', index: 0, delta: { message: { content: { text: 'é' } } } }, chunk: 'é' },
+        ]);
+    });
+
+    test('splits text_delta events into one chunk per character and keeps the event fields', async () => {
+        const json = { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: 'Hey' } };
+        expect(await collect(json)).toEqual([
+            { data: { type: 'content_block_delta', index: 2, delta: { text: 'H' } }, chunk: 'H' },
+            { data: { type: 'content_block_delta', index: 2, delta: { text: 'e' } }, chunk: 'e' },
+            { data: { type: 'content_block_delta', index: 2, delta: { text: 'y' } }, chunk: 'y' },
+        ]);
+    });
+
+    test('marks thinking_delta characters as reasoning', async () => {
+        const json = { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Hm' } };
+        expect(await collect(json)).toEqual([
+            { data: { type: 'content_block_delta', index: 0, delta: { thinking: 'H' } }, chunk: 'H', reasoning: true },
+            { data: { type: 'content_block_delta', index: 0, delta: { thinking: 'm' } }, chunk: 'm', reasoning: true },
+        ]);
+    });
+
+    describe('Google candidates', () => {
+        const usageMetadata = { totalTokenCount: 3 };
+        const candidate = (parts, extra = {}) => ({ content: { role: 'model', parts }, index: 0, ...extra });
+
+        test('splits answer text into one candidate per character and keeps the other fields', async () => {
+            const json = { candidates: [candidate([{ text: 'ab' }], { safetyRatings: [] })], usageMetadata };
+            expect(await collect(json)).toEqual([
+                { data: { candidates: [candidate([{ text: 'a' }], { safetyRatings: [] })], usageMetadata }, chunk: 'a', reasoning: false },
+                { data: { candidates: [candidate([{ text: 'b' }], { safetyRatings: [] })], usageMetadata }, chunk: 'b', reasoning: false },
+            ]);
+        });
+
+        test('marks thought parts as reasoning and separates the parts with a blank line', async () => {
+            const json = { candidates: [candidate([{ text: 'ab', thought: true }, { text: 'cd' }])] };
+            expect(await collect(json)).toEqual([
+                { data: { candidates: [candidate([{ text: 'a', thought: true }])] }, chunk: 'a', reasoning: true },
+                { data: { candidates: [candidate([{ text: 'b\n\n', thought: true }])] }, chunk: 'b\n\n', reasoning: true },
+                { data: { candidates: [candidate([{ text: 'c' }])] }, chunk: 'c', reasoning: false },
+                { data: { candidates: [candidate([{ text: 'd' }])] }, chunk: 'd', reasoning: false },
+            ]);
+        });
+
+        test('adds no blank line after the last part', async () => {
+            const json = { candidates: [candidate([{ text: 'a' }, { text: 'b' }])] };
+            expect((await collect(json)).map(item => item.chunk)).toEqual(['a\n\n', 'b']);
+        });
+
+        test.each([
+            ['a function call', { functionCall: { name: 'weather', args: { city: 'Paris' } } }],
+            ['inline data', { inlineData: { mimeType: 'image/png', data: 'AAAA' } }],
+        ])('passes %s through as one event with an empty chunk', async (_name, part) => {
+            const json = { candidates: [candidate([{ text: 'Look' }, part])], usageMetadata };
+            expect(await collect(json)).toEqual([{ data: json, chunk: '' }]);
+        });
+
+        test('yields nothing for a candidate that is not the primary one', async () => {
+            expect(await collect({ candidates: [candidate([{ text: 'ab' }], { index: 1 })] })).toEqual([]);
+        });
+    });
+
+    test('splits NovelAI and KoboldCpp token events into one chunk per character', async () => {
+        expect(await collect({ token: 'Hi', final: false })).toEqual([
+            { data: { token: 'H', final: false }, chunk: 'H' },
+            { data: { token: 'i', final: false }, chunk: 'i' },
+        ]);
+    });
+
+    describe('llama.cpp content', () => {
+        test('splits content into one chunk per character and keeps the other fields', async () => {
+            expect(await collect({ content: 'Hi', stop: false })).toEqual([
+                { data: { content: 'H', stop: false }, chunk: 'H' },
+                { data: { content: 'i', stop: false }, chunk: 'i' },
+            ]);
+        });
+
+        test('rejects a secondary swipe with the not-primary cause', async () => {
+            const error = await failureOf({ content: 'Hi', index: 1 });
+            expect(error.message).toBe('Not a primary swipe');
+            expect(error.cause).toBe(NOT_PRIMARY);
+        });
+
+        test('leaves a top-level content field of a chat completion chunk to the choices', async () => {
+            const json = { object: 'chat.completion.chunk', content: 'zz', choices: [{ index: 0, delta: { content: 'ab' } }] };
+            expect(await collect(json)).toEqual([
+                { data: { ...json, choices: [{ index: 0, delta: { content: 'a' } }] }, chunk: 'a' },
+                { data: { ...json, choices: [{ index: 0, delta: { content: 'b' } }] }, chunk: 'b' },
+            ]);
+        });
+    });
+
+    describe('OpenAI-like choices', () => {
+        const chunk = { id: 'c1', object: 'chat.completion.chunk' };
+
+        test('splits delta content and keeps the other choice fields', async () => {
+            const json = { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: 'H日' }, finish_reason: null }] };
+            expect(await collect(json)).toEqual([
+                { data: { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: 'H' }, finish_reason: null }] }, chunk: 'H' },
+                { data: { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: '日' }, finish_reason: null }] }, chunk: '日' },
+            ]);
+        });
+
+        test('splits completion text', async () => {
+            expect(await collect({ choices: [{ index: 0, text: 'Hi' }] })).toEqual([
+                { data: { choices: [{ index: 0, text: 'H' }] }, chunk: 'H' },
+                { data: { choices: [{ index: 0, text: 'i' }] }, chunk: 'i' },
+            ]);
+        });
+
+        test('splits delta text', async () => {
+            expect(await collect({ choices: [{ index: 0, delta: { text: 'Hi' } }] })).toEqual([
+                { data: { choices: [{ index: 0, delta: { text: 'H' } }] }, chunk: 'H' },
+                { data: { choices: [{ index: 0, delta: { text: 'i' } }] }, chunk: 'i' },
+            ]);
+        });
+
+        test('splits message content', async () => {
+            expect(await collect({ choices: [{ index: 0, message: { role: 'assistant', content: 'Hi' } }] })).toEqual([
+                { data: { choices: [{ index: 0, message: { role: 'assistant', content: 'H' } }] }, chunk: 'H' },
+                { data: { choices: [{ index: 0, message: { role: 'assistant', content: 'i' } }] }, chunk: 'i' },
+            ]);
+        });
+
+        test('marks thinking text as reasoning', async () => {
+            expect(await collect({ choices: [{ index: 0, thinking: 'Hm' }] })).toEqual([
+                { data: { choices: [{ index: 0, thinking: 'H' }] }, chunk: 'H', reasoning: true },
+                { data: { choices: [{ index: 0, thinking: 'm' }] }, chunk: 'm', reasoning: true },
+            ]);
+        });
+
+        test.each(['reasoning_content', 'reasoning'])('marks delta %s as reasoning and moves the content to its last character', async field => {
+            const json = { choices: [{ index: 0, delta: { [field]: 'abc', content: 'Hi' } }] };
+            expect(await collect(json)).toEqual([
+                { data: { choices: [{ index: 0, delta: { [field]: 'a', content: '' } }] }, chunk: 'a', reasoning: true },
+                { data: { choices: [{ index: 0, delta: { [field]: 'b', content: '' } }] }, chunk: 'b', reasoning: true },
+                { data: { choices: [{ index: 0, delta: { [field]: 'c', content: 'Hi' } }] }, chunk: 'c', reasoning: true },
+            ]);
+        });
+
+        test('prefers delta reasoning_content over delta content', async () => {
+            const items = await collect({ choices: [{ index: 0, delta: { reasoning_content: 'a', content: 'zz' } }] });
+            expect(items).toEqual([{ data: { choices: [{ index: 0, delta: { reasoning_content: 'a', content: 'zz' } }] }, chunk: 'a', reasoning: true }]);
+        });
+
+        test('marks thinking blocks inside a content array as reasoning', async () => {
+            const block = text => ({ type: 'thinking', thinking: [{ type: 'text', text }] });
+            expect(await collect({ choices: [{ index: 0, delta: { content: [block('ab')] } }] })).toEqual([
+                { data: { choices: [{ index: 0, delta: { content: [block('a')] } }] }, chunk: 'a', reasoning: true },
+                { data: { choices: [{ index: 0, delta: { content: [block('b')] } }] }, chunk: 'b', reasoning: true },
+            ]);
+        });
+
+        test('rejects a secondary swipe with the not-primary cause', async () => {
+            const error = await failureOf({ choices: [{ index: 1, delta: { content: 'ab' } }] });
+            expect(error.message).toBe('Not a primary swipe');
+            expect(error.cause).toBe(NOT_PRIMARY);
+        });
+
+        test('rejects an empty choices list with the not-primary cause', async () => {
+            const error = await failureOf({ choices: [], usage: { total_tokens: 3 } });
+            expect(error.message).toBe('Not a primary swipe');
+            expect(error.cause).toBe(NOT_PRIMARY);
+        });
+    });
+
+    test.each([
+        ['an empty first delta', { choices: [{ index: 0, delta: { role: 'assistant', content: '' } }] }],
+        ['a final delta with a finish reason', { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }],
+        ['a tool call delta', { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"ci' } }] } }] }],
+        ['a content array without thinking text', { choices: [{ index: 0, delta: { content: [{ type: 'text', text: 'ab' }] } }] }],
+        ['an input_json_delta event', { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"ci' } }],
+        ['a message_delta event', { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 3 } }],
+        ['a Cohere tool call delta', { type: 'tool-call-delta', index: 0, delta: { message: { tool_calls: { function: { arguments: '{"ci' } } } } }],
+        ['an empty final token event', { token: '', final: true }],
+        ['an error object', { error: { message: 'Rate limit reached', type: 'rate_limit' } }],
+        ['a JSON string', 'plain'],
+        ['a JSON array', [1, 2]],
+    ])('rejects %s so that the caller can pass the event through', async (_name, json) => {
+        const error = await failureOf(json);
+        expect(error.message).toBe('Unknown event data format');
+        expect(error.cause).toBeUndefined();
+    });
+});
+
+describe('getDelay', () => {
+    test.each([
+        [50, 20, 250, 500],
+        [0, 40, 500, 1000],
+        [100, 0.4, 5, 10],
+        [150, 0.4, 5, 10],
+        [-100, 80, 1000, 2000],
+    ])('at speed %s waits %s ms for a letter, %s ms after a comma and %s ms after a sentence end', (speed, letter, comma, sentence) => {
+        context.power_user.smooth_streaming_speed = speed;
+        for (const character of ['a', ' ', '日', '-']) {
+            expect(getDelay(character)).toBeCloseTo(letter, 9);
+        }
+        for (const character of [',', '\n']) {
+            expect(getDelay(character)).toBeCloseTo(comma, 9);
+        }
+        for (const character of ['.', '!', '?']) {
+            expect(getDelay(character)).toBeCloseTo(sentence, 9);
+        }
+    });
+
+    test('does not wait before the first character', () => {
+        expect(getDelay('')).toBe(0);
+        expect(getDelay(undefined)).toBe(0);
     });
 });
