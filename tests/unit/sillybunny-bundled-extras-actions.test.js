@@ -1,5 +1,6 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for a state machine. */
 import { describe, expect, jest, test } from '@jest/globals';
+import { BUNDLED_EXTRAS } from '../../public/scripts/sillybunny-bundled-extras.js';
 import { createBundledExtrasActions } from '../../public/scripts/sillybunny-home/bundled-extras-actions.js';
 
 const extension = { id: 'deep-swipe', name: 'Deep Swipe', group: 'first-party-extensions', kind: 'extension', url: 'https://github.com/SillyBunnyTeam/SillyBunny-Deep-Swipe' };
@@ -63,6 +64,25 @@ describe('the state of an extension row', () => {
         const { actions } = createWorld({ installed: { 'SillyBunny-Terminal-UI': true } });
 
         expect(actions.getState(themeExtension)).toEqual({ status: 'enabled', actions: ['disable', 'remove'] });
+    });
+
+    describe('of Group Chat Overhaul', () => {
+        const overhaul = BUNDLED_EXTRAS.find(candidate => candidate.id === 'group-chat-overhaul');
+
+        test('follows the folder that the new repository installs into', () => {
+            const { actions, adapters } = createWorld({ installed: { SillyBunnyGCO: true } });
+
+            expect(actions.getState(overhaul)).toEqual({ status: 'enabled', actions: ['disable', 'remove'] });
+            expect(adapters.extensions.find).toHaveBeenCalledWith('SillyBunnyGCO');
+        });
+
+        test('does not count an installed copy of the deprecated Group Utilities, which stays as it is', () => {
+            const { actions, adapters } = createWorld({ installed: { 'SB-GroupUtilities': true } });
+
+            expect(actions.getState(overhaul)).toEqual({ status: 'not-installed', actions: ['install'] });
+            expect(adapters.extensions.remove).not.toHaveBeenCalled();
+            expect(adapters.extensions.disable).not.toHaveBeenCalled();
+        });
     });
 });
 

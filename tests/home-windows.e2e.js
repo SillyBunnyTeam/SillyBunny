@@ -58,7 +58,7 @@ const EXTRAS_GROUPS = ['First-Party Extensions', 'Third-Party Extensions', 'Them
 const EXTRAS_ITEMS = [
     'Alternate Descriptions', 'Bot Searcher', 'CSS Snippets', 'Deep Swipe', 'Macro Enhanced', 'Prompt Tags', 'Prompting Lab',
     'Regex Agent Themes', 'Time Machine', 'World Info Lab',
-    'Dialogue Colors', 'Summary Sharder', 'Group Utilities', 'LALib',
+    'Dialogue Colors', 'Summary Sharder', 'Group Chat Overhaul', 'LALib',
     'Moonlit Echoes', 'Terminal UI',
     'Geechan - Universal Roleplay (v5.2)', 'TLD Card Conversion Preset',
 ];

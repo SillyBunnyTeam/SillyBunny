@@ -48,7 +48,7 @@ describe('Bundled Extras data', () => {
     test('lists the third-party extensions, the themes and the presets', () => {
         const [, thirdParty, themes, presets] = groupBundledExtras();
 
-        expect(namesOf(thirdParty)).toEqual(['Dialogue Colors', 'Summary Sharder', 'Group Utilities', 'LALib']);
+        expect(namesOf(thirdParty)).toEqual(['Dialogue Colors', 'Summary Sharder', 'Group Chat Overhaul', 'LALib']);
         expect(namesOf(themes)).toEqual(['Moonlit Echoes', 'Terminal UI']);
         expect(namesOf(presets)).toEqual(['Geechan - Universal Roleplay (v5.2)', 'TLD Card Conversion Preset']);
     });
@@ -123,6 +123,7 @@ describe('Bundled Extras items that install', () => {
     test.each([
         ['https://github.com/SillyBunnyTeam/SillyBunny-Deep-Swipe', 'SillyBunny-Deep-Swipe'],
         ['https://github.com/LenAnderson/SillyTavern-LALib', 'SillyTavern-LALib'],
+        ['https://github.com/voldomero/SillyBunnyGCO', 'SillyBunnyGCO'],
         ['https://github.com/aracnai/SB-GroupUtilities.git', 'SB-GroupUtilities'],
     ])('reads the folder the server installs %s into: %s', (url, folder) => {
         expect(getExtensionFolderName({ kind: 'extension', url })).toBe(folder);

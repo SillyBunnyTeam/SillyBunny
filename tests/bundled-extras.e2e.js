@@ -34,7 +34,7 @@ const ITEMS = [
     { id: 'world-info-lab', label: 'World Info Lab', folder: 'SillyBunny-WorldInfo-Lab', url: 'https://github.com/SillyBunnyTeam/SillyBunny-WorldInfo-Lab' },
     { id: 'dialogue-colors', label: 'Dialogue Colors', folder: 'sillytavern-character-colors', url: 'https://github.com/platberlitz/sillytavern-character-colors' },
     { id: 'summary-sharder', label: 'Summary Sharder', folder: 'summary-sharder', url: 'https://github.com/Promansis/summary-sharder' },
-    { id: 'group-utilities', label: 'Group Utilities', folder: 'SB-GroupUtilities', url: 'https://github.com/aracnai/SB-GroupUtilities' },
+    { id: 'group-chat-overhaul', label: 'Group Chat Overhaul', folder: 'SillyBunnyGCO', url: 'https://github.com/voldomero/SillyBunnyGCO' },
     { id: 'lalib', label: 'LALib', folder: 'SillyTavern-LALib', url: 'https://github.com/LenAnderson/SillyTavern-LALib' },
     { id: 'moonlit-echoes', label: 'Moonlit Echoes', folder: 'SillyBunny-MoonlitEchoesTheme', url: 'https://github.com/SillyBunnyTeam/SillyBunny-MoonlitEchoesTheme' },
     { id: 'terminal-ui', label: 'Terminal UI', folder: 'SillyBunny-Terminal-UI', url: 'https://github.com/SillyBunnyTeam/SillyBunny-Terminal-UI' },

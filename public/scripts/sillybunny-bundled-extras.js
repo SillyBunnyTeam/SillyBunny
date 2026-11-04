@@ -42,7 +42,7 @@ export const BUNDLED_EXTRAS = Object.freeze([
     { id: 'world-info-lab', name: 'World Info Lab', group: 'first-party-extensions', kind: 'extension', url: `${TEAM}/SillyBunny-WorldInfo-Lab` },
     { id: 'dialogue-colors', name: 'Dialogue Colors', group: 'third-party-extensions', kind: 'extension', url: 'https://github.com/platberlitz/sillytavern-character-colors' },
     { id: 'summary-sharder', name: 'Summary Sharder', group: 'third-party-extensions', kind: 'extension', url: 'https://github.com/Promansis/summary-sharder' },
-    { id: 'group-utilities', name: 'Group Utilities', group: 'third-party-extensions', kind: 'extension', url: 'https://github.com/aracnai/SB-GroupUtilities' },
+    { id: 'group-chat-overhaul', name: 'Group Chat Overhaul', group: 'third-party-extensions', kind: 'extension', url: 'https://github.com/voldomero/SillyBunnyGCO' },
     { id: 'lalib', name: 'LALib', group: 'third-party-extensions', kind: 'extension', url: 'https://github.com/LenAnderson/SillyTavern-LALib' },
     { id: 'moonlit-echoes', name: 'Moonlit Echoes', group: 'themes', kind: 'theme-extension', url: `${TEAM}/SillyBunny-MoonlitEchoesTheme` },
     { id: 'terminal-ui', name: 'Terminal UI', group: 'themes', kind: 'theme-extension', url: `${TEAM}/SillyBunny-Terminal-UI` },
