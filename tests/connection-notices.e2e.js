@@ -157,7 +157,6 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             test.use({ forcedColors: 'active' });
 
             test('the invalid key field differs from a valid one by an outline or a border, because the palette drops its colour and shadow', async ({ page }) => {
-                test.fail(true, 'The invalid state is a danger border colour and a box-shadow (:is(.text_pole, select)[aria-invalid=true], public/css/sillybunny-theme.css:1427). Forced colours replace the colour and drop the shadow, and no forced-colors rule gives the field an outline or a wider border.');
                 const key = await openEmptyKeyField(page);
                 const edgeOf = () => key.evaluate((node) => {
                     const style = getComputedStyle(node);

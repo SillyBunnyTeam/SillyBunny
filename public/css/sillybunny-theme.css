@@ -8199,6 +8199,12 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         border: 1px solid ButtonText;
     }
 
+    /* Forced colours have no error colour, so an invalid field gets a double border. Entry rows set their border with an id. */
+    :is(.text_pole, select)[aria-invalid='true'] {
+        border-style: double !important;
+        border-width: 3px !important;
+    }
+
     /* A toast is told from the page by its shadow alone, which forced colours remove. */
     #toast-container > div {
         outline: 1px solid CanvasText;
