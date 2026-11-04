@@ -140,7 +140,7 @@ function createGroup({ title, label, field, rows, headingLevel }) {
 
 function createIndexView({ sections, navigate }) {
     const root = createPage({ kind: 'index', title: t`Overview`, heading: false });
-    root.append(createArtIntro({ art: 'help-reisen', slot: 'HELP-INTRO' }).intro);
+    root.append(createArtIntro({ art: 'help-reisen', text: t`Welcome to our handbook. ...I know I'm not the greatest at explaining things in simple terms, but I'll try my best to make this as easy as possible for you! Please select a category.` }).intro);
 
     const featured = getFeaturedTopics(sections);
     if (featured.length > 0) {

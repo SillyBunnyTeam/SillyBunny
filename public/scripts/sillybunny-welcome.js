@@ -71,13 +71,13 @@ function createLanguageRow() {
 }
 
 function fillHello(body, { language, openImport }) {
-    const { intro: greeting } = createArtIntro({ art: 'welcome-both', text: t`Hello, and welcome to SillyBunny! I'm Reisen, and this is Tewi. We'll help you settle in. So, what should we call you, brave hero?` });
+    const { intro: greeting } = createArtIntro({ art: 'welcome-both', text: t`Hello, and welcome to SillyBunny! I'm Reisen, and this is Tewi. We'll help you get everything set up.` });
 
     const intro = document.createElement('div');
     intro.className = 'sbWelcomeIntro';
     intro.append(
-        createTextBlock(t`SillyBunny is a place to chat, tell stories, and interact with characters, powered by an external AI model you connect yourself.`),
-        createTextBlock(t`Oh, and don't forget - SillyBunny is a fork of SillyTavern. Your characters, chats, presets, and extensions should all work here.`),
+        createTextBlock(t`SillyBunny is a place to chat, tell stories, and interact with your characters, powered by an external LLM (large language model) you provide access to.`),
+        createTextBlock(t`Ah, and don't forget - SillyBunny is a fork of SillyTavern. Your characters, chats, presets, and extensions should all work here! So, what should we call you, brave hero?`),
     );
 
     const importRow = createRow({
@@ -195,7 +195,7 @@ function fillImport(body, { importer }) {
     actions.className = 'sbWindowActions';
     actions.append(folderButton, zipButton, zipInput);
     body.append(
-        createTextBlock(t`Enter the path of a SillyTavern folder on the computer running SillyBunny, or upload a backup ZIP. We'll try to transfer everything over, though files with the same name will be replaced.`),
+        createTextBlock(t`Please enter the path of a SillyTavern folder on the computer running SillyBunny, or upload a backup ZIP. We'll try to transfer everything over right away. Just be careful... files with the same name will be replaced.`),
         createPrefGroup({ field: 'welcome-import-group', rows: [folder] }).section,
         actions,
         status,
@@ -221,7 +221,7 @@ function fillImport(body, { importer }) {
  * @returns {{ getName: () => string }}
  */
 function fillPersona(body, { nameMode, onNameInput, managePersonas }) {
-    const intro = createArtIntro({ art: 'welcome-persona-tewi', text: t`Hey, what should we call you? Characters will know you by the name and persona you set here. You can change it later under Characters ▸ Persona, if you'd like.` }).intro;
+    const intro = createArtIntro({ art: 'welcome-persona-tewi', text: t`Oho, what's this? What should we call you, hmm? Your characters will know you by the name and persona you set here. You can change it later under Characters ▸ Persona, if you'd like. Call it a rabbit's intuition~` }).intro;
     if (nameMode === 'required') {
         const name = createEntryRow({ label: t`Your Name`, field: 'welcome-persona-name', floating: true, onInput: onNameInput });
         body.append(intro, createPrefGroup({ field: 'welcome-persona-group', rows: [name] }).section, createPosition(2));
@@ -303,7 +303,7 @@ function fillWhatsNext(body, { openDestination, startup }) {
         onChange: checked => startup.setShownAtStartup(checked),
     });
     body.append(
-        createArtIntro({ art: 'welcome-next-reisen', text: t`All set! Here's where to go next. We'll be around whenever you need us.` }).intro,
+        createArtIntro({ art: 'welcome-next-reisen', text: t`Good job, brave hero! I've provided some other suggestions to get you going. We'll be around whenever you need us.` }).intro,
         group.section,
         createPrefGroup({ field: 'welcome-startup-group', rows: [showAtStartup] }).section,
         createPosition(3),

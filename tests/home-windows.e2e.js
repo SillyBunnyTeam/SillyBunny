@@ -965,8 +965,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const view = helpView(host);
 
                 await expect(view).toHaveAttribute('data-sb-help-view', 'index');
-                await expectIntro(view, 'help-reisen', { slot: 'HELP-INTRO' });
-                await expectSlots(view, ['HELP-INTRO', ...FEATURED_IDS.map(id => `HELP-TOPIC-${id}-DESC`), ...SECTION_IDS.map(id => `HELP-SECTION-${id}-DESC`)]);
+                await expectIntro(view, 'help-reisen', { text: HOME_COPY.helpIntro });
+                await expectSlots(view, [...FEATURED_IDS.map(id => `HELP-TOPIC-${id}-DESC`), ...SECTION_IDS.map(id => `HELP-SECTION-${id}-DESC`)]);
                 await expect(view.getByRole('group', { name: 'Featured Topics' }).locator('.ds-row-label')).toHaveText(FEATURED_TITLES);
                 const sections = view.getByRole('group', { name: 'All Sections' });
                 await expect(sections.locator('.ds-row-label')).toHaveText(SECTION_TITLES);
@@ -1052,25 +1052,25 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await trail().getByRole('button', { name: 'Help', exact: true }).click();
 
                 await expect(helpView(host)).toHaveAttribute('data-sb-help-view', 'index');
-                await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO' });
+                await expectIntro(helpView(host), 'help-reisen', { text: HOME_COPY.helpIntro });
             });
 
             test('the intro line has the type of a paragraph in the dialog body', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
                 await showIndex(host);
 
-                await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO' });
-                const [line, body] = await page.evaluate(() => {
+                await expectIntro(helpView(host), 'help-reisen', { text: HOME_COPY.helpIntro });
+                const [line, body] = await page.evaluate((introText) => {
                     const read = (node) => {
                         const style = getComputedStyle(node);
                         return { size: style.fontSize, weight: style.fontWeight, lineHeight: style.lineHeight, color: style.color };
                     };
                     const probe = document.createElement('p');
                     document.querySelector('dialog.sb-dialog-host .sb-dialog__body').append(probe);
-                    const result = [read(document.querySelector('.sbArtLine[data-sb-copy-slot="HELP-INTRO"]')), read(probe)];
+                    const result = [read([...document.querySelectorAll('.sbArtLine')].find(node => node.textContent === introText)), read(probe)];
                     probe.remove();
                     return result;
-                });
+                }, HOME_COPY.helpIntro);
 
                 expect(line.size, 'the line is body text, not the smaller meta size').toBe(body.size);
                 expect(line.weight).toBe(body.weight);
@@ -1090,7 +1090,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const host = await openFromMenu(page, 'Help');
                 await showIndex(host);
 
-                const layout = await expectIntro(helpView(host), 'help-reisen', { slot: 'HELP-INTRO', rtl: true });
+                const layout = await expectIntro(helpView(host), 'help-reisen', { text: HOME_COPY.helpIntro, rtl: true });
 
                 // Beside a panel the art is on the right of the line; above it in a banner, the art is higher than the line.
                 const atStart = layout.mode === 'panel' ? layout.art.left > layout.text.left : layout.art.top < layout.text.top;
@@ -2516,7 +2516,7 @@ test.describe('Intros with a larger type size on a desktop', () => {
         await page.evaluate(() => document.documentElement.style.setProperty('--fontScale', String(20 / 15)));
         const host = await openFromMenu(page, 'Help');
 
-        const layout = await expectIntro(host.locator('.sb-list-editor__detail .sbHelpPage'), 'help-reisen', { slot: 'HELP-INTRO' });
+        const layout = await expectIntro(host.locator('.sb-list-editor__detail .sbHelpPage'), 'help-reisen', { text: HOME_COPY.helpIntro });
 
         expect(layout.em, 'the type is larger').toBeGreaterThan(18);
         expect(layout.mode, 'the window widens for the larger sidebar and keeps the panel').toBe('panel');
