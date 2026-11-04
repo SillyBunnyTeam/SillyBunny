@@ -37,7 +37,7 @@ import { loadStylesheetAsync } from './dynamic-styles.js';
 
 const GROUP_EDITOR_STYLESHEETS = [
     LIST_EDITOR_STYLESHEET,
-    { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261105a', id: 'deferred-entity-list-css' },
     { href: 'css/rm-groups.css', id: 'deferred-rm-groups-css' },
 ];
 const groupEditorReveals = new WeakMap();

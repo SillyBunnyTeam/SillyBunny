@@ -724,23 +724,23 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
         { href: 'css/sillybunny-editor-shell.css?v=20261028a', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261105a', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261029a', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
-        { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261105a', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-list.css?v=20261027a', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
         // SillyBunny: Characters and Groups use the same deferred selection UI — see docs/ui-migration.md.
-        { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261105a', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-list.css?v=20261027a', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
         { href: 'css/sillybunny-editor-shell.css?v=20261028a', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261105a', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261018a', id: 'deferred-character-import-css' },
     ],
     'left:advanced-formatting': [

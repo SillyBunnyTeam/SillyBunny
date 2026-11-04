@@ -474,7 +474,8 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
             },
         }));
         cleanups.push(bindKeyboardInset(dlg, { onInsetChange: () => heightLock?.refresh() }));
-        if (resolved === 'window') {
+        // A page gets its minimum height from the covered surface instead of a measured height lock.
+        if (resolved === 'window' && !parentSurface) {
             heightLock = bindWindowHeightLock(dlg, { isFill: () => dlg.classList.contains('sb-dialog--fill') });
             cleanups.push(() => heightLock?.destroy());
         }

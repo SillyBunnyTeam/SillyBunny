@@ -1210,7 +1210,7 @@ export function openDialog({
     }
     document.body.append(host);
     host.showModal();
-    // A page takes its rectangle from the covered surface, so a measured height lock would fight it.
+    // A page gets its minimum height from the covered surface instead of a measured height lock.
     if (host.dataset.tier === 'window' && !isPage) {
         heightLock = bindWindowHeightLock(surface, { isFill: () => surface.classList.contains('sb-dialog--fill') });
     }
