@@ -203,3 +203,37 @@ test('a banner on a landscape phone of scale 1.5 steps down to one device pixel 
         await browser.close();
     }
 });
+
+/*
+ * The splash draws the mascot at the largest whole step whose art is at most 42% of the viewport height. It is a still
+ * picture on an opaque surface, so every opaque art pixel must be one even block of device pixels at that step.
+ */
+for (const scale of [1, 1.1, 1.5, 1.75, 2, 3]) {
+    for (const [width, height] of [[1440, 900], [390, 844]]) {
+        test(`the splash draws every art pixel as an even block at ${width}x${height} on a screen of scale ${scale}`, async ({}, testInfo) => {
+            const { browser, page } = await launch(testInfo, { scale, width, height });
+            try {
+                await protectMaintainerServer(page);
+                let releaseBoot = () => {};
+                const released = new Promise((resolve) => { releaseBoot = resolve; });
+                await page.route('**/api/settings/get', async (route) => {
+                    await released;
+                    await route.fallback();
+                });
+                await page.addInitScript(() => localStorage.setItem('sb-splash-character', 'both'));
+                await page.goto('/', { waitUntil: 'domcontentloaded' });
+                const mascot = page.locator('#preloader .sb-boot-mascot');
+                await expect(mascot).toBeVisible({ timeout: STARTUP_TIMEOUT });
+                await expect.poll(() => mascot.evaluate(image => image.complete && image.naturalWidth)).toBeGreaterThan(0);
+                await expectLaunched(page, { scale, width, height });
+
+                // The step is the one the rule gives, not only a whole one.
+                const step = Math.max(1, Math.floor((0.42 * height * scale) / 366 + 1e-6));
+                await expectEven(page, { scale, step, expectMode: 'panel', exactStep: true, readOptions: { scope: '#preloader', figureSelector: '.sb-boot-mascot' } });
+                releaseBoot();
+            } finally {
+                await browser.close();
+            }
+        });
+    }
+}

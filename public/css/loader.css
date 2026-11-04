@@ -25,13 +25,12 @@
     pointer-events: none;
 }
 
-/* SillyBunny: the mascot sheet, flavour line and animated dots replace the upstream throbber, logo and
-   message. sillybunny-splash.js sets --sb-boot-sheet, --sb-boot-frames, --sb-boot-frame-w,
-   --sb-boot-frame-h and --sb-boot-duration on the mascot. Frame 0 and fully shown dots are the
-   un-animated state, so a reduced-motion override only has to drop the animations. The media-query
-   override uses :nth-child(n) to match the per-dot selectors' specificity; it then wins on its own and
-   does not depend on the global reduced-motion rule in sillybunny-theme.css. The 128px fallbacks
-   reserve the mascot box until the script sets the real frame size. */
+/* SillyBunny: the pixel-art mascot, flavour line and animated dots replace the upstream throbber, logo and
+   message. sillybunny-splash.js sizes the mascot before the first paint, to a whole number of device pixels per art
+   pixel or, on a screen too short for the first step, to a fraction of one, and sets its source. The mascot is a
+   still, so a reduced-motion override only has to drop the animation of the dots. The media-query override uses
+   :nth-child(n) to match the specificity of the per-dot selectors; it then wins on its own and does not depend on
+   the global reduced-motion rule in sillybunny-theme.css. */
 .sb-boot-splash {
     display: flex;
     flex-direction: column;
@@ -41,14 +40,14 @@
 }
 
 .sb-boot-mascot {
+    display: block;
     flex: none;
-    width: var(--sb-boot-frame-w, 128px);
-    height: var(--sb-boot-frame-h, 128px);
-    background-image: var(--sb-boot-sheet);
-    background-repeat: no-repeat;
-    background-position: 0 0;
+    max-width: none;
     image-rendering: pixelated;
-    animation: sb-boot-mascot-frames var(--sb-boot-duration) steps(var(--sb-boot-frames)) infinite;
+}
+
+.sb-boot-mascot[data-fit='smooth'] {
+    image-rendering: auto;
 }
 
 .sb-boot-line {
@@ -69,16 +68,6 @@
 
 .sb-boot-dots > span:nth-child(3) {
     animation: sb-boot-dot-3 1200ms steps(1, end) infinite;
-}
-
-@keyframes sb-boot-mascot-frames {
-    from {
-        background-position: 0 0;
-    }
-
-    to {
-        background-position: calc(var(--sb-boot-frames) * var(--sb-boot-frame-w) * -1) 0;
-    }
 }
 
 @keyframes sb-boot-dot-1 {
@@ -112,13 +101,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .sb-boot-mascot,
     .sb-boot-dots > span:nth-child(n) {
         animation: none;
     }
 }
 
-#preloader.sb-boot-reduced .sb-boot-mascot,
 #preloader.sb-boot-reduced .sb-boot-dots > span {
     animation: none;
 }

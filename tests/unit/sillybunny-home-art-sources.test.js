@@ -3,27 +3,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from '@jest/globals';
 import { getPixelArt, listPixelArtIds } from '../../public/scripts/sillybunny-home/art-sources.js';
+import { readImageSize } from '../helpers/image-size.js';
 
 const IMAGES = fileURLToPath(new URL('../../public/img/sillybunny/', import.meta.url));
 const SPEC = fileURLToPath(new URL('../../assets-src/branding/export-specs/shell.json', import.meta.url));
-
-/** The size in pixels that the header of a PNG or a WebP file states. */
-function readImageSize(bytes) {
-    if (bytes.subarray(1, 4).toString('latin1') === 'PNG') {
-        return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
-    }
-    expect(bytes.subarray(0, 4).toString('latin1')).toBe('RIFF');
-    expect(bytes.subarray(8, 12).toString('latin1')).toBe('WEBP');
-    const kind = bytes.subarray(12, 16).toString('latin1');
-    if (kind === 'VP8L') {
-        const bits = bytes.readUInt32LE(21);
-        return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
-    }
-    if (kind === 'VP8X') {
-        return { width: bytes.readUIntLE(24, 3) + 1, height: bytes.readUIntLE(27, 3) + 1 };
-    }
-    return { width: bytes.readUInt16LE(26) & 0x3fff, height: bytes.readUInt16LE(28) & 0x3fff };
-}
 
 function fileOf(id) {
     return decodeURIComponent(new URL(getPixelArt(id).url, 'http://localhost').pathname.replace('/img/sillybunny/', ''));

@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { readImageSize } from '../helpers/image-size.js';
 
 const publicRoot = fileURLToPath(new URL('../../public/', import.meta.url));
 const splashSource = readFileSync(fileURLToPath(new URL('../../public/scripts/sillybunny-splash.js', import.meta.url)), 'utf8');
@@ -10,7 +11,7 @@ const splashSource = readFileSync(fileURLToPath(new URL('../../public/scripts/si
 const PRELOADER_MARKUP = `
     <div id="preloader">
         <div class="sb-boot-splash">
-            <div class="sb-boot-mascot" aria-hidden="true"></div>
+            <img class="sb-boot-mascot" alt="">
             <p class="sb-boot-line" role="status">
                 <span class="sb-boot-line-text"></span>
                 <span class="sb-boot-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
@@ -44,6 +45,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    delete window.matchMedia;
+    window.innerHeight = 768;
+    window.devicePixelRatio = 1;
     jest.restoreAllMocks();
     document.body.innerHTML = '';
     localStorage.clear();
@@ -90,34 +94,241 @@ describe('splash variant', () => {
     });
 });
 
-describe('splash frame metadata', () => {
-    test.each([
-        ['reisen', 'splash-reisen.png', '128px'],
-        ['tewi', 'splash-tewi.png', '128px'],
-        ['both', 'splash-both.png', '192px'],
-    ])('%s sets its sheet and frame size as custom properties', (variant, sheetFile, frameWidth) => {
-        const { mascot } = runSplash({ stored: variant });
+const SPEC = fileURLToPath(new URL('../../assets-src/branding/export-specs/shell.json', import.meta.url));
 
-        expect(mascot.style.getPropertyValue('--sb-boot-sheet')).toContain(sheetFile);
-        expect(mascot.style.getPropertyValue('--sb-boot-frames')).toBe('2');
-        expect(mascot.style.getPropertyValue('--sb-boot-frame-w')).toBe(frameWidth);
-        expect(mascot.style.getPropertyValue('--sb-boot-frame-h')).toBe('128px');
-        expect(mascot.style.getPropertyValue('--sb-boot-duration')).toMatch(/^\d+ms$/);
+/** The viewport and screen scale that a splash is drawn on. */
+function onScreen({ height, ratio }) {
+    window.innerHeight = height;
+    window.devicePixelRatio = ratio;
+}
+
+describe('splash fit', () => {
+    test('the step is the largest whole one whose tallest picture is at most 42% of the viewport height', () => {
+        runSplash();
+        const { chooseFit, HEIGHT_SHARE, TALLEST_ROWS } = window.SillyBunnySplash;
+
+        expect([HEIGHT_SHARE, TALLEST_ROWS]).toEqual([0.42, 366]);
+        // 0.42 x 1000 x 3 = 1260 device pixels, which holds 3 steps of 366 (1098) and not 4 (1464).
+        expect(chooseFit(1000, 3)).toEqual({ step: 3, smooth: false, cssPerArtPixel: 1 });
+        // 0.42 x 1000 x 4 = 1680 holds 4 steps and not 5 (1830).
+        expect(chooseFit(1000, 4).step).toBe(4);
+    });
+
+    test('a 1440x900 screen at 2x gets step 2, which is 41% of the height, and not step 1 at 20%', () => {
+        runSplash();
+
+        expect(window.SillyBunnySplash.chooseFit(900, 2)).toEqual({ step: 2, smooth: false, cssPerArtPixel: 1 });
+    });
+
+    test('stops at the step that lands exactly on the share', () => {
+        runSplash();
+        const { chooseFit, TALLEST_ROWS } = window.SillyBunnySplash;
+
+        // Two steps of the tallest picture are exactly 42% of this height at 1x; one device pixel less is not enough.
+        expect(chooseFit((2 * TALLEST_ROWS) / 0.42, 1).step).toBe(2);
+        expect(chooseFit((2 * TALLEST_ROWS - 1) / 0.42, 1).step).toBe(1);
+    });
+
+    test('step 1 stays whole up to 60% of the viewport height, and a taller picture is shrunk', () => {
+        runSplash();
+        const { chooseFit, STEP_ONE_MAX_SHARE } = window.SillyBunnySplash;
+
+        expect(STEP_ONE_MAX_SHARE).toBe(0.6);
+        // 366 / 0.6 = 610 px: the picture is exactly 60% of the viewport.
+        expect(chooseFit(610, 1)).toEqual({ step: 1, smooth: false, cssPerArtPixel: 1 });
+        expect(chooseFit(609, 1).smooth).toBe(true);
+    });
+
+    test('a shrunk picture is 42% of the viewport height, with no step', () => {
+        runSplash();
+
+        const fit = window.SillyBunnySplash.chooseFit(390, 1);
+
+        expect(fit.smooth).toBe(true);
+        expect(fit.step).toBe(0);
+        expect(366 * fit.cssPerArtPixel).toBeCloseTo(0.42 * 390, 6);
+    });
+
+    test.each([
+        [768, 1],
+        [600, 2],
+        [390, 2],
+        [390, 3],
+    ])('is a whole step wherever one fits within 60%: %s px at %sx', (height, ratio) => {
+        runSplash();
+        const fit = window.SillyBunnySplash.chooseFit(height, ratio);
+
+        expect(fit.smooth).toBe(false);
+        expect(fit.step).toBeGreaterThanOrEqual(1);
+        expect(fit.cssPerArtPixel).toBe(fit.step / ratio);
+    });
+
+    test('a viewport with no height keeps step 1', () => {
+        runSplash();
+
+        expect(window.SillyBunnySplash.chooseFit(0, 2)).toEqual({ step: 1, smooth: false, cssPerArtPixel: 0.5 });
+    });
+
+    test('grows with the screen scale, because the share is of device pixels', () => {
+        runSplash();
+        const { chooseFit } = window.SillyBunnySplash;
+
+        const steps = [1, 2, 3, 4].map(ratio => chooseFit(900, ratio).step);
+
+        expect(steps).toEqual([1, 2, 3, 4]);
     });
 });
 
-describe('splash sheets', () => {
-    test.each(['reisen', 'tewi', 'both'])('the %s sheet is exactly frames x frame size and keyed for the cache', (variant) => {
-        runSplash({ stored: variant });
-        const { sheet, frames, frameWidth, frameHeight } = window.SillyBunnySplash.FRAMES[variant];
-        const [sheetPath, query] = sheet.split('?');
-        const png = readFileSync(`${publicRoot}${sheetPath.replace(/^\//, '')}`);
+describe('splash picture', () => {
+    test.each([
+        ['reisen', 'splash-reisen@native.webp', 204, 366],
+        ['tewi', 'splash-tewi@native.webp', 141, 320],
+        ['both', 'splash-both@native.webp', 263, 366],
+    ])('%s is %s, sized before its file loads, with the attributes of its own size', (variant, file, width, height) => {
+        onScreen({ height: 768, ratio: 1 });
+        const { mascot } = runSplash({ stored: variant });
 
-        // PNG layout: 8-byte signature, then the IHDR chunk with width and height at bytes 16 and 20.
-        expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
-        expect(png.readUInt32BE(16)).toBe(frames * frameWidth);
-        expect(png.readUInt32BE(20)).toBe(frameHeight);
-        expect(query).toMatch(/^v=\d{8}[a-z]$/);
+        expect(mascot.getAttribute('src').startsWith(`/img/sillybunny/${file}?v=`)).toBe(true);
+        expect(mascot.getAttribute('src').split('?v=')[1]).toBe(window.SillyBunnySplash.ART_VERSION);
+        expect([mascot.getAttribute('width'), mascot.getAttribute('height')]).toEqual([String(width), String(height)]);
+        expect([mascot.style.width, mascot.style.height]).toEqual([`${width}px`, `${height}px`]);
+        expect([mascot.getAttribute('data-step'), mascot.getAttribute('data-fit')]).toEqual(['1', 'step']);
+    });
+
+    test.each(['reisen', 'tewi', 'both'])('%s is drawn at the step of the tallest picture: Tewi is not enlarged to fill the share', (variant) => {
+        onScreen({ height: 1000, ratio: 3 });
+        const { mascot } = runSplash({ stored: variant });
+        const { width, height } = window.SillyBunnySplash.ART[variant];
+
+        // 0.42 x 1000 x 3 = 1260 device pixels holds 3 steps of the 366 rows of the tallest picture.
+        expect(mascot.getAttribute('data-step')).toBe('3');
+        expect([mascot.style.width, mascot.style.height]).toEqual([`${width}px`, `${height}px`]);
+    });
+
+    test('on a 390x844 phone at 3x the art is two steps, which is 244px tall', () => {
+        onScreen({ height: 844, ratio: 3 });
+        const { mascot } = runSplash({ stored: 'reisen' });
+
+        expect([mascot.getAttribute('data-step'), mascot.style.height]).toEqual(['2', '244px']);
+    });
+
+    test('the CSS size is the art size times the step over the screen scale, so every art pixel is whole device pixels', () => {
+        onScreen({ height: 900, ratio: 4 });
+        const { mascot } = runSplash({ stored: 'both' });
+
+        expect(mascot.getAttribute('data-step')).toBe('4');
+        expect([mascot.style.width, mascot.style.height]).toEqual(['263px', '366px']);
+    });
+
+    test('on a short screen at 1x the picture is shrunk to 42% of the height, in the same proportions, and drawn smooth', () => {
+        onScreen({ height: 390, ratio: 1 });
+        const { mascot } = runSplash({ stored: 'both' });
+        const scale = (0.42 * 390) / 366;
+
+        expect(mascot.getAttribute('data-fit')).toBe('smooth');
+        expect(mascot.hasAttribute('data-step')).toBe(false);
+        expect(Number.parseFloat(mascot.style.height)).toBeCloseTo(366 * scale, 6);
+        expect(Number.parseFloat(mascot.style.width)).toBeCloseTo(263 * scale, 6);
+    });
+
+    test('Tewi keeps her height relative to Reisen when the picture is shrunk', () => {
+        onScreen({ height: 390, ratio: 1 });
+        const reisen = Number.parseFloat(runSplash({ stored: 'reisen' }).mascot.style.height);
+        const tewi = Number.parseFloat(runSplash({ stored: 'tewi' }).mascot.style.height);
+
+        expect(tewi / reisen).toBeCloseTo(320 / 366, 6);
+    });
+
+    test('is drawn again when the window changes size, with no new request for the file', () => {
+        onScreen({ height: 768, ratio: 1 });
+        const { mascot } = runSplash({ stored: 'reisen' });
+        const source = mascot.getAttribute('src');
+
+        onScreen({ height: 1200, ratio: 2 });
+        window.dispatchEvent(new Event('resize'));
+
+        // 0.42 x 1200 x 2 = 1008 device pixels holds two steps of 366.
+        expect([mascot.getAttribute('data-step'), mascot.style.height]).toEqual(['2', '366px']);
+        expect(mascot.getAttribute('src')).toBe(source);
+    });
+
+    test('goes from a whole step to a shrunk picture and back when the window changes height', () => {
+        onScreen({ height: 768, ratio: 1 });
+        const { mascot } = runSplash({ stored: 'reisen' });
+
+        onScreen({ height: 390, ratio: 1 });
+        window.dispatchEvent(new Event('resize'));
+        expect(mascot.getAttribute('data-fit')).toBe('smooth');
+
+        onScreen({ height: 768, ratio: 1 });
+        window.dispatchEvent(new Event('resize'));
+        expect([mascot.getAttribute('data-fit'), mascot.getAttribute('data-step')]).toEqual(['step', '1']);
+    });
+
+    test('stops listening to the window once the preloader has gone', () => {
+        onScreen({ height: 768, ratio: 1 });
+        const { mascot } = runSplash({ stored: 'reisen' });
+        const removeListener = jest.spyOn(window, 'removeEventListener');
+        mascot.remove();
+
+        window.dispatchEvent(new Event('resize'));
+
+        expect(removeListener).toHaveBeenCalledWith('resize', expect.any(Function));
+    });
+
+    describe('watching the screen scale', () => {
+        function stubMatchMedia() {
+            const pending = [];
+            window.matchMedia = jest.fn(() => ({
+                addEventListener: (_type, listener) => pending.push(listener),
+            }));
+            return {
+                queries: window.matchMedia,
+                fire: () => pending.splice(0).forEach(listener => listener()),
+                armed: () => pending.length,
+            };
+        }
+
+        test('draws the picture again after a change of scale and keeps watching', () => {
+            onScreen({ height: 768, ratio: 1 });
+            const screen = stubMatchMedia();
+            const { mascot } = runSplash({ stored: 'reisen' });
+            expect(screen.armed()).toBe(1);
+
+            onScreen({ height: 768, ratio: 2 });
+            screen.fire();
+
+            expect(mascot.getAttribute('data-step')).toBe('1');
+            expect(mascot.style.height).toBe('183px');
+            expect(screen.queries).toHaveBeenCalledTimes(2);
+            expect(screen.armed()).toBe(1);
+        });
+
+        test('does not ask for the next change once the preloader has gone', () => {
+            onScreen({ height: 768, ratio: 1 });
+            const screen = stubMatchMedia();
+            const { mascot } = runSplash({ stored: 'reisen' });
+            mascot.remove();
+
+            screen.fire();
+
+            expect(screen.queries).toHaveBeenCalledTimes(1);
+            expect(screen.armed()).toBe(0);
+        });
+    });
+});
+
+describe('splash art files', () => {
+    const spec = JSON.parse(readFileSync(SPEC, 'utf8'));
+
+    test.each(['reisen', 'tewi', 'both'])('the %s picture is the file of the table, at the size of the table, from the snapped masters', (variant) => {
+        runSplash({ stored: variant });
+        const { file, width, height } = window.SillyBunnySplash.ART[variant];
+        const bytes = readFileSync(`${publicRoot}img/sillybunny/${file}`);
+
+        expect(readImageSize(bytes)).toEqual({ width, height });
+        expect(spec.assets[`splash-${variant}`]).toMatchObject({ pixel: true, master: `approved/pixel/splash-${variant}.png` });
+        expect(window.SillyBunnySplash.ART_VERSION).toMatch(/^\d{8}[a-z]$/);
     });
 });
 

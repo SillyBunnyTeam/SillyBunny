@@ -3,43 +3,18 @@
     "assets": {
         "splash-reisen": {
             "character": "reisen",
-            "master": "approved/splash-reisen.png",
-            "css": [
-                128
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/splash-reisen.png",
+            "pixel": true
         },
         "splash-tewi": {
             "character": "tewi",
-            "master": "approved/splash-tewi.png",
-            "css": [
-                128
-            ],
-            "fit": "contain",
-            "square": true,
-            "focus": [
-                0.5,
-                0.2
-            ]
+            "master": "approved/pixel/splash-tewi.png",
+            "pixel": true
         },
         "splash-both": {
             "character": "duo",
-            "master": "approved/splash-both.png",
-            "css": [
-                192
-            ],
-            "fit": "width",
-            "crop": "canvas",
-            "margin": 0,
-            "focus": [
-                0.5,
-                0.35
-            ]
+            "master": "approved/pixel/splash-both.png",
+            "pixel": true
         },
         "welcome-both": {
             "character": "duo",

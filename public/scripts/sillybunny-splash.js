@@ -21,14 +21,28 @@
         both: [PLACEHOLDER_LINE],
     };
 
-    // One horizontal strip per variant. The sheet URL is root-relative because a relative url() in a
-    // custom property resolves against the stylesheet that reads it, not against the page. The service
-    // worker caches /img/ by full URL, so change the key whenever a sheet or its metadata changes.
-    var FRAMES = {
-        reisen: { sheet: '/img/sillybunny/splash-reisen.png?v=20261029s', frames: 2, frameWidth: 128, frameHeight: 128, frameDurationMs: 400 },
-        tewi: { sheet: '/img/sillybunny/splash-tewi.png?v=20261029s', frames: 2, frameWidth: 128, frameHeight: 128, frameDurationMs: 400 },
-        both: { sheet: '/img/sillybunny/splash-both.png?v=20261029s', frames: 2, frameWidth: 192, frameHeight: 128, frameDurationMs: 400 },
+    // Each picture is stored at its own size in art pixels, so the table is what lets the script size the box before
+    // the file has loaded. tests/unit/sillybunny-splash.test.js reads the files and the export spec and fails when a
+    // size is stale. The URL is root-relative and the service worker caches /img/ by full URL, so change the key
+    // whenever a file changes.
+    var ART_VERSION = '20261104b';
+    var ART = {
+        reisen: { file: 'splash-reisen@native.webp', width: 204, height: 366 },
+        tewi: { file: 'splash-tewi@native.webp', width: 141, height: 320 },
+        both: { file: 'splash-both@native.webp', width: 263, height: 366 },
     };
+
+    // All three pictures are sized by the tallest of them, so one screen has one step and Tewi keeps her height
+    // relative to Reisen whichever character the splash shows.
+    var TALLEST_ROWS = Math.max(ART.reisen.height, ART.tewi.height, ART.both.height);
+    // The tallest picture may be at most this share of the viewport height. The step is the largest whole number of
+    // device pixels per art pixel that stays within it: a fraction of a device pixel is drawn unevenly.
+    var HEIGHT_SHARE = 0.42;
+    // A screen that cannot hold step 1 within HEIGHT_SHARE may still show step 1 up to this share. Past it, step 1 would
+    // take the room of the line under the picture, and the picture is shrunk to HEIGHT_SHARE by a fraction instead.
+    var STEP_ONE_MAX_SHARE = 0.6;
+    // Room for the rounding of a division that lands exactly on a whole step.
+    var EPSILON = 1e-6;
 
     function readStorage(key) {
         try {
@@ -48,15 +62,74 @@
         return pickAtRandom(VARIANTS);
     }
 
+    function readRatio() {
+        var ratio = window.devicePixelRatio;
+        return ratio > 0 && isFinite(ratio) ? ratio : 1;
+    }
+
+    // How the pictures are drawn on a viewport `viewportHeight` CSS pixels tall: a whole step, or a fraction of one.
+    // `cssPerArtPixel` is the CSS size of one art pixel, which the width and the height of every picture follow.
+    function chooseFit(viewportHeight, ratio) {
+        var stepOne = { step: 1, smooth: false, cssPerArtPixel: 1 / ratio };
+        // Without a viewport height the shares below mean nothing, so the picture keeps one whole step.
+        if (!(viewportHeight > 0)) return stepOne;
+        var fitting = Math.floor((HEIGHT_SHARE * viewportHeight * ratio) / TALLEST_ROWS + EPSILON);
+        if (fitting >= 1) return { step: fitting, smooth: false, cssPerArtPixel: fitting / ratio };
+        if (TALLEST_ROWS / ratio <= STEP_ONE_MAX_SHARE * viewportHeight + EPSILON) return stepOne;
+        return { step: 0, smooth: true, cssPerArtPixel: (HEIGHT_SHARE * viewportHeight) / TALLEST_ROWS };
+    }
+
+    function sizeMascot(mascot, variant) {
+        var art = ART[variant];
+        var fit = chooseFit(window.innerHeight, readRatio());
+        mascot.style.width = art.width * fit.cssPerArtPixel + 'px';
+        mascot.style.height = art.height * fit.cssPerArtPixel + 'px';
+        // loader.css turns off the pixelated rendering of a picture that is drawn at a fraction of a step.
+        mascot.setAttribute('data-fit', fit.smooth ? 'smooth' : 'step');
+        if (fit.smooth) {
+            mascot.removeAttribute('data-step');
+            return;
+        }
+        mascot.setAttribute('data-step', String(fit.step));
+    }
+
+    // A zoom changes the width of the window, and a move to another screen changes only the ratio. A resolution query
+    // names one ratio and fires once when it stops matching, so it is made again after each change.
+    function watchSize(mascot, variant) {
+        function isAttached() {
+            return document.documentElement.contains(mascot);
+        }
+        function update() {
+            if (!isAttached()) {
+                window.removeEventListener('resize', update);
+                return;
+            }
+            sizeMascot(mascot, variant);
+        }
+        function watchRatio() {
+            if (typeof window.matchMedia !== 'function') return;
+            var query = window.matchMedia('(resolution: ' + readRatio() + 'dppx)');
+            var onChange = function () {
+                update();
+                // A query that is made again for a splash that is gone would keep the removed markup alive.
+                if (isAttached()) watchRatio();
+            };
+            if (typeof query.addEventListener === 'function') query.addEventListener('change', onChange, { once: true });
+        }
+        window.addEventListener('resize', update);
+        watchRatio();
+    }
+
     function applyMascot(mascot, variant) {
         if (!mascot) return;
-        var metadata = FRAMES[variant];
+        var art = ART[variant];
         mascot.setAttribute('data-variant', variant);
-        mascot.style.setProperty('--sb-boot-sheet', 'url("' + metadata.sheet + '")');
-        mascot.style.setProperty('--sb-boot-frames', String(metadata.frames));
-        mascot.style.setProperty('--sb-boot-frame-w', metadata.frameWidth + 'px');
-        mascot.style.setProperty('--sb-boot-frame-h', metadata.frameHeight + 'px');
-        mascot.style.setProperty('--sb-boot-duration', metadata.frames * metadata.frameDurationMs + 'ms');
+        mascot.setAttribute('width', String(art.width));
+        mascot.setAttribute('height', String(art.height));
+        // The box has its size before the file is requested, so the line under it does not move when the file arrives.
+        sizeMascot(mascot, variant);
+        mascot.src = '/img/sillybunny/' + art.file + '?v=' + ART_VERSION;
+        watchSize(mascot, variant);
     }
 
     function applyLine(lineText, variant) {
@@ -86,7 +159,12 @@
 
     window.SillyBunnySplash = {
         SPLASH_LINES: SPLASH_LINES,
-        FRAMES: FRAMES,
+        ART: ART,
+        ART_VERSION: ART_VERSION,
+        HEIGHT_SHARE: HEIGHT_SHARE,
+        STEP_ONE_MAX_SHARE: STEP_ONE_MAX_SHARE,
+        TALLEST_ROWS: TALLEST_ROWS,
+        chooseFit: chooseFit,
         resolveVariant: resolveVariant,
         render: render,
     };

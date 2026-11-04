@@ -7,14 +7,17 @@ test.describe.configure({ timeout: 60_000 });
 
 const VIEWPORTS = [
     { name: 'desktop 1440x900', options: { viewport: { width: 1440, height: 900 } } },
-    { name: 'phone 390x844', options: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: 'phone 390x844', options: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 } },
 ];
 const STARTUP_TIMEOUT = 20_000;
-const FRAME_BOXES = {
-    tewi: { width: 128, height: 128 },
-    reisen: { width: 128, height: 128 },
-    both: { width: 192, height: 128 },
+/** The pictures at their own size in art pixels. The tallest one decides the step of all three. */
+const ART = {
+    reisen: { file: 'splash-reisen@native.webp', width: 204, height: 366 },
+    tewi: { file: 'splash-tewi@native.webp', width: 141, height: 320 },
+    both: { file: 'splash-both@native.webp', width: 263, height: 366 },
 };
+const TALLEST_ROWS = 366;
+const HEIGHT_SHARE = 0.42;
 
 /** Holds the settings read so the preloader stays up until the returned function runs. */
 async function holdBoot(page) {
@@ -43,10 +46,15 @@ function readMascot(page) {
         const box = mascot.getBoundingClientRect();
         return {
             variant: mascot.dataset.variant,
-            backgroundImage: style.backgroundImage,
+            step: Number(mascot.dataset.step),
+            fit: mascot.dataset.fit,
+            tag: mascot.tagName,
+            src: mascot.getAttribute('src'),
             imageRendering: style.imageRendering,
             animationName: style.animationName,
-            backgroundPosition: style.backgroundPosition,
+            loaded: mascot.complete ? mascot.naturalWidth : 0,
+            ratio: devicePixelRatio,
+            viewportHeight: innerHeight,
             width: box.width,
             height: box.height,
         };
@@ -113,23 +121,22 @@ for (const { name, options } of VIEWPORTS) {
             releaseBoot();
         });
 
-        for (const variant of ['tewi', 'both']) {
-            test(`shows the ${variant} variant as one frame at 1x with a running animation`, async ({ page }) => {
+        for (const variant of ['reisen', 'tewi', 'both']) {
+            test(`shows the ${variant} variant as a still pixel-art picture at a whole step, with running dots`, async ({ page }) => {
                 await openSplash(page, { variant });
+                await expect.poll(async () => (await readMascot(page)).loaded).toBe(ART[variant].width);
 
                 const mascot = await readMascot(page);
+                const step = Math.max(1, Math.floor((HEIGHT_SHARE * mascot.viewportHeight * mascot.ratio) / TALLEST_ROWS + 1e-6));
                 expect(mascot.variant).toBe(variant);
-                expect(mascot.backgroundImage).toContain(`splash-${variant}.png`);
+                expect(mascot.tag).toBe('IMG');
+                expect(mascot.src).toContain(`/img/sillybunny/${ART[variant].file}?v=`);
                 expect(mascot.imageRendering).toBe('pixelated');
-                expect(mascot.animationName).not.toBe('none');
-                expect({ width: mascot.width, height: mascot.height }).toEqual(FRAME_BOXES[variant]);
-
-                // Both frames of the strip must show, or the animation is invisible.
-                const seenPositions = new Set();
-                await expect.poll(async () => {
-                    seenPositions.add((await readMascot(page)).backgroundPosition);
-                    return seenPositions.size;
-                }, { timeout: 5_000 }).toBeGreaterThan(1);
+                expect(mascot.animationName, 'the mascot is a still').toBe('none');
+                expect([mascot.step, mascot.fit]).toEqual([step, 'step']);
+                expect(mascot.width).toBeCloseTo((ART[variant].width * step) / mascot.ratio, 1);
+                expect(mascot.height).toBeCloseTo((ART[variant].height * step) / mascot.ratio, 1);
+                await expect(page.locator('.sb-boot-mascot')).toHaveAttribute('alt', '');
 
                 await expect(page.locator('.sb-boot-line')).toHaveAttribute('role', 'status');
                 await expect(page.locator('.sb-boot-line')).toContainText('Loading SillyBunny');
@@ -143,6 +150,25 @@ for (const { name, options } of VIEWPORTS) {
                 }
             });
         }
+
+        test('keeps the picture where it was while its file loads, and the line under it does not move', async ({ page }) => {
+            let releaseFile = () => {};
+            const held = new Promise((resolve) => { releaseFile = resolve; });
+            await page.route('**/img/sillybunny/splash-both@native.webp*', async (route) => {
+                await held;
+                await route.fallback();
+            });
+            await openSplash(page, { variant: 'both' });
+            const lineBefore = await page.locator('.sb-boot-line').boundingBox();
+            const mascotBefore = await page.locator('.sb-boot-mascot').boundingBox();
+            expect(mascotBefore.width, 'the box has its size before the file arrives').toBeGreaterThan(0);
+
+            releaseFile();
+            await expect.poll(async () => (await readMascot(page)).loaded).toBe(ART.both.width);
+
+            expect(await page.locator('.sb-boot-line').boundingBox()).toEqual(lineBefore);
+            expect(await page.locator('.sb-boot-mascot').boundingBox()).toEqual(mascotBefore);
+        });
 
         test('keeps the mascot and line inside the viewport', async ({ page }) => {
             await openSplash(page, { variant: 'both' });
@@ -161,13 +187,10 @@ for (const { name, options } of VIEWPORTS) {
             { title: 'under prefers-reduced-motion', reducedMotion: 'reduce', mirror: false },
             { title: 'when the saved Reduced Motion setting is mirrored', reducedMotion: 'no-preference', mirror: true },
         ]) {
-            test(`shows frame 0 and three static dots ${scenario.title}`, async ({ page }) => {
+            test(`shows three static dots ${scenario.title}`, async ({ page }) => {
                 await page.emulateMedia({ reducedMotion: scenario.reducedMotion });
                 await openSplash(page, { variant: 'tewi', reducedMotionMirror: scenario.mirror });
 
-                const mascot = await readMascot(page);
-                expect(mascot.animationName).toBe('none');
-                expect(mascot.backgroundPosition).toBe('0px 0px');
                 const dots = await readDots(page);
                 expect(dots).toHaveLength(3);
                 for (const dot of dots) {
@@ -183,8 +206,6 @@ for (const { name, options } of VIEWPORTS) {
 
             expect(await removeGlobalReducedMotionRules(page)).toBeGreaterThan(0);
 
-            const mascot = await readMascot(page);
-            expect(mascot.animationName).toBe('none');
             const dots = await readDots(page);
             expect(dots).toHaveLength(3);
             for (const dot of dots) {
@@ -202,6 +223,93 @@ for (const { name, options } of VIEWPORTS) {
         });
     });
 }
+
+/**
+ * The size of the pictures on screens of every kind, worked out by hand from the rule, with the 366 rows of the tallest
+ * picture: the largest whole step whose art is at most 42% of the viewport height. A screen that cannot hold step 1 in
+ * 42% still gets step 1 up to 60%, and a shorter one gets the pictures shrunk by a fraction so that the tallest is 42%.
+ * `px` is the CSS size of one art pixel, which all three pictures share. The expected values are not computed by the
+ * code under test.
+ */
+const SIZE_TABLE = [
+    { width: 1920, height: 1080, ratio: 1, fit: 'step', step: 1, px: 1 },
+    { width: 1920, height: 1080, ratio: 2, fit: 'step', step: 2, px: 1 },
+    { width: 1440, height: 900, ratio: 1, fit: 'step', step: 1, px: 1 },
+    { width: 1440, height: 900, ratio: 2, fit: 'step', step: 2, px: 1 },
+    { width: 1366, height: 768, ratio: 1, fit: 'step', step: 1, px: 1 },
+    { width: 1366, height: 768, ratio: 2, fit: 'step', step: 1, px: 0.5 },
+    { width: 1024, height: 600, ratio: 1, fit: 'smooth', px: (0.42 * 600) / 366 },
+    { width: 1024, height: 600, ratio: 2, fit: 'step', step: 1, px: 0.5 },
+    { width: 768, height: 1024, ratio: 1, fit: 'step', step: 1, px: 1 },
+    { width: 768, height: 1024, ratio: 2, fit: 'step', step: 2, px: 1 },
+    { width: 390, height: 844, ratio: 1, fit: 'step', step: 1, px: 1 },
+    { width: 390, height: 844, ratio: 2, fit: 'step', step: 1, px: 0.5 },
+    { width: 390, height: 844, ratio: 3, fit: 'step', step: 2, px: 2 / 3 },
+    { width: 844, height: 390, ratio: 1, fit: 'smooth', px: (0.42 * 390) / 366 },
+    { width: 844, height: 390, ratio: 2, fit: 'step', step: 1, px: 0.5 },
+    { width: 844, height: 390, ratio: 3, fit: 'step', step: 1, px: 1 / 3 },
+];
+
+for (const { width, height, ratio, fit, step, px } of SIZE_TABLE) {
+    test.describe(`Splash size at ${width}x${height} on a ${ratio}x screen`, () => {
+        test.use({ viewport: { width, height }, deviceScaleFactor: ratio });
+
+        for (const variant of ['reisen', 'tewi', 'both']) {
+            test(`draws ${variant} ${fit === 'smooth' ? 'shrunk to 42% of the height, smooth' : `at ${step} device pixel${step === 1 ? '' : 's'} per art pixel`}`, async ({ page }) => {
+                await protectMaintainerServer(page);
+                const releaseBoot = await holdBoot(page);
+                try {
+                    await openSplash(page, { variant });
+
+                    const mascot = await readMascot(page);
+                    expect(mascot.fit).toBe(fit);
+                    expect(mascot.width).toBeCloseTo(ART[variant].width * px, 1);
+                    expect(mascot.height).toBeCloseTo(ART[variant].height * px, 1);
+                    if (fit === 'smooth') {
+                        expect(Number.isNaN(mascot.step), 'a shrunk picture has no step').toBe(true);
+                        expect(mascot.imageRendering).toBe('auto');
+                        expect(mascot.height / height, 'the tallest picture is 42%, and Tewi is shorter').toBeLessThanOrEqual(0.42 + 0.001);
+                        return;
+                    }
+                    expect(mascot.step).toBe(step);
+                    expect(mascot.imageRendering).toBe('pixelated');
+                } finally {
+                    releaseBoot();
+                }
+            });
+        }
+    });
+}
+
+test.describe('Splash on a window that changes size', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    test('draws the picture again at the step of the new height, without a new request for the file', async ({ page }) => {
+        await protectMaintainerServer(page);
+        const releaseBoot = await holdBoot(page);
+        const requests = [];
+        page.on('request', request => requests.push(request.url()));
+        try {
+            await openSplash(page, { variant: 'both' });
+            expect((await readMascot(page)).step).toBe(1);
+
+            // 0.42 x 2000 = 840 CSS pixels at 1x holds two steps of 366.
+            await page.setViewportSize({ width: 1440, height: 2000 });
+
+            await expect.poll(async () => (await readMascot(page)).step).toBe(2);
+            expect((await readMascot(page)).height).toBe(732);
+
+            // A step of 366 is 73% of 500, which is past the 60% that step 1 may take.
+            await page.setViewportSize({ width: 1440, height: 500 });
+
+            await expect.poll(async () => (await readMascot(page)).fit).toBe('smooth');
+            expect((await readMascot(page)).height).toBeCloseTo(0.42 * 500, 1);
+            expect(requests.filter(url => url.includes('splash-both@native.webp'))).toHaveLength(1);
+        } finally {
+            releaseBoot();
+        }
+    });
+});
 
 const BOOT_MARKS = ['sb-boot-inline', 'sb-boot-init-start', 'sb-boot-dismiss', 'sb-app-ready'];
 const SPLASH_CHARACTER_KEY = 'sb-splash-character';

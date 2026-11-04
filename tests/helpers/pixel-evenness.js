@@ -8,16 +8,21 @@
  * `tests/art-pixel-evenness.e2e.js`).
  */
 
-/** Every figure on the page that is drawn, with where it sits in CSS pixels. */
-export async function readFigures(page, { scope = 'body' } = {}) {
-    return page.evaluate((root) => [...document.querySelector(root).querySelectorAll('.sbArtFigure')]
+/**
+ * Every figure on the page that is drawn, with where it sits in CSS pixels. A figure is a clip with a picture inside
+ * (`.sbArtFigure`), or a picture of its own, such as the splash mascot.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ scope?: string, figureSelector?: string }} [options]
+ */
+export async function readFigures(page, { scope = 'body', figureSelector = '.sbArtFigure' } = {}) {
+    return page.evaluate(({ root, selector }) => [...document.querySelector(root).querySelectorAll(selector)]
         .filter(figure => !figure.closest('[inert]') && figure.getBoundingClientRect().width > 0)
         .map((figure) => {
-            const image = figure.firstElementChild;
+            const image = figure instanceof HTMLImageElement ? figure : figure.firstElementChild;
             const box = figure.getBoundingClientRect();
             const mask = figure.closest('.sbArtPanel');
             return {
-                id: figure.dataset.sbArtPlaceholder,
+                id: figure.dataset.sbArtPlaceholder ?? figure.dataset.variant ?? figure.className,
                 src: image.currentSrc,
                 nativeWidth: image.naturalWidth,
                 left: box.left,
@@ -28,7 +33,7 @@ export async function readFigures(page, { scope = 'body' } = {}) {
                 panelHeight: mask?.getBoundingClientRect().height ?? box.height,
                 panelTop: mask?.getBoundingClientRect().top ?? box.top,
             };
-        }), scope);
+        }), { root: scope, selector: figureSelector });
 }
 
 /**
