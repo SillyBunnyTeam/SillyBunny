@@ -38,6 +38,62 @@ let nextId = 0;
 const SLIDE_DIM = 0.5;
 
 /**
+ * The motions that keep the shadow of a dialog surface off, as `is-paging` (slide-shade.js): its page slides and its
+ * height motion. A late change of a page's height restarts the height motion after the slide has ended, so the class
+ * stays until the last of them is over and the shadow does not return in the middle of a motion.
+ * @type {WeakMap<HTMLElement, Set<object>>}
+ */
+const pagingHolds = new WeakMap();
+
+/**
+ * @param {HTMLElement | null} surface
+ * @returns {() => void} Ends this hold. The surface regains its shadow when no hold is left.
+ */
+function holdPaging(surface) {
+    if (!surface) return () => {};
+    const holds = pagingHolds.get(surface) ?? new Set();
+    pagingHolds.set(surface, holds);
+    const hold = {};
+    holds.add(hold);
+    surface.classList.add('is-paging');
+    return () => {
+        holds.delete(hold);
+        if (!holds.size) surface.classList.remove('is-paging');
+    };
+}
+
+/**
+ * Runs the call that starts a motion with a hold that the motion ends. A start that throws has no end to release the
+ * hold, so it ends here.
+ * @param {HTMLElement | null} surface
+ * @param {(release: () => void) => *} start
+ */
+function holdPagingWhileStarting(surface, start) {
+    const release = holdPaging(surface);
+    try {
+        return start(release);
+    } catch (error) {
+        release();
+        throw error;
+    }
+}
+
+/**
+ * A surface that closes in the middle of a motion keeps the class until it is gone. Without this, the end of that
+ * motion would bring the shadow back on a surface that is fading out. `dispose` ends the hold with all others.
+ * @param {HTMLElement} surface
+ */
+function holdPagingUntilDisposed(surface) {
+    if (pagingHolds.get(surface)?.size) holdPaging(surface);
+}
+
+/** Ends every hold of a surface that is going away, so a motion that never ends cannot keep the class. */
+function clearPaging(surface) {
+    pagingHolds.get(surface)?.clear();
+    surface.classList.remove('is-paging');
+}
+
+/**
  * Slides a page with the Page Transition Shade. The page and the page it covers have the same layer tone and header
  * layout, so without the shade the two headers read as one bar with two titles. AdwNavigationView does the same
  * (adw-shadow-helper.c): the sliding page casts a shadow, and the covered page dims as more of it is covered, to half
@@ -46,6 +102,9 @@ const SLIDE_DIM = 0.5;
  * Only the compositor animates: the transform of the page and the opacity of the dim layer, which is the `::before` of
  * the page (slide-shade.js, `.is-sliding`). The edge shadow is a static `box-shadow` of the class. Animating a
  * `box-shadow` instead paints the page again on every frame.
+ *
+ * The dialog surface has no shadow of its own while a slide runs (`holdPaging`): the height motion resizes the surface
+ * on every frame, and WebKit paints its blurred shadow again each time, which made slides stall.
  * @param {HTMLElement} page
  * @param {[string, string]} transform The transform at the start and at the end of the slide.
  * @param {[number, number]} dim The share of the dim layer at the start and at the end, from 0 to `SLIDE_DIM`.
@@ -55,15 +114,16 @@ function slidePage(page, transform, dim, { fill = 'none', onEnd = null } = {}) {
     let dimLayer = null;
     installSlideShade(page.ownerDocument);
     page.classList.add('is-sliding');
-    const motion = play(page, transform.map(value => ({ transform: value })), {
+    const motion = holdPagingWhileStarting(page.closest('.sb-dialog'), releasePaging => play(page, transform.map(value => ({ transform: value })), {
         ...SPRING_NAVIGATION,
         fill,
         onEnd: () => {
             dimLayer?.cancel();
             page.classList.remove('is-sliding');
+            releasePaging();
             onEnd?.();
         },
-    });
+    }));
     // A slide that cannot run has already ended, and its class is gone.
     if (motion) dimLayer = page.animate(dim.map(opacity => ({ opacity })), { ...SPRING_NAVIGATION, fill, pseudoElement: '::before' });
     return motion;
@@ -653,6 +713,7 @@ export function openDialog({
     function complete(response, offset = 0) {
         if (state !== 'open') return;
         state = 'closing';
+        holdPagingUntilDisposed(surface);
         closeActionMenu({ animate: false });
         closePicker({ animate: false, restoreFocus: false });
         releaseOverlayLayers(host);
@@ -693,6 +754,7 @@ export function openDialog({
         pendingSwap = null;
         stopMotion(pagesNode);
         releasePins();
+        clearPaging(surface);
         for (const entry of stack.splice(0)) {
             entry.view.destroy();
             entry.resolve({ response });
@@ -781,7 +843,13 @@ export function openDialog({
      * @returns {boolean} Whether the motion is running.
      */
     function playHeightMotion(from, to, elapsed = 0) {
-        const running = play(pagesNode, [{ height: `${from}px` }, { height: `${to}px` }], { ...SPRING_NAVIGATION, onEnd: endHeightMotion }) !== null;
+        const running = holdPagingWhileStarting(surface, releasePaging => play(pagesNode, [{ height: `${from}px` }, { height: `${to}px` }], {
+            ...SPRING_NAVIGATION,
+            onEnd: () => {
+                releasePaging();
+                endHeightMotion();
+            },
+        })) !== null;
         const animation = running && elapsed > 0 ? findHeightAnimation() : null;
         if (animation) animation.currentTime = elapsed;
         return running;
@@ -887,18 +955,25 @@ export function openDialog({
         const animation = findHeightAnimation();
         const progress = animation?.effect.getComputedTiming().progress ?? 1;
         const elapsed = Number(animation?.currentTime ?? 0);
-        retargeting = true;
-        // Stopping the motion snaps the node to its natural height and releases the pins, which is how the new target is read.
-        stopMotion(pagesNode);
-        retargeting = false;
-        const to = pagesNode.getBoundingClientRect().height;
-        for (const [page, height] of staying) {
-            if (page.isConnected && !page.hidden) pinPage(page, height);
+        // Stopping the motion can end the last hold, and the read below would then run with the shadow on.
+        const keepPaging = holdPaging(surface);
+        try {
+            retargeting = true;
+            // Stopping the motion snaps the node to its natural height and releases the pins, which is how the new target is read.
+            stopMotion(pagesNode);
+            retargeting = false;
+            const to = pagesNode.getBoundingClientRect().height;
+            for (const [page, height] of staying) {
+                if (page.isConnected && !page.hidden) pinPage(page, height);
+            }
+            pinPage(incoming, to);
+            const from = (current - to * progress) / (1 - progress);
+            if (progress < LAST_RETARGET_PROGRESS && from >= 0) playHeightMotion(from, to, elapsed);
+            else playHeightMotion(current, to);
+        } finally {
+            retargeting = false;
+            keepPaging();
         }
-        pinPage(incoming, to);
-        const from = (current - to * progress) / (1 - progress);
-        if (progress < LAST_RETARGET_PROGRESS && from >= 0) playHeightMotion(from, to, elapsed);
-        else playHeightMotion(current, to);
     }
 
     function swapPages(swap) {
@@ -928,6 +1003,8 @@ export function openDialog({
             const offset = slideOffset();
             stack.pop();
             const previous = topPage();
+            // A pop that stops the slide of the page it removes can end the last hold, and the reads in swapPages would then run with the shadow on.
+            const keepPaging = prefersReducedMotion() ? () => {} : holdPaging(surface);
             stopMotion(entry.view.page);
             host.setAttribute('aria-labelledby', previous.view.titleNode.id);
             const leaving = entry.view.page;
@@ -938,6 +1015,7 @@ export function openDialog({
                 leaving.inert = true;
                 leaving.classList.add('is-leaving');
             });
+            keepPaging();
             const remove = () => {
                 entry.view.destroy();
                 leaving.remove();

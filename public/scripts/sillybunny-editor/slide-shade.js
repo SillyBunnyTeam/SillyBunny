@@ -3,10 +3,19 @@
  * and a dim layer whose opacity alone animates (dialog.js, slidePage). The layer is a viewport tall so it covers a
  * taller covered page; the pages node clips it.
  *
+ * This sheet also holds the rule that drops the shadow of the dialog surface while pages move, because the surface
+ * resizes on every frame of a height motion and WebKit paints its blurred shadow again each time. dialog.js sets
+ * `is-paging` on the surface through holds (one for each page slide and height motion), so the class stays until the
+ * last motion has ended.
+ *
  * The rules live here and not in sillybunny-theme.css because that sheet blocks the first paint and counts against the
  * frontend budget. A slide always runs after this module, so no page paints without them.
  */
 const SLIDE_SHADE_CSS = `
+.sb-dialog.is-paging {
+    box-shadow: none;
+}
+
 .sb-dialog__page.is-sliding {
     box-shadow: 0 0 56px var(--sb-dialog-backdrop);
 }

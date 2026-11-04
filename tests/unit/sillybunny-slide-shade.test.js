@@ -135,3 +135,230 @@ describe('slide shade in the dialog frame', () => {
         dialog.forceClose();
     });
 });
+
+describe('the dialog surface while pages slide', () => {
+    let runs;
+
+    beforeEach(() => {
+        window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+        HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+        HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
+        // jsdom has no Web Animations: every animate() call is recorded and ends when the test says so.
+        runs = [];
+        Element.prototype.animate = function animate(keyframes, options) {
+            let finish;
+            const animation = {
+                finished: new Promise((resolve) => { finish = resolve; }),
+                effect: { target: this },
+                oncancel: null,
+                persist() {},
+                cancel() { animation.oncancel?.(); },
+            };
+            runs.push({ target: this, keyframes, options, finish, animation });
+            return animation;
+        };
+    });
+
+    afterEach(() => {
+        delete Element.prototype.animate;
+    });
+
+    const surfaceOf = () => document.querySelector('.sb-dialog-host .sb-dialog');
+    const isPaging = () => surfaceOf().classList.contains('is-paging');
+    const pageSlides = () => runs.filter(run => run.target.matches('.sb-dialog__page') && !run.options.pseudoElement && run.keyframes[0]?.transform !== undefined);
+    const heightMotions = () => runs.filter(run => run.target.matches('.sb-dialog__pages'));
+    /** Lets the microtask that starts the height motion run. */
+    const settled = () => new Promise(resolve => setTimeout(resolve, 0));
+    const end = async (run) => {
+        run.finish();
+        await settled();
+    };
+
+    function openWithPage() {
+        const dialog = openDialog({ title: 'Root', content: document.createElement('p') });
+        const page = dialog.push({ title: 'Page', content: document.createElement('p') });
+        return { dialog, page };
+    }
+
+    test('a pushed page puts is-paging on the surface until its slide and the height motion are over', async () => {
+        const { dialog } = openWithPage();
+        await settled();
+        expect(pageSlides()).toHaveLength(1);
+        expect(heightMotions()).toHaveLength(1);
+        expect(isPaging()).toBe(true);
+
+        await end(pageSlides()[0]);
+        expect(isPaging()).toBe(true);
+        await end(heightMotions()[0]);
+        expect(isPaging()).toBe(false);
+        dialog.forceClose();
+    });
+
+    test('the class stays while the slide outlasts the height motion', async () => {
+        const { dialog } = openWithPage();
+        await settled();
+        await end(heightMotions()[0]);
+        expect(isPaging()).toBe(true);
+        await end(pageSlides()[0]);
+        expect(isPaging()).toBe(false);
+        dialog.forceClose();
+    });
+
+    test('a second slide that starts while the first runs keeps the class until it has ended too', async () => {
+        const { dialog } = openWithPage();
+        dialog.push({ title: 'Second', content: document.createElement('p') });
+        await settled();
+        const slides = pageSlides();
+        expect(slides).toHaveLength(2);
+
+        await end(slides[0]);
+        for (const motion of heightMotions()) await end(motion);
+        expect(isPaging()).toBe(true);
+        await end(slides[1]);
+        expect(isPaging()).toBe(false);
+        dialog.forceClose();
+    });
+
+    test('popping a page holds the class for the slide that takes it away', async () => {
+        const { dialog, page } = openWithPage();
+        await settled();
+        for (const run of [...pageSlides(), ...heightMotions()]) await end(run);
+        expect(isPaging()).toBe(false);
+
+        page.close();
+        await settled();
+        expect(isPaging()).toBe(true);
+        for (const run of [...pageSlides(), ...heightMotions()]) await end(run);
+        expect(isPaging()).toBe(false);
+        dialog.forceClose();
+    });
+
+    test('popping a page in the middle of its own slide keeps the class through every read that starts the way back', async () => {
+        const { dialog, page } = openWithPage();
+        await settled();
+        // Only the slide is left to hold the class, and the pop stops it.
+        await end(heightMotions()[0]);
+        expect(isPaging()).toBe(true);
+
+        const reads = [];
+        const readBox = Element.prototype.getBoundingClientRect;
+        Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+            if (this.matches('.sb-dialog__pages')) reads.push(isPaging());
+            return readBox.call(this);
+        };
+        try {
+            page.close();
+            await settled();
+        } finally {
+            Element.prototype.getBoundingClientRect = readBox;
+        }
+
+        expect(reads.length).toBeGreaterThan(0);
+        expect(reads).toEqual(reads.map(() => true));
+        expect(isPaging()).toBe(true);
+        for (const run of [...pageSlides(), ...heightMotions()]) await end(run);
+        expect(isPaging()).toBe(false);
+        dialog.forceClose();
+    });
+
+    test('a slide that ends while the dialog fades out leaves the class on until the dialog is gone', async () => {
+        const { dialog } = openWithPage();
+        await settled();
+        const surface = surfaceOf();
+
+        const running = runs.length;
+        dialog.forceClose();
+        for (const run of runs.slice(0, running)) await end(run);
+        expect(surface.isConnected).toBe(true);
+        expect(surface.classList.contains('is-paging')).toBe(true);
+
+        for (const run of runs.slice(running)) await end(run);
+        await settled();
+        expect(surface.isConnected).toBe(false);
+        expect(surface.classList.contains('is-paging')).toBe(false);
+    });
+
+    test('a dialog that closes with no motion running does not lose its shadow for the fade', async () => {
+        const { dialog } = openWithPage();
+        await settled();
+        for (const run of [...pageSlides(), ...heightMotions()]) await end(run);
+        const surface = surfaceOf();
+        expect(isPaging()).toBe(false);
+
+        const running = runs.length;
+        dialog.forceClose();
+        expect(surface.classList.contains('is-paging')).toBe(false);
+        for (const run of runs.slice(running)) await end(run);
+        await settled();
+        expect(surface.classList.contains('is-paging')).toBe(false);
+    });
+
+    test('a slide that cannot start releases the class', async () => {
+        const dialog = openDialog({ title: 'Root', content: document.createElement('p') });
+        const record = Element.prototype.animate;
+        Element.prototype.animate = function animate(keyframes, options) {
+            if (this.matches('.sb-dialog__page') && keyframes[0]?.transform !== undefined && !options.pseudoElement) throw new Error('no slide');
+            return record.call(this, keyframes, options);
+        };
+        expect(() => dialog.push({ title: 'Page', content: document.createElement('p') })).toThrow('no slide');
+        await settled();
+        // The height motion of the swap still runs, and it is the only hold left.
+        expect(isPaging()).toBe(true);
+        await end(heightMotions()[0]);
+        expect(isPaging()).toBe(false);
+    });
+
+    test('closing the dialog in the middle of a slide leaves no class behind, although its motions never end', async () => {
+        const { dialog } = openWithPage();
+        await settled();
+        const surface = surfaceOf();
+        expect(surface.classList.contains('is-paging')).toBe(true);
+
+        // Only the motions of the exit end: the slide and the height motion of the page are left running.
+        const running = runs.length;
+        dialog.forceClose();
+        for (const run of runs.slice(running)) await end(run);
+        await settled();
+        expect(surface.isConnected).toBe(false);
+        expect(surface.classList.contains('is-paging')).toBe(false);
+
+        for (const run of runs.slice(0, running)) await end(run);
+        expect(surface.classList.contains('is-paging')).toBe(false);
+    });
+
+    test('a slide that is cancelled releases the class', async () => {
+        const { dialog } = openWithPage();
+        await settled();
+        pageSlides()[0].animation.cancel();
+        heightMotions()[0].animation.cancel();
+        expect(isPaging()).toBe(false);
+        dialog.forceClose();
+    });
+
+    test('with reduced motion no slide runs and the class never appears, not even for a moment', async () => {
+        window.matchMedia = query => ({ matches: query.includes('prefers-reduced-motion'), addEventListener() {}, removeEventListener() {} });
+        const dialog = openDialog({ title: 'Root', content: document.createElement('p') });
+        // A class that is added and removed in one task leaves no trace in a later read, but it leaves mutation records.
+        const classChanges = [];
+        const watcher = new MutationObserver(records => classChanges.push(...records));
+        watcher.observe(surfaceOf(), { attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+
+        const page = dialog.push({ title: 'Page', content: document.createElement('p') });
+        await settled();
+        expect(pageSlides()).toHaveLength(0);
+        page.close();
+        await settled();
+        expect(isPaging()).toBe(false);
+        dialog.forceClose();
+        await settled();
+
+        const records = [...classChanges, ...watcher.takeRecords()];
+        watcher.disconnect();
+        expect(records.filter(record => record.oldValue?.includes('is-paging'))).toEqual([]);
+    });
+
+    test('the surface rule that drops its shadow is one of the shade styles', () => {
+        const css = document.head.querySelector(SHADE_STYLE).textContent;
+        expect(css).toMatch(/\.sb-dialog\.is-paging \{\s*box-shadow: none;\s*\}/);
+    });
+});
