@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import express from 'express';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 
 import { OUTSIDE_FILE_TEXT, prepareEnvironment, USER_HANDLE } from './util/hostile-file-names-harness.js';
@@ -19,6 +20,7 @@ const ROUTERS = {
     '/api/chats': () => import('../src/endpoints/chats.js'),
     '/api/groups': () => import('../src/endpoints/groups.js'),
     '/api/vector': () => import('../src/endpoints/vectors.js'),
+    '/api/assets': () => import('../src/endpoints/assets.js'),
 };
 
 const VECTOR_QUERY = { searchText: 'q', source: 'webllm', model: 'model', embeddings: { q: [0.5, 0.5] } };
@@ -322,5 +324,102 @@ describe('vector source and collection IDs that sanitize to an empty name', () =
 
         expect(result.status).toBe(400);
         expect(fs.readdirSync(path.join(directories.vectors, 'webllm'))).toEqual(['kept']);
+    });
+});
+
+describe('asset routes with unexpected input and failing downloads', () => {
+    let remote;
+    let remoteBase;
+
+    beforeAll(async () => {
+        remote = http.createServer((request, response) => {
+            if (request.url.startsWith('/cut')) {
+                response.writeHead(200, { 'Content-Length': '1000' });
+                response.write(Buffer.alloc(100));
+                // Closing after part of the body has arrived makes the error happen in the download body, not in the request.
+                setTimeout(() => request.socket.destroy(), 50);
+                return;
+            }
+            response.end('remote-file');
+        });
+        // The shipped whitelistImportDomains lists localhost, so downloads from this server pass the host check.
+        await new Promise(resolve => remote.listen(0, 'localhost', resolve));
+        remoteBase = `http://localhost:${remote.address().port}`;
+    });
+
+    afterAll(async () => {
+        remote.closeAllConnections();
+        await new Promise(resolve => remote.close(resolve));
+    });
+
+    test.each([
+        ['missing', { category: 'bgm' }],
+        ['a number', { category: 'bgm', filename: 5 }],
+        ['null', { category: 'bgm', filename: null }],
+        ['an array', { category: 'bgm', filename: ['seed.mp3'] }],
+    ])('POST /api/assets/delete answers 400 for a filename that is %s', async (_label, body) => {
+        write(path.join(directories.assets, 'bgm', 'seed.mp3'), 'seed');
+
+        const result = await post('/api/assets/delete', body);
+
+        expect(result.status).toBe(400);
+        expect(fs.existsSync(path.join(directories.assets, 'bgm', 'seed.mp3'))).toBe(true);
+    });
+
+    test.each([
+        ['a JSON object', { category: { toString: 1 }, filename: 'seed.mp3' }, false],
+        ['a URL-encoded object', 'category[toString]=bgm&filename=seed.mp3', true],
+    ])('POST /api/assets/delete answers 400 for a category that is %s', async (_label, body, form) => {
+        write(path.join(directories.assets, 'bgm', 'seed.mp3'), 'seed');
+
+        const result = await post('/api/assets/delete', body, { form });
+
+        expect(result.status).toBe(400);
+        expect(fs.existsSync(path.join(directories.assets, 'bgm', 'seed.mp3'))).toBe(true);
+    });
+
+    test.each([
+        ['name', 'name[toString]=seed&category=bgm'],
+        ['category', 'name=seed&category[toString]=bgm'],
+    ])('POST /api/assets/character answers 400 for a %s that is an object', async (_label, query) => {
+        const result = await post(`/api/assets/character?${query}`, {});
+
+        expect(result.status).toBe(400);
+    });
+
+    test('POST /api/assets/download answers 400 for a filename that is not a string', async () => {
+        const result = await post('/api/assets/download', { url: `${remoteBase}/seed.mp3`, category: 'bgm', filename: 5 });
+
+        expect(result.status).toBe(400);
+    });
+
+    test('POST /api/assets/download answers 400 for a category that is an object', async () => {
+        const result = await post('/api/assets/download', { url: `${remoteBase}/seed.mp3`, category: { toString: 1 }, filename: 'seed.mp3' });
+
+        expect(result.status).toBe(400);
+    });
+
+    test('POST /api/assets/download keeps its answer for a character file when the temp file cannot be removed', async () => {
+        const unlinkSync = jest.spyOn(fs, 'unlinkSync').mockImplementationOnce(() => {
+            throw Object.assign(new Error('EBUSY: resource busy or locked, unlink'), { code: 'EBUSY' });
+        });
+        try {
+            const result = await post('/api/assets/download', { url: `${remoteBase}/char.png`, category: 'character', filename: 'char.png' });
+            // The route removes the temp file after it answers, so the test waits for that step.
+            await new Promise(resolve => setTimeout(resolve, 200));
+
+            expect(result.status).toBe(200);
+            expect(result.text).toBe('remote-file');
+            expect(unlinkSync).toHaveBeenCalledTimes(1);
+        } finally {
+            unlinkSync.mockRestore();
+        }
+    });
+
+    test('POST /api/assets/download answers 500 when the remote server closes the connection during the download', async () => {
+        const result = await post('/api/assets/download', { url: `${remoteBase}/cut.mp3`, category: 'bgm', filename: 'cut.mp3' });
+
+        expect(result.status).toBe(500);
+        expect(fs.existsSync(path.join(directories.assets, 'bgm', 'cut.mp3'))).toBe(false);
     });
 });
