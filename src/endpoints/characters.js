@@ -71,6 +71,34 @@ const getEntityDateAddedRoot = directories => directories.root || path.dirname(d
 const getCharacterDateAddedFallback = stat => [stat.ctimeMs, stat.birthtimeMs, stat.mtimeMs]
     .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
 const isPngBuffer = buffer => buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+// SillyBunny: archive imports store a file under the extension it has in the archive, and the server serves it by that extension.
+const hasBytesAt = (buffer, offset, bytes) => buffer.subarray(offset, offset + bytes.length).equals(Buffer.from(bytes, 'latin1'));
+const isJpegBuffer = buffer => hasBytesAt(buffer, 0, '\xFF\xD8\xFF');
+const ARCHIVE_IMAGE_CHECKS = new Map([
+    ['.png', isPngBuffer],
+    ['.apng', isPngBuffer],
+    ['.jpg', isJpegBuffer],
+    ['.jpeg', isJpegBuffer],
+    ['.jfif', isJpegBuffer],
+    ['.gif', buffer => hasBytesAt(buffer, 0, 'GIF8')],
+    ['.webp', buffer => hasBytesAt(buffer, 0, 'RIFF') && hasBytesAt(buffer, 8, 'WEBP')],
+    ['.avif', buffer => hasBytesAt(buffer, 4, 'ftypavif') || hasBytesAt(buffer, 4, 'ftypavis')],
+    ['.bmp', buffer => hasBytesAt(buffer, 0, 'BM')],
+]);
+/**
+ * Checks that a file from an archive is an image of the type that its extension names, and logs a file that is not.
+ * @param {string} extension File extension with its dot
+ * @param {Buffer|undefined} buffer File content
+ * @param {string} name File name to log
+ * @returns {boolean} True if the file is an image of that type
+ */
+function isArchiveImage(extension, buffer, name) {
+    if (Buffer.isBuffer(buffer) && ARCHIVE_IMAGE_CHECKS.get(extension.toLowerCase())?.(buffer)) {
+        return true;
+    }
+    console.warn(`Skipped ${name} from the archive, because it is not an image of the type that its extension names.`);
+    return false;
+}
 const isSameFile = (firstPath, secondPath) => {
     if (path.resolve(firstPath) === path.resolve(secondPath)) {
         return true;
@@ -1027,17 +1055,19 @@ async function importFromCharX(uploadPath, { request }, preservedFileName) {
     // ST's sprite system looks up by character name, not PNG filename
     // SillyBunny: a name that sanitizes to nothing would make the characters folder itself the asset folder, so the file name names the folder then.
     const characterFolder = getCardAssetFolder(processedCard.name, fileName, request.user.directories);
+    // SillyBunny: assets keep their archive extension, which decides how the server serves them, so store only images of that type.
+    const imageAssets = auxiliaryAssets.filter(asset => isArchiveImage(`.${asset.ext}`, extractedBuffers.get(asset.zipPath), asset.zipPath));
 
-    if (auxiliaryAssets.length > 0 && characterFolder) {
+    if (imageAssets.length > 0 && characterFolder) {
         try {
-            const summary = persistCharXAssets(auxiliaryAssets, extractedBuffers, request.user.directories, characterFolder);
+            const summary = persistCharXAssets(imageAssets, extractedBuffers, request.user.directories, characterFolder);
             if (summary.sprites || summary.backgrounds || summary.misc) {
                 console.log(`CharX: Imported ${summary.sprites} sprite(s), ${summary.backgrounds} background(s), ${summary.misc} misc asset(s) for ${characterFolder}`);
             }
         } catch (error) {
             console.warn(`CharX: Failed to persist auxiliary assets for ${characterFolder}`, error);
         }
-    } else if (auxiliaryAssets.length > 0) {
+    } else if (imageAssets.length > 0) {
         // SillyBunny: neither the card name nor the file name names a folder of its own, so the assets have nowhere to go.
         console.warn('CharX: Skipped the auxiliary assets, because neither the card name nor its file name can name an asset folder');
     }
@@ -1071,6 +1101,8 @@ async function importFromByaf(uploadPath, { request }, preservedFileName) {
         };
 
         // Upload backgrounds
+        // SillyBunny: backgrounds keep their archive extension, which decides how the server serves them, so drop those that are not images of that type before the chats refer to them.
+        byafData.chatBackgrounds = byafData.chatBackgrounds.filter(bg => isArchiveImage(path.extname(bg.paths?.[0]) || '.png', bg.data, bg.paths?.[0]));
         for (const bg of byafData.chatBackgrounds) {
             const extension = path.extname(bg.paths?.[0]) || '.png';
             const baseName = `${path.basename(fileName)}_bg`;
@@ -1099,7 +1131,8 @@ async function importFromByaf(uploadPath, { request }, preservedFileName) {
         }
 
         // Save alternate icons for the character.
-        for (const icon of byafData.images.slice(1)) {
+        // SillyBunny: icons keep their archive extension, which decides how the server serves them, so skip those that are not images of that type.
+        for (const icon of byafData.images.slice(1).filter(icon => isArchiveImage(path.extname(icon.filename) || '.png', icon.image, icon.filename))) {
             // BYAF does not support character expressions, so using the same structure will not result in conflicts,
             // even if the expression system did not tolerate additional icons that are not mapped to expressions.
             // This will not yet allow changing icons within the UI but at least the icons will be available for manual selection, rather than being lost.
