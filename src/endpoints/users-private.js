@@ -794,7 +794,19 @@ async function importZipContents(zipFilePath, targetRoot) {
                         return;
                     }
 
-                    pipeline(readStream, fs.createWriteStream(destinationPath))
+                    // createWriteStream() can throw, and a throw in this yauzl callback reaches no route handler, so Node would end the server.
+                    let writeStream;
+                    try {
+                        writeStream = fs.createWriteStream(destinationPath);
+                    } catch (writeError) {
+                        // The stream of a stored ZIP entry emits an error when it is destroyed.
+                        readStream.on('error', () => { });
+                        readStream.destroy();
+                        finalize(writeError);
+                        return;
+                    }
+
+                    pipeline(readStream, writeStream)
                         .then(() => {
                             importedFiles++;
                             zipfile.readEntry();

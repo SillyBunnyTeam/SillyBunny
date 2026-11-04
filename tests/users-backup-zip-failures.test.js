@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { afterAll, afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
 import archiver from 'archiver';
@@ -12,8 +12,11 @@ jest.setTimeout(30000);
 
 const FAILED = 'Failed to import that SillyTavern backup ZIP.';
 const SETTINGS = { 'settings.json': '{"owner":"zip"}' };
+const CHAT = 'chats/Probe/chat.jsonl';
 
 let member;
+// The harness keeps its console mocks for the whole file, so the tests restore only their own spies.
+const spies = [];
 
 function createZip(entries) {
     return new Promise((resolve, reject) => {
@@ -40,6 +43,12 @@ function memberFile(relativePath) {
 beforeEach(async () => {
     await harness.reset();
     member = await harness.loginAs(OPEN_MEMBER);
+});
+
+afterEach(() => {
+    for (const spy of spies.splice(0)) {
+        spy.mockRestore();
+    }
 });
 
 afterAll(() => harness.close());
@@ -75,5 +84,23 @@ describe('POST /api/users/import-sillytavern/zip, entry names', () => {
         for (const [name, content] of Object.entries(entries)) {
             expect(fs.readFileSync(memberFile(name), 'utf8')).toBe(content);
         }
+    });
+});
+
+describe('POST /api/users/import-sillytavern/zip, failures', () => {
+    test('answers, and keeps answering, when opening a file throws', async () => {
+        const createWriteStream = fs.createWriteStream;
+        spies.push(jest.spyOn(fs, 'createWriteStream').mockImplementation((target, ...args) => {
+            if (String(target).endsWith('chat.jsonl')) {
+                throw Object.assign(new TypeError('The argument \'path\' is not valid.'), { code: 'ERR_INVALID_ARG_VALUE' });
+            }
+            return createWriteStream(target, ...args);
+        }));
+
+        const reply = await importZip(await createZip({ ...SETTINGS, [CHAT]: '{}' }));
+        const next = await readReply(await member.get('/api/users/me'));
+
+        expect(reply.status).toBe(400);
+        expect(next.status).toBe(200);
     });
 });
