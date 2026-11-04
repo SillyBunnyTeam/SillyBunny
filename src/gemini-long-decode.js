@@ -23,6 +23,16 @@ const describeError = error => error?.code ?? error?.name ?? 'unknown error';
 const showsContent = part => Boolean(part.text) || Object.keys(part).some(key => !['text', 'thought', 'thoughtSignature'].includes(key));
 
 /**
+ * Vertex accepts a continuation token only on v1beta1, so only a request that can need one leaves v1.
+ * @param {string} model Model name
+ * @param {number} [maxOutputTokens] The request's output limit
+ * @returns {string} API version for the request URL
+ */
+export function getVertexApiVersion(model, maxOutputTokens) {
+    return exceedsRequestCap(model, maxOutputTokens) ? 'v1beta1' : 'v1';
+}
+
+/**
  * Google documents a 400 for a non-streaming limit above the per-request cap when the request has no token.
  * The next request sends the full limit with the token, which is the documented way past MAX_TOKENS.
  * @param {any} body generateContent request body

@@ -36,6 +36,7 @@ describe('Google model request compatibility', () => {
         tempDirs.push(userRoot);
         const secretManager = new SecretManager({ root: userRoot, backups: userRoot });
         secretManager.writeSecret(SECRET_KEYS.MAKERSUITE, 'google-test-key');
+        secretManager.writeSecret(SECRET_KEYS.VERTEXAI, 'vertex-test-key');
 
         const app = express();
         app.use(express.json());
@@ -751,6 +752,47 @@ describe('Google model request compatibility', () => {
                 expect(response.status).toBe(400);
                 expect(await response.text()).toBe('{"error":{"message":"bad request"}}');
                 expect(nodeFetchMock).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        describe('on Vertex AI', () => {
+            const VERTEX = {
+                chat_completion_source: CHAT_COMPLETION_SOURCES.VERTEXAI,
+                vertexai_auth_mode: 'express',
+                vertexai_region: 'us-central1',
+            };
+
+            test.each([
+                ['gemini-4-argon', 40000, 'v1beta1'],
+                ['gemini-4-argon', 32768, 'v1'],
+                ['gemini-3.7-flash', 40000, 'v1'],
+            ])('sends %s at %i tokens to %s', async (model, maxTokens, version) => {
+                replyWithHops(
+                    jsonHop([{ text: 'ok' }], { finishReason: 'STOP' }),
+                    jsonHop([{ text: 'ok' }], { finishReason: 'STOP' }),
+                    jsonHop([{ text: 'ok' }], { finishReason: 'STOP' }),
+                );
+
+                await (await makeRequest(model, { ...VERTEX, max_tokens: maxTokens })).json();
+                await (await makeRequest(model, { ...VERTEX, max_tokens: maxTokens, vertexai_express_project_id: 'project' })).json();
+                await (await makeRequest(model, { ...VERTEX, max_tokens: maxTokens, reverse_proxy: 'http://vertex.invalid', proxy_password: 'test-key' })).json();
+
+                expect(requestUrl(0)).toContain(`us-central1-aiplatform.googleapis.com/${version}/publishers/google/models/${model}:generateContent`);
+                expect(requestUrl(1)).toContain(`aiplatform.googleapis.com/${version}/projects/project/locations/us-central1/publishers/google/models/${model}:generateContent`);
+                expect(requestUrl(2)).toContain(`vertex.invalid/${version}/publishers/google/models/${model}:generateContent`);
+            });
+
+            test('continues a reply on the same URL', async () => {
+                replyWithHops(
+                    jsonHop([{ text: 'one ' }], { finishReason: 'MAX_TOKENS', continuationToken: 'token-1' }),
+                    jsonHop([{ text: 'two' }], { finishReason: 'STOP' }),
+                );
+
+                const json = await (await makeRequest('gemini-4-argon', { ...VERTEX, max_tokens: 40000 })).json();
+
+                expect(requestUrl(1)).toBe(requestUrl(0));
+                expect(requestUrl(1)).toContain('/v1beta1/');
+                expect(json.choices[0].message.content).toBe('one two');
             });
         });
     });

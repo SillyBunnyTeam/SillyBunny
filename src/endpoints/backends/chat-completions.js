@@ -72,6 +72,7 @@ import {
     collectGenerateContentHops,
     continueGenerateContentStream,
     getGenerateContentText,
+    getVertexApiVersion,
     mergeGenerateContentHops,
 } from '../../gemini-long-decode.js';
 
@@ -860,6 +861,8 @@ async function sendMakerSuiteRequest(request, response) {
         };
 
         if (useVertexAi) {
+            // SillyBunny: Vertex keeps v1 unless the request can need long decode.
+            const vertexApiVersion = getVertexApiVersion(model, body.generationConfig?.maxOutputTokens);
             if (authType === 'express') {
                 // For Express mode (API key authentication), use the key parameter
                 const keyParam = authHeader.replace('Bearer ', '');
@@ -869,8 +872,8 @@ async function sendMakerSuiteRequest(request, response) {
                     ? 'https://aiplatform.googleapis.com'
                     : `https://${region}-aiplatform.googleapis.com`;
                 url = projectId
-                    ? `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`
-                    : `${baseUrl}/v1/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`;
+                    ? `https://aiplatform.googleapis.com/${vertexApiVersion}/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`
+                    : `${baseUrl}/${vertexApiVersion}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`;
             } else if (authType === 'full') {
                 // For Full mode (service account authentication), use project-specific URL
                 // Get project ID from Service Account JSON
@@ -891,14 +894,14 @@ async function sendMakerSuiteRequest(request, response) {
                 const region = request.body.vertexai_region || 'us-central1';
                 // Handle global region differently - no region prefix in hostname
                 if (region === 'global') {
-                    url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
+                    url = `https://aiplatform.googleapis.com/${vertexApiVersion}/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
                 } else {
-                    url = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
+                    url = `https://${region}-aiplatform.googleapis.com/${vertexApiVersion}/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
                 }
                 headers['Authorization'] = authHeader;
             } else {
                 // For proxy mode, use the original URL with Authorization header
-                const baseUrl = getGoogleApiBaseUrl(apiUrl.toString(), 'v1');
+                const baseUrl = getGoogleApiBaseUrl(apiUrl.toString(), vertexApiVersion);
                 url = `${baseUrl}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
                 headers['Authorization'] = authHeader;
             }
