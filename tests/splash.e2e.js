@@ -682,7 +682,11 @@ test.describe('Splash colours', () => {
     test.describe('in forced colours', () => {
         test.use({ forcedColors: 'active' });
 
-        test('the mascot is visible, the line is CanvasText on Canvas, and the dots show', async ({ page }) => {
+        test('the mascot is visible, the line is CanvasText on Canvas, and the dots show', async ({ page, browserName }) => {
+            // The splash leaves its colours to the browser's forced palette, which replaces them. WebKit has no such palette:
+            // Playwright's emulation makes the media query match and changes nothing else, and Safari never matches it.
+            // eslint-disable-next-line playwright/no-skipped-test -- an engine gap, not a pending test
+            test.skip(browserName === 'webkit', 'WebKit has no forced-colours palette to replace the seeded colours with Canvas');
             await protectMaintainerServer(page);
             releaseBoot = await holdBoot(page);
             await openSplash(page, { variant: 'both' });
