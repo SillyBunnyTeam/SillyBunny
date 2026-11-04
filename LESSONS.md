@@ -126,6 +126,23 @@ This is the largest class by a wide margin.
 - **Order matters:** at startup, `readSecretState()` (`public/scripts/secrets.js`) runs before `getSettings()` calls `accountStorage.init()`, and `accountStorage.getItem()` returns `null` until then. Call `checkOpenRouterAuth()` only after `getSettings()` (`public/script.js`). An earlier call does not find the PKCE code verifier and removes the OAuth query from the URL, so the OpenRouter key exchange never happens. SillyTavern moved the call out of `readSecretState()` in `97dba399e`; the SillyTavern 1.18 port (`9fe08ef34`) kept it. Test: `tests/openrouter-oauth-return.test.js`.
 - **Open:** the other `Jimp.read()` and `Jimp.fromBuffer()` callers (`src/endpoints/avatars.js`, `characters.js`, `content-manager.js`, `image-metadata.js` and `thumbnails.js`) have no signature check. `@jimp/core` 1.6.0 uses file-type 16.5.4, and its `Jimp.fromBuffer()` did not return within 8 s on that ASF header under Node.js or Bun. `@jimp/core` 1.6.1 uses file-type 21.
 
+### Accounts and session login
+
+- **Breaks:** an account or session route reads a request field, a handle or a server path that it has not checked, or answers before the checks that guard the other routes.
+- **Cause:** Express 4 does not catch a rejection from an async route or middleware, so that code must answer its own errors. `toKey()` reads an array as the handle in it, and `getUserDirectories()` joins a handle into a path as it is.
+- **Files:** `src/middleware/sessionAuth.js`, `src/server-main.js`, `src/users.js`, `src/endpoints/users-public.js`, `src/endpoints/users-private.js`, `src/endpoints/users-admin.js`.
+- **Guards:**
+  - `registerSessionAuthRoutes()` in `src/middleware/sessionAuth.js` registers `POST /api/auth/login` and `/api/auth/logout` above basic auth, behind the IP whitelist (when `whitelistMode` is on) and the host whitelist. Login counts failed attempts per client address with `rateLimiting.basicAuthMaxAttempts` over 60 s, answers 400 to a username or password that is not a string, and answers 500 when it fails (`5e0281e7d`). `validateCredentials()` refuses every login while `basicAuthUser.username` or `basicAuthUser.password` is empty, and registering the routes logs one warning for it (`193fba8c2`).
+  - Every account route answers 400 to a handle that is not a string, and to a password, new password or avatar that is not a string. A route that compares the account's password answers 400 when that password is missing; a login counts a missing password as an empty one (`2f2e50820`).
+  - `/change-password`, `/reset-settings` and `/reset-step2` count each password comparison per account with `rateLimiting.accountsLoginMaxAttempts` over 60 s, and check that limit before the password. `/reset-step2` also checks the reset code limit before the password (`e95c02fae`).
+  - `/api/users/delete` and `/api/users/backup` answer 404 for a handle that is not an account. A purge or a backup also needs `isUserRootInsideDataRoot()` in `src/users.js`: the account folder must be a folder directly inside the data root (`c9fc49cbd`).
+  - The SillyTavern import routes let an account without admin rights read only real paths outside the data root or inside its own folder (`getImportReadCheck()`). They check the given path, the import root and the extensions folder, and a folder import skips each entry that fails the check (`29c3a4e18`).
+  - An extension sync moves the existing extension aside, and moves it back when the synced copy cannot be moved into place (`77c6012bd`).
+  - `setUserDataMiddleware()` answers 500 when it cannot read the user record of a session (`132d2a531`).
+- **Tests:** `tests/session-auth-routes.test.js`, `tests/users-request-fields.test.js`, `tests/users-password-attempts.test.js`, `tests/users-folder-guards.test.js`, `tests/users-import-guards.test.js`, `tests/users-extension-sync-swap.test.js`, `tests/users-session-read-failure.test.js`.
+- **Limit:** `registerSessionAuthRoutes()` calls `getWhitelistMiddleware()` once more, so in Docker `addDockerHostsToWhitelist()` resolves the Docker host names twice at startup (code reading).
+- **Limit:** `tests/users-import-guards.test.js` links folders with junctions, which Windows allows without extra rights. Its linked-file case needs file links and skips where the system user cannot create them.
+
 ### CI and workflows
 
 - **Breaks:** a workflow change merged to `staging` has no effect on pull requests, or the `staging` and `release` copies of a workflow drift apart.

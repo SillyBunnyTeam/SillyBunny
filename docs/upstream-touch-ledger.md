@@ -446,6 +446,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-02 character file names sanitised on every platform. |
 | Owner | TODO(copy) |
 
+### `src/server-main.js` - session auth routes
+| Field | Value |
+| --- | --- |
+| File | `src/server-main.js`. |
+| Area | Session auth login and logout routes. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/middleware/sessionAuth.js`. |
+| Adapter shape | When `isSessionAuthEnabled()` is true, the block above basic auth calls `registerSessionAuthRoutes(app, { whitelistMode: cliArgs.whitelistMode })`. That function registers `POST /api/auth/login` and `POST /api/auth/logout` behind the IP whitelist middleware (when `whitelistMode` is on, from its own `getWhitelistMiddleware()` call) and `hostWhitelistMiddleware`, and gives login its own rate limit. The file imports only `isSessionAuthEnabled` and `registerSessionAuthRoutes` from `./middleware/sessionAuth.js`. |
+| Protecting tests | `tests/session-auth-routes.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- session-auth-routes.test.js` (on the `upstream/staging` sources, its route tests fail because `registerSessionAuthRoutes()` does not exist, and its `validateCredentials()` tests fail by assertion), `npm run lint`, and scratch servers with session auth, accounts and `perUserBasicAuth` on under Bun 1.4.4 and Node 24.22.1: a client that the whitelist blocks gets 403, the login after five failures gets 429, and an object password gets 400 while the server keeps running. With `perUserBasicAuth` off and an empty `basicAuthUser`, startup logs one warning. |
+| Rollback path | Put the inline login and logout routes back in the block, import `createSession`, `destroySession` and `validateCredentials` again, and delete `registerSessionAuthRoutes()`, `handleLogin()`, `handleLogout()` and the login limiter from `src/middleware/sessionAuth.js`. No stored data or settings change. Session login then runs before the whitelist checks again and has no rate limit. |
+| Last reviewed | 2026-11-05 session auth route guards. |
+| Owner | TODO(copy) |
+
+### `src/users.js`, `src/endpoints/users-public.js`, `src/endpoints/users-private.js`, and `src/endpoints/users-admin.js` - account route guards
+| Field | Value |
+| --- | --- |
+| File | `src/users.js`, `src/endpoints/users-public.js`, `src/endpoints/users-private.js`, `src/endpoints/users-admin.js`. |
+| Area | Account routes: request fields, password attempts, user folders and the user lookup for a session. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | Each route that reads a handle checks that it is a non-empty string before `toKey()` or `getUserDirectories()`, and password, new password and avatar fields are checked for strings before `getPasswordHash()` or the data URL check; `/login` hashes a missing password as an empty one. `users-private.js` adds `passwordLimiter` (`rateLimiting.accountsLoginMaxAttempts`, 60 s, keyed by handle) and `checkAccountPassword()`, which `/change-password`, `/reset-settings` and `/reset-step2` call; their `catch` blocks answer 429 with Retry-After for a `RateLimiterRes`, and `/reset-step2` checks the reset limiter before the password. `users.js` adds `isUserRootInsideDataRoot()`, which `/delete` with `purge` and `/backup` call after a storage lookup that answers 404 for an unknown handle. `setUserDataMiddleware()` wraps its `storage.getItem()` in a `try` that answers 500. Each changed route carries a `SillyBunny:` marker. |
+| Protecting tests | `tests/users-request-fields.test.js`, `tests/users-password-attempts.test.js`, `tests/users-folder-guards.test.js`, `tests/users-session-read-failure.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- users-request-fields.test.js users-password-attempts.test.js users-folder-guards.test.js users-session-read-failure.test.js` (every test fails on the `upstream/staging` sources), `npm run lint`, and the Bun and Node scratch servers above: an array handle gets 400, `/change-password` after five wrong passwords gets 429, a purge of a handle that is not an account gets 404 and removes nothing, and a corrupt user record gets 500 while the server keeps running. |
+| Rollback path | Revert the hunks marked `SillyBunny:` in these four files, which removes `passwordLimiter`, `checkAccountPassword()` and `isUserRootInsideDataRoot()` with their calls. No stored data or settings change. |
+| Last reviewed | 2026-11-05 account route guards. |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
 | --- | --- |
@@ -504,11 +532,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Account data and backup compatibility. |
 | Divergence reason | SillyBunny preserves fork-owned account metadata, user directories, and import markers while maintaining upstream archive safety. |
 | Target seam | `src/users.js`, `src/entity-date-added.js`, and the private-user endpoint helpers. |
-| Adapter shape | Keep archive validation, route contracts, and account-directory resolution in this upstream-origin adapter; keep fork-specific metadata helpers isolated. |
-| Protecting tests | `tests/backups-hardening.test.js`, plus manual export/import smoke with a fork account archive. |
-| Validation | `node --check src/endpoints/users-private.js`, `npm run lint`, archive traversal regression smoke. |
-| Rollback path | Revert the fork metadata branches while retaining upstream archive validation. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Adapter shape | Keep archive validation, route contracts, and account-directory resolution in this upstream-origin adapter; keep fork-specific metadata helpers isolated. An import by an account without admin rights reads only real paths outside the data root or inside the account's folder (`getImportReadCheck()` and `resolveReadableImportRoot()`; a folder import also passes the check to `copyDirectoryTree()`). `syncThirdPartyExtension()` keeps the existing extension at `<temp folder>-previous` until the synced copy is in place. |
+| Protecting tests | `tests/backups-hardening.test.js`, `tests/users-import-guards.test.js`, `tests/users-extension-sync-swap.test.js`, plus manual export/import smoke with a fork account archive. |
+| Validation | `node --check src/endpoints/users-private.js`, `npm run lint`, archive traversal regression smoke; `npm run test:unit --prefix tests -- users-import-guards.test.js users-extension-sync-swap.test.js` (every test fails on the `upstream/staging` sources). |
+| Rollback path | Revert the fork metadata branches while retaining upstream archive validation. To undo the import read check, remove `getImportReadCheck()` and `resolveReadableImportRoot()` and their calls; to undo the extension swap, restore the `rm()` before the `rename()` in `syncThirdPartyExtension()`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 import read check and extension sync swap. |
 | Owner | Account and release integrator. |
 
 ### `src/electron/` - Electron launcher removal
