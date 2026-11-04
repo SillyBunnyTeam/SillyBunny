@@ -161,11 +161,11 @@ function decorateAdminRow(row) {
     trigger.addEventListener('click', () => {
         const buttons = [...row.querySelectorAll('.userEnableButton, .userDisableButton, .userPromoteButton, .userDemoteButton, .userBackupButton, .userChangePasswordButton, .userAvatarChange, .userAvatarRemove, .userDelete')]
             .filter(button => button.style.display !== 'none');
+        // No `bounds` here: this Window follows its rows, so a short list would squeeze the menu.
         openActionMenu({
             trigger,
             title: t`Menu`,
             sections: [{ items: buttons.map(menuAction) }],
-            bounds: row.closest('.sb-dialog'),
         });
     });
 }

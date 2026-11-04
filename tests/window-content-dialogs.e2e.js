@@ -51,6 +51,24 @@ async function expectLastContentNearBodyEnd(popup, selector) {
     expect(gap).toBeLessThanOrEqual(24);
 }
 
+/** A frame follows its content up to its cap: no empty space under the body, which scrolls only at the cap. */
+async function expectFrameFollowsContent(popup) {
+    const fit = await popup.evaluate(node => {
+        const body = node.querySelector('.popup-content');
+        const style = getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return {
+            empty: rect.bottom - Number.parseFloat(style.borderBottomWidth) - Number.parseFloat(style.paddingBottom) - body.getBoundingClientRect().bottom,
+            hidden: body.scrollHeight - body.clientHeight,
+            room: Number.parseFloat(style.maxHeight) - node.offsetHeight,
+            inViewport: rect.top >= 0 && rect.bottom <= window.innerHeight,
+        };
+    });
+    expect(Math.abs(fit.empty), `empty space in ${JSON.stringify(fit)}`).toBeLessThanOrEqual(1);
+    expect(Math.min(fit.hidden, fit.room), `hidden content with room left in ${JSON.stringify(fit)}`).toBeLessThanOrEqual(1);
+    expect(fit.inViewport, `position in ${JSON.stringify(fit)}`).toBe(true);
+}
+
 async function openCharacterEditor(page) {
     await page.locator('#sb-character-toggle').click();
     await page.evaluate(async () => {
@@ -292,6 +310,47 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         expect(state.users.filter(user => user.endpoint === 'delete')).toEqual([]);
     });
 
+    test(`Short Windows and the pages pushed over them follow their content at ${size}`, async ({ page }) => {
+        await protectMaintainerServer(page);
+        const adminUsers = [{ handle: 'other-user', name: 'Other User', admin: true, enabled: true, password: true, created: 0, avatar: '/img/ai4.png' }];
+        await bootWindowContentDialogs(page, viewport, { admin: true, adminUsers });
+        const admin = await openAdminPanel(page);
+        await expectWindowFrame(admin, viewport);
+        await expectFrameFollowsContent(admin);
+        const adminHeight = await admin.evaluate(node => node.offsetHeight);
+
+        await admin.locator('.sb-dialog__header .newUserButton').click();
+        const formPage = await openWindow(page, '.userCreateForm');
+        await expectWindowFrame(formPage, viewport);
+        await expectFrameFollowsContent(formPage);
+        await formPage.getByRole('button', { name: 'Back', exact: true }).click();
+        await expect(formPage).toHaveCount(0);
+        expect(await admin.evaluate(node => node.offsetHeight)).toBe(adminHeight);
+
+        const userRow = admin.locator('.usersList .userAccount').first();
+        await userRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Change user password.' }).click();
+        const passwordPage = await openWindow(page, 'input[name="confirm"]');
+        await expectFrameFollowsContent(passwordPage);
+        await passwordPage.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(passwordPage).toHaveCount(0);
+
+        await userRow.locator('.userOverflowButton').click();
+        await page.getByRole('menuitem', { name: 'Delete user account.' }).click();
+        const deletePage = await openWindow(page, '.popup-button-cancel');
+        await expectFrameFollowsContent(deletePage);
+        await deletePage.locator('.popup-button-cancel').click();
+        await expect(deletePage).toHaveCount(0);
+        await admin.locator('.sb-dialog__close:not(.sb-dialog__back)').click();
+        await expect(page.locator('dialog.popup')).toHaveCount(0);
+
+        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
+        await page.locator('#settings_snapshots_button').dispatchEvent('click');
+        const snapshots = await openWindow(page, '.snapshotList > .snapshot');
+        await expectWindowFrame(snapshots, viewport);
+        await expectFrameFollowsContent(snapshots);
+    });
+
     test(`Scenario overrides preserve metadata and render stacked textarea rows at ${size}`, async ({ page }) => {
         await protectMaintainerServer(page);
         await bootWindowContentDialogs(page, viewport);
@@ -446,6 +505,28 @@ test('Long account lists keep the shared Window at its large-list height', async
     await admin.locator('.popup-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
     await expect(admin.locator('.usersList .userAccount').last()).toBeInViewport();
     await expect(admin.locator('.usersList .userAccount')).toHaveCount(14);
+});
+
+test('A short Window leaves room for the action menu of its rows', async ({ page }) => {
+    const viewport = { width: 1440, height: 900, presentation: 'floating' };
+    const adminUsers = [{ handle: 'other-user', name: 'Other User', admin: true, enabled: true, password: true, created: 0, avatar: '/img/ai4.png' }];
+    await protectMaintainerServer(page);
+    await bootWindowContentDialogs(page, viewport, { admin: true, adminUsers });
+    const admin = await openAdminPanel(page);
+    await expectWindowFrame(admin, viewport);
+    await admin.locator('.usersList .userAccount .userOverflowButton').first().click();
+    const menu = page.locator('.sb-action-popover');
+    await expect(menu.getByRole('menuitem', { name: 'Delete user account.' })).toBeVisible();
+    await page.waitForFunction(() => !document.querySelector('.sb-action-popover')?.getAnimations().length);
+    const fit = await menu.evaluate(node => ({
+        hidden: node.scrollHeight - node.clientHeight,
+        // A menu that the Window clips would lose these hit tests.
+        reachable: [...node.querySelectorAll('[role^="menuitem"]')].every(item => {
+            const rect = item.getBoundingClientRect();
+            return item.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+        }),
+    }));
+    expect(fit).toEqual({ hidden: 0, reachable: true });
 });
 
 test('Raw desktop prompt stays inside its itemization Window at 1440×900', async ({ page }) => {

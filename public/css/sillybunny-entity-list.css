@@ -56,6 +56,11 @@
     content-visibility: visible;
 }
 
+/* A Window that follows its content would keep the placeholder size through its height lock. */
+.sb-dialog--window:not(.sb-dialog--fill) .ds-entity-row {
+    content-visibility: visible;
+}
+
 .ds-entity-row:last-child {
     border-bottom: 0;
 }

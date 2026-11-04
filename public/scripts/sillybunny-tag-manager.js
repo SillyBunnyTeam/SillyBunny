@@ -9,7 +9,7 @@ import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 
 const STYLESHEETS = [
     { href: 'css/sillybunny-editor-shell.css?v=20261028a', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-entity-list.css?v=20261018a', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261105a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-tag-manager.css?v=20261021a', id: 'deferred-tag-manager-css' },
 ];
 let activeManager = null;

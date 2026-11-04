@@ -929,4 +929,107 @@ test.describe('page chains', () => {
             return Math.max(...['x', 'y', 'width', 'height'].map(key => Math.abs(parentBox[key] - childBox[key])));
         }).toBeLessThanOrEqual(1);
     });
+
+    for (const viewport of [{ width: 1440, height: 900, sheet: false, fill: 810 }, { width: 390, height: 844, sheet: true, fill: 820 }]) {
+        test.describe(`over a short Popup Window at ${viewport.width}×${viewport.height}`, () => {
+            const openShortWindow = async page => {
+                await prepare(page, viewport);
+                await page.evaluate(async () => {
+                    const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+                    void new Popup('<p>Parent</p>', POPUP_TYPE.DISPLAY, '', { tier: 'window', size: 'content', title: 'parent' }).show();
+                });
+                const parent = popupNamed(page, 'parent');
+                await expect(parent).toBeVisible();
+                await settled(page);
+                const box = await parent.boundingBox();
+                expect(box.height).toBeLessThan(200);
+                return { parent, parentBox: box };
+            };
+            const settled = page => page.waitForFunction(() => !document.getAnimations().some(animation => animation.effect?.target?.closest?.('dialog')));
+            const expectPlaced = async (surface, height) => {
+                const box = await surface.boundingBox();
+                expect(Math.abs(box.height - height), `height of ${JSON.stringify(box)}`).toBeLessThanOrEqual(1);
+                if (viewport.sheet) expect(Math.round(box.y + box.height)).toBe(viewport.height);
+                else expect(Math.abs(box.y + box.height / 2 - viewport.height / 2), `centre of ${JSON.stringify(box)}`).toBeLessThanOrEqual(1);
+            };
+
+            test('a Popup page with more content grows to it, and Back restores the Window', async ({ page }) => {
+                const { parent, parentBox } = await openShortWindow(page);
+                await page.evaluate(async () => {
+                    const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+                    window.qaPage = new Popup('<div style="height: 400px"></div>', POPUP_TYPE.DISPLAY, '', { tier: 'window', size: 'content', title: 'child' });
+                    void window.qaPage.show();
+                });
+                const child = popupNamed(page, 'child');
+                await expect(child).toHaveClass(/sb-dialog--page/);
+                await settled(page);
+                const { natural, hidden } = await child.evaluate(node => {
+                    const body = node.querySelector('.popup-content');
+                    return { natural: node.offsetHeight - body.clientHeight + body.scrollHeight, hidden: body.scrollHeight - body.clientHeight };
+                });
+                expect(hidden).toBeLessThanOrEqual(1);
+                expect(natural).toBeGreaterThan(400);
+                await expectPlaced(child, natural);
+                await page.evaluate(() => window.qaPage.completeCancelled());
+                await expect(child).toHaveCount(0);
+                await settled(page);
+                expect(await parent.boundingBox()).toEqual(parentBox);
+            });
+
+            test('a Popup page with less content is no shorter than the Window', async ({ page }) => {
+                const { parentBox } = await openShortWindow(page);
+                await page.evaluate(async () => {
+                    const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+                    void new Popup('', POPUP_TYPE.DISPLAY, '', { tier: 'window', size: 'content', title: 'child' }).show();
+                });
+                const child = popupNamed(page, 'child');
+                await expect(child).toHaveClass(/sb-dialog--page/);
+                await settled(page);
+                await expectPlaced(child, parentBox.height);
+            });
+
+            test('a Popup page that fills has the fill height', async ({ page }) => {
+                await openShortWindow(page);
+                await page.evaluate(async () => {
+                    const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
+                    void new Popup('<p>Page</p>', POPUP_TYPE.DISPLAY, '', { tier: 'window', title: 'child' }).show();
+                });
+                const child = popupNamed(page, 'child');
+                await expect(child).toHaveClass(/sb-dialog--fill/);
+                await settled(page);
+                await expectPlaced(child, viewport.fill);
+            });
+
+            test('an openDialog page that fills has the fill height', async ({ page }) => {
+                await openShortWindow(page);
+                await page.evaluate(async () => {
+                    const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+                    void openDialog({ tier: 'window', title: 'Page', content: document.createElement('p') });
+                });
+                const surface = page.locator('.sb-dialog-host[open] .sb-dialog');
+                await expect(surface).toHaveClass(/sb-dialog--fill/);
+                await settled(page);
+                await expectPlaced(surface, viewport.fill);
+            });
+
+            test('an openDialog page with more content grows to it', async ({ page }) => {
+                await openShortWindow(page);
+                await page.evaluate(async () => {
+                    const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+                    const content = document.createElement('div');
+                    content.style.height = '400px';
+                    void openDialog({ title: 'Page', content });
+                });
+                const surface = page.locator('.sb-dialog-host[open] .sb-dialog');
+                await settled(page);
+                const { natural, hidden } = await surface.evaluate(node => {
+                    const body = node.querySelector('.sb-dialog__body');
+                    return { natural: node.offsetHeight - body.clientHeight + body.scrollHeight, hidden: body.scrollHeight - body.clientHeight };
+                });
+                expect(hidden).toBeLessThanOrEqual(1);
+                expect(natural).toBeGreaterThan(400);
+                await expectPlaced(surface, natural);
+            });
+        });
+    }
 });

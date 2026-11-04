@@ -6716,7 +6716,8 @@ dialog.popup.sb-dialog--window {
     width: min(max(640px, var(--sheldWidth, 64vw)), calc(100dvw - 32px)) !important;
     min-width: 0 !important;
     max-width: calc(100dvw - 32px) !important;
-    height: auto;
+    /* `height: auto` would stretch a floating Window between its inset edges, up to max-height. */
+    height: fit-content;
     max-height: min(90dvh, calc(100dvh - 32px - var(--sb-dialog-keyboard-inset, 0px)));
 }
 
