@@ -19,6 +19,37 @@ export function declarationSource(pattern, name, text = source) {
 export const functionSource = (name, text) => declarationSource(`(?:async )?function ${name}\\(`, name, text);
 export const classSource = (name, text) => declarationSource(`class ${name} \\{`, name, text);
 
+export const worldInfoSource = source;
+
+export function constantSource(name, text = source) {
+    const start = text.search(new RegExp(`^(?:export )?(?:const|let) ${name} =`, 'm'));
+    if (start === -1) {
+        throw new Error(`World Info harness: public/scripts/world-info.js has no constant named "${name}". Update the constant list in tests/util/world-info-harness.js to follow the rename or removal.`);
+    }
+    const lines = text.slice(start).replace(/^export /, '').split('\n');
+    for (let count = 1; count <= lines.length; count++) {
+        const statement = lines.slice(0, count).join('\n');
+        try {
+            new vm.Script(statement);
+            return statement;
+        } catch {
+            // The statement continues on the next line.
+        }
+    }
+    throw new Error(`World Info harness: the constant "${name}" in public/scripts/world-info.js does not end in a complete statement.`);
+}
+
+export const PRODUCT_CONSTANTS = [
+    'world_info_insertion_strategy', 'world_info_logic', 'scan_state', 'world_info_position', 'wi_anchor_position',
+    'DEFAULT_DEPTH', 'DEFAULT_WEIGHT', 'MAX_SCAN_DEPTH', 'KNOWN_DECORATORS', 'defaultGlobalScanData',
+];
+
+export function readProductConstants(names = PRODUCT_CONSTANTS, text = source) {
+    const sandbox = vm.createContext({});
+    vm.runInContext(names.map(name => constantSource(name, text)).join('\n'), sandbox);
+    return JSON.parse(vm.runInContext(`JSON.stringify({ ${names.join(', ')} })`, sandbox));
+}
+
 export const SCAN_CLASSES = ['WorldInfoBuffer', 'WorldInfoTimedEffects'];
 export const SCAN_FUNCTIONS = [
     'parseRegexFromString', 'getCharacterLore', 'getWorldEntries', 'getGlobalLore', 'getChatLore', 'getPersonaLore',
