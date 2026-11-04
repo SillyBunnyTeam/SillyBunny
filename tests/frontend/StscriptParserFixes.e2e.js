@@ -73,4 +73,27 @@ test.describe('STscript parser fixes', () => {
         expect.soft(summarizeError(result)).toEqual({ type: 'SlashCommandParserError', message: 'Unexpected end of unnamed argument at index 13.', index: 13 });
         expect.soft(await executeWithErrorToasts(page, '/parser-flag  STRICT_ESCAPING')).toEqual({ pipe: null, errorTitles: ['SlashCommandParserError'] });
     });
+
+    test('an escaped first character stays at the start of the first split value', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/stp-split \\|1 2' },
+            { script: '/stp-split \\| 2' },
+            { script: '/let \\|x 1' },
+            { script: '/stp-plain {: /stp-split \\:} x :}' },
+            { script: '/stp-split \\| a', flags: { STRICT_ESCAPING: true } },
+        ]);
+
+        expect.soft(results[0]).toEqual({ tree: { executors: [{ name: 'stp-split', unnamed: ['|1', '2'] }] } });
+        expect.soft(results[1]).toEqual({ tree: { executors: [{ name: 'stp-split', unnamed: ['|', '2'] }] } });
+        expect.soft(results[2]).toEqual({ tree: { variables: ['|x'], executors: [{ name: 'let', unnamed: ['|x', '1'] }] } });
+        expect.soft(results[3]).toEqual({
+            tree: {
+                executors: [{
+                    name: 'stp-plain',
+                    unnamed: [{ closure: { rawText: ' /stp-split \\:} x ', executors: [{ name: 'stp-split', unnamed: [':}', 'x'] }] } }],
+                }],
+            },
+        });
+        expect.soft(results[4]).toEqual({ tree: { executors: [{ name: 'stp-split', unnamed: ['|', 'a'], flags: ['STRICT_ESCAPING'] }] } });
+    });
 });

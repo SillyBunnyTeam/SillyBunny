@@ -1153,8 +1153,9 @@ export class SlashCommandParser {
     }
     parseUnnamedArgument(split, splitCount = null, rawQuotes = false) {
         const wasSplit = split;
+        // SillyBunny: when splitting, an escaped first character belongs to the first value, and the split branches take it.
         /**@type {SlashCommandClosure|String}*/
-        let value = this.jumpedEscapeSequence ? this.take() : ''; // take the first, already tested, char if it is an escaped one
+        let value = !split && this.jumpedEscapeSequence ? this.take() : ''; // take the first, already tested, char if it is an escaped one
         let isList = split;
         let listValues = [];
         let listQuoted = []; // keep track of which listValues were quoted
