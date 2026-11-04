@@ -110,30 +110,15 @@ export function getForwardedIps(req, trustedProxies) {
     return forwardedIps;
 }
 
+let trustedProxies = null;
+
 /**
- * Get the client IP address from the request headers.
- * @param {import('express').Request} req Express request object
- * @returns {string|undefined} The client IP address
+ * Gets the IP patterns of the hops whose forwarded headers are believed.
+ * @returns {string[]} The valid whitelist entries
  */
-export function getRealOrForwardedIp(req) {
-    const xRealIpEnabled = !!getConfigValue('forwardedHeaders.xRealIp', true, 'boolean');
-    const cfConnectingIpEnabled = !!getConfigValue('forwardedHeaders.cfConnectingIp', false, 'boolean');
-    const xForwardedForEnabled = !!getConfigValue('forwardedHeaders.xForwardedFor', true, 'boolean');
-
-    if (req.headers['x-real-ip'] && xRealIpEnabled) {
-        return req.headers['x-real-ip'].toString();
-    }
-
-    if (req.headers['cf-connecting-ip'] && cfConnectingIpEnabled) {
-        return req.headers['cf-connecting-ip'].toString();
-    }
-
-    if (req.headers['x-forwarded-for'] && xForwardedForEnabled) {
-        const ipList = req.headers['x-forwarded-for'].toString().split(',').map(ip => ip.trim());
-        return ipList[0];
-    }
-
-    return undefined;
+export function getTrustedProxies() {
+    trustedProxies ??= filterValidIpPatterns(getConfigValue('whitelist', []));
+    return trustedProxies;
 }
 
 /**
@@ -144,8 +129,24 @@ export function getRealOrForwardedIp(req) {
  */
 export function getIpAddress(request, includeHeaderIp) {
     const socketIp = getIpFromRequest(request);
-    const forwardedIp = includeHeaderIp && getRealOrForwardedIp(request);
+    // SillyBunny: a forwarded address counts only from a trusted hop and only when every enabled header names it, so the result is never a value that the client chooses.
+    const forwardedIp = includeHeaderIp && getTrustedForwardedIp(request, socketIp);
     return forwardedIp ? `${socketIp} (forwarded: ${forwardedIp})` : socketIp;
+}
+
+/**
+ * Gets the client address that a trusted hop forwarded.
+ * @param {import('express').Request} request Request object
+ * @param {string} socketIp Socket address of the request
+ * @returns {string|null} The address, or null when the socket is not a trusted hop or the enabled headers do not name one valid address
+ */
+function getTrustedForwardedIp(request, socketIp) {
+    const proxies = getTrustedProxies();
+    if (!isIpInPatterns(socketIp, proxies)) {
+        return null;
+    }
+    const forwardedIps = new Set(getForwardedIps(request, proxies).map(normalizeIpAddress));
+    return forwardedIps.size === 1 ? [...forwardedIps][0] : null;
 }
 
 /**
