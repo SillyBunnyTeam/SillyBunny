@@ -3,7 +3,6 @@ import { SHORTCUTS_DIALOG_CLASS } from './sillybunny-help/dialog-classes.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { createPrefGroup, createRow } from './sillybunny-editor/rows.js';
 import { createArtIntro } from './sillybunny-home/art-intro.js';
-import { COPY_PLACEHOLDER, markCopyPlaceholder } from './sillybunny-home/copy.js';
 import { isApplePlatform } from './sillybunny-platform.js';
 import { ensureWindowStyles } from './sillybunny-window-styles.js';
 
@@ -86,8 +85,14 @@ function createKeys(keys, apple) {
     return combination;
 }
 
-/** Groups that need a note, because their keys work only where a setting or a mark allows. The note is copy. */
-const SCOPE_NOTE_SLOTS = Object.freeze({ formatting: 'SHORTCUTS-FORMATTING-NOTE' });
+/**
+ * The note under a group whose keys work only where a setting or a mark allows.
+ * @param {string} scope
+ * @returns {string | undefined}
+ */
+function getScopeNote(scope) {
+    return scope === 'formatting' ? t`Turn on Markdown Hotkeys in Customize ▸ Interface ▸ Typing. These use Ctrl on all supported platforms.` : undefined;
+}
 
 /**
  * Fills the window body with one group per scope.
@@ -105,11 +110,7 @@ export function fillShortcuts(body, shortcuts, apple) {
                 field: `shortcut-${scope}-${index}`,
                 suffix: createKeys(shortcut.keys, apple),
             }));
-        const noteSlot = SCOPE_NOTE_SLOTS[scope];
-        const { section } = createPrefGroup({ title: titles[scope], subtitle: noteSlot ? COPY_PLACEHOLDER : undefined, field: `shortcuts-${scope}`, rows });
-        if (noteSlot) {
-            markCopyPlaceholder(section.querySelector('.ds-pref-group-subtitle'), noteSlot);
-        }
+        const { section } = createPrefGroup({ title: titles[scope], subtitle: getScopeNote(scope), field: `shortcuts-${scope}`, rows });
         body.append(section);
     }
 }
@@ -126,7 +127,7 @@ export async function openShortcutsWindow() {
         title: t`Keyboard Shortcuts`,
         className: SHORTCUTS_DIALOG_CLASS,
         content: (body) => {
-            body.append(createArtIntro({ art: 'shortcuts-tewi', slot: 'SHORTCUTS-INTRO' }).intro);
+            body.append(createArtIntro({ art: 'shortcuts-tewi', text: t`I know every shortcut through the bamboo forest, and through SillyBunny too! Try a few and you'll get around much faster.` }).intro);
             fillShortcuts(body, getShortcuts(), apple);
         },
     });

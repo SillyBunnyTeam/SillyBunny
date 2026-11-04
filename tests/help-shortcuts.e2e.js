@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { SHORTCUTS_COPY } from './helpers/copy-about.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
 
@@ -274,7 +275,7 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(page.locator(SHORTCUTS)).toHaveCount(0);
             });
 
-            sizeFreeTest('Keyboard Shortcuts lists F1 and Ctrl+?, and notes the Formatting group as copy that is still missing', async ({ page }) => {
+            sizeFreeTest('Keyboard Shortcuts lists F1 and Ctrl+?, and notes the Formatting group', async ({ page }) => {
                 await page.keyboard.press('Control+?');
                 const window = page.locator(SHORTCUTS);
                 await expect(window).toBeVisible();
@@ -283,10 +284,10 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(keysOf('Help')).toHaveText('F1');
                 await expect(keysOf('Keyboard Shortcuts')).toHaveText('Ctrl+?');
 
-                const note = window.locator('[data-sb-copy-slot="SHORTCUTS-FORMATTING-NOTE"]');
+                const note = window.locator('.ds-pref-group-subtitle');
                 await expect(note).toHaveCount(1);
-                await expect(note).toHaveText('TODO(copy)');
-                await expect(note).toHaveAttribute('data-sb-copy-placeholder', 'true');
+                await expect(note).toHaveText(SHORTCUTS_COPY.formattingNote);
+                await expect(note).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
             });
 
             sizeFreeTest('every general shortcut of the registry has its key pinned here, and does what its row says', async ({ page }) => {

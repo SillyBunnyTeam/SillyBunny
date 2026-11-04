@@ -1,6 +1,7 @@
 import { expect, test as base } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { EXTRA_DESCRIPTIONS, HOME_COPY, STEP_BODIES } from './helpers/copy-home.js';
+import { ABOUT_COPY, SHORTCUTS_COPY } from './helpers/copy-about.js';
 import { WELCOME_COPY } from './helpers/copy-welcome.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 import { PINNED_ASSISTANT_ACCOUNT } from './helpers/assistant-library.js';
@@ -931,8 +932,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
             test('opens with Tewi\'s art and her line beside it, above the first group', async ({ page }) => {
                 const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
-                await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO' });
-                await expectNoUnmarkedPlaceholder(host);
+                await expectIntro(host, 'shortcuts-tewi', { text: SHORTCUTS_COPY.intro });
+                expect(await readCopyPlaceholders(host), 'Keyboard Shortcuts has no placeholder left').toEqual([]);
                 const layout = await host.evaluate((root) => {
                     const body = root.querySelector('.sb-dialog__body');
                     const panel = body.querySelector('.sbArtPanel');
@@ -1777,7 +1778,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByRole('button', { name: 'What’s New', exact: true })).toBeFocused();
             });
 
-            sizeFreeTest('Credits lists its names and the acknowledgements, and Legal pushes labelled groups with placeholder bodies', async ({ page }) => {
+            sizeFreeTest('Credits lists its names and the acknowledgements, and Legal pushes labelled groups with their text', async ({ page }) => {
                 const host = await openFromMenu(page, 'About SillyBunny');
                 const current = shownPage(host);
 
@@ -1811,8 +1812,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await host.getByRole('button', { name: 'Legal', exact: true }).click();
                 await expect(current.locator('.sb-dialog__title')).toHaveText('Legal');
                 await expect(current.getByRole('heading', { level: 3 })).toHaveText(LEGAL_GROUPS);
-                await expectSlots(current, ['AB-FANWORK', 'AB-ART-LICENCE', 'AB-THIRD-PARTY']);
-                await expectNoUnmarkedPlaceholder(current);
+                await expect(current.locator('p')).toHaveText([ABOUT_COPY.fanWork, ABOUT_COPY.artLicence, ABOUT_COPY.thirdParty]);
+                expect(await readCopyPlaceholders(current), 'Legal has no placeholder left').toEqual([]);
             });
 
             test('Troubleshooting opens with Reisen\'s art and her line beside it, above the debug text', async ({ page }) => {
@@ -1821,8 +1822,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await host.getByRole('button', { name: 'Troubleshooting', exact: true }).click();
 
                 const current = shownPage(host);
-                await expectIntro(current, 'troubleshooting-reisen', { slot: 'TROUBLESHOOTING-INTRO' });
-                await expectNoUnmarkedPlaceholder(current);
+                await expectIntro(current, 'troubleshooting-reisen', { text: ABOUT_COPY.troubleshootingIntro });
+                expect(await readCopyPlaceholders(current), 'Troubleshooting has no placeholder left').toEqual([]);
                 const above = await current.evaluate(node => node.querySelector('.sbArtLine').getBoundingClientRect().bottom <= node.querySelector('.sbDebugInfo').getBoundingClientRect().top);
                 expect(above).toBe(true);
             });
@@ -2486,7 +2487,7 @@ test.describe('Intros on a 360px phone', () => {
     test('a window is a banner on a phone, with the line of the character under it', async ({ page }) => {
         const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
-        const layout = await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO' });
+        const layout = await expectIntro(host, 'shortcuts-tewi', { text: SHORTCUTS_COPY.intro });
 
         expect(layout.mode).toBe('banner');
         expect(layout.text.top, 'the line is under the banner').toBeGreaterThanOrEqual(layout.panel.bottom - 1);
@@ -2496,7 +2497,7 @@ test.describe('Intros on a 360px phone', () => {
         await page.evaluate(() => document.documentElement.style.setProperty('--fontScale', String(20 / 15)));
         const host = await openFromMenu(page, 'Keyboard Shortcuts');
 
-        const layout = await expectIntro(host, 'shortcuts-tewi', { slot: 'SHORTCUTS-INTRO' });
+        const layout = await expectIntro(host, 'shortcuts-tewi', { text: SHORTCUTS_COPY.intro });
 
         expect(layout.em, 'the type is larger').toBeGreaterThan(18);
         expect(layout.mode).toBe('banner');

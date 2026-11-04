@@ -3,9 +3,9 @@ import { extension_settings, extensionNames } from './extensions.js';
 import { t } from './i18n.js';
 import { readBootMarks } from './sillybunny-boot-marks.js';
 import { createArtPlaceholder } from './sillybunny-home/art.js';
-import { createArtIntro } from './sillybunny-home/art-intro.js';
 import { createArtPanel } from './sillybunny-home/art-layout.js';
 import { markCopyPlaceholder } from './sillybunny-home/copy.js';
+import { createArtIntro } from './sillybunny-home/art-intro.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { createPrefGroup, createPropertyRow, createRow } from './sillybunny-editor/rows.js';
 import { ensureWindowStyles } from './sillybunny-window-styles.js';
@@ -99,6 +99,12 @@ function requestServerDetails() {
 
 function createCopyBlock(slot) {
     return markCopyPlaceholder(document.createElement('p'), slot);
+}
+
+function createTextBlock(text) {
+    const block = document.createElement('p');
+    block.textContent = text;
+    return block;
 }
 
 /** A row that opens an address in a new tab, so it is a link and not a button. */
@@ -218,11 +224,11 @@ function fillCredits(body) {
 
 function fillLegal(body) {
     const groups = [
-        [t`Fan Work`, 'AB-FANWORK'],
-        [t`Art Licence`, 'AB-ART-LICENCE'],
-        [t`Third-Party Software`, 'AB-THIRD-PARTY'],
+        [t`Fan Work`, t`Reisen Udongein Inaba and Tewi Inaba are characters from Touhou Project by Team Shanghai Alice. SillyBunny's artwork of them is unofficial fan work, and SillyBunny is not affiliated with or endorsed by Team Shanghai Alice. It is free and non-commercial.`],
+        [t`Art Licence`, t`SillyBunny's artwork, including the logo and icons, is AI-generated and licensed under CC BY-NC-SA 4.0, separately from the program's AGPL-3.0 licence. You may share and adapt it if you credit SillyBunny, use it non-commercially and share alike.`],
+        [t`Third-Party Software`, t`SillyBunny is licensed under the AGPL-3.0, like SillyTavern, which it is based on. It includes Adwaita Sans and Adwaita Mono (SIL OFL 1.1), Font Awesome Free (icons CC BY 4.0, fonts SIL OFL 1.1, code MIT), pdf.js (Apache-2.0), and other open-source libraries such as jQuery, jQuery UI, JSZip, html2canvas, DOMPurify, highlight.js, Handlebars, Showdown, Lodash and Fuse.js, each under its own licence.`],
     ];
-    body.append(...groups.map(([title, slot]) => createSection(title, createCopyBlock(slot))));
+    body.append(...groups.map(([title, text]) => createSection(title, createTextBlock(text))));
 }
 
 /**
@@ -290,7 +296,7 @@ function fillTroubleshooting(body, server) {
     const actions = document.createElement('div');
     actions.className = 'sbWindowActions';
     actions.append(copy, save, copied);
-    body.append(createArtIntro({ art: 'troubleshooting-reisen', slot: 'TROUBLESHOOTING-INTRO' }).intro, block, actions);
+    body.append(createArtIntro({ art: 'troubleshooting-reisen', text: t`Having an issue, brave hero? Sorry to hear. Copy or save this information and include it when you ask for help or report an issue. It will help us diagnose the problem for you.` }).intro, block, actions);
 }
 
 /**

@@ -2,6 +2,7 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for pure functions. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, jest, test } from '@jest/globals';
+import { SHORTCUTS_COPY } from '../helpers/copy-about.js';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
@@ -101,14 +102,12 @@ describe('Keyboard Shortcuts window', () => {
         expect(labels).toHaveLength(getShortcuts().length);
     });
 
-    test('explains the Formatting group with a note that is still copy, and no other group', () => {
+    test('explains the Formatting group with a note, and no other group', () => {
         const notes = [...fill().querySelectorAll('section')].map(section => [section.dataset.title, section.querySelector('.ds-pref-group-subtitle')]);
 
         expect(notes.filter(([, note]) => note).map(([title]) => title)).toEqual(['Formatting']);
         const [, note] = notes.find(([title]) => title === 'Formatting');
-        expect(note.textContent).toBe('TODO(copy)');
-        expect(note.dataset.sbCopyPlaceholder).toBe('true');
-        expect(note.dataset.sbCopySlot).toBe('SHORTCUTS-FORMATTING-NOTE');
+        expect(note.textContent).toBe(SHORTCUTS_COPY.formattingNote);
     });
 
     test('titles one group per scope', () => {
