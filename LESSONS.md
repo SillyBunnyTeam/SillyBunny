@@ -148,9 +148,11 @@ This is the largest class by a wide margin.
 ### Upstream compatibility and sync
 
 - **Breaks:** the version map reports the wrong SillyTavern base, so extensions that need a newer SillyTavern fail.
-- **Files:** `docs/upstream-sync.md`, `public/scripts/sillybunny-version-map.js`, `public/scripts/openai.js`, `src/endpoints/backends/`.
+- **Breaks:** a merged SillyTavern condition on a reasoning effort changes meaning, because the two projects map efforts differently. On GPT-6 Sol and Luna, SillyTavern sends Min as `'none'`. SillyBunny sends Min as `'minimal'` and None as `'none'`.
+- **Files:** `docs/upstream-sync.md`, `public/scripts/sillybunny-version-map.js`, `public/scripts/openai.js`, `public/scripts/tool-calling.js`, `src/endpoints/backends/`.
 - **Guards:** the version map clamps a SillyBunny version with no mapping to the highest synced SillyTavern version for its major.
-- **Tests:** `tests/sillybunny-version-map.test.js`, `tests/upstream-provider-parity.test.js`.
+- **Guards:** `isToolCallingSupported` opens Chat Completions tools on GPT-6 Sol and Luna for None, where SillyTavern/SillyTavern#6070 checks Min. Translate a SillyTavern effort condition when a merge brings one in.
+- **Tests:** `tests/sillybunny-version-map.test.js`, `tests/upstream-provider-parity.test.js`, `tests/reasoning-effort-none.test.js`.
 - **Fixes:** #410 (SillyBunny 1.6.4 still mapped to SillyTavern 1.16.4). The same bug came back on the next minor version; #497 fixed it with the clamp. #843 and #845 (provider parity with upstream).
 - **Partial adoption:** `7b6db61d1` took SillyTavern's `src/electron/` package files (`Start.bat`, `package.json`, `package-lock.json`) but not `index.js`, which `package.json` names as `main` for `electron .`. `Start.bat` also installs with `--ignore-scripts`, and the electron package downloads its binary only in its `postinstall` script, so the launcher could not start. npm audit still reported 30 advisories against its lockfile (electron 41.1.1 and extract-zip 2.0.1). SillyBunny removed `src/electron/`. SillyTavern still ships it, so a sync leaves `src/electron/**` out (`docs/upstream-touch-ledger.md`).
 - **Open:** issue #713, where the Quick Image Gen manual sync fails in Docker (no `bash`, no real `node`). No fix PR found.
