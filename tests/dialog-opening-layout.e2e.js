@@ -15,6 +15,8 @@ import { bootWindowToolsDialogs, currentToolPopup } from './helpers/window-tools
 test.setTimeout(240000);
 test.use({ serviceWorkers: 'block' });
 
+// The shape of the rule in the Moonlit Echoes theme: `all` also animates `flex-grow` and `width`.
+const THEME_TRANSITION = '.menu_button { transition: all 0.5s ease; }';
 // Each label fits a 300px Alert when the opening scale of 0.8 shrinks it, and does not fit at full size.
 const LONG_LABEL = 'A response wide label';
 
@@ -85,6 +87,34 @@ for (const viewport of MISC_VIEWPORTS) {
             await page.locator('#data_maid_button').click();
             await currentToolPopup(page, '.dataMaidDialog');
         });
+    });
+
+    test(`A theme transition does not animate the Alert responses at ${size}`, async ({ page }) => {
+        await bootUtilityDialogs(page, viewport, MOTION);
+        await page.addStyleTag({ content: THEME_TRANSITION });
+        await installOpeningSampler(page);
+        await expectOpensAtFinalSize(page, 'Add Secret', () => openUtilityDialog(page, 'secret'));
+        await expectOpensAtFinalSize(page, 'confirm', () => page.evaluate(async () => {
+            const { Popup } = await import('/scripts/popup.js');
+            void Popup.show.confirm('Heading', 'Body');
+        }));
+    });
+
+    test(`A theme transition does not animate the shared Alert responses at ${size}`, async ({ page }) => {
+        await bootMiscDialogs(page, viewport, MOTION);
+        await page.addStyleTag({ content: THEME_TRANSITION });
+        const widths = await page.evaluate(async () => {
+            const { openAlert } = await import('/scripts/sillybunny-editor/dialog.js');
+            void openAlert({ heading: 'Heading', responses: [{ id: 'cancel', label: 'Cancel' }, { id: 'ok', label: 'OK' }] });
+            const response = document.querySelector('.sb-dialog__response');
+            const frames = [response.offsetWidth];
+            for (let frame = 0; frame < 20; frame++) {
+                await new Promise(resolve => requestAnimationFrame(resolve));
+                frames.push(response.offsetWidth);
+            }
+            return frames;
+        });
+        expect(Math.max(...widths) - Math.min(...widths), `widths: ${widths.join(' ')}`).toBeLessThanOrEqual(1);
     });
 }
 

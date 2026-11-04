@@ -432,6 +432,31 @@ describe('Popup frame adapter', () => {
         frame.dispose();
     });
 
+    test('contentChanged lays out an Alert again and holds transitions off while it measures', () => {
+        setupDialogMedia();
+        const value = popupDom();
+        let width = 100;
+        const classesWhileMeasuring = [];
+        Object.defineProperty(value.okButton, 'offsetWidth', { get: () => width });
+        Object.defineProperty(value.buttonControls, 'clientWidth', {
+            get() {
+                classesWhileMeasuring.push(value.buttonControls.className);
+                return 280;
+            },
+        });
+        const frame = framePopup(value, { tier: 'alert' });
+        value.dlg.showModal();
+        frame.opened();
+        expect(value.buttonControls.classList.contains('is-stacked')).toBe(false);
+        width = 150;
+        frame.contentChanged();
+        expect(value.buttonControls.classList.contains('is-stacked')).toBe(true);
+        expect(classesWhileMeasuring.length).toBeGreaterThan(1);
+        expect(classesWhileMeasuring.every(classes => classes.includes('is-laying-out') && classes.includes('is-measuring'))).toBe(true);
+        expect(value.buttonControls.className).not.toMatch(/is-laying-out|is-measuring/);
+        frame.dispose();
+    });
+
     test('contentChanged lets a content-sized Window measure a shorter height', () => {
         setupDialogMedia();
         const animationFrame = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {

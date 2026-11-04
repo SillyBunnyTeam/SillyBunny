@@ -4,7 +4,7 @@ import { closePicker } from './picker.js';
 import { createSwitchRow, releaseRowIds } from './rows.js';
 import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, releaseOverlayLayers } from './overlay-host.js';
-import { bindHeaderLayout, bindKeyboardInset, bindSheetGestures, bindWindowHeightLock, createIconButton } from './dialog.js';
+import { bindHeaderLayout, bindKeyboardInset, bindSheetGestures, bindWindowHeightLock, layoutWithoutTransitions, createIconButton } from './dialog.js';
 import { closeChain, coverSurface, findCoveredSurface, registerChainLevel, restoreChainFocus, unregisterChainLevel } from './page-chain.js';
 
 // POPUP_TYPE values (popup.js), duplicated to avoid an import cycle.
@@ -136,6 +136,10 @@ function adoptAlertOption(popup, cleanups) {
 }
 
 function layoutAlertResponses(controls, sheet) {
+    layoutWithoutTransitions(controls, () => measureAlertResponses(controls, sheet));
+}
+
+function measureAlertResponses(controls, sheet) {
     controls.classList.remove('is-stacked');
     if (sheet) {
         controls.classList.add('is-stacked');

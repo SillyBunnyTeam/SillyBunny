@@ -6682,6 +6682,11 @@ dialog.popup.sb-dialog--alert > .popup-controls.is-measuring > .menu_button {
     white-space: nowrap;
 }
 
+/* !important because a theme can set `transition: all` on these buttons with !important. */
+dialog.popup.sb-dialog--alert > .popup-controls.is-laying-out > .menu_button {
+    transition: none !important;
+}
+
 /* Stacked: keep Cancel at the bottom within thumb reach. */
 dialog.popup.sb-dialog--alert > .popup-controls.is-stacked {
     flex-direction: column-reverse;
@@ -7845,6 +7850,11 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
 .sb-dialog__responses.is-measuring > .sb-dialog__response {
     flex: 0 0 auto;
     white-space: nowrap;
+}
+
+/* !important because a theme can set `transition: all` on these buttons with !important. */
+.sb-dialog__responses.is-laying-out > .sb-dialog__response {
+    transition: none !important;
 }
 
 /* Stacked: keep Cancel at the bottom within thumb reach. */
