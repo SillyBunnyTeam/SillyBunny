@@ -1,4 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
+import vm from 'node:vm';
 
 import { WORLD_INFO_LOGIC } from './util/world-info-cases.js';
 import {
@@ -19,9 +20,19 @@ const DECLARATIONS = [
     ...SCAN_FUNCTIONS.map(name => ({ name, kind: 'function', extract: functionSource })),
 ];
 
+const isCompleteScript = text => {
+    try {
+        return Boolean(new vm.Script(text));
+    } catch {
+        return false;
+    }
+};
+
 describe('World Info harness extraction', () => {
-    test('extracts every scan declaration from the current file', () => {
-        expect(() => buildScanSource()).not.toThrow();
+    test('extracts every scan declaration as a complete script', () => {
+        const incomplete = DECLARATIONS.filter(({ name, extract }) => !isCompleteScript(extract(name))).map(({ name }) => name);
+
+        expect(incomplete).toEqual([]);
     });
 
     test.each(DECLARATIONS)('names $kind $name in the error when it is renamed', ({ name, kind }) => {
