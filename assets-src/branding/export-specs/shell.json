@@ -33,33 +33,13 @@
         },
         "hero-duo": {
             "character": "duo",
-            "master": "approved/hero-duo.png",
-            "css": [
-                640,
-                320
-            ],
-            "fit": "width",
-            "crop": "canvas",
-            "margin": 0,
-            "focus": [
-                0.5,
-                0.35
-            ]
+            "master": "approved/pixel/hero-duo.png",
+            "pixel": true
         },
         "hero-duo-night": {
             "character": "duo",
-            "master": "approved/hero-duo-night.png",
-            "css": [
-                640,
-                320
-            ],
-            "fit": "width",
-            "crop": "canvas",
-            "margin": 0,
-            "focus": [
-                0.5,
-                0.35
-            ]
+            "master": "approved/pixel/hero-duo-night.png",
+            "pixel": true
         },
         "row-reisen": {
             "character": "reisen",

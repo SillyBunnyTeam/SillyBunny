@@ -324,14 +324,10 @@
     background: var(--sb-layer-window);
 }
 
-/* The pixel art is drawn at an integer scale so it stays sharp, and every piece of it changes scale at the same
-   container width (see the container query under Narrow content). The hero by night is the same size. */
-.sbHomeBand > .sbHomeArt:is([data-sb-art-placeholder='hero-duo'], [data-sb-art-placeholder='hero-duo-night']) {
-    flex-direction: column;
-    width: 320px;
-    height: 160px;
-    max-width: 100%;
-    image-rendering: pixelated;
+/* The hero is pixel art at a whole number of device pixels per art pixel. Its script sizes it to the width of the
+   band, and `data-sb-art-fit` says whether it kept the fixed step, took a smaller one, or was shrunk. */
+.sbHomeBand > .sbHomeHeroArt {
+    flex: none;
 }
 
 .sbHomeHeroText {
@@ -456,7 +452,8 @@
 
 /* A picture that is shrunk below one device pixel per art pixel has uneven stripes under nearest-neighbour sampling.
    Smooth sampling is the lesser evil there. */
-.sbArtPanel[data-sb-art-fit='smooth'] .sbPixelArt {
+.sbArtPanel[data-sb-art-fit='smooth'] .sbPixelArt,
+.sbHomeHeroArt[data-sb-art-fit='smooth'] .sbPixelArt {
     image-rendering: auto;
 }
 
@@ -1333,15 +1330,9 @@ body.big-avatars .welcomeRecent .chatMessage {
 
 /* ── Narrow content and touch ───────────────────────────────────────────── */
 
-/* The pixel art goes to 2x above this container width, all of it at once: the hero, the assistant portraits and
-   the icon of the Choose Assistant card. 740px is the container width at which the 2x hero plus the band padding and the
-   column padding no longer fit, and the portraits follow it so one screen has one pixel scale. */
+/* The card portraits and the icon of the Choose Assistant card go to 2x together above this container width, so one
+   screen has one scale for them. */
 @container welcome-home (width > 740px) {
-    .sbHomeBand > .sbHomeArt:is([data-sb-art-placeholder='hero-duo'], [data-sb-art-placeholder='hero-duo-night']) {
-        width: 640px;
-        height: 320px;
-    }
-
     .sbHomeArt[data-sb-art-placeholder='row-reisen'],
     .sbHomeArt[data-sb-art-placeholder='row-tewi'],
     .sbHomeArt[data-sb-art-placeholder='row-pointer'],
@@ -1375,9 +1366,11 @@ body.big-avatars .welcomeRecent .chatMessage {
     }
 }
 
-/* A 360px phone leaves a 346px container. The 1x art (320px) then fits in the band only with 4px of band padding
-   and 8px of column padding. */
-@container welcome-home (max-width: 380px) {
+/* A 360px phone leaves a 346px container. The day hero (332px) then fits in the band at one device pixel per art
+   pixel only with 4px of band padding and 8px of column padding. The paddings of the rule above leave the hero 58px
+   less than the container, so they hold the 332px of the day hero from a 390px container up. This rule covers the
+   containers up to that width, and a lower limit would leave the ones just under it with a hero that has to shrink. */
+@container welcome-home (max-width: 390px) {
     .sbHomeLayout {
         padding-inline: max(8px, env(safe-area-inset-left, 0px)) max(8px, env(safe-area-inset-right, 0px));
     }

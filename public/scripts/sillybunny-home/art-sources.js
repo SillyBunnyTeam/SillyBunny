@@ -22,6 +22,8 @@ const PIXEL_ART = Object.freeze({
     'about-tewi': { file: 'about-tewi@native.webp', width: 145, height: 305 },
     'troubleshooting-reisen': { file: 'troubleshooting-reisen@native.webp', width: 197, height: 366 },
     'empty-tewi': { file: 'empty-tewi@native.webp', width: 159, height: 318 },
+    'hero-duo': { file: 'hero-duo@native.webp', width: 332, height: 366 },
+    'hero-duo-night': { file: 'hero-duo-night@native.webp', width: 361, height: 362 },
 });
 
 /**

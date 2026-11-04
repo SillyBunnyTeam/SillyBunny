@@ -1,7 +1,6 @@
 import { loadListEditorStyles } from '../sillybunny-editor/list-shell.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
-import { createArtPlaceholder } from './art.js';
-import { createArtPanel } from './art-layout.js';
+import { createArtPanel, createHeroArt } from './art-layout.js';
 import { mountAssistants } from './assistants-view.js';
 import { COPY_PLACEHOLDER, markCopyPlaceholder } from './copy.js';
 import { fitCardFooters } from './footer-fit.js';
@@ -130,7 +129,7 @@ function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChat
  *   that arrived after the panel was mounted. It keeps the focus on the control that had it.
  */
 export function mountHome(panel, context) {
-    panel.querySelector('[data-sb-home-region="hero"]')?.prepend(createArtPlaceholder(chooseHeroArt(new Date())));
+    panel.querySelector('[data-sb-home-region="hero"]')?.prepend(createHeroArt(chooseHeroArt(new Date())));
     panel.querySelectorAll('[data-sb-home-version]').forEach((node) => {
         node.textContent = getVersionLabel(context.version);
     });

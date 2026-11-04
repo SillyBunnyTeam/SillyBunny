@@ -59,13 +59,14 @@ const HERO_SELECTOR = ':is([data-sb-art-placeholder="hero-duo"], [data-sb-art-pl
 function artSelector(id) {
     return id === 'hero-duo' ? HERO_SELECTOR : `[data-sb-art-placeholder="${id}"]`;
 }
-// The container width at and below which the hero art, the assistant grid switches to two cards per line.
-const HERO_ONE_X_MAX = 740;
+// The container width at and above which the card portraits and the Choose Assistant icon are drawn at 2x.
+const PORTRAIT_ONE_X_MAX = 740;
 const TWO_CARDS_MAX = 716;
 const VISIBLE_TILES = { full: ['Getting Started', 'Help', 'Bundled Extras'], compact: ['Getting Started', 'Help', 'Bundled Extras'], list: [] };
 const VISIBLE_FOOT_BUTTONS = { full: 4, compact: 4, list: 0 };
 const PORTRAIT_NATIVE = 64;
-const HERO_NATIVE = [320, 160];
+/** The hero pictures in art pixels, as the export stores them. */
+const HERO_NATIVE = { 'hero-duo': [332, 366], 'hero-duo-night': [361, 362] };
 const REGION_DOM_ORDER = ['hero', 'tiles', 'assistants', 'recent-chats'];
 const REGION_NAMES = { assistants: 'Assistants', 'recent-chats': 'Recent Chats', tiles: 'Quick Links' };
 const TILE_TITLES = ['Getting Started', 'Help', 'Bundled Extras'];
@@ -90,19 +91,49 @@ async function expectHome(page) {
     await expect(page.locator('#chat > .welcomePanel')).toBeAttached({ timeout: STARTUP_TIMEOUT });
 }
 
-/** The integer scale of the pixel art on Home: 2x above the container width where the 2x hero fits, 1x at or below it. */
+/** The integer scale of the card portraits and the Choose Assistant icon: 2x above the container width, 1x at or below it. */
 function pixelScale(panelWidth) {
-    return panelWidth > HERO_ONE_X_MAX ? 2 : 1;
+    return panelWidth > PORTRAIT_ONE_X_MAX ? 2 : 1;
 }
 
 function pixelArtSizes(panelWidth) {
     const scale = pixelScale(panelWidth);
     return {
-        'hero-duo': HERO_NATIVE.map(side => side * scale),
         'row-reisen': [PORTRAIT_NATIVE * scale, PORTRAIT_NATIVE * scale],
         'row-tewi': [PORTRAIT_NATIVE * scale, PORTRAIT_NATIVE * scale],
     };
 }
+
+/**
+ * What the hero is drawn as at a screen scale of 1: its own size when the band is wide enough, and the width of the
+ * band, at the proportions of the picture, when it is not.
+ * @returns {Promise<{ id: string, size: number[], native: number[], expected: number[], fit: string, inner: number, rendering: string, ariaHidden: string | null, pictures: number }>}
+ */
+async function readHero(page) {
+    return page.evaluate((natives) => {
+        const hero = document.querySelector('.welcomePanel .sbHomeHeroArt');
+        const band = hero.closest('.sbHomeBand');
+        const style = getComputedStyle(band);
+        const inner = band.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight);
+        const box = hero.getBoundingClientRect();
+        const [width, height] = natives[hero.dataset.sbArtPlaceholder];
+        const shown = Math.min(width, inner);
+        return {
+            id: hero.dataset.sbArtPlaceholder,
+            size: [box.width, box.height],
+            native: [width, height],
+            expected: [shown, (height * shown) / width],
+            fit: hero.dataset.sbArtFit,
+            inner,
+            rendering: getComputedStyle(hero.querySelector('img')).imageRendering,
+            ariaHidden: hero.getAttribute('aria-hidden'),
+            pictures: hero.querySelectorAll('img').length,
+        };
+    }, HERO_NATIVE);
+}
+
+/** A hero drawn at its own size is blocks of device pixels. One that was shrunk below its file is sampled smoothly, because uneven blocks would show as stripes. */
+const expectedRendering = hero => (hero.size[0] < hero.native[0] - 0.5 ? 'auto' : 'pixelated');
 
 async function setGettingStartedHidden(page, hidden) {
     await page.evaluate(async (value) => {
@@ -1526,7 +1557,7 @@ for (const { name, options } of VIEWPORTS) {
                 const box = page.locator(`.welcomePanel ${artSelector(id)}`);
                 await expect(box).toBeVisible();
                 await expect(box).toHaveAttribute('aria-hidden', 'true');
-                await expect(box).toHaveText(id === 'hero-duo' ? /^hero-duo(-night)?$/ : id);
+                await expect(box).toHaveText(id);
                 const rect = await measure(page, `.welcomePanel ${artSelector(id)}`);
                 expect([id, Math.round(rect.width), Math.round(rect.height)]).toEqual([id, width, height]);
             }
@@ -1535,7 +1566,15 @@ for (const { name, options } of VIEWPORTS) {
             await expect(logo).toHaveAttribute('aria-hidden', 'true');
             const logoRect = await measure(page, '.welcomePanel [data-sb-art-placeholder="logo-32"]');
             expect([Math.round(logoRect.width), Math.round(logoRect.height)]).toEqual(LOGO_SIZE);
-            expect(await page.locator(`.welcomePanel ${artSelector('hero-duo')}`).evaluate(node => getComputedStyle(node).imageRendering)).toBe('pixelated');
+
+            // The hero is a picture, not a stand-in: one image, hidden from assistive technology, at a size that fits the band.
+            const hero = await readHero(page);
+            expect(hero.pictures).toBe(1);
+            expect(hero.ariaHidden).toBe('true');
+            expect(hero.rendering).toBe(expectedRendering(hero));
+            expect(hero.size[0]).toBeCloseTo(hero.expected[0], 0);
+            expect(hero.size[1]).toBeCloseTo(hero.expected[1], 0);
+            await expect(page.locator(`.welcomePanel ${artSelector('hero-duo')} img`)).toHaveAttribute('alt', '');
 
             await chooseMode(page, 'compact');
             await expect(page.locator('.welcomePanel [data-sb-art-placeholder="logo-32"]')).toBeVisible();
@@ -1558,11 +1597,12 @@ for (const { name, options } of VIEWPORTS) {
             await expect(hero('hero-duo-night')).toHaveCount(1);
             await expect(hero('hero-duo')).toHaveCount(0);
             await expect(hero('hero-duo-night')).toHaveAttribute('aria-hidden', 'true');
-            await expect(hero('hero-duo-night')).toHaveText('hero-duo-night');
-            const panelWidth = await page.evaluate(() => document.querySelector('.welcomePanel').clientWidth);
-            const box = await measure(page, '.welcomePanel [data-sb-art-placeholder="hero-duo-night"]');
-            expect([Math.round(box.width), Math.round(box.height)]).toEqual(pixelArtSizes(panelWidth)['hero-duo']);
-            expect(await hero('hero-duo-night').evaluate(node => getComputedStyle(node).imageRendering)).toBe('pixelated');
+            await expect(hero('hero-duo-night').locator('img')).toHaveAttribute('src', /\/img\/sillybunny\/hero-duo-night@native\.webp\?v=/);
+            const night = await readHero(page);
+            expect(night.id).toBe('hero-duo-night');
+            expect(night.size[0]).toBeCloseTo(night.expected[0], 0);
+            expect(night.size[1]).toBeCloseTo(night.expected[1], 0);
+            expect(night.rendering).toBe(expectedRendering(night));
 
             await page.clock.setFixedTime(new Date(2026, 9, 31, 6, 0));
             await renderHome(page, []);
@@ -2073,15 +2113,14 @@ for (const { name, options } of WIDE_VIEWPORTS) {
             });
         }
 
-        for (const [target, scale] of [[HERO_ONE_X_MAX, 1], [HERO_ONE_X_MAX + 1, 2]]) {
-            test(`a Home content width of exactly ${target}px draws the hero, the assistant portraits and the Choose Assistant icon at ${scale}x`, async ({ page }) => {
+        for (const [target, scale] of [[PORTRAIT_ONE_X_MAX, 1], [PORTRAIT_ONE_X_MAX + 1, 2]]) {
+            test(`a Home content width of exactly ${target}px draws the assistant portraits and the Choose Assistant icon at ${scale}x`, async ({ page }) => {
                 await chooseMode(page, 'full');
 
                 await setHomeContentWidth(page, target);
 
                 const sizes = {};
                 for (const [id, selector] of Object.entries({
-                    'hero-duo': artSelector('hero-duo'),
                     'row-reisen': '[data-sb-art-placeholder="row-reisen"]',
                     'row-tewi': '[data-sb-art-placeholder="row-tewi"]',
                     'choose-icon': '.sbHomeCard--choose .sbHomeChooseIcon',
@@ -2090,12 +2129,11 @@ for (const { name, options } of WIDE_VIEWPORTS) {
                     sizes[id] = [Math.round(box.width), Math.round(box.height)];
                 }
                 expect(sizes).toEqual({
-                    'hero-duo': [320 * scale, 160 * scale],
                     'row-reisen': [64 * scale, 64 * scale],
                     'row-tewi': [64 * scale, 64 * scale],
                     'choose-icon': [64 * scale, 64 * scale],
                 });
-                // The card portraits are smooth pictures, so only the hero is drawn as pixel art.
+                // The card portraits are smooth pictures, so they are not drawn as pixel art.
                 expect(await page.locator('.welcomePanel [data-sb-art-placeholder="row-reisen"]').evaluate(node => getComputedStyle(node).imageRendering)).toBe('auto');
             });
         }

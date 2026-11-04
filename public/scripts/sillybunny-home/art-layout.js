@@ -139,6 +139,7 @@ export function planArtMode({ contentWidth, availableHeight, panelWidth, panelHe
  * @property {HTMLElement | null} host The element that holds the panel as a child: a window body, a Help page, or the Home empty state.
  * @property {boolean} seen Whether the panel has been in the document.
  * @property {boolean} alignQueued
+ * @property {'panel' | 'hero'} [kind] A hero is one figure fitted to the width of its band, with no panel, mode or window.
  */
 
 /** @type {Set<ArtController>} */
@@ -367,6 +368,43 @@ function fitBanner(ids, scale, availableWidth) {
 }
 
 /**
+ * The hero is drawn at the fixed step when it fits the band, at the largest step that does when it does not, and
+ * shrunk by a fraction only when one device pixel per art pixel is still wider than the band.
+ * @param {ArtController} controller
+ * @returns {{ kind: 'hero', fit: { step: number, ratio: number }, fixed: { step: number, ratio: number } } | null}
+ */
+function measureHero(controller) {
+    const band = controller.panel.parentElement;
+    if (!band) {
+        return null;
+    }
+    if (band !== controller.host) {
+        if (controller.host) {
+            resizeObserver?.unobserve(controller.host);
+        }
+        controller.host = band;
+        resizeObserver?.observe(band);
+    }
+    const style = getComputedStyle(band);
+    const availableWidth = band.clientWidth - Number.parseFloat(style.paddingInlineStart) - Number.parseFloat(style.paddingInlineEnd);
+    // A band that is not shown, such as in Compact, has no width. The figure keeps the size it had.
+    if (availableWidth <= 0) {
+        return null;
+    }
+    const fixed = readFixedScale();
+    return { kind: 'hero', fit: largestStepThatFits({ widths: [getPixelArt(controller.ids[0]).width], ...fixed, availableWidth }), fixed };
+}
+
+/**
+ * @param {ArtController} controller
+ * @param {NonNullable<ReturnType<typeof measureHero>>} plan
+ */
+function applyHero(controller, { fit, fixed }) {
+    sizePixelFigure(controller.panel, fit);
+    controller.panel.dataset.sbArtFit = describeFit(fit, fixed);
+}
+
+/**
  * Everything that a panel needs to know about its place, read before anything is written.
  * @param {ArtController} controller
  */
@@ -443,6 +481,9 @@ function measure(controller) {
         return null;
     }
     controller.seen = true;
+    if (controller.kind === 'hero') {
+        return measureHero(controller);
+    }
     return measurePanel(controller);
 }
 
@@ -451,6 +492,10 @@ function measure(controller) {
  * @param {NonNullable<ReturnType<typeof measure>>} plan
  */
 function apply(controller, plan) {
+    if (plan.kind === 'hero') {
+        applyHero(controller, plan);
+        return;
+    }
     applyPanel(controller, plan);
 }
 
@@ -630,4 +675,22 @@ export function createArtPanel(ids) {
             scheduleLayout();
         },
     };
+}
+
+/**
+ * The hero of Home: one picture in the band, centred above the text. It is `aria-hidden`, and a screen reader reads
+ * the text of the band alone.
+ * @param {'hero-duo' | 'hero-duo-night'} id
+ * @returns {HTMLElement}
+ */
+export function createHeroArt(id) {
+    const figure = createPixelFigure(id);
+    figure.classList.add('sbHomeHeroArt');
+    figure.setAttribute('aria-hidden', 'true');
+    // Sized for the fixed step before it is in the document, and fitted to its band as soon as the band has a width.
+    sizePixelFigure(figure, readFixedScale());
+    /** @type {ArtController} */
+    const controller = { kind: 'hero', panel: figure, ids: [id], figures: [], host: null, seen: false, alignQueued: false };
+    register(controller);
+    return figure;
 }

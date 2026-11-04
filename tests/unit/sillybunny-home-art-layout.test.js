@@ -7,6 +7,7 @@ import {
     ART_GAP,
     createArtPanel,
     BANNER_HEIGHT_SHARE,
+    createHeroArt,
     FIGURE_GAP,
     maxBannerRows,
     measureArtPanel,
@@ -366,5 +367,32 @@ describe('createArtPanel', () => {
         setArts(['gs-reisen-done']);
         expect(panel.children).toHaveLength(1);
         expect(panel.firstElementChild.dataset.sbArtPlaceholder).toBe('gs-reisen-done');
+    });
+});
+
+describe('createHeroArt', () => {
+    test.each([
+        ['hero-duo', 332, 366],
+        ['hero-duo-night', 361, 362],
+    ])('%s is one hidden figure of its own size, in the class that the band styles', (id, width, height) => {
+        const figure = createHeroArt(id);
+
+        expect(figure.classList.contains('sbHomeHeroArt')).toBe(true);
+        expect(figure.getAttribute('aria-hidden')).toBe('true');
+        expect(figure.dataset.sbArtPlaceholder).toBe(id);
+        expect(figure.querySelectorAll('img')).toHaveLength(1);
+        expect([figure.style.width, figure.style.height]).toEqual([`${width}px`, `${height}px`]);
+    });
+
+    test('is sized at the fixed step of its screen before it is in the document: 3x is the same CSS size as 1x', () => {
+        window.devicePixelRatio = 3;
+
+        const figure = createHeroArt('hero-duo');
+
+        expect([figure.style.width, figure.style.height]).toEqual(['332px', '366px']);
+    });
+
+    test('fails fast on a hero that is not in the export', () => {
+        expect(() => createHeroArt('hero-trio')).toThrow('hero-trio');
     });
 });
