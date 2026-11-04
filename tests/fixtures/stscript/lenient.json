@@ -207,5 +207,38 @@
         "script": "/:",
         "verify": false,
         "expected": { "tree": { "executors": [{ "name": ":", "command": "run", "unnamed": [""] }] } }
+    },
+    {
+        "name": "unclosed quote ends at a pipe and leaves the next command",
+        "script": "/stp-plain \"abc | /stp-plain x",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["abc "] }, { "name": "stp-plain", "unnamed": ["x"] }]
+            }
+        }
+    },
+    {
+        "name": "unclosed quote ends at the closure end and leaves it to the closure",
+        "script": "/stp-plain {: /stp-plain \"abc :} | /stp-plain y",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain \"abc ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["abc "] }]
+                                }
+                            }
+                        ]
+                    },
+                    { "name": "stp-plain", "unnamed": ["y"] }
+                ]
+            }
+        }
     }
 ]
