@@ -249,7 +249,6 @@ test.describe('the toast of a failed request on a phone and in forced colours', 
         });
 
         test('has an edge of its own, because forced colours drop its shadow', async ({ page }) => {
-            test.fail(true, 'The toast is separated from the page by a box-shadow only (body #toast-container > .toast, public/css/sillybunny-theme.css:6118), which forced colours drop, and it has no border or outline of its own.');
             const toast = await failOnce(page);
 
             const edge = await toast.evaluate((node) => {
@@ -263,6 +262,24 @@ test.describe('the toast of a failed request on a phone and in forced colours', 
             });
 
             expect((edge.borderStyle !== 'none' && edge.borderWidth !== '0px') || (edge.outlineStyle !== 'none' && edge.outlineWidth !== '0px'), JSON.stringify(edge)).toBe(true);
+        });
+
+        test('gives the toasts of every type the same edge', async ({ page }) => {
+            await failOnce(page);
+            await page.evaluate(() => {
+                window.toastr.warning('A warning.', 'Heads up');
+                window.toastr.success('A success.', 'Done');
+                window.toastr.info('A note.', 'Note');
+            });
+            await expect(page.locator('#toast-container .toast-error, #toast-container .toast-warning, #toast-container .toast-success, #toast-container .toast-info')).not.toHaveCount(0);
+
+            const edges = await page.locator('#toast-container .toast').evaluateAll(nodes => nodes.map((node) => {
+                const style = getComputedStyle(node);
+                return { type: ['toast-error', 'toast-warning', 'toast-success', 'toast-info'].find(name => node.classList.contains(name)), outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+            }));
+
+            expect([...new Set(edges.map(edge => edge.type))].sort(), 'every type is on screen').toEqual(['toast-error', 'toast-info', 'toast-success', 'toast-warning']);
+            expect(edges.filter(edge => edge.outlineStyle === 'none' || edge.outlineWidth === '0px'), 'the toasts without an edge').toEqual([]);
         });
     });
 });

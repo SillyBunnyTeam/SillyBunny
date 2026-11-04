@@ -8199,6 +8199,12 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         border: 1px solid ButtonText;
     }
 
+    /* A toast is told from the page by its shadow alone, which forced colours remove. */
+    #toast-container > div {
+        outline: 1px solid CanvasText;
+        outline-offset: -1px;
+    }
+
     /* Forced colours remove the fill that is a flat control's only edge. */
     :is(.menu_button, .sb-dialog__icon-button, .sb-dialog__close, .sb-dialog__back, .sb-action-menu-item, .sb-action-sheet-close, .sb-boolean-radio-option > span) {
         outline: 1px solid ButtonBorder;
