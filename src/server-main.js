@@ -79,7 +79,7 @@ import {
     getConfigValue,
 } from './util.js';
 import { isBenignStreamAbort } from './stream-disconnect-guard.js';
-import { forwardAsyncRouteErrors, handleRouteError } from './route-errors.js';
+import { answerWithErrorMessage, forwardAsyncRouteErrors, handleRouteError } from './route-errors.js';
 import { UPLOADS_DIRECTORY } from './constants.js';
 
 // Routers
@@ -367,6 +367,8 @@ if (!cliArgs.disableCsrf) {
     // Customize the error message
     csrfSyncProtection.invalidCsrfTokenError.message = color.red('Invalid CSRF token. Please refresh the page and try again.');
     csrfSyncProtection.invalidCsrfTokenError.stack = undefined;
+    // SillyBunny: the 403 carries this message, because the client refreshes its token and retries only when the answer names the invalid CSRF token.
+    answerWithErrorMessage(csrfSyncProtection.invalidCsrfTokenError);
 
     app.use(csrfSyncProtection.csrfSynchronisedProtection);
 } else {

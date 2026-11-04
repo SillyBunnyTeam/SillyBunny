@@ -1,6 +1,10 @@
+import { stripVTControlCharacters } from 'node:util';
+
 import Layer from 'express/lib/router/layer.js';
 
 import { isBenignStreamAbort } from './stream-disconnect-guard.js';
+
+const errorsAnsweredWithMessage = new WeakSet();
 
 /**
  * Sends a rejected promise from a route handler or middleware to the error handlers, as Express 5 does.
@@ -47,9 +51,19 @@ function forwardRejection(result, next) {
 }
 
 /**
+ * Makes handleRouteError answer this error object with its own message as plain text, without color
+ * codes, instead of the status text. Only for an error whose message is written for the client.
+ * @param {Error} error The error object that a middleware passes to next()
+ */
+export function answerWithErrorMessage(error) {
+    errorsAnsweredWithMessage.add(error);
+}
+
+/**
  * Answers a request whose route failed. An error that carries a 4xx or 5xx status, such as a body that is
  * not valid JSON or a request without a valid CSRF token, keeps that status; any other error gets 500.
- * The answer holds only the status text, so no stack trace or error message reaches the client.
+ * The answer holds only the status text, so no stack trace or error message reaches the client, except
+ * for an error passed to answerWithErrorMessage().
  * A response that has already started is not answered again. An unfinished one is cut off, so that the
  * client does not wait for the rest.
  *
@@ -70,7 +84,13 @@ export function handleRouteError(error, request, response, next) {
         return;
     }
 
-    response.sendStatus(getErrorStatus(error));
+    const status = getErrorStatus(error);
+    if (errorsAnsweredWithMessage.has(error)) {
+        response.status(status).type('text/plain').send(stripVTControlCharacters(String(error.message)));
+        return;
+    }
+
+    response.sendStatus(status);
 }
 
 function getErrorStatus(error) {
