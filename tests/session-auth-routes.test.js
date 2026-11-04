@@ -1,6 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import express from 'express';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
 
 import {
     closeApps,
@@ -389,5 +392,30 @@ describe('empty basicAuthUser credentials', () => {
         await startSessionRoutes({ env: { ...ACCOUNT_PASSWORDS, SILLYTAVERN_BASICAUTHUSER_PASSWORD: '' } });
 
         expect(credentialWarnings()).toHaveLength(0);
+    }, MODULE_RELOAD_TIMEOUT_MS);
+});
+
+describe('basicAuthUser comparison', () => {
+    test.each([
+        ['a wrong username of another length', 'someone-else', PASSWORD, 401],
+        ['a wrong password of another length', USERNAME, 'a-much-longer-wrong-password', 401],
+        ['the configured credentials', USERNAME, PASSWORD, 200],
+    ])('login compares both configured values with crypto.timingSafeEqual for %s', async (_title, username, password, status) => {
+        const { base } = await startSessionRoutes();
+        const timingSafeEqual = jest.spyOn(crypto, 'timingSafeEqual');
+
+        const reply = await login(base, { username, password });
+
+        expect(reply.status).toBe(status);
+        expect(timingSafeEqual).toHaveBeenCalledTimes(2);
+    }, MODULE_RELOAD_TIMEOUT_MS);
+
+    test('validateCredentials refuses the configured values when the password in the config file is a number', async () => {
+        const configPath = path.join(dataRoot, 'number-password.yaml');
+        fs.writeFileSync(configPath, `basicAuthUser:\n  username: ${USERNAME}\n  password: 12345\n`);
+        await resetServerModules({}, configPath);
+        const { validateCredentials } = await import('../src/middleware/sessionAuth.js');
+
+        await expect(validateCredentials(USERNAME, '12345')).resolves.toBe(false);
     }, MODULE_RELOAD_TIMEOUT_MS);
 });

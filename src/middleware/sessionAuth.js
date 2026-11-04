@@ -78,12 +78,31 @@ function usesAccountPasswords() {
 
 /**
  * Reads the single-user credentials from basicAuthUser.
- * @returns {{username: string, password: string}|null} The credentials, or null when either one is not set or empty
+ * @returns {{username: unknown, password: unknown}|null} The configured values, or null when either one is not set or empty
  */
 function getConfiguredCredentials() {
     const username = getConfigValue('basicAuthUser.username');
     const password = getConfigValue('basicAuthUser.password');
     return username && password ? { username, password } : null;
+}
+
+/**
+ * Checks credentials from a request against basicAuthUser in constant time.
+ * Both sides are hashed first, because timingSafeEqual needs inputs of the same length.
+ * @param {string} username Username from the request
+ * @param {string} password Password from the request
+ * @returns {boolean} False when a configured value is empty or not a string
+ */
+function matchesConfiguredUser(username, password) {
+    const configured = getConfiguredCredentials();
+    if (!configured || typeof configured.username !== 'string' || typeof configured.password !== 'string') {
+        return false;
+    }
+
+    const digest = value => crypto.createHash('sha256').update(value).digest();
+    const usernameMatches = crypto.timingSafeEqual(digest(username), digest(configured.username));
+    const passwordMatches = crypto.timingSafeEqual(digest(password), digest(configured.password));
+    return usernameMatches && passwordMatches;
 }
 
 /**
@@ -99,8 +118,7 @@ export async function validateCredentials(username, password) {
     }
 
     if (!usesAccountPasswords()) {
-        const configured = getConfiguredCredentials();
-        return !!configured && username === configured.username && password === configured.password;
+        return matchesConfiguredUser(username, password);
     }
 
     const userHandles = await getAllUserHandles();
