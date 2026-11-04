@@ -97,4 +97,27 @@ describe('character routes and request fields of an unexpected type', () => {
         expect(fs.existsSync(cardPath())).toBe(false);
         expect(fs.existsSync(chatsFolder())).toBe(false);
     });
+
+    test('POST /delete deletes the card and answers 200 when the card\'s thumbnail cannot be removed', async () => {
+        fs.mkdirSync(path.join(harness.directories.thumbnailsAvatar, 'Probe.png'));
+
+        expect((await post('delete', { avatar_url: 'Probe.png' })).status).toBe(200);
+        expect(fs.existsSync(cardPath())).toBe(false);
+    });
+
+    test('POST /import answers 500 and leaves the card as it was when the card it replaces has a damaged write-recovery record, and replaces the card once the record is gone', async () => {
+        const recordPath = `${cardPath()}.sillybunny-write-recovery`;
+        fs.writeFileSync(recordPath, 'not json');
+        const replacementCard = createV2Card();
+        replacementCard.data.description = 'Replaced.';
+        const replacement = createCardPng(replacementCard);
+
+        expect((await harness.importCard(replacement, 'png', { preserved_name: 'Probe.png' })).status).toBe(500);
+        expect(cardIsUnchanged()).toBe(true);
+        expect(fs.readFileSync(recordPath, 'utf8')).toBe('not json');
+
+        fs.rmSync(recordPath);
+        expect(await harness.importCard(replacement, 'png', { preserved_name: 'Probe.png' })).toEqual({ status: 200, body: { file_name: 'Probe' } });
+        expect(await readDescription()).toBe('Replaced.');
+    });
 });

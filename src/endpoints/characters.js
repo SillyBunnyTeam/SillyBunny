@@ -1800,7 +1800,12 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
     } catch (metadataError) {
         console.error('Could not remove last-chat metadata after character deletion.', metadataError);
     }
-    invalidateThumbnail(request.user.directories, 'avatar', avatar);
+    // SillyBunny: the card is already deleted, so a thumbnail that cannot be removed is logged like the metadata above, and the request still succeeds.
+    try {
+        invalidateThumbnail(request.user.directories, 'avatar', avatar);
+    } catch (thumbnailError) {
+        console.error('Could not remove the thumbnail after character deletion.', thumbnailError);
+    }
 
     return response.sendStatus(200);
 });
@@ -2045,7 +2050,13 @@ router.post('/import', async function (request, response) {
     const preservedFileName = getPreservedName(request);
 
     if (preservedFileName) {
-        recoverFileWriteSync(path.join(request.user.directories.characters, `${preservedFileName}.png`));
+        // SillyBunny: recovery throws when the card's write-recovery record is damaged, and it runs before the import's try, so the error would leave the route.
+        try {
+            recoverFileWriteSync(path.join(request.user.directories.characters, `${preservedFileName}.png`));
+        } catch (error) {
+            console.error('Could not recover character before import.', error);
+            return response.sendStatus(500);
+        }
     }
 
     const formatImportFunctions = {
