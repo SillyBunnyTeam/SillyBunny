@@ -35,6 +35,7 @@ The tables below are generated from the generation log. They list each model's i
 | gemini | gemini-nano-banana-2.1 | 5 | 2026-11-01 | 2026-11-01 | 0 | $0.90 | - |
 | local | compose-scene | 17 | 2026-11-01 | 2026-11-01 | 8 | - | $0.00 |
 | local | github-assets | 14 | 2026-11-04 | 2026-11-04 | 0 | - | $0.00 |
+| local | icons | 26 | 2026-11-04 | 2026-11-04 | 0 | - | $0.00 |
 | local | pixel-snap | 66 | 2026-11-01 | 2026-11-04 | 37 | - | $0.00 |
 | local | rim-recolour | 48 | 2026-11-01 | 2026-11-01 | 13 | - | $0.00 |
 | local | vectorize | 14 | 2026-11-01 | 2026-11-01 | 4 | - | $0.00 |
@@ -44,7 +45,7 @@ The tables below are generated from the generation log. They list each model's i
 | Fact | Value |
 |---|---|
 | Log | log/generations.jsonl |
-| Reference images attached | 617 |
+| Reference images attached | 621 |
 | Total charged | $53.45 |
 | Total estimated, not yet measured | $7.20 |
 
