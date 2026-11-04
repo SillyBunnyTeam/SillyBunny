@@ -584,6 +584,27 @@ describe('Popup frame adapter', () => {
         frame.dispose();
     });
 
+    test('opened() measures a content-sized Window again after the handler made it shorter', () => {
+        setupDialogMedia();
+        const animationFrame = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => {
+            callback();
+            return 0;
+        });
+        const value = popupDom({ type: POPUP_TYPE.TEXT });
+        let height = 400;
+        Object.defineProperty(value.dlg, 'offsetHeight', { configurable: true, get: () => height });
+        value.onOpening = () => { height = 300; };
+        const frame = framePopup(value, { tier: 'window', size: 'content' });
+        try {
+            value.dlg.showModal();
+            frame.opened();
+            expect(value.dlg.style.minHeight).toBe('300px');
+        } finally {
+            frame.dispose();
+            animationFrame.mockRestore();
+        }
+    });
+
     test('a throwing handler is logged, and the transitions that it started still end', () => {
         setupDialogMedia();
         const error = jest.spyOn(console, 'error').mockImplementation(() => {});
