@@ -51,7 +51,9 @@ const get = (...args) => makeRow('GET', ...args);
  *
  * A backslash separates paths only on Windows. The file name validators refuse it there, and on other systems it
  * is a plain character that the route handles as part of the name, so those rows split BACKSLASHES by platform.
- * RESERVED needs no split because Node gives Windows an absolute path in the \\?\ form, which turns off device names.
+ * Device names need no split because Node gives Windows an absolute path in the \\?\ form, which turns off device names.
+ * A reserved name sanitizes to an empty name, so a create-only copy then targets the folder itself. Linux refuses
+ * that copy with EEXIST, but Windows can refuse it with EPERM, so the upload-new row accepts a server error there.
  */
 export const ROUTE_TABLE = [
     post('/api/avatars', '/delete', 'avatar', { plain: 'seed.png', reject: [400, 403], serverError: [EMPTY] }),
@@ -62,7 +64,7 @@ export const ROUTE_TABLE = [
     post('/api/backgrounds', '/rename', 'old_bg', { fixed: { new_bg: 'renamed.png' }, plain: 'seed.png', reject: [400], serverError: [RESERVED, DOTS, EMPTY] }),
     post('/api/backgrounds', '/rename', 'new_bg', { fixed: { old_bg: 'seed.png' }, plain: 'plain', reject: [400], sanitized: [SEPARATORS, TRAILING, LONG], writes: ['backgrounds'] }),
     post('/api/backgrounds', '/upload', 'originalname', { transport: 'filename', plain: 'plain.png', reject: [400], sanitized: [SLASHES, BACKSLASHES, TRAILING, LONG, MULTIPART], serverError: [NUL_BYTE, RESERVED], writes: ['backgrounds', 'image-metadata.json'] }),
-    post('/api/backgrounds', '/upload-new', 'originalname', { transport: 'filename', plain: 'plain.png', reject: [400, 409], sanitized: [SLASHES, BACKSLASHES, TRAILING, LONG, MULTIPART], serverError: [NUL_BYTE], writes: ['backgrounds', 'image-metadata.json'] }),
+    post('/api/backgrounds', '/upload-new', 'originalname', { transport: 'filename', plain: 'plain.png', reject: [400, 409], sanitized: [SLASHES, BACKSLASHES, TRAILING, LONG, MULTIPART], serverError: [NUL_BYTE, onWindows(RESERVED)], writes: ['backgrounds', 'image-metadata.json'] }),
 
     post('/api/themes', '/save', 'name', { plain: 'plain', reject: [400], sanitized: [SEPARATORS, TRAILING, DOTS], serverError: [RESERVED, LONG], writes: ['themes'] }),
     post('/api/themes', '/create', 'name', { plain: 'plain', reject: [400, 409], sanitized: [SEPARATORS, TRAILING, LONG, DOTS], writes: ['themes'] }),
