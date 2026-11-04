@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 
 import { sync as commandExistsSync } from 'command-exists';
 
+import { findNpmCli, getNpmCommand } from './npm-launcher.js';
 import { isPathInside } from './path-containment.js';
 import { isServerPluginUpdateSupervised } from './server-plugin-update-ipc.js';
 
@@ -30,6 +31,8 @@ const UPDATE_MUTEX_STALE_MS = 5 * 60 * 1000;
 const JOURNAL_SUFFIX = '.jsonl';
 const BLOCKED_PRESERVE_ROOTS = new Set(['.git', 'node_modules', SERVER_PLUGIN_RELEASE_MARKER]);
 const UNSUPPORTED_DIRECTORY_SYNC_ERRORS = new Set(['EBADF', 'EINVAL', 'EISDIR', 'ENOTSUP', 'EPERM']);
+const WINDOWS_FILE_SYNC_RETRY_DELAYS_MS = [0, 50, 125, 250];
+const WINDOWS_FILE_SYNC_RETRY_ERRORS = new Set(['EACCES', 'EBUSY', 'EPERM']);
 
 export class ServerPluginUpdateError extends Error {
     constructor(status, code, message) {
@@ -161,8 +164,34 @@ function truncateOutput(value) {
         : text;
 }
 
-function syncRegularFile(filePath) {
-    const descriptor = fs.openSync(filePath, 'r');
+function openForWindowsFileSync(filePath) {
+    for (let attempt = 0; attempt < WINDOWS_FILE_SYNC_RETRY_DELAYS_MS.length; attempt++) {
+        const delayMs = WINDOWS_FILE_SYNC_RETRY_DELAYS_MS[attempt];
+        if (delayMs) {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+        }
+        try {
+            return fs.openSync(filePath, 'r+');
+        } catch (error) {
+            // Antivirus and indexer handles can briefly block a write-access open.
+            if (!WINDOWS_FILE_SYNC_RETRY_ERRORS.has(error?.code) || attempt === WINDOWS_FILE_SYNC_RETRY_DELAYS_MS.length - 1) {
+                throw error;
+            }
+        }
+    }
+}
+
+function syncRegularFile(filePath, stat, hostPlatform) {
+    let descriptor;
+    if (hostPlatform === 'win32') {
+        // Windows fsync needs write access. Skip read-only files without changing permissions; Git flushed its pack files, but preserved read-only files stay unflushed.
+        if ((stat.mode & 0o200) === 0) {
+            return;
+        }
+        descriptor = openForWindowsFileSync(filePath);
+    } else {
+        descriptor = fs.openSync(filePath, 'r');
+    }
     try {
         fs.fsyncSync(descriptor);
     } finally {
@@ -186,20 +215,29 @@ export function syncServerPluginDirectory(directoryPath) {
     }
 }
 
-export function syncServerPluginTree(targetPath) {
+// hostPlatform exists for tests; callers pass nothing so the flush follows the host platform.
+export function syncServerPluginTree(targetPath, { hostPlatform = process.platform } = {}) {
     const stat = fs.lstatSync(targetPath);
     if (stat.isSymbolicLink()) {
         return;
     }
     if (stat.isFile()) {
-        syncRegularFile(targetPath);
+        try {
+            syncRegularFile(targetPath, stat, hostPlatform);
+        } catch (error) {
+            if (error?.path) {
+                throw error;
+            }
+            // fsync errors carry no path, so these name the file and keep the original code.
+            throw Object.assign(new Error(`Could not flush server plugin file ${targetPath}: ${error?.message || error}`, { cause: error }), { code: error?.code });
+        }
         return;
     }
     if (!stat.isDirectory()) {
         fail(422, 'unsafe_release', `Server plugin release contains an unsupported file type: ${targetPath}.`);
     }
     for (const entry of fs.readdirSync(targetPath)) {
-        syncServerPluginTree(path.join(targetPath, entry));
+        syncServerPluginTree(path.join(targetPath, entry), { hostPlatform });
     }
     syncServerPluginDirectory(targetPath);
 }
@@ -638,12 +676,24 @@ function validateTargetPackage(installed, targetPackage, targetVersion, releaseR
     return pluginId;
 }
 
+function canFindNpmCli(env) {
+    try {
+        findNpmCli(env);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export function getServerPluginUpdateCapabilities({
     commandExists = commandExistsSync,
     supervised = isServerPluginUpdateSupervised(),
+    platform = process.platform,
+    env = process.env,
 } = {}) {
     const gitAvailable = commandExists('git');
-    const npmAvailable = commandExists('npm');
+    // Windows runs npm-cli.js with node, so npm counts only when that file is found.
+    const npmAvailable = platform === 'win32' ? canFindNpmCli(env) : commandExists('npm');
 
     return {
         apiVersion: SERVER_PLUGIN_UPDATE_API_VERSION,
@@ -669,6 +719,7 @@ export async function stageServerPluginRelease({
     runCommand = runServerPluginCommand,
     allowFileRepositories = false,
     platform = process.platform,
+    env = process.env,
     lockOwnerPid = process.env.SILLYBUNNY_SUPERVISED === '1' ? process.ppid : process.pid,
 } = {}) {
     const version = String(targetVersion ?? '').trim();
@@ -679,7 +730,7 @@ export async function stageServerPluginRelease({
 
     // The route verifies supervisor support before staging. This function only
     // needs to verify the tools required to build the release transaction.
-    const capabilities = getServerPluginUpdateCapabilities({ commandExists, supervised: true });
+    const capabilities = getServerPluginUpdateCapabilities({ commandExists, supervised: true, platform, env });
     if (!capabilities.available) {
         fail(503, 'tooling_unavailable', 'Git and npm are required for automatic server plugin updates.');
     }
@@ -747,8 +798,8 @@ export async function stageServerPluginRelease({
             fail(422, 'repository_mismatch', 'Cloned release origin does not match the installed server plugin.');
         }
 
-        const npmCommand = platform === 'win32' ? 'npm.cmd' : 'npm';
-        await runCommand(npmCommand, ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: releaseRoot });
+        const npm = getNpmCommand(['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { env, platform });
+        await runCommand(npm.command, npm.args, { cwd: releaseRoot });
 
         const preservePaths = validateServerPluginPreservePaths(targetPackage);
         for (const relativePath of preservePaths) {
@@ -785,6 +836,7 @@ export async function stageServerPluginRelease({
             expectedPluginId,
             releaseDigest,
         };
+        // The flush follows the host platform; the platform option only decides how npm is found and run.
         syncServerPluginTree(releaseRoot);
         syncServerPluginDirectory(stagingRoot);
         createUpdateJournal(journalPath, stagedUpdate);

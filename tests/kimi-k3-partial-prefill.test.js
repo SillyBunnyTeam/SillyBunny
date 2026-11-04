@@ -10,7 +10,7 @@ const indexSource = readSource('../public/index.html');
 const openAiSource = readSource('../public/scripts/openai.js');
 const scriptSource = readSource('../public/script.js');
 
-const SETTING_ENTRY = "kimi_partial_prefill: ['#openai_kimi_partial_prefill', 'kimi_partial_prefill', false, false],";
+const SETTING_ENTRY = 'kimi_partial_prefill: [\'#openai_kimi_partial_prefill\', \'kimi_partial_prefill\', false, false],';
 
 describe('Kimi K3 partial prefill field', () => {
     test('is registered in the preset setting map as a plain, non-connection value', () => {
@@ -24,7 +24,7 @@ describe('Kimi K3 partial prefill field', () => {
         const defaults = openAiSource.match(/const default_settings = \{([\s\S]*?)\n\};/);
 
         expect(defaults).not.toBeNull();
-        expect(defaults[1]).toContain("kimi_partial_prefill: '',");
+        expect(defaults[1]).toContain('kimi_partial_prefill: \'\',');
     });
 
     test('writes back to settings on input', () => {
@@ -32,7 +32,7 @@ describe('Kimi K3 partial prefill field', () => {
     });
 
     test('is claimed by a settings drawer group, or it is orphaned when the panel is rebuilt', () => {
-        expect(openAiSource).toContain("'#openai_settings > div > .range-block:has(#openai_kimi_partial_prefill)',");
+        expect(openAiSource).toContain('\'#openai_settings > div > .range-block:has(#openai_kimi_partial_prefill)\',');
     });
 
     test('round-trips through a preset save', () => {
@@ -56,7 +56,7 @@ describe('effective prompt bias', () => {
         const helper = openAiSource.match(/export function getEffectivePromptBias\(\) \{([\s\S]*?)\n\}/);
 
         expect(helper).not.toBeNull();
-        expect(helper[1]).toContain("if (main_api === 'openai' && isKimiK3PartialPrefillActive()) {");
+        expect(helper[1]).toContain('if (main_api === \'openai\' && isKimiK3PartialPrefillActive()) {');
         // The fallback is what keeps installs that predate the field working untouched.
         expect(helper[1]).toContain('return oai_settings.kimi_partial_prefill || power_user.user_prompt_bias;');
         expect(helper[1]).toContain('return power_user.user_prompt_bias;');
@@ -71,7 +71,7 @@ describe('effective prompt bias', () => {
         const getBiasStrings = scriptSource.match(/export function getBiasStrings\(textareaText, type\) \{([\s\S]*?)\n\}/);
         expect(getBiasStrings).not.toBeNull();
         expect(getBiasStrings[1]).toContain('const userPromptBias = getEffectivePromptBias();');
-        expect(getBiasStrings[1]).toContain("promptBias = messageBias || promptBias || userPromptBias || '';");
+        expect(getBiasStrings[1]).toContain('promptBias = messageBias || promptBias || userPromptBias || \'\';');
         expect(getBiasStrings[1]).toContain('const isUserPromptBias = promptBias === userPromptBias;');
 
         const cleanUpMessage = scriptSource.match(/export function cleanUpMessage\(\{[\s\S]*?\n\}\n/);
@@ -84,7 +84,7 @@ describe('effective prompt bias', () => {
         // show_user_prompt_bias and its own assignment still read power_user directly; the three
         // prefill reads that decide what is sent and displayed must not.
         expect(scriptSource).not.toContain('substituteParams(power_user.user_prompt_bias)');
-        expect(scriptSource).not.toContain("promptBias || power_user.user_prompt_bias");
+        expect(scriptSource).not.toContain('promptBias || power_user.user_prompt_bias');
         expect(scriptSource).not.toContain('promptBias === power_user.user_prompt_bias');
     });
 });

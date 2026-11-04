@@ -224,10 +224,10 @@ describe('launcher parity', () => {
             bun: '>= 1.3.14',
             node: '>= 20',
         });
-        expect(packageJson.packageManager).toBe('bun@1.3.14');
-        expect(dockerfileSource).toMatch(/^FROM oven\/bun:1\.3\.14-alpine$/m);
-        expect(prChecksSource).toContain('bun-version: 1.3.14');
-        expect(releaseE2ESource).toContain('bun-version: 1.3.14');
+        expect(packageJson.packageManager).toBe('bun@1.4.4');
+        expect(dockerfileSource).toMatch(/^FROM oven\/bun:1\.4\.4-alpine$/m);
+        expect(prChecksSource).toContain('bun-version: 1.4.4');
+        expect(releaseE2ESource).toContain('bun-version: 1.4.4');
         expect(packageJson.scripts['debug:node']).toBe('node --inspect server.js');
         expect(packageJson.scripts['start:global:node']).toBe('node --no-warnings server.js --global');
         expect(packageJson.scripts['start:no-csrf:node']).toBe('node --no-warnings server.js --disableCsrf');
@@ -245,5 +245,29 @@ describe('launcher parity', () => {
         expect(prMetadataSource).toContain('Pull requests must target staging.');
         expect(prMetadataSource).not.toContain('"$BASE_REF" = "main"');
         expect(prMetadataSource).not.toContain('TLD/mobile-refactor');
+    });
+
+    test('PR metadata accepts the hotfix and Conventional Commits title prefixes', () => {
+        const prefixLine = prMetadataSource
+            .split('\n')
+            .find(line => line.includes('grep -Eq \'^('));
+        expect(prefixLine).toBeDefined();
+
+        // The workflow runs under grep, so its POSIX [[:space:]] class is translated to \s for JS.
+        const alternation = prefixLine.slice(prefixLine.indexOf('\'^(') + 3, prefixLine.indexOf(')('));
+        const prefixPattern = new RegExp(`^(?:${alternation})(\\([^)]+\\))?!?:\\s.+`);
+        const prefixes = ['fix', 'chore', 'feat', 'sync', 'docs', 'hotfix', 'refactor', 'perf', 'test', 'ci', 'build', 'style', 'revert'];
+
+        for (const prefix of prefixes) {
+            expect(prefixPattern.test(`${prefix}: a change`)).toBe(true);
+        }
+        expect(prefixPattern.test('hotfix(x): a change')).toBe(true);
+        expect(prefixPattern.test('refactor(ui)!: a change')).toBe(true);
+        expect(prefixPattern.test('hotfixed: a change')).toBe(false);
+        expect(prefixPattern.test('tests: a change')).toBe(false);
+        expect(prefixPattern.test('a ci: change')).toBe(false);
+        expect(prefixPattern.test('hotfix:')).toBe(false);
+        expect(prefixPattern.test('Hotfix: a change')).toBe(false);
+        expect(prMetadataSource).toContain(`PR title must start with one of: ${prefixes.map(prefix => `${prefix}:`).join(', ')}`);
     });
 });

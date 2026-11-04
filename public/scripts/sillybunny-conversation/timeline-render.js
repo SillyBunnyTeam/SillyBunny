@@ -57,6 +57,7 @@ import {
     saveConversationThread,
 } from './thread-store.js';
 import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation, withTypingParticipant } from './typing.js';
+import { getConversationWorldInfo } from './world-info.js';
 
 export { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 export { getConversationTimelineMessages } from './timeline-search.js';
@@ -1022,11 +1023,17 @@ export async function regenerateConversationMessage(messageId) {
     scheduleInterfaceRefresh({ syncControls: false });
 
     try {
+        const transcript = sourceMessages.slice(0, -1);
+        const worldInfo = await getConversationWorldInfo(transcript, settings, {
+            avatar: speakerAvatar,
+            personaId: context.personaId,
+            trigger: 'regenerate',
+        });
         const prompt = await buildConversationPromptMessages(
-            sourceMessages.slice(0, -1),
+            transcript,
             '[System directive: Regenerate the selected Conversation reply. Keep the same speaker, casual DM style, and current context. Output only the replacement message.]',
             speakerName,
-            { groupId: context.groupId, personaId: context.personaId },
+            { groupId: context.groupId, personaId: context.personaId, worldInfo },
         );
         const response = await withTypingParticipant(
             { avatar: speakerAvatar, name: speakerName },
@@ -1037,6 +1044,7 @@ export async function regenerateConversationMessage(messageId) {
                     branchId: context.branchId,
                     groupId: context.groupId,
                     personaId: context.personaId,
+                    worldInfo,
                 }),
                 responseLength: getConversationReplyMaxTokens(settings),
                 trimNames: true,
@@ -1584,6 +1592,13 @@ export function buildSettingsDrawerHtml() {
             <div class="sb-settings-group">
                 <h4 class="sb-settings-group-title"><i class="fa-solid fa-book-atlas" aria-hidden="true"></i><span>Context Overrides</span></h4>
                 <div class="sb-conversation-field-stack">
+                    <label class="checkbox_label">
+                        <input id="sb_conv_lorebooks_enabled" type="checkbox" />
+                        <span>Use Character Lorebooks <span class="sb-conversation-setting-scope">Global</span></span>
+                    </label>
+                    <p class="sb-conversation-field-hint" data-sb-copy-placeholder="true">TODO(copy)</p>
+                </div>
+                <div class="sb-conversation-field-stack">
                     <label for="sb_conv_lorebook_override">Lorebook Override</label>
                     <select id="sb_conv_lorebook_override" class="text_pole textarea_compact wide100p">
                         ${buildLorebookOptions(settings.lorebook_override)}
@@ -1778,7 +1793,7 @@ export function ensureConversationChrome() {
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
-                <div id="sb_conversation_add_dm_picker" class="sb-conversation-add-dm-picker" style="position: absolute; inset-block-start: calc(100% + 4px); inset-inline-start: 12px; inset-inline-end: 12px; z-index: 95; padding: 10px; border-radius: var(--sb-radius-md); border: 1px solid var(--sb-shell-border); background-color: var(--SmartThemeBlurTintColor); backdrop-filter: blur(12px); box-shadow: 0 4px 20px var(--black50a);" hidden></div>
+                <div id="sb_conversation_add_dm_picker" class="sb-conversation-add-dm-picker" style="position: absolute; inset-block-start: calc(100% + 4px); inset-inline-start: 12px; inset-inline-end: 12px; z-index: 95; padding: 10px; border-radius: var(--sb-radius-md); border: 1px solid var(--sb-shell-border); background-color: var(--SmartThemeBlurTintColor); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 4px 20px var(--black50a);" hidden></div>
             </div>
             <div class="sb-conversation-rail-search" style="padding: 0 14px 8px;">
                 <input type="text" id="sb_conversation_pals_search" class="text_pole textarea_compact wide100p" placeholder="Search direct messages..." style="font-size: var(--sb-type-meta);" />

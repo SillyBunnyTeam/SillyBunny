@@ -24,17 +24,17 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
-### `public/script.js` - chat render lifecycle
+### `public/script.js` and `public/style.css` - chat render lifecycle
 | Field | Value |
 | --- | --- |
 | Area | Chat lifecycle. |
-| Divergence reason | SillyBunny adds mobile batching, bottom pinning, manual-scroll suppression, long-chat anchoring, streaming DOM throttles, and issue `#167` scroll stability behavior. |
+| Divergence reason | SillyBunny adds mobile batching, bottom pinning, manual-scroll suppression, long-chat anchoring, streaming DOM throttles, issue `#167` scroll stability behavior, and issue `#911` off-screen message skipping (`content-visibility` on laid-out history in `public/style.css`, plus swipe refreshes that only touch buttons whose display changes). |
 | Target seam | `public/scripts/chat-render-lifecycle/`. |
-| Adapter shape | Keep exported compatibility functions in `public/script.js`; delegate initial-load bottom landing, bottom-scroll decisions, scheduling, scroll intent/state, anchor preservation, replacement/media anchoring, and update batching to the lifecycle module. |
-| Protecting tests | `tests/chat-scroll-edges.test.js`, `tests/mobile-streaming.test.js`, `tests/chat-render-lifecycle-index.test.js`, `tests/chat-render-lifecycle-bottom-scroll.test.js`, `tests/chat-render-lifecycle-rollout-guard.test.js`, `tests/chat-render-lifecycle-anchor.test.js`, `tests/chat-render-lifecycle-scheduler.test.js`, `tests/chat-render-lifecycle-scroll-intent.test.js`, `tests/chat-render-lifecycle-scroll-state.test.js`, `tests/chat-scroll-state-machine.e2e.js`, `tests/chat-send-scroll.e2e.js`, `tests/chat-scroll-regressions.e2e.js`, future lifecycle unit tests. |
+| Adapter shape | Keep exported compatibility functions in `public/script.js`; delegate initial-load bottom landing, bottom-scroll decisions, scheduling, scroll intent/state, anchor preservation, replacement/media anchoring, off-screen message tracking, and update batching to the lifecycle module. |
+| Protecting tests | `tests/chat-scroll-edges.test.js`, `tests/mobile-streaming.test.js`, `tests/chat-render-lifecycle-index.test.js`, `tests/chat-render-lifecycle-bottom-scroll.test.js`, `tests/chat-render-lifecycle-rollout-guard.test.js`, `tests/chat-render-lifecycle-anchor.test.js`, `tests/chat-render-lifecycle-scheduler.test.js`, `tests/chat-render-lifecycle-scroll-intent.test.js`, `tests/chat-render-lifecycle-scroll-state.test.js`, `tests/chat-render-lifecycle-offscreen-messages.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`, `tests/chat-scroll-state-machine.e2e.js`, `tests/chat-send-scroll.e2e.js`, `tests/chat-scroll-regressions.e2e.js`, future lifecycle unit tests. |
 | Validation | `node --check public/script.js`, focused lifecycle Jest `chat-render-lifecycle-scroll-state.test.js chat-render-lifecycle-script-wiring.test.js`, `npm run check:frontend-budgets`, plus prior lifecycle lint/unit/e2e packs on this stack. |
 | Rollback path | Disable affected lifecycle routes with the permanent device-local kill switch while correcting the routed implementation. |
-| Last reviewed | 2026-06-13 initial-load scroll-state route. |
+| Last reviewed | 2026-10-22 issue `#911` off-screen message skipping route. |
 | Owner | Refactor integrator. |
 
 ### `public/script.js` - generation lifecycle
@@ -49,6 +49,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert lifecycle calls in `public/script.js` while keeping existing provider and prompt paths intact. |
 | Last reviewed | 2026-06-06 in-chat agent stop-button wiring. |
 | Owner | Refactor integrator. |
+
+### `public/script.js`, `public/scripts/group-chats.js`, `public/scripts/reasoning.js`, and `src/endpoints/chats.js` - server-owned chat generations
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`, `public/scripts/group-chats.js`, `public/scripts/reasoning.js`, `src/endpoints/chats.js` |
+| Area | Generation lifecycle and chat persistence. |
+| Divergence reason | SillyBunny lets the server finish a chat reply when the page that asked for it goes away, because phones freeze and close background tabs during a generation. `Generate()` must send a commit plan with each committable request, mark its streaming message so the server replaces only an unfinished reply, and skip its own save when the server kept its copy. Upstream stops the stream on `beforeunload`, which a leave-site prompt can cancel, so the hand-off and the stop run on `pagehide`. A group reply written this way must carry the rest of its round so the round can go on, and the server must save chats with the same locking, integrity and backup handling as a browser save. |
+| Target seam | `public/scripts/server-generations.js`, `public/scripts/resumable-generation.js`, `public/scripts/generation-commit-plan.js`, `src/generation-commit.js`. |
+| Adapter shape | `Generate()` registers a commit plan before each committable request (`registerGenerationCommitPlan()`), then awaits `settleGenerationCommit()` before it saves the finished reply; on `committed` it unblocks and calls `reloadServerCommittedReply()` instead of saving. `StreamingProcessor.onStartStreaming()` sets `extra[GENERATION_PLACEHOLDER_KEY]` on the streaming message, and `finalizeIntermediaryMessage()` and `finalizeStoppedMessage()` delete it. The window `pagehide` handler stops the stream unless the page goes into the back/forward cache; the `beforeunload` handler no longer stops it. `generateGroupWrapper()` records the members still to speak in `groupRoundRemaining`, read by `getGroupRoundRemaining()`, and `resumeGroupRound()` runs them. `parseAutoReasoningFromString()` exposes the live reasoning parse. `updateChatRecords()` saves through `trySaveChat()`, whose `integrity` option restores a chat's earlier slug when a commit is taken back. |
+| Protecting tests | `tests/story-mode-request-controls.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/server-generations-frontend.test.js`, `tests/server-generation-commit.test.js`, `tests/server-generation-commit.e2e.js`, `tests/pathfinder-streaming-origin.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- story-mode-request-controls.test.js resumable-generation-frontend.test.js server-generations-frontend.test.js server-generation-commit.test.js pathfinder-streaming-origin.test.js pathfinder-generation-wiring.test.js`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js` against Bun 1.3.14 and Node servers, `npm run lint`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the `registerGenerationCommitPlan()` and `settleGenerationCommit()` calls, the `GENERATION_PLACEHOLDER_KEY` lines in `onStartStreaming()`, `finalizeIntermediaryMessage()` and `finalizeStoppedMessage()`, and the `pagehide` handler, then put `streamingProcessor.onStopStreaming()` back in the `beforeunload` handler. Requests then carry no commit plan, so the server never writes replies, and `fetchResumable()` still resumes dropped streams. `getGroupRoundRemaining()`, `resumeGroupRound()`, `parseAutoReasoningFromString()` and `updateChatRecords()` are used only by `public/scripts/server-generations.js` and `src/generation-commit.js`, so they go with those modules. |
+| Last reviewed | 2026-10-23 PR #877 review fixes. |
+| Owner | Generation lifecycle owner. |
+
+### `public/script.js` - stopped streaming replies
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` |
+| Area | Generation lifecycle and chat persistence. |
+| Divergence reason | TODO(copy) |
+| Target seam | `none yet`: the steps use private `StreamingProcessor` state, so they stay in `public/script.js`; `public/scripts/generation-lifecycle/` keeps the stop decision. |
+| Adapter shape | `stopGeneration()` calls `StreamingProcessor.finalizeStoppedMessage()` after `onStopStreaming()` and does not await it. The method removes `extra[GENERATION_PLACEHOLDER_KEY]`, applies the stream's pending reasoning and calls `reasoningHandler.finish()`, which persists `extra.reasoning`, `extra.reasoning_duration` and `extra.reasoning_type` and emits `STREAM_REASONING_DONE`. Then it calls `syncMesToSwipe()`, `updateMessageBlock()` and `saveChatConditional()`. It does not emit `MESSAGE_RECEIVED`. `#isOriginMessage()`, split out of `#isCurrent()`, stops it when the chat or the message changes, because Stop has already cleared `streamingProcessor` and the run. The `pagehide` handler calls only `onStopStreaming()`, so a page that goes away still hands its reply to the server. |
+| Protecting tests | `tests/story-mode-request-controls.test.js` (Stop during streamed reasoning, a chat change after Stop, explicit cancellation), `tests/server-generation-commit.e2e.js` (Stop during streamed reasoning on desktop and mobile), `tests/generation-lifecycle-wiring.test.js`, `tests/pathfinder-streaming-origin.test.js`, `tests/resumable-generation-frontend.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- story-mode-request-controls.test.js pathfinder-streaming-origin.test.js pathfinder-generation-wiring.test.js generation-lifecycle resumable-generation-frontend.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js` against a Bun 1.4.4 server at 1440x900 and at 390x844 with an iPhone user agent. |
+| Rollback path | Remove the `finalizeStoppedMessage()` call from `stopGeneration()` and the method. Stop then leaves the stopped reply unsaved and its reasoning in the thinking state, with a null `extra.reasoning_duration`. `#isOriginMessage()` can stay, because `#isCurrent()` returns the same result through it. Saved chats need no change, because the method writes only existing message fields. |
+| Last reviewed | 2026-10-29 Stop during streamed reasoning fix. |
+| Owner | TODO(copy) |
 
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
@@ -289,13 +317,26 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | Area | Generation lifecycle, prompt context, and In-Chat Agents. |
 | Divergence reason | Opted-in Companion results must remain prompt-only assistant history across text and chat-completion providers without changing stored chat text. Rewritten targets, hidden hosts, groups, tool recursion, prompt transforms, and token limits must use the same selected retained context. |
-| Target seam | `public/scripts/extensions/in-chat-agents/companion/companion-shared.js` owns selection and consolidation; `public/scripts/in-chat-agent-inspection.js` owns contribution trimming. Core projection orchestration has no narrower seam yet. |
-| Adapter shape | `Generate()` selects retained contributions and carries ephemeral provenance; provider assembly transports that provenance and trims oldest retained contributions first; group generation only resets the explicit rewrite target for automatic continuation. |
-| Protecting tests | `tests/in-chat-agents-runner.test.js`, `tests/in-chat-agents-store.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`, `tests/guided-generations-correction-wiring.test.js`, and retained-contribution cases in `tests/in-chat-agent-inspection.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- in-chat-agents-runner.test.js in-chat-agents-generation-ui-wiring.test.js in-chat-agent-inspection.test.js`, `npm run lint`, `npm run check:frontend-budgets`, and `git diff --check`. |
-| Rollback path | Remove retained-context projection, provenance transport, trim loops, and rewrite-target plumbing. Stored Companion settings and results remain compatible and can be ignored without migration. |
-| Last reviewed | 2026-07-25 PR #681. |
+| Target seam | `public/scripts/extensions/in-chat-agents/companion/companion-shared.js` owns selection and consolidation; `public/scripts/in-chat-agent-inspection.js` owns contribution trimming; `public/scripts/generation-hidden-messages.js` owns the `GENERATION_HIDE_MESSAGES` request that lets an extension keep a speaker's hidden lines out of the merge. Core projection orchestration has no narrower seam yet. |
+| Adapter shape | `Generate()` awaits the hide request right after the swipe pop (skipped on dry runs), selects retained contributions from the visible lines and carries ephemeral provenance; provider assembly transports that provenance and trims oldest retained contributions first; group generation only resets the explicit rewrite target for automatic continuation. |
+| Protecting tests | `tests/in-chat-agents-runner.test.js`, `tests/in-chat-agents-store.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`, `tests/guided-generations-correction-wiring.test.js`, `tests/generation-hidden-messages.test.js`, the `Generate()` harnesses in `tests/pathfinder-generation-wiring.test.js` and `tests/story-mode-request-controls.test.js` (they stub the hide request), and retained-contribution cases in `tests/in-chat-agent-inspection.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- in-chat-agents-runner.test.js in-chat-agents-generation-ui-wiring.test.js in-chat-agent-inspection.test.js generation-hidden-messages.test.js pathfinder-generation-wiring.test.js story-mode-request-controls.test.js`, `npm run lint`, `npm run check:frontend-budgets`, and `git diff --check`. |
+| Rollback path | Remove retained-context projection, provenance transport, trim loops, rewrite-target plumbing, and the hide request (`companionCandidateMessages` goes back to filtering `coreChat`). Stored Companion settings and results remain compatible and can be ignored without migration. |
+| Last reviewed | 2026-10-10 PR #900 hide request for extension-hidden lines. |
 | Owner | In-Chat Agents maintainer and generation/provider owner. |
+
+### `public/scripts/group-chats.js`, `public/script.js`, `public/scripts/st-context.js`, and `public/scripts/events.js` - group speaker control and extension turn routing
+| Field | Value |
+| --- | --- |
+| Area | Group chat lifecycle, generation lifecycle, and extension APIs. |
+| Divergence reason | Extensions such as Group Chat Overhaul must read and set the speaker bar pick, plan who answers ordinary group messages, and keep per-chat data in step when a member is renamed. Upstream has none of these hooks; the pick is also kept through quiet generations, swipes, Continue and Impersonate, and swipes and Continue stay with the last message's author. |
+| Target seam | `public/scripts/group-turn-routing.js` owns the routing lease, the turn lifecycle, plan validation, the save/load/tool-calling checks before replies, and reply status. Speaker pick and rename hooks have no narrower seam yet. |
+| Adapter shape | `generateGroupWrapper()` starts a routed turn for eligible sends, computes native activation, shows and saves the user message, then calls `turn.prepare()` and replaces the native speakers with the plan; each reply calls `startReply`/`finishReply` and runs with `suppressAutoContinue` and `suppressAutoSwipe`. `Generate()` and `StreamingProcessor` only honour `suppressAutoSwipe` at the three auto-swipe checks. `renameGroupMember()` emits `CHARACTER_RENAMED_IN_PAST_CHAT` for every group chat and saves it when the host or a listener (`rename.markChanged()`) changed it. `getContext()` exposes `getSelectedGroupSpeakerAvatar`, `setSelectedGroupSpeakerAvatar`, and `groupTurnRouting`. |
+| Protecting tests | `tests/group-turn-routing.test.js`, `tests/group-speaker-selection-api.test.js`, `tests/group-member-rename.test.js` (all on `tests/util/group-chats-sandbox.js`), and the `suppressAutoSwipe` cases in `tests/story-mode-request-controls.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- group-turn-routing.test.js group-speaker-selection-api.test.js group-member-rename.test.js story-mode-request-controls.test.js`, `node --check public/scripts/group-chats.js`, `npm run lint`, `npm run check:frontend-budgets`, and `git diff --check`. |
+| Rollback path | Drop the routing branch and `prepare()` call from `generateGroupWrapper()`, the `suppressAutoSwipe` checks, the rename broadcast (emit only when the host rewrote a message), and the three `getContext()` members. The speaker pick returns to being cleared by every generation. No stored data changes. |
+| Last reviewed | 2026-10-10 PR #900. |
+| Owner | Group chat maintainer and generation lifecycle owner. |
 
 ### `public/script.js`, `public/scripts/openai.js`, `public/scripts/PromptManager.js`, and `public/css/promptmanager.css` - runtime In-Chat Agent prompt inspection
 | Field | Value |
@@ -323,6 +364,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-10 PR #403 claude-fable-5 400 fix. |
 | Owner | Bugfix integrator. |
 
+### `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, and `src/prompt-converters.js` - Google model catalog
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, `src/prompt-converters.js`. |
+| Area | Settings and generation lifecycle (Google AI Studio and Vertex AI model pickers and Gemini request builders). |
+| Divergence reason | TODO(copy) |
+| Target seam | None yet; the changes follow upstream's per-model option lists and regex patterns, so a future upstream sync can drop them once upstream covers these models. |
+| Adapter shape | Static `<option>` entries and `(deprecated)` labels in both pickers and the caption list; two AI Studio entries in `migrateChatCompletionSettings`; context, vision, video and audio list entries in `openai.js`; regex alternations and list entries in `getGeminiBody`, `convertGooglePrompt` and `calculateGoogleBudgetTokens`. |
+| Protecting tests | `tests/openai-static-models.test.js`, `tests/google-model-request.test.js`, `tests/prompt-converters.test.js`, `tests/story-mode-request-controls.test.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, focused Jest for the four protecting test files, full `npm run test:unit`, `npm run check:frontend-budgets`, and `node --check` on the changed JavaScript files. |
+| Rollback path | Revert the option entries, the two AI Studio migration entries and the regex alternations. No data cleanup is needed, because a saved `gemini-3.8-flash` or `gemini-3.6-flash` selection stays valid on AI Studio. |
+| Last reviewed | 2026-10-29 Google model catalog update. |
+| Owner | TODO(copy) |
+
 ### `public/index.html` - in-chat agent message action buttons
 | Field | Value |
 | --- | --- |
@@ -348,6 +403,48 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Remove the router mounts from `src/server-startup.js` and revert the Conversation REST endpoint module without touching persisted `settings.json` data. |
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Feature maintainer. |
+
+### `src/server-startup.js` - listen retry and port-conflict diagnostics
+| Field | Value |
+| --- | --- |
+| File | `src/server-startup.js`. |
+| Area | Server lifecycle. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/server-listen.js`. |
+| Adapter shape | `#startHTTPorHTTPS()` runs the IPv6 and IPv4 binds at the same time through `retryOnAddressInUse()` and calls `reportPortHolders()` on the first retry. Both create functions close a server that failed to bind and call `trackListeningServer()` once it listens. `#handleServerListenFail()` calls `reportPortHolders()` again and prints the `diagnosePortConflict()` result through `formatPortConflictBanner()` before it exits. `#getAddressInUseMessage()` uses `APP_NAME` and adds the Bun socket-inheritance hint only when `hasBunSocketInheritBug()` is true. |
+| Protecting tests | `tests/server-listen.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- server-listen.test.js`, `node --check src/server-startup.js`, `npm run lint`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 Bun socket-inheritance hint limited to Bun before 1.4.0. |
+| Owner | TODO(copy) |
+
+### `src/transformers.js` - caption image decoding
+| Field | Value |
+| --- | --- |
+| File | `src/transformers.js`. |
+| Area | Image captioning (`POST /api/extra/caption`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/transformers-image.js`. |
+| Adapter shape | `getRawImage()` decodes the base64 string into a `Buffer` and returns `decodeRawImage(buffer)`, or `null` when that throws. `decodeRawImage()` throws for bytes that do not start with a PNG, JPEG, GIF, BMP, TIFF, WebP or AVIF signature, so jimp's file-type check never sees them. It decodes the rest with the server's jimp (`src/jimp.js`) instead of calling `RawImage.fromBlob()`, and returns an RGBA `JimpRawImage`, a `RawImage` subclass whose `resize()` also uses jimp instead of `OffscreenCanvas`. `crop()` and `center_crop()` stay upstream; the default captioning model does not call them. |
+| Protecting tests | `tests/transformers-image.test.js`. The test defines `self` before sillytavern-transformers loads, so the library takes the code path that it takes under Bun. |
+| Validation | `npm run test:unit --prefix tests -- transformers-image.test.js` (on the base commit, the ASF test fails when its child process reaches the 30 s deadline, the PNG test gets `null`, and the preprocessing test fails with `OffscreenCanvas not supported by this browser.`), `npm run lint`. |
+| Rollback path | Restore the upstream `getRawImage()` body (`RawImage.fromBlob()` on a `Blob` of the decoded bytes) and the `RawImage` import, then delete `src/transformers-image.js` and `tests/transformers-image.test.js`. No stored data or settings change. The rollback brings back the server hang on a malformed ASF header and the 400 for every image under Bun. |
+| Last reviewed | 2026-11-02 caption image signature check (GHSA-5v7r-6r5c-r473). |
+| Owner | TODO(copy) |
+
+### `src/endpoints/characters.js` - character file names
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | Character import, create and rename file names. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | `getPngName()` sanitises the name on every platform with `sanitizeSafeCharacterReplacements` (an empty result becomes `character`), then drops a trailing `.png` in any case, because `getPngFileName()` keeps that extension; the name it returns always maps to `<name>.png`. `writeCharacterData()` fails when `resolveCharacterAvatarPath()` rejects the target name. The V2/V3 JSON branch of `importFromJson()` sanitises `data.name` and `name` before `readFromV2()`, as SillyTavern's does since `1bb2a5ea1`. `getPreservedName()` keeps `sanitiseFilenameForWindows()`. |
+| Protecting tests | `tests/character-card-metadata-preservation.test.js`, `tests/entity-date-added-endpoints.test.js` and `tests/entity-last-chat-endpoints.test.js` create, edit and rename cards through `getPngName()` and `writeCharacterData()`. |
+| Validation | `npm run test:unit --prefix tests` (on Windows, the same 10 suites and 33 tests fail as on the base commit), `npm run lint`. |
+| Rollback path | Revert the `getPngName()`, `writeCharacterData()` and `importFromJson()` hunks. No stored data or settings change. |
+| Last reviewed | 2026-11-02 character file names sanitised on every platform. |
+| Owner | TODO(copy) |
 
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
@@ -414,6 +511,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Account and release integrator. |
 
+### `src/electron/` - Electron launcher removal
+| Field | Value |
+| --- | --- |
+| File | `src/electron/Start.bat`, `src/electron/package.json` and `src/electron/package-lock.json`, removed. SillyTavern also ships `src/electron/index.js` and `src/electron/start.sh`, which SillyBunny never adopted. |
+| Area | Packaging and launchers. |
+| Divergence reason | TODO(copy) |
+| Target seam | None. The root launchers start `server.js`, and SillyBunny ships no Electron entry point. |
+| Adapter shape | None. A SillyTavern sync that changes `src/electron/**` leaves those changes out. |
+| Protecting tests | None. |
+| Validation | `git grep -n -i "src/electron"` finds no code, test or workflow reference. `.github/pr-auto-labels-by-files.yml` parses as YAML. |
+| Rollback path | Revert the commit that removed the package (`git log --diff-filter=D -- src/electron/package.json`), which restores the three files at electron 41.1.1. The launcher still does not start until `src/electron/index.js` comes from SillyTavern, because `package.json` names it as `main`, and until the Electron binary is installed, because `Start.bat` installs with `--ignore-scripts` and the electron package downloads its binary only in its `postinstall` script. |
+| Last reviewed | 2026-11-02, package removal. |
+| Owner | TODO(copy) |
+
 ### World Info files - shell integration and safe persistence
 | Field | Value |
 | --- | --- |
@@ -427,6 +538,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert shell/source integration and filename normalization independently; retain the upstream World Info data format. |
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | World Info and shell integrator. |
+
+### `public/scripts/world-info.js` - scan target for Conversation lorebooks
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/world-info.js` |
+| Area | World Info scanning and Conversation mode. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-conversation/world-info.js`. |
+| Adapter shape | `checkWorldInfo()` and `getSortedEntries()` take an optional `scanTarget` (`WIScanTarget`), and `WorldInfoBuffer` takes the substitution function for keys. With a target, the scan reads the target character's linked books and the global books, reads `chatWorld` and `personaWorld` in place of the chat and persona lorebooks, and applies character filters, `{{char}}`, `{{user}}` and the regex `{{char}}` to the target. It skips the active chat's extension prompts, forced activations, sticky and cooldown writes, Author's Note write, `WORLDINFO_ENTRIES_LOADED` and `WORLDINFO_SCAN_DONE`. Without a target the scan does not change. |
+| Protecting tests | `tests/world-info-scan-target.test.js` (characterization of the active-chat scan, plus target scans), `tests/frontend/ConversationLorebooks.e2e.js`. |
+| Validation | `npm run test:unit -- world-info-scan-target.test.js` in `tests/`, `npx eslint public/scripts/world-info.js`, `npm run test:e2e -- frontend/ConversationLorebooks.e2e.js` against a running server in Chromium and WebKit. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-10-23 Conversation lorebooks. |
+| Owner | TODO(copy) |
+
+### `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroRegistry.js`, and `public/scripts/macros/definitions/core-macros.js` - macro whitespace markers
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroRegistry.js`, `public/scripts/macros/definitions/core-macros.js` |
+| Area | Macros 2.0 whitespace trimming. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/macros/sillybunny-whitespace-markers.js`. |
+| Adapter shape | `MacroCstWalker` marks `{{newline}}`, `{{space}}` and `{{noop}}` output, and removes the markers from arguments, from scoped content after its trim, and from variable shorthand values after their trim. `MacroEngine.evaluate()` gives marked text to the `core:` post-processors that run before all others, runs the legacy `{{trim}}` through `applyLegacyTrim()`, and gives the other post-processors text without markers. `resolve()` passes `keepWhitespaceMarkers` to `MacroEngine.evaluate()`. Only the `{{if}}` handler sets it, for its branch, so that its trim keeps the marked output. |
+| Protecting tests | `tests/sillybunny-macro-whitespace.test.js`, `tests/frontend/sillybunny-macro-whitespace.e2e.js`, `tests/frontend/MacroEngine.e2e.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, `npm run test:unit -- sillybunny-macro-whitespace.test.js` and the full `npm run test:unit` in `tests/`, `npm run check:frontend-budgets`, and `npm run test:e2e -- frontend/sillybunny-macro-whitespace.e2e.js frontend/MacroEngine.e2e.js` against a running server in Chromium. |
+| Rollback path | Remove the `SillyBunny:` lines in the four files and delete the marker module; the engine then trims as upstream does, and the specs that test the markers fail until they are removed. If upstream merges its own fix for SillyTavern/SillyTavern#5673 and SillyTavern/SillyTavern#5674 (open as SillyTavern/SillyTavern#6040), take the upstream code in the sync, drop this adapter, and keep the whitespace cases in `tests/frontend/sillybunny-macro-whitespace.e2e.js` that still apply. |
+| Last reviewed | 2026-11-02 macro whitespace markers. |
+| Owner | TODO(copy) |
 
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |

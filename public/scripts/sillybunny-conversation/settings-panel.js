@@ -100,6 +100,7 @@ export function openScheduleEditorModal(initialAvatar = getCurrentCharAvatar()) 
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.7);
+        -webkit-backdrop-filter: blur(8px);
         backdrop-filter: blur(8px);
         z-index: 9999;
         display: grid;

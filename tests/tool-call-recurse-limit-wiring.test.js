@@ -39,7 +39,7 @@ describe('tool call recurse limit wiring', () => {
     });
 
     test('maps the control through OpenAI preset settings', () => {
-        expect(openAiSource).toContain("tool_call_recurse_limit: ['#tool_call_recurse_limit', 'tool_call_recurse_limit', false, false]");
+        expect(openAiSource).toContain('tool_call_recurse_limit: [\'#tool_call_recurse_limit\', \'tool_call_recurse_limit\', false, false]');
         expect(openAiSource).toContain('tool_call_recurse_limit: TOOL_CALL_RECURSE_LIMIT_DEFAULT');
     });
 
@@ -50,7 +50,7 @@ describe('tool call recurse limit wiring', () => {
 
         expect(applySource).toContain('ToolManager.RECURSE_LIMIT = recurseLimit;');
         expect(loadSource).toContain('applyToolCallRecurseLimit(oai_settings.tool_call_recurse_limit);');
-        expect(initSource).toContain("$('#tool_call_recurse_limit').on('input'");
+        expect(initSource).toContain('$(\'#tool_call_recurse_limit\').on(\'input\'');
         expect(initSource).toContain('applyToolCallRecurseLimit($(this).val());');
     });
 });

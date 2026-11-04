@@ -170,15 +170,15 @@ describe('In-Chat Agent prompt inspection', () => {
         expect(rowSource).not.toContain('prompt-manager-edit-action');
         expect(rowSource).not.toContain('prompt_manager_prompt_controls');
         expect(rowSource).not.toContain('<span class="prompt-manager-control-placeholder" aria-hidden="true"></span>\n                <span class="${prefix}prompt_manager_prompt_name"');
-        expect(promptManagerSource).toContain("this.selectedPromptId !== RUNTIME_AGENTS_IDENTIFIER && !this.getPromptById(this.selectedPromptId)");
-        expect(promptManagerSource).toContain("this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea === 'inspect'");
-        expect(promptManagerSource).toContain("messageList.innerHTML = '';\n                this.loadMessagesIntoInspectForm(this.runtimeAgentMessages);");
+        expect(promptManagerSource).toContain('this.selectedPromptId !== RUNTIME_AGENTS_IDENTIFIER && !this.getPromptById(this.selectedPromptId)');
+        expect(promptManagerSource).toContain('this.selectedPromptId === RUNTIME_AGENTS_IDENTIFIER && this.activePopupArea === \'inspect\'');
+        expect(promptManagerSource).toContain('messageList.innerHTML = \'\';\n                this.loadMessagesIntoInspectForm(this.runtimeAgentMessages);');
         expect(promptManagerSource).toContain('this.runtimeAgentMessages = null;');
         expect(rowSource).toContain('const runtimeAgentTokens = this.getInChatAgentTokenUsage();');
         expect(buildSource).toContain('this.runtimeAgentMessages = null;');
         expect(buildSource.match(/this\.runtimeAgentMessages = runtimeMessages;/g)).toHaveLength(1);
         expect(buildSource.indexOf('this.runtimeAgentMessages = runtimeMessages;')).toBeLessThan(buildSource.indexOf('} catch (error)'));
-        expect(openaiSource).toContain("console.warn('[PromptManager] Failed to count detached In-Chat Agent inspection tokens:'");
+        expect(openaiSource).toContain('console.warn(\'[PromptManager] Failed to count detached In-Chat Agent inspection tokens:\'');
         expect(openaiSource).not.toContain('this.messages.add(runtimeMessages)');
         expect(settingsSource).not.toContain(RUNTIME_AGENTS_IDENTIFIER);
         expect(presetSource).not.toContain(RUNTIME_AGENTS_IDENTIFIER);
@@ -195,7 +195,7 @@ describe('In-Chat Agent prompt inspection', () => {
             'content.js',
         ), 'utf8');
 
-        expect(presetToolsSource).toContain(".filter(row => row.dataset.pmRuntime !== 'true');");
-        expect(presetToolsSource).toContain("querySelectorAll(':scope > li[data-pm-runtime=\"true\"]')");
+        expect(presetToolsSource).toContain('.filter(row => row.dataset.pmRuntime !== \'true\');');
+        expect(presetToolsSource).toContain('querySelectorAll(\':scope > li[data-pm-runtime="true"]\')');
     });
 });

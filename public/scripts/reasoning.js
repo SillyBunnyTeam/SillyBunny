@@ -230,6 +230,8 @@ export function extractReasoningFromData(data, {
                 case chat_completion_sources.MAKERSUITE:
                 case chat_completion_sources.VERTEXAI:
                     return data?.responseContent?.parts?.filter(part => part.thought)?.map(part => part.text)?.join('\n\n') ?? '';
+                case chat_completion_sources.GEMINI_INTERACTIONS:
+                    return data?.choices?.[0]?.message?.reasoning_content ?? '';
                 case chat_completion_sources.CLAUDE:
                     return data?.content?.filter(part => part.type === 'thinking')?.map(part => part.thinking)?.join('\n\n') ?? '';
                 case chat_completion_sources.MISTRALAI:
@@ -1635,6 +1637,16 @@ export function removeReasoningFromString(str) {
 
     const parsedReasoning = parseReasoningFromStringWithFallbacks(str);
     return parsedReasoning?.content ?? str;
+}
+
+// SillyBunny: server-generations.js parses the reasoning of a server-written reply as a live reply would.
+/**
+ * Splits a reasoning block off a reply the way live streaming does, if auto-parsing is enabled.
+ * @param {string} str Reply text
+ * @returns {ParsedReasoning|null} Reasoning and remaining content, or null when nothing was parsed
+ */
+export function parseAutoReasoningFromString(str) {
+    return isReasoningAutoParseEnabled() ? parseReasoningFromStringWithFallbacks(str) : null;
 }
 
 /**

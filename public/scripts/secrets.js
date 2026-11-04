@@ -423,7 +423,6 @@ export async function readSecretState() {
             secret_state = await response.json();
             updateSecretDisplay();
             updateInputDataLists();
-            await checkOpenRouterAuth();
         }
     } catch {
         console.error('Could not read secrets file');

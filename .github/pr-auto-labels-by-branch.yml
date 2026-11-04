@@ -47,7 +47,7 @@
 - head-branch: ['\bmobile\b', '\bios\b', '\bandroid\b']
 
 🚄 Performance:
-- head-branch: ['\bperformance\b']
+- head-branch: ['^perf[/-]', '\bperformance\b']
 
 ⚙️ Preset:
 - head-branch: ['\bpresets?\b']
@@ -59,7 +59,7 @@
 - head-branch: ['\breasoning\b', '\breason\b', '\bthinking\b']
 
 🚚 Refactor:
-- head-branch: ['\brefactor(s|ed)?\b']
+- head-branch: ['^refactor[/-]', '\brefactor(s|ed)?\b']
 
 📜 STscript:
 - head-branch: ['\bstscript\b', '\bslash-commands\b']

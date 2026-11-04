@@ -51,7 +51,7 @@ const changedFile = changes => ({ filename: 'src/example.js', additions: changes
 describe('PR size label updates', () => {
     test('replaces stale size labels without losing concurrent unrelated additions or restoring removals', async () => {
         const labels = await labelPullRequest({
-            files: [changedFile(150)],
+            files: [changedFile(600)],
             labels: [sizeLabels[0], sizeLabels[1], '📥 Dependencies', 'obsolete'],
             afterSnapshot: labels => {
                 labels.add('🚫 Merge Conflicts');
@@ -64,8 +64,8 @@ describe('PR size label updates', () => {
     });
 
     for (const [changes, index] of [
-        [0, 0], [19, 0], [20, 1], [99, 1], [100, 2],
-        [499, 2], [500, 3], [999, 3], [1000, 4],
+        [0, 0], [49, 0], [50, 1], [499, 1], [500, 2],
+        [999, 2], [1000, 3], [2999, 3], [3000, 4],
     ]) {
         test(`assigns the expected size at ${changes} changed lines`, async () => {
             expect(await labelPullRequest({ files: [changedFile(changes)] })).toEqual(new Set([sizeLabels[index]]));
@@ -78,7 +78,7 @@ describe('PR size label updates', () => {
                 { filename: 'package-lock.json', additions: 2000, deletions: 2000 },
                 { filename: 'public/lib/nested/library.js', additions: 2000, deletions: 2000 },
                 { filename: 'public/library.js', additions: 10, deletions: 10 },
-                { filename: 'src/example.js', additions: 30, deletions: 50 },
+                { filename: 'src/example.js', additions: 230, deletions: 250 },
             ],
         });
 
@@ -87,14 +87,14 @@ describe('PR size label updates', () => {
 
     test('keeps the current size label and removes accumulated older sizes', async () => {
         expect(await labelPullRequest({
-            files: [changedFile(150)],
+            files: [changedFile(600)],
             labels: [sizeLabels[0], sizeLabels[2], sizeLabels[4], '📥 Dependencies'],
         })).toEqual(new Set([sizeLabels[2], '📥 Dependencies']));
     });
 
     test('tolerates an obsolete size label already removed by another writer', async () => {
         expect(await labelPullRequest({
-            files: [changedFile(150)],
+            files: [changedFile(600)],
             labels: [sizeLabels[0], '📥 Dependencies'],
             afterSnapshot: labels => labels.delete(sizeLabels[0]),
         })).toEqual(new Set([sizeLabels[2], '📥 Dependencies']));
@@ -103,9 +103,17 @@ describe('PR size label updates', () => {
     test('surfaces API failures other than an already-absent label', async () => {
         const error = Object.assign(new Error('Forbidden'), { status: 403 });
         await expect(labelPullRequest({
-            files: [changedFile(150)],
+            files: [changedFile(600)],
             labels: [sizeLabels[0]],
             removeError: error,
         })).rejects.toBe(error);
+    });
+
+    test('states the largest size threshold in the comment for the largest size label', () => {
+        const comments = parse(fs.readFileSync(new URL('../.github/pr-auto-comments.yml', import.meta.url), 'utf8'));
+        const largestLabelComment = comments.labels.find(label => label.name === sizeLabels[4]).labeled.pr.body;
+
+        expect(step.with.script).toContain(`{ label: '${sizeLabels[3]}', max: 3000 },`);
+        expect(largestLabelComment).toContain('This PR is over 3000 lines');
     });
 });

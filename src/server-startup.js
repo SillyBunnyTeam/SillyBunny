@@ -2,7 +2,7 @@ import https from 'node:https';
 import http from 'node:http';
 import fs from 'node:fs';
 import { APP_NAME } from './runtime.js';
-import { BUN_SOCKET_INHERIT_ISSUE_URL, isAddressInUseError, reportPortHolders, retryOnAddressInUse, trackListeningServer, diagnosePortConflict, formatPortConflictBanner } from './server-listen.js';
+import { BUN_SOCKET_INHERIT_ISSUE_URL, hasBunSocketInheritBug, isAddressInUseError, reportPortHolders, retryOnAddressInUse, trackListeningServer, diagnosePortConflict, formatPortConflictBanner } from './server-listen.js';
 import { color, urlHostnameToIPv6, getHasIP } from './util.js';
 
 // Express routers
@@ -195,11 +195,11 @@ export class ServerStartup {
     #getAddressInUseMessage(url, ipVersion) {
         const listenAddress = this.#getListenAddress(url, ipVersion);
         let message = `Address ${listenAddress} is already in use. Another ${APP_NAME} instance may already be running. Stop the other process or change "port" in config.yaml.`;
-        // SillyBunny: released Bun builds create inheritable socket handles on
-        // Windows, so a process spawned by the previous instance (git, package
-        // install, browser launch) can keep the port bound after that instance
-        // exited. Fixed in Bun main but not in any release yet.
-        if (process.platform === 'win32' && process.versions.bun) {
+        // SillyBunny: Bun builds before 1.4.0 create inheritable socket handles
+        // on Windows, so a process spawned by the previous instance (git,
+        // package install, browser launch) can keep the port bound after that
+        // instance exited.
+        if (hasBunSocketInheritBug()) {
             message += ` If no other instance is running, this is a known Bun-on-Windows bug (${BUN_SOCKET_INHERIT_ISSUE_URL}): wait a minute and relaunch, or start with Start-Node.bat.`;
         }
         return message;

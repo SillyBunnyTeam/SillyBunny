@@ -53,6 +53,11 @@ import {
     createMobileViewportObserver,
     MOBILE_VIEWPORT_SETTLE_DELAY_MS,
 } from './mobile-viewport.js';
+import {
+    createOffscreenMessageTracker,
+    OFFSCREEN_MESSAGE_SIZED_CLASS,
+    OFFSCREEN_MESSAGE_WIDTH_SETTLE_MS,
+} from './offscreen-messages.js';
 
 export {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
@@ -69,12 +74,15 @@ export {
     createDelegatedResizeObserver,
     createFrameWriteScheduler,
     createMobileViewportObserver,
+    createOffscreenMessageTracker,
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
     getNonSystemMessageDepth,
     MOBILE_VIEWPORT_SETTLE_DELAY_MS,
     normalizeChatRenderWindowSize,
+    OFFSCREEN_MESSAGE_SIZED_CLASS,
+    OFFSCREEN_MESSAGE_WIDTH_SETTLE_MS,
     resolveChatBottomScrollAction,
     resolveChatScrollAction,
     resolveChatScrollStateTransition,
@@ -143,6 +151,11 @@ export function createChatRenderLifecycle() {
         mobileViewport: {
             create: createMobileViewportObserver,
             settleDelayMs: MOBILE_VIEWPORT_SETTLE_DELAY_MS,
+        },
+        offscreenMessages: {
+            create: createOffscreenMessageTracker,
+            sizedClass: OFFSCREEN_MESSAGE_SIZED_CLASS,
+            widthSettleMs: OFFSCREEN_MESSAGE_WIDTH_SETTLE_MS,
         },
     };
 }

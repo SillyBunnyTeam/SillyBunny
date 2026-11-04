@@ -1,12 +1,16 @@
-/* global document, WheelEvent, window */
 import { expect, test } from '@playwright/test';
 import {
+    forceMessageRendered,
     getChatScrollSnapshot,
+    getMessageOffsetTop,
     getRedisplayCompatibilitySnapshot,
     getRenderedMessageIds,
+    getSkippedHistoryGeometry,
+    getSkippedMessageCount,
     growMessageBlockAboveViewport,
     installSwipeCandidate,
     installSyntheticLongChat,
+    isMessageContentSkipped,
     markFirstRenderedMessageEditing,
     markManualMobileScroll,
     openReadyChat,
@@ -46,6 +50,23 @@ test.describe('issue 167 chat scroll regressions', () => {
         expect(snapshot.stylePinsCount).toBe(0);
         expect(snapshot.firstEditUpDisabled).toBe(true);
         expect(snapshot.firstEditDownDisabled).toBe(false);
+    });
+
+    test('a dry-run generation keeps redisplay follow-up hooks applied', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 36, visibleCount: 12 });
+
+        // Prompt Manager token counts start dry runs on their own timers, so one can land right after a redisplay.
+        await page.evaluate(async () => {
+            const context = window.SillyTavern.getContext();
+
+            await context.redisplayChat({ startIndex: 24, fade: false });
+            await context.generate('normal', {}, true);
+        });
+
+        const snapshot = await getRedisplayCompatibilitySnapshot(page);
+
+        expect(snapshot.renderedMessageIds).toEqual(Array.from({ length: 12 }, (_, index) => String(24 + index)));
+        expect(snapshot.fadeClassCount).toBe(0);
     });
 
     test('show more preserves the first visible message anchor', async ({ page }) => {
@@ -100,12 +121,44 @@ test.describe('issue 167 chat scroll regressions', () => {
         await scrollMessageNearTop(page, 48, 24);
 
         const before = await getChatScrollSnapshot(page);
+        await forceMessageRendered(page, 12);
         await growMessageBlockAboveViewport(page, 12, { height: 460 });
         const after = await getChatScrollSnapshot(page);
 
         expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
         expect(Math.abs(after.firstVisibleOffsetTop - before.firstVisibleOffsetTop)).toBeLessThanOrEqual(8);
         expect(after.scrollTop).toBeGreaterThan(before.scrollTop + 300);
+    });
+
+    test('skipped off-screen history keeps its real height while scrolling', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 96, visibleCount: 96 });
+
+        await expect.poll(() => getSkippedMessageCount(page), { timeout: 5000 }).toBeGreaterThan(20);
+        const geometry = await getSkippedHistoryGeometry(page);
+
+        expect(geometry.skippedScrollHeight).toBe(geometry.renderedScrollHeight);
+        expect(geometry.scrollHeightsWhileScrolling).toEqual([geometry.renderedScrollHeight]);
+    });
+
+    test('late media in skipped history stays anchored once it scrolls into view', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 72, visibleCount: 72 });
+
+        await scrollMessageNearTop(page, 48, 24);
+        await expect.poll(() => isMessageContentSkipped(page, 12), { timeout: 5000 }).toBe(true);
+
+        const before = await getChatScrollSnapshot(page);
+        await growMessageBlockAboveViewport(page, 12, { height: 460 });
+        const deferred = await getChatScrollSnapshot(page);
+
+        // A skipped message keeps its remembered height, so nothing moves until it comes near the viewport.
+        expect(deferred.firstVisibleMesId).toBe(before.firstVisibleMesId);
+        expect(deferred.scrollTop).toBe(before.scrollTop);
+
+        await scrollMessageNearTop(page, 14, 24);
+        await waitForAnimationFrames(page, 12);
+
+        expect(await isMessageContentSkipped(page, 12)).toBe(false);
+        expect(Math.abs(await getMessageOffsetTop(page, 14) - 24)).toBeLessThanOrEqual(8);
     });
 
     test('desktop wheel over chat shell scrolls the chat viewport', async ({ page }) => {

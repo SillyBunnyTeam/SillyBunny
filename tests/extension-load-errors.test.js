@@ -37,7 +37,7 @@ describe('extension load error diagnostics', () => {
     test('wires diagnostics into extension activation and script loading', () => {
         const extensionsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions.js'), 'utf8');
 
-        expect(extensionsSource).toContain("import { createExtensionScriptLoadError, formatExtensionLoadError } from './extension-load-errors.js';");
+        expect(extensionsSource).toContain('import { createExtensionScriptLoadError, formatExtensionLoadError } from \'./extension-load-errors.js\';');
         expect(extensionsSource).toContain('const loadError = formatExtensionLoadError(err);');
         expect(extensionsSource).toContain('extensionLoadErrors.add(t`Extension "${displayName}" failed to load: ${loadError}`);');
         expect(extensionsSource).toContain('reject(createExtensionScriptLoadError(name, url, err));');

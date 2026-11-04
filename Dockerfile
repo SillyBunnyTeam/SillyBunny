@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.14-alpine
+FROM oven/bun:1.4.4-alpine
 
 # Arguments
 ARG APP_HOME=/home/bun/app

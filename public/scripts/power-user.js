@@ -77,6 +77,7 @@ import { getBackgroundPath, isCustomBackgroundUrl } from './backgrounds.js';
 import { setSlashCommandParserSettingsGetter } from './slash-commands/SlashCommandParserConfig.js';
 import { persona_description_positions as _persona_description_positions } from './personas.js';
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
+import { appendCustomCss, buildImportedTheme, getGeneratedCustomCss, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
@@ -550,6 +551,8 @@ setSlashCommandParserSettingsGetter(() => ({
 }));
 
 let themes = [];
+// SillyBunny: set while a theme switch waits on the Custom CSS popup.
+let isThemeSwitchPending = false;
 let movingUIPresets = [];
 /** @type {ContextSettings[]} */
 export let context_presets = [];
@@ -1849,6 +1852,36 @@ function applyCustomCSS() {
     }
     style.innerHTML = power_user.custom_css;
     applyCustomThemeStyleEntries();
+    updateThemeCssSaveState();
+}
+
+/**
+ * Shows whether the Custom CSS matches the CSS stored in the current theme.
+ */
+function updateThemeCssSaveState() {
+    const indicator = $('#custom_css_save_state');
+
+    // SillyBunny: there is nothing to compare against until the theme list loads.
+    if (!indicator.length || !themes.length) {
+        return;
+    }
+
+    const isDirty = isThemeCssDirty(themes.find(x => x.name == power_user.theme), power_user.custom_css);
+    indicator.toggleClass('custom_css_save_state_dirty', isDirty).attr('aria-disabled', String(!isDirty));
+    indicator.find('.custom_css_save_state_label').text(isDirty ? t`lorum ipsum` : t`lorum ipsum`);
+}
+
+/**
+ * Saves the Custom CSS into the current theme when the theme stores different CSS.
+ */
+async function saveCurrentThemeCss() {
+    if (!isThemeCssDirty(themes.find(x => x.name == power_user.theme), power_user.custom_css)) {
+        return;
+    }
+
+    if (await saveThemeCss(power_user.theme)) {
+        toastr.success('Theme saved.');
+    }
 }
 
 function buildCustomCssAiPopup(currentCss) {
@@ -1886,6 +1919,36 @@ function setCustomCssAiWandBusy(isBusy) {
         .attr('aria-disabled', String(isBusy));
     icon.toggleClass('fa-wand-magic-sparkles', !isBusy)
         .toggleClass('fa-spinner fa-spin', isBusy);
+}
+
+/**
+ * Gets the Custom CSS to apply once the AI wand finishes, asking first when Replace would
+ * drop Custom CSS changes made during generation.
+ * @param {object} options Generation state.
+ * @param {string} options.mode Apply mode picked in the wand popup.
+ * @param {string} options.startCss Custom CSS when generation started.
+ * @param {string} options.generatedCss CSS the AI returned.
+ * @returns {Promise<string|null>} CSS to apply, or null to keep the current Custom CSS.
+ */
+async function resolveGeneratedCustomCss({ mode, startCss, generatedCss }) {
+    const nextCss = getGeneratedCustomCss({ mode, startCss, liveCss: power_user.custom_css, generatedCss });
+
+    if (nextCss !== null) {
+        return nextCss;
+    }
+
+    const result = await callGenericPopup(t`lorum ipsum`, POPUP_TYPE.CONFIRM, '', {
+        okButton: t`lorum ipsum`,
+        cancelButton: t`lorum ipsum`,
+        customButtons: [{ text: t`lorum ipsum`, result: POPUP_RESULT.CUSTOM1, classes: ['red_button'], appendAtEnd: true }],
+        defaultResult: POPUP_RESULT.AFFIRMATIVE,
+    });
+
+    if (result === POPUP_RESULT.AFFIRMATIVE) {
+        return appendCustomCss(power_user.custom_css, generatedCss);
+    }
+
+    return result === POPUP_RESULT.CUSTOM1 ? generatedCss : null;
 }
 
 async function handleCustomCssAiWandClick() {
@@ -1931,6 +1994,8 @@ async function handleCustomCssAiWandClick() {
         return;
     }
 
+    // SillyBunny: Custom CSS stays editable during generation, so the result is checked against the CSS the AI saw.
+    const startCss = String(power_user.custom_css ?? '');
     setCustomCssAiWandBusy(true);
     globalThis.toastr?.info?.('Generating custom CSS...', '', { timeOut: 0, extendedTimeOut: 0 });
     deactivateSendButtons({ markBodyGenerating: false });
@@ -1938,25 +2003,26 @@ async function handleCustomCssAiWandClick() {
     try {
         const generatedCss = await generateCustomCssWithAI({
             instruction,
-            currentCss,
+            currentCss: startCss,
             profileId: effectiveProfileId,
         });
+        globalThis.toastr?.clear?.();
 
         if (!generatedCss.trim()) {
-            globalThis.toastr?.clear?.();
             globalThis.toastr?.error?.('AI returned an empty CSS response.');
             return;
         }
 
-        const nextCss = applyMode === 'append' && currentCss.trim()
-            ? `${currentCss.trimEnd()}\n\n${generatedCss}`
-            : generatedCss;
+        const nextCss = await resolveGeneratedCustomCss({ mode: applyMode, startCss, generatedCss });
+
+        if (nextCss === null) {
+            return;
+        }
 
         $('#customCSS').val(nextCss);
         power_user.custom_css = nextCss;
         applyCustomCSS();
         saveSettingsDebounced();
-        globalThis.toastr?.clear?.();
         globalThis.toastr?.success?.('Generated custom CSS.');
     } catch (error) {
         globalThis.toastr?.clear?.();
@@ -2171,7 +2237,13 @@ function isMediaDisplayReloadNeeded() {
     return hasUnprocessedMediaMessages;
 }
 
-function applyTheme(name) {
+/**
+ * Applies a UI theme.
+ * @param {string} name Theme name
+ * @param {object} [options]
+ * @param {boolean} [options.applyCss=true] Whether the theme's custom CSS replaces the current Custom CSS
+ */
+function applyTheme(name, { applyCss = true } = {}) {
     const theme = themes.find(x => x.name == name);
 
     if (!theme) {
@@ -2196,11 +2268,13 @@ function applyTheme(name) {
     }
     applyThemeEffects();
 
-    if (typeof theme.custom_css === 'string') {
+    if (applyCss && typeof theme.custom_css === 'string') {
         power_user.custom_css = theme.custom_css;
         applyCustomCSS();
     }
 
+    // SillyBunny: the Custom CSS save state compares against the theme just applied.
+    updateThemeCssSaveState();
     console.log('theme applied: ' + name);
 }
 
@@ -3333,6 +3407,73 @@ async function updateTheme() {
     toastr.success('Theme saved.');
 }
 
+/**
+ * Saves the current Custom CSS into a theme and leaves its other keys as stored.
+ * @param {string|undefined} name Theme name. If undefined, a popup asks for a new theme name.
+ * @returns {Promise<object|undefined>} Saved theme, or undefined if nothing was saved
+ */
+async function saveThemeCss(name) {
+    const storedTheme = themes.find(x => x.name == name);
+
+    // SillyBunny: saving from the Custom CSS flow writes only the CSS, so palette changes
+    // made since the last Update never reach the theme by accident.
+    return await saveTheme(name, storedTheme ? { ...storedTheme, custom_css: String(power_user.custom_css ?? '') } : undefined);
+}
+
+/**
+ * Asks what to do with Custom CSS that a theme change would replace and no theme stores.
+ * @param {string|undefined} themeName Theme the Custom CSS can be saved into
+ * @returns {Promise<boolean>} Whether the theme change can go ahead
+ */
+async function confirmThemeCssReplace(themeName) {
+    const result = await callGenericPopup(t`lorum ipsum`, POPUP_TYPE.CONFIRM, '', {
+        okButton: t`lorum ipsum`,
+        cancelButton: t`lorum ipsum`,
+        customButtons: [{ text: t`lorum ipsum`, result: POPUP_RESULT.CUSTOM1, classes: ['red_button'], appendAtEnd: true }],
+        defaultResult: POPUP_RESULT.AFFIRMATIVE,
+    });
+
+    if (result === POPUP_RESULT.AFFIRMATIVE) {
+        try {
+            return Boolean(await saveThemeCss(themeName));
+        } catch {
+            return false;
+        }
+    }
+
+    return result === POPUP_RESULT.CUSTOM1;
+}
+
+/**
+ * Switches the UI theme, asking first when its Custom CSS would replace Custom CSS that no theme stores.
+ * @param {string} name Theme name
+ * @returns {Promise<boolean>} Whether the theme was switched
+ */
+async function switchUiTheme(name) {
+    const theme = themes.find(x => x.name == name);
+
+    if (!theme || isThemeSwitchPending) {
+        return false;
+    }
+
+    isThemeSwitchPending = true;
+
+    try {
+        // SillyBunny: themes carry Custom CSS, so a switch asks before it drops CSS no theme stores.
+        if (shouldConfirmCssReplace(theme, power_user.custom_css, themes) && !await confirmThemeCssReplace(power_user.theme)) {
+            return false;
+        }
+
+        power_user.theme = name;
+        $('#themes').val(name);
+        applyTheme(name);
+        saveSettingsDebounced();
+        return true;
+    } finally {
+        isThemeSwitchPending = false;
+    }
+}
+
 async function deleteTheme() {
     const themeName = power_user.theme;
 
@@ -3367,8 +3508,11 @@ async function deleteTheme() {
         power_user.theme = themes[0]?.name;
         saveSettingsDebounced();
         if (power_user.theme) {
-            applyTheme(power_user.theme);
+            // SillyBunny: keep the current Custom CSS when no remaining theme stores it, so
+            // deleting a theme never wipes the only copy of the user's CSS.
+            applyTheme(power_user.theme, { applyCss: isCssStoredInThemes(themes, power_user.custom_css) });
         }
+        updateThemeCssSaveState();
         toastr.success('Theme deleted.');
     }
 }
@@ -3376,8 +3520,17 @@ async function deleteTheme() {
 /**
  * Exports the current theme to a file.
  */
-async function exportTheme() {
-    const themeFile = await saveTheme(power_user.theme);
+function exportTheme() {
+    const themeName = power_user.theme;
+
+    if (!themeName) {
+        toastr.info('No theme selected.');
+        return;
+    }
+
+    // SillyBunny: SillyTavern saves the theme before downloading it; exporting here only
+    // downloads, and leaves out legacy layout keys that SillyTavern would apply on import.
+    const themeFile = getThemeObject(themeName);
     const fileName = `${themeFile.name}.json`;
     download(JSON.stringify(themeFile, null, 4), fileName, 'application/json');
 }
@@ -3412,6 +3565,13 @@ async function importTheme(file) {
     }
 
     const theme = getNewTheme(parsed);
+
+    // SillyBunny: importing selects the theme, so ask first when its Custom CSS would replace
+    // Custom CSS that no theme stores.
+    if (shouldConfirmCssReplace(theme, power_user.custom_css, themes) && !await confirmThemeCssReplace(power_user.theme)) {
+        return;
+    }
+
     await saveTheme(parsed.name, theme);
     applyTheme(parsed.name);
     if (typeof theme.custom_css === 'string') {
@@ -3440,7 +3600,7 @@ async function saveTheme(name = undefined, theme = undefined) {
     }
 
     if (typeof theme !== 'object') {
-        theme = getThemeObject(name);
+        theme = getThemeSaveObject(name);
     }
 
     const response = await fetch('/api/themes/save', {
@@ -3471,6 +3631,8 @@ async function saveTheme(name = undefined, theme = undefined) {
 
     power_user.theme = name;
     saveSettingsDebounced();
+    // SillyBunny: the saved theme may now store the current Custom CSS.
+    updateThemeCssSaveState();
 
     return theme;
 }
@@ -3480,6 +3642,16 @@ async function saveTheme(name = undefined, theme = undefined) {
  * @param {string} name Name of the theme
  */
 export function getThemeObject(name) {
+    // SillyBunny: layout settings stay global, but a theme carries Custom CSS as in SillyTavern.
+    return { ...getThemePaletteObject(name), custom_css: String(power_user.custom_css ?? '') };
+}
+
+/**
+ * Gets a snapshot of the current theme colors and effects.
+ * @param {string} name Name of the theme
+ * @returns {object} Theme snapshot without Custom CSS
+ */
+function getThemePaletteObject(name) {
     const theme = { name };
 
     for (const { key } of THEME_COLOR_PROPERTIES) {
@@ -3494,21 +3666,24 @@ export function getThemeObject(name) {
 }
 
 /**
+ * Gets the theme object to save from the current settings.
+ * @param {string} name Name of the theme
+ * @returns {object} Current snapshot merged over the stored theme
+ */
+function getThemeSaveObject(name) {
+    // SillyBunny: /api/themes/save overwrites the whole file, so merge over the stored
+    // theme to keep keys the snapshot does not carry, such as legacy SillyTavern layout keys.
+    return mergeThemeUpdate(themes.find(x => x.name == name), getThemeObject(name));
+}
+
+/**
  * Applies imported theme properties to the theme object.
  * @param {object} parsed Parsed object to get the theme from.
  * @returns {Theme} Theme assigned to the parsed object.
  */
 function getNewTheme(parsed) {
-    const theme = getThemeObject(parsed.name);
-    for (const key in parsed) {
-        if (Object.hasOwn(theme, key)) {
-            theme[key] = parsed[key];
-        }
-    }
-    if (typeof parsed.custom_css === 'string') {
-        theme.custom_css = parsed.custom_css;
-    }
-    return theme;
+    // SillyBunny: an imported theme takes Custom CSS only from its file, never the importer's CSS.
+    return buildImportedTheme(parsed, getThemePaletteObject(parsed.name));
 }
 
 async function saveMovingUI() {
@@ -3896,10 +4071,8 @@ async function setThemeCallback(_, themeName) {
         return;
     }
 
-    power_user.theme = theme.name;
-    applyTheme(theme.name);
-    $('#themes').val(theme.name);
-    saveSettingsDebounced();
+    // SillyBunny: /theme goes through the same Custom CSS check as the theme dropdown.
+    await switchUiTheme(theme.name);
     return '';
 }
 
@@ -4276,6 +4449,16 @@ jQuery(async () => {
         applyCustomCSS();
     });
 
+    // SillyBunny: the Custom CSS save state saves the CSS into the current theme.
+    $('#custom_css_save_state').on('click', () => { void saveCurrentThemeCss(); });
+    $('#custom_css_save_state').on('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+        event.preventDefault();
+        $('#custom_css_save_state').trigger('click');
+    });
+
     // SillyBunny: Custom CSS AI wand uses the active Connection Manager profile without swapping global state.
     $('#custom_css_ai_wand').on('click', () => { void handleCustomCssAiWandClick(); });
     $('#custom_css_ai_wand').on('keydown', event => {
@@ -4558,9 +4741,9 @@ jQuery(async () => {
 
     $('#themes').on('change', function () {
         const themeSelected = String($(this).find(':selected').val());
-        power_user.theme = themeSelected;
-        applyTheme(themeSelected);
-        saveSettingsDebounced();
+        // SillyBunny: keep the current theme selected until the Custom CSS check lets the switch through.
+        $(this).val(power_user.theme);
+        void switchUiTheme(themeSelected);
     });
 
     $('#movingUIPresets').on('change', async function () {
@@ -5148,7 +5331,8 @@ jQuery(async () => {
     });
 
     $(document).on('click', '.sb-theme-preset-reset', function () {
-        applyTheme('Dark V 1.0');
+        // SillyBunny: Reset restores colors only and leaves Custom CSS alone.
+        applyTheme('Dark V 1.0', { applyCss: false });
         saveSettingsDebounced();
         toastr.info('Theme colors reset to Dark V 1.0.', 'SillyBunny palette');
     });

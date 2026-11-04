@@ -88,7 +88,7 @@ describe.each(['openrouter', 'nanogpt'])('%s POST /providers', (provider) => {
 
 test('OpenRouter endpoint discovery exposes documented tiers and preserves its legacy response', async () => {
     const source = readFileSync(new URL('../src/endpoints/openrouter.js', import.meta.url), 'utf8');
-    const code = source.slice(source.indexOf("router.post('/models/providers'"), source.indexOf("router.post('/models/multimodal'"));
+    const code = source.slice(source.indexOf('router.post(\'/models/providers\''), source.indexOf('router.post(\'/models/multimodal\''));
     const post = jest.fn();
     const fetch = jest.fn(async () => ({ ok: true, json: async () => ({ data: { endpoints: [
         { provider_name: 'OpenAI', tag: 'openai/flex' },

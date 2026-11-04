@@ -65,11 +65,10 @@ prefer_node_runtime() {
 
     case "$os" in
         Darwin)
-            # macOS — Bun CPU bug confirmed on all Mac architectures
-            if command -v node >/dev/null 2>&1; then
-                echo "[SillyBunny] macOS detected — using Node.js to avoid Bun CPU overhead (oven-sh/bun#26415)"
-                return 0
-            fi
+            # macOS — Bun CPU bug confirmed on all Mac architectures. The
+            # prerequisites step installs Node.js here when it is missing.
+            echo "[SillyBunny] macOS detected — using Node.js to avoid Bun CPU overhead (oven-sh/bun#26415)"
+            return 0
             ;;
     esac
 
@@ -203,6 +202,12 @@ fi
 export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
 if [[ -d "$BUN_INSTALL/bin" ]]; then
     export PATH="$BUN_INSTALL/bin:$PATH"
+fi
+
+# Where install-prerequisites.sh puts Node.js on macOS.
+macos_node_bin="${SILLYBUNNY_NODE_INSTALL:-$HOME/.sillybunny/node}/bin"
+if [[ "$(uname -s 2>/dev/null)" == Darwin && -d "$macos_node_bin" ]]; then
+    export PATH="$macos_node_bin:$PATH"
 fi
 
 if is_termux; then

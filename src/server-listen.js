@@ -6,8 +6,8 @@ import { stripVTControlCharacters } from 'node:util';
 
 // A relaunched server races the previous process for the listen port: the old
 // socket can still be encumbered for a moment after that process is gone,
-// especially on Windows where libuv binds with SO_EXCLUSIVEADDRUSE. Worse,
-// released Bun versions create inheritable socket handles on Windows
+// especially on Windows where libuv binds with SO_EXCLUSIVEADDRUSE. Worse, Bun
+// versions before 1.4.0 create inheritable socket handles on Windows
 // (oven-sh/bun#36936), so a process spawned during an update can keep the port
 // bound until it exits. Retrying for about thirty seconds outlasts the typical
 // straggler instead of permanently breaking the restart after five seconds.
@@ -27,6 +27,23 @@ const trackedListeners = new Set();
  */
 export function isAddressInUseError(error) {
     return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EADDRINUSE';
+}
+
+/**
+ * Checks if the server runs on a Bun build that creates inheritable socket
+ * handles on Windows. A process that such a server starts can keep the listen
+ * port bound after the server exits. Bun 1.4.0 fixed this (oven-sh/bun#36938).
+ * @param {object} [options] Dependency injection for tests
+ * @param {string} [options.platform] Platform override
+ * @param {NodeJS.ProcessVersions} [options.versions] Runtime versions override
+ * @returns {boolean} True when an inherited socket handle can hold the port
+ */
+export function hasBunSocketInheritBug({ platform = process.platform, versions = process.versions } = {}) {
+    if (platform !== 'win32' || !versions.bun) {
+        return false;
+    }
+    const [major, minor] = versions.bun.split('.').map(Number);
+    return major === 1 && minor < 4;
 }
 
 /**
@@ -76,8 +93,9 @@ export async function closeListeningServers({ timeoutMs = LISTEN_CLOSE_TIMEOUT_M
         }
 
         // Long-lived streaming responses keep server.close() pending forever,
-        // so drop the connections instead of waiting them out. Bun does not
-        // implement closeAllConnections, hence the tracked-socket fallback.
+        // so drop the connections instead of waiting them out. Before Bun 1.4.3
+        // (oven-sh/bun#43557), closeAllConnections does not drop them once
+        // close() has run, hence the tracked-socket fallback.
         try {
             server.closeAllConnections?.();
         } catch {
@@ -422,15 +440,17 @@ export function parseTasklistProcessName(output, pid) {
 
 /**
  * Builds human-readable lines describing what occupies a local TCP port.
- * Windows resolves owning processes and calls out the Bun handle-inheritance
- * bug when the "owner" is already dead; POSIX just relays ss/lsof output.
+ * Windows resolves owning processes and flags an "owner" that is already dead,
+ * blaming the Bun handle-inheritance bug only on Bun builds that have it; POSIX
+ * just relays ss/lsof output.
  * @param {number} port The port to inspect
  * @param {object} [options] Dependency injection for tests
  * @param {typeof runDiagnosticCommand} [options.runCommand] Command runner
  * @param {string} [options.platform] Platform override
+ * @param {NodeJS.ProcessVersions} [options.versions] Runtime versions override
  * @returns {Promise<string[]>} Diagnostic lines, empty when nothing was found
  */
-export async function describePortHolders(port, { runCommand = runDiagnosticCommand, platform = process.platform } = {}) {
+export async function describePortHolders(port, { runCommand = runDiagnosticCommand, platform = process.platform, versions = process.versions } = {}) {
     if (platform === 'win32') {
         const rows = parseNetstatPortRows(await runCommand('netstat', ['-ano']), port);
         const lines = [];
@@ -442,8 +462,10 @@ export async function describePortHolders(port, { runCommand = runDiagnosticComm
             const name = parseTasklistProcessName(await runCommand('tasklist', ['/FI', `PID eq ${row.pid}`, '/FO', 'CSV', '/NH']), row.pid);
             if (name) {
                 lines.push(`Port ${port} is held open by "${name}" (PID ${row.pid}).`);
-            } else {
+            } else if (hasBunSocketInheritBug({ platform, versions })) {
                 lines.push(`Port ${port} is attributed to PID ${row.pid}, which is no longer running: a process spawned by the previous server instance inherited its socket handle (known Bun-on-Windows bug, ${BUN_SOCKET_INHERIT_ISSUE_URL}). The port frees itself once that process exits.`);
+            } else {
+                lines.push(`Port ${port} is attributed to PID ${row.pid}, which is no longer running.`);
             }
         }
         return lines;

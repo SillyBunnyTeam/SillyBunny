@@ -15,10 +15,13 @@ import {
     runServerPluginCommand,
     SERVER_PLUGIN_RELEASE_MARKER,
     stageServerPluginRelease,
+    syncServerPluginTree,
 } from '../src/server-plugin-manager.js';
 import { recoverInterruptedServerPluginUpdates } from '../src/server-plugin-update-helper.js';
 
 const tempDirectories = [];
+// Staging's platform option only decides how npm is found and run; the release flush follows the host platform.
+const OTHER_PLATFORM = process.platform === 'win32' ? 'linux' : 'win32';
 
 function createTempDirectory() {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-server-plugin-manager-'));
@@ -122,18 +125,96 @@ function markInstalledRelease(pluginPath, repositoryUrl) {
     }));
 }
 
-function testDependencies({ onCommand = () => { } } = {}) {
+function testDependencies({ onCommand = () => { }, platform } = {}) {
     return {
         allowFileRepositories: true,
         commandExists: () => true,
+        platform,
         runCommand: async (command, args, options) => {
             onCommand(command, args, options);
-            if (command === 'npm' || command === 'npm.cmd') {
+            // Staging runs only git and npm; npm is answered here so no install runs.
+            if (command !== 'git') {
                 return { stdout: '', stderr: '' };
             }
             return await runServerPluginCommand(command, args, options);
         },
     };
+}
+
+function createNpmCli() {
+    const npmCli = path.join(createTempDirectory(), 'npm-cli.js');
+    fs.writeFileSync(npmCli, '');
+    return npmCli;
+}
+
+// Hides every npm-cli.js, including the one installed next to the running Node binary.
+function hideNpmCli() {
+    const existsSync = fs.existsSync;
+    jest.spyOn(fs, 'existsSync').mockImplementation(filePath => path.basename(String(filePath)) !== 'npm-cli.js' && existsSync(filePath));
+}
+
+// Mirrors a release at activation: Git pack files are read-only, preserved state can be, and npm and checkout files are writable.
+function createSyncTree() {
+    const root = createTempDirectory();
+    const packPath = path.join(root, '.git', 'objects', 'pack', 'pack-test.pack');
+    const readOnlyPath = path.join(root, 'state', 'read-only.key');
+    fs.mkdirSync(path.dirname(packPath), { recursive: true });
+    fs.mkdirSync(path.join(root, 'node_modules', 'dependency'), { recursive: true });
+    fs.mkdirSync(path.dirname(readOnlyPath));
+    fs.writeFileSync(path.join(root, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+    fs.writeFileSync(path.join(root, 'index.js'), 'export default true;\n');
+    fs.writeFileSync(path.join(root, 'node_modules', 'dependency', 'index.js'), 'module.exports = 1;\n');
+    fs.writeFileSync(packPath, 'PACK');
+    fs.writeFileSync(readOnlyPath, 'secret');
+    // On Windows this sets the read-only attribute.
+    fs.chmodSync(packPath, 0o444);
+    fs.chmodSync(readOnlyPath, 0o444);
+    return {
+        root,
+        writablePaths: [
+            path.join(root, '.git', 'HEAD'),
+            path.join(root, 'index.js'),
+            path.join(root, 'node_modules', 'dependency', 'index.js'),
+        ],
+        readOnlyPaths: [packPath, readOnlyPath],
+    };
+}
+
+function readFileModes(directoryPath, modes = {}) {
+    for (const entry of fs.readdirSync(directoryPath, { withFileTypes: true })) {
+        const entryPath = path.join(directoryPath, entry.name);
+        if (entry.isDirectory()) {
+            readFileModes(entryPath, modes);
+        } else {
+            modes[entryPath] = fs.lstatSync(entryPath).mode;
+        }
+    }
+    return modes;
+}
+
+function spyOnFileOpens() {
+    const opens = [];
+    const openSync = fs.openSync;
+    jest.spyOn(fs, 'openSync').mockImplementation((filePath, flags, ...rest) => {
+        opens.push([String(filePath), flags]);
+        return openSync(filePath, flags, ...rest);
+    });
+    return opens;
+}
+
+// Records every open while fsync is stubbed, so either platform branch runs on any OS.
+function recordFileOpens() {
+    jest.spyOn(fs, 'fsyncSync').mockImplementation(() => { });
+    return spyOnFileOpens();
+}
+
+function captureError(callback) {
+    try {
+        callback();
+    } catch (error) {
+        return error;
+    }
+    return null;
 }
 
 afterEach(() => {
@@ -152,13 +233,27 @@ describe('server plugin release manager', () => {
     });
 
     test('advertises exact updates only when Git and npm are available', () => {
-        expect(getServerPluginUpdateCapabilities({ commandExists: () => true, supervised: true })).toMatchObject({
+        expect(getServerPluginUpdateCapabilities({ commandExists: () => true, supervised: true, platform: 'linux' })).toMatchObject({
             apiVersion: 1,
             exactGitRelease: true,
             existingPluginsOnly: true,
             available: true,
         });
-        expect(getServerPluginUpdateCapabilities({ commandExists: command => command === 'git', supervised: true })).toMatchObject({
+        expect(getServerPluginUpdateCapabilities({ commandExists: command => command === 'git', supervised: true, platform: 'linux' })).toMatchObject({
+            available: false,
+            tooling: { git: true, npm: false },
+        });
+    });
+
+    test('advertises Windows updates only when npm-cli.js can be found', () => {
+        const options = { commandExists: () => true, supervised: true, platform: 'win32', env: { npm_execpath: createNpmCli() } };
+        expect(getServerPluginUpdateCapabilities(options)).toMatchObject({
+            available: true,
+            tooling: { git: true, npm: true },
+        });
+
+        hideNpmCli();
+        expect(getServerPluginUpdateCapabilities(options)).toMatchObject({
             available: false,
             tooling: { git: true, npm: false },
         });
@@ -181,7 +276,7 @@ describe('server plugin release manager', () => {
             return killer;
         });
 
-        await expect(runServerPluginCommand('npm.cmd', ['ci'], {
+        await expect(runServerPluginCommand(process.execPath, ['npm-cli.js', 'ci'], {
             cwd: process.cwd(),
             timeoutMs: 1,
             platform: 'win32',
@@ -199,7 +294,7 @@ describe('server plugin release manager', () => {
             pluginsRoot,
             directoryName: 'ExamplePlugin',
             targetVersion: '2.0.0',
-        }, testDependencies({ onCommand: (command, args) => commands.push([command, args]) }));
+        }, testDependencies({ platform: 'linux', onCommand: (command, args) => commands.push([command, args]) }));
 
         expect(staged).toMatchObject({
             action: 'updated',
@@ -238,6 +333,51 @@ describe('server plugin release manager', () => {
         expect(fs.existsSync(staged.stagingRoot)).toBe(false);
         expect(fs.existsSync(staged.lockPath)).toBe(false);
         expect(fs.existsSync(staged.journalPath)).toBe(false);
+    });
+
+    test('runs npm-cli.js with node instead of npm.cmd on Windows', async () => {
+        const { pluginsRoot } = createReleaseRepository();
+        const npmCli = createNpmCli();
+        const npmReached = new Error('npm reached');
+        let npmCall = null;
+
+        await expect(stageServerPluginRelease({
+            pluginsRoot,
+            directoryName: 'ExamplePlugin',
+            targetVersion: '2.0.0',
+        }, {
+            allowFileRepositories: true,
+            commandExists: () => true,
+            platform: 'win32',
+            env: { npm_execpath: npmCli },
+            runCommand: async (command, args, options) => {
+                if (command === 'git') {
+                    return await runServerPluginCommand(command, args, options);
+                }
+                // Stop at the npm step; the rest of staging is covered by the test above.
+                npmCall = [command, args];
+                throw npmReached;
+            },
+        })).rejects.toBe(npmReached);
+
+        expect(npmCall[0]).not.toBe('npm.cmd');
+        expect(npmCall).toEqual([process.execPath, [npmCli, 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund']]);
+    });
+
+    test('refuses a Windows update before cloning when npm-cli.js is missing', async () => {
+        const { pluginsRoot } = createReleaseRepository();
+        const commands = [];
+        hideNpmCli();
+
+        await expect(stageServerPluginRelease({
+            pluginsRoot,
+            directoryName: 'ExamplePlugin',
+            targetVersion: '2.0.0',
+        }, testDependencies({ platform: 'win32', onCommand: command => commands.push(command) }))).rejects.toMatchObject({
+            status: 503,
+            code: 'tooling_unavailable',
+        });
+        expect(commands).toEqual([]);
     });
 
     test('refuses to update a symlink-managed plugin', async () => {
@@ -401,6 +541,123 @@ describe('server plugin release manager', () => {
         }, testDependencies());
 
         expect(staged.action).toBe('updated');
+        discardStagedServerPluginRelease(staged);
+    });
+
+    test('flushes a release with read-only Git objects without changing file modes or the digest', () => {
+        const { root, readOnlyPaths } = createSyncTree();
+        const modes = readFileModes(root);
+        const digest = getServerPluginReleaseDigest(root);
+
+        syncServerPluginTree(root);
+
+        expect(readFileModes(root)).toEqual(modes);
+        expect(getServerPluginReleaseDigest(root)).toBe(digest);
+        for (const readOnlyPath of readOnlyPaths) {
+            expect(fs.lstatSync(readOnlyPath).mode & 0o200).toBe(0);
+        }
+    });
+
+    test('flushes a shallow Git clone in place', () => {
+        const root = createTempDirectory();
+        const sourcePath = path.join(root, 'source');
+        const clonePath = path.join(root, 'clone');
+        fs.mkdirSync(sourcePath);
+        runGit(sourcePath, 'init', '--initial-branch=main');
+        runGit(sourcePath, 'config', 'user.name', 'SillyBunny Tests');
+        runGit(sourcePath, 'config', 'user.email', 'tests@example.invalid');
+        fs.writeFileSync(path.join(sourcePath, 'index.js'), 'export default true;\n');
+        runGit(sourcePath, 'add', '.');
+        runGit(sourcePath, 'commit', '-m', 'release');
+        runGit(root, 'clone', '--depth', '1', pathToFileURL(sourcePath).href, clonePath);
+        const modes = readFileModes(clonePath);
+
+        syncServerPluginTree(clonePath);
+
+        expect(readFileModes(clonePath)).toEqual(modes);
+        runGit(clonePath, 'fsck', '--strict');
+    });
+
+    test('opens writable Windows files for write and skips read-only ones', () => {
+        const { root, writablePaths, readOnlyPaths } = createSyncTree();
+        const opens = recordFileOpens();
+
+        syncServerPluginTree(root, { hostPlatform: 'win32' });
+
+        for (const filePath of writablePaths) {
+            expect(opens).toContainEqual([filePath, 'r+']);
+        }
+        const openedPaths = opens.map(([filePath]) => filePath);
+        for (const filePath of readOnlyPaths) {
+            expect(openedPaths).not.toContain(filePath);
+        }
+        expect(opens.filter(([filePath, flags]) => writablePaths.includes(filePath) && flags !== 'r+')).toEqual([]);
+    });
+
+    test('keeps read-only descriptors for every file outside Windows', () => {
+        const { root, writablePaths, readOnlyPaths } = createSyncTree();
+        const opens = recordFileOpens();
+
+        syncServerPluginTree(root, { hostPlatform: 'linux' });
+
+        for (const filePath of [...writablePaths, ...readOnlyPaths]) {
+            expect(opens).toContainEqual([filePath, 'r']);
+        }
+        expect(opens.filter(([, flags]) => flags !== 'r')).toEqual([]);
+    });
+
+    test('retries a briefly locked Windows file and rethrows a lock that stays', () => {
+        const { root, writablePaths } = createSyncTree();
+        const target = writablePaths[1];
+        const openSync = fs.openSync;
+        let lockCodes = ['EPERM', 'EACCES', 'EBUSY'];
+        let attempts = 0;
+        jest.spyOn(fs, 'fsyncSync').mockImplementation(() => { });
+        jest.spyOn(fs, 'openSync').mockImplementation((filePath, flags, ...rest) => {
+            if (filePath === target && flags === 'r+' && attempts < lockCodes.length) {
+                const code = lockCodes[attempts++];
+                throw Object.assign(new Error(`${code}: locked, open '${target}'`), { code, syscall: 'open', path: target });
+            }
+            return openSync(filePath, flags, ...rest);
+        });
+
+        expect(() => syncServerPluginTree(root, { hostPlatform: 'win32' })).not.toThrow();
+        expect(attempts).toBe(3);
+
+        attempts = 0;
+        lockCodes = ['EBUSY', 'EBUSY', 'EBUSY', 'EBUSY'];
+        const error = captureError(() => syncServerPluginTree(root, { hostPlatform: 'win32' }));
+        expect(attempts).toBe(4);
+        expect(error).toMatchObject({ code: 'EBUSY', syscall: 'open', path: target });
+    });
+
+    test('names the file when a flush fails without a path', () => {
+        const root = createTempDirectory();
+        const filePath = path.join(root, 'index.js');
+        fs.writeFileSync(filePath, 'export default true;\n');
+        jest.spyOn(fs, 'fsyncSync').mockImplementation(() => {
+            throw Object.assign(new Error('EIO: i/o error, fsync'), { code: 'EIO', syscall: 'fsync' });
+        });
+
+        const error = captureError(() => syncServerPluginTree(root, { hostPlatform: 'win32' }));
+
+        expect(error).toMatchObject({ code: 'EIO' });
+        expect(error.message).toContain(filePath);
+    });
+
+    test('flushes staged files for the host platform, not the npm platform option', async () => {
+        const { pluginsRoot } = createReleaseRepository();
+        const opens = spyOnFileOpens();
+
+        const staged = await stageServerPluginRelease({
+            pluginsRoot,
+            directoryName: 'ExamplePlugin',
+            targetVersion: '2.0.0',
+        }, { ...testDependencies({ platform: OTHER_PLATFORM }), env: { npm_execpath: createNpmCli() } });
+
+        // Only the Windows flush opens release files for writing.
+        const writableOpens = opens.filter(([filePath, flags]) => flags === 'r+' && filePath.startsWith(`${staged.releaseRoot}${path.sep}`));
+        expect(writableOpens.length > 0).toBe(process.platform === 'win32');
         discardStagedServerPluginRelease(staged);
     });
 

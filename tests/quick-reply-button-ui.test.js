@@ -1,4 +1,4 @@
-/* global document, globalThis */
+/* global globalThis */
 import { beforeAll, beforeEach, afterEach, describe, expect, jest, test } from '@jest/globals';
 
 await jest.unstable_mockModule('../public/script.js', () => ({

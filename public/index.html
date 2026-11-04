@@ -17,7 +17,7 @@
             background-color: #1d2128;
         }
     </style>
-    <script src="scripts/sillybunny-restart-cache-clear.js?v=20261005a"></script>
+    <script src="scripts/sillybunny-restart-cache-clear.js?v=20261013a"></script>
     <link rel="preload" as="style" href="style.css?v=20260803a">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
@@ -51,7 +51,7 @@
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20260622g" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20260930a">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-character-creator.css?v=20260930a">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20260821a" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261010a" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/user.css">
     <!-- Scripts are loaded at the end of the body to improve page load speed -->
 </head>
@@ -2879,6 +2879,7 @@
                                 <option value="fireworks">Fireworks AI</option>
                                 <option value="groq">Groq</option>
                                 <option value="makersuite">Google AI Studio</option>
+                                <option value="gemini_interactions">Gemini Interactions API</option>
                                 <option value="vertexai">Google Vertex AI</option>
                                 <option value="linkapi">LinkAPI</option>
                                 <option value="mistralai">MistralAI</option>
@@ -2982,6 +2983,7 @@
                                         <option value="claude">Claude</option>
                                         <option value="mistralai">MistralAI</option>
                                         <option value="makersuite">Google AI Studio</option>
+                                        <option value="gemini_interactions">Gemini Interactions API</option>
                                         <option value="vertexai">Google Vertex AI</option>
                                         <option value="deepseek">DeepSeek</option>
                                         <option value="xai">xAI (Grok)</option>
@@ -3332,20 +3334,24 @@
                                 </div>
                                 <h4 data-i18n="Available Models">Available Models</h4>
                                 <select id="model_google_select">
-                                    <optgroup label="Gemini 3.7">
-                                        <option value="gemini-3.7-flash">gemini-3.7-flash</option>
+                                    <!-- SillyBunny: track the current AI Studio catalog, which routes gemini-3.7-flash and gemini-3.5-flash to gemini-3.8-flash and gemini-3.6-flash. -->
+                                    <optgroup label="Gemini 4">
+                                        <option value="gemini-4-argon">gemini-4-argon</option>
+                                    </optgroup>
+                                    <optgroup label="Gemini 3.8">
+                                        <option value="gemini-3.8-flash">gemini-3.8-flash</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.6">
                                         <option value="gemini-3.6-flash">gemini-3.6-flash</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.5">
-                                        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
                                         <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.1">
                                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
-                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
-                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (deprecated)</option>
+                                        <option value="gemini-3.1-flash-lite-image">gemini-3.1-flash-lite-image</option>
+                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image (deprecated)</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.0">
                                         <option value="gemini-3-pro-image">gemini-3-pro-image</option>
@@ -3355,7 +3361,10 @@
                                         <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                                         <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                                         <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image (deprecated)</option>
+                                    </optgroup>
+                                    <optgroup label="Nano Banana">
+                                        <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                                     </optgroup>
                                     <!-- SillyBunny: Gemma 4 remains available after the older Gemini API Gemma catalog retired. -->
                                     <optgroup label="Gemma 4">
@@ -3489,11 +3498,18 @@
                                 <h4 data-i18n="Available Models">Available Models</h4>
                                 <select id="model_vertexai_select">
                                     <!-- data-mode="full" is for models that require a service account -->
+                                    <!-- SillyBunny: track the current Vertex AI catalog. "(deprecated)" marks a model with an announced retirement date. -->
+                                    <optgroup label="Gemini 4">
+                                        <option value="gemini-4-argon">gemini-4-argon</option>
+                                    </optgroup>
+                                    <optgroup label="Gemini 3.8">
+                                        <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                                    </optgroup>
                                     <optgroup label="Gemini 3.7">
-                                        <option value="gemini-3.7-flash">gemini-3.7-flash</option>
+                                        <option value="gemini-3.7-flash">gemini-3.7-flash (deprecated)</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.6">
-                                        <option value="gemini-3.6-flash">gemini-3.6-flash</option>
+                                        <option value="gemini-3.6-flash">gemini-3.6-flash (deprecated)</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.5">
                                         <option value="gemini-3.5-flash">gemini-3.5-flash</option>
@@ -3502,6 +3518,7 @@
                                     <optgroup label="Gemini 3.1">
                                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                                         <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+                                        <option value="gemini-3.1-flash-lite-image">gemini-3.1-flash-lite-image</option>
                                         <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.0">
@@ -3509,10 +3526,10 @@
                                         <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
                                     </optgroup>
                                     <optgroup label="Gemini 2.5">
-                                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                                        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image (deprecated)</option>
+                                    </optgroup>
+                                    <optgroup label="Nano Banana">
+                                        <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                                     </optgroup>
                                     <optgroup id="vertexai_other_models" label="From API"></optgroup>
                                 </select>
@@ -6024,6 +6041,11 @@
                                     <div class="sb-settings-subdrawer-toolbar">
                                         <small>Layer your own polish on top of the active SillyBunny palette.</small>
                                         <div class="flex-container flexnowrap alignitemscenter flexGap5">
+                                            <!-- SillyBunny: shows whether Custom CSS matches the current theme, and saves it into the theme. -->
+                                            <div id="custom_css_save_state" class="menu_button menu_button_icon margin0" role="button" tabindex="0" title="lorum ipsum" aria-label="lorum ipsum">
+                                                <i class="fa-solid fa-floppy-disk"></i>
+                                                <span class="custom_css_save_state_label"></span>
+                                            </div>
                                             <!-- SillyBunny: AI shortcut for Custom CSS generation. -->
                                             <div id="custom_css_ai_wand" class="menu_button menu_button_icon margin0" role="button" tabindex="0" title="Generate CSS with AI" aria-label="Generate CSS with AI" data-i18n="[title]Generate CSS with AI">
                                                 <i class="fa-solid fa-wand-magic-sparkles"></i>

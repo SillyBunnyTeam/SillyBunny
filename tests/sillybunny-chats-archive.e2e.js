@@ -1,4 +1,3 @@
-/* global getComputedStyle, innerHeight, innerWidth */
 import { expect, test } from '@playwright/test';
 import fs from 'node:fs/promises';
 import http from 'node:http';

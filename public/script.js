@@ -265,6 +265,7 @@ import { getRegexedString, regex_placement } from './scripts/extensions/regex/en
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
 import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
 import { consolidateCompanionChatHistory, hasCompanionChatHistoryForHiddenHost, selectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
+import { collectHiddenGenerationMessages } from './scripts/generation-hidden-messages.js';
 import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, instrumentInChatAgentPromptValue, trimOldestRetainedContribution } from './scripts/in-chat-agent-inspection.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
@@ -312,6 +313,7 @@ import { registerExtensionSlashCommands as initExtensionSlashCommands } from './
 import { ToolManager } from './scripts/tool-calling.js';
 import { addShowdownPatch } from './scripts/util/showdown-patch.js';
 import { applyBrowserFixes } from './scripts/browser-fixes.js';
+import { batchSortableHandleClasses } from './scripts/sortable-handle-classes.js';
 import { initServerHistory } from './scripts/server-history.js';
 import { initSettingsSearch } from './scripts/setting-search.js';
 import { initBulkEdit } from './scripts/bulk-edit.js';
@@ -339,7 +341,9 @@ import { compressRequest, setRequestCompressionConfig } from './scripts/request-
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
-import { fetchResumable } from './scripts/resumable-generation.js';
+import { fetchResumable, registerGenerationCommitPlan, settleGenerationCommit } from './scripts/resumable-generation.js';
+import { GENERATION_PLACEHOLDER_KEY, getMessageIdentity } from './scripts/generation-commit-plan.js';
+import { createGenerationCommitPlan, initServerGenerations, reloadServerCommittedReply } from './scripts/server-generations.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse } from './scripts/generation-request-controls.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
@@ -350,6 +354,7 @@ import {
     createDelegatedResizeObserver,
     createMessageUpdateQueue,
     createMobileViewportObserver,
+    createOffscreenMessageTracker,
     createStreamWriteBuffer,
     getChatHistoryPageSize,
     getChatRenderWindowStartIndex,
@@ -537,7 +542,7 @@ export let firstRun = false;
 export let settingsReady = false;
 let currentVersion = '0.0.0';
 // SillyBunny: version literals here and in CLIENT_VERSION are rewritten by scripts/bump-version.js.
-const SILLYBUNNY_UI_VERSION = 'SillyBunny v1.9.0-dev';
+const SILLYBUNNY_UI_VERSION = 'SillyBunny v2.0.0-dev';
 
 export let displayVersion = SILLYBUNNY_UI_VERSION;
 
@@ -580,7 +585,7 @@ export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
 export let system_avatar = getSillyBunnyFrontendIconSrc();
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
-export let CLIENT_VERSION = 'SillyBunny:v1.9.0-dev'; // For Horde header
+export let CLIENT_VERSION = 'SillyBunny:v2.0.0-dev'; // For Horde header
 
 function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
     const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
@@ -664,7 +669,11 @@ let mobileMessageUpdateFlushResolvers = [];
 let streamingVisibleWriteBuffer = null;
 let chatMessageResizeObserver = null;
 let mobileChatViewportObserver = null;
+let offscreenChatMessageTracker = null;
 const chatMessageResizeStates = new Map();
+const pendingChatMessageResizeBlocks = new Set();
+let pendingChatMessageResizeFrame = 0;
+let chatMessageResizeDeliveryViewportState = null;
 
 let dialogueResolve = null;
 let dialogueCloseStop = false;
@@ -1160,6 +1169,8 @@ async function firstLoadInit() {
         initDomHandlers();
         initStandaloneMode();
         initLibraryShims();
+        // SillyBunny: must run before any list becomes sortable; see sortable-handle-classes.js.
+        batchSortableHandleClasses();
         addShowdownPatch(showdown);
         addDOMPurifyHooks();
         // SillyBunny: card script detection - see #94.
@@ -1221,6 +1232,7 @@ async function firstLoadInit() {
         initSettingsSearch();
         initBulkEdit();
         initReasoning();
+        initServerGenerations();
         initWelcomeScreen();
         initQuickContextSizeEnhancer();
         await initScrapers();
@@ -2550,19 +2562,34 @@ function captureChatMessageResizeViewportState() {
     };
 }
 
-function captureChatMessageResizeState(element, entry = null) {
+/**
+ * Captures the viewport once per resize-observer delivery. One delivery can carry every message block
+ * in the chat, and scanning for the visible anchor once per block made long chat loads quadratic (#911).
+ */
+function captureChatMessageResizeDeliveryViewportState() {
+    if (!chatMessageResizeDeliveryViewportState) {
+        chatMessageResizeDeliveryViewportState = captureChatMessageResizeViewportState();
+        queueMicrotask(() => {
+            chatMessageResizeDeliveryViewportState = null;
+        });
+    }
+
+    return chatMessageResizeDeliveryViewportState;
+}
+
+function captureChatMessageResizeState(element, entry = null, viewportState = captureChatMessageResizeViewportState()) {
     return {
-        ...captureChatMessageResizeViewportState(),
+        ...viewportState,
         blockHeight: getObservedElementHeight(element, entry),
     };
 }
 
-function refreshChatMessageResizeState(element, metadata, entry = null) {
+function refreshChatMessageResizeState(element, metadata, entry = null, viewportState = undefined) {
     if (!metadata) {
         return;
     }
 
-    Object.assign(metadata, captureChatMessageResizeState(element, entry));
+    Object.assign(metadata, captureChatMessageResizeState(element, entry, viewportState));
 }
 
 function refreshObservedChatMessageResizeViewportStates() {
@@ -2604,13 +2631,13 @@ async function applyChatMessageResizeAction(element, entry, metadata) {
     const previousHeight = Number(resizeState.blockHeight ?? nextHeight);
 
     if (Math.abs(nextHeight - previousHeight) < 1) {
-        refreshChatMessageResizeState(element, metadata, entry);
+        refreshChatMessageResizeState(element, metadata, entry, captureChatMessageResizeDeliveryViewportState());
         return;
     }
 
     // SillyBunny: streaming progress owns the live message's scroll lane; skip resize scrolls for that block.
     if (isActiveStreamingMessageResizeBlock(element)) {
-        refreshChatMessageResizeState(element, metadata, entry);
+        refreshChatMessageResizeState(element, metadata, entry, captureChatMessageResizeDeliveryViewportState());
         return;
     }
 
@@ -2674,6 +2701,7 @@ function getMessageBlockElement(messageElement) {
 
 function unobserveChatMessageResizeBlock(messageBlock) {
     if (messageBlock instanceof HTMLElement) {
+        pendingChatMessageResizeBlocks.delete(messageBlock);
         chatMessageResizeObserver?.unobserve(messageBlock);
         chatMessageResizeStates.delete(messageBlock);
     }
@@ -2690,19 +2718,34 @@ function observeChatMessageResize(messageElement) {
         return;
     }
 
-    requestAnimationFrame(() => {
-        if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE) || !messageBlock.isConnected) {
-            return;
-        }
+    // SillyBunny: blocks rendered in the same frame share one frame callback and one viewport capture (#911).
+    pendingChatMessageResizeBlocks.add(messageBlock);
 
-        const observer = getChatMessageResizeObserver();
+    if (!pendingChatMessageResizeFrame) {
+        pendingChatMessageResizeFrame = requestAnimationFrame(observePendingChatMessageResizeBlocks);
+    }
+}
+
+function observePendingChatMessageResizeBlocks() {
+    pendingChatMessageResizeFrame = 0;
+    const messageBlocks = [...pendingChatMessageResizeBlocks].filter(messageBlock => messageBlock.isConnected);
+    pendingChatMessageResizeBlocks.clear();
+
+    if (messageBlocks.length === 0 || !isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE)) {
+        return;
+    }
+
+    const observer = getChatMessageResizeObserver();
+    const viewportState = captureChatMessageResizeViewportState();
+
+    for (const messageBlock of messageBlocks) {
         unobserveChatMessageResizeBlock(messageBlock);
 
-        const metadata = captureChatMessageResizeState(messageBlock);
+        const metadata = captureChatMessageResizeState(messageBlock, null, viewportState);
         if (observer.observe(messageBlock, metadata)) {
             chatMessageResizeStates.set(messageBlock, metadata);
         }
-    });
+    }
 }
 
 function unobserveChatMessageResize(messageElement) {
@@ -2714,12 +2757,49 @@ function unobserveChatMessageResize(messageElement) {
     const messageBlock = getMessageBlockElement(messageElement);
 
     unobserveChatMessageResizeBlock(messageBlock);
+
+    if (messageElement instanceof HTMLElement) {
+        offscreenChatMessageTracker?.untrack(messageElement.closest('.mes') ?? messageElement);
+    }
 }
 
 function disposeChatMessageResizeObserver() {
+    if (pendingChatMessageResizeFrame) {
+        cancelAnimationFrame(pendingChatMessageResizeFrame);
+        pendingChatMessageResizeFrame = 0;
+    }
+
+    pendingChatMessageResizeBlocks.clear();
     chatMessageResizeObserver?.dispose();
     chatMessageResizeObserver = null;
     chatMessageResizeStates.clear();
+    offscreenChatMessageTracker?.dispose();
+    offscreenChatMessageTracker = null;
+}
+
+function getOffscreenChatMessageTracker() {
+    if (!offscreenChatMessageTracker && chatElement[0]) {
+        offscreenChatMessageTracker = createOffscreenMessageTracker({ container: chatElement[0] });
+    }
+
+    return offscreenChatMessageTracker;
+}
+
+/**
+ * Lets a chat message skip rendering while it is far off screen, once it has been laid out (#911).
+ * The CSS rule for `.sb-mes-sized` keeps the newest messages fully rendered.
+ * @param {JQuery<HTMLElement>|HTMLElement} messageElement Message element.
+ */
+function trackOffscreenChatMessage(messageElement) {
+    if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.OFFSCREEN_MESSAGES) || !canObserveChatMessageResize()) {
+        return;
+    }
+
+    const element = messageElement?.jquery ? messageElement[0] : messageElement;
+
+    if (element instanceof HTMLElement) {
+        getOffscreenChatMessageTracker()?.track(element);
+    }
 }
 
 function updateMessageBlockThroughLifecycle(messageId, message, { rerenderMessage }) {
@@ -5182,6 +5262,7 @@ export function updateMessageElement(mes, { messageId = chat.length - 1, message
     }
 
     observeChatMessageResize(messageElement);
+    trackOffscreenChatMessage(messageElement);
     return messageElement;
 }
 
@@ -6374,7 +6455,11 @@ class StreamingProcessor {
         return (allowStopped || (!this.isStopped && !this.abortController.signal.aborted))
             && (allowStopped || (this.isCurrentGeneration?.() ?? true))
             && streamingProcessor === this && activeGenerationRun === this.originRun
-            && chatGeneration === this.originChatGeneration && getCurrentChatId() === this.originChatId
+            && this.#isOriginMessage(messageId);
+    }
+
+    #isOriginMessage(messageId) {
+        return chatGeneration === this.originChatGeneration && getCurrentChatId() === this.originChatId
             && (this.type === 'impersonate' || messageId < 0 || (this.message !== null
                 && chat[messageId] === this.message && (this.swipeId === undefined || this.message.swipe_id === this.swipeId)));
     }
@@ -6497,6 +6582,10 @@ class StreamingProcessor {
             this.messageId = messageId;
             this.message = chat[messageId];
             this.swipeId = this.message?.swipe_id;
+            // SillyBunny: marks the unfinished reply, which the server may replace if this page goes away.
+            if (this.message?.extra) {
+                this.message.extra[GENERATION_PLACEHOLDER_KEY] = new Date(this.timeStarted).toISOString();
+            }
             await saving;
             if (!this.#isCurrent(messageId)) return -1;
             this.swipeId = this.message.swipe_id;
@@ -6690,6 +6779,8 @@ class StreamingProcessor {
      */
     async finalizeIntermediaryMessage(messageId, text, { unlockUI = true }) {
         if (!this.#isCurrent(messageId)) return;
+        // SillyBunny: the reply is finished, so the server must no longer replace this message.
+        delete this.message?.extra?.[GENERATION_PLACEHOLDER_KEY];
         await this.onProgressStreaming(messageId, text, true);
         if (!this.#isCurrent(messageId)) return;
         const messageElement = chatElement.find(`.mes[mesid="${messageId}"]`);
@@ -6755,7 +6846,8 @@ class StreamingProcessor {
         if (!this.#isCurrent(messageId)) return;
 
         const isAborted = this.abortController.signal.aborted;
-        if (!isAborted && power_user.auto_swipe && generatedTextFiltered(text)) {
+        // SillyBunny: requests may keep their reply, as routed group replies do.
+        if (!isAborted && power_user.auto_swipe && !this.requestControls.suppressAutoSwipe && generatedTextFiltered(text)) {
             return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: this.requestControls });
         }
         await saveChatConditional();
@@ -6805,6 +6897,27 @@ class StreamingProcessor {
         this.isStopped = true;
         this.isCancelled = true;
         this.abortController.abort();
+    }
+
+    /**
+     * Keeps the reply that a Stop interrupted: ends its reasoning with all reasoning that arrived,
+     * records the reasoning duration, renders the message again and saves the chat.
+     * Emits STREAM_REASONING_DONE if the reasoning was in progress, but not MESSAGE_RECEIVED.
+     * Stops without more changes if the chat or the message changes while it runs.
+     * @returns {Promise<void>}
+     */
+    async finalizeStoppedMessage() {
+        const messageId = this.messageId;
+        if (this.type === 'impersonate' || messageId < 0 || !this.#isOriginMessage(messageId)) return;
+        // SillyBunny: the user stopped the reply, so the server must no longer replace this message.
+        delete this.message.extra?.[GENERATION_PLACEHOLDER_KEY];
+        this.#applyPendingReasoning();
+        await this.reasoningHandler.finish(messageId);
+        if (!this.#isOriginMessage(messageId)) return;
+        syncMesToSwipe(messageId);
+        await updateMessageBlock(messageId, this.message);
+        if (!this.#isOriginMessage(messageId)) return;
+        await saveChatConditional();
     }
 
     /**
@@ -7389,6 +7502,7 @@ function removeLastMessage(messageId = null) {
  * @property {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
  * @property {boolean} [suppressUserMessage] Ignore composer input, including commands and pending attachments.
  * @property {boolean} [suppressAutoContinue=false] Skip automatic continuation for this request
+ * @property {boolean} [suppressAutoSwipe=false] Keep a reply that auto-swipe would redo
  * @property {number} [maxOutputTokens] Limit generated prose without reducing the reasoning allowance
  * @property {number} [responseLength] Request-local response length override
  * @property {boolean} [preserveReasoningBudget=false] Ignore responseLength for reasoning requests
@@ -7446,7 +7560,7 @@ function consumePendingUserMessageExtra(message) {
     pendingUserMessageExtra = null;
 }
 
-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null, suppressAutoContinue = false, maxOutputTokens = 0, responseLength = null, preserveReasoningBudget = false } = {}, dryRun = false) {
+export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, suppressUserMessage = false, cacheScope = null, preserveLastMessage = false, companionHistoryTarget = null, suppressAutoContinue = false, suppressAutoSwipe = false, maxOutputTokens = 0, responseLength = null, preserveReasoningBudget = false } = {}, dryRun = false) {
     if (!dryRun && signal?.aborted) return;
 
     // SillyBunny: keep cancellation and terminal cleanup attached to this invocation,
@@ -7515,7 +7629,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             setGenerationProgress(0);
             generation_started = new Date();
         }
-        const requestControls = { suppressUserMessage, suppressAutoContinue, maxOutputTokens, responseLength, preserveReasoningBudget };
+        const requestControls = { suppressUserMessage, suppressAutoContinue, suppressAutoSwipe, maxOutputTokens, responseLength, preserveReasoningBudget };
 
         // Prevent generation from shallow characters
         await unshallowCharacter(this_chid);
@@ -7534,6 +7648,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         const shouldConsumeUserInput = type !== 'regenerate' && type !== 'swipe' && type !== 'quiet' && !isImpersonate && !dryRun && !depth && !suppressUserMessage;
         let textareaText = '';
         let renderedUserMessage = false;
+        // SillyBunny: a regenerated reply may still be on disk when the server writes its replacement.
+        let replacedMessageIdentity = null;
 
         if (!(dryRun || depth || suppressUserMessage || type == 'regenerate' || type == 'swipe' || type == 'quiet')) {
             const interruptedByCommand = await processCommands(String($('#send_textarea').val()));
@@ -7563,6 +7679,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                         requestMobileChatBottomPin();
                     }
                     const deletedMessageId = chat.length - 1;
+                    replacedMessageIdentity = getMessageIdentity(chat[deletedMessageId]);
                     deleteItemizedPromptForMessage(deletedMessageId);
                     chat.length = deletedMessageId;
                     await removeLastMessage(deletedMessageId);
@@ -7757,9 +7874,19 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         if (type === 'swipe') {
             coreChat.pop();
         }
+        // SillyBunny: an extension may hide lines from this speaker (GENERATION_HIDE_MESSAGES) before retained
+        // Companion notes are merged below, so a hidden line's notes are never merged and a hidden line never
+        // hosts the merge. Dry runs skip the request, as they skip the generate interceptors.
+        const hiddenGenerationMessages = dryRun
+            ? new Set()
+            : await collectHiddenGenerationMessages(coreChat, type, request => eventSource.emit(event_types.GENERATION_HIDE_MESSAGES, request));
+        if (!isCurrent()) return;
+        const companionVisibleMessages = hiddenGenerationMessages.size > 0
+            ? coreChat.filter(message => !hiddenGenerationMessages.has(message))
+            : coreChat;
         const companionRewriteTarget = companionHistoryTarget
         ?? (isContinue || type === 'swipe' || type === 'regenerate' ? lastMessage : null);
-        const companionCandidateMessages = coreChat.filter(message =>
+        const companionCandidateMessages = companionVisibleMessages.filter(message =>
             message !== companionRewriteTarget
         && !message.extra?.[IGNORE_SYMBOL],
         );
@@ -8838,6 +8965,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
                     const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });
                     if (!isCurrent()) return;
+                    // SillyBunny: lets the server write this reply into the chat if the page goes away.
+                    if (!isImpersonate) {
+                        registerGenerationCommitPlan(activeStreamingProcessor.requestAbortController.signal, createGenerationCommitPlan({ type, started: generation_started, replaces: replacedMessageIdentity }));
+                    }
                     activeStreamingProcessor.generator = await sendStreamingRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
                     if (!isCurrent()) return;
 
@@ -8845,6 +8976,15 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     let getMessage = shouldBufferOutput
                         ? await activeStreamingProcessor.generateBuffered()
                         : await activeStreamingProcessor.generate();
+                    if (!isCurrent()) return;
+                    // SillyBunny: the server kept its own copy of this reply, so saving this one would overwrite a newer chat file.
+                    if (await settleGenerationCommit(activeStreamingProcessor.requestAbortController.signal) === 'committed') {
+                        if (!isCurrent()) return;
+                        clearStreamingProcessorIfCurrent(activeStreamingProcessor);
+                        unblockGeneration(type);
+                        reloadServerCommittedReply();
+                        return;
+                    }
                     if (!isCurrent()) return;
                     let messageChunk = cleanUpMessage({
                         getMessage: getMessage,
@@ -8944,7 +9084,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                             clearStreamingProcessorIfCurrent(activeStreamingProcessor);
 
                             const isAborted = activeStreamingProcessor.abortController.signal.aborted;
-                            if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
+                            if (!isAborted && power_user.auto_swipe && !suppressAutoSwipe && generatedTextFiltered(getMessage)) {
                                 return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: requestControls });
                             }
 
@@ -8980,7 +9120,17 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     }
                 }
             } else {
-                return await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
+                // SillyBunny: lets the server write this reply into the chat if the page goes away.
+                if (!isImpersonate && type !== 'quiet' && signal) {
+                    registerGenerationCommitPlan(signal, createGenerationCommitPlan({ type, started: generation_started, replaces: replacedMessageIdentity }));
+                }
+                const result = await sendGenerationRequest(type, generate_data, { jsonSchema, cacheScope: generate_data.cacheScope, signal, ...requestControls });
+                // SillyBunny: the server kept its own copy of this reply; onSuccess() unblocks on no data instead of saving.
+                if (await settleGenerationCommit(signal) === 'committed') {
+                    reloadServerCommittedReply();
+                    return null;
+                }
+                return result;
             }
         }
 
@@ -9144,7 +9294,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
 
             const isAborted = abortController && abortController.signal.aborted;
-            if (!isAborted && power_user.auto_swipe && generatedTextFiltered(getMessage)) {
+            if (!isAborted && power_user.auto_swipe && !suppressAutoSwipe && generatedTextFiltered(getMessage)) {
                 is_send_press = false;
                 return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1, generationOptions: requestControls });
             }
@@ -9220,6 +9370,8 @@ export function stopGeneration() {
 
     if (stopState.shouldStopStreaming) {
         activeStreamingProcessor.onStopStreaming();
+        // SillyBunny: a cancelled run never finishes its reply, so Stop finishes and saves what arrived.
+        activeStreamingProcessor.finalizeStoppedMessage();
     }
 
     if (stopState.shouldAbortRequest && abortController) {
@@ -13122,6 +13274,16 @@ async function renderMessageScreenshotCanvas(startId, endId) {
                     .querySelectorAll('.mes, .mes_block, .mes_text, .mes_reasoning, :is(.mes_text, .mes_reasoning) :is(p, blockquote, li, ul, ol, .dc-gradient-text)')
                     .forEach(element => element.style.height = 'auto');
                 clonedSurface.querySelectorAll('.mes').forEach(element => element.style.gridTemplateRows = 'auto');
+                // Other frozen message boxes may grow with reflowed content but keep their captured height as a floor.
+                clonedSurface
+                    .querySelectorAll(':is(.mes_text, .mes_reasoning) :not(img, video, canvas, svg, svg *, iframe, picture)')
+                    .forEach(element => {
+                        if (element.style.height === 'auto' || element.style.overflowY !== 'visible') {
+                            return;
+                        }
+                        element.style.minHeight = element.style.height;
+                        element.style.height = 'auto';
+                    });
                 clonedSurface
                     .querySelectorAll('.mes_reasoning_header_title, .ica--companion-title, .ica--companion-title > span, .ica--companion-meta, .ica--companion-summary-spacer')
                     .forEach(element => element.style.width = 'auto');
@@ -15324,6 +15486,23 @@ export function getOverswipeBehavior(messageId, message = undefined) {
 }
 
 /**
+ * Toggles a swipe control only when its inline display has to change.
+ * SillyBunny: jQuery's show() reads computed style, so refreshing every message forced one restyle
+ * per message, including history that content-visibility had skipped (#911).
+ * @param {JQuery<HTMLElement>} controls Swipe controls of one message.
+ * @param {boolean} visible Whether the controls should be shown.
+ */
+function toggleSwipeControl(controls, visible) {
+    for (const control of controls) {
+        if ((control.style.display === 'none') !== visible) {
+            continue;
+        }
+
+        $(control).toggle(visible);
+    }
+}
+
+/**
  * Refreshes all swipe buttons and updates their swipe counters.
  * This has been optimized for bulk updates by minimizing DOM queries.
  * @param {boolean} updateCounters When true, the swipe counters will also be updated. Typically redundant because addOneMessage updates the counters.
@@ -15381,15 +15560,15 @@ export function refreshSwipeButtons(updateCounters = false, fade = true) {
 
             //If there's only one swipe, the left arrow should not be shown.
             div.classList.toggle('swipes_visible', hasSwipes || pristineGreeting);
-            swipePickerButton.toggle(canOpenSwipePicker);
-            deleteAddSwipeButton.toggle(canDeleteAddSwipe(messageId, message));
+            toggleSwipeControl(swipePickerButton, canOpenSwipePicker);
+            toggleSwipeControl(deleteAddSwipeButton, canDeleteAddSwipe(messageId, message));
 
             //updateSwipeCounter does not need to be awaited, It can run a bit later.
             if (updateCounters) updateSwipeCounter(messageId, { message, messageElement: $(div) });
         } else {
             //Hide all messages that are not swipeable.
             div.classList.remove('swipes_visible', 'last_swipe');
-            $(div).find('.mes_swipe_picker').toggle(canOpenSwipePickerForMessage(messageId));
+            toggleSwipeControl($(div).find('.mes_swipe_picker'), canOpenSwipePickerForMessage(messageId));
             $(div).find('.mes_delete_add_swipe').hide();
         }
     });
@@ -18784,7 +18963,13 @@ jQuery(async function () {
         disposeChatMessageResizeObserver();
         disposeMobileChatViewportObserver();
         cancelTtsPlay();
-        if (streamingProcessor) {
+    });
+
+    // SillyBunny: stop the stream on pagehide, after resumable-generation.js hands chat replies to the
+    // server. A leave-site prompt can cancel beforeunload, and a page kept in the back/forward cache
+    // keeps reading its reply when it is shown again.
+    $(window).on('pagehide', (event) => {
+        if (streamingProcessor && !event.originalEvent?.persisted) {
             console.log('Page reloaded. Aborting streaming...');
             streamingProcessor.onStopStreaming();
         }

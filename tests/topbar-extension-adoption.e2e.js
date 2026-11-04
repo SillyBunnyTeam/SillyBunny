@@ -1,4 +1,3 @@
-/* global document, HTMLElement, window */
 import { expect, test } from '@playwright/test';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 
@@ -265,6 +264,9 @@ test.describe('third-party top-bar button adoption', () => {
 
     test('keeps a third-party settings drawer reachable in exactly one tab', async ({ page }) => {
         await openBarForTest(page);
+        // The settings tab filter loads on demand when the Settings panel first opens.
+        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'settings'));
+        await expect(page.locator('#sb-settings-tabs')).toHaveCount(1);
 
         const visibility = await page.evaluate(async () => {
             const content = document.getElementById('user-settings-block-content');

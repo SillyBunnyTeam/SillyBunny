@@ -195,6 +195,7 @@ export const CHAT_COMPLETION_SOURCES = {
     OPENROUTER: 'openrouter',
     AI21: 'ai21',
     MAKERSUITE: 'makersuite',
+    GEMINI_INTERACTIONS: 'gemini_interactions',
     VERTEXAI: 'vertexai',
     MISTRALAI: 'mistralai',
     CUSTOM: 'custom',

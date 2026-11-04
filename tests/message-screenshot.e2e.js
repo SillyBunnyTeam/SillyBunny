@@ -1,4 +1,3 @@
-/* global document, window, navigator */
 import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -62,6 +61,7 @@ async function installScreenshotMessage(page, messageText) {
         const reasoningDetails = document.createElement('details');
         reasoningDetails.className = 'mes_reasoning_details';
         reasoningDetails.open = true;
+        reasoningDetails.dataset.hasContent = 'true';
         const reasoningSummary = document.createElement('summary');
         reasoningSummary.className = 'mes_reasoning_summary flex-container';
         const reasoningHeaderBlock = document.createElement('div');

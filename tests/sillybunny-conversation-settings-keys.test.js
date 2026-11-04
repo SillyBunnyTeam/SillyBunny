@@ -5,6 +5,7 @@ import {
     DEFAULT_SETTINGS,
     GLOBAL_CONVERSATION_SETTINGS_KEYS,
     GROUP_CONVERSATION_SETTINGS_KEYS,
+    SETTINGS_FIELDS,
     THREAD_CONVERSATION_SETTINGS_KEYS,
 } from '../public/scripts/sillybunny-conversation/constants.js';
 
@@ -18,6 +19,7 @@ describe('sillybunny conversation settings keys', () => {
             'grounded_dialogue_rules_enabled',
             'grounded_dialogue_rules',
             'connection_profile',
+            'lorebooks_enabled',
         ]);
         expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('custom_instructions');
         expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('grounded_dialogue_rules');
@@ -28,6 +30,14 @@ describe('sillybunny conversation settings keys', () => {
         expect(GROUP_CONVERSATION_SETTINGS_KEYS).not.toContain('custom_instructions');
         expect(GROUP_CONVERSATION_SETTINGS_KEYS).not.toContain('grounded_dialogue_rules');
         expect(GROUP_CONVERSATION_SETTINGS_KEYS).not.toContain('connection_profile');
+    });
+
+    test('turns Conversation lorebooks on by default with one global switch', () => {
+        expect(DEFAULT_SETTINGS.lorebooks_enabled).toBe(true);
+        expect(THREAD_CONVERSATION_SETTINGS_KEYS).not.toContain('lorebooks_enabled');
+        expect(CHARACTER_CONVERSATION_SETTINGS_KEYS).not.toContain('lorebooks_enabled');
+        expect(GROUP_CONVERSATION_SETTINGS_KEYS).not.toContain('lorebooks_enabled');
+        expect(SETTINGS_FIELDS).toContainEqual({ id: 'sb_conv_lorebooks_enabled', key: 'lorebooks_enabled', prop: 'checked' });
     });
 
     test('keeps non-global settings available for solo thread storage', () => {

@@ -59,6 +59,18 @@ git fetch --no-tags https://github.com/SillyTavern/SillyTavern.git \
 Tags are fetched into `refs/remotes/upstream/` rather than `refs/tags/` so they
 are never pushed by accident.
 
+## Upstream-Origin File List
+
+`tests/fixtures/upstream-origin-public-files.json` lists the CSS, JavaScript and HTML files under `public/` that come from upstream SillyTavern. `tests/webkit-prefix-companions.test.js` skips these files. In each tag sync PR, regenerate the list from the new tag:
+
+```sh
+ST_TAG=1.19.0
+git ls-tree -r --name-only "refs/remotes/upstream/st-$ST_TAG" -- public \
+  | grep -E '\.(css|js|html)$' | grep -v '^public/lib/' \
+  | node -e 'const lines = require("node:fs").readFileSync(0, "utf8").trim().split("\n"); process.stdout.write(`${JSON.stringify(lines, null, 4)}\n`);' \
+  > tests/fixtures/upstream-origin-public-files.json
+```
+
 ## Phase-Gate Drill
 
 Run this before starting a new refactor phase and before an actual upstream sync.
