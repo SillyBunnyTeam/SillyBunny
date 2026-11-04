@@ -21,6 +21,7 @@ import {
 import { installProbes, settleTransitions } from './dialog-accessibility.js';
 import { applyHomeTestSettings } from './getting-started-state.js';
 import { protectMaintainerServer } from './maintainer-server.js';
+import { LANDSCAPE_PHONE, SHEET_BOUNDARY_PHONE } from './matrix.js';
 import { bootMiscDialogs, openMiscFixtureChat } from './misc-dialogs.js';
 import { fetchJsonOrSkip } from './route-fetch.js';
 
@@ -902,6 +903,8 @@ SURFACES.push(
     {
         ...HOME_WINDOW,
         id: 'assistant-picker',
+        // 450 is the widest window that shows the action menus as sheets, and 844x390 is a phone on its side.
+        viewports: [DESKTOP, PHONE, SHEET_BOUNDARY_PHONE, LANDSCAPE_PHONE],
         title: 'Choose Assistant window (opened from the Choose Assistant card)',
         boot: bootHomeWithAssistants(null),
         structure: { name: 'Choose Assistant' },

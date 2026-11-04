@@ -7,6 +7,7 @@ import { installFixtureChats, registerFixtureChat } from './helpers/fixture-chat
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { DESKTOP, matrixViewports } from './helpers/matrix.js';
+import { readTextContrast, TEXT_CONTRAST } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -64,8 +65,9 @@ const menuLabels = page => page.getByRole('menuitem').allTextContents();
  * @param {number} [options.statusDelay] How long the server takes to answer the status, in milliseconds.
  * @param {boolean} [options.statusFails] Whether the status route refuses every read.
  * @param {boolean} [options.statusEmpty] Whether the status lists no file, which is what a server with no managed content sends.
+ * @param {string} [options.theme] The name of a bundled theme to copy into the settings, as if the user had picked it.
  */
-async function boot(page, { library, status = {}, accountStorage = {}, statusDelay = 0, statusFails = false, statusEmpty = false }) {
+async function boot(page, { library, status = {}, accountStorage = {}, statusDelay = 0, statusFails = false, statusEmpty = false, theme = null }) {
     const world = {
         library: new Set(library),
         status: new Map(Object.entries(status)),
@@ -127,6 +129,10 @@ async function boot(page, { library, status = {}, accountStorage = {}, statusDel
         const settings = JSON.parse(data.settings);
         applyHomeTestSettings(settings);
         settings.accountStorage = { ...withoutAssistantAccount(settings.accountStorage), ...MIGRATED, ...accountStorage };
+        if (theme) {
+            const { name, ...palette } = data.themes.find(entry => entry.name === theme);
+            settings.power_user = { ...settings.power_user, ...palette, theme: name };
+        }
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
 
@@ -645,6 +651,75 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
 
                 await expect(cardOf(page, 'assistant-tewi').locator('.sbHomeFootButton').first()).toBeFocused();
             });
+        });
+    });
+}
+
+for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
+    test.describe(`Restore and Update Available in Libadwaita Light at ${name}`, () => {
+        test.use(options);
+
+        test('the Update Available item of the card menu reads at 4.5:1', async ({ page }) => {
+            await boot(page, { library: [REISEN, TEWI], status: { [REISEN]: EDITED }, theme: 'Libadwaita Light' });
+            expect(await page.evaluate(() => window.SillyTavern.getContext().powerUserSettings.theme)).toBe('Libadwaita Light');
+
+            await openMenu(page, 'assistant-reisen');
+
+            expect(await readTextContrast(page, page.getByRole('menuitem', { name: 'Update Available' }))).toBeGreaterThanOrEqual(TEXT_CONTRAST);
+        });
+
+        test('Keep Mine and Update read at 4.5:1 in the question', async ({ page }) => {
+            await boot(page, { library: [REISEN, TEWI], status: { [REISEN]: EDITED }, theme: 'Libadwaita Light' });
+            await openMenu(page, 'assistant-reisen');
+            await page.getByRole('menuitem', { name: 'Update Available' }).click();
+            await expect(alertOf(page)).toBeVisible();
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+            for (const answer of ['Keep Mine', 'Update']) {
+                expect(await readTextContrast(page, alertOf(page).getByRole('button', { name: answer, exact: true })), answer).toBeGreaterThanOrEqual(TEXT_CONTRAST);
+            }
+        });
+
+        test('Restore reads at 4.5:1 on the card of a deleted assistant', async ({ page }) => {
+            await boot(page, { library: [TEWI], status: { [REISEN]: DELETED }, accountStorage: REISEN_DELETED_ACCOUNT, theme: 'Libadwaita Light' });
+
+            expect(await readTextContrast(page, restoreOf(page))).toBeGreaterThanOrEqual(TEXT_CONTRAST);
+        });
+    });
+
+    test.describe(`Restore and Update Available in forced colours at ${name}`, () => {
+        test.use({ ...options, forcedColors: 'active' });
+
+        test('the Update Available item keeps its text readable', async ({ page }) => {
+            await boot(page, { library: [REISEN, TEWI], status: { [REISEN]: EDITED } });
+
+            await openMenu(page, 'assistant-reisen');
+
+            expect(await readTextContrast(page, page.getByRole('menuitem', { name: 'Update Available' }))).toBeGreaterThanOrEqual(TEXT_CONTRAST);
+        });
+
+        test('Keep Mine and Update have a border each and readable text', async ({ page }) => {
+            await boot(page, { library: [REISEN, TEWI], status: { [REISEN]: EDITED } });
+            await openMenu(page, 'assistant-reisen');
+            await page.getByRole('menuitem', { name: 'Update Available' }).click();
+            await expect(alertOf(page)).toBeVisible();
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+            for (const answer of ['Keep Mine', 'Update']) {
+                const button = alertOf(page).getByRole('button', { name: answer, exact: true });
+                const edge = await button.evaluate((node) => {
+                    const style = getComputedStyle(node);
+                    return { borderStyle: style.borderTopStyle, borderWidth: style.borderTopWidth };
+                });
+                expect(edge.borderStyle !== 'none' && edge.borderWidth !== '0px', `${answer} has a border: ${JSON.stringify(edge)}`).toBe(true);
+                expect(await readTextContrast(page, button), `${answer}: text on what is behind it`).toBeGreaterThanOrEqual(TEXT_CONTRAST);
+            }
+        });
+
+        test('Restore keeps its text readable on the card of a deleted assistant', async ({ page }) => {
+            await boot(page, { library: [TEWI], status: { [REISEN]: DELETED }, accountStorage: REISEN_DELETED_ACCOUNT });
+
+            expect(await readTextContrast(page, restoreOf(page))).toBeGreaterThanOrEqual(TEXT_CONTRAST);
         });
     });
 }
