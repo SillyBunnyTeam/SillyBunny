@@ -91,6 +91,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-08-11 PR #754 remote-save integrity fix. |
 | Owner | Bugfix integrator. |
 
+### `src/endpoints/files.js`, `src/endpoints/chats.js`, `src/endpoints/groups.js`, and `src/endpoints/vectors.js` - user folder paths and route errors
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/files.js`, `src/endpoints/chats.js`, `src/endpoints/groups.js`, `src/endpoints/vectors.js`. |
+| Area | Data Bank file delete and verify, group chat lists, chat export, chat info, group delete, vector indexes and purge. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | `files.js`: `/delete` and `/verify` check the joined path with `isPathUnderParent()` instead of `startsWith()`. `chats.js`: the new `getGroupChatPath()` returns the chat file path for a string or number ID whose path stays inside the group chats folder, and null otherwise; `/search` and `/recent` skip an ID that it refuses. `/export` runs its whole body inside one `try` block, answers 400 for a `file` that is not a string or that sanitizes to an empty name, and awaits a promise that its read stream and readline settle, with `error` listeners on both; its `line` listener skips a line that throws and logs one warning with the count. `getChatInfo()` reads `mes` only when it is a string. `groups.js`: `hasValidChatIds()` makes `/create` and `/edit` answer 400 for a chat list with an ID that `getGroupChatPath()` refuses, and `/delete` answers 400 for an `id` that is not a string or a number. `vectors.js`: `getIndex()` throws `InvalidVectorFolderError` for a source or collection ID that sanitizes to an empty name, `regenerateCorruptedIndexErrorHandler()` answers 400 for that error and catches errors from its own regeneration, and `/purge` answers 400 for a collection ID that sanitizes to an empty name. |
+| Protecting tests | `tests/route-guards-scenarios.test.js` and `tests/route-guards-rows.test.js`; the rows use the hostile file name harness in `tests/util/hostile-file-names-*.js`. `tests/base64-atomic-writes.test.js` mocks `util.js` with `isPathUnderParent`, which `files.js` imports. |
+| Validation | `npm run test:unit --prefix tests -- route-guards-scenarios.test.js route-guards-rows.test.js` (with the four files from the base commit, all 31 tests fail), the suites that load these routers, `npm run lint`, `npm run lint --prefix tests`, one request for each guard on Bun 1.4.4 and Node 24.22.1 scratch servers, and the new suites on Linux with Node 24. |
+| Rollback path | Revert the hunks in the four files, delete `tests/route-guards-scenarios.test.js` and `tests/route-guards-rows.test.js`, and remove `isPathUnderParent` from the `util.js` mock in `tests/base64-atomic-writes.test.js`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 user folder paths and route errors. |
+| Owner | TODO(copy) |
+
 ### `public/index.html`, `public/style.css`, `public/css/mobile-styles.css`, `public/script.js`, and `public/scripts/group-chats.js` - group chat branch creation
 | Field | Value |
 | --- | --- |
