@@ -1250,6 +1250,11 @@ router.post('/create', getFileNameValidationFunction('file_name'), async functio
     try {
         if (!request.body) return response.sendStatus(400);
 
+        // SillyBunny: the file name also names the card's chats folder, so a name that sanitizes to nothing, such as `.` or `..`, would make that folder the chats folder or a folder above it.
+        if (request.body.file_name && !sanitize(String(request.body.file_name))) {
+            return response.sendStatus(400);
+        }
+
         request.body.ch_name = sanitize(request.body.ch_name);
 
         const char = JSON.stringify(charaFormatData(request.body, request.user.directories));
