@@ -4,9 +4,10 @@ import { withoutAssistantAccount } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { decodeClip, GLYPH_CONTRAST, contrastOf } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
-async function bootRoleplayChat(page) {
+async function bootRoleplayChat(page, { theme = null } = {}) {
     await protectMaintainerServer(page);
     await installFixtureChats(page);
     await page.route('**/api/settings/get', async (route) => {
@@ -15,6 +16,10 @@ async function bootRoleplayChat(page) {
         const settings = JSON.parse(data.settings);
         applyHomeTestSettings(settings);
         settings.accountStorage = { ...withoutAssistantAccount(settings.accountStorage), WelcomePage_LastMode: 'roleplay' };
+        if (theme) {
+            const { name, ...palette } = data.themes.find(entry => entry.name === theme);
+            settings.power_user = { ...settings.power_user, ...palette, theme: name };
+        }
         return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
     });
     await page.route('**/api/chats/save', route => route.fulfill({ json: { result: 'ok' } }));
@@ -35,9 +40,9 @@ async function goOffline(page) {
 }
 const notice = page => page.locator('.toast', { hasText: 'Not connected to API!' });
 
-/** Opens Connections on the OpenAI source with no key saved, and returns the key field. */
-async function openEmptyKeyField(page) {
-    await bootRoleplayChat(page);
+/** Opens Connections on the OpenAI source with no key saved, and returns the key field. `options` go to `bootRoleplayChat`. */
+async function openEmptyKeyField(page, options) {
+    await bootRoleplayChat(page, options);
     await goOffline(page);
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'connections'));
     await page.evaluate(() => {
@@ -126,6 +131,52 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
 
             await key.pressSequentially('sk');
             await expect(key).not.toHaveAttribute('aria-invalid');
+        });
+
+        test('in Libadwaita Light the invalid key field has a danger edge that stands out at 3:1', async ({ page }) => {
+            const key = await openEmptyKeyField(page, { theme: 'Libadwaita Light' });
+            expect(await page.evaluate(() => window.SillyTavern.getContext().powerUserSettings.theme)).toBe('Libadwaita Light');
+            await page.locator('#api_button_openai').click();
+            await expect(key).toHaveAttribute('aria-invalid', 'true');
+            // The toast and the focus ring settle first, so that the edge is read at rest.
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+            const box = await key.evaluate((node) => {
+                node.scrollIntoView({ block: 'center' });
+                const { left, top, width } = node.getBoundingClientRect();
+                return { left, top, width };
+            });
+            const y = Math.round(box.top);
+            const pixel = await decodeClip(page, { x: Math.floor(box.left), y: y - 6, width: Math.ceil(box.width), height: 12 });
+            const x = Math.round(box.left + box.width / 2);
+
+            expect(contrastOf(pixel(x, y), pixel(x, y - 3)), 'the top edge of the field against the page above it').toBeGreaterThanOrEqual(GLYPH_CONTRAST);
+        });
+
+        test.describe('in forced colours', () => {
+            test.use({ forcedColors: 'active' });
+
+            test('the invalid key field differs from a valid one by an outline or a border, because the palette drops its colour and shadow', async ({ page }) => {
+                test.fail(true, 'The invalid state is a danger border colour and a box-shadow (:is(.text_pole, select)[aria-invalid=true], public/css/sillybunny-theme.css:1427). Forced colours replace the colour and drop the shadow, and no forced-colors rule gives the field an outline or a wider border.');
+                const key = await openEmptyKeyField(page);
+                const edgeOf = () => key.evaluate((node) => {
+                    const style = getComputedStyle(node);
+                    return {
+                        borderStyle: style.borderTopStyle,
+                        borderWidth: style.borderTopWidth,
+                        outlineStyle: style.outlineStyle,
+                        outlineWidth: style.outlineWidth,
+                    };
+                });
+                await key.evaluate(node => node.blur());
+                const valid = await edgeOf();
+
+                await page.locator('#api_button_openai').click();
+                await expect(key).toHaveAttribute('aria-invalid', 'true');
+                await key.evaluate(node => node.blur());
+
+                expect(await edgeOf(), 'the edge of the field once it is invalid').not.toEqual(valid);
+            });
         });
 
         // The keyboard shortcuts of the app press buttons with element.click(), which is not a trusted event.

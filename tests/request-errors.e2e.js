@@ -4,8 +4,9 @@ import { testSetup } from './frontend/frontent-test-utils.js';
 import { withoutAssistantAccount } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
-import { protectMaintainerServer } from './helpers/maintainer-server.js';
-import { quickOr } from './helpers/matrix.js';
+import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { PHONE, quickOr } from './helpers/matrix.js';
+import { readTextContrast, TEXT_CONTRAST } from './helpers/page-contrast.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 test.use({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -104,6 +105,29 @@ async function openChatWithToastRecorder(page) {
     await expect(page.locator('#chat .mes[mesid="0"]')).toBeVisible({ timeout: 30000 });
 }
 
+/** Points the chat at the failing provider through the API path of the row, so that the next message gets the failure. */
+async function pointChatAtFailure(page, { api, failure, port }) {
+    await page.evaluate(async ({ api, failure, port }) => {
+        const script = await import('/script.js');
+        const { oai_settings } = await import('/scripts/openai.js');
+        const { textgenerationwebui_settings: textgen } = await import('/scripts/textgen-settings.js');
+        const base = `http://127.0.0.1:${port}/fail/${failure}`;
+        if (api.startsWith('chat')) {
+            $('#main_api').val('openai').trigger('change');
+            oai_settings.chat_completion_source = 'custom';
+            oai_settings.custom_url = `${base}/v1`;
+            oai_settings.custom_model = 'test-model';
+            oai_settings.stream_openai = api === 'chat-stream';
+        } else {
+            $('#main_api').val('textgenerationwebui').trigger('change');
+            textgen.type = 'generic';
+            textgen.server_urls = { ...textgen.server_urls, generic: base };
+            textgen.streaming = api === 'text-stream';
+        }
+        script.setOnlineStatus('Valid');
+    }, { api, failure, port });
+}
+
 test.describe('failed generation requests show the provider message and a hint instead of the HTTP reason', () => {
     test.describe.configure({ timeout: 90000 });
 
@@ -119,25 +143,7 @@ test.describe('failed generation requests show the provider message and a hint i
     for (const [api, failure, expectedMessage, expectedKind] of quickOr(ROWS, FIRST_ROW_OF_EACH_API)) {
         test(`${api} answered with ${failure}`, async ({ page }) => {
             await openChatWithToastRecorder(page);
-            await page.evaluate(async ({ api, failure, port }) => {
-                const script = await import('/script.js');
-                const { oai_settings } = await import('/scripts/openai.js');
-                const { textgenerationwebui_settings: textgen } = await import('/scripts/textgen-settings.js');
-                const base = `http://127.0.0.1:${port}/fail/${failure}`;
-                if (api.startsWith('chat')) {
-                    $('#main_api').val('openai').trigger('change');
-                    oai_settings.chat_completion_source = 'custom';
-                    oai_settings.custom_url = `${base}/v1`;
-                    oai_settings.custom_model = 'test-model';
-                    oai_settings.stream_openai = api === 'chat-stream';
-                } else {
-                    $('#main_api').val('textgenerationwebui').trigger('change');
-                    textgen.type = 'generic';
-                    textgen.server_urls = { ...textgen.server_urls, generic: base };
-                    textgen.streaming = api === 'text-stream';
-                }
-                script.setOnlineStatus('Valid');
-            }, { api, failure, port: provider.port });
+            await pointChatAtFailure(page, { api, failure, port: provider.port });
 
             await page.locator('#send_textarea').fill(`hello ${api} ${failure}`);
             await page.locator('#send_but').click();
@@ -153,4 +159,110 @@ test.describe('failed generation requests show the provider message and a hint i
             expect(toast.hint).toBe(expectedKind ? HINTS[expectedKind] : '');
         });
     }
+});
+
+const KEY_ROW = ['chat', '401json'];
+
+test.describe('the toast of a failed request on a phone and in forced colours', () => {
+    test.describe.configure({ timeout: 90000 });
+
+    /** @type {{ port: number, close: () => Promise<void> }} */
+    let provider;
+    test.beforeAll(async () => {
+        provider = await startFailingProvider();
+    });
+    test.afterAll(async () => {
+        await provider.close();
+    });
+
+    /** Sends a message that the provider fails, and returns the toast of the failure once it is on screen. */
+    async function failOnce(page) {
+        await openChatWithToastRecorder(page);
+        await showToasts(page);
+        // A toast that times out while the test measures it would make the measure a race.
+        await page.evaluate(() => {
+            window.toastr.options.timeOut = 0;
+            window.toastr.options.extendedTimeOut = 0;
+        });
+        await pointChatAtFailure(page, { api: KEY_ROW[0], failure: KEY_ROW[1], port: provider.port });
+        await page.locator('#send_textarea').fill('hello phone');
+        await page.locator('#send_but').click();
+        const toast = page.locator('#toast-container .toast').filter({ hasText: TOAST_TITLES[0] });
+        await expect(toast).toBeVisible({ timeout: 15000 });
+        await expect(toast.locator('[data-sb-request-error-hint]')).toHaveText(HINTS.key);
+        return toast;
+    }
+
+    test.describe('on a phone', () => {
+        test.use({ viewport: PHONE, isMobile: true, hasTouch: true });
+
+        test('is inside the window, is announced, and its hint reads and is whole', async ({ page }) => {
+            const toast = await failOnce(page);
+
+            const look = await toast.evaluate((node) => {
+                const box = node.getBoundingClientRect();
+                const hint = node.querySelector('[data-sb-request-error-hint]');
+                const announcer = node.closest('[role]');
+                return {
+                    box: { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
+                    viewport: { width: innerWidth, height: innerHeight },
+                    role: node.getAttribute('role') ?? announcer?.getAttribute('role') ?? null,
+                    live: node.getAttribute('aria-live') ?? node.closest('[aria-live]')?.getAttribute('aria-live') ?? null,
+                    hintCut: hint.scrollHeight > hint.clientHeight + 1 || hint.scrollWidth > hint.clientWidth + 1,
+                };
+            });
+
+            expect(look.box.left, 'inside the window, left').toBeGreaterThanOrEqual(-0.5);
+            expect(look.box.right, 'inside the window, right').toBeLessThanOrEqual(look.viewport.width + 0.5);
+            expect(look.box.top, 'inside the window, top').toBeGreaterThanOrEqual(-0.5);
+            expect(look.box.bottom, 'inside the window, bottom').toBeLessThanOrEqual(look.viewport.height + 0.5);
+            expect(['status', 'alert'], `the toast is announced (role ${look.role}, aria-live ${look.live})`).toContain(look.role);
+            expect(look.hintCut, 'the hint is not cut').toBe(false);
+            expect(await readTextContrast(page, toast.locator('[data-sb-request-error-hint]')), 'the hint').toBeGreaterThanOrEqual(TEXT_CONTRAST);
+        });
+    });
+
+    test.describe('in forced colours', () => {
+        test.use({ forcedColors: 'active' });
+
+        test('has CanvasText on Canvas for its text and its hint, and the hint reads', async ({ page }) => {
+            const toast = await failOnce(page);
+
+            const system = await page.evaluate(() => {
+                const probe = document.createElement('span');
+                probe.style.cssText = 'color: CanvasText; background-color: Canvas;';
+                document.body.append(probe);
+                const style = getComputedStyle(probe);
+                const colours = { text: style.color, canvas: style.backgroundColor };
+                probe.remove();
+                return colours;
+            });
+            const painted = await toast.evaluate((node) => {
+                const style = getComputedStyle(node);
+                return { background: style.backgroundColor, color: style.color, hint: getComputedStyle(node.querySelector('[data-sb-request-error-hint]')).color };
+            });
+
+            expect(painted.background, 'the toast is on Canvas').toBe(system.canvas);
+            expect(painted.color, 'its text is CanvasText').toBe(system.text);
+            expect(painted.hint, 'its hint is CanvasText').toBe(system.text);
+            expect(await readTextContrast(page, toast.locator('[data-sb-request-error-hint]')), 'the hint on the toast').toBeGreaterThanOrEqual(TEXT_CONTRAST);
+        });
+
+        test('has an edge of its own, because forced colours drop its shadow', async ({ page }) => {
+            test.fail(true, 'The toast is separated from the page by a box-shadow only (body #toast-container > .toast, public/css/sillybunny-theme.css:6118), which forced colours drop, and it has no border or outline of its own.');
+            const toast = await failOnce(page);
+
+            const edge = await toast.evaluate((node) => {
+                const style = getComputedStyle(node);
+                return {
+                    borderStyle: style.borderTopStyle,
+                    borderWidth: style.borderTopWidth,
+                    outlineStyle: style.outlineStyle,
+                    outlineWidth: style.outlineWidth,
+                };
+            });
+
+            expect((edge.borderStyle !== 'none' && edge.borderWidth !== '0px') || (edge.outlineStyle !== 'none' && edge.outlineWidth !== '0px'), JSON.stringify(edge)).toBe(true);
+        });
+    });
 });
