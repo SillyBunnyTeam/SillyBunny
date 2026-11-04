@@ -9008,7 +9008,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
                     // SillyBunny: a cut-off reply can look finished or blank, so its warning replaces the reasoning-only one.
                     if (isStreamFinished && !isStreamWithToolCalls && activeStreamingProcessor.providerLengthFinish && warnsOnGenerationLengthFinish(main_api, oai_settings.chat_completion_source)) {
-                        toastr.warning(t`TODO(copy)`);
+                        toastr.warning(t`Gemini stopped before finishing this reply. Try a lower Reasoning Effort or a higher Max Response Length.`);
                     } else if (isStreamFinished && !isStreamWithToolCalls && isReasoningOnlyStream) {
                         toastr.warning(t`The model finished reasoning but returned no reply text.`);
                     }
@@ -9213,7 +9213,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
             // SillyBunny: a cut-off reply can look finished or blank, so its warning replaces the reasoning-only one.
             if (type !== 'quiet' && isGenerationLengthFinish(data) && warnsOnGenerationLengthFinish(main_api, oai_settings.chat_completion_source)) {
-                toastr.warning(t`TODO(copy)`);
+                toastr.warning(t`Gemini stopped before finishing this reply. Try a lower Reasoning Effort or a higher Max Response Length.`);
             } else if (!getMessage.trim() && reasoning && type !== 'quiet') {
                 toastr.warning(t`The model finished reasoning but returned no reply text.`);
             }

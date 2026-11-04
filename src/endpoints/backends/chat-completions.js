@@ -971,7 +971,7 @@ async function sendMakerSuiteRequest(request, response) {
             // SillyBunny: these finishes mean the model stopped before it finished the reply, and the client must know that.
             const isCutOff = ['MAX_TOKENS', 'CONTINUATION'].includes(candidates[0].finishReason);
             if (!responseText && !functionCall && !inlineData) {
-                let message = isCutOff ? 'TODO(copy)' : `${apiName} Candidate text empty`;
+                let message = isCutOff ? 'Gemini spent its output limit on thinking and wrote no reply. Try a lower Reasoning Effort or a higher Max Response Length.' : `${apiName} Candidate text empty`;
                 console.warn(message, generateResponseJson);
                 return response.send({ error: { message } });
             }
