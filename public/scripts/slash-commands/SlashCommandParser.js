@@ -1186,6 +1186,8 @@ export class SlashCommandParser {
                     listQuoted.push(true);
                     assignment = new SlashCommandUnnamedArgumentAssignment();
                     assignment.start = this.index;
+                    // SillyBunny: test for the end of the argument again, because a pipe, a closure end or the end of the text can follow the closing quote.
+                    continue;
                 }
             }
             if (this.testClosure()) {

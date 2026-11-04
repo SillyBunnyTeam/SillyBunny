@@ -113,6 +113,35 @@ test.describe('STscript parser fixes', () => {
         ]);
     });
 
+    test('a quoted rest of a split-count command ends at its closing quote', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/let x "hello world"' },
+            { script: '/let x "hello world"| /stp-plain after' },
+            { script: '/stp-split1 name "the rest"|| /stp-plain x' },
+            { script: '/stp-plain {: /let x "a":} | /stp-plain b' },
+        ]);
+
+        expect.soft(results[0]).toEqual({ tree: { variables: ['x'], executors: [{ name: 'let', unnamed: ['x', 'hello world'] }] } });
+        expect.soft(results[1]).toEqual({
+            tree: {
+                variables: ['x'],
+                executors: [{ name: 'let', unnamed: ['x', 'hello world'] }, { name: 'stp-plain', unnamed: ['after'] }],
+            },
+        });
+        expect.soft(results[2]).toEqual({
+            tree: { executors: [{ name: 'stp-split1', unnamed: ['name', 'the rest'] }, { name: 'stp-plain', unnamed: ['x'], injectPipe: false }] },
+        });
+        expect.soft(results[3]).toEqual({
+            tree: {
+                executors: [
+                    { name: 'stp-plain', unnamed: [{ closure: { rawText: ' /let x "a"', variables: ['x'], executors: [{ name: 'let', unnamed: ['x', 'a'] }] } }] },
+                    { name: 'stp-plain', unnamed: ['b'] },
+                ],
+            },
+        });
+        expect.soft(await executeWithErrorToasts(page, '/let x "hello world"| /pass {{var::x}}')).toEqual({ pipe: 'hello world', errorTitles: [] });
+    });
+
     test('a closure among split values keeps the quotes in the rest', async ({ page }) => {
         const results = await parse(page, [
             { script: '/stp-split2 a {: /stp-plain y :} "b c" d' },
