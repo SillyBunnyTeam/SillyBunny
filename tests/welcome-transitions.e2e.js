@@ -3,6 +3,7 @@ import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { waitForQuietFrames } from './helpers/quiet-frames.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'no-preference' } });
@@ -256,6 +257,7 @@ async function openFromMenu(page, item, title) {
     await expect(page.locator(HOST)).toBeVisible();
     await expect(page.locator(`${HOST} .sb-dialog__title`)).toHaveText(title);
     await expect.poll(() => page.evaluate(IDLE_ANIMATIONS)).toBe(0);
+    await waitForQuietFrames(page);
     await installTransitionProbe(page);
 }
 
@@ -393,6 +395,7 @@ async function openChain(page) {
     });
     await expect(page.locator(`${HOST} .sb-dialog__title`)).toHaveText('Root');
     await expect.poll(() => page.evaluate(IDLE_ANIMATIONS)).toBe(0);
+    await waitForQuietFrames(page);
     await installTransitionProbe(page);
 }
 
@@ -474,7 +477,8 @@ for (const { name, options } of VIEWPORTS) {
             });
         }
 
-        test('Troubleshooting still ends at its rest height when the page is slow to render', async ({ page }) => {
+        test('Troubleshooting still ends at its rest height when the page is slow to render', async ({ page, browserName }) => {
+            test.skip(browserName !== 'chromium', 'CPU throttling goes through a CDP session, which only Chromium offers');
             await openAbout(page);
             const session = await page.context().newCDPSession(page);
             await session.send('Emulation.setCPUThrottlingRate', { rate: 4 });
