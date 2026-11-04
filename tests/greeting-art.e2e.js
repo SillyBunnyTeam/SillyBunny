@@ -864,7 +864,6 @@ test.describe('the greeting picture in a theme and a colour mode of its own', ()
         test.use({ forcedColors: 'active' });
 
         test('the picture keeps an edge that the palette does not drop', async ({ page }) => {
-            test.fail(true, 'The edge is the inset box-shadow of .sbGreetingArtOpen::after (public/css/sillybunny-home.css:1527), which forced colours remove, and no forced-colors rule gives the picture an outline or a border.');
             await boot(page);
             await openFromHome(page, 'assistant-reisen', 'Start New Chat');
             await expectOneFigure(page);
@@ -881,6 +880,33 @@ test.describe('the greeting picture in a theme and a colour mode of its own', ()
 
             expect(edge.shadow, 'forced colours remove the shadow').toBe('none');
             expect(Object.values(edge.own).concat(Object.values(edge.after)), 'an outline or a border of the button or its edge layer').toContain(true);
+        });
+
+        test('shows its focus as a heavier edge in another system colour, because the ring is a shadow', async ({ page }) => {
+            await boot(page);
+            await openFromHome(page, 'assistant-reisen', 'Start New Chat');
+            await expectOneFigure(page);
+            const open = page.locator(`${FIGURES} .sbGreetingArtOpen`);
+            await page.evaluate(() => document.activeElement?.blur());
+            const edgeOf = () => open.evaluate((node) => {
+                const style = getComputedStyle(node, '::after');
+                return { width: style.borderTopWidth, style: style.borderTopStyle, color: style.borderTopColor };
+            });
+            const resting = await edgeOf();
+
+            await open.evaluate((node) => {
+                const tabbable = [...document.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')]
+                    .filter(element => element.tabIndex >= 0 && !element.disabled && element.checkVisibility());
+                tabbable[tabbable.indexOf(node) - 1].focus();
+            });
+            await page.keyboard.press('Tab');
+            await expect(open).toBeFocused();
+            const focused = await edgeOf();
+
+            expect(resting.width).toBe('1px');
+            expect(focused.width).toBe('2px');
+            expect(focused.style).toBe('solid');
+            expect(focused.color, 'the focus edge is not the colour of the resting edge').not.toBe(resting.color);
         });
     });
 });

@@ -1552,6 +1552,18 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
+/* Forced colours drop box shadows, so the hairline and the ring become borders of the same box, in system colours. */
+@media (forced-colors: active) {
+    .sbGreetingArtOpen::after {
+        border: 1px solid CanvasText;
+    }
+
+    .sbGreetingArtOpen:focus-visible::after {
+        border-width: 2px;
+        border-color: Highlight;
+    }
+}
+
 .sbGreetingArtImage,
 .sbGreetingArtLarge {
     display: block;
