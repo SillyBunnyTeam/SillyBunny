@@ -1,0 +1,310 @@
+[
+    {
+        "name": "unclosed closure",
+        "script": "/stp-plain {: /stp-plain x",
+        "expected": { "error": { "message": "Unclosed closure at position 25", "index": 25, "line": 0, "column": 25 } }
+    },
+    {
+        "name": "closure opened at the end of the text",
+        "script": "/stp-plain {:",
+        "expected": { "error": { "message": "Unclosed closure at position 13", "index": 13, "line": 0, "column": 13 } }
+    },
+    {
+        "name": "unclosed inner closure",
+        "script": "/stp-plain {: /stp-plain {: x :}",
+        "expected": { "error": { "message": "Unclosed closure at position 32", "index": 32, "line": 0, "column": 32 } }
+    },
+    {
+        "name": "unclosed closure argument",
+        "script": "/stp-plain key={: /stp-plain x",
+        "expected": { "error": { "message": "Unclosed closure at position 29", "index": 29, "line": 0, "column": 29 } }
+    },
+    {
+        "name": "unclosed closure on a later line",
+        "script": "/stp-plain a |\n/stp-plain b |\n/stp-plain {: /stp-plain c",
+        "expected": { "error": { "message": "Unclosed closure at position 55", "index": 55, "line": 2, "column": 25 } }
+    },
+    {
+        "name": "unclosed block comment",
+        "script": "/* never closed",
+        "expected": {
+            "error": { "message": "Unclosed block comment at position 14", "index": 14, "line": 0, "column": 14 }
+        }
+    },
+    {
+        "name": "unclosed block comment after a command",
+        "script": "/stp-plain a | /* never closed",
+        "expected": {
+            "error": { "message": "Unclosed block comment at position 29", "index": 29, "line": 0, "column": 29 }
+        }
+    },
+    {
+        "name": "second block comment unclosed",
+        "script": "/* closed *| /* second never closed",
+        "expected": {
+            "error": { "message": "Unclosed block comment at position 34", "index": 34, "line": 0, "column": 34 }
+        }
+    },
+    {
+        "name": "unclosed line comment",
+        "script": "// no closing pipe",
+        "expected": { "error": { "message": "Unclosed comment at position 18", "index": 18, "line": 0, "column": 18 } }
+    },
+    {
+        "name": "unclosed hash comment",
+        "script": "/# no closing pipe",
+        "expected": { "error": { "message": "Unclosed comment at position 18", "index": 18, "line": 0, "column": 18 } }
+    },
+    {
+        "name": "unclosed comment after a command",
+        "script": "/stp-plain a | // trailing note",
+        "expected": { "error": { "message": "Unclosed comment at position 31", "index": 31, "line": 0, "column": 31 } }
+    },
+    {
+        "name": "unclosed comment followed by whitespace",
+        "script": "// note\n  ",
+        "expected": { "error": { "message": "Unclosed comment at position 7", "index": 7, "line": 0, "column": 7 } }
+    },
+    {
+        "name": "comment inside a closure needs its own pipe",
+        "script": "/stp-plain {: // note :}",
+        "expected": { "error": { "message": "Unclosed comment at position 24", "index": 24, "line": 0, "column": 24 } }
+    },
+    {
+        "name": "run shorthand with trailing text",
+        "script": "/:myqr extra",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of command at position 7: \"/:\"",
+                "index": 7,
+                "line": 0,
+                "column": 7
+            }
+        }
+    },
+    {
+        "name": "run shorthand with named arguments and trailing text",
+        "script": "/:myqr a=1 extra text",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of command at position 11: \"/:\"",
+                "index": 11,
+                "line": 0,
+                "column": 11
+            }
+        }
+    },
+    {
+        "name": "run shorthand with trailing text in lenient mode",
+        "script": "/:myqr extra",
+        "verify": false,
+        "expected": {
+            "error": {
+                "message": "Unexpected end of command at position 7: \"/:\"",
+                "index": 7,
+                "line": 0,
+                "column": 7
+            }
+        }
+    },
+    {
+        "name": "unknown command",
+        "script": "/nosuch",
+        "expected": {
+            "error": { "message": "Unknown command at position 1: \"/nosuch\"", "index": 1, "line": 0, "column": 1 }
+        }
+    },
+    {
+        "name": "unknown command after a pipe",
+        "script": "/stp-plain a | /nosuch",
+        "expected": {
+            "error": { "message": "Unknown command at position 16: \"/nosuch\"", "index": 16, "line": 0, "column": 16 }
+        }
+    },
+    {
+        "name": "unknown command inside a closure",
+        "script": "/stp-plain {: /nosuch| /stp-plain x :}",
+        "expected": {
+            "error": { "message": "Unknown command at position 15: \"/nosuch\"", "index": 15, "line": 0, "column": 15 }
+        }
+    },
+    {
+        "name": "unknown command on a later line",
+        "script": "/stp-plain a |\n/stp-plain b |\n/nosuch",
+        "expected": {
+            "error": { "message": "Unknown command at position 31: \"/nosuch\"", "index": 31, "line": 2, "column": 1 }
+        }
+    },
+    {
+        "name": "unknown command after indentation",
+        "script": "\t/nosuch",
+        "expected": {
+            "error": { "message": "Unknown command at position 2: \"/nosuch\"", "index": 2, "line": 0, "column": 2 }
+        }
+    },
+    {
+        "name": "slash alone",
+        "script": "/",
+        "expected": { "error": { "message": "Unknown command at position 1: \"/\"", "index": 1, "line": 0, "column": 1 } }
+    },
+    {
+        "name": "slash before the closure end is an unknown command",
+        "script": "/stp-plain {: /:}",
+        "expected": {
+            "error": { "message": "Unknown command at position 15: \"/\"", "index": 15, "line": 0, "column": 15 }
+        }
+    },
+    {
+        "name": "command names are case sensitive",
+        "script": "/STP-PLAIN",
+        "expected": {
+            "error": { "message": "Unknown command at position 1: \"/STP-PLAIN\"", "index": 1, "line": 0, "column": 1 }
+        }
+    },
+    {
+        "name": "unclosed quote",
+        "script": "/stp-plain \"abc",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of quoted value at position 15",
+                "index": 15,
+                "line": 0,
+                "column": 15
+            }
+        }
+    },
+    {
+        "name": "unclosed quote in strict mode",
+        "script": "/stp-plain \"abc",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "error": {
+                "message": "Unexpected end of quoted value at position 15",
+                "index": 15,
+                "line": 0,
+                "column": 15
+            }
+        }
+    },
+    {
+        "name": "unclosed quote followed by a command in strict mode",
+        "script": "/stp-plain \"a | /stp-plain b",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "error": {
+                "message": "Unexpected end of quoted value at position 28",
+                "index": 28,
+                "line": 0,
+                "column": 28
+            }
+        }
+    },
+    {
+        "name": "pipe inside quotes in loose mode",
+        "script": "/stp-plain \"a | b\"",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of quoted value at position 14",
+                "index": 14,
+                "line": 0,
+                "column": 14
+            }
+        }
+    },
+    {
+        "name": "pipe inside quotes in loose mode with a tail",
+        "script": "/stp-plain \"a | b\" c",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of quoted value at position 14",
+                "index": 14,
+                "line": 0,
+                "column": 14
+            }
+        }
+    },
+    {
+        "name": "closure end inside quotes in loose mode",
+        "script": "/stp-plain {: /stp-plain \"abc :}",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of quoted value at position 30",
+                "index": 30,
+                "line": 0,
+                "column": 30
+            }
+        }
+    },
+    {
+        "name": "unclosed quote in a named argument",
+        "script": "/stp-plain key=\"abc",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of quoted value at position 19",
+                "index": 19,
+                "line": 0,
+                "column": 19
+            }
+        }
+    },
+    {
+        "name": "unclosed quote in a split argument",
+        "script": "/stp-split a \"bc",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of quoted value at position 16",
+                "index": 16,
+                "line": 0,
+                "column": 16
+            }
+        }
+    },
+    {
+        "name": "unclosed quote on a later line",
+        "script": "/stp-plain a |\n/stp-plain \"abc",
+        "expected": {
+            "error": {
+                "message": "Unexpected end of quoted value at position 30",
+                "index": 30,
+                "line": 1,
+                "column": 15
+            }
+        }
+    },
+    {
+        "name": "unclosed list value",
+        "script": "/stp-plain key=[1, 2",
+        "expected": {
+            "error": { "message": "Unexpected end of list value at position 20", "index": 20, "line": 0, "column": 20 }
+        }
+    },
+    {
+        "name": "unclosed list value in lenient mode",
+        "script": "/stp-plain key=[1, 2",
+        "verify": false,
+        "expected": {
+            "error": { "message": "Unexpected end of list value at position 20", "index": 20, "line": 0, "column": 20 }
+        }
+    },
+    {
+        "name": "list value opened at the end of the text",
+        "script": "/stp-plain key=[",
+        "expected": {
+            "error": { "message": "Unexpected end of list value at position 16", "index": 16, "line": 0, "column": 16 }
+        }
+    },
+    {
+        "name": "unclosed list value in a split argument",
+        "script": "/stp-split [1, 2",
+        "expected": {
+            "error": { "message": "Unexpected end of list value at position 16", "index": 16, "line": 0, "column": 16 }
+        }
+    },
+    {
+        "name": "unclosed list value followed by a command",
+        "script": "/stp-plain key=[1, 2 | /stp-plain x",
+        "expected": {
+            "error": { "message": "Unexpected end of list value at position 35", "index": 35, "line": 0, "column": 35 }
+        }
+    }
+]
