@@ -398,3 +398,153 @@ export const MIN_ACTIVATION_CASES = toCases([
         loops: 7,
     },
 ]);
+
+const grouped = (uid, fields = {}) => entry(uid, { key: ['moon'], group: 'g', ...fields });
+const WEIGHTED = [grouped(1, { groupWeight: 100 }), grouped(2, { groupWeight: 300 })];
+const SCORED = [grouped(1), grouped(2, { key: ['moon', 'star'] })];
+const OVERLAPPING = [grouped(1, { group: 'a,b' }), grouped(2, { group: 'a' }), grouped(3, { group: 'b' })];
+const SCORING_ON = { world_info_use_group_scoring: true };
+
+export const INCLUSION_GROUP_CASES = toCases([
+    { name: 'keeps the only entry of a group without a roll', entries: [grouped(1)], chat: ['The moon.'], expected: [1] },
+    { name: 'picks the first entry when the roll is at the start of the weights', entries: WEIGHTED, chat: ['The moon.'], random: 0, expected: [1] },
+    { name: 'picks the first entry when the roll lands on the edge of its weight', entries: WEIGHTED, chat: ['The moon.'], random: 0.25, expected: [1] },
+    { name: 'picks the second entry when the roll passes the weight of the first', entries: WEIGHTED, chat: ['The moon.'], random: 0.26, expected: [2] },
+    { name: 'picks the last entry when the roll is at the end of the weights', entries: WEIGHTED, chat: ['The moon.'], random: 0.99, expected: [2] },
+    { name: 'counts an omitted weight as the default weight', entries: [grouped(1, { groupWeight: undefined }), grouped(2)], chat: ['The moon.'], random: 0.5, expected: [1] },
+    {
+        name: 'picks the prioritized entry over an entry with a heavier weight',
+        entries: [grouped(1, { groupWeight: 1000 }), grouped(2, { groupOverride: true, groupWeight: 1, order: 10 })],
+        chat: ['The moon.'],
+        expected: [2],
+    },
+    {
+        name: 'picks the prioritized entry with the highest order',
+        entries: [grouped(1, { groupOverride: true, order: 10 }), grouped(2, { groupOverride: true, order: 50 }), grouped(3, { order: 90 })],
+        chat: ['The moon.'],
+        expected: [2],
+    },
+    { name: 'rolls between entries that match different numbers of keys when group scoring is off', entries: SCORED, chat: ['A moon and a star.'], random: 0, expected: [1] },
+    { name: 'picks the entry that matches the most keys when group scoring is on', entries: SCORED, chat: ['A moon and a star.'], settings: SCORING_ON, expected: [2] },
+    {
+        name: 'turns group scoring on for entries that ask for it',
+        entries: [grouped(1, { useGroupScoring: true }), grouped(2, { key: ['moon', 'star'], useGroupScoring: true })],
+        chat: ['A moon and a star.'],
+        expected: [2],
+    },
+    {
+        name: 'keeps an entry that did not ask for group scoring next to one that did',
+        entries: [grouped(1), grouped(2, { key: ['moon', 'star'], useGroupScoring: true })],
+        chat: ['A moon and a star.'],
+        random: 0,
+        expected: [1],
+    },
+    {
+        name: 'keeps a lower scoring entry that opts out of group scoring',
+        entries: [grouped(1, { useGroupScoring: false }), grouped(2, { key: ['moon', 'star'] })],
+        chat: ['A moon and a star.'],
+        settings: SCORING_ON,
+        random: 0,
+        expected: [1],
+    },
+    { name: 'rolls the weights when group scores tie', entries: [grouped(1), grouped(2)], chat: ['The moon.'], settings: SCORING_ON, random: 0.99, expected: [2] },
+    {
+        name: 'adds matching secondary keys to the score of an AND_ANY entry',
+        entries: [grouped(1, { keysecondary: ['tea'], selectiveLogic: WORLD_INFO_LOGIC.AND_ANY }), grouped(2)],
+        chat: ['The moon and tea.'],
+        settings: SCORING_ON,
+        random: 0.99,
+        expected: [1],
+    },
+    {
+        name: 'does not add absent secondary keys to the score of a NOT_ANY entry',
+        entries: [grouped(1, { keysecondary: ['rain'], selectiveLogic: WORLD_INFO_LOGIC.NOT_ANY }), grouped(2)],
+        chat: ['The moon.'],
+        settings: SCORING_ON,
+        random: 0.99,
+        expected: [2],
+    },
+    { name: 'lets an entry in two groups win both groups with a low roll', entries: OVERLAPPING, chat: ['The moon.'], random: 0, expected: [1] },
+    { name: 'frees the other group when an entry in two groups loses one group', entries: OVERLAPPING, chat: ['The moon.'], random: 0.99, expected: [2, 3] },
+    {
+        name: 'removes an entry of a group that already activated in an earlier scan',
+        entries: [entry(1, { key: ['moon'], content: 'river' }), grouped(2), grouped(3, { key: ['river'] })],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [1, 2],
+    },
+    {
+        name: 'activates an entry of another group in a later scan',
+        entries: [entry(1, { key: ['moon'], content: 'river' }), grouped(2), grouped(3, { key: ['river'], group: 'h' })],
+        chat: ['The moon.'],
+        settings: RECURSIVE,
+        expected: [1, 2, 3],
+    },
+    {
+        name: 'rolls a group with a weighted pick and a prioritized pick in one scan',
+        entries: [
+            grouped(1, { group: 'a', groupWeight: 100 }),
+            grouped(2, { group: 'a', groupWeight: 300 }),
+            grouped(3, { group: 'b', groupOverride: true, order: 10 }),
+            grouped(4, { group: 'b', order: 20 }),
+        ],
+        chat: ['The moon.'],
+        random: 0.9,
+        expected: [2, 3],
+        crossCheck: true,
+    },
+]);
+
+const ONLY_FIRST = [['The moon.'], ['Quiet.', 'The moon.'], ['Quiet.', 'Quiet.', 'The moon.']];
+const EVERY_STEP = [
+    ['The moon.'],
+    ['The moon.', 'Filler.'],
+    ['The moon.', 'Filler.', 'Filler.'],
+    ['The moon.', 'Filler.', 'Filler.', 'Filler.'],
+    ['The moon.', 'Filler.', 'Filler.', 'Filler.', 'Filler.'],
+];
+const timeline = (chats, outcomes) => chats.map((chat, index) => ({ chat, expected: outcomes[index] }));
+const NEWEST_ONLY = { world_info_depth: 1 };
+
+export const TIMED_EFFECT_CASES = toCases([
+    { name: 'keeps a sticky entry active for its sticky duration', entries: [entry(1, { key: ['moon'], sticky: 2 })], settings: NEWEST_ONLY, steps: timeline(ONLY_FIRST, [[1], [1], []]) },
+    { name: 'drops an entry without sticky when its key leaves the scan', entries: [entry(1, { key: ['moon'] })], settings: NEWEST_ONLY, steps: timeline(ONLY_FIRST, [[1], [], []]) },
+    { name: 'holds an entry back for its cooldown duration', entries: [entry(1, { key: ['moon'], cooldown: 2 })], steps: timeline(EVERY_STEP.slice(0, 3), [[1], [], [1]]) },
+    { name: 'activates an entry without cooldown on every scan', entries: [entry(1, { key: ['moon'] })], steps: timeline(EVERY_STEP.slice(0, 3), [[1], [1], [1]]) },
+    { name: 'holds an entry back until the chat is long enough for its delay', entries: [entry(1, { key: ['moon'], delay: 3 })], steps: timeline(EVERY_STEP.slice(0, 3), [[], [], [1]]) },
+    { name: 'starts the cooldown of a sticky entry when its sticky ends', entries: [entry(1, { key: ['moon'], sticky: 1, cooldown: 2 })], steps: timeline(EVERY_STEP.slice(0, 4), [[1], [], [], [1]]) },
+    { name: 'keeps an entry sticky while its first cooldown window is still open', entries: [entry(1, { key: ['moon'], sticky: 2, cooldown: 2 })], steps: timeline(EVERY_STEP, [[1], [1], [], [], [1]]) },
+    {
+        name: 'keeps a sticky entry over a prioritized entry of its group',
+        entries: [grouped(1, { sticky: 2 }), grouped(2, { key: ['sun'], groupOverride: true })],
+        settings: NEWEST_ONLY,
+        steps: [
+            { chat: ['The moon.'], expected: [1] },
+            { chat: ['The sun.', 'The moon.'], expected: [1] },
+            { chat: ['The sun.', 'Quiet.', 'The moon.'], expected: [2] },
+        ],
+    },
+    {
+        name: 'lets another entry of a group win while an entry is on cooldown',
+        entries: [grouped(1, { cooldown: 2 }), grouped(2)],
+        random: 0,
+        steps: timeline(EVERY_STEP.slice(0, 3), [[1], [2], [1]]),
+    },
+    {
+        name: 'lets another entry of a group win until an entry has passed its delay',
+        entries: [grouped(1, { delay: 2 }), grouped(2)],
+        random: 0,
+        steps: timeline(EVERY_STEP.slice(0, 2), [[2], [1]]),
+    },
+    {
+        name: 'carries a sticky entry and a rolled probability through three scans',
+        entries: [entry(1, { key: ['moon'], sticky: 2, probability: 50 })],
+        settings: NEWEST_ONLY,
+        steps: [
+            { chat: ['The moon.'], random: 0.1, expected: [1] },
+            { chat: ['Quiet.', 'The moon.'], random: 0.9, expected: [1] },
+            { chat: ['Quiet.', 'Quiet.', 'The moon.'], random: 0.9, expected: [] },
+        ],
+        crossCheck: true,
+    },
+]);
