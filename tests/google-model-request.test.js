@@ -456,6 +456,31 @@ describe('Google model request compatibility', () => {
                 expect(finishes).toEqual(['STOP']);
             });
 
+            test('joins a reply with tokens on its text events and the same token again on the finish', async () => {
+                // Event order from a live gemini-4-argon stream through Vertex AI, 2026-11-05.
+                replyWithHops(
+                    sseHop(
+                        candidate([{ text: 'one ' }]),
+                        candidate([{ text: 'two ' }], { continuationToken: 'token-1' }),
+                        candidate([{ text: 'three ' }], { continuationToken: 'token-2' }),
+                        candidate([{ text: '', thoughtSignature: 'sig-1' }], { finishReason: 'CONTINUATION', continuationToken: 'token-2' }),
+                    ),
+                    sseHop(
+                        candidate([{ text: 'four' }], { continuationToken: 'token-3' }),
+                        candidate([{ text: '' }], { finishReason: 'MAX_TOKENS', continuationToken: 'token-4' }),
+                    ),
+                );
+
+                const { raw, reply, finishes } = await readStream(await requestStream());
+
+                expect(nodeFetchMock).toHaveBeenCalledTimes(2);
+                expect(requestBody(1).continuationToken).toBe('token-2');
+                expect(raw).not.toContain('token-');
+                expect(raw).toContain('sig-1');
+                expect(reply).toBe('one two three four');
+                expect(finishes).toEqual(['MAX_TOKENS']);
+            });
+
             test('does not cap the first streaming request', async () => {
                 replyWithHops(sseHop(candidate([{ text: 'ok' }], { finishReason: 'STOP' })));
 
