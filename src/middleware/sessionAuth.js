@@ -1,14 +1,25 @@
 import crypto from 'node:crypto';
 import storage from 'node-persist';
+import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 
 import { getConfigValue } from '../util.js';
 import { getAllUserHandles, toKey, getPasswordHash } from '../users.js';
+import { getIpAddress, retryAfter } from '../express-common.js';
+import getWhitelistMiddleware from './whitelist.js';
+import hostWhitelistMiddleware from './hostWhitelist.js';
 
 const SESSION_DURATION_MS = getConfigValue('sessionAuth.durationMinutes', 480, 'number') * 60 * 1000;
 const SESSION_AUTH_ENABLED = getConfigValue('sessionAuth.enabled', false, 'boolean');
+const PREFER_REAL_IP_HEADER = !!getConfigValue('rateLimiting.preferRealIpHeader', false, 'boolean');
+const LOGIN_ATTEMPTS = getConfigValue('rateLimiting.basicAuthMaxAttempts', 5, 'number');
 
 /** @type {Map<string, {username: string, expires: number}>} */
 const sessions = new Map();
+
+const loginLimiter = new RateLimiterMemory({
+    points: LOGIN_ATTEMPTS > 0 ? LOGIN_ATTEMPTS : Number.MAX_SAFE_INTEGER,
+    duration: 60,
+});
 
 /**
  * Creates a new session for the given username.
@@ -65,6 +76,10 @@ export function isSessionAuthEnabled() {
  * @returns {Promise<boolean>}
  */
 export async function validateCredentials(username, password) {
+    if (typeof username !== 'string' || typeof password !== 'string') {
+        return false;
+    }
+
     const perUserAuth = getConfigValue('perUserBasicAuth', false, 'boolean');
     const enableAccounts = getConfigValue('enableUserAccounts', false, 'boolean');
     const usePerUserAuth = perUserAuth && enableAccounts;
@@ -85,4 +100,70 @@ export async function validateCredentials(username, password) {
         }
     }
     return false;
+}
+
+/**
+ * Answers a session login with a new session token.
+ * @param {import('express').Request} request Request
+ * @param {import('express').Response} response Response
+ */
+async function handleLogin(request, response) {
+    try {
+        const { username, password } = request.body || {};
+        if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
+            return response.status(400).json({ error: 'Username and password are required.' });
+        }
+
+        const ip = getIpAddress(request, PREFER_REAL_IP_HEADER);
+        await loginLimiter.consume(ip);
+
+        const valid = await validateCredentials(username, password);
+        if (!valid) {
+            return response.status(401).json({ error: 'Invalid credentials.' });
+        }
+
+        await loginLimiter.delete(ip);
+        const token = createSession(username);
+        return response.json({ token });
+    } catch (error) {
+        if (error instanceof RateLimiterRes) {
+            console.error('Session login failed: Rate limited from', getIpAddress(request, PREFER_REAL_IP_HEADER));
+            return retryAfter(response, error).status(429).json({ error: 'Too many attempts. Try again later or contact your admin.' });
+        }
+
+        console.error('Session login failed:', error);
+        return response.sendStatus(500);
+    }
+}
+
+/**
+ * Ends the session whose token the request carries.
+ * @param {import('express').Request} request Request
+ * @param {import('express').Response} response Response
+ */
+function handleLogout(request, response) {
+    const authHeader = request.headers.authorization;
+    if (authHeader) {
+        const [scheme, token] = authHeader.split(' ');
+        if (scheme === 'Bearer' && token) {
+            destroySession(token);
+        }
+    }
+    return response.json({ success: true });
+}
+
+/**
+ * Registers the session login and logout routes behind the IP and host whitelist checks.
+ * @param {import('express').Express|import('express').Router} app App or router that receives the routes
+ * @param {object} options Options
+ * @param {boolean} options.whitelistMode Whether the IP whitelist is on
+ * @returns {Promise<void>}
+ */
+export async function registerSessionAuthRoutes(app, { whitelistMode }) {
+    const guards = whitelistMode
+        ? [await getWhitelistMiddleware(), hostWhitelistMiddleware]
+        : [hostWhitelistMiddleware];
+
+    app.post('/api/auth/login', ...guards, handleLogin);
+    app.post('/api/auth/logout', ...guards, handleLogout);
 }
