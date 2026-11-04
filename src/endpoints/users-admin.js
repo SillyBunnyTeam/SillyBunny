@@ -14,6 +14,7 @@ import {
     getPasswordHash,
     getUserDirectories,
     ensurePublicDirectoriesExist,
+    isUserRootInsideDataRoot,
 } from '../users.js';
 import { DEFAULT_USER } from '../constants.js';
 
@@ -237,6 +238,18 @@ router.post('/delete', requireAdminMiddleware, async (request, response) => {
         if (request.body.handle === DEFAULT_USER.handle) {
             console.warn('Delete user failed: Cannot delete default user');
             return response.status(400).json({ error: 'Sorry, but the default user cannot be deleted. It is required as a fallback.' });
+        }
+
+        // SillyBunny: a purge removes the folder that the handle names, so the handle must belong to an account whose folder is directly inside the data root.
+        const user = await storage.getItem(toKey(request.body.handle));
+        if (!user) {
+            console.error('Delete user failed: User not found');
+            return response.status(404).json({ error: 'User not found' });
+        }
+
+        if (request.body.purge && !isUserRootInsideDataRoot(request.body.handle)) {
+            console.error('Delete user failed: Invalid handle');
+            return response.status(400).json({ error: 'Invalid handle' });
         }
 
         await storage.removeItem(toKey(request.body.handle));

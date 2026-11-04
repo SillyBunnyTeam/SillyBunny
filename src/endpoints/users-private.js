@@ -9,7 +9,7 @@ import express from 'express';
 import yauzl from 'yauzl';
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 
-import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArchive, ensurePublicDirectoriesExist, toAvatarKey, getAccountVersion } from '../users.js';
+import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArchive, ensurePublicDirectoriesExist, toAvatarKey, getAccountVersion, isUserRootInsideDataRoot } from '../users.js';
 import { SETTINGS_FILE, USER_DIRECTORY_TEMPLATE } from '../constants.js';
 import { checkForNewContent, CONTENT_TYPES } from './content-manager.js';
 import { SECRETS_FILE } from './secrets.js';
@@ -871,6 +871,18 @@ router.post('/backup', async (request, response) => {
         if (handle !== request.user.profile.handle && !request.user.profile.admin) {
             console.error('Backup failed: Unauthorized');
             return response.status(403).json({ error: 'Unauthorized' });
+        }
+
+        // SillyBunny: the archive holds the whole folder that the handle names, so the handle must belong to an account whose folder is directly inside the data root.
+        const user = await storage.getItem(toKey(handle));
+        if (!user) {
+            console.warn('Backup failed: User not found');
+            return response.status(404).json({ error: 'User not found' });
+        }
+
+        if (!isUserRootInsideDataRoot(handle)) {
+            console.warn('Backup failed: Invalid handle');
+            return response.status(400).json({ error: 'Invalid handle' });
         }
 
         await createBackupArchive(handle, response);

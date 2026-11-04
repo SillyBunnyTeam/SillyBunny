@@ -724,6 +724,17 @@ export function getUserDirectories(handle) {
     return directories;
 }
 
+// SillyBunny: getUserDirectories() joins the handle into a path as it is, so routes that remove or archive a whole user folder check where it is first.
+/**
+ * Checks that the root folder of a handle is a folder directly inside the data root.
+ * @param {string} handle User handle
+ * @returns {boolean} Whether the root folder is a direct child of the data root and has the handle as its name
+ */
+export function isUserRootInsideDataRoot(handle) {
+    const root = path.resolve(getUserDirectories(handle).root);
+    return path.dirname(root) === path.resolve(globalThis.DATA_ROOT) && path.basename(root) === handle;
+}
+
 /**
  * Gets the avatar URL for the provided user.
  * @param {string} handle User handle
