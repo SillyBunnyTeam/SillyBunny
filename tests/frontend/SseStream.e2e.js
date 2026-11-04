@@ -1,6 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { testSetup } from './frontent-test-utils.js';
 
+function bytesCutAt(text, ...offsets) {
+    const bytes = [...Buffer.from(text, 'utf8')];
+    const edges = [0, ...offsets, bytes.length];
+    return edges.slice(1).map((end, index) => bytes.slice(edges[index], end));
+}
+
+function offsetInto(text, character, bytes) {
+    return Buffer.byteLength(text.slice(0, text.indexOf(character))) + bytes;
+}
+
 function frame(payload, fields = '') {
     return `${fields}data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n\n`;
 }
@@ -10,6 +20,7 @@ function parsed(events) {
 }
 
 const chatDelta = text => ({ id: 'c1', object: 'chat.completion.chunk', choices: [{ index: 0, delta: { content: text } }] });
+const textDelta = text => ({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text } });
 
 /**
  * Runs inside the page, so it cannot use anything else from this file.
@@ -225,6 +236,145 @@ test.describe('SseStream', () => {
                 { type: 'message', data: chatDelta('i') },
                 { type: 'message', data: chatDelta('!') },
             ]);
+        });
+    });
+
+    test.describe('plain stream', () => {
+        test('reads fields and multibyte characters from bytes cut inside a character', async ({ page }) => {
+            const text = 'event: delta\r\nid: 7\r\ndata: {"text":"Zoë 日本"}\r\n\r\ndata: [DONE]\r\n\r\n';
+            const chunks = bytesCutAt(text, offsetInto(text, 'ë', 1), offsetInto(text, '日', 1), offsetInto(text, '日', 2));
+
+            const result = await page.evaluate(runStreams, { construct: 'plain', streams: [chunks] });
+
+            expect(chunks).toHaveLength(4);
+            expect(result.streams[0].events).toEqual([
+                { type: 'delta', data: '{"text":"Zoë 日本"}', lastEventId: '7' },
+                { type: 'message', data: '[DONE]', lastEventId: '7' },
+            ]);
+        });
+    });
+
+    test.describe('SmoothEventSourceStream', () => {
+        test.describe('splitting', () => {
+            test('keeps the event type on every split event', async ({ page }) => {
+                const result = await page.evaluate(runStreams, { streams: [[frame(chatDelta('ab'), 'event: delta\n')]] });
+
+                expect(parsed(result.streams[0].events)).toEqual([
+                    { type: 'delta', data: chatDelta('a') },
+                    { type: 'delta', data: chatDelta('b') },
+                ]);
+            });
+
+            test('splits the text of each provider shape into single characters', async ({ page }) => {
+                const shapes = [
+                    {
+                        payload: text => ({ choices: [{ index: 0, text }] }),
+                        piece: text => ({ choices: [{ index: 0, text }] }),
+                    },
+                    {
+                        payload: text => ({ choices: [{ index: 0, delta: { text } }] }),
+                        piece: text => ({ choices: [{ index: 0, delta: { text } }] }),
+                    },
+                    {
+                        payload: text => ({ choices: [{ index: 0, message: { role: 'assistant', content: text } }] }),
+                        piece: text => ({ choices: [{ index: 0, message: { role: 'assistant', content: text } }] }),
+                    },
+                    {
+                        payload: text => textDelta(text),
+                        piece: text => ({ type: 'content_block_delta', index: 1, delta: { text } }),
+                    },
+                    {
+                        payload: text => ({ candidates: [{ index: 0, content: { role: 'model', parts: [{ text }] } }] }),
+                        piece: text => ({ candidates: [{ index: 0, content: { role: 'model', parts: [{ text }] } }] }),
+                    },
+                    {
+                        payload: text => ({ token: text }),
+                        piece: text => ({ token: text }),
+                    },
+                    {
+                        payload: text => ({ content: text, stop: false }),
+                        piece: text => ({ content: text, stop: false }),
+                    },
+                    {
+                        payload: text => ({ type: 'content-delta', index: 0, delta: { message: { content: { text } } } }),
+                        piece: text => ({ type: 'content-delta', index: 0, delta: { message: { content: { text } } } }),
+                    },
+                ];
+
+                const result = await page.evaluate(runStreams, { streams: shapes.map(shape => [frame(shape.payload('ab'))]) });
+
+                expect(result.streams.map(stream => parsed(stream.events))).toEqual(
+                    shapes.map(shape => [{ type: 'message', data: shape.piece('a') }, { type: 'message', data: shape.piece('b') }]),
+                );
+            });
+
+            test('splits characters the same way whatever the byte chunks are', async ({ page }) => {
+                const text = frame(chatDelta('Zoë 日本'));
+                const wholeStream = [text];
+                const byteByByte = bytesCutAt(text, ...Array.from({ length: Buffer.byteLength(text) - 1 }, (_, index) => index + 1));
+
+                const result = await page.evaluate(runStreams, { streams: [wholeStream, byteByByte] });
+
+                expect(byteByByte).toHaveLength(Buffer.byteLength(text));
+                expect(result.streams[1].events).toEqual(result.streams[0].events);
+                expect(parsed(result.streams[0].events).map(event => event.data.choices[0].delta.content)).toEqual([...'Zoë 日本']);
+            });
+
+            test('does not split a tool call', async ({ page }) => {
+                const call = { candidates: [{ index: 0, content: { role: 'model', parts: [{ functionCall: { name: 'lookup', args: { q: 'weather' } } }] } }] };
+
+                const result = await page.evaluate(runStreams, { streams: [[frame(call)]] });
+
+                expect(result.streams[0].events).toEqual([{ type: 'message', data: JSON.stringify(call) }]);
+            });
+        });
+
+        test.describe('passing events through', () => {
+            test('passes the end marker through unchanged', async ({ page }) => {
+                const result = await page.evaluate(runStreams, { streams: [[frame(chatDelta('a')), frame('[DONE]', 'event: done\n')]] });
+
+                expect(result.streams[0].events.at(-1)).toEqual({ type: 'done', data: '[DONE]' });
+                expect(result.streams[0].events).toHaveLength(2);
+            });
+
+            test('passes through data that it cannot split', async ({ page }) => {
+                const unsplittable = [
+                    '{"oops',
+                    'null',
+                    JSON.stringify({ unrelated: true }),
+                    JSON.stringify({ error: { message: 'Rate limit reached', type: 'rate_limit_error' } }),
+                    JSON.stringify({ choices: [{ index: 0, delta: { role: 'assistant', content: '' } }] }),
+                    JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }),
+                    JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{"q":' } }] } }] }),
+                    JSON.stringify({ choices: [{ index: 1, delta: { content: 'second swipe' } }] }),
+                    JSON.stringify({ choices: [] }),
+                ];
+
+                const result = await page.evaluate(runStreams, { streams: unsplittable.map(data => [frame(data)]) });
+
+                expect(result.streams.map(stream => stream.events)).toEqual(unsplittable.map(data => [{ type: 'message', data }]));
+            });
+
+            test('logs what it cannot parse at debug level', async ({ page }) => {
+                const result = await page.evaluate(runStreams, { streams: [[frame('{"oops'), frame({ unrelated: true })]] });
+
+                expect(result.debug.map(entry => entry.name)).toEqual(['SyntaxError', 'Error']);
+                expect(result.debug[1].message).toBe('Unknown event data format');
+            });
+
+            test('stays quiet about the end marker, null and swipes that are not the first', async ({ page }) => {
+                const result = await page.evaluate(runStreams, {
+                    streams: [[
+                        frame('[DONE]'),
+                        frame('null'),
+                        frame({ choices: [{ index: 1, delta: { content: 'second swipe' } }] }),
+                        frame({ choices: [] }),
+                    ]],
+                });
+
+                expect(result.streams[0].events).toHaveLength(4);
+                expect(result.debug).toEqual([]);
+            });
         });
     });
 });
