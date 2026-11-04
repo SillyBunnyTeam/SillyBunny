@@ -30,7 +30,7 @@
         }
     </script>
     <script src="scripts/sillybunny-restart-cache-clear.js?v=20261013a"></script>
-    <link rel="preload" as="style" href="style.css?v=20261105b">
+    <link rel="preload" as="style" href="style.css?v=20261105c">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
@@ -56,7 +56,7 @@
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link rel="stylesheet" type="text/css" href="style.css?v=20261105b">
+    <link rel="stylesheet" type="text/css" href="style.css?v=20261105c">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
     <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20260609a">
@@ -83,16 +83,22 @@
 
 <body class="no-blur">
     <div id="preloader">
-        <!-- SillyBunny: the boot splash shows a pixel-art mascot and a flavour line; sillybunny-splash.js sizes the picture and fills them in before the module bundle loads. -->
+        <!-- SillyBunny: the boot splash shows a pixel-art mascot and a flavour line between four pixel sparkles; sillybunny-splash.js sizes the picture and types the line before the module bundle loads. -->
         <div class="sb-boot-splash">
             <img class="sb-boot-mascot" alt="" decoding="async">
             <p class="sb-boot-line" role="status">
                 <span class="sr-only">Loading SillyBunny</span>
-                <span class="sb-boot-line-text"></span>
-                <span class="sb-boot-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+                <span class="sr-only sb-boot-line-reader"></span>
+                <span class="sb-boot-flavour">
+                    <svg class="sb-boot-star" viewBox="0 0 7 7" aria-hidden="true" focusable="false"><path d="M3 0h1v2h-1zM2 2h3v1h-3zM0 3h7v1h-7zM2 4h3v1h-3zM3 5h1v2h-1z"/></svg>
+                    <svg class="sb-boot-star sb-boot-star--big" viewBox="0 0 11 11" aria-hidden="true" focusable="false"><path d="M5 0h1v3h-1zM4 3h3v2h-3zM0 5h11v1h-11zM4 6h3v2h-3zM5 8h1v3h-1z"/></svg>
+                    <span class="sb-boot-flavour-text"><span class="sb-boot-line-text" aria-hidden="true"></span><span class="sb-boot-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>
+                    <svg class="sb-boot-star sb-boot-star--big" viewBox="0 0 11 11" aria-hidden="true" focusable="false"><path d="M5 0h1v3h-1zM4 3h3v2h-3zM0 5h11v1h-11zM4 6h3v2h-3zM5 8h1v3h-1z"/></svg>
+                    <svg class="sb-boot-star" viewBox="0 0 7 7" aria-hidden="true" focusable="false"><path d="M3 0h1v2h-1zM2 2h3v1h-3zM0 3h7v1h-7zM2 4h3v1h-3zM3 5h1v2h-1z"/></svg>
+                </span>
             </p>
         </div>
-        <script src="scripts/sillybunny-splash.js?v=20261104f"></script>
+        <script src="scripts/sillybunny-splash.js?v=20261105b"></script>
         <script>
             // SillyBunny: pin the first painted splash colors before the module bundle loads.
             (function () {

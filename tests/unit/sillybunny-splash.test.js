@@ -8,16 +8,10 @@ import { readImageSize } from '../helpers/image-size.js';
 const publicRoot = fileURLToPath(new URL('../../public/', import.meta.url));
 const splashSource = readFileSync(fileURLToPath(new URL('../../public/scripts/sillybunny-splash.js', import.meta.url)), 'utf8');
 
-const PRELOADER_MARKUP = `
-    <div id="preloader">
-        <div class="sb-boot-splash">
-            <img class="sb-boot-mascot" alt="">
-            <p class="sb-boot-line" role="status">
-                <span class="sb-boot-line-text"></span>
-                <span class="sb-boot-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
-            </p>
-        </div>
-    </div>`;
+// The markup of the real page, so the script is tested against the elements it will find and not against a copy.
+const indexHtml = readFileSync(fileURLToPath(new URL('../../public/index.html', import.meta.url)), 'utf8');
+const SPLASH_MARKUP = indexHtml.match(/<div class="sb-boot-splash">[\s\S]*?<\/p>\s*<\/div>/)[0];
+const PRELOADER_MARKUP = `<div id="preloader">${SPLASH_MARKUP}</div>`;
 
 // Values chosen so each lands in a different third of [0, 1).
 const RANDOM_FOR_VARIANT = { reisen: 0.1, tewi: 0.5, both: 0.9 };
@@ -333,49 +327,166 @@ describe('splash art files', () => {
 });
 
 describe('splash line', () => {
-    test.each([
-        ['reisen', 'SPLASH-REISEN-*'],
-        ['tewi', 'SPLASH-TEWI-*'],
-        ['both', 'SPLASH-BOTH-*'],
-    ])('the %s placeholder line is flagged with slot %s', (variant, slot) => {
-        const { lineText } = runSplash({ stored: variant });
+    const LINES = ['Girls are writing stories', 'Girls are playing roles', 'Girls are conversing', 'Girls are preparing'];
 
-        expect(lineText.textContent).toBe('TODO(copy)');
-        expect(lineText.getAttribute('data-sb-copy-placeholder')).toBe('true');
-        expect(lineText.getAttribute('data-sb-copy-slot')).toBe(slot);
+    test('the pool is the four lines the user wrote, shared by every character', () => {
+        runSplash();
+
+        expect(window.SillyBunnySplash.SPLASH_LINES).toEqual(LINES);
     });
 
-    test('draws a line from the chosen variant pool and leaves real copy unflagged', () => {
-        const { preloader, lineText } = runSplash({ stored: 'tewi' });
-        const splash = window.SillyBunnySplash;
-        splash.SPLASH_LINES.tewi = ['First tewi line', 'Second tewi line'];
-        splash.SPLASH_LINES.reisen = ['A reisen line'];
+    test.each(['reisen', 'tewi', 'both'])('%s draws its line from the shared pool, and the line is real copy, not a placeholder', (variant) => {
+        const { lineText } = runSplash({ stored: variant });
 
-        jest.spyOn(Math, 'random').mockReturnValue(0.9);
-        splash.render(preloader);
-
-        expect(lineText.textContent).toBe('Second tewi line');
+        expect(LINES).toContain(lineText.textContent);
         expect(lineText.hasAttribute('data-sb-copy-placeholder')).toBe(false);
         expect(lineText.hasAttribute('data-sb-copy-slot')).toBe(false);
     });
 
+    test.each(LINES.map((line, index) => [line, (index + 0.5) / LINES.length]))('picks "%s" when the random draw is %s', (line, random) => {
+        const { lineText } = runSplash({ stored: 'tewi', random });
+
+        expect(lineText.textContent).toBe(line);
+    });
+
+    test('is picked again at random each time it is drawn, whatever the character', () => {
+        const { preloader, lineText } = runSplash({ stored: 'tewi', random: 0.1 });
+        jest.spyOn(Math, 'random').mockReturnValue(0.9);
+
+        window.SillyBunnySplash.render(preloader);
+
+        expect(lineText.textContent).toBe('Girls are preparing');
+    });
+
+    test('assistive technology gets the whole line from one element, and skips the letters that are typed out', () => {
+        const { lineText } = runSplash({ stored: 'tewi', random: 0.3 });
+        const reader = document.querySelector('.sb-boot-line-reader');
+
+        expect(lineText.getAttribute('aria-hidden')).toBe('true');
+        expect(reader.textContent).toBe(lineText.textContent);
+        expect(reader.classList.contains('sr-only')).toBe(true);
+        expect(reader.closest('[aria-hidden="true"]')).toBeNull();
+        expect(document.querySelector('.sb-boot-line').getAttribute('role')).toBe('status');
+    });
+
+    test('the line for assistive technology follows the line that is drawn again', () => {
+        const { preloader } = runSplash({ stored: 'tewi', random: 0.1 });
+        jest.spyOn(Math, 'random').mockReturnValue(0.9);
+
+        window.SillyBunnySplash.render(preloader);
+
+        expect(document.querySelector('.sb-boot-line-reader').textContent).toBe('Girls are preparing');
+    });
+
     test('no line contains an ellipsis, because the dots are appended', () => {
         runSplash();
-        const lines = Object.values(window.SillyBunnySplash.SPLASH_LINES).flat();
 
-        expect(lines.length).toBeGreaterThan(0);
-        for (const line of lines) {
+        for (const line of window.SillyBunnySplash.SPLASH_LINES) {
             expect(line).not.toMatch(/…|\.\.\./);
         }
     });
 });
 
-describe('splash line length', () => {
-    test('a real line fits the line under the mascot on a phone, so none is longer than 32 characters', () => {
-        runSplash();
-        const realLines = Object.values(window.SillyBunnySplash.SPLASH_LINES).flat().filter(line => line !== 'TODO(copy)');
+describe('splash line reveal', () => {
+    const letters = lineText => [...lineText.querySelectorAll('.sb-boot-letter')];
 
-        for (const line of realLines) {
+    test('every letter is its own element and every space is text between them, so the line still reads as itself', () => {
+        const { lineText } = runSplash({ random: 0.1 });
+
+        expect(lineText.textContent).toBe('Girls are writing stories');
+        expect(letters(lineText).map(letter => letter.textContent).join('')).toBe('Girlsarewritingstories');
+        expect([...lineText.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent)).toEqual([' ', ' ', ' ']);
+    });
+
+    test('the letters take turns in order, one after another, and a space takes none', () => {
+        const { lineText } = runSplash({ random: 0.3 });
+
+        expect(lineText.textContent).toBe('Girls are playing roles');
+        expect(letters(lineText).map(letter => letter.style.getPropertyValue('--n'))).toEqual(
+            Array.from({ length: 'Girlsareplayingroles'.length }, (_, index) => String(index)),
+        );
+    });
+
+    test('the dots start after the last letter and a short pause, and the three times are set on the preloader', () => {
+        const { preloader, lineText } = runSplash({ random: 0.5 });
+        const read = name => Number.parseFloat(preloader.style.getPropertyValue(name));
+        const typed = letters(lineText).length;
+
+        expect(preloader.style.getPropertyValue('--sb-boot-reveal-start')).toBe('300ms');
+        expect(preloader.style.getPropertyValue('--sb-boot-letter-step')).toBe('45ms');
+        const lastLetterAt = read('--sb-boot-reveal-start') + (typed - 1) * read('--sb-boot-letter-step');
+        expect(read('--sb-boot-dots-start')).toBeGreaterThan(lastLetterAt + read('--sb-boot-letter-step'));
+    });
+
+    test('a longer line starts its dots later', () => {
+        const short = runSplash({ random: 0.65 });
+        const shortStart = short.preloader.style.getPropertyValue('--sb-boot-dots-start');
+        const long = runSplash({ random: 0.1 });
+
+        expect(Number.parseFloat(long.preloader.style.getPropertyValue('--sb-boot-dots-start'))).toBeGreaterThan(Number.parseFloat(shortStart));
+    });
+
+    test('is drawn again without keeping the letters of the line before', () => {
+        const { preloader, lineText } = runSplash({ random: 0.1 });
+        jest.spyOn(Math, 'random').mockReturnValue(0.65);
+
+        window.SillyBunnySplash.render(preloader);
+
+        expect(lineText.textContent).toBe('Girls are conversing');
+        expect(letters(lineText)).toHaveLength('Girlsareconversing'.length);
+    });
+});
+
+describe('splash sparkles', () => {
+    test('there are four, two either side of the line, and assistive technology skips them', () => {
+        runSplash();
+        const flavour = document.querySelector('.sb-boot-flavour');
+
+        const order = [...flavour.children].map(child => (child.matches('svg.sb-boot-star') ? (child.classList.contains('sb-boot-star--big') ? 'big' : 'small') : 'text'));
+        expect(order).toEqual(['small', 'big', 'text', 'big', 'small']);
+        for (const star of flavour.querySelectorAll('.sb-boot-star')) {
+            expect(star.getAttribute('aria-hidden')).toBe('true');
+        }
+    });
+
+    test('each is drawn from whole cells of its own grid: 7 by 7 and 11 by 11', () => {
+        runSplash();
+
+        const boxes = [...document.querySelectorAll('.sb-boot-star')].map(star => star.getAttribute('viewBox'));
+
+        expect(boxes).toEqual(['0 0 7 7', '0 0 11 11', '0 0 11 11', '0 0 7 7']);
+    });
+
+    test('the size of an art pixel of the mascot is the size of a cell, so they stay on its grid', () => {
+        onScreen({ height: 844, ratio: 3 });
+        runSplash({ stored: 'both' });
+
+        // Step 2 at 3x: one art pixel is 2/3 of a CSS pixel.
+        expect(Number.parseFloat(document.querySelector('.sb-boot-splash').style.getPropertyValue('--sb-boot-px'))).toBeCloseTo(2 / 3, 6);
+    });
+
+    test('follow the mascot when the window changes size', () => {
+        onScreen({ height: 768, ratio: 1 });
+        runSplash({ stored: 'both' });
+        const splash = document.querySelector('.sb-boot-splash');
+        expect(splash.style.getPropertyValue('--sb-boot-px')).toBe('1px');
+
+        // 0.42 x 2000 = 840 CSS pixels holds two steps of 366 at 1x.
+        onScreen({ height: 2000, ratio: 1 });
+        window.dispatchEvent(new Event('resize'));
+
+        expect(splash.style.getPropertyValue('--sb-boot-px')).toBe('2px');
+        onScreen({ height: 390, ratio: 1 });
+        window.dispatchEvent(new Event('resize'));
+        expect(Number.parseFloat(splash.style.getPropertyValue('--sb-boot-px'))).toBeCloseTo((0.42 * 390) / 366, 6);
+    });
+});
+
+describe('splash line length', () => {
+    test('a line fits the line under the mascot on a phone, so none is longer than 32 characters', () => {
+        runSplash();
+
+        for (const line of window.SillyBunnySplash.SPLASH_LINES) {
             expect(line.length).toBeLessThanOrEqual(32);
         }
     });

@@ -75,6 +75,40 @@ function readDots(page) {
     }));
 }
 
+function readLetters(page) {
+    return page.locator('.sb-boot-letter').evaluateAll(letters => letters.map((letter) => {
+        const style = getComputedStyle(letter);
+        return {
+            text: letter.textContent,
+            opacity: style.opacity,
+            animationName: style.animationName,
+            // From the style and not from the animation, because a letter that has had its turn no longer has one.
+            delay: style.animationName === 'none' ? null : Number.parseFloat(style.animationDelay) * 1000,
+        };
+    }));
+}
+
+function readStars(page) {
+    return page.locator('.sb-boot-star').evaluateAll(stars => stars.map((star) => {
+        const style = getComputedStyle(star);
+        const box = star.getBoundingClientRect();
+        return {
+            cells: Number(star.getAttribute('viewBox').split(' ')[2]),
+            width: box.width,
+            height: box.height,
+            left: box.left,
+            right: box.right,
+            middle: box.top + box.height / 2,
+            opacity: style.opacity,
+            visibility: style.visibility,
+            animationName: style.animationName,
+            twinkle: star.getAnimations().find(animation => animation.animationName === 'sb-boot-twinkle')?.effect.getTiming().delay ?? null,
+        };
+    }));
+}
+
+const SPLASH_LINES = ['Girls are writing stories', 'Girls are playing roles', 'Girls are conversing', 'Girls are preparing'];
+
 /**
  * Deletes every `* { animation: none !important }` rule inside a reduced-motion media query, so a test
  * can see whether the splash stylesheet stops its own animations. Returns how many rules it removed.
@@ -185,14 +219,123 @@ for (const { name, options } of VIEWPORTS) {
             }
         });
 
+        test('shows one of the four lines, in the theme text colour, with no tracking and no small caps', async ({ page }) => {
+            await openSplash(page, { variant: 'tewi' });
+
+            const line = page.locator('.sb-boot-line-text');
+            await expect.poll(() => line.evaluate(node => node.textContent)).toMatch(new RegExp(`^(${SPLASH_LINES.join('|')})$`));
+            const style = await line.evaluate((node) => {
+                const computed = getComputedStyle(node);
+                return {
+                    letterSpacing: computed.letterSpacing,
+                    fontVariantCaps: computed.fontVariantCaps,
+                    textTransform: computed.textTransform,
+                    color: computed.color,
+                    boot: getComputedStyle(document.querySelector('#preloader')).color,
+                };
+            });
+            expect(style.letterSpacing).toBe('normal');
+            expect(style.fontVariantCaps).toBe('normal');
+            expect(style.textTransform).toBe('none');
+            expect(style.color).toBe(style.boot);
+            await expect(page.locator('.sb-boot-line-text')).not.toHaveAttribute('data-sb-copy-placeholder', /./);
+        });
+
+        test('gives assistive technology the whole line from one element and hides the letters, which are separate elements', async ({ page }) => {
+            await openSplash(page, { variant: 'tewi' });
+
+            await expect(page.locator('.sb-boot-line-text')).toHaveAttribute('aria-hidden', 'true');
+            const reader = page.locator('.sb-boot-line-reader');
+            await expect(reader).toHaveText(new RegExp(`^(${SPLASH_LINES.join('|')})$`));
+            await expect(reader).toHaveText(await page.locator('.sb-boot-line-text').innerText());
+            expect(await reader.evaluate(node => node.closest('[aria-hidden="true"]'))).toBeNull();
+            // The reader is out of sight and takes no room.
+            expect((await reader.boundingBox()).width).toBeLessThanOrEqual(1);
+        });
+
+        test('types the line out one letter at a time, and starts the dots after the last letter', async ({ page }) => {
+            await openSplash(page, { variant: 'both' });
+
+            const letters = await readLetters(page);
+            const dots = await page.locator('.sb-boot-dots > span').evaluateAll(spans => spans.map(span => span.getAnimations()[0].effect.getTiming().delay));
+            expect(letters.map(letter => letter.text).join('')).toBe((await page.locator('.sb-boot-line-text').textContent()).replaceAll(' ', ''));
+            expect(letters[0].delay, 'the first letter waits for the picture to settle').toBeCloseTo(300, 0);
+            letters.slice(1).forEach((letter, index) => {
+                expect(letter.delay - letters[index].delay, `letter ${index + 1} follows the one before`).toBeCloseTo(45, 0);
+            });
+            for (const delay of dots) {
+                expect(delay, 'the dots wait for the last letter').toBeGreaterThan(letters.at(-1).delay);
+            }
+            await expect.poll(async () => (await readLetters(page)).every(letter => letter.opacity === '1'), { timeout: 5000 }).toBe(true);
+        });
+
+        test('shows four sparkles, two on each side of the line, drawn at the size of an art pixel of the mascot', async ({ page }) => {
+            await openSplash(page, { variant: 'both' });
+
+            const mascot = await readMascot(page);
+            const unit = mascot.width / ART.both.width;
+            const stars = await readStars(page);
+            const text = await page.locator('.sb-boot-flavour-text').boundingBox();
+            expect(stars.map(star => star.cells)).toEqual([7, 11, 11, 7]);
+            for (const star of stars) {
+                expect(star.width).toBeCloseTo(star.cells * unit, 1);
+                expect(star.height).toBeCloseTo(star.cells * unit, 1);
+                expect(Math.abs(star.middle - (text.y + text.height / 2)), 'on the line').toBeLessThanOrEqual(text.height / 2);
+            }
+            expect(stars[0].right).toBeLessThanOrEqual(stars[1].left);
+            expect(stars[1].right).toBeLessThanOrEqual(text.x + 0.5);
+            expect(stars[2].left).toBeGreaterThanOrEqual(text.x + text.width - 0.5);
+            expect(stars[2].right).toBeLessThanOrEqual(stars[3].left);
+            await expect(page.locator('.sb-boot-star')).toHaveCount(4);
+            for (const hidden of await page.locator('.sb-boot-star').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-hidden')))) {
+                expect(hidden).toBe('true');
+            }
+        });
+
+        test('the sparkles appear with the first letter and twinkle, each a little after the one before', async ({ page }) => {
+            await openSplash(page, { variant: 'tewi' });
+
+            await expect.poll(async () => (await readStars(page)).every(star => star.visibility === 'visible'), { timeout: 5000 }).toBe(true);
+            const stars = await readStars(page);
+            for (const star of stars) {
+                expect(star.animationName).toContain('sb-boot-twinkle');
+            }
+            const delays = stars.map(star => star.twinkle);
+            expect(delays.slice(1).every((delay, index) => delay > delays[index])).toBe(true);
+        });
+
+        test('keeps the sparkles and the line inside the viewport at the largest text size', async ({ page }) => {
+            await page.addInitScript(() => { document.documentElement.style.fontSize = '32px'; });
+            await openSplash(page, { variant: 'both' });
+
+            const viewport = page.viewportSize();
+            for (const selector of ['.sb-boot-flavour', '.sb-boot-star >> nth=0', '.sb-boot-star >> nth=3']) {
+                const box = await page.locator(selector).boundingBox();
+                expect(box.x).toBeGreaterThanOrEqual(0);
+                expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+            }
+        });
+
         for (const scenario of [
             { title: 'under prefers-reduced-motion', reducedMotion: 'reduce', mirror: false },
             { title: 'when the saved Reduced Motion setting is mirrored', reducedMotion: 'no-preference', mirror: true },
         ]) {
-            test(`shows three static dots ${scenario.title}`, async ({ page }) => {
+            test(`shows the finished line, still sparkles and three static dots ${scenario.title}`, async ({ page }) => {
                 await page.emulateMedia({ reducedMotion: scenario.reducedMotion });
                 await openSplash(page, { variant: 'tewi', reducedMotionMirror: scenario.mirror });
 
+                const letters = await readLetters(page);
+                expect(letters.length).toBeGreaterThan(0);
+                for (const letter of letters) {
+                    expect(letter.animationName).toBe('none');
+                    expect(letter.opacity).toBe('1');
+                }
+                const stars = await readStars(page);
+                expect(stars).toHaveLength(4);
+                for (const star of stars) {
+                    expect(star.animationName).toBe('none');
+                    expect([star.visibility, star.opacity]).toEqual(['visible', '1']);
+                }
                 const dots = await readDots(page);
                 expect(dots).toHaveLength(3);
                 for (const dot of dots) {
@@ -202,12 +345,56 @@ for (const { name, options } of VIEWPORTS) {
             });
         }
 
+        test('plays the reveal: the last letter and every sparkle are hidden until their turn, and then shown', async ({ page }) => {
+            await openSplash(page, { variant: 'tewi' });
+
+            // The turns are counted from the start delay that the script sets. Putting it far away puts every turn in the
+            // future, so the test does not race the 300ms before the first letter.
+            const setStart = value => page.evaluate(start => document.querySelector('#preloader').style.setProperty('--sb-boot-reveal-start', start), value);
+            await setStart('600000ms');
+
+            await expect.poll(async () => (await readLetters(page)).at(-1).opacity, { message: 'the last letter waits for its turn' }).toBe('0');
+            for (const star of await readStars(page)) {
+                expect(star.visibility, 'a sparkle waits for the typing to start').toBe('hidden');
+            }
+
+            await setStart('0ms');
+
+            await expect.poll(async () => (await readLetters(page)).every(letter => letter.opacity === '1'), { timeout: 8000 }).toBe(true);
+            for (const star of await readStars(page)) {
+                expect(star.visibility).toBe('visible');
+            }
+        });
+
+        test('keeps the whole line and every sparkle when the theme turns animations off while the reveal is running', async ({ page }) => {
+            await openSplash(page, { variant: 'tewi' });
+            const hidden = await readLetters(page);
+            expect(hidden.length, 'the reveal has letters to type').toBeGreaterThan(0);
+
+            // The Reduced Motion class arrives from the settings, after the splash has painted and without the mirror.
+            await page.evaluate(() => document.body.classList.add('reduced-motion'));
+
+            await expect.poll(async () => (await readLetters(page)).every(letter => letter.animationName === 'none'), { message: 'the theme rule has taken the animations' }).toBe(true);
+            for (const letter of await readLetters(page)) {
+                expect(letter.opacity).toBe('1');
+            }
+            for (const star of await readStars(page)) {
+                expect([star.visibility, star.opacity]).toEqual(['visible', '1']);
+            }
+        });
+
         test('stops its own animations under prefers-reduced-motion, not through the theme global rule', async ({ page }) => {
             await page.emulateMedia({ reducedMotion: 'reduce' });
             await openSplash(page, { variant: 'tewi' });
 
             expect(await removeGlobalReducedMotionRules(page)).toBeGreaterThan(0);
 
+            for (const letter of await readLetters(page)) {
+                expect([letter.animationName, letter.opacity]).toEqual(['none', '1']);
+            }
+            for (const star of await readStars(page)) {
+                expect([star.animationName, star.visibility, star.opacity]).toEqual(['none', 'visible', '1']);
+            }
             const dots = await readDots(page);
             expect(dots).toHaveLength(3);
             for (const dot of dots) {

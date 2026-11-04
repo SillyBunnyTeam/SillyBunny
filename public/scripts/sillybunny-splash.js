@@ -11,15 +11,21 @@
     var VARIANT_STORAGE_KEY = 'sb-splash-character';
     var REDUCED_MOTION_STORAGE_KEY = 'sb-reduced-motion';
     var VARIANTS = ['reisen', 'tewi', 'both'];
-    var PLACEHOLDER_LINE = 'TODO(copy)';
 
-    // English only: the splash renders before locales load. Lines never end in an ellipsis because
-    // the animated dots are appended after them.
-    var SPLASH_LINES = {
-        reisen: [PLACEHOLDER_LINE],
-        tewi: [PLACEHOLDER_LINE],
-        both: [PLACEHOLDER_LINE],
-    };
+    // English only: the splash renders before locales load. One pool for every character, one line picked per load.
+    // Lines never end in an ellipsis because the animated dots are appended after them.
+    var SPLASH_LINES = [
+        'Girls are writing stories',
+        'Girls are playing roles',
+        'Girls are conversing',
+        'Girls are preparing',
+    ];
+
+    // The line is typed out one letter at a time, then the dots come in one by one. The CSS reads these three times
+    // from custom properties, so the delay of the dots can follow the length of the line.
+    var REVEAL_START_MS = 300;
+    var LETTER_MS = 45;
+    var DOTS_PAUSE_MS = 200;
 
     // Each picture is stored at its own size in art pixels, so the table is what lets the script size the box before
     // the file has loaded. tests/unit/sillybunny-splash.test.js reads the files and the export spec and fails when a
@@ -84,6 +90,8 @@
         var fit = chooseFit(window.innerHeight, readRatio());
         mascot.style.width = art.width * fit.cssPerArtPixel + 'px';
         mascot.style.height = art.height * fit.cssPerArtPixel + 'px';
+        // The sparkles beside the line are drawn on the grid of the mascot, so they take its size of an art pixel.
+        if (mascot.parentNode) mascot.parentNode.style.setProperty('--sb-boot-px', fit.cssPerArtPixel + 'px');
         // loader.css turns off the pixelated rendering of a picture that is drawn at a fraction of a step.
         mascot.setAttribute('data-fit', fit.smooth ? 'smooth' : 'step');
         if (fit.smooth) {
@@ -132,24 +140,42 @@
         watchSize(mascot, variant);
     }
 
-    function applyLine(lineText, variant) {
-        if (!lineText) return;
-        var line = pickAtRandom(SPLASH_LINES[variant]);
-        lineText.textContent = line;
-        if (line !== PLACEHOLDER_LINE) {
-            lineText.removeAttribute('data-sb-copy-placeholder');
-            lineText.removeAttribute('data-sb-copy-slot');
-            return;
+    // Every letter is its own element so that CSS can give it a turn. A space stays a text node, so the line still
+    // breaks between words and never inside one.
+    // Returns how many letters the reveal has to type, which sets when the dots start.
+    function applyLine(lineText, line) {
+        if (!lineText) return 0;
+        lineText.textContent = '';
+        var typed = 0;
+        for (var index = 0; index < line.length; index++) {
+            var character = line.charAt(index);
+            if (character === ' ') {
+                lineText.appendChild(document.createTextNode(' '));
+                continue;
+            }
+            var letter = document.createElement('span');
+            letter.className = 'sb-boot-letter';
+            letter.style.setProperty('--n', String(typed));
+            letter.textContent = character;
+            lineText.appendChild(letter);
+            typed++;
         }
-        lineText.setAttribute('data-sb-copy-placeholder', 'true');
-        lineText.setAttribute('data-sb-copy-slot', 'SPLASH-' + variant.toUpperCase() + '-*');
+        return typed;
     }
 
     function render(preloader) {
         if (!preloader) return;
         var variant = resolveVariant(readStorage(VARIANT_STORAGE_KEY));
         applyMascot(preloader.querySelector('.sb-boot-mascot'), variant);
-        applyLine(preloader.querySelector('.sb-boot-line-text'), variant);
+        var line = pickAtRandom(SPLASH_LINES);
+        var typed = applyLine(preloader.querySelector('.sb-boot-line-text'), line);
+        // The letters are hidden from assistive technology, since a reader may take each one as a separate item, and
+        // the line is given to it whole here.
+        var reader = preloader.querySelector('.sb-boot-line-reader');
+        if (reader) reader.textContent = line;
+        preloader.style.setProperty('--sb-boot-reveal-start', REVEAL_START_MS + 'ms');
+        preloader.style.setProperty('--sb-boot-letter-step', LETTER_MS + 'ms');
+        preloader.style.setProperty('--sb-boot-dots-start', REVEAL_START_MS + typed * LETTER_MS + DOTS_PAUSE_MS + 'ms');
         // The Reduced Motion setting lives in settings that load after the splash paints, so the
         // last saved value is mirrored to localStorage for this script to read.
         if (readStorage(REDUCED_MOTION_STORAGE_KEY) === 'true') {
