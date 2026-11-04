@@ -3,7 +3,7 @@ import { PassThrough, Readable } from 'node:stream';
 
 import { describe, expect, jest, test } from '@jest/globals';
 
-import { continueGenerateContentStream } from '../src/gemini-long-decode.js';
+import { continueGenerateContentStream, continueInteractionStream } from '../src/gemini-long-decode.js';
 
 const okResponse = body => ({ ok: true, status: 200, statusText: 'OK', body });
 const event = data => `data: ${JSON.stringify(data)}\r\n\r\n`;
@@ -148,5 +148,26 @@ describe('continueGenerateContentStream', () => {
         await closed;
 
         expect(sendHop).not.toHaveBeenCalled();
+    });
+});
+
+describe('continueInteractionStream', () => {
+    test('returns a failed response unchanged', () => {
+        const response = { ok: false, status: 400, statusText: 'Bad Request', text: async () => 'nope' };
+
+        expect(continueInteractionStream(response, jest.fn(), new AbortController().signal)).toBe(response);
+    });
+
+    test('drops the final event of a request it continues and keeps the last one', async () => {
+        const first = Readable.from([event({ event_type: 'interaction.completed', interaction: { status: 'requires_continuation', continuation_token: 'token-1' } })], { objectMode: true });
+        const second = Readable.from([event({ event_type: 'interaction.completed', interaction: { status: 'completed' } })], { objectMode: true });
+        const sendHop = jest.fn(async () => okResponse(second));
+
+        const response = continueInteractionStream(okResponse(first), sendHop, new AbortController().signal);
+        const output = await readAll(response.body);
+
+        expect(sendHop).toHaveBeenCalledWith('token-1');
+        expect(output).not.toContain('requires_continuation');
+        expect(output.match(/interaction\.completed/g)).toHaveLength(1);
     });
 });

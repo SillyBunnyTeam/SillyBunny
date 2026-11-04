@@ -10,9 +10,11 @@ const MAX_REQUESTS = 32;
 // How many times a request goes out again when it stopped with nothing new, the same limit as MAX_STREAM_RECONNECTS_WITHOUT_PROGRESS in Google's js-genai SDK.
 const MAX_RETRIES = 3;
 const NON_STREAMING_OUTPUT_CAP = 32768;
+const RESUMABLE_INTERACTION_STATUSES = ['in_progress', 'requires_continuation'];
 
 // The client reads these as a cut-off reply, the same as when Google reports one.
 const GENERATE_CONTENT_CUT_OFF = `data: ${JSON.stringify({ candidates: [{ content: { parts: [] }, finishReason: 'CONTINUATION' }] })}\n\n`;
+const INTERACTION_CUT_OFF = `data: ${JSON.stringify({ event_type: 'interaction.completed', interaction: { status: 'requires_continuation' } })}\n\n`;
 
 const exceedsRequestCap = (model, maxOutputTokens) => /^gemini-4/.test(model) && maxOutputTokens > NON_STREAMING_OUTPUT_CAP;
 
@@ -134,6 +136,41 @@ export function getGenerateContentText(hops) {
         const content = hop?.candidates?.[0]?.content ?? hop?.candidates?.[0]?.output;
         return typeof content === 'string' ? content : content?.parts?.filter(part => !part.thought && part.text)?.map(part => part.text)?.join('\n\n');
     }).join('');
+}
+
+/**
+ * @param {any} firstHop First Interactions response
+ * @param {(token: string) => Promise<any>} sendHop Sends the same request with a token
+ * @param {AbortSignal} signal Aborts when the client cancels
+ * @returns {Promise<any[]>} Every response, in order
+ */
+export function collectInteractionHops(firstHop, sendHop, signal) {
+    return collectHops(firstHop, hop => (hop?.status === 'requires_continuation' ? hop.continuation_token : undefined), sendHop, signal);
+}
+
+/**
+ * @param {any[]} hops Every Interactions response, in order
+ * @returns {any} One response with all steps, summed usage and the last hop's status
+ */
+export function mergeInteractionHops(hops) {
+    if (hops.length < 2) {
+        return hops[0];
+    }
+
+    const usage = {};
+    for (const hop of hops) {
+        for (const [key, value] of Object.entries(hop?.usage ?? {})) {
+            if (Number.isInteger(value)) {
+                usage[key] = (usage[key] ?? 0) + value;
+            }
+        }
+    }
+
+    return {
+        ...hops.at(-1),
+        steps: hops.flatMap(hop => hop?.steps ?? []),
+        usage: Object.keys(usage).length > 0 ? usage : undefined,
+    };
 }
 
 /**
@@ -309,6 +346,55 @@ function readGenerateContentEvent(event, hop) {
 }
 
 /**
+ * @param {string} event Raw event
+ * @param {any} hop Hop state
+ * @returns {string|null} The text to forward, or null to drop the event
+ */
+function readInteractionEvent(event, hop) {
+    // forwardInteractionStream ends the reply at a done marker, and it writes its own when the last request ends.
+    if (/^data:\s*\[DONE\]/m.test(event)) {
+        return null;
+    }
+
+    const data = parseEventData(event);
+    const type = data?.event_type ?? data?.type;
+
+    if (type === 'interaction.completed') {
+        hop.token = data.interaction?.continuation_token;
+        if (data.interaction?.status === 'requires_continuation' && hop.canContinue()) {
+            hop.resume = true;
+            return null;
+        }
+        hop.finished = true;
+        return event;
+    }
+    if (type === 'error') {
+        hop.token = undefined;
+        hop.failed = true;
+        return event;
+    }
+    if (type === 'step.delta' || (type === 'step.start' && data.step?.type === 'function_call')) {
+        hop.contentSinceToken = true;
+    }
+
+    // Google's SDK reads a token from the event or from its interaction object, on any event.
+    const token = data?.continuation_token ?? data?.interaction?.continuation_token;
+    if (token && token !== hop.token) {
+        hop.token = token;
+        hop.contentSinceToken = false;
+    }
+
+    // Only a status update ends a reply here, because a final status also turns off the cut-off warning.
+    const status = type === 'interaction.status_update' ? data.status ?? data.interaction?.status : undefined;
+    if (status) {
+        hop.finished = !RESUMABLE_INTERACTION_STATUSES.includes(status);
+        // Asking for the next request with the token this request started with means no progress.
+        hop.noRetry = status === 'requires_continuation';
+    }
+    return event;
+}
+
+/**
  * @param {any} firstResponse First response
  * @param {(token: string) => Promise<any>} sendHop Sends the same request with a token
  * @param {AbortSignal} signal Aborts when the client cancels
@@ -336,4 +422,14 @@ function continueStream(firstResponse, sendHop, signal, readEvent, cutOffEvent) 
  */
 export function continueGenerateContentStream(firstResponse, sendHop, signal) {
     return continueStream(firstResponse, sendHop, signal, readGenerateContentEvent, GENERATE_CONTENT_CUT_OFF);
+}
+
+/**
+ * @param {any} firstResponse First streaming Interactions response
+ * @param {(token: string) => Promise<any>} sendHop Sends the same request with a token
+ * @param {AbortSignal} signal Aborts when the client cancels
+ * @returns {any} A response for forwardInteractionStream
+ */
+export function continueInteractionStream(firstResponse, sendHop, signal) {
+    return continueStream(firstResponse, sendHop, signal, readInteractionEvent, INTERACTION_CUT_OFF);
 }

@@ -4,6 +4,7 @@ import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 import { setConfigFilePath } from '../src/util.js';
@@ -367,7 +368,6 @@ describe('Gemini Interactions API integration', () => {
             createProviderFetchSpy(() => new NodeFetchResponse(JSON.stringify({
                 id: 'int-cut-off',
                 status,
-                continuation_token: 'token',
                 steps: [{ type: 'model_output', content: [{ type: 'text', text: 'partial' }] }],
             }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
 
@@ -380,7 +380,7 @@ describe('Gemini Interactions API integration', () => {
         test.each(CUT_OFF_STATUSES)('ends a streamed %s interaction with a length finish', async (status) => {
             replyWithEvents(
                 { event_type: 'step.delta', index: 0, delta: { type: 'text', text: 'partial' } },
-                { event_type: 'interaction.completed', interaction: { id: 'int-cut-off', status, continuation_token: 'token' } },
+                { event_type: 'interaction.completed', interaction: { id: 'int-cut-off', status } },
             );
 
             const events = await readSseEvents(await generate({ stream: true, reverse_proxy: PROVIDER_ORIGIN }));
@@ -413,6 +413,339 @@ describe('Gemini Interactions API integration', () => {
             const events = await readSseEvents(await generate({ stream: true, reverse_proxy: PROVIDER_ORIGIN }));
 
             expect(events.map(event => event.choices[0].finish_reason)).toEqual([null]);
+        });
+    });
+
+    describe('long decode', () => {
+        const PROVIDER_ORIGIN = 'http://interactions.invalid';
+        const JSON_HEADERS = { 'Content-Type': 'application/json' };
+        const SSE_HEADERS = { 'Content-Type': 'text/event-stream' };
+
+        const textDelta = text => ({ event_type: 'step.delta', index: 0, delta: { type: 'text', text } });
+        const completed = (status, token) => ({ event_type: 'interaction.completed', interaction: { id: 'int', status, ...(token ? { continuation_token: token } : {}) } });
+        const statusUpdate = (status, token) => ({ event_type: 'interaction.status_update', interaction_id: 'int', status, ...(token ? { continuation_token: token } : {}) });
+        const sseBody = events => events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('');
+        const sseHop = (...events) => new NodeFetchResponse(sseBody(events), { status: 200, headers: SSE_HEADERS });
+        const jsonHop = interaction => new NodeFetchResponse(JSON.stringify(interaction), { status: 200, headers: JSON_HEADERS });
+        const textStep = text => ({ type: 'model_output', content: [{ type: 'text', text }] });
+
+        function droppedHop(...events) {
+            async function* sendThenDrop() {
+                yield sseBody(events);
+                await new Promise(resolve => setTimeout(resolve, 20));
+                throw new Error('socket hang up');
+            }
+            return new NodeFetchResponse(Readable.from(sendThenDrop(), { objectMode: false }), { status: 200, headers: SSE_HEADERS });
+        }
+
+        function replyWithHops(...hops) {
+            return createProviderFetchSpy(() => {
+                const hop = hops.shift();
+                if (!hop) {
+                    throw new Error('Unexpected extra request');
+                }
+                if (hop instanceof Error) {
+                    throw hop;
+                }
+                return hop;
+            });
+        }
+
+        const requestBody = (fetchSpy, index) => JSON.parse(fetchSpy.mock.calls[index][1].body);
+        const replyText = events => events.map(event => event.choices[0].delta?.content ?? '').join('');
+        const finishes = events => events.map(event => event.choices[0].finish_reason).filter(Boolean);
+
+        describe('without streaming', () => {
+            test('resends the input with the token and keeps the request stateless', async () => {
+                const fetchSpy = replyWithHops(
+                    jsonHop({ id: 'int-1', status: 'requires_continuation', continuation_token: 'token-1', steps: [textStep('Part one ')], usage: { total_input_tokens: 10, total_output_tokens: 20, total_tokens: 30 } }),
+                    jsonHop({ id: 'int-2', status: 'requires_continuation', continuation_token: 'token-2', steps: [{ type: 'thought', summary: [{ type: 'text', text: 'thinking' }] }], usage: { total_input_tokens: 15, total_output_tokens: 0, total_tokens: 15 } }),
+                    jsonHop({ id: 'int-3', status: 'completed', steps: [textStep('and part two.')], usage: { total_input_tokens: 30, total_output_tokens: 5, total_tokens: 35 } }),
+                );
+
+                const json = await (await generate({ reverse_proxy: PROVIDER_ORIGIN })).json();
+
+                expect(fetchSpy).toHaveBeenCalledTimes(3);
+                const first = requestBody(fetchSpy, 0);
+                expect(first).not.toHaveProperty('continuation_token');
+                expect(first.store).toBe(false);
+                expect(requestBody(fetchSpy, 1)).toEqual({ ...first, continuation_token: 'token-1' });
+                expect(requestBody(fetchSpy, 2)).toEqual({ ...first, continuation_token: 'token-2' });
+                expect(requestBody(fetchSpy, 1)).not.toHaveProperty('previous_interaction_id');
+                expect(json.choices[0].message.content).toBe('Part one and part two.');
+                expect(json.choices[0].message.reasoning_content).toBe('thinking');
+                expect(json.choices[0].finish_reason).toBe('stop');
+                expect(json.usage).toEqual({ prompt_tokens: 55, completion_tokens: 25, total_tokens: 80 });
+            });
+
+            test('stops at incomplete even though the interaction carries a token', async () => {
+                const fetchSpy = replyWithHops(jsonHop({ id: 'int-1', status: 'incomplete', continuation_token: 'token-1', steps: [textStep('partial')] }));
+
+                const json = await (await generate({ reverse_proxy: PROVIDER_ORIGIN })).json();
+
+                expect(fetchSpy).toHaveBeenCalledTimes(1);
+                expect(json.choices[0].finish_reason).toBe('length');
+            });
+
+            test.each([
+                ['an error status', () => new NodeFetchResponse('{"error":{"message":"overloaded"}}', { status: 503, headers: JSON_HEADERS })],
+                ['a network error', () => new Error('socket hang up')],
+            ])('keeps the reply so far as a length finish when a later request returns %s', async (_name, createFailure) => {
+                const fetchSpy = replyWithHops(
+                    jsonHop({ id: 'int-1', status: 'requires_continuation', continuation_token: 'token-1', steps: [textStep('Part one')] }),
+                    createFailure(),
+                );
+
+                const json = await (await generate({ reverse_proxy: PROVIDER_ORIGIN })).json();
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(json.choices[0].message.content).toBe('Part one');
+                expect(json.choices[0].finish_reason).toBe('length');
+            });
+
+            test('stops when a request hands back the token it was sent with', async () => {
+                const fetchSpy = replyWithHops(
+                    jsonHop({ id: 'int-1', status: 'requires_continuation', continuation_token: 'token-1', steps: [textStep('one ')] }),
+                    jsonHop({ id: 'int-2', status: 'requires_continuation', continuation_token: 'token-1', steps: [textStep('two')] }),
+                );
+
+                const json = await (await generate({ reverse_proxy: PROVIDER_ORIGIN })).json();
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(json.choices[0].message.content).toBe('one two');
+                expect(json.choices[0].finish_reason).toBe('length');
+            });
+        });
+
+        describe('with streaming', () => {
+            const requestStream = () => generate({ stream: true, reverse_proxy: PROVIDER_ORIGIN });
+
+            test('joins the requests into one stream that hides the hop boundary', async () => {
+                const fetchSpy = replyWithHops(
+                    sseHop({ event_type: 'interaction.created', interaction: { id: 'int-1', status: 'in_progress' } }, textDelta('Part one '), completed('requires_continuation', 'token-1')),
+                    sseHop({ event_type: 'interaction.created', interaction: { id: 'int-2', status: 'in_progress' } }, textDelta('and part two.'), completed('completed')),
+                );
+
+                const response = await requestStream();
+                const raw = await response.clone().text();
+                const events = await readSseEvents(response);
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                const first = requestBody(fetchSpy, 0);
+                expect(first).not.toHaveProperty('continuation_token');
+                expect(requestBody(fetchSpy, 1)).toEqual({ ...first, continuation_token: 'token-1' });
+                expect(replyText(events)).toBe('Part one and part two.');
+                expect(finishes(events)).toEqual([]);
+                expect(raw.match(/\[DONE\]/g)).toHaveLength(1);
+                expect(raw.trim().endsWith('data: [DONE]')).toBe(true);
+            });
+
+            test('ignores a done marker from a request that ended without a final event', async () => {
+                const fetchSpy = replyWithHops(
+                    new NodeFetchResponse(`${sseBody([textDelta('Part one '), statusUpdate('requires_continuation', 'token-1')])}data: [DONE]\n\n`, { status: 200, headers: SSE_HEADERS }),
+                    sseHop(textDelta('and part two.'), completed('completed')),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(replyText(events)).toBe('Part one and part two.');
+                expect(finishes(events)).toEqual([]);
+            });
+
+            test('stops at incomplete even though the interaction carries a token', async () => {
+                const fetchSpy = replyWithHops(sseHop(textDelta('partial'), completed('incomplete', 'token-1')));
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(1);
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('ends with a length finish when a later request returns an error status', async () => {
+                const fetchSpy = replyWithHops(
+                    sseHop(textDelta('Part one'), completed('requires_continuation', 'token-1')),
+                    new NodeFetchResponse('{"error":{"message":"overloaded"}}', { status: 503, headers: JSON_HEADERS }),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(replyText(events)).toBe('Part one');
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('sends a request again when it stops before a new token and before any content', async () => {
+                const fetchSpy = replyWithHops(
+                    sseHop(textDelta('one '), completed('requires_continuation', 'token-1')),
+                    new Error('socket hang up'),
+                    droppedHop(),
+                    droppedHop({ event_type: 'interaction.created', interaction: { id: 'int-2', status: 'in_progress' } }),
+                    sseHop(textDelta('two'), completed('completed')),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(5);
+                expect([1, 2, 3, 4].map(index => requestBody(fetchSpy, index).continuation_token)).toEqual(['token-1', 'token-1', 'token-1', 'token-1']);
+                expect(replyText(events)).toBe('one two');
+                expect(finishes(events)).toEqual([]);
+            });
+
+            test('ends with a length finish once the retries run out', async () => {
+                const fetchSpy = replyWithHops(
+                    sseHop(textDelta('Part one'), completed('requires_continuation', 'token-1')),
+                    new Error('socket hang up'),
+                    new Error('socket hang up'),
+                    new Error('socket hang up'),
+                    new Error('socket hang up'),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(5);
+                expect(replyText(events)).toBe('Part one');
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('does not send a request again after it sent content with no new token', async () => {
+                const fetchSpy = replyWithHops(
+                    sseHop(textDelta('one '), completed('requires_continuation', 'token-1')),
+                    droppedHop(textDelta('two')),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(replyText(events)).toBe('one two');
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('does not send a request again after text when a status update repeats its token', async () => {
+                const fetchSpy = replyWithHops(
+                    sseHop(textDelta('one '), completed('requires_continuation', 'token-1')),
+                    droppedHop(textDelta('two'), statusUpdate('in_progress', 'token-1')),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(replyText(events)).toBe('one two');
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('stops when a status update asks for the next request with the token the request started with', async () => {
+                const fetchSpy = replyWithHops(
+                    sseHop(textDelta('one '), completed('requires_continuation', 'token-1')),
+                    sseHop(statusUpdate('requires_continuation', 'token-1')),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(replyText(events)).toBe('one ');
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('continues when a status update asks for the next request with a new token', async () => {
+                const fetchSpy = replyWithHops(
+                    sseHop(textDelta('one '), statusUpdate('requires_continuation', 'token-1')),
+                    sseHop(textDelta('two'), completed('completed')),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(requestBody(fetchSpy, 1).continuation_token).toBe('token-1');
+                expect(replyText(events)).toBe('one two');
+                expect(finishes(events)).toEqual([]);
+            });
+
+            test('still warns when the stream drops after a created event with a status it does not know', async () => {
+                const fetchSpy = replyWithHops(droppedHop({ event_type: 'interaction.created', interaction: { id: 'int', status: 'queued' } }, textDelta('partial')));
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(1);
+                expect(replyText(events)).toBe('partial');
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('forwards the cut-off status when a request hands back its own token', async () => {
+                const fetchSpy = replyWithHops(
+                    sseHop(textDelta('one '), completed('requires_continuation', 'token-1')),
+                    sseHop(textDelta('two'), completed('requires_continuation', 'token-1')),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(replyText(events)).toBe('one two');
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('resumes a dropped stream from a checkpoint when nothing visible went out after it', async () => {
+                const fetchSpy = replyWithHops(
+                    droppedHop(textDelta('seen '), statusUpdate('in_progress', 'checkpoint')),
+                    sseHop(textDelta('and the rest.'), completed('completed')),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(requestBody(fetchSpy, 1).continuation_token).toBe('checkpoint');
+                expect(replyText(events)).toBe('seen and the rest.');
+                expect(finishes(events)).toEqual([]);
+            });
+
+            test('reads a checkpoint from an interaction object inside the event', async () => {
+                const fetchSpy = replyWithHops(
+                    droppedHop(textDelta('seen '), { event_type: 'interaction.status_update', interaction: { id: 'int', status: 'in_progress', continuation_token: 'checkpoint' } }),
+                    sseHop(textDelta('and the rest.'), completed('completed')),
+                );
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(2);
+                expect(requestBody(fetchSpy, 1).continuation_token).toBe('checkpoint');
+                expect(replyText(events)).toBe('seen and the rest.');
+            });
+
+            test('ends with a length finish when the stream drops after text went out past the checkpoint', async () => {
+                const fetchSpy = replyWithHops(droppedHop(statusUpdate('in_progress', 'checkpoint'), textDelta('unsafe to repeat')));
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(1);
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('takes a final status from a status update and does not resume', async () => {
+                const fetchSpy = replyWithHops(sseHop(statusUpdate('in_progress', 'checkpoint'), statusUpdate('completed')));
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(1);
+                expect(finishes(events)).toEqual([]);
+            });
+
+            test('does not resume after an error event', async () => {
+                const fetchSpy = replyWithHops(sseHop(statusUpdate('in_progress', 'checkpoint'), { event_type: 'error', error: { message: 'failed' } }));
+
+                const events = await readSseEvents(await requestStream());
+
+                expect(fetchSpy).toHaveBeenCalledTimes(1);
+                expect(finishes(events)).toEqual(['length']);
+            });
+
+            test('passes a failed first request through with its status', async () => {
+                const fetchSpy = replyWithHops(new NodeFetchResponse('{"error":{"message":"bad request"}}', { status: 400, statusText: 'Bad Request', headers: JSON_HEADERS }));
+
+                const response = await requestStream();
+
+                expect(response.status).toBe(400);
+                expect(fetchSpy).toHaveBeenCalledTimes(1);
+            });
         });
     });
 

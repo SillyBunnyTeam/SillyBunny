@@ -70,10 +70,13 @@ import { isBunRuntime } from '../../runtime.js';
 import {
     capFirstGenerateContentBody,
     collectGenerateContentHops,
+    collectInteractionHops,
     continueGenerateContentStream,
+    continueInteractionStream,
     getGenerateContentText,
     getVertexApiVersion,
     mergeGenerateContentHops,
+    mergeInteractionHops,
 } from '../../gemini-long-decode.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
@@ -3446,10 +3449,12 @@ async function sendGeminiInteractionsRequest(request, response) {
         logVerboseGenerationRequest('Google Interactions API', request, requestBody);
 
         const generateResponse = await fetch(endpointUrl, config);
+        // SillyBunny: Gemini 4 can split one reply across requests, so gemini-long-decode.js asks for the rest and joins it.
+        const sendHop = continuation_token => fetch(endpointUrl, { ...config, body: JSON.stringify({ ...requestBody, continuation_token }) });
 
         if (request.body.stream) {
             console.info('Streaming Interactions API request in progress');
-            return forwardInteractionStream(generateResponse, response, request, () => controller.abort());
+            return forwardInteractionStream(continueInteractionStream(generateResponse, sendHop, controller.signal), response, request, () => controller.abort());
         }
 
         if (!generateResponse.ok) {
@@ -3460,7 +3465,7 @@ async function sendGeminiInteractionsRequest(request, response) {
         }
 
         /** @type {any} */
-        const generateResponseJson = await generateResponse.json();
+        const generateResponseJson = mergeInteractionHops(await collectInteractionHops(await generateResponse.json(), sendHop, controller.signal));
         console.debug('Google Interactions API response:', summarizeLlmPayloadForLog(generateResponseJson));
         return response.send(transformInteractionToChatCompletion(generateResponseJson));
     } catch (error) {
