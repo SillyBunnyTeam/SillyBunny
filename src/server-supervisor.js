@@ -31,6 +31,9 @@ export const SUPERVISOR_SHUTDOWN_MESSAGE = 'sillybunny:shutdown';
 export const SUPERVISOR_FORCE_KILL_TIMEOUT_MS = 5000;
 export const SERVER_PLUGIN_ACTIVATION_TIMEOUT_MS = 150_000;
 export const SERVER_PLUGIN_PREPARE_LEASE_MS = 2 * 60_000;
+export const SUPERVISOR_CRASH_RESTART_DELAY_MS = 1000;
+export const SUPERVISOR_CRASH_RESTART_LIMIT = 5;
+export const SUPERVISOR_CRASH_WINDOW_MS = 10 * 60_000;
 
 function createTimeout(ms, value) {
     let timer;
@@ -89,6 +92,15 @@ export function shouldSupervise(env = process.env) {
  * work regardless of how the process was started (bun server.js, node
  * server.js, Docker, systemd) without relying on platform-specific detached
  * relaunch helpers.
+ *
+ * A child that reported startup and then exits with a non-zero code or a
+ * signal, while no stop was requested, crashed. It is relaunched after
+ * SUPERVISOR_CRASH_RESTART_DELAY_MS, which doubles with each crash restart
+ * inside SUPERVISOR_CRASH_WINDOW_MS. A crash after SUPERVISOR_CRASH_RESTART_LIMIT
+ * restarts inside that window ends the supervisor, so that a crash that repeats
+ * after every start cannot loop forever. A child that fails before it reports
+ * startup, for example on a bad config or a port in use, would fail the same way
+ * again, so its exit code is passed on without a relaunch.
  * @param {object} [options] Dependency injection for tests
  * @param {string[]} [options.argv] Command line of this process
  * @param {string[]} [options.execArgv] Runtime flags to forward to the child
@@ -120,6 +132,8 @@ export async function runSupervisor({
     let pendingPluginUpdate = null;
     let pendingPluginUpdateTimer = null;
     let activatingPluginUpdate = null;
+    const crashRestartTimes = [];
+    let endCrashRestartWait = null;
 
     const recoverPluginUpdates = () => {
         try {
@@ -176,6 +190,7 @@ export async function runSupervisor({
 
     const requestShutdown = () => {
         shuttingDown = true;
+        endCrashRestartWait?.();
         if (!child || child.exitCode !== null) {
             return;
         }
@@ -194,6 +209,28 @@ export async function runSupervisor({
 
         forceStopChild();
     };
+
+    const takeCrashRestartDelay = () => {
+        const crashTime = Date.now();
+        while (crashRestartTimes.length > 0 && crashTime - crashRestartTimes[0] >= SUPERVISOR_CRASH_WINDOW_MS) {
+            crashRestartTimes.shift();
+        }
+        if (crashRestartTimes.length >= SUPERVISOR_CRASH_RESTART_LIMIT) {
+            return null;
+        }
+        crashRestartTimes.push(crashTime);
+        return SUPERVISOR_CRASH_RESTART_DELAY_MS * 2 ** (crashRestartTimes.length - 1);
+    };
+
+    const waitBeforeCrashRestart = delayMs => new Promise(resolve => {
+        const timer = setTimeout(resolve, delayMs);
+        endCrashRestartWait = () => {
+            clearTimeout(timer);
+            resolve();
+        };
+    }).finally(() => {
+        endCrashRestartWait = null;
+    });
 
     process.on('SIGINT', requestShutdown);
     process.on('SIGTERM', requestShutdown);
@@ -227,6 +264,7 @@ export async function runSupervisor({
 
         try {
             child = spawnFn(argv[0], [...execArgv, ...argv.slice(1)], { stdio: ['inherit', 'inherit', 'inherit', 'ipc'], env });
+            let childStarted = false;
             let resolveStartup;
             const startupPromise = new Promise(resolve => {
                 resolveStartup = resolve;
@@ -243,6 +281,7 @@ export async function runSupervisor({
             };
             const onMessage = message => {
                 if (message?.type === SERVER_STARTUP_READY_MESSAGE) {
+                    childStarted = true;
                     resolveStartup({ plugins: Array.isArray(message.plugins) ? message.plugins : [] });
                     return;
                 }
@@ -399,6 +438,21 @@ export async function runSupervisor({
             if (code === SUPERVISOR_RELOAD_EXIT_CODE && !shuttingDown) {
                 console.info('[SillyBunny] Host update requires a fresh supervisor process.');
                 return exitFn(RESTART_EXIT_CODE);
+            }
+
+            if (code !== 0 && childStarted && !shuttingDown) {
+                const exitDescription = signal ? `signal ${signal}` : `exit code ${code}`;
+                const restartDelayMs = takeCrashRestartDelay();
+                if (restartDelayMs === null) {
+                    console.error(`[SillyBunny] Server crashed (${exitDescription}) after ${SUPERVISOR_CRASH_RESTART_LIMIT} restarts within ${SUPERVISOR_CRASH_WINDOW_MS / 60_000} minutes. Not restarting it.`);
+                } else {
+                    console.warn(`[SillyBunny] Server crashed (${exitDescription}). Restarting in ${restartDelayMs / 1000} s...`);
+                    await waitBeforeCrashRestart(restartDelayMs);
+                    if (!shuttingDown) {
+                        isFirstLaunch = false;
+                        continue;
+                    }
+                }
             }
 
             return exitFn(signal ? 1 : (code ?? 0));
