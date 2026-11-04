@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { makeCharacterCard, withoutAssistantAccount } from './helpers/assistant-library.js';
-import { HOME_COPY } from './helpers/copy-home.js';
+import { assistantRestoreError, assistantUpdateError } from './helpers/copy-home.js';
 import { installFixtureChats, registerFixtureChat } from './helpers/fixture-chats.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
@@ -32,7 +32,8 @@ const menuOf = card => card.locator('.sbHomeRowMenu');
 const hosts = page => page.locator('dialog.sb-dialog-host:not([closing])');
 const alertOf = page => hosts(page).locator('.sb-dialog--alert');
 const restoreOf = (page, key = 'assistant-reisen') => cardOf(page, key).locator('.sbHomeFootButton', { hasText: 'Restore' });
-const failureToast = page => page.locator('#toast-container .toast-message', { hasText: HOME_COPY.assistantActionError });
+// Every failure toast of an assistant card ends the same way, so a check that none is shown covers all three.
+const failureToast = page => page.locator('#toast-container .toast-message', { hasText: 'Try again, or reload SillyBunny.' });
 const stored = (page, key) => page.evaluate(async storageKey => (await import('/scripts/util/AccountStorage.js')).accountStorage.getItem(storageKey), key);
 const renderHome = page => page.evaluate(async () => (await import('/scripts/welcome-screen.js')).openWelcomeScreen({ force: true }));
 // The app shows other success toasts of its own at start, so the message is told by its text.
@@ -212,7 +213,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
                 await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeFootButton').first()).toBeFocused();
             });
 
-            test('tells the user with the placeholder toast when the server refuses, and the card stays deleted', async ({ page }) => {
+            test('tells the user that the restore failed, by the name of the card, and the card stays deleted', async ({ page }) => {
                 const world = await boot(page, { library: [TEWI], status: { [REISEN]: DELETED }, accountStorage: REISEN_DELETED_ACCOUNT });
                 world.refuse.restore = { status: 500, json: { error: 'write_failed' } };
                 const unhandled = [];
@@ -222,7 +223,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
 
                 const toast = failureToast(page);
                 await expect(toast).toBeVisible();
-                await expect(toast).toHaveText(HOME_COPY.assistantActionError);
+                await expect(toast).toHaveText(assistantRestoreError('Reisen'));
                 await expect(restoreOf(page)).toBeEnabled();
                 expect(await stored(page, 'bundledAssistantReisenDeleted')).toBe('true');
                 expect(unhandled).toEqual([]);
@@ -408,7 +409,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
                 expect(await labelsOfOpenMenu(page, 'assistant-reisen')).toEqual(['New Chat in Conversation', 'Update Available']);
             });
 
-            test('tells the user with the placeholder toast when the update is refused, and the offer stays', async ({ page }) => {
+            test('tells the user that the update failed, by the name of the card, and the offer stays', async ({ page }) => {
                 const world = await boot(page, { library: [REISEN, TEWI], status: { [REISEN]: EDITED } });
                 world.refuse.apply = { status: 500, json: { error: 'backup_failed' } };
                 const unhandled = [];
@@ -420,7 +421,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
 
                 const toast = failureToast(page);
                 await expect(toast).toBeVisible();
-                await expect(toast).toHaveText(HOME_COPY.assistantActionError);
+                await expect(toast).toHaveText(assistantUpdateError('Reisen'));
                 await expect(hosts(page)).toHaveCount(0);
                 await expectNoToast(updatedToast(page));
                 expect(await stored(page, DISMISSED_KEY)).toBeNull();

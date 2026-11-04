@@ -12,9 +12,10 @@ import { withKeptVersion } from './managed-content.js';
  * @property {(card: OfferingCard) => void} notifyUpdated Tells the user that the update went through.
  * @property {(change: { filename: string, fileChanged: boolean }) => Promise<void>} afterChange Shows the result: reads
  *   the cards again when a file changed, and renders Home.
- * @property {() => void} reportFailure Tells the user that the request could not be done.
+ * @property {(failure: ManagedFailure) => void} reportFailure Tells the user which request could not be done, and for which card.
  *
  * @typedef {{ name: string, offers: import('./managed-content.js').ManagedOffers }} OfferingCard
+ * @typedef {{ action: 'update' | 'restore', name: string }} ManagedFailure
  */
 
 /** The status the server answers with when a request no longer matches the file, which the offer was read from. */
@@ -43,10 +44,11 @@ export function createManagedActions({ client, askUpdate, getDismissed, saveDism
      * Runs one action. An activation while another action runs is dropped, which is what a double click is, and the
      * question of an update counts as running. Nothing escapes: a request that fails is told to the user.
      * @param {string} filename
+     * @param {ManagedFailure} failure What the user is told when `work` fails: the action, and the card it was for.
      * @param {() => Promise<boolean>} work Resolves whether the user's choice changed anything.
      * @returns {Promise<boolean>} What `work` resolved, or false when it did not run or failed.
      */
-    async function run(filename, work) {
+    async function run(filename, failure, work) {
         if (busy) {
             return false;
         }
@@ -55,7 +57,7 @@ export function createManagedActions({ client, askUpdate, getDismissed, saveDism
             return await work();
         } catch (error) {
             console.error('Could not change the bundled assistant.', error);
-            reportFailure();
+            reportFailure(failure);
             // A refusal for a state that has changed leaves an offer on Home that can never succeed, so Home reads it again.
             if (error?.httpStatus === CONFLICT) {
                 await show({ filename, fileChanged: false });
@@ -73,7 +75,7 @@ export function createManagedActions({ client, askUpdate, getDismissed, saveDism
             return Promise.resolve(false);
         }
         // The card coming back is the answer the user sees, so there is no message for it.
-        return run(filename, async () => {
+        return run(filename, { action: 'restore', name: card.name }, async () => {
             await client.restore(filename);
             await show({ filename, fileChanged: true });
             return true;
@@ -86,7 +88,7 @@ export function createManagedActions({ client, askUpdate, getDismissed, saveDism
         if (!offered || !filename) {
             return Promise.resolve(false);
         }
-        return run(filename, async () => {
+        return run(filename, { action: 'update', name: card.name }, async () => {
             const answer = await askUpdate(card);
             if (answer === 'keep') {
                 saveDismissed(withKeptVersion(getDismissed(), filename, offered.version));

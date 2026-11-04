@@ -58,3 +58,9 @@ export const EXTRA_DESCRIPTIONS = Object.freeze({
     'geechan-universal-roleplay': 'A modular Chat Completion preset for roleplay and story writing, with the model as game master.',
     'tld-card-conversion': 'A Chat Completion preset that turns source material into character cards, step by step.',
 });
+
+/** The toast of a failed update of an assistant card, by the name of the card. */
+export const assistantUpdateError = name => `Couldn't update ${name}. Try again, or reload SillyBunny.`;
+
+/** The toast of a failed restore of an assistant card, by the name of the card. */
+export const assistantRestoreError = name => `Couldn't restore ${name}. Try again, or reload SillyBunny.`;

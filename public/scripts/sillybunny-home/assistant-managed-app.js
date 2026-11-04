@@ -2,7 +2,6 @@ import { getRequestHeaders } from '../../script.js';
 import { t } from '../i18n.js';
 import { isActionMenuOpen } from '../sillybunny-action-menu.js';
 import { accountStorage } from '../util/AccountStorage.js';
-import { reportFailure } from './assistant-chat.js';
 import { createManagedActions } from './assistant-managed-actions.js';
 import { remountWhenIdle } from './assistants-refresh.js';
 import { DISMISSED_KEY, createManagedContentClient, parseDismissed, serializeDismissed } from './managed-content.js';
@@ -12,6 +11,16 @@ import { createManagedStatus } from './managed-status.js';
 const FIRST_MOUNT_WAIT_MS = 300;
 // A request that takes longer than this is given up, so a hung server does not leave a read open for good.
 const REQUEST_TIMEOUT_MS = 5000;
+
+/**
+ * Says which request failed, for which card. The toast is the only answer to a failure, so it names the card.
+ * @param {import('./assistant-managed-actions.js').ManagedFailure} failure
+ */
+function reportManagedFailure({ action, name }) {
+    globalThis.toastr?.error(action === 'restore'
+        ? t`Couldn't restore ${name}. Try again, or reload SillyBunny.`
+        : t`Couldn't update ${name}. Try again, or reload SillyBunny.`);
+}
 
 const isOverlayOpen = () => isActionMenuOpen() || document.querySelector('dialog[open]') !== null;
 
@@ -44,7 +53,7 @@ export function createAppManagedAssistants({ afterChange }) {
             }
             await afterChange(change);
         },
-        reportFailure,
+        reportFailure: reportManagedFailure,
     });
 
     return {

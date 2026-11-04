@@ -69,6 +69,7 @@ describe('Restore', () => {
         await expect(world.actions.restore(RESTORABLE)).resolves.toBe(false);
 
         expect(world.deps.reportFailure).toHaveBeenCalledTimes(1);
+        expect(world.deps.reportFailure).toHaveBeenCalledWith({ action: 'restore', name: 'Reisen' });
         expect(world.deps.afterChange).not.toHaveBeenCalled();
         error.mockRestore();
     });
@@ -102,6 +103,7 @@ describe('Restore', () => {
         await expect(world.actions.restore(RESTORABLE)).resolves.toBe(false);
 
         expect(world.deps.reportFailure).toHaveBeenCalledTimes(1);
+        expect(world.deps.reportFailure).toHaveBeenCalledWith({ action: 'restore', name: 'Reisen' });
         error.mockRestore();
     });
 });
@@ -197,6 +199,7 @@ describe('Update Available', () => {
         await expect(world.actions.update(UPDATABLE)).resolves.toBe(false);
 
         expect(world.deps.reportFailure).toHaveBeenCalledTimes(1);
+        expect(world.deps.reportFailure).toHaveBeenCalledWith({ action: 'update', name: 'Reisen' });
         expect(world.deps.notifyUpdated).not.toHaveBeenCalled();
         expect(world.deps.saveDismissed).not.toHaveBeenCalled();
         expect(world.deps.afterChange).not.toHaveBeenCalled();
@@ -211,6 +214,7 @@ describe('Update Available', () => {
         await expect(world.actions.update(UPDATABLE)).resolves.toBe(false);
 
         expect(world.deps.reportFailure).toHaveBeenCalledTimes(1);
+        expect(world.deps.reportFailure).toHaveBeenCalledWith({ action: 'update', name: 'Reisen' });
         expect(world.deps.client.apply).not.toHaveBeenCalled();
         error.mockRestore();
     });
@@ -223,6 +227,26 @@ describe('Update Available', () => {
         await expect(world.actions.update(UPDATABLE)).resolves.toBe(false);
 
         expect(world.deps.reportFailure).toHaveBeenCalledTimes(1);
+        expect(world.deps.reportFailure).toHaveBeenCalledWith({ action: 'update', name: 'Reisen' });
+        error.mockRestore();
+    });
+});
+
+describe('the failure that is reported', () => {
+    test('names the action that failed and the card it was for, so the card of another name is not confused with it', async () => {
+        const world = createWorld({ answer: 'update' });
+        const tewi = { name: 'Tewi', offers: { filename: 'default_AssistantTewi.png', restore: true, update: { version: 3 } } };
+        world.deps.client.restore.mockRejectedValueOnce(new TypeError('network'));
+        world.deps.client.apply.mockRejectedValueOnce(new TypeError('network'));
+        const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await world.actions.restore(tewi);
+        await world.actions.update(tewi);
+
+        expect(world.deps.reportFailure.mock.calls).toEqual([
+            [{ action: 'restore', name: 'Tewi' }],
+            [{ action: 'update', name: 'Tewi' }],
+        ]);
         error.mockRestore();
     });
 });
@@ -236,6 +260,7 @@ describe('a request that the server no longer accepts', () => {
         await (action === 'apply' ? world.actions.update(UPDATABLE) : world.actions.restore(RESTORABLE));
 
         expect(world.deps.reportFailure).toHaveBeenCalledTimes(1);
+        expect(world.deps.reportFailure).toHaveBeenCalledWith({ action: action === 'apply' ? 'update' : 'restore', name: 'Reisen' });
         expect(changes(world)).toEqual([{ filename: REISEN, fileChanged: false }]);
         error.mockRestore();
     });
@@ -249,6 +274,7 @@ describe('a request that the server no longer accepts', () => {
         await expect(world.actions.restore(RESTORABLE)).resolves.toBe(false);
 
         expect(world.deps.reportFailure).toHaveBeenCalledTimes(1);
+        expect(world.deps.reportFailure).toHaveBeenCalledWith({ action: 'restore', name: 'Reisen' });
         error.mockRestore();
     });
 
