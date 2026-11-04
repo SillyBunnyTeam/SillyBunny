@@ -46,7 +46,8 @@ const CREDIT_GROUPS = ['Developers', 'Designers', 'Documenters', 'Acknowledgemen
 const CREDIT_NAMES = ['Geechan', 'TheLonelyDevil', 'voldomero'];
 const ACKNOWLEDGEMENTS = [
     { title: 'purachina', subtitle: 'For initially creating and contributing to the program' },
-    { title: 'ZUN', subtitle: 'For the Touhou Project' },
+    { title: 'ZUN', subtitle: 'For Reisen and Tewi from the Touhou Project' },
+    { title: 'RivelleDays', subtitle: 'For the usage of Moonlit Echoes\' chat styles' },
     { title: 'Cohee, Wolfsblvt and RossAscends', subtitle: 'For their work on SillyTavern, without which SillyBunny wouldn\'t be possible' },
     { title: 'Other SillyTavern contributors', subtitle: null },
 ];

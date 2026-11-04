@@ -192,7 +192,8 @@ function createNameGroup(role, names) {
 function createAcknowledgements() {
     const people = [
         { name: 'purachina', note: t`For initially creating and contributing to the program` },
-        { name: 'ZUN', note: t`For the Touhou Project` },
+        { name: 'ZUN', note: t`For Reisen and Tewi from the Touhou Project` },
+        { name: 'RivelleDays', note: t`For the usage of Moonlit Echoes' chat styles` },
         { name: 'Cohee, Wolfsblvt and RossAscends', note: t`For their work on SillyTavern, without which SillyBunny wouldn't be possible` },
     ];
     return createPrefGroup({
