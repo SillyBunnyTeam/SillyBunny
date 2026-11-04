@@ -618,7 +618,6 @@ const SB_STORAGE_KEYS = Object.freeze({
     bottomChatSecondaryOpen: 'sb-bottom-chat-secondary-open',
     desktopButtonScale: 'sb-desktop-button-scale',
     mobileButtonScale: 'sb-mobile-button-scale',
-    desktopQuickActions: 'sb-desktop-quick-actions-v2',
     mobileQuickActions: 'sb-mobile-quick-actions-v2',
     mobileQuickActionsLegacy: 'sb-mobile-quick-actions',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
@@ -1327,9 +1326,6 @@ const SB_MOBILE_DEFAULT_QUICK_ACTIONS = Object.freeze([
     { type: 'tab', shellKey: 'characters', tabId: 'world-info', icon: 'fa-book-atlas', label: 'World Info' },
     { type: 'tab', shellKey: 'left', tabId: 'agents', icon: 'fa-robot', label: 'Agents' },
 ]);
-const SB_DESKTOP_DEFAULT_QUICK_ACTIONS = Object.freeze([
-    { type: 'tab', shellKey: 'characters', tabId: 'world-info', icon: 'fa-book-atlas', label: 'World Info' },
-]);
 // SillyBunny: the optional icons-only top bar does not pool every page into one strip. It expands
 // each section in place into that section's own pages, so Backend, Customize and Characters each
 // keep their anchor with their own pages in the same cluster, and each cluster stays readable as
@@ -1478,7 +1474,6 @@ const sbState = {
         quickActionSection: null,
         quickActionDivider: null,
     },
-    desktopQuickActions: [],
     mobileQuickActions: [],
     chatbar: {
         sidebar: null,
@@ -1618,10 +1613,6 @@ function normalizeStoredBoolean(value, fallback = false) {
     return fallback;
 }
 
-function getQuickActionState(mode) {
-    return mode === 'desktop' ? sbState.desktopQuickActions : sbState.mobileQuickActions;
-}
-
 function normalizeSurfaceTransparency(value) {
     const numericValue = Number(value);
 
@@ -1745,10 +1736,6 @@ function getDefaultMobileQuickActions() {
     return normalizeMobileQuickActionList(SB_MOBILE_DEFAULT_QUICK_ACTIONS);
 }
 
-function getDefaultDesktopQuickActions() {
-    return normalizeMobileQuickActionList(SB_DESKTOP_DEFAULT_QUICK_ACTIONS);
-}
-
 function migrateLegacyMobileQuickAction(action) {
     if (!action || typeof action !== 'object') {
         return action;
@@ -1802,23 +1789,8 @@ function loadMobileQuickActions() {
     return nextActions;
 }
 
-function loadDesktopQuickActions() {
-    const storedActions = parseMobileQuickActionStorage(safeGetItem(SB_STORAGE_KEYS.desktopQuickActions));
-    if (storedActions) {
-        return storedActions;
-    }
-
-    const nextActions = getDefaultDesktopQuickActions();
-    safeSetItem(SB_STORAGE_KEYS.desktopQuickActions, JSON.stringify(nextActions));
-    return nextActions;
-}
-
 function saveMobileQuickActions() {
     safeSetItem(SB_STORAGE_KEYS.mobileQuickActions, JSON.stringify(sbState.mobileQuickActions));
-}
-
-function saveDesktopQuickActions() {
-    safeSetItem(SB_STORAGE_KEYS.desktopQuickActions, JSON.stringify(sbState.desktopQuickActions));
 }
 
 function getMobileQuickActionKey(action) {
@@ -1841,47 +1813,25 @@ function createMobileQuickActionFromMatch(match) {
     return normalizedMatch;
 }
 
-function setQuickActionsForMode(mode, actions, { persist = true } = {}) {
-    const normalizedActions = normalizeMobileQuickActionList(actions);
-
-    if (mode === 'desktop') {
-        sbState.desktopQuickActions = normalizedActions;
-
-        if (persist) {
-            saveDesktopQuickActions();
-        }
-
-        renderMobileQuickActionSettingsList('desktop');
-        refreshMobileQuickActionSearchResults('desktop');
-        return;
-    }
-
-    sbState.mobileQuickActions = normalizedActions;
+function setMobileQuickActions(actions, { persist = true } = {}) {
+    sbState.mobileQuickActions = normalizeMobileQuickActionList(actions);
 
     if (persist) {
         saveMobileQuickActions();
     }
 
-    renderMobileQuickActionSettingsList('mobile');
-    refreshMobileQuickActionSearchResults('mobile');
+    renderMobileQuickActionSettingsList();
+    refreshMobileQuickActionSearchResults();
     refreshMobileNavQuickActions();
 }
 
-function setMobileQuickActions(actions, options = {}) {
-    setQuickActionsForMode('mobile', actions, options);
-}
-
-function setDesktopQuickActions(actions, options = {}) {
-    setQuickActionsForMode('desktop', actions, options);
-}
-
-function addQuickActionFromMatch(mode, match) {
+function addQuickActionFromMatch(match) {
     const action = createMobileQuickActionFromMatch(match);
     if (!action) {
         return false;
     }
 
-    const currentActions = getQuickActionState(mode);
+    const currentActions = sbState.mobileQuickActions;
     if (currentActions.length >= SB_MOBILE_QUICK_ACTION_LIMIT) {
         return false;
     }
@@ -1891,16 +1841,16 @@ function addQuickActionFromMatch(mode, match) {
         return false;
     }
 
-    setQuickActionsForMode(mode, [...currentActions, action]);
+    setMobileQuickActions([...currentActions, action]);
     return true;
 }
 
-function removeQuickAction(mode, actionKey) {
-    setQuickActionsForMode(mode, getQuickActionState(mode).filter(action => getMobileQuickActionKey(action) !== actionKey));
+function removeQuickAction(actionKey) {
+    setMobileQuickActions(sbState.mobileQuickActions.filter(action => getMobileQuickActionKey(action) !== actionKey));
 }
 
-function setQuickActionIcon(mode, actionKey, iconClass) {
-    setQuickActionsForMode(mode, getQuickActionState(mode).map(action => {
+function setQuickActionIcon(actionKey, iconClass) {
+    setMobileQuickActions(sbState.mobileQuickActions.map(action => {
         if (getMobileQuickActionKey(action) !== actionKey) {
             return action;
         }
@@ -1912,8 +1862,8 @@ function setQuickActionIcon(mode, actionKey, iconClass) {
     }));
 }
 
-async function chooseQuickActionIcon(mode, actionKey) {
-    const action = getQuickActionState(mode).find(action => getMobileQuickActionKey(action) === actionKey);
+async function chooseQuickActionIcon(actionKey) {
+    const action = sbState.mobileQuickActions.find(action => getMobileQuickActionKey(action) === actionKey);
     const normalizedAction = normalizeMobileQuickAction(action);
 
     if (!normalizedAction || normalizedAction.type !== 'custom') {
@@ -1925,15 +1875,11 @@ async function chooseQuickActionIcon(mode, actionKey) {
         return;
     }
 
-    setQuickActionIcon(mode, actionKey, iconClass);
+    setQuickActionIcon(actionKey, iconClass);
 }
 
 function resetMobileQuickActions() {
     setMobileQuickActions(getDefaultMobileQuickActions());
-}
-
-function resetDesktopQuickActions() {
-    setDesktopQuickActions(getDefaultDesktopQuickActions());
 }
 
 function normalizeTopbarScale(value) {
@@ -1997,7 +1943,6 @@ function restorePersistedTopbarState() {
     sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
     sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
-    sbState.desktopQuickActions = loadDesktopQuickActions();
     sbState.mobileQuickActions = loadMobileQuickActions();
 }
 
@@ -11098,7 +11043,7 @@ function createMobileQuickActionIconElement(iconClass) {
     });
 }
 
-function createMobileQuickActionIconControl(action, actionKey, mode = 'mobile') {
+function createMobileQuickActionIconControl(action, actionKey) {
     const normalizedAction = normalizeMobileQuickAction(action);
     const iconClass = normalizedAction?.icon || SB_MOBILE_QUICK_ACTION_ICON_FALLBACK;
 
@@ -11113,7 +11058,7 @@ function createMobileQuickActionIconControl(action, actionKey, mode = 'mobile') 
         });
         button.appendChild(createMobileQuickActionIconElement(iconClass));
         button.addEventListener('click', () => {
-            void chooseQuickActionIcon(mode, actionKey);
+            void chooseQuickActionIcon(actionKey);
         });
         return button;
     }
@@ -11129,39 +11074,36 @@ function createMobileQuickActionIconControl(action, actionKey, mode = 'mobile') 
     return preview;
 }
 
-function updateMobileQuickActionSettingsStatus(mode = 'mobile') {
-    const currentActions = getQuickActionState(mode);
-    const status = document.getElementById(`sb-${mode}-quick-action-status`);
+function updateMobileQuickActionSettingsStatus() {
+    const currentActions = sbState.mobileQuickActions;
+    const status = document.getElementById('sb-mobile-quick-action-status');
     if (status instanceof HTMLElement) {
-        status.textContent = mode === 'desktop'
-            ? `${currentActions.length}/${SB_MOBILE_QUICK_ACTION_LIMIT} selected. This list controls the desktop side rail shortcuts.`
-            : `${currentActions.length}/${SB_MOBILE_QUICK_ACTION_LIMIT} selected. This list replaces the mobile quick shortcuts.`;
+        status.textContent = `${currentActions.length}/${SB_MOBILE_QUICK_ACTION_LIMIT} selected. This list replaces the mobile quick shortcuts.`;
     }
 
-    const resetButton = document.getElementById(`sb-${mode}-quick-action-reset`);
+    const resetButton = document.getElementById('sb-mobile-quick-action-reset');
     if (resetButton instanceof HTMLButtonElement) {
         const currentKeys = currentActions.map(getMobileQuickActionKey);
-        const defaultKeys = (mode === 'desktop' ? getDefaultDesktopQuickActions() : getDefaultMobileQuickActions()).map(getMobileQuickActionKey);
+        const defaultKeys = getDefaultMobileQuickActions().map(getMobileQuickActionKey);
         resetButton.disabled = currentKeys.length === defaultKeys.length
             && currentKeys.every((key, index) => key === defaultKeys[index]);
     }
 }
 
-function refreshMobileQuickActionSearchResults(mode = 'mobile') {
-    const searchInput = document.getElementById(`sb-${mode}-quick-action-search`);
-    const results = document.getElementById(`sb-${mode}-quick-action-results`);
+function refreshMobileQuickActionSearchResults() {
+    const searchInput = document.getElementById('sb-mobile-quick-action-search');
+    const results = document.getElementById('sb-mobile-quick-action-results');
 
     if (searchInput instanceof HTMLInputElement && results instanceof HTMLElement) {
-        renderMobileQuickActionResults(searchInput.value, results, mode);
+        renderMobileQuickActionResults(searchInput.value, results);
     }
 }
 
-async function renderMobileQuickActionResults(query, resultsElement, mode = 'mobile') {
+async function renderMobileQuickActionResults(query, resultsElement) {
     if (!(resultsElement instanceof HTMLElement)) {
         return;
     }
 
-    const modeLabel = mode === 'desktop' ? 'desktop' : 'mobile';
     const request = Symbol();
     sbSearchRenderRequests.set(resultsElement, request);
 
@@ -11187,7 +11129,7 @@ async function renderMobileQuickActionResults(query, resultsElement, mode = 'mob
         return;
     }
 
-    const currentActions = getQuickActionState(mode);
+    const currentActions = sbState.mobileQuickActions;
     const currentKeys = new Set(currentActions.map(getMobileQuickActionKey));
     for (const match of matches) {
         const action = createMobileQuickActionFromMatch(match);
@@ -11211,13 +11153,13 @@ async function renderMobileQuickActionResults(query, resultsElement, mode = 'mob
             attrs: {
                 type: 'button',
                 'aria-label': isAdded
-                    ? `${action.label} is already in ${modeLabel} Quick Actions`
-                    : `Add ${action.label} to ${modeLabel} Quick Actions`,
+                    ? `${action.label} is already in mobile Quick Actions`
+                    : `Add ${action.label} to mobile Quick Actions`,
             },
         });
 
         button.disabled = isAdded || isFull;
-        button.addEventListener('click', () => addQuickActionFromMatch(mode, match));
+        button.addEventListener('click', () => addQuickActionFromMatch(match));
 
         copy.append(title);
         // SillyBunny: synthetic settings destinations carry help independently of mounted controls.
@@ -11228,23 +11170,22 @@ async function renderMobileQuickActionResults(query, resultsElement, mode = 'mob
     }
 }
 
-function renderMobileQuickActionSettingsList(mode = 'mobile') {
-    updateMobileQuickActionSettingsStatus(mode);
+function renderMobileQuickActionSettingsList() {
+    updateMobileQuickActionSettingsStatus();
 
-    const list = document.getElementById(`sb-${mode}-quick-action-list`);
+    const list = document.getElementById('sb-mobile-quick-action-list');
     if (!(list instanceof HTMLElement)) {
         return;
     }
 
-    const modeLabel = mode === 'desktop' ? 'desktop' : 'mobile';
-    const currentActions = getQuickActionState(mode);
+    const currentActions = sbState.mobileQuickActions;
 
     list.replaceChildren();
 
     if (!currentActions.length) {
         list.appendChild(createElement('div', {
             className: 'sb-mobile-quick-action-empty',
-            text: `No ${modeLabel} Quick Actions selected. Add one from search or reset to defaults.`,
+            text: 'No mobile Quick Actions selected. Add one from search or reset to defaults.',
         }));
         return;
     }
@@ -11256,17 +11197,17 @@ function renderMobileQuickActionSettingsList(mode = 'mobile') {
         const title = createElement('strong', { text: action.label });
         const detail = createElement('small', { text: getMobileQuickActionContextLabel(action) });
         const controls = createElement('span', { className: 'sb-mobile-quick-action-controls' });
-        const iconControl = createMobileQuickActionIconControl(action, actionKey, mode);
+        const iconControl = createMobileQuickActionIconControl(action, actionKey);
         const removeButton = createElement('button', {
             className: 'menu_button sb-mobile-quick-action-remove',
             text: 'Remove',
             attrs: {
                 type: 'button',
-                'aria-label': `Remove ${action.label} from ${modeLabel} Quick Actions`,
+                'aria-label': `Remove ${action.label} from mobile Quick Actions`,
             },
         });
 
-        removeButton.addEventListener('click', () => removeQuickAction(mode, actionKey));
+        removeButton.addEventListener('click', () => removeQuickAction(actionKey));
 
         copy.append(title, detail);
         controls.append(iconControl, removeButton);
@@ -11275,24 +11216,19 @@ function renderMobileQuickActionSettingsList(mode = 'mobile') {
     }
 }
 
-function createMobileQuickActionSettingsGroup(mode = 'mobile') {
-    const isDesktop = mode === 'desktop';
-    const modeTitle = isDesktop ? 'Desktop' : 'Mobile';
-    const modeLabel = isDesktop ? 'desktop' : 'mobile';
+function createMobileQuickActionSettingsGroup() {
     const group = createElement('section', {
-        className: `sb-theme-slider-group sb-mobile-quick-actions-group sb-${mode}-quick-actions-group`,
+        className: 'sb-theme-slider-group sb-mobile-quick-actions-group',
     });
     const header = createElement('div', { className: 'sb-mobile-quick-action-header' });
     const heading = createElement('div', { className: 'sb-mobile-quick-action-heading' });
-    const title = createElement('strong', { text: `${modeTitle} Quick Actions` });
+    const title = createElement('strong', { text: 'Mobile Quick Actions' });
     const description = createElement('p', {
         className: 'sb-theme-slider-caption',
-        text: isDesktop
-            ? 'Choose the shortcuts shown below Customize in the desktop side rail. Defaults can be removed or restored.'
-            : 'Choose the shortcuts shown in the mobile quick drawer. Defaults can be removed or restored.',
+        text: 'Choose the shortcuts shown in the mobile quick drawer. Defaults can be removed or restored.',
     });
     const resetButton = createElement('button', {
-        id: `sb-${mode}-quick-action-reset`,
+        id: 'sb-mobile-quick-action-reset',
         className: 'menu_button sb-mobile-quick-action-reset',
         text: 'Reset to defaults',
         attrs: {
@@ -11301,42 +11237,42 @@ function createMobileQuickActionSettingsGroup(mode = 'mobile') {
     });
 
     const searchInput = createElement('input', {
-        id: `sb-${mode}-quick-action-search`,
+        id: 'sb-mobile-quick-action-search',
         className: 'text_pole sb-mobile-quick-action-search',
         attrs: {
             type: 'search',
             placeholder: 'Search settings or extensions...',
             autocomplete: 'off',
-            'aria-label': `Search settings and extensions to add as ${modeLabel} Quick Actions`,
+            'aria-label': 'Search settings and extensions to add as mobile Quick Actions',
         },
     });
     const results = createElement('div', {
-        id: `sb-${mode}-quick-action-results`,
+        id: 'sb-mobile-quick-action-results',
         className: 'sb-mobile-quick-action-results',
     });
     const list = createElement('div', {
-        id: `sb-${mode}-quick-action-list`,
+        id: 'sb-mobile-quick-action-list',
         className: 'sb-mobile-quick-action-list',
     });
     const status = createElement('p', {
-        id: `sb-${mode}-quick-action-status`,
+        id: 'sb-mobile-quick-action-status',
         className: 'sb-theme-slider-caption',
     });
 
     heading.append(title, description);
     header.append(heading, resetButton);
 
-    resetButton.addEventListener('click', isDesktop ? resetDesktopQuickActions : resetMobileQuickActions);
+    resetButton.addEventListener('click', resetMobileQuickActions);
 
     searchInput.addEventListener('input', event => {
         const input = event.currentTarget;
-        renderMobileQuickActionResults(input instanceof HTMLInputElement ? input.value : '', results, mode);
+        renderMobileQuickActionResults(input instanceof HTMLInputElement ? input.value : '', results);
     });
 
     group.append(header, searchInput, results, list, status);
-    renderMobileQuickActionResults('', results, mode);
+    renderMobileQuickActionResults('', results);
 
-    window.requestAnimationFrame(() => renderMobileQuickActionSettingsList(mode));
+    window.requestAnimationFrame(() => renderMobileQuickActionSettingsList());
     return group;
 }
 
@@ -11829,7 +11765,6 @@ function injectThemePicker() {
     const shortcutSettingsGroup = createShortcutSettingsGroup();
     const desktopGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('desktop');
     const mobileGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('mobile');
-    const desktopQuickActionSettingsGroup = createMobileQuickActionSettingsGroup('desktop');
     const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
     const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
     const mobileSettingsOutlet = document.getElementById('sb-mobile-settings-outlet');
@@ -11851,7 +11786,6 @@ function injectThemePicker() {
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
             desktopGuidedGenerationsBarSettingsGroup,
-            desktopQuickActionSettingsGroup,
         );
     }
 
@@ -11877,7 +11811,6 @@ function injectThemePicker() {
             desktopCompactModeSettingsGroup,
             desktopBottomChatBarSettingsGroup,
             desktopGuidedGenerationsBarSettingsGroup,
-            desktopQuickActionSettingsGroup,
         );
     }
 
@@ -12140,7 +12073,7 @@ function createSearchIndex(tabState, { includeThemeCard = false } = {}) {
         '.sb-legacy-search-hidden',
         // Unwritten placeholder copy is not a setting.
         SB_SEARCH_PLACEHOLDER_SELECTOR,
-        ...(includeThemeCard ? ['.sb-mobile-quick-actions-group', '.sb-desktop-quick-actions-group'] : ['.sb-theme-card']),
+        ...(includeThemeCard ? ['.sb-mobile-quick-actions-group'] : ['.sb-theme-card']),
     ].join(', ');
     const { sections: subpageSections, headings: subpageHeadings } = getSubpageSearchRoots(searchRoot);
     const searchRoots = [searchRoot, ...subpageHeadings, ...subpageSections.keys()]

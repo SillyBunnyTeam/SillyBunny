@@ -1106,7 +1106,7 @@ test.describe('Settings entry regressions', () => {
                     await expect(interfacePanel).toHaveAttribute('aria-hidden', 'false');
                     await expect.poll(() => page.evaluate(ids => ids.filter(id => !document.getElementById(id)), ids)).toEqual([]);
                     await expect(outlet).toHaveClass(/ds-pref-group/);
-                    await expect(outlet.locator(`.sb-${mode}-quick-actions-group`)).toHaveCount(1);
+                    await expect(outlet.locator('.sb-mobile-quick-actions-group')).toHaveCount(mobile ? 1 : 0);
                     for (const id of ids) {
                         const input = outlet.locator(`#${id}`);
                         await expect(input).toHaveCount(1);
@@ -1159,6 +1159,48 @@ test.describe('Settings entry regressions', () => {
                 await expect(scale).toHaveValue('80');
                 await expect.poll(() => page.evaluate(mode => document.documentElement.style.getPropertyValue(`--sb-${mode}-button-scale`), mode)).toBe('0.8');
             });
+
+            test('Interface has no Desktop Quick Actions and leaves the old saved list alone', async ({ page, baseURL }) => {
+                await page.addInitScript(() => {
+                    if (localStorage.getItem('sb-desktop-quick-actions-v2') === null) localStorage.setItem('sb-desktop-quick-actions-v2', 'orphan');
+                });
+                await loadSettings(page, baseURL);
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                const interfacePanel = page.locator('[data-sb-panel="interface"]');
+                await expect(interfacePanel).toHaveAttribute('aria-hidden', 'false');
+                await expect(interfacePanel.locator('.sb-mobile-quick-actions-group')).toHaveCount(1);
+
+                await expect(interfacePanel.locator('.sb-desktop-quick-actions-group')).toHaveCount(0);
+                await expect(interfacePanel.locator('[id^="sb-desktop-quick-action"]')).toHaveCount(0);
+                await expect(interfacePanel.getByText('Desktop Quick Actions')).toHaveCount(0);
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'messages'));
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                await expect(interfacePanel.locator('.sb-mobile-quick-actions-group')).toHaveCount(1);
+                expect(await page.evaluate(() => localStorage.getItem('sb-desktop-quick-actions-v2'))).toBe('orphan');
+            });
+
+            if (mobile) {
+                test('Mobile Quick Actions still render, remove, reset and save', async ({ page, baseURL }) => {
+                    await loadSettings(page, baseURL);
+                    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                    const group = page.locator('[data-sb-panel="interface"] .sb-mobile-quick-actions-group');
+                    await expect(group).toBeVisible();
+                    await expect(group.locator('strong').first()).toHaveText('Mobile Quick Actions');
+                    const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('sb-mobile-quick-actions-v2') ?? '[]').length);
+                    const rows = group.locator('.sb-mobile-quick-action-current');
+                    await expect(rows).not.toHaveCount(0);
+                    const initial = await rows.count();
+                    await expect.poll(saved).toBe(initial);
+
+                    await group.locator('.sb-mobile-quick-action-remove').first().click();
+                    await expect(rows).toHaveCount(initial - 1);
+                    await expect.poll(saved).toBe(initial - 1);
+
+                    await group.locator('.sb-mobile-quick-action-reset').click();
+                    await expect(rows).toHaveCount(initial);
+                    await expect.poll(saved).toBe(initial);
+                });
+            }
 
             test('native enlarged avatar stays hidden during settings and returns unchanged on close', async ({ page, baseURL }) => {
                 await loadSettings(page, baseURL);

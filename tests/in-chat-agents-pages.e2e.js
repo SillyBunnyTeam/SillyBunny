@@ -218,23 +218,25 @@ for (const width of [1440, 390]) {
             await expectClean(page, driver);
         });
 
-        test('quick-action setting search includes label, help and location without mounting Settings', async ({ page, baseURL }) => {
-            const driver = await openEditorAgents(page, baseURL, width);
-            await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
-            await page.locator('button[data-sb-settings-tab="interface"]').evaluate(node => node.click());
-            const mode = width === 390 ? 'mobile' : 'desktop';
-            const search = page.locator(`#sb-${mode}-quick-action-search`);
-            for (const [id] of fields) {
-                await search.fill(`ica--${id}`);
-                const result = page.locator(`#sb-${mode}-quick-action-results .sb-mobile-quick-action-result`);
-                await expect(result).toHaveCount(1);
-                await expect(result.locator('strong')).not.toHaveText('');
-                await expect(result.locator('.sb-mobile-quick-action-help')).not.toHaveText('');
-                await expect(result.locator('small').last()).toHaveText('Backend · Agents · Settings');
-            }
-            await expect(driver.root.locator('[data-agent-page="settings"]')).toHaveCount(0);
-            await expectClean(page, driver);
-        });
+        // Only mobile has Quick Actions, so the quick-action search exists only there.
+        if (width === 390) {
+            test('quick-action setting search includes label, help and location without mounting Settings', async ({ page, baseURL }) => {
+                const driver = await openEditorAgents(page, baseURL, width);
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                await page.locator('button[data-sb-settings-tab="interface"]').evaluate(node => node.click());
+                const search = page.locator('#sb-mobile-quick-action-search');
+                for (const [id] of fields) {
+                    await search.fill(`ica--${id}`);
+                    const result = page.locator('#sb-mobile-quick-action-results .sb-mobile-quick-action-result');
+                    await expect(result).toHaveCount(1);
+                    await expect(result.locator('strong')).not.toHaveText('');
+                    await expect(result.locator('.sb-mobile-quick-action-help')).not.toHaveText('');
+                    await expect(result.locator('small').last()).toHaveText('Backend · Agents · Settings');
+                }
+                await expect(driver.root.locator('[data-agent-page="settings"]')).toHaveCount(0);
+                await expectClean(page, driver);
+            });
+        }
 
         test('search cancellation leaves a dirty editor mounted and never focuses hidden Settings', async ({ page, baseURL }) => {
             const driver = await openEditorAgents(page, baseURL, width);
