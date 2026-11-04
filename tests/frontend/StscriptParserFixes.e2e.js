@@ -10,6 +10,10 @@ function summarizeError(result) {
     return { type: result.error?.type, message: result.error?.message, index: result.error?.index };
 }
 
+function hintSourceLines(result) {
+    return result.error.hint.split('\n').slice(0, -1).map(line => line.replace(/^\s*\d+: {2}/, ''));
+}
+
 function nameAt(page, text, index) {
     return page.evaluate(async ({ text, index }) => {
         const { SlashCommandParser } = await import('/scripts/slash-commands/SlashCommandParser.js');
@@ -188,6 +192,20 @@ test.describe('STscript parser fixes', () => {
             { type: 'SlashCommandParserError', message: 'Unknown command at position 1: "/nosuch"', index: 1 },
             { type: 'SlashCommandParserError', message: 'Unknown command at position 1: "/nosuch"', index: 1 },
             { type: 'SlashCommandParserError', message: 'Unknown command at position 16: "/nosuch"', index: 16 },
+        ]);
+    });
+
+    test('the error hint keeps the whole error line when more lines follow', async ({ page }) => {
+        const results = await parse(page, [
+            { script: '/nosuch|\n/stp-plain x' },
+            { script: '/stp-plain a |\n/nosuch x\n/stp-plain b' },
+            { script: '// note\n  ' },
+        ]);
+
+        expect.soft(results.map(hintSourceLines)).toEqual([
+            ['/nosuch|'],
+            ['/stp-plain a |', '/nosuch x'],
+            ['// note'],
         ]);
     });
 
