@@ -78,6 +78,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-29 Stop during streamed reasoning fix. |
 | Owner | TODO(copy) |
 
+### `public/script.js`, `src/endpoints/backends/chat-completions.js`, and `src/prompt-converters.js` - Gemini replies that end early
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`, `src/endpoints/backends/chat-completions.js`, `src/prompt-converters.js`. |
+| Area | Generation lifecycle (Gemini finish reporting, fetch idle timeout and thinking levels). |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/generation-request-controls.js` owns the finish checks. The server changes are `none yet`: they sit on the Gemini request handlers and in `calculateGoogleBudgetTokens()`, and no SillyBunny module wraps those. |
+| Adapter shape | `public/script.js`: `StreamingProcessor.providerLengthFinish`, set first in `#applyProseLimit()`, and one `warnsOnGenerationLengthFinish()` branch ahead of each reasoning-only toast in `Generate()`. `chat-completions.js`: `timeout: 0` on the generateContent and Interactions fetches; `finish_reason: 'length'` and a separate empty-reply error for `MAX_TOKENS` and `CONTINUATION` in `sendMakerSuiteRequest()`; `INTERACTION_CUT_OFF_STATUSES` in `transformInteractionToChatCompletion()`; a final length chunk from `finishStream()` in `forwardInteractionStream()`. `prompt-converters.js`: `xhigh` and `max` send `high` on Gemini 4 in `getGemini3ThinkingLevel()`. |
+| Protecting tests | `tests/story-mode-request-controls.test.js`, `tests/google-model-request.test.js`, `tests/gemini-interactions.test.js`, `tests/prompt-converters.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- story-mode-request-controls.test.js google-model-request.test.js gemini-interactions.test.js prompt-converters.test.js pathfinder-generation-wiring.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js`, Bun and Node.js boots, and a browser replay of each finish against a local stub of the Gemini API at desktop and mobile widths. |
+| Rollback path | Remove the two `warnsOnGenerationLengthFinish()` branches, `providerLengthFinish`, the cut-off handling in `chat-completions.js`, the two `timeout: 0` options and the Gemini 4 branch in `getGemini3ThinkingLevel()`. The changes do not write persistent data, so no cleanup is needed. |
+| Last reviewed | 2026-11-04 Gemini long decode reporting fix. |
+| Owner | TODO(copy) |
+
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
 | --- | --- |
