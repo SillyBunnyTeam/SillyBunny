@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import storage from 'node-persist';
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 
-import { getConfigValue } from '../util.js';
+import { color, getConfigValue } from '../util.js';
 import { getAllUserHandles, toKey, getPasswordHash } from '../users.js';
 import { getIpAddress, retryAfter } from '../express-common.js';
 import getWhitelistMiddleware from './whitelist.js';
@@ -69,6 +69,24 @@ export function isSessionAuthEnabled() {
 }
 
 /**
+ * Checks if session logins use the account passwords instead of basicAuthUser.
+ * @returns {boolean}
+ */
+function usesAccountPasswords() {
+    return getConfigValue('perUserBasicAuth', false, 'boolean') && getConfigValue('enableUserAccounts', false, 'boolean');
+}
+
+/**
+ * Reads the single-user credentials from basicAuthUser.
+ * @returns {{username: string, password: string}|null} The credentials, or null when either one is not set or empty
+ */
+function getConfiguredCredentials() {
+    const username = getConfigValue('basicAuthUser.username');
+    const password = getConfigValue('basicAuthUser.password');
+    return username && password ? { username, password } : null;
+}
+
+/**
  * Validates credentials against configured users.
  * Supports both single-user basic auth and per-user accounts.
  * @param {string} username
@@ -80,14 +98,9 @@ export async function validateCredentials(username, password) {
         return false;
     }
 
-    const perUserAuth = getConfigValue('perUserBasicAuth', false, 'boolean');
-    const enableAccounts = getConfigValue('enableUserAccounts', false, 'boolean');
-    const usePerUserAuth = perUserAuth && enableAccounts;
-
-    if (!usePerUserAuth) {
-        const configUsername = getConfigValue('basicAuthUser.username');
-        const configPassword = getConfigValue('basicAuthUser.password');
-        return username === configUsername && password === configPassword;
+    if (!usesAccountPasswords()) {
+        const configured = getConfiguredCredentials();
+        return !!configured && username === configured.username && password === configured.password;
     }
 
     const userHandles = await getAllUserHandles();
@@ -160,6 +173,10 @@ function handleLogout(request, response) {
  * @returns {Promise<void>}
  */
 export async function registerSessionAuthRoutes(app, { whitelistMode }) {
+    if (!usesAccountPasswords() && !getConfiguredCredentials()) {
+        console.warn(color.yellow('Session auth is enabled, but basicAuthUser.username or basicAuthUser.password is not set or empty. Session logins are refused until both are set.'));
+    }
+
     const guards = whitelistMode
         ? [await getWhitelistMiddleware(), hostWhitelistMiddleware]
         : [hostWhitelistMiddleware];

@@ -354,3 +354,39 @@ describe('validateCredentials', () => {
         await expect(validateCredentials('alice', password)).resolves.toBe(false);
     });
 });
+
+describe('empty basicAuthUser credentials', () => {
+    const credentialWarnings = () => console.warn.mock.calls.filter(([message]) => String(message).includes('basicAuthUser'));
+
+    test.each([
+        ['both are empty', '', '', '', ''],
+        ['the password is empty', USERNAME, '', USERNAME, ''],
+        ['the username is empty', '', PASSWORD, '', PASSWORD],
+    ])('validateCredentials refuses the configured values when %s', async (_title, configUsername, configPassword, username, password) => {
+        await resetServerModules({
+            SILLYTAVERN_BASICAUTHUSER_USERNAME: configUsername,
+            SILLYTAVERN_BASICAUTHUSER_PASSWORD: configPassword,
+        });
+        const { validateCredentials } = await import('../src/middleware/sessionAuth.js');
+
+        await expect(validateCredentials(username, password)).resolves.toBe(false);
+    });
+
+    test('registering the session routes logs one warning when a configured value is empty', async () => {
+        await startSessionRoutes({ env: { SILLYTAVERN_BASICAUTHUSER_PASSWORD: '' } });
+
+        expect(credentialWarnings()).toHaveLength(1);
+    });
+
+    test('registering the session routes logs no such warning when both values are set', async () => {
+        await startSessionRoutes();
+
+        expect(credentialWarnings()).toHaveLength(0);
+    });
+
+    test('registering the session routes logs no such warning when logins use the account passwords', async () => {
+        await startSessionRoutes({ env: { ...ACCOUNT_PASSWORDS, SILLYTAVERN_BASICAUTHUSER_PASSWORD: '' } });
+
+        expect(credentialWarnings()).toHaveLength(0);
+    });
+});
