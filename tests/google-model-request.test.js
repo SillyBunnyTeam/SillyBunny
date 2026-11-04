@@ -134,6 +134,13 @@ describe('Google model request compatibility', () => {
         expect(capturedBody.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'high' });
     });
 
+    test('turns off the fetch idle timeout so a long thinking pass can stay silent', async () => {
+        const response = await makeRequest('gemini-4-argon');
+
+        expect(response.status).toBe(200);
+        expect(nodeFetchMock.mock.calls[0][1].timeout).toBe(0);
+    });
+
     test('requests image output with a size for Nano Banana 2.1', async () => {
         const response = await makeRequest('gemini-nano-banana-2.1', {
             request_images: true,

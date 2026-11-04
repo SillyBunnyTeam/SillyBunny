@@ -331,6 +331,16 @@ describe('Gemini Interactions API integration', () => {
         ]);
     });
 
+    test('turns off the fetch idle timeout so a long thinking pass can stay silent', async () => {
+        const fetchSpy = createProviderFetchSpy(() => {
+            throw new Error('Unexpected provider call');
+        });
+        const response = await generate({});
+        expect(response.status).toBe(200);
+
+        expect(fetchSpy.mock.calls[0][1].timeout).toBe(0);
+    });
+
     test('sends the highest documented thinking level when Gemini 4 is asked for max', async () => {
         const fetchSpy = createProviderFetchSpy(() => {
             throw new Error('Unexpected provider call');

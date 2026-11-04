@@ -905,6 +905,8 @@ async function sendMakerSuiteRequest(request, response) {
             method: 'POST',
             headers: headers,
             signal: controller.signal,
+            // SillyBunny: long thinking can send no bytes for longer than Bun's default fetch idle timeout, and 0 turns that timeout off.
+            timeout: 0,
         });
 
         if (stream) {
@@ -3408,6 +3410,8 @@ async function sendGeminiInteractionsRequest(request, response) {
             },
             body: JSON.stringify(requestBody),
             signal: controller.signal,
+            // SillyBunny: long thinking can send no bytes for longer than Bun's default fetch idle timeout, and 0 turns that timeout off.
+            timeout: 0,
         };
 
         logVerboseGenerationRequest('Google Interactions API', request, requestBody);
