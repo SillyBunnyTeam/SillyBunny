@@ -76,6 +76,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/world-
 const {
     editConversationMessage,
     generateConversationReply,
+    getConversationErrorDetail,
     postCharacterReply,
 } = await import('../public/scripts/sillybunny-conversation/generation.js');
 
@@ -84,6 +85,22 @@ const settings = {
     schedule_command_enabled: true,
     selfie_command_enabled: true,
 };
+
+describe('Conversation error detail', () => {
+    test('shows the provider sentence of a failure thrown as a raw JSON body', () => {
+        const error = new Error('{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}');
+        expect(getConversationErrorDetail(error)).toBe('Incorrect API key provided');
+    });
+
+    test('reads the text of an error body thrown as an object', () => {
+        expect(getConversationErrorDetail({ error: true, status: 429, response: '{"error":{"message":"Slow down"}}' })).toBe('Slow down');
+    });
+
+    test('keeps ordinary messages as they are', () => {
+        expect(getConversationErrorDetail(new Error('Got response status 502'))).toBe('Got response status 502');
+        expect(getConversationErrorDetail('plain')).toBe('plain');
+    });
+});
 
 describe('Conversation core generated reply regressions', () => {
     beforeEach(() => {

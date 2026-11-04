@@ -1,6 +1,7 @@
 import { characters, generateRaw } from '../../script.js';
 import { extractProfileResponseText } from '../extensions/in-chat-agents/llm-utils.js';
 import { isAbortLikeError } from '../util/abort-error.js';
+import { extractProviderMessage } from '../sillybunny-provider-message.js';
 import {
     CONVERSATION_ERROR_DETAIL_MAX_LENGTH,
     MAX_CONVERSATION_REPLY_MAX_TOKENS,
@@ -298,7 +299,11 @@ export function getConversationErrorDetail(error) {
         }
     }
 
-    return String(detail || '')
+    // Streaming failures throw the raw JSON body, which is unreadable in a toast.
+    const text = String(detail || '');
+    const providerMessage = /^\s*[{[]/.test(text) ? extractProviderMessage(text) : '';
+
+    return (providerMessage || text)
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, CONVERSATION_ERROR_DETAIL_MAX_LENGTH);

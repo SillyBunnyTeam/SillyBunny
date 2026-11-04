@@ -264,6 +264,7 @@ import {
 // SillyBunny: migrate the opt-in legacy tag folders after both settings stores load.
 import { convertLegacyTagFolders } from './scripts/sillybunny-folders.js';
 import { seedQuickImageGenFirstRun, showFirstRunWelcome } from './scripts/sillybunny-first-run-defaults.js'; // SillyBunny: first-run extension defaults and the first-run Welcome dialog.
+import { extractProviderMessage, getThrownResponseFailure, showRequestError } from './scripts/sillybunny-request-errors.js'; // SillyBunny: failed generation requests say what went wrong and what to do.
 import { checkOpenRouterAuth, initSecrets, readSecretState } from './scripts/secrets.js';
 import { markdownExclusionExt } from './scripts/showdown-exclusion.js';
 import { markdownUnderscoreExt } from './scripts/showdown-underscore.js';
@@ -9419,10 +9420,12 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             if (data.error) {
                 unblockGeneration(type);
 
-                if (data?.response) {
-                    toastr.error(data.response, t`API Error`, { preventDuplicates: true });
+                // SillyBunny: a 200 body shaped { error: { message } } stayed silent, because only data.response was read.
+                const errorMessage = extractProviderMessage(data);
+                if (errorMessage) {
+                    toastr.error(errorMessage, t`API Error`, { preventDuplicates: true });
                 }
-                throw new Error(data?.response);
+                throw new Error(errorMessage || data?.response);
             }
 
             if (jsonSchema) {
@@ -9581,8 +9584,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         function onError(exception) {
             if (!isCurrent()) throw exception;
             // if the response JSON was thrown (novel|textgenerationwebui|kobold), show the error message
-            if (typeof exception?.error?.message === 'string') {
-                toastr.error(exception.error.message, t`Text generation error`, { timeOut: 10000, extendedTimeOut: 20000 });
+            // SillyBunny: the text completion route throws { error: true, status, response } with no error.message, which stayed silent.
+            const thrownFailure = getThrownResponseFailure(exception);
+            if (thrownFailure) {
+                showRequestError({ title: t`Text generation error`, ...thrownFailure, toastOptions: { timeOut: 10000, extendedTimeOut: 20000 } });
             }
 
             if (!isAuxiliaryGeneration) {

@@ -16,6 +16,8 @@ import { t } from './i18n.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { kai_settings } from './kai-settings.js';
 import { fetchResumable } from './resumable-generation.js';
+// SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
+import { showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
 
 export {
     MIN_LENGTH,
@@ -227,8 +229,10 @@ export async function generateHorde(prompt, params, signal, reportProgress) {
     });
 
     if (!response.ok) {
-        toastr.error(response.statusText, 'Horde generation failed');
-        throw new Error(`Horde generation failed: ${response.statusText}`);
+        // SillyBunny: the provider's message and a hint replace the bare HTTP reason.
+        const errorBody = await response.text();
+        const { message } = showRequestError({ title: 'Horde generation failed', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });
+        throw new Error(`Horde generation failed: ${message}`);
     }
 
     const responseJson = await response.json();

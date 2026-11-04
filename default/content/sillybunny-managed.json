@@ -2,13 +2,6 @@
     "format": 1,
     "items": [
         {
-            "filename": "SillyBunny Lexicon.json",
-            "type": "world",
-            "version": 1,
-            "fingerprint": "10ef1c6dc724b2bf9b3bf62ac2970737994fdb0769722695e9185b590e21e2b8",
-            "previousFingerprints": []
-        },
-        {
             "filename": "default_AssistantReisen.png",
             "type": "character",
             "version": 1,
@@ -20,6 +13,13 @@
             "type": "character",
             "version": 1,
             "fingerprint": "c6fae718bf7b840656ce13a80a74a8bb30e2150944a0f6fb57616e2024028f9f",
+            "previousFingerprints": []
+        },
+        {
+            "filename": "SillyBunny Lexicon.json",
+            "type": "world",
+            "version": 1,
+            "fingerprint": "e3080d2951a589f59b57eb29256ab51cc0ecad5c28925891544f36c0c6a796fd",
             "previousFingerprints": []
         }
     ]

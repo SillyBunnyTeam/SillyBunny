@@ -402,6 +402,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 in-chat agent stop-button wiring. |
 | Owner | Refactor integrator. |
 
+### `public/script.js`, `public/scripts/openai.js`, `public/scripts/textgen-settings.js`, `public/scripts/kai-settings.js`, `public/scripts/nai-settings.js`, `public/scripts/horde.js`, `public/scripts/custom-request.js`, `src/util.js`, and `src/endpoints/backends/chat-completions.js` - provider request errors
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`, `public/scripts/openai.js`, `public/scripts/textgen-settings.js`, `public/scripts/kai-settings.js`, `public/scripts/nai-settings.js`, `public/scripts/horde.js`, `public/scripts/custom-request.js`, `src/util.js`, `src/endpoints/backends/chat-completions.js`. |
+| Area | Generation lifecycle: failed provider requests. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/sillybunny-request-errors.js` (the error toast: the provider's own message, plus a hint for 401/403, 404, 429 and 5xx) and `public/scripts/sillybunny-provider-message.js` (finds the provider's sentence in a response body; the server imports it too). |
+| Adapter shape | Browser: one import and a `showRequestError(...)` or `createFailedResponseError(...)` call at each failed-response site (`onError` and the error branch of `Generate` in `public/script.js`; the failure paths of `openai.js`, `textgen-settings.js`, `kai-settings.js`, `nai-settings.js`, `horde.js` and `custom-request.js`); `tryParseStreamingError` in `openai.js` returns a boolean. Server: `forwardFetchResponse` in `src/util.js` sends the provider's status in `X-Upstream-Status` when it maps a 401 to 400; `chat-completions.js` puts the provider's message, at most 300 characters, in non-streaming error bodies. |
+| Protecting tests | `tests/sillybunny-request-errors.test.js`, `tests/sillybunny-request-error-sites.test.js`, `tests/util.test.js`, `tests/nai-settings.test.js`, `tests/sillybunny-conversation-core-generation-regressions.test.js`, `tests/request-errors.e2e.js`. |
+| Validation | `npm run lint`; the focused unit tests and the full unit suite with `--maxWorkers=3`; `npm run check:frontend-budgets`; `request-errors.e2e.js` 10/10 on a Bun server; code review 2026-11-04. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-04, `feat/home-mascot-overhaul` (#870). |
+| Owner | TODO(copy) |
+
 ### `public/script.js`, `public/scripts/group-chats.js`, `public/scripts/reasoning.js`, and `src/endpoints/chats.js` - server-owned chat generations
 | Field | Value |
 | --- | --- |
