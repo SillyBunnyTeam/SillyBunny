@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, jest, test } from '@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { createInstallSandbox, writeFiles } from './util/install-sandbox.js';
+import { createInstallSandbox, snapshotTree, writeFiles } from './util/install-sandbox.js';
 
 const sandbox = createInstallSandbox('sillybunny-config-migration');
 
@@ -253,5 +253,94 @@ describe('addMissingConfigValues for each renamed or removed setting', () => {
         addMissingConfigValues(configPath());
 
         expect(printedText()).not.toContain(value);
+    });
+});
+
+describe('npm run init', () => {
+    const legacyConfig = `const port = 9100;
+const whitelist = ['127.0.0.1', '::1'];
+const extras = {
+    classificationModel: 'synthetic/classification',
+};
+
+module.exports = {
+    port,
+    listen: true,
+    whitelist,
+    extras,
+};
+`;
+    const installPath = name => path.join(sandbox.installDir, name);
+    const readInstalledConfig = () => yaml.parse(fs.readFileSync(installPath('config.yaml'), 'utf8'));
+    const legacyFileNames = () => fs.readdirSync(sandbox.installDir).filter(name => name.startsWith('config.conf'));
+
+    async function runInit() {
+        jest.resetModules();
+        const { serverDirectory } = await import('../src/server-directory.js');
+        if (serverDirectory !== sandbox.installDir) {
+            throw new Error('The install sandbox does not replace serverDirectory, so npm run init would change the real install folder.');
+        }
+        await import('../src/server-init.js');
+    }
+
+    beforeEach(() => {
+        sandbox.clear();
+        writeFiles(sandbox.installDir, { 'default/config.yaml': defaultConfig });
+        fs.mkdirSync(installPath('default/public'));
+    });
+
+    test('turns config.conf into config.yaml with its settings under the current keys', async () => {
+        fs.writeFileSync(installPath('config.conf'), legacyConfig);
+
+        await runInit();
+
+        expect(readInstalledConfig()).toMatchObject({
+            port: 9100,
+            listen: true,
+            whitelist: ['127.0.0.1', '::1'],
+            extensions: { models: { classification: 'synthetic/classification' } },
+        });
+        expect(console.error).not.toHaveBeenCalled();
+    });
+
+    test('keeps the original config.conf as config.conf.bak and no other copy', async () => {
+        fs.writeFileSync(installPath('config.conf'), legacyConfig);
+
+        await runInit();
+
+        expect(legacyFileNames()).toEqual(['config.conf.bak']);
+        expect(fs.readFileSync(installPath('config.conf.bak'), 'utf8')).toBe(legacyConfig);
+    });
+
+    test('leaves config.conf and config.yaml as they are when both exist', async () => {
+        fs.writeFileSync(installPath('config.conf'), legacyConfig);
+        fs.writeFileSync(installPath('config.yaml'), defaultConfig);
+
+        await runInit();
+
+        expect(legacyFileNames()).toEqual(['config.conf']);
+        expect(fs.readFileSync(installPath('config.conf'), 'utf8')).toBe(legacyConfig);
+        expect(fs.readFileSync(installPath('config.yaml'), 'utf8')).toBe(defaultConfig);
+    });
+
+    test('keeps later edits to the converted config.yaml when it runs again', async () => {
+        fs.writeFileSync(installPath('config.conf'), legacyConfig);
+        await runInit();
+        fs.writeFileSync(installPath('config.yaml'), yaml.stringify({ ...readInstalledConfig(), port: 9200 }));
+        const before = snapshotTree(sandbox.installDir);
+        jest.clearAllMocks();
+
+        await runInit();
+
+        expect(snapshotTree(sandbox.installDir)).toEqual(before);
+        expect(console.error).not.toHaveBeenCalled();
+    });
+
+    test('converts nothing and reports no error when there is no config.conf', async () => {
+        await runInit();
+
+        expect(legacyFileNames()).toEqual([]);
+        expect(fs.readFileSync(installPath('config.yaml'), 'utf8')).toBe(defaultConfig);
+        expect(console.error).not.toHaveBeenCalled();
     });
 });
