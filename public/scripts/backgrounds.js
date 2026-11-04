@@ -570,7 +570,7 @@ async function onDeleteBackgroundClick(e) {
     const confirm = await Popup.show.confirm(t`Delete the background?`, null, {
         okButton: t`Delete`,
         defaultResult: POPUP_RESULT.NEGATIVE,
-        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+        onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
         customInputs: isCustom ? customInputs : [],
         onClose: (popup) => {
             if (isCustom) {
@@ -1261,7 +1261,7 @@ async function onDeleteFolder(folderId) {
     if (!folder) return;
 
     // SillyBunny: folder deletion uses an explicit destructive action.
-    const confirm = await Popup.show.confirm(t`Delete folder "${folder.name}"?`, t`Images will not be deleted, only the folder grouping.`, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
+    const confirm = await Popup.show.confirm(t`Delete folder "${folder.name}"?`, t`Images will not be deleted, only the folder grouping.`, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') });
     if (!confirm) return;
 
     try {

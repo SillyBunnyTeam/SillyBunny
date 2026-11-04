@@ -31,6 +31,7 @@ export async function startPaintProbe(page) {
                 rowHeights: shown.filter(element => element.matches('.ds-row')).map(element => element.offsetHeight),
                 headerOutline: shown.filter(element => header?.contains(element)).map(outline),
                 okClasses: [...(dialog.querySelector('.popup-button-ok')?.classList ?? [])].sort(),
+                okBackground: dialog.querySelector('.popup-button-ok') ? getComputedStyle(dialog.querySelector('.popup-button-ok')).backgroundColor : null,
             };
         }
 

@@ -6498,7 +6498,7 @@ export function checkEmbeddedWorld(chid) {
                     okButton: t`Import`,
                     ...(overwritesExistingBook ? {
                         defaultResult: POPUP_RESULT.NEGATIVE,
-                        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                        onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
                     } : {}),
                 }).then(checkResult);
             } else {
@@ -6543,7 +6543,7 @@ export async function importEmbeddedWorldInfo(skipPopup = false) {
             okButton: t`Import`,
             ...(overwritesExistingBook ? {
                 defaultResult: POPUP_RESULT.NEGATIVE,
-                onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
             } : {}),
         });
         if (!confirmation) {

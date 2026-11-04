@@ -3090,7 +3090,7 @@ export async function deleteGroupById(groupId) {
     const confirmed = await Popup.show.confirm(
         t`Delete the group?`,
         '<p>' + t`This will also delete all your chats with that group. If you want to delete a single conversation, select a "View past chats" option in the lower left menu.` + '</p>',
-        { okButton: t`Delete`, defaultResult: 0, onOpen: popup => popup.okButton.classList.add('is-destructive') },
+        { okButton: t`Delete`, defaultResult: 0, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') },
     );
     if (!confirmed || is_group_generating) {
         return false;
@@ -3337,7 +3337,7 @@ async function restoreGroupAvatar() {
     const draft = editorDraft;
     const groupId = openGroupId;
     // SillyBunny: restoring replaces the custom group image and names the destructive action.
-    const confirm = await Popup.show.confirm('Are you sure you want to restore the group avatar?', 'Your custom image will be deleted, and a collage will be used instead.', { okButton: t`Restore`, defaultResult: 0, onOpen: popup => popup.okButton.classList.add('is-destructive') });
+    const confirm = await Popup.show.confirm('Are you sure you want to restore the group avatar?', 'Your custom image will be deleted, and a collage will be used instead.', { okButton: t`Restore`, defaultResult: 0, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') });
     if (!confirm) {
         return;
     }

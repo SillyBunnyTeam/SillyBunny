@@ -213,7 +213,7 @@ class BackupsBrowser {
     async deleteBackup(name, { confirm = true, silent = false } = {}) {
         if (confirm) {
             // SillyBunny: backup confirmations use an explicit destructive action.
-            const confirmed = await Popup.show.confirm(t`Are you sure?`, null, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
+            const confirmed = await Popup.show.confirm(t`Are you sure?`, null, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') });
             if (!confirmed) {
                 return false;
             }
@@ -364,7 +364,7 @@ class BackupsBrowser {
             t`Clean old backups?`,
             `<p>${escapeHtml(String(candidates.length))} ${t`backup(s) will be permanently deleted.`}</p>
             ${this.renderCleanupPreview(candidates)}`,
-            { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') },
+            { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') },
         );
         if (!confirmed) {
             return;

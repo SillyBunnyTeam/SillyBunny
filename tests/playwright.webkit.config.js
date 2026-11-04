@@ -22,6 +22,7 @@ const DIALOG_SPECS = [
     'sillybunny-overlays',
     'utility-dialogs',
     'utility-dialog-first-paint',
+    'destructive-first-paint',
     'misc-form-dialogs',
     'preset-lorebook-dialogs',
     'connection-manager-dialogs',

@@ -1049,7 +1049,7 @@ class PromptManager {
         // Delete selected prompt from list form and close edit form
         this.handleDeletePrompt = async (event) => {
             // SillyBunny: prompt deletion names the destructive action.
-            Popup.show.confirm(t`Are you sure you want to delete this prompt?`, null, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') }).then((userChoice) => {
+            Popup.show.confirm(t`Are you sure you want to delete this prompt?`, null, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') }).then((userChoice) => {
                 if (!userChoice) return;
                 const appendPromptFooter = /** @type {HTMLSelectElement} */(document.getElementById(this.configuration.prefix + 'prompt_manager_footer_append_prompt'));
                 const promptID = appendPromptFooter.value;
@@ -1137,7 +1137,7 @@ class PromptManager {
             Popup.show.confirm(t`Existing prompts with the same ID will be overridden. Do you want to proceed?`, null, {
                 okButton: t`Import`,
                 defaultResult: POPUP_RESULT.NEGATIVE,
-                onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
             })
                 .then(userChoice => {
                     if (!userChoice) return;

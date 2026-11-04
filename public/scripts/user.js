@@ -509,7 +509,8 @@ async function restoreSnapshot(name, callback) {
                 defaultResult: POPUP_RESULT.NEGATIVE,
                 wide: false,
                 large: false,
-                onOpen(popup) { popup.okButton.classList.add('is-destructive'); },
+                // SillyBunny: the destructive style is set before the first paint.
+                onBeforePaint(popup) { popup.okButton.classList.add('is-destructive'); },
             },
         );
 

@@ -111,15 +111,15 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### Confirm response labels
 | Field | Value |
 | --- | --- |
-| File | `public/script.js`; `public/scripts/popup.js`; `public/scripts/PromptManager.js`; `public/scripts/backgrounds.js`; `public/scripts/chat-backups.js`; `public/scripts/chats.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/group-chats.js`; `public/scripts/preset-manager.js`; `public/scripts/reasoning.js`; `public/scripts/secrets.js`; `public/scripts/world-info.js`. |
+| File | `public/script.js`; `public/scripts/popup.js`; `public/scripts/PromptManager.js`; `public/scripts/backgrounds.js`; `public/scripts/chat-backups.js`; `public/scripts/chats.js`; `public/scripts/data-maid-dialog.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/group-chats.js`; `public/scripts/preset-manager.js`; `public/scripts/reasoning.js`; `public/scripts/secrets.js`; `public/scripts/world-info.js`. |
 | Area | Confirmation response labels and destructive confirmation defaults. |
 | Divergence reason | Upstream confirmations use the generic OK button, and the default result is the affirmative one. SillyBunny names the affirmative response with the action's own verb and labels the default negative response Cancel, so each confirmation reads clearly and a destructive one does not default to the affirmative. |
 | Target seam | `public/scripts/sillybunny-editor/popup-frame.js`. |
-| Adapter shape | Keep upstream confirmation handlers and result values, name affirmative responses with existing action strings, and map the default negative response to Cancel in the shared frame. |
-| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/world-info-editor.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/native-dialog-replacements.e2e.js`; `tests/character-list.e2e.js`; `tests/tag-manager.e2e.js`. |
+| Adapter shape | Keep upstream confirmation handlers and result values, name affirmative responses with existing action strings, and map the default negative response to Cancel in the shared frame. Destructive confirmations add `is-destructive` to `popup.okButton` in `onBeforePaint`, so OK is red from the first frame. |
+| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/world-info-editor.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/native-dialog-replacements.e2e.js`; `tests/character-list.e2e.js`; `tests/tag-manager.e2e.js`; `tests/destructive-first-paint.e2e.js`. |
 | Validation | Root lint; tests lint; focused and full unit suites; frontend budgets; Chromium confirmation and dialog regressions. |
 | Rollback path | In each listed file, remove the `okButton` verb strings and `defaultResult: POPUP_RESULT.NEGATIVE` options that sit under a `SillyBunny:` marker. In `public/scripts/popup.js`, remove the `cancelButtonProvided` argument passed to `framePopup()`. In `public/scripts/sillybunny-editor/popup-frame.js`, remove `replaceDefaultNegativeLabel()`. Then update `tests/unit/popup-contract.test.js` and `tests/unit/sillybunny-popup-frame.test.js`. |
-| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Last reviewed | 2026-11-05, PR #870 (destructive OK set in `onBeforePaint`). |
 | Owner | UI overhaul integrator. |
 
 ### Native browser dialog replacements
@@ -341,8 +341,8 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Connection profile forms, deletion selection, folders, and details. |
 | Divergence reason | Upstream shows Connection Profile creation, deletion, folder and detail popups with raw checkboxes and lists that overflow on phones. SillyBunny builds shared rows from the same template nodes, so they scroll and fit phones, and final deletions default to Cancel. |
 | Target seam | `public/scripts/extensions/connection-manager/sillybunny-dialogs.js`; shared row and Popup-frame modules. |
-| Adapter shape | Prepare template rows before Popup construction; forward tier/title/defaultResult and lifecycle options. Final destructive confirmations default to Cancel and mark the affirmative destructive. Save and Update keeps its result/action as a neutral footer response. Keep exclusion events, folder-item ancestry, profile saving, and results upstream. Release row IDs on refresh/close. Extension CSS only scopes adapter content. |
-| Protecting tests | `tests/unit/connection-manager-dialogs.test.js`; `tests/unit/sillybunny-editor-rows.test.js`; `tests/connection-manager-dialogs.e2e.js`; connection-profile-change-notice, sillybunny-connections-layout, popup-scroll, and sillybunny-dialog-tiers E2E; `tests/utility-dialog-first-paint.e2e.js`. |
+| Adapter shape | Prepare template rows before Popup construction; forward tier/title/defaultResult and lifecycle options. Final destructive confirmations default to Cancel and mark the affirmative destructive in `onBeforePaint`. Save and Update keeps its result/action as a neutral footer response. Keep exclusion events, folder-item ancestry, profile saving, and results upstream. Release row IDs on refresh/close. Extension CSS only scopes adapter content. |
+| Protecting tests | `tests/unit/connection-manager-dialogs.test.js`; `tests/unit/sillybunny-editor-rows.test.js`; `tests/connection-manager-dialogs.e2e.js`; connection-profile-change-notice, sillybunny-connections-layout, popup-scroll, and sillybunny-dialog-tiers E2E; `tests/utility-dialog-first-paint.e2e.js`; `tests/destructive-first-paint.e2e.js`. |
 | Validation | Root lint; full Jest; frontend budgets; Chromium E2E at desktop, portrait, and landscape sizes. |
 | Rollback path | In `index.js`, remove the imports and calls of `profileDialogOptions()`, `adaptProfileDeletion()`, `adaptProfileFolders()` and `adaptProfileDetails()`, and the tier, title and `defaultResult` options that go with them. Delete the marked rules in `style.css`. Saved profiles are not touched. Then drop `tests/unit/connection-manager-dialogs.test.js` and `tests/connection-manager-dialogs.e2e.js`. |
 | Last reviewed | 2026-11-05, PR #870 (adapters reshape in `onBeforePaint`). |
@@ -369,11 +369,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Character and user deletion confirmations. |
 | Divergence reason | Upstream confirms character and user deletion with the affirmative response as the default. SillyBunny makes Cancel the default result and marks the delete button as destructive, so a stray Return cannot delete. |
 | Target seam | `public/scripts/sillybunny-editor/popup-frame.js`. |
-| Adapter shape | Pass the negative defaultResult and add is-destructive to okButton in onOpen. |
-| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/sillybunny-dialog-tiers.e2e.js`. |
+| Adapter shape | Pass the negative defaultResult and add `is-destructive` to `okButton` in `onBeforePaint`. |
+| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/destructive-first-paint.e2e.js`. |
 | Validation | Root lint; full Jest suite; Chromium dialog-tier and mobile template checks. |
-| Rollback path | Remove the `defaultResult: POPUP_RESULT.NEGATIVE` option and the `onOpen` callback that adds `is-destructive` from the marked confirmations in `public/script.js` and `public/scripts/user.js`. Then update the destructive-default cases in `tests/sillybunny-dialog-tiers.e2e.js` and `tests/unit/popup-contract.test.js`. |
-| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Rollback path | Remove the `defaultResult: POPUP_RESULT.NEGATIVE` option and the `onBeforePaint` callback that adds `is-destructive` from the marked confirmations in `public/script.js` and `public/scripts/user.js`. Then update the destructive-default cases in `tests/sillybunny-dialog-tiers.e2e.js` and `tests/unit/popup-contract.test.js`. |
+| Last reviewed | 2026-11-05, PR #870 (destructive OK set in `onBeforePaint`). |
 | Owner | UI overhaul integrator. |
 
 ### `public/script.js`, `public/scripts/RossAscends-mods.js` and `public/style.css` - chat render lifecycle

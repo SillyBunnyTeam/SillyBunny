@@ -251,7 +251,7 @@ export class DataMaidDialog {
                 const confirm = await Popup.show.confirm(t`Are you sure?`, t`This will permanently delete all files in this category. THIS CANNOT BE UNDONE!`, {
                     // SillyBunny: destructive cleanup must focus Cancel and never confirm on Return.
                     defaultResult: POPUP_RESULT.NEGATIVE,
-                    onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                    onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
                 });
                 if (!confirm) {
                     return;
@@ -272,7 +272,7 @@ export class DataMaidDialog {
                     const confirm = await Popup.show.confirm(t`Are you sure?`, t`This will permanently delete the file. THIS CANNOT BE UNDONE!`, {
                         // SillyBunny: destructive cleanup must focus Cancel and never confirm on Return.
                         defaultResult: POPUP_RESULT.NEGATIVE,
-                        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                        onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
                     });
                     if (!confirm) {
                         return;

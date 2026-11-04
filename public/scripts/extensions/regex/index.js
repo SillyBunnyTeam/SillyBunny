@@ -715,7 +715,7 @@ async function loadRegexScripts() {
         });
         scriptHtml.find('.delete_regex').on('click', async function () {
             // SillyBunny: deleting a regex script is destructive and names the delete action.
-            const confirm = await callGenericPopup(t`Are you sure you want to delete this regex script?`, POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
+            const confirm = await callGenericPopup(t`Are you sure you want to delete this regex script?`, POPUP_TYPE.CONFIRM, '', { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') });
             if (!confirm) {
                 return;
             }

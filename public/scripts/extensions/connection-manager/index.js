@@ -929,7 +929,7 @@ async function deleteAllConnectionProfiles() {
         {
             // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action.
             defaultResult: POPUP_RESULT.NEGATIVE,
-            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+            onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
         },
     );
 
@@ -1612,7 +1612,7 @@ export async function init() {
                     {
                         // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action.
                         defaultResult: POPUP_RESULT.NEGATIVE,
-                        onOpen: popup => popup.okButton.classList.add('is-destructive'),
+                        onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
                     },
                 );
                 if (!confirm) {

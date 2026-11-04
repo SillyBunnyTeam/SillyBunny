@@ -293,7 +293,7 @@ export function initializePromptEditor(column) {
         if (!await Popup.show.confirm(t`Are you sure you want to delete this prompt?`, null, {
             okButton: t`Delete`,
             defaultResult: POPUP_RESULT.NEGATIVE,
-            onOpen: popup => popup.okButton.classList.add('is-destructive'),
+            onBeforePaint: popup => popup.okButton.classList.add('is-destructive'),
         })) return;
         const result = run(() => model.delete(id, expectedScope));
         if (result === false) return;

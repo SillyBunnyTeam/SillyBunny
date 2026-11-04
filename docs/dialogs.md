@@ -166,7 +166,7 @@ An adapter takes the upstream markup and returns `Popup` options, as `utilityFor
    puts the adopted select, and its select2 container, back where it was, so code that reads the
    select after the dialog resolves still finds it.
 5. For destructive confirmations, pass `defaultResult: POPUP_RESULT.NEGATIVE` and add `is-destructive`
-   to `popup.okButton`.
+   to `popup.okButton` in `onBeforePaint`, so the button is red from the first frame.
 6. An edit to an upstream-origin call site needs a `SillyBunny:` marker and an entry in
    [upstream-touch-ledger.md](upstream-touch-ledger.md).
 

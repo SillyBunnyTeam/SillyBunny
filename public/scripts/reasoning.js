@@ -1572,7 +1572,7 @@ function setReasoningEventHandlers() {
         e.preventDefault();
 
         // SillyBunny: reasoning removal is destructive and names the remove action.
-        const confirm = await Popup.show.confirm(t`Remove Reasoning`, t`Are you sure you want to clear the reasoning?<br />Visible message contents will stay intact.`, { okButton: t`Remove`, defaultResult: POPUP_RESULT.NEGATIVE, onOpen: popup => popup.okButton.classList.add('is-destructive') });
+        const confirm = await Popup.show.confirm(t`Remove Reasoning`, t`Are you sure you want to clear the reasoning?<br />Visible message contents will stay intact.`, { okButton: t`Remove`, defaultResult: POPUP_RESULT.NEGATIVE, onBeforePaint: popup => popup.okButton.classList.add('is-destructive') });
 
         if (!confirm) {
             return;
