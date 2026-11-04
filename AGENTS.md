@@ -52,7 +52,6 @@ Read the docs below in full before you start; they change more often than this f
 - `server.js` supervises restarts, then imports `src/server-main.js`; keep its startup-order-sensitive imports intact.
 - `public/` is browser code, `src/` is server code, `scripts/` holds maintenance scripts; launchers live in the root. JavaScript is ESM (`"type": "module"`).
 - `tests/` is a separate npm package: Jest unit tests and Playwright e2e specs.
-- `src/electron/` has its own package and is not covered by root scripts.
 - `android/` is a separate Gradle project with a committed wrapper; root npm scripts and ESLint do not cover it.
 - `scripts/bootstrap/` installers run before the repository exists, so they must stay self-contained; they ship as release assets.
 - Root lint ignores vendored and generated code, including `public/lib/**`, `public/scripts/extensions/quick-image-gen/**`, `public/scripts/extensions/third-party/**`, `data/**`, `cache/**` and `backups/**`; do not reformat them unless the task targets them.
