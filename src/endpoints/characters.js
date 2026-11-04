@@ -1990,7 +1990,8 @@ router.post('/import', async function (request, response) {
     };
 
     try {
-        const importFunction = formatImportFunctions[format];
+        // SillyBunny: look the format up among the listed formats only, never among the members that every object inherits.
+        const importFunction = Object.hasOwn(formatImportFunctions, format) ? formatImportFunctions[format] : undefined;
 
         if (!importFunction) {
             throw new Error(`Unsupported format: ${format}`);
