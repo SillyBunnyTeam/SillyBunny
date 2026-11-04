@@ -5,7 +5,7 @@
             "key": [],
             "keysecondary": [],
             "comment": "A0 SillyBunny overview",
-            "content": "SillyBunny is a fork of SillyTavern's staging branch with a graphical shell for desktop and mobile, a Home page, in-chat agents and two chat modes: Roleplay (default) and Conversation. Top bar: Backend (model connections, presets, prompts, agents), Customize (appearance, extensions, interface, data, logs), Search, Mode, Home and Characters. Home is the landing page when no chat is open. Most SillyTavern behavior and data formats still apply. SillyBunny-specific bugs go to github.com/SillyBunnyTeam/SillyBunny/issues; bugs that also happen upstream go to SillyTavern.",
+            "content": "SillyBunny is a fork of the latest version of SillyTavern with a graphical shell for desktop and mobile, a Home page, in-chat agents and two chat modes: Roleplay (default) and Conversation. Top bar: Backend (model connections, presets, prompts, agents), Customize (appearance, extensions, interface, data, logs), Search, Mode, Home and Characters. Home is the landing page when no chat is open. Most SillyTavern behavior and data formats still apply. SillyBunny-specific bugs go to github.com/SillyBunnyTeam/SillyBunny/issues; bugs that also happen upstream go to SillyTavern.",
             "constant": true,
             "selective": false,
             "selectiveLogic": 0,
