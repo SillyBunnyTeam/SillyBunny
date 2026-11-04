@@ -320,8 +320,9 @@
     background: var(--sb-layer-window);
 }
 
-/* The hero is pixel art at a whole number of device pixels per art pixel. Its script sizes it to the width of the
-   band, and `data-sb-art-fit` says whether it kept the fixed step, took a smaller one, or was shrunk. */
+/* The hero is pixel art at a whole number of device pixels per art pixel, on the lavender panel of the art panels
+   (`.sbArtPanel`, below). Its script sizes the picture to the width of the band less the padding of the panel, and
+   `data-sb-art-fit` says whether it kept the fixed step, took a smaller one, or was shrunk. */
 .sbHomeBand > .sbHomeHeroArt {
     flex: none;
 }
@@ -448,8 +449,7 @@
 
 /* A picture that is shrunk below one device pixel per art pixel has uneven stripes under nearest-neighbour sampling.
    Smooth sampling is the lesser evil there. */
-.sbArtPanel[data-sb-art-fit='smooth'] .sbPixelArt,
-.sbHomeHeroArt[data-sb-art-fit='smooth'] .sbPixelArt {
+.sbArtPanel[data-sb-art-fit='smooth'] .sbPixelArt {
     image-rendering: auto;
 }
 
@@ -1353,17 +1353,28 @@ body.big-avatars .welcomeRecent .chatMessage {
     }
 }
 
-/* A 360px phone leaves a 346px container. The day hero (332px) then fits in the band at one device pixel per art
-   pixel only with 4px of band padding and 8px of column padding. The paddings of the rule above leave the hero 58px
-   less than the container, so they hold the 332px of the day hero from a 390px container up. This rule covers the
-   containers up to that width, and a lower limit would leave the ones just under it with a hero that has to shrink. */
+/* The panel of the hero is the width of the picture plus its own padding, and a band holds that at one device pixel per
+   art pixel only when its padding is small. The band keeps 4px up to the container width where 16px leaves the day
+   hero its fixed step, so the hero is not shrunk by a fraction across a range of common phones. That width is the
+   art width + 2 x 12 of panel padding + 2 x 16 of band padding + 2 x 12 of layout padding + 2 x 1 of band border,
+   which is 332 + 24 + 32 + 24 + 2 = 414 for the art of today. A new art width moves it: work the sum again, change
+   the limit below, and check the widths that tests/home-hero-art.e2e.js sweeps around it. */
+@container welcome-home (max-width: 414px) {
+    .sbHomeBand {
+        padding-inline: 4px;
+    }
+}
+
+/* The narrowest phones give the column 8px of padding and the band 4px, so the hero's panel has the most room that a
+   phone can give it. A lower limit would leave the containers just under it with a hero that has to shrink. */
 @container welcome-home (max-width: 390px) {
     .sbHomeLayout {
         padding-inline: max(8px, env(safe-area-inset-left, 0px)) max(8px, env(safe-area-inset-right, 0px));
     }
 
-    .sbHomeBand {
-        padding-inline: 4px;
+    /* The panel takes 8px of padding here instead of 12px, which is what lets a 390px phone keep the fixed step. */
+    .sbHomeBand > .sbHomeHeroArt {
+        --sb-art-pad: 8px;
     }
 }
 

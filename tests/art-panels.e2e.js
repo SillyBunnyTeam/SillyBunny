@@ -1,9 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
-import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
-import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { stubTheme } from './helpers/theme-stub.js';
 
 /*
  * The art of a window is a panel beside its content on a wide screen and a banner above it on a narrow or a short one.
@@ -282,21 +281,6 @@ test.describe('a viewport too short for a banner', () => {
 
 /** The least contrast between the lavender backdrop of a panel and the surface of the window under it that still reads as a backdrop. */
 const BACKDROP_FLOOR = 1.1;
-
-/** The settings the app reads, with the palette of one bundled theme copied into the user's settings. */
-async function stubTheme(page, themeName) {
-    await page.route('**/api/settings/get', async (route) => {
-        const data = await fetchJsonOrSkip(route);
-        if (!data) return;
-        const settings = JSON.parse(data.settings);
-        applyHomeTestSettings(settings, { firstRun: false });
-        const palette = { ...data.themes.find(entry => entry.name === themeName) };
-        delete palette.name;
-        settings.power_user = { ...settings.power_user, ...palette, theme: themeName, world_import_dialog: false };
-        settings.extension_settings = settings.extension_settings || {};
-        return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
-    });
-}
 
 test.describe('the backdrop of a panel', () => {
     test.use({ viewport: { width: 1440, height: 900 } });

@@ -3,6 +3,7 @@ import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { measureEvenness, readFigures } from './helpers/pixel-evenness.js';
+import { getPixelArt } from '../public/scripts/sillybunny-home/art-sources.js';
 
 /*
  * Pixel art is even only when one art pixel is a whole number of real device pixels. Playwright's `deviceScaleFactor`
@@ -241,15 +242,22 @@ for (const scale of [1, 1.1, 1.5, 1.75, 2, 3]) {
 /*
  * The hero of Home is drawn at the fixed step when it fits its band, and at a smaller whole step when it does not;
  * both are even. One that had to be shrunk to its band by a fraction cannot be even, so it is drawn with smooth
- * sampling instead, which is checked for what it is: smooth, no wider than the band, and not pixelated.
+ * sampling instead, which is checked for what it is: smooth, no wider than the band, and not pixelated. The picture
+ * sits on a panel, so the band has to hold the picture and the padding of the panel.
  */
 const HEROES = [
-    { name: 'day', hour: 12 },
-    { name: 'night', hour: 21 },
+    { name: 'day', hour: 12, art: getPixelArt('hero-duo') },
+    { name: 'night', hour: 21, art: getPixelArt('hero-duo-night') },
 ];
 
-/** The night hero is 361px wide, and Home leaves 332px of band at 390px, so at one device pixel per art pixel it is shrunk. */
-const SHRUNK = { name: 'night', hour: 21, width: 390, height: 844, scale: 1 };
+/** What Home leaves the hero's panel on a 390px phone: the width of the band's content, and the padding that the panel takes there. */
+const PHONE_BAND = 350;
+const PHONE_PANEL_PADDING = 8;
+
+/** At one device pixel per art pixel the picture is `art.width / scale` CSS pixels wide, which a phone band may not hold. */
+const isShrunk = ({ art, width, scale }) => width === 390 && art.width / scale + 2 * PHONE_PANEL_PADDING > PHONE_BAND;
+
+const HERO_FIGURES = { scope: '.welcomePanel', figureSelector: '.sbHomeHeroArt .sbArtFigure' };
 
 /** Opens Home with the hero of this hour and waits until the hero is drawn and has stopped changing. */
 async function openHero(testInfo, { scale, width, height, hour }) {
@@ -261,22 +269,22 @@ async function openHero(testInfo, { scale, width, height, hour }) {
     await expect.poll(() => hero.locator('img').evaluate(image => image.complete && image.naturalWidth)).toBeGreaterThan(0);
     await hero.scrollIntoViewIfNeeded();
     await expect.poll(async () => {
-        const first = JSON.stringify(await readFigures(page, { scope: '.welcomePanel', figureSelector: '.sbHomeHeroArt' }));
+        const first = JSON.stringify(await readFigures(page, HERO_FIGURES));
         await page.waitForTimeout(250);
-        return first === JSON.stringify(await readFigures(page, { scope: '.welcomePanel', figureSelector: '.sbHomeHeroArt' }));
+        return first === JSON.stringify(await readFigures(page, HERO_FIGURES));
     }, { timeout: 10_000 }).toBe(true);
     return { browser, page, hero };
 }
 
 for (const scale of [1, 1.1, 1.5, 1.75, 2, 3]) {
     for (const [width, height] of [[1440, 900], [390, 844]]) {
-        for (const { name, hour } of HEROES.filter(entry => !(entry.name === SHRUNK.name && width === SHRUNK.width && scale === SHRUNK.scale))) {
+        for (const { name, hour } of HEROES.filter(entry => !isShrunk({ art: entry.art, width, scale }))) {
             test(`the ${name} hero draws every art pixel as an even block at ${width}x${height} on a screen of scale ${scale}`, async ({}, testInfo) => {
                 const { browser, page } = await openHero(testInfo, { scale, width, height, hour });
                 try {
                     // A wide Home keeps the fixed step, so the step is the one of the screen, not only a whole one.
                     const fixedStep = Math.max(1, Math.round(scale));
-                    await expectEven(page, { scale, step: fixedStep, expectMode: 'panel', exactStep: width === 1440, readOptions: { scope: '.welcomePanel', figureSelector: '.sbHomeHeroArt' } });
+                    await expectEven(page, { scale, step: fixedStep, expectMode: 'panel', exactStep: width === 1440, readOptions: HERO_FIGURES });
                 } finally {
                     await browser.close();
                 }
@@ -285,24 +293,30 @@ for (const scale of [1, 1.1, 1.5, 1.75, 2, 3]) {
     }
 }
 
-test(`the ${SHRUNK.name} hero is shrunk to its band and sampled smoothly at ${SHRUNK.width}x${SHRUNK.height} on a screen of scale ${SHRUNK.scale}`, async ({}, testInfo) => {
-    const { browser, hero } = await openHero(testInfo, SHRUNK);
-    try {
-        const read = await hero.evaluate((figure) => {
-            const band = figure.closest('.sbHomeBand');
-            const style = getComputedStyle(band);
-            return {
-                fit: figure.dataset.sbArtFit,
-                rendering: getComputedStyle(figure.querySelector('img')).imageRendering,
-                width: figure.getBoundingClientRect().width,
-                inner: band.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight),
-            };
+for (const scale of [1, 1.1, 1.5, 1.75, 2, 3]) {
+    for (const { name, hour, art } of HEROES.filter(entry => isShrunk({ art: entry.art, width: 390, scale }))) {
+        test(`the ${name} hero is shrunk to its band and sampled smoothly at 390x844 on a screen of scale ${scale}`, async ({}, testInfo) => {
+            const { browser, hero } = await openHero(testInfo, { scale, width: 390, height: 844, hour });
+            try {
+                const read = await hero.evaluate((panel) => {
+                    const band = panel.closest('.sbHomeBand');
+                    const style = getComputedStyle(band);
+                    const figure = panel.querySelector('.sbArtFigure');
+                    return {
+                        fit: panel.dataset.sbArtFit,
+                        rendering: getComputedStyle(figure.querySelector('img')).imageRendering,
+                        figureWidth: figure.getBoundingClientRect().width,
+                        panelWidth: panel.getBoundingClientRect().width,
+                        inner: band.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight),
+                    };
+                });
+                expect(read.fit, 'the hero had to be shrunk by a fraction').toBe('smooth');
+                expect(read.rendering, 'and a shrunk picture is sampled smoothly, not as blocks of uneven size').toBe('auto');
+                expect(read.panelWidth, 'its panel fills its band').toBeCloseTo(read.inner, 0);
+                expect(read.figureWidth, 'and the picture is smaller than its file').toBeLessThan(art.width);
+            } finally {
+                await browser.close();
+            }
         });
-        expect(read.fit, 'the hero had to be shrunk by a fraction').toBe('smooth');
-        expect(read.rendering, 'and a shrunk picture is sampled smoothly, not as blocks of uneven size').toBe('auto');
-        expect(read.width, 'it fills its band').toBeCloseTo(read.inner, 0);
-        expect(read.width, 'and is smaller than the picture').toBeLessThan(361);
-    } finally {
-        await browser.close();
     }
-});
+}

@@ -1,4 +1,5 @@
 import { expect, test as base } from '@playwright/test';
+import { getPixelArt } from '../public/scripts/sillybunny-home/art-sources.js';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
@@ -9,6 +10,7 @@ import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { DESKTOP, matrixViewports, PHONE, sizeFreeTestFor, SMALL_PHONE } from './helpers/matrix.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { settledRead } from './helpers/settled-read.js';
 
 // A test that asserts how many Getting Started steps are finished sets this, so the library holds only the cards that ship with SillyBunny.
 const test = base.extend({ bundledCardsOnly: [false, { option: true }] });
@@ -68,7 +70,10 @@ const VISIBLE_TILES = { full: ['Getting Started', 'Help', 'Bundled Extras'], com
 const VISIBLE_FOOT_BUTTONS = { full: 4, compact: 4, list: 0 };
 const PORTRAIT_NATIVE = 64;
 /** The hero pictures in art pixels, as the export stores them. */
-const HERO_NATIVE = { 'hero-duo': [332, 366], 'hero-duo-night': [361, 362] };
+const HERO_NATIVE = Object.fromEntries(['hero-duo', 'hero-duo-night'].map((id) => {
+    const { width, height } = getPixelArt(id);
+    return [id, [width, height]];
+}));
 const REGION_DOM_ORDER = ['hero', 'tiles', 'assistants', 'recent-chats'];
 const REGION_NAMES = { assistants: 'Assistants', 'recent-chats': 'Recent Chats', tiles: 'Quick Links' };
 const TILE_TITLES = ['Getting Started', 'Help', 'Bundled Extras'];
@@ -105,29 +110,32 @@ function pixelArtSizes(panelWidth) {
 }
 
 /**
- * What the hero is drawn as at a screen scale of 1: its own size when the band is wide enough, and the width of the
- * band, at the proportions of the picture, when it is not.
+ * What the hero is drawn as at a screen scale of 1: its own size when the band holds it and the padding of its panel,
+ * and what is left of the band, at the proportions of the picture, when it does not.
  * @returns {Promise<{ id: string, size: number[], native: number[], expected: number[], fit: string, inner: number, rendering: string, ariaHidden: string | null, pictures: number }>}
  */
 async function readHero(page) {
     return page.evaluate((natives) => {
-        const hero = document.querySelector('.welcomePanel .sbHomeHeroArt');
-        const band = hero.closest('.sbHomeBand');
+        const panel = document.querySelector('.welcomePanel .sbHomeHeroArt');
+        const figure = panel.querySelector('.sbArtFigure');
+        const band = panel.closest('.sbHomeBand');
         const style = getComputedStyle(band);
-        const inner = band.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight);
-        const box = hero.getBoundingClientRect();
-        const [width, height] = natives[hero.dataset.sbArtPlaceholder];
+        const panelStyle = getComputedStyle(panel);
+        const inner = band.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)
+            - Number.parseFloat(panelStyle.paddingLeft) - Number.parseFloat(panelStyle.paddingRight);
+        const box = figure.getBoundingClientRect();
+        const [width, height] = natives[figure.dataset.sbArtPlaceholder];
         const shown = Math.min(width, inner);
         return {
-            id: hero.dataset.sbArtPlaceholder,
+            id: figure.dataset.sbArtPlaceholder,
             size: [box.width, box.height],
             native: [width, height],
             expected: [shown, (height * shown) / width],
-            fit: hero.dataset.sbArtFit,
+            fit: panel.dataset.sbArtFit,
             inner,
-            rendering: getComputedStyle(hero.querySelector('img')).imageRendering,
-            ariaHidden: hero.getAttribute('aria-hidden'),
-            pictures: hero.querySelectorAll('img').length,
+            rendering: getComputedStyle(figure.querySelector('img')).imageRendering,
+            ariaHidden: panel.getAttribute('aria-hidden'),
+            pictures: panel.querySelectorAll('img').length,
         };
     }, HERO_NATIVE);
 }
@@ -1565,7 +1573,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             expect([Math.round(logoRect.width), Math.round(logoRect.height)]).toEqual(LOGO_SIZE);
 
             // The hero is a picture, not a stand-in: one image, hidden from assistive technology, at a size that fits the band.
-            const hero = await readHero(page);
+            const hero = await settledRead(page, readHero);
             expect(hero.pictures).toBe(1);
             expect(hero.ariaHidden).toBe('true');
             expect(hero.rendering).toBe(expectedRendering(hero));
@@ -1593,9 +1601,9 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await renderHome(page, []);
             await expect(hero('hero-duo-night')).toHaveCount(1);
             await expect(hero('hero-duo')).toHaveCount(0);
-            await expect(hero('hero-duo-night')).toHaveAttribute('aria-hidden', 'true');
+            await expect(hero('hero-duo-night').locator('xpath=..'), 'the panel around the figure is what hides it').toHaveAttribute('aria-hidden', 'true');
             await expect(hero('hero-duo-night').locator('img')).toHaveAttribute('src', /\/img\/sillybunny\/hero-duo-night@native\.webp\?v=/);
-            const night = await readHero(page);
+            const night = await settledRead(page, readHero);
             expect(night.id).toBe('hero-duo-night');
             expect(night.size[0]).toBeCloseTo(night.expected[0], 0);
             expect(night.size[1]).toBeCloseTo(night.expected[1], 0);

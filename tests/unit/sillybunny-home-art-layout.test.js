@@ -18,6 +18,7 @@ import {
     planBanner,
     planWidening,
 } from '../../public/scripts/sillybunny-home/art-layout.js';
+import { getPixelArt } from '../../public/scripts/sillybunny-home/art-sources.js';
 
 // jsdom has no ResizeObserver. The stub records what the layout asks of it.
 const observer = { observe: jest.fn(), unobserve: jest.fn(), disconnect: jest.fn() };
@@ -371,25 +372,39 @@ describe('createArtPanel', () => {
 });
 
 describe('createHeroArt', () => {
-    test.each([
-        ['hero-duo', 332, 366],
-        ['hero-duo-night', 361, 362],
-    ])('%s is one hidden figure of its own size, in the class that the band styles', (id, width, height) => {
-        const figure = createHeroArt(id);
+    test.each(['hero-duo', 'hero-duo-night'])('%s is a panel in the class that the band styles, with one hidden figure of its own size inside', (id) => {
+        const { width, height } = getPixelArt(id);
+        const panel = createHeroArt(id);
+        const figure = panel.firstElementChild;
 
-        expect(figure.classList.contains('sbHomeHeroArt')).toBe(true);
-        expect(figure.getAttribute('aria-hidden')).toBe('true');
+        expect(panel.classList.contains('sbHomeHeroArt')).toBe(true);
+        expect(panel.getAttribute('aria-hidden')).toBe('true');
+        expect(panel.children).toHaveLength(1);
         expect(figure.dataset.sbArtPlaceholder).toBe(id);
-        expect(figure.querySelectorAll('img')).toHaveLength(1);
+        expect(panel.querySelectorAll('img')).toHaveLength(1);
         expect([figure.style.width, figure.style.height]).toEqual([`${width}px`, `${height}px`]);
+    });
+
+    test('is on the same panel as the art of a window, so it shares the backdrop, the padding and the radius', () => {
+        const panel = createHeroArt('hero-duo');
+
+        expect(panel.classList.contains('sbArtPanel')).toBe(true);
+        expect(panel.dataset.sbArtMode).toBe('panel');
+    });
+
+    test('leaves the padding to the style sheet, which gives a narrow band a smaller one', () => {
+        const panel = createHeroArt('hero-duo');
+
+        expect(panel.style.getPropertyValue('--sb-art-pad')).toBe('');
     });
 
     test('is sized at the fixed step of its screen before it is in the document: 3x is the same CSS size as 1x', () => {
         window.devicePixelRatio = 3;
+        const { width, height } = getPixelArt('hero-duo');
 
-        const figure = createHeroArt('hero-duo');
+        const figure = createHeroArt('hero-duo').firstElementChild;
 
-        expect([figure.style.width, figure.style.height]).toEqual(['332px', '366px']);
+        expect([figure.style.width, figure.style.height]).toEqual([`${width}px`, `${height}px`]);
     });
 
     test('fails fast on a hero that is not in the export', () => {

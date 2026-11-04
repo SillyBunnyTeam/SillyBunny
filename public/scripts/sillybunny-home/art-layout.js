@@ -369,7 +369,8 @@ function fitBanner(ids, scale, availableWidth) {
 
 /**
  * The hero is drawn at the fixed step when it fits the band, at the largest step that does when it does not, and
- * shrunk by a fraction only when one device pixel per art pixel is still wider than the band.
+ * shrunk by a fraction only when one device pixel per art pixel is still wider than the band. The lavender panel
+ * around the picture takes its padding from the band too, so the picture gets what is left.
  * @param {ArtController} controller
  * @returns {{ kind: 'hero', fit: { step: number, ratio: number }, fixed: { step: number, ratio: number } } | null}
  */
@@ -386,12 +387,15 @@ function measureHero(controller) {
         resizeObserver?.observe(band);
     }
     const style = getComputedStyle(band);
-    const availableWidth = band.clientWidth - Number.parseFloat(style.paddingInlineStart) - Number.parseFloat(style.paddingInlineEnd);
+    const bandWidth = band.clientWidth - Number.parseFloat(style.paddingInlineStart) - Number.parseFloat(style.paddingInlineEnd);
     // A band that is not shown, such as in Compact, has no width. The figure keeps the size it had.
-    if (availableWidth <= 0) {
+    if (bandWidth <= 0) {
         return null;
     }
     const fixed = readFixedScale();
+    // The padding is the panel's own, from its style, because a narrow band gives it less than a window's panel has.
+    const panelStyle = getComputedStyle(controller.panel);
+    const availableWidth = bandWidth - Number.parseFloat(panelStyle.paddingInlineStart) - Number.parseFloat(panelStyle.paddingInlineEnd);
     return { kind: 'hero', fit: largestStepThatFits({ widths: [getPixelArt(controller.ids[0]).width], ...fixed, availableWidth }), fixed };
 }
 
@@ -400,7 +404,7 @@ function measureHero(controller) {
  * @param {NonNullable<ReturnType<typeof measureHero>>} plan
  */
 function applyHero(controller, { fit, fixed }) {
-    sizePixelFigure(controller.panel, fit);
+    sizePixelFigure(controller.figures[0].figure, fit);
     controller.panel.dataset.sbArtFit = describeFit(fit, fixed);
 }
 
@@ -678,19 +682,23 @@ export function createArtPanel(ids) {
 }
 
 /**
- * The hero of Home: one picture in the band, centred above the text. It is `aria-hidden`, and a screen reader reads
- * the text of the band alone.
+ * The hero of Home: one picture in the band, centred above the text, on the same lavender panel that the art of a window
+ * has. It is `aria-hidden`, and a screen reader reads the text of the band alone.
  * @param {'hero-duo' | 'hero-duo-night'} id
  * @returns {HTMLElement}
  */
 export function createHeroArt(id) {
     const figure = createPixelFigure(id);
-    figure.classList.add('sbHomeHeroArt');
-    figure.setAttribute('aria-hidden', 'true');
+    // The panel is what the band holds, and its class gives it the backdrop, the padding and the radius of a window's.
+    const panel = document.createElement('span');
+    panel.className = 'sbArtPanel sbHomeHeroArt';
+    panel.setAttribute('aria-hidden', 'true');
+    panel.dataset.sbArtMode = 'panel';
+    panel.append(figure);
     // Sized for the fixed step before it is in the document, and fitted to its band as soon as the band has a width.
     sizePixelFigure(figure, readFixedScale());
     /** @type {ArtController} */
-    const controller = { kind: 'hero', panel: figure, ids: [id], figures: [], host: null, seen: false, alignQueued: false };
+    const controller = { kind: 'hero', panel, ids: [id], figures: [{ id, figure }], host: null, seen: false, alignQueued: false };
     register(controller);
-    return figure;
+    return panel;
 }
