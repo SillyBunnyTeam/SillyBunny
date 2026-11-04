@@ -185,6 +185,8 @@ for (const reducedMotion of ['reduce', 'no-preference']) {
         await expect(trigger).toBeFocused();
         await trigger.press('Enter');
         await expect(sheet).toBeVisible();
+        // The sheet takes the keyboard focus a frame after it shows, and an Escape that arrives before that goes to the trigger behind it.
+        await expect(sheet.locator(':focus')).toHaveCount(1);
         await page.keyboard.press('Escape');
         await expect(sheet).toBeHidden();
         await expect(trigger).toBeFocused();
