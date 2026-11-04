@@ -1,0 +1,481 @@
+[
+    {
+        "name": "closure as the unnamed argument",
+        "script": "/stp-plain {: /stp-plain inner :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain inner ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["inner"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure with text before and after",
+        "script": "/stp-plain before {: /stp-plain inner :} after",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            "before ",
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain inner ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["inner"] }]
+                                }
+                            },
+                            " after"
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "empty closure",
+        "script": "/stp-plain {::}",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": [{ "closure": { "rawText": "", "executors": [] } }] }]
+            }
+        }
+    },
+    {
+        "name": "whitespace only closure",
+        "script": "/stp-plain {:   :}",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": [{ "closure": { "rawText": "   ", "executors": [] } }] }]
+            }
+        }
+    },
+    {
+        "name": "closure executed immediately",
+        "script": "/stp-plain {: /stp-plain inner :}()",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain inner ",
+                                    "executeNow": true,
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["inner"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure raw text keeps surrounding whitespace",
+        "script": "/stp-plain {:\n    /stp-plain inner\n:}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": "\n    /stp-plain inner\n",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["inner"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure as a named argument",
+        "script": "/stp-plain key={: /stp-plain inner :} rest",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [
+                            {
+                                "name": "key",
+                                "value": {
+                                    "closure": {
+                                        "rawText": " /stp-plain inner ",
+                                        "executors": [{ "name": "stp-plain", "unnamed": ["inner"] }]
+                                    }
+                                }
+                            }
+                        ],
+                        "unnamed": ["rest"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure named argument executed immediately",
+        "script": "/stp-plain key={: /stp-plain inner :}() rest",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [
+                            {
+                                "name": "key",
+                                "value": {
+                                    "closure": {
+                                        "rawText": " /stp-plain inner ",
+                                        "executeNow": true,
+                                        "executors": [{ "name": "stp-plain", "unnamed": ["inner"] }]
+                                    }
+                                }
+                            }
+                        ],
+                        "unnamed": ["rest"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure arguments become named arguments of the closure",
+        "script": "/stp-plain {: a=1 b=\"two words\" /stp-plain {{var::a}} :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " a=1 b=\"two words\" /stp-plain {{var::a}} ",
+                                    "args": [{ "name": "a", "value": "1" }, { "name": "b", "value": "two words" }],
+                                    "variables": ["a", "b"],
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["{{var::a}}"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "nested closures",
+        "script": "/stp-plain {: /stp-plain {: /stp-plain deep :} :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain {: /stp-plain deep :} ",
+                                    "executors": [
+                                        {
+                                            "name": "stp-plain",
+                                            "unnamed": [
+                                                {
+                                                    "closure": {
+                                                        "rawText": " /stp-plain deep ",
+                                                        "executors": [{ "name": "stp-plain", "unnamed": ["deep"] }]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "nested closure with arguments at each level",
+        "script": "/stp-plain {: a=1 /stp-plain {: b=2 /stp-plain {{var::b}} :} :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " a=1 /stp-plain {: b=2 /stp-plain {{var::b}} :} ",
+                                    "args": [{ "name": "a", "value": "1" }],
+                                    "variables": ["a"],
+                                    "executors": [
+                                        {
+                                            "name": "stp-plain",
+                                            "unnamed": [
+                                                {
+                                                    "closure": {
+                                                        "rawText": " b=2 /stp-plain {{var::b}} ",
+                                                        "args": [{ "name": "b", "value": "2" }],
+                                                        "variables": ["b"],
+                                                        "executors": [{ "name": "stp-plain", "unnamed": ["{{var::b}}"] }]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "pipes inside a closure do not end the outer command",
+        "script": "/stp-plain {: /stp-plain a | /stp-plain b :} | /stp-plain c",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a | /stp-plain b ",
+                                    "executors": [
+                                        { "name": "stp-plain", "unnamed": ["a"] },
+                                        { "name": "stp-plain", "unnamed": ["b"] }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    { "name": "stp-plain", "unnamed": ["c"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "two closures in one unnamed argument",
+        "script": "/stp-plain {: /stp-plain a :} {: /stp-plain b :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["a"] }]
+                                }
+                            },
+                            " ",
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain b ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["b"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closures in a split argument",
+        "script": "/stp-split {: /stp-plain a :} {: /stp-plain b :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-split",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["a"] }]
+                                }
+                            },
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain b ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["b"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure then plain value in a split argument",
+        "script": "/stp-split {: /stp-plain a :} text",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-split",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["a"] }]
+                                }
+                            },
+                            "text"
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure inside a split count argument",
+        "script": "/stp-split1 name {: /stp-plain a :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-split1",
+                        "unnamed": [
+                            "name",
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["a"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure with a no-pipe separator inside",
+        "script": "/stp-plain {: /stp-plain a || /stp-plain b :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a || /stp-plain b ",
+                                    "executors": [
+                                        { "name": "stp-plain", "unnamed": ["a"] },
+                                        { "name": "stp-plain", "unnamed": ["b"], "injectPipe": false }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure with a command that has its own named arguments",
+        "script": "/stp-plain {: /stp-plain k=v text :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain k=v text ",
+                                    "executors": [
+                                        {
+                                            "name": "stp-plain",
+                                            "named": [{ "name": "k", "value": "v" }],
+                                            "unnamed": ["text"]
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure end marker at the root is plain text",
+        "script": "/stp-plain a :} b",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a :} b"] }] } }
+    },
+    {
+        "name": "quoted text containing closure markers is not a closure",
+        "script": "/stp-plain \"{: /stp-plain x :}\" tail",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["{: /stp-plain x :}", " tail"] }] } }
+    },
+    {
+        "name": "closure after a leading quoted value",
+        "script": "/stp-plain \"quoted\" {: /stp-plain x :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            "quoted",
+                            " ",
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain x ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["x"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure after a quoted split value",
+        "script": "/stp-split \"a b\" {: /stp-plain x :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-split",
+                        "unnamed": [
+                            "a b",
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain x ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["x"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+]
