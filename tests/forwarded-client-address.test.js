@@ -13,6 +13,7 @@ import {
     startApp,
     writeErrorPage,
 } from './util/middleware-harness.js';
+import { MODULE_RELOAD_TIMEOUT_MS } from './util/module-reload-timeout.js';
 
 const LOCAL = '127.0.0.1';
 const LISTED = '192.0.2.10';
@@ -40,7 +41,7 @@ describe('whitelist with forwarded headers', () => {
         writeErrorPage(dataRoot, 'forbidden-by-whitelist.html', 'blocked: {{ipDetails}}');
         globalThis.DATA_ROOT = dataRoot;
         app = await startApp(await loadWhitelist([LOCAL, LISTED], { SILLYTAVERN_FORWARDEDHEADERS_CFCONNECTINGIP: 'true' }));
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     beforeEach(() => {
         jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -101,7 +102,7 @@ describe('whitelist with forwarded headers', () => {
 
         expect(result.status).toBe(403);
         expect(result.body).toBe('blocked: unknown');
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 });
 
 describe('client address for rate limits', () => {
@@ -110,7 +111,7 @@ describe('client address for rate limits', () => {
     beforeAll(async () => {
         await resetServerModules({ SILLYTAVERN_WHITELIST: JSON.stringify([LOCAL]) });
         ({ getIpAddress } = await import('../src/express-common.js'));
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     function fromAddress(remoteAddress, headers) {
         return { socket: { remoteAddress }, headers };
@@ -179,21 +180,21 @@ describe('rate limits behind a proxy', () => {
 
             expect(await failWith(app, { 'X-Forwarded-For': `198.51.100.1, ${CLIENT}` })).toBe(401);
             expect(await failWith(app, { 'X-Forwarded-For': `198.51.100.2, ${CLIENT}` })).toBe(429);
-        });
+        }, MODULE_RELOAD_TIMEOUT_MS);
 
         test('counts failures against the proxy when X-Real-IP and X-Forwarded-For name different clients', async () => {
             const app = await startBasicAuth();
 
             expect(await failWith(app, { 'X-Real-IP': '198.51.100.1', 'X-Forwarded-For': CLIENT })).toBe(401);
             expect(await failWith(app, { 'X-Real-IP': '198.51.100.2', 'X-Forwarded-For': CLIENT })).toBe(429);
-        });
+        }, MODULE_RELOAD_TIMEOUT_MS);
 
         test('counts failures against the socket address when the socket is not listed', async () => {
             const app = await startBasicAuth([LISTED]);
 
             expect(await failWith(app, { 'X-Real-IP': '198.51.100.1' })).toBe(401);
             expect(await failWith(app, { 'X-Real-IP': '198.51.100.2' })).toBe(429);
-        });
+        }, MODULE_RELOAD_TIMEOUT_MS);
 
         test('keeps separate counts for clients behind a listed proxy', async () => {
             const app = await startBasicAuth();
@@ -201,7 +202,7 @@ describe('rate limits behind a proxy', () => {
             expect(await failWith(app, { 'X-Forwarded-For': CLIENT })).toBe(401);
             expect(await failWith(app, { 'X-Forwarded-For': CLIENT })).toBe(429);
             expect(await failWith(app, { 'X-Forwarded-For': OTHER_CLIENT })).toBe(401);
-        });
+        }, MODULE_RELOAD_TIMEOUT_MS);
     });
 
     describe('account login', () => {
@@ -233,6 +234,6 @@ describe('rate limits behind a proxy', () => {
             expect(await logIn('198.51.100.1')).toBe(403);
             expect(await logIn('198.51.100.2')).toBe(403);
             expect(await logIn('198.51.100.3')).toBe(429);
-        });
+        }, MODULE_RELOAD_TIMEOUT_MS);
     });
 });

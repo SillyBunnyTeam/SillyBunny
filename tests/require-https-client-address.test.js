@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
 
 import { callMiddleware, closeApps, resetServerModules, sendRequest, startApp } from './util/middleware-harness.js';
+import { MODULE_RELOAD_TIMEOUT_MS } from './util/module-reload-timeout.js';
 
 const REMOTE = '198.51.100.20';
 const LISTED_PROXY = '192.0.2.50';
@@ -21,7 +22,7 @@ describe('requireHttps client address', () => {
         });
         ({ default: middleware } = await import('../src/middleware/requireHttps.js'));
         app = await startApp(middleware);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 
     afterAll(async () => {
         await closeApps();

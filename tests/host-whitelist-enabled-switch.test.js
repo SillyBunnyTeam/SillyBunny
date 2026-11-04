@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
 
 import { closeApps, createTempDirectory, removeTempDirectory, resetServerModules, sendRequest, startApp } from './util/middleware-harness.js';
+import { MODULE_RELOAD_TIMEOUT_MS } from './util/module-reload-timeout.js';
 
 describe('host whitelist enabled switch', () => {
     let dataRoot;
@@ -31,5 +32,5 @@ describe('host whitelist enabled switch', () => {
         const response = await sendRequest(app.port, { Host: 'unlisted.example' });
 
         expect(response.status).toBe(200);
-    });
+    }, MODULE_RELOAD_TIMEOUT_MS);
 });
