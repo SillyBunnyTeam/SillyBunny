@@ -158,7 +158,7 @@ This is the largest class by a wide margin.
   - `POST /api/characters/import` takes the import function only when `Object.hasOwn(formatImportFunctions, format)`, so every other file type gets the unsupported format answer.
   - `POST /api/characters/create` answers 400 to a `file_name` that sanitizes to nothing, such as `.` or `..`, because the same name also names the card's chats folder.
   - `src/png/extract.js` walks the chunk headers up to IEND before `png-chunks-extract` runs, and throws `PNG chunk at byte <n> runs past the end of the file` when a chunk header or the data length it declares does not fit in the file. `read()` and `write()` in `src/character-card-parser.js` use it. A file that ends inside the CRC of a chunk still gets the CRC error, and a file that ends inside the CRC of IEND still imports.
-- **Tests:** `tests/character-archive-assets.test.js`, `tests/character-route-names.test.js`, `tests/png-chunk-bounds.test.js`, `tests/sprite-upload-images.test.js`.
+- **Tests:** `tests/character-archive-assets.test.js`, `tests/character-route-names.test.js`, `tests/png-chunk-bounds.test.js`, `tests/png-chunk-fuzz.test.js` (chunk lengths past the end of the file and files cut inside a chunk), `tests/sprite-upload-images.test.js`.
 - **Fixes:** `803c96bf0` (import formats), `45683ee8b` (create file names), `1d06397ae` (archive asset folders), `42c2a54d6` (archive images), `cf407575c` (PNG chunk lengths), `afac16c92` (shared image check), `2049ad29e` (sprite uploads).
 
 ### Character route input
