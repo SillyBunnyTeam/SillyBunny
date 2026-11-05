@@ -15,6 +15,8 @@ import {
 } from './util/middleware-harness.js';
 
 const REMOTE_HOST = 'app.example';
+// The test requests come from 127.0.0.1, so they name a remote client in X-Forwarded-For, as a reverse proxy on this machine would.
+const FROM_REMOTE_CLIENT = { 'X-Forwarded-For': '192.0.2.10' };
 
 async function loadRequireHttps(env, configPath) {
     await resetServerModules(env, configPath);
@@ -40,8 +42,8 @@ describe('requireHttps middleware', () => {
             ['a remote host', REMOTE_HOST],
             ['a remote host with a port', `${REMOTE_HOST}:8443`],
             ['a remote IPv4 literal', '192.0.2.10:8443'],
-        ])('answers 403 with a JSON error to plain HTTP for %s', async (_name, host) => {
-            const response = await sendRequest(app.port, { Host: host });
+        ])('answers 403 with a JSON error to plain HTTP from a remote client for %s', async (_name, host) => {
+            const response = await sendRequest(app.port, { Host: host, ...FROM_REMOTE_CLIENT });
 
             expect(response.status).toBe(403);
             expect(response.headers['content-type']).toContain('application/json');
@@ -146,7 +148,7 @@ describe('requireHttps middleware', () => {
             fs.writeFileSync(configPath, configText);
             const app = await startApp(await loadRequireHttps({}, configPath));
 
-            const response = await sendRequest(app.port, { Host: REMOTE_HOST });
+            const response = await sendRequest(app.port, { Host: REMOTE_HOST, ...FROM_REMOTE_CLIENT });
 
             expect(response.status).toBe(expectedStatus);
         });
