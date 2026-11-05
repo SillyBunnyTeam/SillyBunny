@@ -724,6 +724,17 @@ export function getUserDirectories(handle) {
     return directories;
 }
 
+// SillyBunny: getUserDirectories() joins the handle into a path as it is, so routes that remove or archive a whole user folder check where it is first.
+/**
+ * Checks that the root folder of a handle is a folder directly inside the data root.
+ * @param {string} handle User handle
+ * @returns {boolean} Whether the root folder is a direct child of the data root and has the handle as its name
+ */
+export function isUserRootInsideDataRoot(handle) {
+    const root = path.resolve(getUserDirectories(handle).root);
+    return path.dirname(root) === path.resolve(globalThis.DATA_ROOT) && path.basename(root) === handle;
+}
+
 /**
  * Gets the avatar URL for the provided user.
  * @param {string} handle User handle
@@ -1002,7 +1013,14 @@ export async function setUserDataMiddleware(request, response, next) {
     }
 
     /** @type {User} */
-    const user = await storage.getItem(toKey(handle));
+    let user;
+    // SillyBunny: Express 4 does not catch a rejection from async middleware, so a failed read answers here or the request stays open.
+    try {
+        user = await storage.getItem(toKey(handle));
+    } catch (error) {
+        console.error('Failed to read the user record:', handle, error);
+        return response.sendStatus(500);
+    }
 
     if (!user) {
         console.error('User not found:', handle);

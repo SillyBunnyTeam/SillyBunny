@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { finished } from 'node:stream/promises';
+import { pipeline } from 'node:stream/promises';
 
 import mime from 'mime-types';
 import express from 'express';
@@ -19,7 +19,8 @@ const VALID_CATEGORIES = ['bgm', 'ambient', 'blip', 'live2d', 'vrm', 'character'
  * @returns {{error: boolean, message?: string}} Whether validation failed, and why if so
  */
 export function validateAssetFileName(inputFilename) {
-    if (!/^[a-zA-Z0-9_\-.]+$/.test(inputFilename)) {
+    // SillyBunny: the regular expression converts other values to text, which can throw, and later checks need a string.
+    if (typeof inputFilename !== 'string' || !/^[a-zA-Z0-9_\-.]+$/.test(inputFilename)) {
         return {
             error: true,
             message: 'Illegal character in filename; only alphanumeric, \'_\', \'-\' are accepted.',
@@ -205,8 +206,9 @@ router.post('/download', async (request, response) => {
 
         // Check category
         let category = null;
+        // SillyBunny: loose equality converts an object category to text, which can throw.
         for (let i of VALID_CATEGORIES)
-            if (i == inputCategory)
+            if (i === inputCategory)
                 category = i;
 
         if (category === null) {
@@ -235,8 +237,9 @@ router.post('/download', async (request, response) => {
             await fs.promises.unlink(temp_path);
         }
         const fileStream = fs.createWriteStream(destination, { flags: 'wx' });
+        // SillyBunny: pipe() leaves an error from the download body unhandled, and the file stream then never finishes.
         // @ts-ignore
-        await finished(res.body.pipe(fileStream));
+        await pipeline(res.body, fileStream);
 
         if (category === 'character') {
             const fileContent = fs.readFileSync(temp_path);
@@ -254,7 +257,10 @@ router.post('/download', async (request, response) => {
         response.sendStatus(200);
     } catch (error) {
         console.error(error);
-        response.sendStatus(500);
+        // SillyBunny: the character branch answers before it removes the temp file, so an error after that must not answer again.
+        if (!response.headersSent) {
+            response.sendStatus(500);
+        }
     }
 });
 
@@ -271,8 +277,9 @@ router.post('/delete', async (request, response) => {
 
     // Check category
     let category = null;
+    // SillyBunny: loose equality converts an object category to text, which can throw before the try block.
     for (let i of VALID_CATEGORIES)
-        if (i == inputCategory)
+        if (i === inputCategory)
             category = i;
 
     if (category === null) {
@@ -313,7 +320,8 @@ router.post('/delete', async (request, response) => {
  * @returns {void}
  */
 router.post('/character', async (request, response) => {
-    if (request.query.name === undefined) return response.sendStatus(400);
+    // SillyBunny: an extended query string can make name an object, whose conversion to text can throw before the try block.
+    if (typeof request.query.name !== 'string') return response.sendStatus(400);
 
     // For backwards compatibility, don't reject invalid character names, just sanitize them
     const name = sanitize(request.query.name.toString());
@@ -321,8 +329,9 @@ router.post('/character', async (request, response) => {
 
     // Check category
     let category = null;
+    // SillyBunny: loose equality converts an object category to text, which can throw before the try block.
     for (let i of VALID_CATEGORIES)
-        if (i == inputCategory)
+        if (i === inputCategory)
             category = i;
 
     if (category === null) {
