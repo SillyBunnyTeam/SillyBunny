@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import { Buffer } from 'node:buffer';
 
 import encode from './png/encode.js';
-import extract from 'png-chunks-extract';
+// SillyBunny: this extract rejects a chunk that runs past the end of the file before png-chunks-extract reads the chunks.
+import extract from './png/extract.js';
 import PNGtext from 'png-chunk-text';
 
 const MIRRORED_FIELD_MAPPINGS = {

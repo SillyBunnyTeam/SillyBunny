@@ -10,6 +10,7 @@ import { color, getConfigValue, tryParse, tryWriteFileSync } from '../util.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 import { clearChatRecoveryState, createGroupChatTarget, markChatDeleted, runChatRecoveryBestEffort } from '../chat-recovery.js';
 import { createEntityDateAdded, ensureEntityDateAdded, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
+import { getGroupChatPath } from './chats.js';
 
 export const router = express.Router();
 const isChatBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
@@ -32,6 +33,17 @@ function warnOnGroupMetadata(groupData) {
             delete groupData[key];
         }
     });
+}
+
+// SillyBunny: other routes join stored chat IDs into paths, so a group may store only IDs that name a file inside the group chats folder.
+/**
+ * Checks the chat list in the body of a group create or edit request.
+ * @param {import('express').Request} request Request whose body holds the group data
+ * @returns {boolean} False when the body has a chat list with an ID that names no file inside the group chats folder
+ */
+function hasValidChatIds(request) {
+    const { chats } = request.body;
+    return !Array.isArray(chats) || chats.every(chatId => getGroupChatPath(request.user.directories.groupChats, chatId) !== null);
 }
 
 /**
@@ -226,6 +238,10 @@ router.post('/create', (request, response) => {
     if (!request.body) {
         return response.sendStatus(400);
     }
+    // SillyBunny: check the chat list before the group is stored, because other routes join its IDs into paths.
+    if (!hasValidChatIds(request)) {
+        return response.sendStatus(400);
+    }
 
     warnOnGroupMetadata(request.body);
     const id = String(Date.now());
@@ -279,6 +295,10 @@ router.post('/edit', getFileNameValidationFunction('id'), (request, response) =>
     if (!request.body || !request.body.id) {
         return response.sendStatus(400);
     }
+    // SillyBunny: check the chat list before the group is stored, because other routes join its IDs into paths.
+    if (!hasValidChatIds(request)) {
+        return response.sendStatus(400);
+    }
     warnOnGroupMetadata(request.body);
     const id = request.body.id;
     const pathToFile = path.join(request.user.directories.groups, sanitize(`${id}.json`));
@@ -311,6 +331,10 @@ router.post('/edit', getFileNameValidationFunction('id'), (request, response) =>
 
 router.post('/delete', getFileNameValidationFunction('id'), async (request, response) => {
     if (!request.body || !request.body.id) {
+        return response.sendStatus(400);
+    }
+    // SillyBunny: converting another value to a file name can throw, and a throw before the try block leaves this async route uncaught.
+    if (typeof request.body.id !== 'string' && typeof request.body.id !== 'number') {
         return response.sendStatus(400);
     }
 

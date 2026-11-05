@@ -44,30 +44,81 @@ export function getRealIpFromHeader(req) {
     return getIpFromRequest(req);
 }
 
+// SillyBunny: a forwarded value can come from a client, so addresses are parsed strictly, and a value that is not an IP address matches nothing instead of throwing.
 /**
- * Get the client IP address from the request headers.
- * @param {import('express').Request} req Express request object
- * @returns {string|undefined} The client IP address
+ * Parses an IP address for matching against IP patterns.
+ * @param {unknown} address Address text
+ * @returns {string|null} The address in canonical form, with an IPv4-mapped IPv6 address as IPv4 and without an IPv6 zone index, or null when the text is not an IP address
  */
-export function getRealOrForwardedIp(req) {
+function normalizeIpAddress(address) {
+    if (typeof address !== 'string') {
+        return null;
+    }
+    const text = address.trim();
+    if (!ipaddr.IPv4.isValidFourPartDecimal(text) && !ipaddr.IPv6.isValid(text)) {
+        return null;
+    }
+    const ip = ipaddr.process(text);
+    return ip instanceof ipaddr.IPv6 ? new ipaddr.IPv6(ip.parts).toString() : ip.toString();
+}
+
+/**
+ * Checks if an address matches any of the IP patterns.
+ * @param {unknown} address Address text
+ * @param {string[]} patterns Valid IP patterns, such as whitelist entries
+ * @returns {boolean} True if the address matches a pattern, false for a value that is not an IP address
+ */
+export function isIpInPatterns(address, patterns) {
+    const ip = normalizeIpAddress(address);
+    return ip !== null && patterns.some(pattern => ipMatching.matches(ip, ipMatching.getMatch(pattern)));
+}
+
+// SillyBunny: the server cannot tell which forwarded header its proxy set and which one a client sent through it, so every enabled header counts.
+/**
+ * Lists the client addresses that the enabled forwarded headers name.
+ * Each proxy adds the address it received the request from at the end of X-Forwarded-For, so the list is read from the right:
+ * entries of trusted hops are skipped, and the first other entry is the client. When every entry is a trusted hop, the leftmost entry is the client.
+ * @param {import('express').Request} req Express request object
+ * @param {string[]} trustedProxies IP patterns of the hops whose X-Forwarded-For entries are believed
+ * @returns {string[]} The addresses as the headers carry them, in the order X-Real-IP, CF-Connecting-IP, X-Forwarded-For
+ */
+export function getForwardedIps(req, trustedProxies) {
     const xRealIpEnabled = !!getConfigValue('forwardedHeaders.xRealIp', true, 'boolean');
     const cfConnectingIpEnabled = !!getConfigValue('forwardedHeaders.cfConnectingIp', false, 'boolean');
     const xForwardedForEnabled = !!getConfigValue('forwardedHeaders.xForwardedFor', true, 'boolean');
+    const forwardedIps = [];
 
     if (req.headers['x-real-ip'] && xRealIpEnabled) {
-        return req.headers['x-real-ip'].toString();
+        forwardedIps.push(req.headers['x-real-ip'].toString());
     }
 
     if (req.headers['cf-connecting-ip'] && cfConnectingIpEnabled) {
-        return req.headers['cf-connecting-ip'].toString();
+        forwardedIps.push(req.headers['cf-connecting-ip'].toString());
     }
 
     if (req.headers['x-forwarded-for'] && xForwardedForEnabled) {
-        const ipList = req.headers['x-forwarded-for'].toString().split(',').map(ip => ip.trim());
-        return ipList[0];
+        const ipList = req.headers['x-forwarded-for'].toString().split(',').map(ip => ip.trim()).filter(ip => ip);
+        let clientIp = ipList.pop();
+        while (ipList.length > 0 && isIpInPatterns(clientIp, trustedProxies)) {
+            clientIp = ipList.pop();
+        }
+        if (clientIp) {
+            forwardedIps.push(clientIp);
+        }
     }
 
-    return undefined;
+    return forwardedIps;
+}
+
+let trustedProxies = null;
+
+/**
+ * Gets the IP patterns of the hops whose forwarded headers are believed.
+ * @returns {string[]} The valid whitelist entries
+ */
+export function getTrustedProxies() {
+    trustedProxies ??= filterValidIpPatterns(getConfigValue('whitelist', []));
+    return trustedProxies;
 }
 
 /**
@@ -78,8 +129,24 @@ export function getRealOrForwardedIp(req) {
  */
 export function getIpAddress(request, includeHeaderIp) {
     const socketIp = getIpFromRequest(request);
-    const forwardedIp = includeHeaderIp && getRealOrForwardedIp(request);
+    // SillyBunny: a forwarded address counts only from a trusted hop and only when every enabled header names it, so the result is never a value that the client chooses.
+    const forwardedIp = includeHeaderIp && getTrustedForwardedIp(request, socketIp);
     return forwardedIp ? `${socketIp} (forwarded: ${forwardedIp})` : socketIp;
+}
+
+/**
+ * Gets the client address that a trusted hop forwarded.
+ * @param {import('express').Request} request Request object
+ * @param {string} socketIp Socket address of the request
+ * @returns {string|null} The address, or null when the socket is not a trusted hop or the enabled headers do not name one valid address
+ */
+function getTrustedForwardedIp(request, socketIp) {
+    const proxies = getTrustedProxies();
+    if (!isIpInPatterns(socketIp, proxies)) {
+        return null;
+    }
+    const forwardedIps = new Set(getForwardedIps(request, proxies).map(normalizeIpAddress));
+    return forwardedIps.size === 1 ? [...forwardedIps][0] : null;
 }
 
 /**
