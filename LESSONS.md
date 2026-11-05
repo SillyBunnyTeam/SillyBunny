@@ -129,6 +129,34 @@ This is the largest class by a wide margin.
 - **No test:** `c1a87366c` (#522, Bun bootstrap on Termux), `cd7429421` (issue #672, unescaped parentheses in `Start-Node.bat`).
 - **Fixes:** #806 (explicit Base64 decode on Bun), #912 (run npm through Node.js on Windows).
 
+### Character import and upload files
+
+- **Breaks:** data in an imported card or archive, in an uploaded sprite or sprite pack, or in a create request decides which folder the server writes to, which file type it stores, or how long the card parser runs.
+- **Cause:** the import and upload code takes names, extensions and chunk lengths from the data it receives. A name that sanitizes to nothing makes the parent folder the target folder, an archive or uploaded file keeps its own extension, `sanitize-filename` keeps only the first 255 bytes of a name and so can cut off an extension at its end, and `png-chunks-extract` allocates, copies and checksums the length that a chunk declares before it finds that the file is shorter.
+- **Files:** `src/endpoints/characters.js`, `src/endpoints/sprites.js`, `src/image-file-type.js`, `src/character-card-parser.js`, `src/png/extract.js`, `src/charx.js`, `src/byaf.js`.
+- **Guards:**
+  - `getCardAssetFolder()` in `src/endpoints/characters.js` names the asset folder of a CHARX or BYAF card after the sanitized card name, or after the card's file name when the name sanitizes to nothing. A CHARX import skips its assets when that name is not a folder directly inside the characters and user images folders. A preserved name such as `...png` gives that on POSIX systems, where `getPreservedName()` does not sanitize.
+  - `isImageFile()` in `src/image-file-type.js` accepts a file only when its extension is png, apng, jpg, jpeg, jfif, gif, webp, avif or bmp and its leading bytes are an image of that type. A BYAF import stores a background or an alternate icon, and a CHARX import an asset, only when it passes; `isArchiveImage()` in `characters.js` logs the others. The stored bytes are the archive's bytes. A BYAF chat names only the backgrounds that were stored.
+  - `POST /api/sprites/upload-zip` stores a pack entry only when its sanitized name passes `isImageFile()`. `POST /api/sprites/upload` keeps the uploaded extension when that passes, takes the extension of the image type that the bytes are (`getImageExtension()`) when it does not, and answers 400 when the sanitized name still fails, before it replaces an existing sprite. A sprite uploaded from a URL arrives as `image.png` whatever its type, so a wrong image extension is replaced and not refused. `readImageSignature()` reads only the leading bytes of the upload.
+  - `POST /api/characters/import` takes the import function only when `Object.hasOwn(formatImportFunctions, format)`, so every other file type gets the unsupported format answer.
+  - `POST /api/characters/create` answers 400 to a `file_name` that sanitizes to nothing, such as `.` or `..`, because the same name also names the card's chats folder.
+  - `src/png/extract.js` walks the chunk headers up to IEND before `png-chunks-extract` runs, and throws `PNG chunk at byte <n> runs past the end of the file` when a chunk header or the data length it declares does not fit in the file. `read()` and `write()` in `src/character-card-parser.js` use it. A file that ends inside the CRC of a chunk still gets the CRC error, and a file that ends inside the CRC of IEND still imports.
+- **Tests:** `tests/character-archive-assets.test.js`, `tests/character-route-names.test.js`, `tests/png-chunk-bounds.test.js`, `tests/sprite-upload-images.test.js`.
+- **Fixes:** `803c96bf0` (import formats), `45683ee8b` (create file names), `1d06397ae` (archive asset folders), `42c2a54d6` (archive images), `cf407575c` (PNG chunk lengths), `afac16c92` (shared image check), `2049ad29e` (sprite uploads).
+
+### Character route input
+
+- **Breaks:** a request field of an unexpected type, or a file that a route cannot recover or remove, makes a character route throw outside its `try` block. The request gets no answer, and the `unhandledRejection` handler in `src/server-main.js` stops the server with exit code 0, which the supervisor does not restart.
+- **Cause:** Express 4 does not catch a rejection from an async route. `sanitize()`, `path.parse()` and `path.join()` throw on a value that is not a string, and `getFileNameValidationFunction()` in `src/middleware/validateFileName.js` checks a field only for separators and NUL, so a number, a list or an object reaches the route. A JSON body can send an object whose `toString` is not a function, and loose equality, string concatenation and `Number()` throw for it. `charaFormatData()` keeps a `json_data` that parses to a primitive (`tryParse(...) || {}`), and setting a field on a primitive throws in an ES module.
+- **Files:** `src/endpoints/characters.js`.
+- **Guards:**
+  - `POST /api/characters/rename` answers 400 when `avatar_url` or `new_name` is not a string.
+  - `POST /api/characters/edit` answers 400 when `avatar_url` is missing, empty or not a string. It formats the body inside a `try` block that answers 400 when `charaFormatData()` throws or returns a primitive.
+  - `POST /api/characters/delete` answers 400 when `delete_chats` is an object. It logs a thumbnail that `invalidateThumbnail()` cannot remove and still answers 200, because the card is already deleted.
+  - `POST /api/characters/import` answers 500 when `recoverFileWriteSync()` throws for the card that `preserved_name` names, for example on a damaged write-recovery record.
+- **Tests:** `tests/character-route-inputs.test.js`. Its harness option `requestTimeoutMs` makes a request that a route never answers fail at a deadline, and Jest fails the running test with the unhandled rejection.
+- **Fixes:** `5e6923c81` (request fields), `62068ea31` (file steps).
+
 ### Security and credentials
 
 - **Breaks:** untrusted card scripts reach remote resources; secrets cross scopes.

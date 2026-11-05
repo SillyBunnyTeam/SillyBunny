@@ -467,11 +467,67 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Character import, create and rename file names. |
 | Divergence reason | TODO(copy) |
 | Target seam | none yet. |
-| Adapter shape | `getPngName()` sanitises the name on every platform with `sanitizeSafeCharacterReplacements` (an empty result becomes `character`), then drops a trailing `.png` in any case, because `getPngFileName()` keeps that extension; the name it returns always maps to `<name>.png`. `writeCharacterData()` fails when `resolveCharacterAvatarPath()` rejects the target name. The V2/V3 JSON branch of `importFromJson()` sanitises `data.name` and `name` before `readFromV2()`, as SillyTavern's does since `1bb2a5ea1`. `getPreservedName()` keeps `sanitiseFilenameForWindows()`. |
-| Protecting tests | `tests/character-card-metadata-preservation.test.js`, `tests/entity-date-added-endpoints.test.js` and `tests/entity-last-chat-endpoints.test.js` create, edit and rename cards through `getPngName()` and `writeCharacterData()`. |
-| Validation | `npm run test:unit --prefix tests` (on Windows, the same 10 suites and 33 tests fail as on the base commit), `npm run lint`. |
-| Rollback path | Revert the `getPngName()`, `writeCharacterData()` and `importFromJson()` hunks. No stored data or settings change. |
-| Last reviewed | 2026-11-02 character file names sanitised on every platform. |
+| Adapter shape | `getPngName()` sanitises the name on every platform with `sanitizeSafeCharacterReplacements` (an empty result becomes `character`), then drops a trailing `.png` in any case, because `getPngFileName()` keeps that extension; the name it returns always maps to `<name>.png`. `writeCharacterData()` fails when `resolveCharacterAvatarPath()` rejects the target name. The V2/V3 JSON branch of `importFromJson()` sanitises `data.name` and `name` before `readFromV2()`, as SillyTavern's does since `1bb2a5ea1`. `getPreservedName()` keeps `sanitiseFilenameForWindows()`. `POST /create` answers 400 when `sanitize()` turns a given `file_name` into an empty string, because the same name also names the card's chats folder. |
+| Protecting tests | `tests/character-card-metadata-preservation.test.js`, `tests/entity-date-added-endpoints.test.js` and `tests/entity-last-chat-endpoints.test.js` create, edit and rename cards through `getPngName()` and `writeCharacterData()`. `tests/character-route-names.test.js` sends create requests whose `file_name` sanitizes to nothing. |
+| Validation | `npm run test:unit --prefix tests -- character-route-names.test.js entity-date-added-endpoints.test.js entity-last-chat-endpoints.test.js` (on the base commit the four create rows answer 200), `npm run lint`. |
+| Rollback path | Revert the `getPngName()`, `writeCharacterData()` and `importFromJson()` hunks, and the `file_name` check in `POST /create`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 create file names that sanitize to nothing. |
+| Owner | TODO(copy) |
+
+### `src/endpoints/characters.js` - archive card assets and import formats
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | CHARX and BYAF asset storage, and the format lookup of `POST /import`. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/image-file-type.js` for the image check; none yet for the asset folders and the format lookup. |
+| Adapter shape | `getCardAssetFolder()` returns the sanitized card name, else the card's file name, or `null` when that name is not a folder directly inside the characters and user images folders. `importFromCharX()` passes it to `persistCharXAssets()` and skips the assets for `null`; `importFromByaf()` uses it for the alternate icon folder. `isArchiveImage()` passes a file to `isImageFile()` from `src/image-file-type.js`, which accepts it only when its extension is png, apng, jpg, jpeg, jfif, gif, webp, avif or bmp and its leading bytes match that type, and logs the files that fail. `importFromCharX()` filters the parser's auxiliary assets with it; `importFromByaf()` filters the chat backgrounds before it writes them and the chats, and filters the alternate icons. The stored bytes stay as they are. `POST /import` takes the import function only when `Object.hasOwn(formatImportFunctions, format)`. `src/charx.js` and `src/byaf.js` stay as in SillyTavern. |
+| Protecting tests | `tests/character-archive-assets.test.js`, `tests/character-route-names.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- character-archive-assets.test.js character-route-names.test.js` (all 13 pass after the image check moved to `src/image-file-type.js`; when that check accepts every file, the 3 image tests fail), `npm run lint`. |
+| Rollback path | Revert the `getCardAssetFolder()` and `isArchiveImage()` additions, the `isImageFile()` import, their uses in `importFromCharX()` and `importFromByaf()`, and the `Object.hasOwn()` lookup in `POST /import`. `src/image-file-type.js` stays while `src/endpoints/sprites.js` uses it. No stored data or settings change. |
+| Last reviewed | 2026-11-05 image check moved to `src/image-file-type.js`. |
+| Owner | TODO(copy) |
+
+### `src/endpoints/characters.js` - route input types and errors
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | Request checks and error handling of `POST /rename`, `POST /edit`, `POST /delete` and `POST /import`. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | `POST /rename` answers 400 when `avatar_url` or `new_name` is not a string, before `sanitize()` and `path.parse()`. `POST /edit` answers 400 when `avatar_url` is not a non-empty string, before `path.join()`, and runs `charaFormatData()`, the `chat` and `create_date` assignments and `JSON.stringify()` inside a `try` block that answers 400. `POST /delete` answers 400 when `delete_chats` is an object, before `delete_chats == true`, and calls `invalidateThumbnail()` inside a `try` block that logs the error. `POST /import` calls `recoverFileWriteSync()` for `preserved_name` inside a `try` block that answers 500. `charaFormatData()` stays as in SillyTavern. |
+| Protecting tests | `tests/character-route-inputs.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- character-route-inputs.test.js` (with the base commit's `characters.js`, all 19 tests fail: each request gets no answer, and its error reaches Jest as an unhandled rejection), `npm run lint`. |
+| Rollback path | Revert the type checks in `POST /rename`, `POST /edit` and `POST /delete`, and the `try` blocks around the formatting in `POST /edit`, `invalidateThumbnail()` in `POST /delete` and `recoverFileWriteSync()` in `POST /import`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 route input types and errors. |
+| Owner | TODO(copy) |
+
+### `src/endpoints/sprites.js` - sprite file types
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/sprites.js`. |
+| Area | Sprite uploads (`POST /api/sprites/upload` and `POST /api/sprites/upload-zip`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/image-file-type.js`. |
+| Adapter shape | `/upload-zip` keeps an entry of `getImageBuffers()` only when `isImageFile(path.extname(sanitize(filename)), buffer)` passes. `/upload` reads the leading bytes of the upload with `readImageSignature()`, keeps the uploaded extension when `isImageFile()` passes, else takes `getImageExtension()`, and sanitizes the name. When the sanitized name fails `isImageFile()`, the route deletes the upload and answers 400 before it creates the sprite folder or deletes an existing sprite. The stored bytes stay as they are. |
+| Protecting tests | `tests/sprite-upload-images.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- sprite-upload-images.test.js` (with the base commit's `sprites.js`, all 8 tests fail), `npm run lint`. |
+| Rollback path | Revert the `/upload-zip` filter, the `/upload` check and the import in `src/endpoints/sprites.js`. Keep `src/image-file-type.js`, which the character imports use. No stored data or settings change. |
+| Last reviewed | 2026-11-05 sprite upload file types. |
+| Owner | TODO(copy) |
+
+### `src/character-card-parser.js` - PNG chunk bounds
+| Field | Value |
+| --- | --- |
+| File | `src/character-card-parser.js`. |
+| Area | Character card PNG parsing (`read()`, `write()` and `parse()`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/png/extract.js`. |
+| Adapter shape | The module imports `extract` from `./png/extract.js` instead of `png-chunks-extract`. That `extract()` walks the chunk headers up to IEND and throws `PNG chunk at byte <n> runs past the end of the file` when a chunk header or the data length it declares does not fit in the file, then returns the result of `png-chunks-extract`. Data without the PNG signature goes to `png-chunks-extract` unchecked. |
+| Protecting tests | `tests/png-chunk-bounds.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- png-chunk-bounds.test.js` (on the base commit 8 of its 12 tests fail; the other 4 pin what the check leaves unchanged), `npm run lint`. |
+| Rollback path | Import `extract` from `png-chunks-extract` again, then delete `src/png/extract.js` and `tests/png-chunk-bounds.test.js`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 PNG chunk bounds. |
 | Owner | TODO(copy) |
 
 ### `src/server-main.js` - session auth routes
