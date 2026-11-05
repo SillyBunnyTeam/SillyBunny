@@ -449,15 +449,15 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### `src/express-common.js`, `src/middleware/whitelist.js`, `src/middleware/basicAuth.js` and `src/middleware/hostWhitelist.js` - client addresses and configured credentials
 | Field | Value |
 | --- | --- |
-| File | `src/express-common.js`, `src/middleware/whitelist.js`, `src/middleware/basicAuth.js`, `src/middleware/hostWhitelist.js`. |
+| File | `src/express-common.js`, `src/middleware/whitelist.js`, `src/middleware/basicAuth.js`, `src/middleware/hostWhitelist.js`, and the comments for `rateLimiting.preferRealIpHeader`, `forwardedHeaders` and `forwardedHeaders.xForwardedFor` in `default/config.yaml`. |
 | Area | Access control: IP whitelist, rate-limit keys, basic auth and host whitelist. |
 | Divergence reason | TODO(copy) |
 | Target seam | none yet. |
 | Adapter shape | `express-common.js`: `getForwardedIps(req, trustedProxies)` replaces `getRealOrForwardedIp()`. It returns the address in each enabled forwarded header and reads `X-Forwarded-For` from the right past trusted hops. `isIpInPatterns()` matches through a strict parser (`normalizeIpAddress()`), so a value that is not an IP address matches nothing and an IPv4-mapped value matches its IPv4 entry. `getTrustedProxies()` returns the valid `whitelist` entries. `getIpAddress()` adds a forwarded address only when the socket address is a trusted hop and every enabled header names the same valid address. `whitelist.js`: blocks unless every address from `getForwardedIps()` is listed, names the first unlisted one, and matches through `isIpInPatterns()`. `basicAuth.js`: `matchesConfiguredUser()` refuses an empty or non-string configured username or password and compares with `crypto.timingSafeEqual()` over SHA-256 digests. `hostWhitelist.js`: reads `hostWhitelist.enabled` with the `'boolean'` converter. |
 | Protecting tests | `tests/forwarded-client-address.test.js`, `tests/basic-auth-configured-credentials.test.js`, `tests/host-whitelist-enabled-switch.test.js`. `tests/require-https-client-address.test.js` covers `src/middleware/requireHttps.js`, a SillyBunny file that uses `getTrustedProxies()` and `isIpInPatterns()`. |
 | Validation | `npm run test:unit -- tests/forwarded-client-address.test.js tests/require-https-client-address.test.js tests/basic-auth-configured-credentials.test.js tests/host-whitelist-enabled-switch.test.js` (35 of the 41 tests fail with the base commit's sources), the same files on Linux, `npm run lint` in the root and in `tests/`, and a boot with `bun server.js` and `node server.js`. |
-| Rollback path | Revert the five commits that the `LESSONS.md` section "Client addresses behind proxies" lists, or the hunks of each file. `src/middleware/requireHttps.js` imports `getTrustedProxies()` and `isIpInPatterns()`, so its commit reverts with the others. No stored data, settings or config keys change. |
-| Last reviewed | 2026-11-05 forwarded client addresses and configured basic auth credentials. |
+| Rollback path | Revert the five commits that the `LESSONS.md` section "Client addresses behind proxies" lists, or the hunks of each file. `src/middleware/requireHttps.js` imports `getTrustedProxies()` and `isIpInPatterns()`, so its commit reverts with the others. Restore those three `default/config.yaml` comments to the upstream text. No stored data, settings or config keys change. |
+| Last reviewed | 2026-11-05 forwarded client addresses, configured basic auth credentials and the forwarded header comments. |
 | Owner | TODO(copy) |
 
 ### `src/transformers.js` - caption image decoding
