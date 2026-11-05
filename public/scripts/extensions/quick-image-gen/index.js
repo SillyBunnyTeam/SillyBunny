@@ -1,4 +1,6 @@
 import { NOVELAI_IMAGE_MODELS, isNovelAIV5Model, normalizeNovelAIImageParameters } from "../../novelai-image-models.js";
+import { buildNovelAIPreciseReferenceParameters } from "../../novelai-precise-reference.js";
+import { mountNovelAIPreciseReferenceEditor } from "../../novelai-precise-reference-ui.js";
 import { createModelCatalogRefresher, fetchModelCatalog, getModelCatalogRequest, getRoutewayModelSizes, LIVE_MODEL_PROVIDERS, modelSuggestions, QIG_MODEL_INPUTS } from "./lib/model-catalogs.js";
 import {
     MAX_IMAGE_BYTES,
@@ -221,6 +223,7 @@ import {
 } from "./lib/world-info-context.js";
 import {
     captureRegenerationReferences,
+    cloneNovelAIPreciseReferenceState,
     normalizeInjectInsertMode,
     parseContextualFilterSelection,
     RegenerationReferenceStore,
@@ -1138,6 +1141,7 @@ const defaultSettings = {
     naiModel: "nai-diffusion-4-5-curated",
     naiProxyUrl: "",
     naiProxyKey: "",
+    naiPreciseReference: { enabled: false, references: [] },
     // OpenAI GPT Image
     gptImageKey: "",
     gptImageModel: "gpt-image-2",
@@ -2270,7 +2274,7 @@ const CUSTOM_API_RECIPE_KEYS = [
 
 const PROVIDER_KEYS = {
     pollinations: ["pollinationsKey", "pollinationsModel"],
-    novelai: ["naiKey", "naiModel", "naiProxyUrl", "naiProxyKey"],
+    novelai: ["naiKey", "naiModel", "naiProxyUrl", "naiProxyKey", "naiPreciseReference"],
     gptimage: ["gptImageKey", "gptImageModel", "gptImageProxyUrl", "gptImageProxyKey", "gptImageQuality", "gptImageFormat", "gptImageBackground", "gptImageModeration"],
     arliai: ["arliKey", "arliModel"],
     routeway: ["routewayKey", "routewayModel"],
@@ -7775,6 +7779,11 @@ function getNovelAISampler(sampler, isV3OrNewer) {
 }
 
 async function genNovelAI(prompt, negative, s, signal, options = {}) {
+    const references = s.naiPreciseReference?.enabled ? s.naiPreciseReference.references : [];
+    const preciseReferenceParameters = buildNovelAIPreciseReferenceParameters(s.naiModel, references);
+    if (references?.length && s.naiProxyUrl && isNovelAICompatibleProxyUrl(s.naiProxyUrl)) {
+        throw new Error("NovelAI Precise Reference requires the official API or a native NovelAI proxy; OpenAI-compatible proxies are not supported.");
+    }
     normalizeSize(s);
     const effectiveDimensions = { width: s.width, height: s.height };
     const withEffectiveDimensions = (url, dimensions = effectiveDimensions) => ({ url, effectiveRequest: { parameters: dimensions } });
@@ -7813,6 +7822,7 @@ async function genNovelAI(prompt, negative, s, signal, options = {}) {
         effectiveDimensions.sampler = params.sampler === sampler ? s.sampler : "euler_a";
         effectiveDimensions.schedule = params.noise_schedule;
     }
+    Object.assign(params, preciseReferenceParameters);
 
     const payload = { input: prompt, model: s.naiModel, action: "generate", parameters: params };
 
@@ -14203,6 +14213,7 @@ async function regenerateImage(effectiveRequest = lastEffectiveRequest, returnFo
         customApiRefImages: [],
         nanobananaRefImages: [],
         nanogptRefImages: [],
+        naiPreciseReference: { enabled: false, references: [] },
         localRefImage: "",
         a1111ControlNetImage: "",
         ...(reproducibleSettings || {}),
@@ -15796,6 +15807,7 @@ function getCurrentRefImages(s) {
     if (s.provider === "custom") return s.customApiRefImages || [];
     if (s.provider === "nanobanana") return s.nanobananaRefImages || [];
     if (s.provider === "nanogpt") return s.nanogptRefImages || [];
+    if (s.provider === "novelai") return cloneNovelAIPreciseReferenceState(s.naiPreciseReference);
     if (s.provider === "local") return s.localRefImage || "";
     return [];
 }
@@ -15811,6 +15823,7 @@ function cloneCharScopedState(s = getSettings()) {
         customApiRefImages: [...(s.customApiRefImages || [])],
         nanobananaRefImages: [...(s.nanobananaRefImages || [])],
         nanogptRefImages: [...(s.nanogptRefImages || [])],
+        naiPreciseReference: cloneNovelAIPreciseReferenceState(s.naiPreciseReference),
         localRefImage: s.localRefImage || "",
     };
 }
@@ -15828,6 +15841,9 @@ function applyCharScopedStateToGenerationSettings(settings, state) {
             settings[key] = [...(state[key] || [])];
         }
     }
+    if (Object.prototype.hasOwnProperty.call(state, "naiPreciseReference")) {
+        settings.naiPreciseReference = cloneNovelAIPreciseReferenceState(state.naiPreciseReference);
+    }
     if (Object.prototype.hasOwnProperty.call(state, "localRefImage")) {
         settings.localRefImage = state.localRefImage || "";
     }
@@ -15838,6 +15854,7 @@ function clearCharacterReferenceSettings(settings) {
     settings.customApiRefImages = [];
     settings.nanobananaRefImages = [];
     settings.nanogptRefImages = [];
+    settings.naiPreciseReference = { enabled: false, references: [] };
     settings.localRefImage = "";
 }
 
@@ -15883,6 +15900,7 @@ function getScopedCharacterGenerationSettings(baseSettings, context) {
     if (settings.provider === "custom") settings.customApiRefImages = referenceList;
     if (settings.provider === "nanobanana") settings.nanobananaRefImages = referenceList;
     if (settings.provider === "nanogpt") settings.nanogptRefImages = referenceList;
+    if (settings.provider === "novelai") settings.naiPreciseReference = cloneNovelAIPreciseReferenceState(references);
     if (settings.provider === "local") settings.localRefImage = typeof references === "string" ? references : "";
     return settings;
 }
@@ -15914,6 +15932,7 @@ function applyCharScopedState(state, s = getSettings(), { forcePrompt = false } 
     s.customApiRefImages = [...(state.customApiRefImages || [])];
     s.nanobananaRefImages = [...(state.nanobananaRefImages || [])];
     s.nanogptRefImages = [...(state.nanogptRefImages || [])];
+    s.naiPreciseReference = cloneNovelAIPreciseReferenceState(state.naiPreciseReference);
     s.localRefImage = state.localRefImage || "";
 
     const negativeEl = document.getElementById("qig-negative");
@@ -15940,6 +15959,7 @@ function applyCharScopedState(state, s = getSettings(), { forcePrompt = false } 
     renderCustomApiRefImages();
     renderNanobananaRefImages();
     renderNanogptRefImages();
+    refreshNaiPreciseReferenceEditor();
     const localPreview = document.getElementById("qig-local-ref-preview");
     if (localPreview) {
         localPreview.src = s.localRefImage || "";
@@ -16448,7 +16468,7 @@ async function performLoadCharSettings(isCurrent) {
     const hasSettings = !!settingsRecord;
     const refRecord = normalizeCharacterReferenceRecord(getCharacterStoreRecord(charRefImages, storageKey) || normalizedRefRecord, s.provider);
     const refs = getCharacterProviderReferences(refRecord, s.provider);
-    const hasRefs = typeof refs === "string" ? !!refs : refs.length > 0;
+    const hasRefs = s.provider === "novelai" ? !!refRecord.naiPreciseReference : (typeof refs === "string" ? !!refs : refs.length > 0);
     const hasStoredRefs = hasCharacterReferenceOverrides(refRecord);
     const hasOverride = hasSettings || hasStoredRefs;
     if (charSettingsBaseCharId !== storageKey) {
@@ -16508,6 +16528,7 @@ async function performLoadCharSettings(isCurrent) {
     s.customApiRefImages = [];
     s.nanobananaRefImages = [];
     s.nanogptRefImages = [];
+    s.naiPreciseReference = { enabled: false, references: [] };
     s.localRefImage = "";
     if (hasRefs) {
         if (s.provider === "proxy") {
@@ -16518,6 +16539,8 @@ async function performLoadCharSettings(isCurrent) {
             s.nanobananaRefImages = [...refs];
         } else if (s.provider === "nanogpt") {
             s.nanogptRefImages = [...refs];
+        } else if (s.provider === "novelai") {
+            s.naiPreciseReference = cloneNovelAIPreciseReferenceState(refs);
         } else if (s.provider === "local") {
             s.localRefImage = refs;
         }
@@ -16526,6 +16549,7 @@ async function performLoadCharSettings(isCurrent) {
     renderCustomApiRefImages();
     renderNanobananaRefImages();
     renderNanogptRefImages();
+    refreshNaiPreciseReferenceEditor();
     const localPreview = document.getElementById("qig-local-ref-preview");
     if (localPreview) {
         localPreview.src = s.localRefImage || "";
@@ -17646,6 +17670,25 @@ const DYNAMIC_PROVIDER_SELECT_IDS = new Set([
     "qig-a1111-cn-model",
 ]);
 
+function refreshNaiPreciseReferenceEditor() {
+    const container = document.getElementById("qig-nai-precise-reference");
+    if (!container) return;
+    if (!container.preciseReferenceEditor) {
+        container.preciseReferenceEditor = mountNovelAIPreciseReferenceEditor(container, {
+            getState: () => getSettings().naiPreciseReference || { enabled: false, references: [] },
+            getModel: () => getSettings().naiModel,
+            onChange: state => {
+                if (settingsImportInProgress) return;
+                getSettings().naiPreciseReference = cloneNovelAIPreciseReferenceState(state);
+                saveSettingsDebounced();
+                syncConfigurationIndicators();
+            },
+        });
+    } else {
+        container.preciseReferenceEditor.refresh();
+    }
+}
+
 function refreshProviderInputs(provider, { updateProviderVisibility = true } = {}) {
     const s = getSettings();
     // This provider's fields may be parked out of the document; they have to be back in it
@@ -17797,6 +17840,7 @@ function refreshProviderInputs(provider, { updateProviderVisibility = true } = {
     }
 
     // Update reference images display
+    if (provider === "novelai") refreshNaiPreciseReferenceEditor();
     if (provider === "proxy") {
         normalizeProxyChatImageSettings(s, s);
         s.proxyEndpointMode = normalizeProxyEndpointSetting(s.proxyEndpointMode);
@@ -17886,6 +17930,7 @@ function updateProviderUI() {
     if (sizeCustomEl) sizeCustomEl.style.display = "grid";
     if (naiResolutionEl) naiResolutionEl.style.display = isNai ? "block" : "none";
     if (isNai) {
+        refreshNaiPreciseReferenceEditor();
         const changed = normalizeSize(s);
         syncSizeInputs(s.width, s.height);
         syncNaiResolutionSelect();
@@ -18616,6 +18661,7 @@ function createUI() {
                     <input id="qig-nai-proxy-url" type="text" value="${esc(s.naiProxyUrl)}" placeholder="https://your-proxy-url">
                     <label>Proxy Key <small>(optional — overrides API key above for proxy)</small></label>
                     <input id="qig-nai-proxy-key" type="password" value="${esc(s.naiProxyKey)}" placeholder="Leave blank to use API key above">
+                    <div id="qig-nai-precise-reference"></div>
                 </div>
 
                 <div id="qig-gptimage-settings" class="qig-provider-section">
@@ -19930,7 +19976,10 @@ function createUI() {
     bind("qig-pollinations-key", "pollinationsKey");
     bind("qig-pollinations-model", "pollinationsModel");
     bind("qig-nai-key", "naiKey");
-    bind("qig-nai-model", "naiModel", false, false, () => updateGenerationCapabilitiesUI());
+    bind("qig-nai-model", "naiModel", false, false, () => {
+        updateGenerationCapabilitiesUI();
+        refreshNaiPreciseReferenceEditor();
+    });
     bind("qig-nai-proxy-url", "naiProxyUrl");
     bind("qig-nai-proxy-key", "naiProxyKey");
     bind("qig-gpt-image-key", "gptImageKey");
