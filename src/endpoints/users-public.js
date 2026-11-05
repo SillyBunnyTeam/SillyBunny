@@ -59,7 +59,10 @@ router.post('/list', async (_request, response) => {
 
 router.post('/login', async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, and getPasswordHash() throws on a value that is not a string.
+        // A missing password counts as an empty one, so the answer does not show whether the account has a password.
+        const password = request.body.password ?? '';
+        if (typeof request.body.handle !== 'string' || !request.body.handle || typeof password !== 'string') {
             console.warn('Login failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -80,7 +83,7 @@ router.post('/login', async (request, response) => {
             return response.status(403).json({ error: 'User is disabled' });
         }
 
-        if (user.password && user.password !== getPasswordHash(request.body.password, user.salt)) {
+        if (user.password && user.password !== getPasswordHash(password, user.salt)) {
             console.warn('Login failed: Incorrect password for', user.handle);
             return response.status(403).json({ error: 'Incorrect credentials' });
         }
@@ -108,7 +111,8 @@ router.post('/login', async (request, response) => {
 
 router.post('/recover-step1', async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Recover step 1 failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -148,7 +152,8 @@ router.post('/recover-step1', async (request, response) => {
 
 router.post('/recover-step2', async (request, response) => {
     try {
-        if (!request.body.handle || !request.body.code) {
+        // SillyBunny: toKey() reads an array as the handle in it, and getPasswordHash() throws on a value that is not a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle || !request.body.code || typeof (request.body.newPassword ?? '') !== 'string') {
             console.warn('Recover step 2 failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }

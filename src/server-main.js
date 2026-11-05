@@ -55,7 +55,7 @@ import { getFrontendAssetMiddleware, setPublicAssetHeaders, shouldServeFrontendA
 import getResponseCompressionMiddleware from './middleware/response-compression.js';
 import basicAuthMiddleware from './middleware/basicAuth.js';
 import requireHttpsMiddleware from './middleware/requireHttps.js';
-import { createSession, destroySession, validateCredentials, isSessionAuthEnabled } from './middleware/sessionAuth.js';
+import { isSessionAuthEnabled, registerSessionAuthRoutes } from './middleware/sessionAuth.js';
 import getWhitelistMiddleware from './middleware/whitelist.js';
 import accessLoggerMiddleware, { getAccessLogPath, migrateAccessLog } from './middleware/accessLogWriter.js';
 import multerMonkeyPatch from './middleware/multerMonkeyPatch.js';
@@ -152,31 +152,10 @@ if (corsEnabled) {
 // HTTPS enforcement (applies to all connections when enabled)
 app.use(requireHttpsMiddleware);
 
-// Session auth login/logout endpoints (registered before basic auth to allow unauthenticated login)
+// SillyBunny: a client logs in to a session without basic auth credentials, so the session routes come before basic auth.
+// They also come before the whitelist middleware, so they run the IP and host whitelist checks themselves.
 if (isSessionAuthEnabled()) {
-    app.post('/api/auth/login', express.json(), async (req, res) => {
-        const { username, password } = req.body || {};
-        if (!username || !password) {
-            return res.status(400).json({ error: 'Username and password are required.' });
-        }
-        const valid = await validateCredentials(username, password);
-        if (!valid) {
-            return res.status(401).json({ error: 'Invalid credentials.' });
-        }
-        const token = createSession(username);
-        return res.json({ token });
-    });
-
-    app.post('/api/auth/logout', express.json(), (req, res) => {
-        const authHeader = req.headers.authorization;
-        if (authHeader) {
-            const [scheme, token] = authHeader.split(' ');
-            if (scheme === 'Bearer' && token) {
-                destroySession(token);
-            }
-        }
-        return res.json({ success: true });
-    });
+    await registerSessionAuthRoutes(app, { whitelistMode: cliArgs.whitelistMode });
 }
 
 app.use(cookieSession({

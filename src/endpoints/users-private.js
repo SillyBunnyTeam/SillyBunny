@@ -6,21 +6,24 @@ import { pipeline } from 'node:stream/promises';
 
 import storage from 'node-persist';
 import express from 'express';
+import sanitize from 'sanitize-filename';
 import yauzl from 'yauzl';
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 
-import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArchive, ensurePublicDirectoriesExist, toAvatarKey, getAccountVersion } from '../users.js';
+import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArchive, ensurePublicDirectoriesExist, toAvatarKey, getAccountVersion, isUserRootInsideDataRoot, requireAdminMiddleware } from '../users.js';
 import { SETTINGS_FILE, USER_DIRECTORY_TEMPLATE } from '../constants.js';
 import { checkForNewContent, CONTENT_TYPES } from './content-manager.js';
 import { SECRETS_FILE } from './secrets.js';
 import { color, Cache, getConfigValue, ensureDirectory, normalizeZipEntryPath, recoverFileWritesInDirectorySync } from '../util.js';
 import { ENTITY_DATE_ADDED_FILE, importEntityDateAdded } from '../entity-date-added.js';
 import { ENTITY_LAST_CHAT_FILE, importEntityLastChat } from '../entity-last-chat.js';
+import { isPathInside } from '../path-containment.js';
 
 import { getIpAddress, retryAfter } from '../express-common.js';
 
 // SillyBunny divergence: private user export/import keeps fork-owned account data and metadata compatible across releases.
 const RESET_POINTS = getConfigValue('rateLimiting.accountsResetMaxAttempts', 5, 'number');
+const PASSWORD_POINTS = getConfigValue('rateLimiting.accountsLoginMaxAttempts', 5, 'number');
 const PREFER_REAL_IP_HEADER = getConfigValue('rateLimiting.preferRealIpHeader', false, 'boolean');
 const RESET_CACHE = new Cache(5 * 60 * 1000);
 const IMPORTABLE_ROOT_FILES = [SETTINGS_FILE, SECRETS_FILE, ENTITY_DATE_ADDED_FILE, ENTITY_LAST_CHAT_FILE];
@@ -50,6 +53,29 @@ const resetLimiter = new RateLimiterMemory({
     points: RESET_POINTS > 0 ? RESET_POINTS : Number.MAX_SAFE_INTEGER,
     duration: 300,
 });
+// SillyBunny: these routes compare the login password, so they count wrong passwords with the login limit, per account.
+const passwordLimiter = new RateLimiterMemory({
+    points: PASSWORD_POINTS > 0 ? PASSWORD_POINTS : Number.MAX_SAFE_INTEGER,
+    duration: 60,
+});
+
+/**
+ * Compares a password with the stored hash of an account and counts each comparison against the account.
+ * A correct password clears the count.
+ * @param {import('../users.js').User} user Account to check
+ * @param {string} password Password to compare
+ * @returns {Promise<boolean>} Whether the password matches
+ * @throws {RateLimiterRes} When the account has no attempts left, before the password is compared
+ */
+async function checkAccountPassword(user, password) {
+    await passwordLimiter.consume(user.handle);
+    if (user.password !== getPasswordHash(password, user.salt)) {
+        return false;
+    }
+
+    await passwordLimiter.delete(user.handle);
+    return true;
+}
 
 function isImportableRelativePath(relativePath) {
     const normalizedPath = normalizeZipEntryPath(relativePath);
@@ -154,6 +180,38 @@ async function getStableRealPath(targetPath) {
     }
 }
 
+/**
+ * Returns a check for the real paths that an import may read for the user of a request.
+ * An admin may read any path. Other users may read paths outside the data root and paths inside their own folder.
+ * @param {import('express').Request} request Request with a user
+ * @returns {Promise<(realPath: string) => boolean>} Check that takes a real path
+ */
+async function getImportReadCheck(request) {
+    if (request.user.profile.admin) {
+        return () => true;
+    }
+
+    const dataRoot = await getStableRealPath(globalThis.DATA_ROOT);
+    const userRoot = await getStableRealPath(request.user.directories.root);
+    return realPath => !isPathInside(dataRoot, realPath, { allowEqual: true }) || isPathInside(userRoot, realPath, { allowEqual: true });
+}
+
+/**
+ * Resolves the import root of a request, after the real path of the given path and of the root pass the read check.
+ * @param {unknown} inputPath Path from the request
+ * @param {(realPath: string) => boolean} canRead Check from getImportReadCheck()
+ * @returns {Promise<string|null>} Import root, or null when the check refuses either path
+ */
+async function resolveReadableImportRoot(inputPath, canRead) {
+    const normalizedInput = String(inputPath ?? '').trim();
+    if (normalizedInput && !canRead(await getStableRealPath(path.resolve(normalizedInput)))) {
+        return null;
+    }
+
+    const sourceRoot = await resolveSillyTavernFolderImportRoot(normalizedInput);
+    return canRead(await getStableRealPath(sourceRoot)) ? sourceRoot : null;
+}
+
 function emitImportWarning(onWarning, message) {
     const warningMessage = String(message ?? '').trim();
     if (!warningMessage) {
@@ -174,6 +232,7 @@ async function copyDirectoryTree(sourceDirectory, destinationDirectory, {
     visitedDirectories = new Set(),
     skipDirectoryNames = new Set(),
     onWarning = null,
+    canRead = () => true,
 } = {}) {
     const stableSourcePath = await getStableRealPath(sourceDirectory);
 
@@ -187,6 +246,11 @@ async function copyDirectoryTree(sourceDirectory, destinationDirectory, {
             emitImportWarning(onWarning, `Skipping import path that resolves into the current account: ${sourceDirectory}`);
             return 0;
         }
+    }
+
+    if (!canRead(stableSourcePath)) {
+        emitImportWarning(onWarning, `Skipping import path that resolves into the data root: ${sourceDirectory}`);
+        return 0;
     }
 
     visitedDirectories.add(stableSourcePath);
@@ -216,6 +280,7 @@ async function copyDirectoryTree(sourceDirectory, destinationDirectory, {
                 visitedDirectories,
                 skipDirectoryNames,
                 onWarning,
+                canRead,
             });
             continue;
         }
@@ -237,7 +302,7 @@ async function copyDirectoryTree(sourceDirectory, destinationDirectory, {
     return copiedFiles;
 }
 
-async function copyAllowedFolderContents(sourceRoot, targetRoot) {
+async function copyAllowedFolderContents(sourceRoot, targetRoot, canRead) {
     let copiedEntries = 0;
     let importedEntityDateAdded;
     let importedEntityLastChat;
@@ -247,6 +312,11 @@ async function copyAllowedFolderContents(sourceRoot, targetRoot) {
     for (const relativePath of IMPORTABLE_RELATIVE_PATHS) {
         const sourcePath = path.join(sourceRoot, relativePath);
         if (!(await pathExists(sourcePath))) {
+            continue;
+        }
+
+        if (!canRead(await getStableRealPath(sourcePath))) {
+            console.warn(`Skipping import path that resolves into the data root: ${sourcePath}`);
             continue;
         }
 
@@ -272,6 +342,7 @@ async function copyAllowedFolderContents(sourceRoot, targetRoot) {
                     ? SKIPPABLE_IMPORT_DIRECTORY_NAMES
                     : new Set(),
                 onWarning: warning => console.warn(warning),
+                canRead,
             });
             if (copiedFiles > 0 || await pathExists(destinationPath)) {
                 copiedEntries++;
@@ -391,8 +462,25 @@ async function syncThirdPartyExtension(sourcePath, targetPath, protectedRoots) {
         const details = await inspectExtensionDirectory(tempTargetPath, extensionName);
         warnings.push(...details.warnings);
 
-        await fsPromises.rm(targetPath, { recursive: true, force: true });
-        await fsPromises.rename(tempTargetPath, targetPath);
+        // Move the existing extension aside instead of removing it, so that a failed rename can put it back.
+        const previousPath = `${tempTargetPath}-previous`;
+        const hasPrevious = await fsPromises.lstat(targetPath).then(() => true, () => false);
+        if (hasPrevious) {
+            await fsPromises.rename(targetPath, previousPath);
+        }
+
+        try {
+            await fsPromises.rename(tempTargetPath, targetPath);
+        } catch (error) {
+            if (hasPrevious) {
+                await fsPromises.rename(previousPath, targetPath);
+            }
+            throw error;
+        }
+
+        if (hasPrevious) {
+            await fsPromises.rm(previousPath, { recursive: true, force: true });
+        }
 
         const status = warnings.length > 0 ? 'warning' : 'ready';
         return {
@@ -505,6 +593,33 @@ function isDefaultUserImportBase(basePath) {
     return String(basePath ?? '') === 'default-user' || String(basePath ?? '').endsWith('/default-user');
 }
 
+const ZIP_IMPORT_FAILED = 'Failed to import that SillyTavern backup ZIP.';
+
+/**
+ * Gets the path of a ZIP entry inside the account folder.
+ * @param {string} normalizedEntry Entry path from normalizeZipEntryPath()
+ * @param {string} basePath Folder in the ZIP that holds the account, or an empty string for the ZIP root
+ * @returns {string} The path inside the account, or an empty string when the entry is outside the base folder
+ */
+function getImportRelativePath(normalizedEntry, basePath) {
+    if (!basePath) {
+        return normalizedEntry;
+    }
+
+    return normalizedEntry.startsWith(`${basePath}/`) ? normalizedEntry.slice(basePath.length + 1) : '';
+}
+
+/**
+ * Checks that sanitize-filename keeps every folder and file name of a ZIP entry path as it is.
+ * Such a name has no NUL or control character, no character that Windows refuses, no reserved device name
+ * such as CON, and no trailing dot or space, so every supported system can store it.
+ * @param {string} entryPath Entry path with forward slashes
+ * @returns {boolean} True if every name in the path is kept as it is
+ */
+function hasPortableNames(entryPath) {
+    return entryPath.split('/').filter(Boolean).every(name => sanitize(name) === name);
+}
+
 async function detectZipImportBase(zipFilePath) {
     return await new Promise((resolve, reject) => {
         yauzl.open(zipFilePath, { lazyEntries: true }, (error, zipfile) => {
@@ -514,6 +629,7 @@ async function detectZipImportBase(zipFilePath) {
             }
 
             const baseScores = new Map();
+            const unportableEntries = [];
 
             zipfile.readEntry();
             zipfile.on('entry', entry => {
@@ -521,6 +637,10 @@ async function detectZipImportBase(zipFilePath) {
                 if (!normalizedEntry || normalizedEntry.startsWith('__MACOSX/')) {
                     zipfile.readEntry();
                     return;
+                }
+
+                if (!hasPortableNames(normalizedEntry)) {
+                    unportableEntries.push(normalizedEntry);
                 }
 
                 const segments = normalizedEntry.split('/').filter(Boolean);
@@ -558,7 +678,19 @@ async function detectZipImportBase(zipFilePath) {
                     return;
                 }
 
-                resolve(rankedBases[0][0]);
+                // The import checks the names before it writes anything, so that an archive with a name that cannot be stored changes nothing.
+                const basePath = rankedBases[0][0];
+                const unportableEntry = unportableEntries.find(entryName => {
+                    const relativePath = getImportRelativePath(entryName, basePath);
+                    return relativePath && isImportableRelativePath(relativePath) && !hasPortableNames(relativePath);
+                });
+                if (unportableEntry) {
+                    console.warn('SillyTavern ZIP import refused an entry name that some systems cannot store:', JSON.stringify(unportableEntry));
+                    reject(new Error(ZIP_IMPORT_FAILED));
+                    return;
+                }
+
+                resolve(basePath);
             });
 
             zipfile.once('error', reject);
@@ -587,6 +719,11 @@ async function importZipContents(zipFilePath, targetRoot) {
                 }
 
                 completed = true;
+
+                // yauzl closes the archive itself only after its last entry or its own error, so an import that stops early closes it here.
+                if (finalError) {
+                    zipfile.close();
+                }
 
                 const completionError = finalError;
                 if (!completionError && importedEntityDateAdded !== undefined) {
@@ -624,11 +761,7 @@ async function importZipContents(zipFilePath, targetRoot) {
                     return;
                 }
 
-                const relativePath = basePath
-                    ? normalizedEntry.startsWith(`${basePath}/`)
-                        ? normalizedEntry.slice(basePath.length + 1)
-                        : ''
-                    : normalizedEntry;
+                const relativePath = getImportRelativePath(normalizedEntry, basePath);
 
                 if (!relativePath || !isImportableRelativePath(relativePath)) {
                     zipfile.readEntry();
@@ -666,12 +799,34 @@ async function importZipContents(zipFilePath, targetRoot) {
                         return;
                     }
 
-                    pipeline(readStream, fs.createWriteStream(destinationPath))
+                    // createWriteStream() can throw, and a throw in this yauzl callback reaches no route handler, so Node would end the server.
+                    let writeStream;
+                    try {
+                        writeStream = fs.createWriteStream(destinationPath);
+                    } catch (writeError) {
+                        // The stream of a stored ZIP entry emits an error when it is destroyed.
+                        readStream.on('error', () => { });
+                        readStream.destroy();
+                        finalize(writeError);
+                        return;
+                    }
+
+                    let opened = false;
+                    writeStream.once('open', () => {
+                        opened = true;
+                    });
+                    pipeline(readStream, writeStream)
                         .then(() => {
                             importedFiles++;
                             zipfile.readEntry();
                         })
-                        .catch(finalize);
+                        .catch(async pipelineError => {
+                            // Opening the file emptied it, so a file that stopped part of the way is removed.
+                            if (opened) {
+                                await fsPromises.rm(destinationPath, { force: true }).catch(() => { });
+                            }
+                            finalize(pipelineError);
+                        });
                 });
             });
 
@@ -725,7 +880,8 @@ router.get('/me', async (request, response) => {
 
 router.post('/change-avatar', async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, and the data URL check throws on an avatar that is not a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle || typeof request.body.avatar !== 'string') {
             console.warn('Change avatar failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -760,7 +916,8 @@ router.post('/change-avatar', async (request, response) => {
 
 router.post('/change-password', async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, and getPasswordHash() throws on a value that is not a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle || typeof (request.body.newPassword ?? '') !== 'string') {
             console.warn('Change password failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -783,9 +940,18 @@ router.post('/change-password', async (request, response) => {
             return response.status(403).json({ error: 'User is disabled' });
         }
 
-        if (!request.user.profile.admin && user.password && user.password !== getPasswordHash(request.body.oldPassword, user.salt)) {
-            console.error('Change password failed: Incorrect password');
-            return response.status(403).json({ error: 'Incorrect password' });
+        if (!request.user.profile.admin && user.password) {
+            // SillyBunny: getPasswordHash() throws on a value that is not a string, so a missing old password answers 400.
+            if (typeof request.body.oldPassword !== 'string') {
+                console.warn('Change password failed: Missing required fields');
+                return response.status(400).json({ error: 'Missing required fields' });
+            }
+
+            const passwordMatches = await checkAccountPassword(user, request.body.oldPassword);
+            if (!passwordMatches) {
+                console.error('Change password failed: Incorrect password');
+                return response.status(403).json({ error: 'Incorrect password' });
+            }
         }
 
         if (request.body.newPassword) {
@@ -806,6 +972,11 @@ router.post('/change-password', async (request, response) => {
 
         return response.sendStatus(204);
     } catch (error) {
+        if (error instanceof RateLimiterRes) {
+            console.error('Change password failed: Too many wrong passwords for', request.body.handle);
+            return retryAfter(response, error).status(429).send({ error: 'Too many attempts. Try again later or contact your admin.' });
+        }
+
         console.error(error);
         return response.sendStatus(500);
     }
@@ -822,7 +993,8 @@ router.post('/backup', async (request, response) => {
 
         const handle = request.body.handle;
 
-        if (!handle) {
+        // SillyBunny: getUserDirectories() throws on a handle that is not a string.
+        if (typeof handle !== 'string' || !handle) {
             console.warn('Backup failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -832,6 +1004,18 @@ router.post('/backup', async (request, response) => {
             return response.status(403).json({ error: 'Unauthorized' });
         }
 
+        // SillyBunny: the archive holds the whole folder that the handle names, so the handle must belong to an account whose folder is directly inside the data root.
+        const user = await storage.getItem(toKey(handle));
+        if (!user) {
+            console.warn('Backup failed: User not found');
+            return response.status(404).json({ error: 'User not found' });
+        }
+
+        if (!isUserRootInsideDataRoot(handle)) {
+            console.warn('Backup failed: Invalid handle');
+            return response.status(400).json({ error: 'Invalid handle' });
+        }
+
         await createBackupArchive(handle, response);
     } catch (error) {
         console.error('Backup failed', error);
@@ -839,9 +1023,16 @@ router.post('/backup', async (request, response) => {
     }
 });
 
-router.post('/import-sillytavern/folder', async (request, response) => {
+// A server folder path can name any folder that the server can read, so only an admin may import from one. Other users upload a backup ZIP.
+router.post('/import-sillytavern/folder', requireAdminMiddleware, async (request, response) => {
     try {
-        const sourceRoot = await resolveSillyTavernFolderImportRoot(request.body?.sourcePath);
+        const canRead = await getImportReadCheck(request);
+        const sourceRoot = await resolveReadableImportRoot(request.body?.sourcePath, canRead);
+        if (!sourceRoot) {
+            console.warn('SillyTavern folder import failed: Unauthorized');
+            return response.status(403).json({ error: 'Unauthorized' });
+        }
+
         const targetRoot = path.resolve(request.user.directories.root);
 
         if (path.resolve(sourceRoot) === targetRoot) {
@@ -849,7 +1040,7 @@ router.post('/import-sillytavern/folder', async (request, response) => {
         }
 
         recoverFileWritesInDirectorySync(request.user.directories.characters);
-        const copiedEntries = await copyAllowedFolderContents(sourceRoot, targetRoot);
+        const copiedEntries = await copyAllowedFolderContents(sourceRoot, targetRoot, canRead);
         await checkForNewContent([request.user.directories]);
 
         return response.json({
@@ -863,9 +1054,15 @@ router.post('/import-sillytavern/folder', async (request, response) => {
     }
 });
 
-router.post('/import-sillytavern/extensions', async (request, response) => {
+router.post('/import-sillytavern/extensions', requireAdminMiddleware, async (request, response) => {
     try {
-        const sourceRoot = await resolveSillyTavernFolderImportRoot(request.body?.sourcePath);
+        const canRead = await getImportReadCheck(request);
+        const sourceRoot = await resolveReadableImportRoot(request.body?.sourcePath, canRead);
+        if (!sourceRoot || !canRead(await getStableRealPath(path.join(sourceRoot, USER_DIRECTORY_TEMPLATE.extensions)))) {
+            console.warn('SillyTavern extension sync failed: Unauthorized');
+            return response.status(403).json({ error: 'Unauthorized' });
+        }
+
         const targetRoot = path.resolve(request.user.directories.root);
 
         if (path.resolve(sourceRoot) === targetRoot) {
@@ -900,7 +1097,11 @@ router.post('/import-sillytavern/zip', async (request, response) => {
         });
     } catch (error) {
         console.error('SillyTavern ZIP import failed:', error);
-        return response.status(400).json({ error: error.message || 'Failed to import that SillyTavern backup ZIP.' });
+        // An error with a syscall comes from the operating system, so the server could not read the upload or write the account. Its message also holds a server path.
+        if (error?.syscall) {
+            return response.status(500).json({ error: ZIP_IMPORT_FAILED });
+        }
+        return response.status(400).json({ error: error.message || ZIP_IMPORT_FAILED });
     } finally {
         if (uploadedZipPath) {
             await fsPromises.rm(uploadedZipPath, { force: true }).catch(() => { });
@@ -912,9 +1113,18 @@ router.post('/reset-settings', async (request, response) => {
     try {
         const password = request.body.password;
 
-        if (request.user.profile.password && request.user.profile.password !== getPasswordHash(password, request.user.profile.salt)) {
-            console.warn('Reset settings failed: Incorrect password');
-            return response.status(403).json({ error: 'Incorrect password' });
+        if (request.user.profile.password) {
+            // SillyBunny: getPasswordHash() throws on a value that is not a string, so a missing password answers 400.
+            if (typeof password !== 'string') {
+                console.warn('Reset settings failed: Missing required fields');
+                return response.status(400).json({ error: 'Missing required fields' });
+            }
+
+            const passwordMatches = await checkAccountPassword(request.user.profile, password);
+            if (!passwordMatches) {
+                console.warn('Reset settings failed: Incorrect password');
+                return response.status(403).json({ error: 'Incorrect password' });
+            }
         }
 
         const pathToFile = path.join(request.user.directories.root, SETTINGS_FILE);
@@ -923,6 +1133,11 @@ router.post('/reset-settings', async (request, response) => {
 
         return response.sendStatus(204);
     } catch (error) {
+        if (error instanceof RateLimiterRes) {
+            console.error('Reset settings failed: Too many wrong passwords for', request.user.profile.handle);
+            return retryAfter(response, error).status(429).send({ error: 'Too many attempts. Try again later or contact your admin.' });
+        }
+
         console.error('Reset settings failed', error);
         return response.sendStatus(500);
     }
@@ -930,7 +1145,8 @@ router.post('/reset-settings', async (request, response) => {
 
 router.post('/change-name', async (request, response) => {
     try {
-        if (!request.body.name || !request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (!request.body.name || typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Change name failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -987,14 +1203,10 @@ router.post('/reset-step1', async (request, response) => {
 
 router.post('/reset-step2', async (request, response) => {
     try {
-        if (!request.body.code) {
+        // SillyBunny: getPasswordHash() throws on a value that is not a string, so a missing password answers 400.
+        if (!request.body.code || (request.user.profile.password && typeof request.body.password !== 'string')) {
             console.warn('Reset step 2 failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
-        }
-
-        if (request.user.profile.password && request.user.profile.password !== getPasswordHash(request.body.password, request.user.profile.salt)) {
-            console.warn('Reset step 2 failed: Incorrect password');
-            return response.status(400).json({ error: 'Incorrect password' });
         }
 
         const ip = getIpAddress(request, PREFER_REAL_IP_HEADER);
@@ -1002,6 +1214,15 @@ router.post('/reset-step2', async (request, response) => {
 
         if (rateLimit !== null && rateLimit.consumedPoints > resetLimiter.points) {
             throw rateLimit;
+        }
+
+        // SillyBunny: both limits come before the password check, so a locked client gets the same answer for every password.
+        if (request.user.profile.password) {
+            const passwordMatches = await checkAccountPassword(request.user.profile, request.body.password);
+            if (!passwordMatches) {
+                console.warn('Reset step 2 failed: Incorrect password');
+                return response.status(400).json({ error: 'Incorrect password' });
+            }
         }
 
         const code = RESET_CACHE.get(request.user.profile.handle);
