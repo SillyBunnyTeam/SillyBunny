@@ -1,6 +1,6 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for shipped data. */
 import { Buffer } from 'node:buffer';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,7 +8,7 @@ import { describe, expect, test } from '@jest/globals';
 import PNGtext from 'png-chunk-text';
 import extract from 'png-chunks-extract';
 
-import { buildManifest, readManifest } from '../../src/sillybunny-managed-content.js';
+import { buildManifest, fingerprintSpriteFile, readManifest } from '../../src/sillybunny-managed-content.js';
 import { getHomeAssistants } from '../../public/scripts/sillybunny-home/assistant-registry.js';
 
 const CONTENT_DIRECTORY = fileURLToPath(new URL('../../default/content/', import.meta.url));
@@ -16,6 +16,16 @@ const INDEX = JSON.parse(readFileSync(new URL('../../default/content/index.json'
 const manifest = readManifest(CONTENT_DIRECTORY);
 const LEXICON = 'SillyBunny Lexicon.json';
 const LEXICON_NAME = path.parse(LEXICON).name;
+
+/** The labels that the Expressions extension asks a sprite folder for, read from its source so the two cannot drift. */
+const EXPRESSION_LABELS = [...readFileSync(new URL('../../public/scripts/extensions/expressions/index.js', import.meta.url), 'utf8')
+    .match(/const DEFAULT_EXPRESSIONS = \[([^\]]+)\]/)[1].matchAll(/'([a-z]+)'/g)].map(([, label]) => label);
+
+/** The folder of a pack is the name of the card, because the extension looks sprites up by the name of the character. */
+const EXPRESSION_PACKS = [
+    { folder: 'Assistant Reisen', avatar: 'default_AssistantReisen.png' },
+    { folder: 'Assistant Tewi', avatar: 'default_AssistantTewi.png' },
+];
 
 /** The card of each text chunk of a PNG card, by the keyword of the chunk: `chara` is V2 and `ccv3` is V3. */
 function readCardChunks(file) {
@@ -41,6 +51,35 @@ describe('the managed content that ships in default/content', () => {
 
     test('manages the SillyBunny Lexicon as a world', () => {
         expect(manifest.items.find(item => item.filename === LEXICON)).toMatchObject({ type: 'world' });
+    });
+
+    describe.each(EXPRESSION_PACKS)('the expression pack $folder', ({ folder, avatar }) => {
+        const directory = path.join(CONTENT_DIRECTORY, folder);
+        const item = manifest.items.find(entry => entry.filename === folder);
+        const filesOnDisk = readdirSync(directory).sort();
+
+        test('asks for the labels of the Expressions extension, with a file for each and nothing else in the folder', () => {
+            expect(EXPRESSION_LABELS).toHaveLength(28);
+            expect(filesOnDisk).toEqual(EXPRESSION_LABELS.map(label => `${label}.webp`).sort());
+        });
+
+        test('is seeded and managed as a sprites item', () => {
+            expect(item).toMatchObject({ type: 'sprites' });
+            expect(INDEX.filter(entry => entry.filename === folder)).toEqual([{ filename: folder, type: 'sprites' }]);
+        });
+
+        test('fingerprints every file in the folder by its bytes, and no other', () => {
+            expect(item.files.map(file => file.name).sort()).toEqual(filesOnDisk);
+            for (const file of item.files) {
+                expect([file.name, file.sha256]).toEqual([file.name, fingerprintSpriteFile(readFileSync(path.join(directory, file.name)))]);
+            }
+        });
+
+        test('is named like the card that it belongs to', () => {
+            const { chara } = readCardChunks(readFileSync(path.join(CONTENT_DIRECTORY, avatar)));
+
+            expect(chara.data.name).toBe(folder);
+        });
     });
 
     describe('the cards of the assistants that Home lists', () => {

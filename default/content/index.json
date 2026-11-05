@@ -336,6 +336,14 @@
         "type": "sprites"
     },
     {
+        "filename": "Assistant Reisen",
+        "type": "sprites"
+    },
+    {
+        "filename": "Assistant Tewi",
+        "type": "sprites"
+    },
+    {
         "filename": "Eldoria.json",
         "type": "world"
     },
