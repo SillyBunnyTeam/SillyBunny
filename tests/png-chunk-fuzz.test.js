@@ -52,7 +52,7 @@ function chunkLayout(png) {
         const dataStart = start + 8;
         const crcStart = dataStart + png.readUInt32BE(start);
         const label = type === 'tEXt' ? png.toString('latin1', dataStart, png.indexOf(0, dataStart)) : type;
-        layout.push({ type, label, start, dataStart, crcStart });
+        layout.push({ type, label, start, dataStart, crcStart, end: crcStart + 4 });
         start = crcStart + 4;
     }
     return layout;
@@ -64,7 +64,14 @@ function flipBit(png, offset, bit) {
     return copy;
 }
 
+function withDeclaredLength(png, chunk, length) {
+    const copy = Buffer.from(png);
+    copy.writeUInt32BE(length, chunk.start);
+    return copy;
+}
+
 const crcErrorFor = type => new RegExp(`^CRC values for ${type} header do not match`);
+const pastTheEndAt = offset => new RegExp(`^PNG chunk at byte ${offset} runs past the end of the file$`);
 
 function mutateCardPng(png, card, seed) {
     const random = mulberry32(seed);
@@ -79,6 +86,7 @@ function mutateCardPng(png, card, seed) {
     const layout = chunkLayout(png);
     const endChunk = layout.at(-1);
     const dataChunks = layout.slice(0, -1);
+    const declaredLengths = [png.length + 1, 64 * 1024, 1024 * 1024];
     const parser = { text: JSON.stringify(card) };
     const rejected = [];
     const accepted = [{ name: 'a card with no change', bytes: png, parser, fileName: card.data.name }];
@@ -97,6 +105,10 @@ function mutateCardPng(png, card, seed) {
 
     for (const chunk of dataChunks) {
         const headerError = chunk.type === 'IHDR' ? IHDR_ERROR : CRC_ERROR;
+        for (const cut of distinctInts(3, chunk.end - chunk.start - 1)) {
+            const offset = chunk.start + 1 + cut;
+            reject(`a file cut at byte ${offset - chunk.start} of the ${chunk.label} chunk`, png.subarray(0, offset), offset >= chunk.crcStart ? crcErrorFor(chunk.type) : pastTheEndAt(chunk.start));
+        }
         for (const index of distinctInts(2, chunk.crcStart - chunk.dataStart)) {
             reject(`a flipped bit at data byte ${index} of the ${chunk.label} chunk`, flipBit(png, chunk.dataStart + index, randomInt(8)), crcErrorFor(chunk.type));
         }
@@ -106,11 +118,30 @@ function mutateCardPng(png, card, seed) {
         for (const index of distinctInts(2, 4)) {
             reject(`a flipped bit at type byte ${index} of the ${chunk.label} chunk`, flipBit(png, chunk.start + 4 + index, randomInt(8)), headerError);
         }
+        for (const bit of distinctInts(2, 20)) {
+            const length = (chunk.crcStart - chunk.dataStart) ^ (1 << bit);
+            const dataEnd = chunk.dataStart + length;
+            // When the changed length ends inside the file, the parser reads the next chunk header from bytes inside this chunk or a later one. With these seeds, those bytes declare a length past the end of the file.
+            const error = dataEnd > png.length ? pastTheEndAt(chunk.start) : dataEnd + 4 > png.length ? crcErrorFor(chunk.type) : pastTheEndAt(dataEnd + 4);
+            reject(`a declared length of ${length} on the ${chunk.label} chunk`, withDeclaredLength(png, chunk, length), error);
+        }
+        for (const length of declaredLengths) {
+            reject(`a declared length of ${length} on the ${chunk.label} chunk, past the end of the file`, withDeclaredLength(png, chunk, length), pastTheEndAt(chunk.start));
+        }
     }
 
+    for (let cut = 1; cut < 8; cut++) {
+        reject(`a file cut at byte ${cut} of the IEND chunk`, png.subarray(0, endChunk.start + cut), pastTheEndAt(endChunk.start));
+    }
     reject('a flipped bit in the IEND type', flipBit(png, endChunk.start + 4 + randomInt(4), randomInt(8)), CRC_ERROR);
 
+    for (let cut = 8; cut < 12; cut++) {
+        accept(`a file cut at byte ${cut} of the IEND chunk`, png.subarray(0, endChunk.start + cut));
+    }
     accept('a flipped bit in the IEND CRC', flipBit(png, endChunk.crcStart + randomInt(4), randomInt(8)));
+    for (const length of declaredLengths) {
+        reject(`a declared length of ${length} on the IEND chunk`, withDeclaredLength(png, endChunk, length), pastTheEndAt(endChunk.start));
+    }
     accept('seeded bytes after the IEND chunk', Buffer.concat([png, Buffer.from(Array.from({ length: 64 }, () => randomInt(256)))]));
 
     return { rejected, accepted };
