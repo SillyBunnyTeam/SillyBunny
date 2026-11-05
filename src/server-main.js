@@ -29,7 +29,7 @@ import { getLoadedServerPlugins, loadPlugins } from './plugin-loader.js';
 import { registerGracefulShutdown } from './shutdown.js';
 import { closeListeningServers } from './server-listen.js';
 import { notifyServerStartup } from './server-plugin-update-ipc.js';
-import { SUPERVISED_ENV, SUPERVISOR_FORCE_KILL_TIMEOUT_MS, SUPERVISOR_SHUTDOWN_MESSAGE } from './server-supervisor.js';
+import { SERVER_CRASH_EXIT_CODE, SUPERVISED_ENV, SUPERVISOR_FORCE_KILL_TIMEOUT_MS, SUPERVISOR_SHUTDOWN_MESSAGE } from './server-supervisor.js';
 import {
     initUserStorage,
     getCookieSecret,
@@ -79,6 +79,7 @@ import {
     getConfigValue,
 } from './util.js';
 import { isBenignStreamAbort } from './stream-disconnect-guard.js';
+import { answerWithErrorMessage, forwardAsyncRouteErrors, handleRouteError } from './route-errors.js';
 import { UPLOADS_DIRECTORY } from './constants.js';
 
 // Routers
@@ -111,6 +112,8 @@ if (!cliArgs.enableIPv6 && !cliArgs.enableIPv4) {
 http.globalAgent = new http.Agent({ keepAlive: cliArgs.enableKeepAlive });
 https.globalAgent = new https.Agent({ keepAlive: cliArgs.enableKeepAlive });
 
+// SillyBunny: send a rejected promise from an async handler to the error handlers, because Express 4 ignores it and leaves the request unanswered.
+forwardAsyncRouteErrors();
 const app = express();
 app.use(helmet({
     contentSecurityPolicy: false,
@@ -343,6 +346,8 @@ if (!cliArgs.disableCsrf) {
     // Customize the error message
     csrfSyncProtection.invalidCsrfTokenError.message = color.red('Invalid CSRF token. Please refresh the page and try again.');
     csrfSyncProtection.invalidCsrfTokenError.stack = undefined;
+    // SillyBunny: the 403 carries this message, because the client refreshes its token and retries only when the answer names the invalid CSRF token.
+    answerWithErrorMessage(csrfSyncProtection.invalidCsrfTokenError);
 
     app.use(csrfSyncProtection.csrfSynchronisedProtection);
 } else {
@@ -533,6 +538,12 @@ async function preSetupTasks() {
             process.on('disconnect', exitAfterSupervisorDisconnect);
         }
     }
+    // SillyBunny: a crash exits with a non-zero code, because the supervisor treats code 0 as a stop and does not relaunch.
+    // The timer ends the process when a cleanup step fails or does not finish.
+    const exitAfterCrash = () => {
+        setTimeout(() => process.exit(SERVER_CRASH_EXIT_CODE), SUPERVISOR_FORCE_KILL_TIMEOUT_MS);
+        return exitProcess(SERVER_CRASH_EXIT_CODE);
+    };
     process.on('uncaughtException', (err) => {
         // SillyBunny: ignore expected stream disconnects from cancelled generations.
         if (isBenignStreamAbort(err)) {
@@ -541,7 +552,7 @@ async function preSetupTasks() {
         }
 
         console.error('Uncaught exception:', err);
-        exitProcess();
+        exitAfterCrash();
     });
     process.on('unhandledRejection', (reason) => {
         // SillyBunny: ignore expected stream disconnects from cancelled generations.
@@ -551,7 +562,7 @@ async function preSetupTasks() {
         }
 
         console.error('Unhandled rejection:', reason);
-        exitProcess();
+        exitAfterCrash();
     });
 
     // Add private request filter.
@@ -730,6 +741,8 @@ initUserStorage(globalThis.DATA_ROOT)
     .then(verifySecuritySettings)
     .then(preSetupTasks)
     .then(apply404Middleware)
+    // SillyBunny: the last handler answers a failed route, plugin routes included, without error details.
+    .then(() => app.use(handleRouteError))
     .then(() => new ServerStartup(app, cliArgs).start())
     .then(postSetupTasks)
     .catch((error) => {
