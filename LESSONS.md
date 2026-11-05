@@ -90,6 +90,24 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/chat-cloning-lifecycle.test.js`, `tests/chat-save-guard.test.js`, `tests/chat-save-queue-runtime.test.js`, `tests/chat-integrity-rotation.test.js`, `tests/reload-chat-safeguard.test.js`, `tests/prove-368-differential.test.js`, `tests/server-generation-commit.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/story-mode-request-controls.test.js`.
 - **Fixes:** #819 (queued saves across swipes clone chats), #849 (staged reloads wipe chats), #373 (extra pre-write backups push older backups out), #856 (issue #706: a chat saves when opened).
 
+### Chat, group, file, vector and asset route input
+
+- **Breaks:** a request field, a stored group chat ID, a line in a chat file or a failed download makes a route use a path outside its folder, or makes the route throw outside its error handling.
+- **Cause:** Express 4 does not catch a rejection from an async route, and nothing catches a throw in a stream or readline event, so that code must answer its own errors. A JSON body or an extended query string can send an object whose `toString` is not a function, and loose equality, `String()`, template literals and `toString()` throw for it. `pipe()` leaves an error from its source stream unhandled. Paths were checked with a string prefix or not at all, and `sanitize()` (sanitize-filename 1.6.3) turns `.`, `..` and Windows device names into an empty name, which makes the joined path name the folder itself.
+- **Files:** `src/endpoints/files.js`, `src/endpoints/chats.js`, `src/endpoints/groups.js`, `src/endpoints/vectors.js`, `src/endpoints/assets.js`.
+- **Guards:**
+  - `/api/files/delete` and `/verify` accept a path only inside the files folder (`isPathUnderParent()`). A string prefix also accepts sibling folders whose names start with the files folder name.
+  - `getGroupChatPath()` in `src/endpoints/chats.js` joins a stored group chat ID only when it is a string or a number and its path stays inside the group chats folder. Chat search and recent chats skip any other ID, and group create and edit answer 400 for a chat list that holds one. A slash inside the folder, as in a checkpoint name, and numeric IDs from older groups still pass.
+  - Chat export runs inside one `try` block and answers 400 for a `file` that is not a string or that sanitizes to an empty name. It waits for its read stream through a promise with `error` listeners on the stream and on readline, because readline re-emits input stream errors and an `error` event without a listener throws. It skips a line that is not a chat message, such as an empty line in an older chat file.
+  - `getChatInfo()`, which chat search, recent chats and group chat info read through, counts and matches `mes` only when it is a string, because nothing catches a throw in its readline event.
+  - Group delete answers 400 for an `id` that is not a string or a number.
+  - The vector routes return `regenerateCorruptedIndexErrorHandler()` from their catch blocks, so it catches errors from its own regeneration and answers 500.
+  - `getIndex()` refuses a vector source or collection ID that sanitizes to an empty name, and the routes answer 400. Vector purge answers 400 for such a collection ID, so each purge path is one collection folder inside its source folder.
+  - `validateAssetFileName()` in `src/endpoints/assets.js` refuses a file name that is not a string, so asset delete, asset download and Data Bank upload answer 400 for one. The asset routes compare the category with `===`, and the character asset list answers 400 for a `name` that is not a string.
+  - Asset download writes the body through `pipeline()`, so an error in the download body answers 500. With `pipe()`, the request never got an answer under Node.js, and Bun raised the error as uncaught. Its catch block answers only when nothing was sent, because the character branch answers before it removes the temp file.
+- **Tests:** `tests/route-guards-scenarios.test.js`, `tests/route-guards-rows.test.js` (rows on the hostile file name harness, `tests/util/hostile-file-names-*.js`).
+- **Fixes:** `8bd570ff8` (files folder), `7c1cb041b` (group chat IDs), `5f40fd1cb` (chat export and chat info), `cab2e7be3` (group delete id), `3819943a4` (vector index regeneration), `5c194ad04` (vector folder names), `42e7698e4` (asset routes).
+
 ### Cache, boot and reload
 
 - **Breaks:** boot continues before the cache is invalidated; a module is evaluated twice.
