@@ -600,12 +600,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `src/endpoints/content-manager.js`, `src/server-init.js`, `src/server-main.js`, `src/util.js`, `src/plugin-loader.js`. |
 | Area | Install, defaults, server lifecycle, runtime utilities, and Android app runtime. |
-| Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. TODO(copy) |
+| Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. When the Android app starts the server with `SILLYBUNNY_LAUNCH_TOKEN`, the server must refuse requests that do not carry that token, so other apps on the device cannot use it. |
 | Target seam | `src/server-init.js`, `src/server-directory.js`, `src/runtime.js`, the bundled-content helpers in `content-manager.js`, and `src/middleware/launchToken.js` for launch authentication, health probes, and browser handoff. |
 | Adapter shape | Keep startup order and upstream routes stable; isolate default synchronization and fork content reconciliation behind small helpers. In `src/server-main.js`, mount `createLaunchTokenMiddleware()` immediately after helmet and exempt `LAUNCH_COOKIE_NAME` from `/api/cookies/clear` only while enabled. Both hooks are inert unless `SILLYBUNNY_LAUNCH_TOKEN` is non-empty. |
 | Protecting tests | CI `bun src/server-init.js` smoke, `tests/default-preset-deletions.test.js`, `tests/sillybunny-launcher-smol.test.js`, `tests/launch-token.test.js`, `tests/launch-token-server-wiring.test.js`, and root lint. |
 | Validation | Android hooks: `node --check src/server-main.js`, `npm run test:unit --prefix tests -- launch-token.test.js launch-token-server-wiring.test.js`. Existing initialization checks: `npm run init`, `node --check src/server-init.js`, `npm run lint`. |
-| Rollback path | Revert default/content reconciliation while retaining upstream config initialization and server startup. TODO(copy) |
+| Rollback path | Revert default/content reconciliation while retaining upstream config initialization and server startup. For the Android hooks, remove the `createLaunchTokenMiddleware()` mount after `helmet()` and the `LAUNCH_COOKIE_NAME` exemption in `/api/cookies/clear` in `src/server-main.js`, then delete `src/middleware/launchToken.js` and its tests. The server then accepts requests without a launch token and stops serving `/__sillybunny/health` and `/__sillybunny/handoff`, which the Android app uses for its health probe and browser handoff. The Android hooks write no saved data. |
 | Last reviewed | 2026-10-21, PR SillyBunnyTeam/SillyBunny#918 (Android hooks; prior initialization review 2026-07-28). |
 | Owner | Runtime and release integrator. |
 
@@ -627,14 +627,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | Area | Android app runtime. |
-| Divergence reason | TODO(copy) |
+| Divergence reason | The Android app bundles Node.js, git and npm but not Bun. SillyBunny must make `start.sh` skip Termux detection and the prerequisite installer and default to Node.js when `SILLYBUNNY_ANDROID_APP=1`, because the app ships its own tools and the installer relies on download tools that may not exist on Android. |
 | Target seam | `scripts/install-prerequisites.sh`, `scripts/self-update.sh`, and `scripts/dependency-state.js` own setup, updates, and dependencies; no separate seam yet for APK runtime selection. |
 | Adapter shape | Keep `is_android_app()` guards around Termux detection, runtime fallback, and the prerequisite call. Honor Node/Bun overrides, otherwise default APK launches to Node; keep existing update/dependency helper calls. APK branches are inert unless `SILLYBUNNY_ANDROID_APP=1`. |
 | Protecting tests | `tests/android-app-mode-scripts.test.js`, `tests/sillybunny-launcher-smol.test.js`. |
 | Validation | `bash -n start.sh`, `npm run test:unit --prefix tests -- android-app-mode-scripts.test.js sillybunny-launcher-smol.test.js` (shell cases require a POSIX host). |
-| Rollback path | TODO(copy) |
+| Rollback path | Remove `is_android_app()` and its guards in `start.sh`: the early return in `is_termux()`, the Node.js default in `prefer_node_runtime()` and the skip of `scripts/install-prerequisites.sh`. The Android app then runs the prerequisite installer, whose download tools may not exist on Android. No saved data changes. |
 | Last reviewed | 2026-10-21, PR SillyBunnyTeam/SillyBunny#918. |
-| Owner | TODO(copy) |
+| Owner | Runtime and release integrator. |
 
 ### Repository policy, launchers, packaging, and build infrastructure
 | Field | Value |
