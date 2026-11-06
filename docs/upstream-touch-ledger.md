@@ -383,14 +383,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `public/scripts/tool-calling.js`, `public/scripts/openai.js`. |
 | Area | Generation lifecycle (OpenAI tool gate and reasoning effort). |
-| Divergence reason | TODO(copy) |
+| Divergence reason | SillyBunny must open the Chat Completions tool gate for GPT-6 Sol and Luna when Reasoning Effort is None, and send `none` to them when the user picks None. Upstream's gate checks for Min, but SillyBunny sends Min as `minimal` and turns reasoning off with None, so the upstream gate would allow tools on a request that still reasons and block them on one that does not. |
 | Target seam | None yet; both changes are single conditions inside upstream functions, so there is no module to move them to. |
 | Adapter shape | `isToolCallingSupported` compares `settings.reasoning_effort` with `'none'` where upstream compares it with `'min'`, marked with `// SillyBunny:`. The None case of `getReasoningEffort` adds `gpt-6-(?:sol\|luna)` to its GPT-5.1 regex. |
 | Protecting tests | `tests/reasoning-effort-none.test.js`, `tests/upstream-provider-parity.test.js`. |
 | Validation | `npm run lint` in the root and in `tests/`, focused Jest for the protecting test files, full `npm run test:unit`, `npm run check:frontend-budgets`, and `node --check` on the changed JavaScript files. |
 | Rollback path | Restore `'min'` in the tool gate and remove the Sol and Luna alternation. Min then opens Chat Completions tools while SillyBunny sends it as `'minimal'`, and None stays unsent on both models. No data cleanup is needed. |
 | Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
-| Owner | TODO(copy) |
+| Owner | Bugfix integrator. |
 
 ### `public/index.html` - in-chat agent message action buttons
 | Field | Value |
