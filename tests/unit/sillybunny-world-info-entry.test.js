@@ -188,6 +188,16 @@ describe('World Info schema form', () => {
         expect(host.querySelector('.sb-wi-detail-back')).not.toBeNull();
     });
 
+    test('titles every section and translates each through the key the model gives it', () => {
+        const { host } = mount();
+        const heading = id => host.querySelector(`[data-sb-editor-field="section-${id}"] .ds-pref-group-heading`).textContent;
+        const expander = id => host.querySelector(`[data-sb-editor-field="expander-${id}"] > summary .ds-row-label`).textContent;
+        expect(['keywords', 'content'].map(heading)).toEqual(['Keywords', 'translated:Content']);
+        expect(['matching', 'sources', 'timed', 'group', 'recursion', 'filters', 'advanced'].map(expander)).toEqual([
+            'Matching', 'translated:Additional Matching Sources', 'Timed Effects', 'translated:Inclusion Group', 'Recursion', 'Filters', 'translated:Advanced',
+        ]);
+    });
+
     test('properties follow the header and leave no duplicate body rows or empty cards', () => {
         const { host } = mount();
         const bar = host.querySelector('.sb-wi-entry > .sb-wi-properties');

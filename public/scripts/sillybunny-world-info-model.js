@@ -55,19 +55,18 @@ export const TRI_STATE_OPTIONS = Object.freeze([
 const TRIGGER_LABELS = { normal: 'Normal', continue: 'Continue', impersonate: 'Impersonate', swipe: 'Swipe', regenerate: 'Regenerate', quiet: 'Quiet' };
 export const TRIGGER_OPTIONS = Object.freeze(GENERATION_TYPE_TRIGGERS.map(value => ({ value, label: TRIGGER_LABELS[value] ?? value, i18n: TRIGGER_LABELS[value] ?? value })));
 
-// HUMAN: replace — section titles without an existing i18n key use the copy placeholder.
 export const SECTIONS = Object.freeze([
     { id: 'entry', title: null, expander: false },
-    { id: 'keywords', title: 'lorum ipsum', expander: false },
+    { id: 'keywords', title: 'Keywords', expander: false },
     { id: 'content', title: 'Content', i18n: 'Content', expander: false },
-    { id: 'insertion', title: 'lorum ipsum', expander: false },
-    { id: 'matching', title: 'lorum ipsum', expander: true },
+    { id: 'insertion', title: 'Insertion', expander: false },
+    { id: 'matching', title: 'Matching', expander: true },
     { id: 'sources', title: 'Additional Matching Sources', i18n: 'Additional Matching Sources', expander: true },
-    { id: 'timed', title: 'lorum ipsum', expander: true },
+    { id: 'timed', title: 'Timed Effects', expander: true },
     { id: 'group', title: 'Inclusion Group', i18n: 'Inclusion Group', expander: true },
-    { id: 'recursion', title: 'lorum ipsum', expander: true },
-    { id: 'filters', title: 'lorum ipsum', expander: true },
-    { id: 'advanced', title: 'lorum ipsum', expander: true },
+    { id: 'recursion', title: 'Recursion', expander: true },
+    { id: 'filters', title: 'Filters', expander: true },
+    { id: 'advanced', title: 'Advanced', i18n: 'Advanced', expander: true },
 ]);
 
 // ---------------------------------------------------------------------------------------------
