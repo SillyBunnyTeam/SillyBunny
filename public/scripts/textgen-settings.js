@@ -46,6 +46,7 @@ import {
 } from './sampling-parameter-policy.js';
 import { oai_settings } from './openai.js';
 import { getCurrentDreamGenModelTokenizer, getCurrentOpenRouterModelTokenizer, loadAphroditeModels, loadDreamGenModels, loadFeatherlessModels, loadGenericModels, loadInfermaticAIModels, loadLlamaCppModels, loadMancerModels, loadOllamaModels, loadOpenRouterModels, loadTabbyModels, loadTogetherAIModels, loadVllmModels, setOpenRouterProviders, updateOpenRouterProvidersWarning } from './textgen-models.js';
+import { refreshKoboldCppModels } from './sillybunny-koboldcpp-models.js';
 import { ENCODE_TOKENIZERS, TEXTGEN_TOKENIZERS, TOKENIZER_SUPPORTED_KEY, getTextTokens, getTokenizerBestMatch, tokenizers } from './tokenizers.js';
 import { AbortReason } from './util/AbortReason.js';
 import { getSortableDelay, onlyUnique, arraysEqual, isObject } from './utils.js';
@@ -840,6 +841,11 @@ export async function getStatusTextgen() {
 
         if (!online_status) {
             setOnlineStatus('no_connection');
+        }
+
+        // SillyBunny: refresh the KoboldCpp model switcher on every KoboldCpp status check, including reconnects to the same model.
+        if (textgenerationwebui_settings.type === textgen_types.KOBOLDCPP) {
+            void refreshKoboldCppModels();
         }
 
         power_user.chat_template_hash = '';
