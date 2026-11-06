@@ -353,8 +353,9 @@ describe('World Info shell', () => {
         power_user.personas = { 'persona.png': 'Persona' };
         power_user.persona_descriptions = { 'persona.png': { lorebook: 'Book A' } };
         await mount({ name: 'Book A', data: book() });
-        await selectMenuAction('lorum ipsum');
+        await selectMenuAction('Used By…');
         const picker = openPicker.mock.calls.at(-1)[0];
+        expect(picker.title).toBe('Used By');
         expect(picker.multiple).toBeUndefined();
         expect(picker.items.map(item => [item.value, item.subtitle])).toEqual([
             ['character:alice.png', 'Primary Lorebook · lorum ipsum'], ['persona:persona.png', 'Persona'],
@@ -374,7 +375,7 @@ describe('World Info shell', () => {
 
     test('an unused book gets an empty picker and WI has no origin Back button', async () => {
         await mount({ name: 'Book A', data: book() });
-        await selectMenuAction('lorum ipsum');
+        await selectMenuAction('Used By…');
         expect(openPicker).toHaveBeenCalledWith(expect.objectContaining({ items: [], emptyText: 'No results' }));
         expect(container.querySelector('.sb-wi-origin-back')).toBeNull();
         expect(back).not.toHaveBeenCalled();

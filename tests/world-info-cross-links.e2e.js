@@ -62,7 +62,7 @@ test.afterEach(async ({ page }) => {
 
 async function openUsedBy(page) {
     await page.locator('#WorldInfo .sb-wi-book-actions').click();
-    await page.locator('.sb-action-menu').last().getByRole('menuitem', { name: 'lorum ipsum', exact: true }).click();
+    await page.locator('.sb-action-menu').last().getByRole('menuitem', { name: 'Used By…', exact: true }).click();
     const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible');
     await expect(picker).toBeVisible();
     return picker;

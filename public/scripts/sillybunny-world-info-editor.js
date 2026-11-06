@@ -329,7 +329,7 @@ export function mountWorldInfoEditor(container) {
         const action = (label, glyph, id, danger = false) => menuItem(label, glyph, () => clickTransport(id), danger, !state.data);
         menu(trigger, state.name ?? t`World Info`, [
             [menuItem(t`Global Settings`, 'gear', toggleSettings)],
-            [menuItem(t`lorum ipsum`, 'link', () => openUsedByPicker(trigger), false, !state.name)], // HUMAN: replace — Used by book action.
+            [menuItem(t`Used By…`, 'link', () => openUsedByPicker(trigger), false, !state.name)],
             [menuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), false, !state.name || !Object.keys(state.data?.entries ?? {}).length)],
             [action(t`Rename World Info`, 'pencil', 'world_popup_name_button'), action(t`Duplicate World Info`, 'copy', 'world_duplicate'), action(t`Export World Info`, 'file-export', 'world_popup_export')],
             [action(t`Batch Import Embedded Lorebooks`, 'cubes-stacked', 'world_batch_import_embedded'), action(t`Fill empty Memo/Titles with Keywords`, 'notes-medical', 'world_backfill_memos'), action(t`Apply current sorting as Order`, 'arrow-down-9-1', 'world_apply_current_sorting'), action(t`Refresh`, 'arrows-rotate', 'world_refresh')],
@@ -344,7 +344,7 @@ export function mountWorldInfoEditor(container) {
         const relations = { primary: t`Primary Lorebook`, extra: t`Additional Lorebooks`, persona: t`Persona` };
         picker = openPicker({
             trigger,
-            title: t`lorum ipsum`, // HUMAN: replace — Used by picker title.
+            title: t`Used By`,
             emptyText: t`No results`,
             items: users.map(user => ({
                 value: user.value, label: user.label,
