@@ -67,6 +67,17 @@ import {
 } from '../../prompt-converters.js';
 import { applyReasoningEffortNormalization, toWireReasoningEffort } from '../../reasoning-effort.js';
 import { isBunRuntime } from '../../runtime.js';
+import {
+    capFirstGenerateContentBody,
+    collectGenerateContentHops,
+    collectInteractionHops,
+    continueGenerateContentStream,
+    continueInteractionStream,
+    getGenerateContentText,
+    getVertexApiVersion,
+    mergeGenerateContentHops,
+    mergeInteractionHops,
+} from '../../gemini-long-decode.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
 import {
@@ -853,6 +864,8 @@ async function sendMakerSuiteRequest(request, response) {
         };
 
         if (useVertexAi) {
+            // SillyBunny: Vertex keeps v1 unless the request can need long decode.
+            const vertexApiVersion = getVertexApiVersion(model, body.generationConfig?.maxOutputTokens);
             if (authType === 'express') {
                 // For Express mode (API key authentication), use the key parameter
                 const keyParam = authHeader.replace('Bearer ', '');
@@ -862,8 +875,8 @@ async function sendMakerSuiteRequest(request, response) {
                     ? 'https://aiplatform.googleapis.com'
                     : `https://${region}-aiplatform.googleapis.com`;
                 url = projectId
-                    ? `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`
-                    : `${baseUrl}/v1/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`;
+                    ? `https://aiplatform.googleapis.com/${vertexApiVersion}/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`
+                    : `${baseUrl}/${vertexApiVersion}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`;
             } else if (authType === 'full') {
                 // For Full mode (service account authentication), use project-specific URL
                 // Get project ID from Service Account JSON
@@ -884,14 +897,14 @@ async function sendMakerSuiteRequest(request, response) {
                 const region = request.body.vertexai_region || 'us-central1';
                 // Handle global region differently - no region prefix in hostname
                 if (region === 'global') {
-                    url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
+                    url = `https://aiplatform.googleapis.com/${vertexApiVersion}/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
                 } else {
-                    url = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
+                    url = `https://${region}-aiplatform.googleapis.com/${vertexApiVersion}/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
                 }
                 headers['Authorization'] = authHeader;
             } else {
                 // For proxy mode, use the original URL with Authorization header
-                const baseUrl = getGoogleApiBaseUrl(apiUrl.toString(), 'v1');
+                const baseUrl = getGoogleApiBaseUrl(apiUrl.toString(), vertexApiVersion);
                 url = `${baseUrl}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
                 headers['Authorization'] = authHeader;
             }
@@ -900,8 +913,8 @@ async function sendMakerSuiteRequest(request, response) {
             url = `${baseUrl}/models/${model}:${responseType}?key=${apiKey}${stream ? '&alt=sse' : ''}`;
         }
 
-        const generateResponse = await fetch(url, {
-            body: JSON.stringify(body),
+        const sendRequest = requestBody => fetch(url, {
+            body: JSON.stringify(requestBody),
             method: 'POST',
             headers: headers,
             signal: controller.signal,
@@ -909,10 +922,18 @@ async function sendMakerSuiteRequest(request, response) {
             timeout: 0,
         });
 
+        // SillyBunny: Gemini 4 can split one reply across requests, so gemini-long-decode.js asks for the rest and joins it.
+        const firstBody = capFirstGenerateContentBody(body, model, stream);
+        const generateResponse = await sendRequest(firstBody);
+        const sendHop = (continuationToken) => {
+            getResumableGeneration(request)?.extendLifetime();
+            return sendRequest({ ...body, continuationToken });
+        };
+
         if (stream) {
             try {
                 // Pipe remote SSE stream to Express response
-                forwardFetchResponse(generateResponse, response, request, () => controller.abort());
+                forwardFetchResponse(continueGenerateContentStream(generateResponse, sendHop, controller.signal), response, request, () => controller.abort());
             } catch (error) {
                 console.error('Error forwarding streaming response:', error);
                 if (!response.headersSent) {
@@ -927,8 +948,9 @@ async function sendMakerSuiteRequest(request, response) {
                 return response.status(500).send(errorJson);
             }
 
+            const hops = await collectGenerateContentHops(await generateResponse.json(), sendHop, controller.signal, firstBody !== body);
             /** @type {any} */
-            const generateResponseJson = await generateResponse.json();
+            const generateResponseJson = mergeGenerateContentHops(hops);
 
             const candidates = generateResponseJson?.candidates;
             if (!candidates || candidates.length === 0) {
@@ -945,7 +967,7 @@ async function sendMakerSuiteRequest(request, response) {
             const inlineData = (candidates?.[0]?.content?.parts ?? []).some(part => part.inlineData);
             console.debug(`${apiName} response:`, summarizeLlmPayloadForLog(generateResponseJson));
 
-            const responseText = typeof responseContent === 'string' ? responseContent : responseContent?.parts?.filter(part => !part.thought)?.map(part => part.text)?.join('\n\n');
+            const responseText = getGenerateContentText(hops);
             // SillyBunny: these finishes mean the model stopped before it finished the reply, and the client must know that.
             const isCutOff = ['MAX_TOKENS', 'CONTINUATION'].includes(candidates[0].finishReason);
             if (!responseText && !functionCall && !inlineData) {
@@ -3430,10 +3452,15 @@ async function sendGeminiInteractionsRequest(request, response) {
         logVerboseGenerationRequest('Google Interactions API', request, requestBody);
 
         const generateResponse = await fetch(endpointUrl, config);
+        // SillyBunny: Gemini 4 can split one reply across requests, so gemini-long-decode.js asks for the rest and joins it.
+        const sendHop = (continuation_token) => {
+            getResumableGeneration(request)?.extendLifetime();
+            return fetch(endpointUrl, { ...config, body: JSON.stringify({ ...requestBody, continuation_token }) });
+        };
 
         if (request.body.stream) {
             console.info('Streaming Interactions API request in progress');
-            return forwardInteractionStream(generateResponse, response, request, () => controller.abort());
+            return forwardInteractionStream(continueInteractionStream(generateResponse, sendHop, controller.signal), response, request, () => controller.abort());
         }
 
         if (!generateResponse.ok) {
@@ -3444,7 +3471,7 @@ async function sendGeminiInteractionsRequest(request, response) {
         }
 
         /** @type {any} */
-        const generateResponseJson = await generateResponse.json();
+        const generateResponseJson = mergeInteractionHops(await collectInteractionHops(await generateResponse.json(), sendHop, controller.signal));
         console.debug('Google Interactions API response:', summarizeLlmPayloadForLog(generateResponseJson));
         return response.send(transformInteractionToChatCompletion(generateResponseJson));
     } catch (error) {
