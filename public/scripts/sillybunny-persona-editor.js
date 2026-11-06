@@ -122,7 +122,6 @@ export function mountPersonaEditor(container) {
     spacer.setAttribute('aria-hidden', 'true');
     const searchButton = button(t`Search`, 'magnifying-glass', () => searchControl.toggle());
     const newButton = button(t`New`, 'plus', () => shell.selectItem({ kind: 'create' }), 'sb-persona-new');
-    // HUMAN: replace — Sort control label.
     const sortButton = button(t`Sort`, 'arrow-down-wide-short', trigger => openSortMenu(trigger), 'sb-persona-sort-button');
     const listMenu = button(t`Persona Management`, 'ellipsis-vertical', trigger => openListMenu(trigger), 'sb-persona-list-menu');
     [searchButton, newButton, sortButton, listMenu].forEach(control => control.classList.add('sb-header-icon-button'));
@@ -216,8 +215,7 @@ export function mountPersonaEditor(container) {
 
     function openSortMenu(trigger) {
         menu(trigger, sortButton.getAttribute('aria-label'), [{
-            // HUMAN: replace — Sort by section title.
-            title: t`Sort type`,
+            title: t`Sort By`,
             items: [['asc', t`A-Z`], ['desc', t`Z-A`]].map(([order, label]) => ({
                 ...menuItem(label, 'arrow-down-wide-short', () => {
                     power_user.persona_sort_order = order;
@@ -312,16 +310,14 @@ export function mountPersonaEditor(container) {
             return;
         }
         if (shell.isNavigating || shell.pointerActive) { shell.deferRefresh(); return; }
-        // HUMAN: replace — Persona-count subtitle.
-        subtitle.textContent = `${allIds.length} ${t`personas available`}`;
+        subtitle.textContent = allIds.length === 1 ? t`1 persona` : t`${allIds.length} personas`;
         listStatus.hidden = entries.length > 0;
         heading.hidden = !listStatus.hidden;
         listBox.hidden = !listStatus.hidden;
         if (!entries.length) {
             listStatus.replaceChildren(createStatusPage({
                 icon: allIds.length ? 'magnifying-glass' : 'user',
-                // HUMAN: replace — Empty persona library title.
-                title: allIds.length ? t`No results` : t`No personas available`, compact: true,
+                title: allIds.length ? t`No Results` : t`No Personas`, compact: true,
                 actions: allIds.length ? [] : [{ label: t`New`, primary: true, onActivate: () => run(() => shell.selectItem({ kind: 'create' })) }],
             }).element);
         }

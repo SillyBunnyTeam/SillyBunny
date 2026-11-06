@@ -699,13 +699,23 @@ describe('Persona editor shell', () => {
         await settle();
         expect(displayIds).toHaveBeenCalledWith(avatarIds, 'missing');
         expect(rowIds()).toEqual([]);
-        expect(container.querySelector('.sb-persona-list-status').textContent).toBe('No results');
+        expect(container.querySelector('.sb-persona-list-status').textContent).toBe('No Results');
         expect(container.querySelector('.sb-persona-list-heading').hidden).toBe(true);
         expect(container.querySelector('.sb-list-editor__status').textContent).toBe('No results');
     });
 
+    test.each([
+        ['1 persona', 1],
+        ['3 personas', 3],
+        ['0 personas', 0],
+    ])('the header reads "%s" from one string per form', async (text, count) => {
+        await mount(count);
+        expect(container.querySelector('.sb-persona-list-subtitle').textContent).toBe(text);
+    });
+
     test('an empty library offers a create draft', async () => {
         await mount(0);
+        expect(container.querySelector('.sb-persona-list-status .sb-status-page__title').textContent).toBe('No Personas');
         container.querySelector('.sb-persona-list-status button').click();
         await settle();
         expect(mountDetail).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'create', avatarId: null }));
@@ -715,7 +725,7 @@ describe('Persona editor shell', () => {
         await mount();
         container.querySelector('.sb-persona-sort-button').click();
         await settle();
-        expect(actionMenu.sections[0].title).toBe('Sort type');
+        expect(actionMenu.sections[0].title).toBe('Sort By');
         expect(actionMenu.sections[0].items.map(({ checked }) => checked)).toEqual([true, false]);
         await menuAction('Z-A', '.sb-persona-sort-button');
         expect(power_user.persona_sort_order).toBe('desc');
