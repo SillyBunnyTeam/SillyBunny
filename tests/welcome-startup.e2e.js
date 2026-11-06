@@ -25,19 +25,24 @@ const next = host => shownPage(host).getByRole('button', { name: 'Next', exact: 
  * `seen: false` leaves the account that never met Welcome. Once the app has saved, a reload is served what it saved, as
  * the server would, so a test can tell what a later boot of the same account does.
  * @param {import('@playwright/test').Page} page
- * @param {{ firstRun?: boolean, showAtStartup?: 'true' | 'false' | null, seen?: boolean, importPending?: boolean, withoutQuickImageGenSettings?: boolean, defaultPersona?: boolean | { description: string } }} [account]
+ * @param {{ firstRun?: boolean, showAtStartup?: 'true' | 'false' | null, seen?: boolean, importPending?: boolean, withoutQuickImageGenSettings?: boolean, defaultPersona?: boolean | { description: string }, multiUserAdmin?: boolean | null }} [account]
  *   `defaultPersona` boots the account with the user name the app gives until the user chooses one and no persona entry
  *   for the avatar, which the app then binds with empty fields. A description makes that persona the user's own.
+ *   `multiUserAdmin` turns accounts on and says whether the logged-in account is an admin.
  */
-async function boot(page, { firstRun = false, showAtStartup = null, seen = true, importPending = false, withoutQuickImageGenSettings = false, defaultPersona = false } = {}) {
+async function boot(page, { firstRun = false, showAtStartup = null, seen = true, importPending = false, withoutQuickImageGenSettings = false, defaultPersona = false, multiUserAdmin = null } = {}) {
     await protectMaintainerServer(page);
+    const accounts = multiUserAdmin === null ? {} : { enable_accounts: true };
+    if (multiUserAdmin !== null) {
+        await page.route('**/api/users/me', route => route.fulfill({ json: { handle: 'qa-account', name: 'QA Account', admin: multiUserAdmin } }));
+    }
     /** @type {Awaited<ReturnType<typeof captureAccountStorageSaves>>} */
     let captured;
     await page.route('**/api/settings/get', async (route) => {
         const data = await fetchJsonOrSkip(route);
         if (!data) return;
         if (captured.payload) {
-            return route.fulfill({ json: { ...data, settings: JSON.stringify(captured.payload) } });
+            return route.fulfill({ json: { ...data, ...accounts, settings: JSON.stringify(captured.payload) } });
         }
         const settings = JSON.parse(data.settings);
         // A first run has no stored checklist, which is how Getting Started tells it from an old account.
@@ -50,7 +55,7 @@ async function boot(page, { firstRun = false, showAtStartup = null, seen = true,
             settings.power_user.personas = defaultPersona === true ? {} : { [settings.user_avatar]: 'User' };
             settings.power_user.persona_descriptions = defaultPersona === true ? {} : { [settings.user_avatar]: { description: defaultPersona.description, position: 0 } };
         }
-        return route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
+        return route.fulfill({ json: { ...data, ...accounts, settings: JSON.stringify(settings) } });
     });
     captured = await captureAccountStorageSaves(page);
     if (importPending) {
@@ -614,5 +619,47 @@ test.describe('the Import From SillyTavern page', () => {
         expect(await page.evaluate(key => localStorage.getItem(key), IMPORT_PENDING)).toBeNull();
         await expect(shownPage(host).getByRole('button', { name: 'Import Folder', exact: true })).toBeEnabled();
         await expect(titleOf(host)).toHaveText('Import From SillyTavern');
+    });
+
+    test('an account that is not an admin is offered only the backup ZIP, which still imports', async ({ page }) => {
+        const uploads = [];
+        await page.route('**/api/users/import-sillytavern/zip', (route) => {
+            uploads.push(route.request().headers()['content-type']);
+            return route.fulfill({ status: 400, json: { error: 'A SillyTavern backup ZIP is required.' } });
+        });
+        await boot(page, { firstRun: true, seen: false, multiUserAdmin: false });
+        const host = hosts(page);
+        await expect(host).toBeVisible({ timeout: STARTUP_TIMEOUT });
+        await expect(shownPage(host).getByRole('button', { name: 'Import From SillyTavern' })).not.toContainText(WELCOME_COPY.importRow);
+
+        await openImportPage(page);
+
+        const current = shownPage(host);
+        await expect(current.getByRole('textbox', { name: 'Folder Path' })).toHaveCount(0);
+        await expect(current.getByRole('button', { name: 'Import Folder', exact: true })).toHaveCount(0);
+        await expect(current).not.toContainText(WELCOME_COPY.importExplanation);
+        await expect(current.getByRole('button', { name: 'Import Backup ZIP', exact: true })).toBeVisible();
+
+        await current.locator('input[type="file"]').setInputFiles({ name: 'backup.zip', mimeType: 'application/zip', buffer: Buffer.from('PK-not-a-real-zip') });
+        await confirmImport(page);
+
+        await expect(current.getByRole('status')).toHaveText('A SillyTavern backup ZIP is required.');
+        expect(uploads).toHaveLength(1);
+        await expect(current.getByRole('button', { name: 'Import Backup ZIP', exact: true })).toBeEnabled();
+    });
+
+    test('an admin account keeps the folder import', async ({ page }) => {
+        await boot(page, { firstRun: true, seen: false, multiUserAdmin: true });
+        const host = hosts(page);
+        await expect(host).toBeVisible({ timeout: STARTUP_TIMEOUT });
+        await expect(shownPage(host).getByRole('button', { name: 'Import From SillyTavern' })).toContainText(WELCOME_COPY.importRow);
+
+        await openImportPage(page);
+
+        const current = shownPage(host);
+        await expect(current).toContainText(WELCOME_COPY.importExplanation);
+        await expect(current.getByRole('textbox', { name: 'Folder Path' })).toBeVisible();
+        await expect(current.getByRole('button', { name: 'Import Folder', exact: true })).toBeVisible();
+        await expect(current.getByRole('button', { name: 'Import Backup ZIP', exact: true })).toBeVisible();
     });
 });

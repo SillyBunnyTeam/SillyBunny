@@ -16,6 +16,7 @@ import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { createSillyTavernImport } from './sillybunny-welcome-import.js';
 import { DEFAULT_USER_NAME, isUntouchedDefaultPersona, savePersonaName } from './sillybunny-welcome-persona.js';
 import { ensureWindowStyles } from './sillybunny-window-styles.js';
+import { isAdmin } from './user.js';
 
 const PAGE_COUNT = 3;
 const LANGUAGE_SELECT_ID = 'onboarding_ui_language_select';
@@ -70,7 +71,7 @@ function createLanguageRow() {
     return createSelectRow({ select, label: t`Language`, field: 'welcome-language', searchLabel: t`Search` });
 }
 
-function fillHello(body, { language, openImport }) {
+function fillHello(body, { language, openImport, canImportFolder }) {
     const { intro: greeting } = createArtIntro({ art: 'welcome-both', text: t`Hello, and welcome to SillyBunny! I'm Reisen, and this is Tewi. We'll help you get everything set up.` });
 
     const intro = document.createElement('div');
@@ -82,7 +83,7 @@ function fillHello(body, { language, openImport }) {
 
     const importRow = createRow({
         label: t`Import From SillyTavern`,
-        subtitle: t`Coming from SillyTavern? Show me where your folder is and bring everything along!`,
+        subtitle: canImportFolder ? t`Coming from SillyTavern? Show me where your folder is and bring everything along!` : undefined,
         field: 'welcome-import',
         activatable: true,
         onActivate: openImport,
@@ -143,11 +144,12 @@ async function confirmImport(sourceName) {
 
 /**
  * Fills the import page. A failed import shows the message of the server below the buttons, because the account
- * is as it was and the user may try another folder.
+ * is as it was and the user may try another folder. The server refuses the folder import to an account that is not an
+ * admin, so such an account gets only the backup ZIP and none of the text about a folder.
  * @param {HTMLElement} body
- * @param {{ importer: ReturnType<typeof createSillyTavernImport> }} options
+ * @param {{ importer: ReturnType<typeof createSillyTavernImport>, canImportFolder: boolean }} options
  */
-function fillImport(body, { importer }) {
+function fillImport(body, { importer, canImportFolder }) {
     const folder = createEntryRow({ label: t`Folder Path`, field: 'welcome-import-folder', floating: true });
     const folderButton = createActionButton(t`Import Folder`);
     const zipButton = createActionButton(t`Import Backup ZIP`);
@@ -193,13 +195,15 @@ function fillImport(body, { importer }) {
 
     const actions = document.createElement('div');
     actions.className = 'sbWindowActions';
-    actions.append(folderButton, zipButton, zipInput);
-    body.append(
-        createTextBlock(t`Please enter the path of a SillyTavern folder on the computer running SillyBunny, or upload a backup ZIP. We'll try to transfer everything over right away. Just be careful... files with the same name will be replaced.`),
-        createPrefGroup({ field: 'welcome-import-group', rows: [folder] }).section,
-        actions,
-        status,
-    );
+    actions.append(zipButton, zipInput);
+    if (canImportFolder) {
+        actions.prepend(folderButton);
+        body.append(
+            createTextBlock(t`Please enter the path of a SillyTavern folder on the computer running SillyBunny, or upload a backup ZIP. We'll try to transfer everything over right away. Just be careful... files with the same name will be replaced.`),
+            createPrefGroup({ field: 'welcome-import-group', rows: [folder] }).section,
+        );
+    }
+    body.append(actions, status);
 }
 
 /**
@@ -332,6 +336,7 @@ function whenAppReady(open) {
 export async function openWelcomeDialog({ firstRun = false, avatarId = user_avatar, onNamed } = {}) {
     await ensureWindowStyles();
     const startup = getWelcomeStartup();
+    const canImportFolder = isAdmin();
     /** @type {ReturnType<typeof openDialog>} */
     let dialog;
     // The row adopts the select before the dialog exists, so a failure while the dialog is built must give it back.
@@ -415,7 +420,7 @@ export async function openWelcomeDialog({ firstRun = false, avatarId = user_avat
         page.setResponseEnabled('next', !firstRun);
         return page;
     };
-    const pushImport = () => dialog.push({ title: t`Import From SillyTavern`, content: body => fillImport(body, { importer }), canClose: stepGuard(() => {}) });
+    const pushImport = () => dialog.push({ title: t`Import From SillyTavern`, content: body => fillImport(body, { importer, canImportFolder }), canClose: stepGuard(() => {}) });
 
     try {
         dialog = openDialog({
@@ -425,7 +430,7 @@ export async function openWelcomeDialog({ firstRun = false, avatarId = user_avat
             responses: { affirmative: { id: 'next', label: t`Next` }, cancel: { label: t`Close` } },
             canClose: stepGuard(pushPersona, { escape: false }),
             swipeToDismiss: false,
-            content: body => fillHello(body, { language, openImport: pushImport }),
+            content: body => fillHello(body, { language, openImport: pushImport, canImportFolder }),
         });
     } catch (error) {
         language?.destroy();
