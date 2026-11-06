@@ -60,7 +60,7 @@ describe('confirmDestructiveAction', () => {
     });
 
     test('dismissal returns false and placeholder copy is marked', async () => {
-        const result = confirmDestructiveAction({ text: 'lorum ipsum', confirmLabel: 'Delete', copyPlaceholder: true });
+        const result = confirmDestructiveAction({ text: 'Delete this item?', confirmLabel: 'Delete', copyPlaceholder: true });
         expect(popup.content.dataset.sbCopyPlaceholder).toBe('true');
         popup.complete(null);
         await expect(result).resolves.toBe(false);

@@ -75,7 +75,7 @@ describe('Agents UI copy matcher', () => {
         expect(forbiddenCopy(text)).toBe(true);
     });
 
-    test.each(['Search…', 'Delete', '${} on · ${} tokens', 'lorum ipsum'])('accepts UI text %s', text => {
+    test.each(['Search…', 'Delete', '${} on · ${} tokens', 'Restore Default'])('accepts UI text %s', text => {
         expect(forbiddenCopy(text)).toBe(false);
     });
 });
