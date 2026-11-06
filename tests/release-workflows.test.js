@@ -95,7 +95,11 @@ describe('release pipeline workflows', () => {
 
 const ANDROID_SMOKE = './.github/workflows/android-smoke.yml';
 const SIGNING_SECRETS = ['ANDROID_KEYSTORE_B64', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD'];
-const ERROR_ANNOTATION = '::error title=TODO(copy)::TODO(copy)';
+const DECISION_FAILED_ANNOTATION = '::error title=Release decision failed::release-decision.mjs failed. The step log says which rule or request failed.';
+const MIRROR_CHECK_ANNOTATION = '::error title=Input mirror check failed::runtime-mirror.py --check failed. The step log shows why, for example a missing mirror tag.';
+const SIGNING_CERT_ANNOTATION = '::error title=Signing certificate check failed::The APK signing certificate does not match earlier releases, or could not be checked. Android refuses to update an installed app with an APK signed by a different certificate. The step log has the details.';
+const JOBS_INCOMPLETE_ANNOTATION = '::error title=Android jobs incomplete::The Android build, smoke, signing and re-attach jobs did not end as the release decision requires, so no draft is created. The step log lists each result.';
+const DECISION_CHANGED_ANNOTATION = '::error title=Android decision changed::The Android decision no longer holds, for example because another release was drafted while this run waited. Re-run the workflow to decide again.';
 const SIGNER = 'a6f296b190227ca0f0f6327ef06f3705f026a81562b10def548addb0f668e0f3';
 const OTHER_SIGNER = '88c7b96f568d4735349049df6693a0c029c71a52e45c179345f565e4634da7b8';
 const HASH_A = 'a1'.repeat(32);
@@ -220,7 +224,7 @@ describe('Android APK release jobs (plan §6.1-§6.3)', () => {
         expect(step.run).toContain('--exclude-tag "$TAG"');
         expect(step.run).toContain('--skip-unpinned-runtime');
         expect(releaseSource).not.toContain('--allow-unpinned-runtime');
-        expect(step.run).toContain('echo \'::notice title=TODO(copy)::TODO(copy)\'');
+        expect(step.run).toContain('echo \'::notice title=Android APKs skipped::android/runtime.lock does not pin the Node or npm payload yet, so this release is drafted without APKs.\'');
         expect(step.run).toContain('>> "$GITHUB_STEP_SUMMARY"');
     });
 
@@ -230,7 +234,7 @@ describe('Android APK release jobs (plan §6.1-§6.3)', () => {
         expect(step.if).toBe('steps.android.outputs.action == \'build\'');
         expect([step.env, jobs.decide.env, release.env]).toEqual([undefined, undefined, undefined]);
         expect(step.run).toContain('if ! python3 -I -B android/runtime/runtime-mirror.py --check; then');
-        expect(step.run).toContain(`echo '${ERROR_ANNOTATION}'`);
+        expect(step.run).toContain(`echo '${MIRROR_CHECK_ANNOTATION}'`);
     });
 
     test('the build runs the one recipe script with only the channel and an output directory', () => {
@@ -813,8 +817,8 @@ describePosix('release.yml step scripts (POSIX)', () => {
         const skip = run({ ...base, action: 'skip' });
         expect(skip.code).toBe(0);
         expect(skip.outputs).toEqual({ 'action': 'skip', 'default-ref': 'release', 'inputs-hash': HASH_B, 'previous-tag': '', 'expected-signing-cert': '' });
-        expect(skip.stdout).toContain('::notice title=TODO(copy)::TODO(copy)\n');
-        expect(skip.summary).toBe('TODO(copy)\n\n- android: `skip`\n- reason: `unpinned-runtime`\n');
+        expect(skip.stdout).toContain('::notice title=Android APKs skipped::android/runtime.lock does not pin the Node or npm payload yet, so this release is drafted without APKs.\n');
+        expect(skip.summary).toBe('Android APKs skipped\n\n- android: `skip`\n- reason: `unpinned-runtime`\n');
         expect(readFileSync(path.join(dir, 'args'), 'utf8')).toBe(`android/release/release-decision.mjs --prerelease false --commit ${'c'.repeat(40)} --github-repository team/app --github-api-url ${API} --exclude-tag v2.3.0 --skip-unpinned-runtime\n`);
         const reattach = run({ ...base, action: 'reattach', previous: { tag: 'v2.2.0' }, expectedSigningCert: SIGNER });
         expect([reattach.code, reattach.outputs.action, reattach.outputs['previous-tag'], reattach.summary]).toEqual([0, 'reattach', 'v2.2.0', '']);
@@ -823,7 +827,7 @@ describePosix('release.yml step scripts (POSIX)', () => {
         expect(run({ ...base, action: 'build' }).outputs).toMatchObject({ 'action': 'build', 'expected-signing-cert': '' });
         const failed = run({}, 1);
         expect([failed.code, failed.outputs]).toEqual([1, {}]);
-        expect(failed.stdout).toContain(ERROR_ANNOTATION);
+        expect(failed.stdout).toContain(DECISION_FAILED_ANNOTATION);
         expect(run({ ...base, action: 'publish' }).code).toBe(1);
     });
 
@@ -836,7 +840,7 @@ describePosix('release.yml step scripts (POSIX)', () => {
         expect([present.code, present.stdout]).toEqual([0, '']);
         expect(readFileSync(path.join(dir, 'args'), 'utf8')).toBe('-I -B android/runtime/runtime-mirror.py --check\n');
         const missing = run(1);
-        expect([missing.code, missing.stdout]).toEqual([1, `${ERROR_ANNOTATION}\n`]);
+        expect([missing.code, missing.stdout]).toEqual([1, `${MIRROR_CHECK_ANNOTATION}\n`]);
     });
 
     test('the draft job makes the decision again with decide\'s flags and stops if it changed', () => {
@@ -887,7 +891,7 @@ describePosix('release.yml step scripts (POSIX)', () => {
         ]) {
             const result = run(decision, {}, status);
             expect([decision, result.code]).toEqual([decision, 1]);
-            expect(result.stdout).toContain(ERROR_ANNOTATION);
+            expect(result.stdout).toContain(DECISION_CHANGED_ANNOTATION);
             expect(JSON.parse(result.stderr.trim().split('\n').at(-1)).code).toBe('android-decision-changed');
         }
         // Another tag's run drafted a release signed with another certificate while this one waited.
@@ -896,7 +900,7 @@ describePosix('release.yml step scripts (POSIX)', () => {
             [{ ...build, action: 'reattach', previous: { tag: 'v2.2.0' }, expectedSigningCert: OTHER_SIGNER }, { ANDROID: 'reattach', PREVIOUS_TAG: 'v2.2.0' }],
         ]) {
             const result = run(decision, env);
-            expect([decision.action, result.code, result.stdout]).toEqual([decision.action, 1, `${ERROR_ANNOTATION}\n`]);
+            expect([decision.action, result.code, result.stdout]).toEqual([decision.action, 1, `${SIGNING_CERT_ANNOTATION}\n`]);
             expect(JSON.parse(result.stderr.trim().split('\n').at(-1))).toEqual({ code: 'signing-cert-mismatch', expected: OTHER_SIGNER, actual: SIGNER });
         }
     });
@@ -908,16 +912,16 @@ describePosix('release.yml step scripts (POSIX)', () => {
         expect([same.code, same.stdout, same.stderr, same.summary]).toEqual([0, '', '', '']);
         expect(run(formatSigningCert(SIGNER), SIGNER).code).toBe(0);
         const other = run(SIGNER, OTHER_SIGNER);
-        expect([other.code, other.stdout, other.summary]).toEqual([1, `${ERROR_ANNOTATION}\n`, '']);
+        expect([other.code, other.stdout, other.summary]).toEqual([1, `${SIGNING_CERT_ANNOTATION}\n`, '']);
         expect(JSON.parse(other.stderr.trim().split('\n').at(-1))).toEqual({ code: 'signing-cert-mismatch', expected: SIGNER, actual: OTHER_SIGNER });
         // The first APK release has nothing to compare with, so its certificate goes to the job summary.
         const first = run('', SIGNER);
-        expect([first.code, first.stdout, first.summary]).toEqual([0, '', `TODO(copy)\n\n- signing-cert-sha256: \`${SIGNER}\`\n`]);
+        expect([first.code, first.stdout, first.summary]).toEqual([0, '', `Signing certificate of the first Android release\n\n- signing-cert-sha256: \`${SIGNER}\`\n`]);
         // An unusable signing output fails instead of passing as a first release.
         for (const certificate of ['', 'null']) {
             for (const expected of [SIGNER, '']) {
                 const broken = run(expected, certificate);
-                expect([certificate, expected, broken.code, broken.stdout, broken.summary]).toEqual([certificate, expected, 1, `${ERROR_ANNOTATION}\n`, '']);
+                expect([certificate, expected, broken.code, broken.stdout, broken.summary]).toEqual([certificate, expected, 1, `${SIGNING_CERT_ANNOTATION}\n`, '']);
             }
         }
     });
@@ -930,7 +934,7 @@ describePosix('release.yml step scripts (POSIX)', () => {
         const same = run(SIGNER);
         expect([same.code, same.stdout, same.stderr]).toEqual([0, '', '']);
         const other = run(OTHER_SIGNER);
-        expect([other.code, other.stdout]).toEqual([1, `${ERROR_ANNOTATION}\n`]);
+        expect([other.code, other.stdout]).toEqual([1, `${SIGNING_CERT_ANNOTATION}\n`]);
         expect(JSON.parse(other.stderr.trim().split('\n').at(-1))).toEqual({ code: 'signing-cert-mismatch', expected: OTHER_SIGNER, actual: SIGNER });
     });
 
@@ -951,7 +955,7 @@ describePosix('release.yml step scripts (POSIX)', () => {
         ]) {
             const result = check(...failing);
             expect([failing, result.code]).toEqual([failing, 1]);
-            expect(result.stdout).toContain(ERROR_ANNOTATION);
+            expect(result.stdout).toContain(JOBS_INCOMPLETE_ANNOTATION);
             expect(JSON.parse(result.stderr).code).toBe('android-jobs-incomplete');
         }
     });

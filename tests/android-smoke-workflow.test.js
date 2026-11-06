@@ -17,7 +17,9 @@ const EMULATOR_RUNNER = 'reactivecircus/android-emulator-runner@a421e43855164a81
 const PINNED = /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/;
 const PINNED_LINE = /^([\w.-]+\/[\w.-]+)@([0-9a-f]{40}) # (v\d+(?:\.\d+)*)$/;
 const ON_FAILURE = 'failure() || cancelled()';
-const ERROR_ANNOTATION = '::error title=TODO(copy)::TODO(copy)';
+const DEFAULT_REF_ANNOTATION = '::error title=Invalid default-ref input::The default-ref input must be staging or release.';
+const RESULT_ANNOTATION = '::error title=Android smoke failed::A plan, build or smoke job did not succeed. The step log lists each job result.';
+const INVALID_LOCK_ANNOTATION = '::error title=TODO(copy)::TODO(copy)';
 // Plan §7.1's list, plus the smoke's own workflow and harness, and the tests package files the harness loads.
 const ANDROID_FILES = [
     'android/*',
@@ -261,7 +263,7 @@ describePosix('android-smoke.yml step scripts', () => {
         for (const value of ['main', '', 'Staging', 'release ', 'staging\nrun=true']) {
             const result = runStep(step.run, { env: { DEFAULT_REF: value } });
             expect([value, result.code, result.outputs]).toEqual([value, 1, '']);
-            expect(result.stdout).toContain(ERROR_ANNOTATION);
+            expect(result.stdout).toContain(DEFAULT_REF_ANNOTATION);
             expect(JSON.parse(result.stderr)).toEqual({ code: 'invalid-default-ref', allowed: ['staging', 'release'] });
         }
     });
@@ -284,7 +286,7 @@ describePosix('android-smoke.yml step scripts', () => {
         expect(results.map(result => [result.code, result.outputs])).toEqual(cases.map(([, code, outputs]) => [code, outputs]));
         for (const [index, result] of results.entries()) {
             const failed = cases[index][1] === 1;
-            expect([index, result.stdout.includes(ERROR_ANNOTATION)]).toEqual([index, failed]);
+            expect([index, result.stdout.includes(RESULT_ANNOTATION)]).toEqual([index, failed]);
         }
         expect(JSON.parse(results[5].stderr)).toEqual({ plan: 'success', run: 'true', reason: 'node-digests-pinned', build: 'failure', smoke: 'skipped' });
     });
@@ -347,7 +349,7 @@ describe('android-smoke.yml jobs', () => {
 
         const partial = runGuard(lockWith(realLock.abis.slice(0, 1)));
         expect([partial.code, partial.outputs, partial.summary]).toEqual([1, 'run=false\nreason=node-digests-partial\n', '']);
-        expect(partial.stdout).toContain(ERROR_ANNOTATION);
+        expect(partial.stdout).toContain(INVALID_LOCK_ANNOTATION);
 
         const broken = runGuard('{');
         expect([broken.code, broken.outputs]).toEqual([1, 'run=false\nreason=runtime-lock-invalid\n']);

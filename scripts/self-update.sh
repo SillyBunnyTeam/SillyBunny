@@ -76,7 +76,7 @@ check_android_app_update() {
     local LC_ALL=C
 
     # Pin the app's check and update to one commit even if the tracking ref moves.
-    checked_upstream="$(git rev-parse '@{upstream}' 2>/dev/null)" || finish_early "TODO(copy)"
+    checked_upstream="$(git rev-parse '@{upstream}' 2>/dev/null)" || finish_early "could not read the upstream commit."
 
     if (( behind > 0 )); then
         installed="$(normalize_android_version "${SILLYBUNNY_ANDROID_APP_VERSION_CODE:-}")" || installed=0
@@ -105,9 +105,9 @@ check_android_app_update() {
 
         if [[ -n "$reason" ]]; then
             if (( OPTIONAL )); then
-                echo "Skipping self-update: TODO(copy)" >&2
+                echo "Skipping self-update: the update needs a newer SillyBunny app, or its android/min-app-version file is missing or invalid." >&2
             else
-                echo "Self-update failed: TODO(copy)" >&2
+                echo "Self-update failed: the update needs a newer SillyBunny app, or its android/min-app-version file is missing or invalid." >&2
             fi
             if [[ -n "${SILLYBUNNY_ANDROID_STATUS_DIR:-}" ]]; then
                 branch="${current_branch//\\/\\\\}"
@@ -126,7 +126,7 @@ check_android_app_update() {
     fi
 
     if [[ -n "${SILLYBUNNY_ANDROID_STATUS_DIR:-}" ]]; then
-        rm -f -- "$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json" || finish_early "TODO(copy)"
+        rm -f -- "$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json" || finish_early "could not remove the update-blocked.json status file."
     fi
 }
 
@@ -190,7 +190,7 @@ echo "Updating SillyBunny..."
 if [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]; then
     # A pull would refetch and could merge an unchecked commit in the Android app.
     if ! git merge --ff-only "$checked_upstream"; then
-        finish_early "TODO(copy)"
+        finish_early "git merge --ff-only failed."
     fi
 else
     if ! git pull --ff-only; then

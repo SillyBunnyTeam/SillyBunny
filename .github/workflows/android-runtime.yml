@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: TODO(copy)
+        description: Publish to GHCR and open the digest PR (staging only)
         type: boolean
         default: false
 
@@ -337,7 +337,7 @@ jobs:
           mapfile -t files < "$stage/oras-files"
           (cd "$stage" && oras push --artifact-type application/vnd.sillybunnyteam.android.inputs.v1 \
             --annotation "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
-            --annotation 'org.opencontainers.image.description=TODO(copy)' \
+            --annotation 'org.opencontainers.image.description=Input mirror for SillyBunny Android release builds: the pinned Termux packages, source files and build-system files' \
             --export-manifest manifest.json "$reference" "${files[@]}")
           test "$(oras resolve "$reference")" = "sha256:$(sha256sum "$stage/manifest.json" | cut -d ' ' -f 1)"
           python3 -I -B android/runtime/runtime-mirror.py --check

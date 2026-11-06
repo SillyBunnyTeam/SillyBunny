@@ -53,7 +53,7 @@ jobs:
               echo "default-ref=$DEFAULT_REF" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo '::error title=TODO(copy)::TODO(copy)'
+              echo '::error title=Invalid default-ref input::The default-ref input must be staging or release.'
               echo '{"code":"invalid-default-ref","allowed":["staging","release"]}' >&2
               exit 1
               ;;
@@ -343,7 +343,7 @@ jobs:
           elif [ "$PLAN" = success ] && [ "$RUN" = true ] && [ "$BUILD" = success ] && [ "$SMOKE" = success ]; then
             echo 'outcome=passed' >> "$GITHUB_OUTPUT"
           else
-            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '::error title=Android smoke failed::A plan, build or smoke job did not succeed. The step log lists each job result.'
             # Job results and the guard's machine codes: plain words, safe to print unescaped.
             printf '{"plan":"%s","run":"%s","reason":"%s","build":"%s","smoke":"%s"}\n' "$PLAN" "$RUN" "$REASON" "$BUILD" "$SMOKE" >&2
             exit 1

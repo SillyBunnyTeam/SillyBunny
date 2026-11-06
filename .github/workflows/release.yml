@@ -95,7 +95,7 @@ jobs:
           if ! node android/release/release-decision.mjs --prerelease "$PRERELEASE" --commit "$GITHUB_SHA" \
             --github-repository "$GITHUB_REPOSITORY" --github-api-url "$GITHUB_API_URL" --exclude-tag "$TAG" \
             --skip-unpinned-runtime > "$decision"; then
-            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '::error title=Release decision failed::release-decision.mjs failed. The step log says which rule or request failed.'
             exit 1
           fi
           cat "$decision"
@@ -103,7 +103,7 @@ jobs:
           case "$action" in
             build | reattach | skip) ;;
             *)
-              echo '::error title=TODO(copy)::TODO(copy)'
+              echo '::error title=Unknown Android decision::release-decision.mjs returned an action other than build, reattach or skip.'
               echo '{"code":"unknown-android-decision"}' >&2
               exit 1
               ;;
@@ -116,8 +116,8 @@ jobs:
             echo "expected-signing-cert=$(jq -r '.expectedSigningCert // empty' "$decision")"
           } >> "$GITHUB_OUTPUT"
           if [ "$action" = skip ]; then
-            echo '::notice title=TODO(copy)::TODO(copy)'
-            printf 'TODO(copy)\n\n- android: `skip`\n- reason: `unpinned-runtime`\n' >> "$GITHUB_STEP_SUMMARY"
+            echo '::notice title=Android APKs skipped::android/runtime.lock does not pin the Node or npm payload yet, so this release is drafted without APKs.'
+            printf 'Android APKs skipped\n\n- android: `skip`\n- reason: `unpinned-runtime`\n' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       # build-release-apks.sh reads the pinned Termux debs and sources only from the mirror, so a missing
@@ -127,7 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           if ! python3 -I -B android/runtime/runtime-mirror.py --check; then
-            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '::error title=Input mirror check failed::runtime-mirror.py --check failed. The step log shows why, for example a missing mirror tag.'
             exit 1
           fi
 
@@ -295,11 +295,11 @@ jobs:
           set -euo pipefail
           if ! check=$(node android/release/release-decision.mjs --check-signing-cert "$CERTIFICATE" \
             --expected-signing-cert "$EXPECTED"); then
-            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '::error title=Signing certificate check failed::The APK signing certificate does not match earlier releases, or could not be checked. Android refuses to update an installed app with an APK signed by a different certificate. The step log has the details.'
             exit 1
           fi
           if [ -z "$EXPECTED" ]; then
-            printf 'TODO(copy)\n\n- signing-cert-sha256: `%s`\n' "$(jq -r '.signingCert' <<< "$check")" >> "$GITHUB_STEP_SUMMARY"
+            printf 'Signing certificate of the first Android release\n\n- signing-cert-sha256: `%s`\n' "$(jq -r '.signingCert' <<< "$check")" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Write android-update.json
@@ -385,7 +385,7 @@ jobs:
           certificate=$(jq -r '.signingCertSha256' "$RUNNER_TEMP/android-release/android-update.json")
           if ! node android/release/release-decision.mjs --check-signing-cert "$certificate" \
             --expected-signing-cert "$EXPECTED" > /dev/null; then
-            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '::error title=Signing certificate check failed::The APK signing certificate does not match earlier releases, or could not be checked. Android refuses to update an installed app with an APK signed by a different certificate. The step log has the details.'
             exit 1
           fi
 
@@ -432,7 +432,7 @@ jobs:
             build/success/success/passed/success/skipped) ;;
             reattach/skipped/success/passed/skipped/success) ;;
             *)
-              echo '::error title=TODO(copy)::TODO(copy)'
+              echo '::error title=Android jobs incomplete::The Android build, smoke, signing and re-attach jobs did not end as the release decision requires, so no draft is created. The step log lists each result.'
               # Job results, the decision and the smoke outcome: plain words, safe to print unescaped.
               printf '{"code":"android-jobs-incomplete","android":"%s","build":"%s","smoke":"%s","outcome":"%s","sign":"%s","reattach":"%s"}\n' \
                 "$ANDROID" "$BUILD" "$SMOKE" "$SMOKE_OUTCOME" "$SIGN" "$REATTACH" >&2
@@ -487,13 +487,13 @@ jobs:
             --inputs-hash "$INPUTS_HASH" "${apk_args[@]}"
           # Exactly the manifest and the APKs it lists.
           if [ "$(cd "$dir" && ls -A | LC_ALL=C sort)" != "$(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)" ]; then
-            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '::error title=Unexpected Android release files::The android-release artifact must hold android-update.json and the APKs it lists, and nothing else.'
             echo '{"code":"android-release-files"}' >&2
             exit 1
           fi
           # A new build names this release; a re-attached manifest keeps the release that first carried its APKs.
           if [ "$ANDROID" = build ] && ! jq -e --arg tag "$TAG" '.releaseTag == $tag' "$manifest" > /dev/null; then
-            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '::error title=Android release tag mismatch::The releaseTag in android-update.json is not the tag that started this run.'
             echo '{"code":"android-release-tag"}' >&2
             exit 1
           fi
@@ -516,7 +516,7 @@ jobs:
             --skip-unpinned-runtime > "$decision" \
             || ! jq -e --arg action "$ANDROID" --arg hash "$INPUTS_HASH" --arg previous "$PREVIOUS_TAG" \
               '.action == $action and .inputsHash == $hash and (.previous.tag // "") == $previous' "$decision" > /dev/null; then
-            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '::error title=Android decision changed::The Android decision no longer holds, for example because another release was drafted while this run waited. Re-run the workflow to decide again.'
             echo '{"code":"android-decision-changed"}' >&2
             exit 1
           fi
@@ -525,7 +525,7 @@ jobs:
             expected=$(jq -r '.expectedSigningCert // empty' "$decision")
             if ! node android/release/release-decision.mjs --check-signing-cert "$certificate" \
               --expected-signing-cert "$expected" > /dev/null; then
-              echo '::error title=TODO(copy)::TODO(copy)'
+              echo '::error title=Signing certificate check failed::The APK signing certificate does not match earlier releases, or could not be checked. Android refuses to update an installed app with an APK signed by a different certificate. The step log has the details.'
               exit 1
             fi
           fi
@@ -546,7 +546,7 @@ jobs:
           for file in "$RUNNER_TEMP/android-release"/* "$RUNNER_TEMP/android-sources"/*; do
             name=$(basename "$file")
             if [ -e "$out/$name" ]; then
-              echo '::error title=TODO(copy)::TODO(copy)'
+              echo '::error title=Release asset name collision::Two release assets have the same file name. The step log names the file.'
               printf '{"code":"asset-name-collision","name":"%s"}\n' "$name" >&2
               exit 1
             fi
@@ -608,7 +608,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$RELEASE_URL" ]; then
-            echo '::error title=TODO(copy)::TODO(copy)'
+            echo '::error title=Draft release URL missing::gh release create did not print a draft release URL in the expected form, so android-update.json was not attached. Do not publish this draft.'
             echo '{"code":"release-url-unexpected"}' >&2
             exit 1
           fi

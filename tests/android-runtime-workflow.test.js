@@ -53,7 +53,7 @@ describe('Android runtime workflow', () => {
             ],
         });
         expect(workflow.on.workflow_dispatch).toEqual({
-            inputs: { publish: { description: 'TODO(copy)', type: 'boolean', default: false } },
+            inputs: { publish: { description: 'Publish to GHCR and open the digest PR (staging only)', type: 'boolean', default: false } },
         });
         expect(source).not.toMatch(/pull_request/);
     });
@@ -192,7 +192,7 @@ describe('Android runtime workflow', () => {
         expect(jobs.mirror.steps[1].run).toBe('python3 -I -B android/runtime/runtime-mirror.py --stage "$RUNNER_TEMP/mirror"');
         const push = jobs.mirror.steps[4].run;
         expect(push).toMatch(/oras push --artifact-type application\/vnd\.sillybunnyteam\.android\.inputs\.v1 /);
-        expect(push).toContain('--annotation \'org.opencontainers.image.description=TODO(copy)\'');
+        expect(push).toContain('--annotation \'org.opencontainers.image.description=Input mirror for SillyBunny Android release builds: the pinned Termux packages, source files and build-system files\'');
         expect(push).toContain('--export-manifest manifest.json "$reference" "${files[@]}"');
         expect(push).toMatch(/^test "\$\(oras resolve "\$reference"\)" = "sha256:\$\(sha256sum "\$stage\/manifest\.json" \| cut -d ' ' -f 1\)"$/m);
         expect(push).toMatch(/^python3 -I -B android\/runtime\/runtime-mirror\.py --check$/m);
@@ -324,7 +324,7 @@ describePosix('android-runtime.yml mirror step scripts (POSIX)', () => {
         expect(pushed.calls).toEqual([
             ['oras', pushed.stage, 'push', '--artifact-type', 'application/vnd.sillybunnyteam.android.inputs.v1',
                 '--annotation', 'org.opencontainers.image.source=https://github.com/team/app',
-                '--annotation', 'org.opencontainers.image.description=TODO(copy)',
+                '--annotation', 'org.opencontainers.image.description=Input mirror for SillyBunny Android release builds: the pinned Termux packages, source files and build-system files',
                 '--export-manifest', 'manifest.json', REFERENCE, ...files],
             ['oras', pushed.checkout, 'resolve', REFERENCE],
             ['python3', pushed.checkout, '-I', '-B', 'android/runtime/runtime-mirror.py', '--check'],

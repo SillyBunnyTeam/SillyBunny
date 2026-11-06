@@ -389,10 +389,10 @@ describePosix('Android bootstrap against a bare fixture upstream', () => {
         expect(snapshot(externalData)).toEqual(dataBefore);
     });
 
-    test('help exposes the repair flag with only its approved placeholder', () => {
+    test('help exposes the repair flag with its approved description', () => {
         const result = runInstaller(['--help']);
         expect(result.status).toBe(0);
-        expect(result.stdout).toMatch(/^ {2}--allow-git-source +TODO\(copy\)$/m);
+        expect(result.stdout).toMatch(/^ {2}--allow-git-source +Allow --migrate-from to copy from a Git install$/m);
         expect(result.stderr).toBe('');
     });
 });
