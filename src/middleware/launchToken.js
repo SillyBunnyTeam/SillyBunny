@@ -11,7 +11,7 @@ export const HANDOFF_PATH = '/__sillybunny/handoff';
 export const HANDOFF_MAX_AGE_MS = 60_000;
 export const HANDOFF_NONCE_LIMIT = 1024;
 // Moves to / with a same-origin navigation; the link covers browsers with meta refresh turned off.
-export const HANDOFF_PAGE = '<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/"><a href="/" data-sb-copy-placeholder="true">TODO(copy)</a>\n';
+export const HANDOFF_PAGE = '<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/"><a href="/">Open SillyBunny</a>\n';
 
 function handoffMac(tokenBytes, payload) {
     return crypto.createHmac('sha256', tokenBytes)
@@ -29,7 +29,7 @@ function handoffMac(tokenBytes, payload) {
  */
 export function createHandoffCode(token, { nonce = crypto.randomBytes(16), expiry }) {
     if (!Buffer.isBuffer(nonce) || nonce.length !== 16) {
-        throw new RangeError('TODO(copy)');
+        throw new RangeError('Handoff nonce must be a 16-byte Buffer');
     }
 
     const expiryBytes = Buffer.alloc(8);

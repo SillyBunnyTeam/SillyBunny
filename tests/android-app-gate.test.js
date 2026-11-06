@@ -308,7 +308,7 @@ describe('Android app update gate', () => {
         const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
         await expect(checkAndroidAppGate(createGit('0'), { ref: REF, branch: BRANCH })).resolves.toEqual({ blocked: false, commit: UPSTREAM });
-        expect(warn).toHaveBeenCalledWith('TODO(copy)', failure);
+        expect(warn).toHaveBeenCalledWith('Failed to update the Android update-blocked status file.', failure);
         expect(await fs.readFile(statusPath, 'utf8')).toBe('keep\n');
     });
 
@@ -323,7 +323,7 @@ describe('Android app update gate', () => {
         const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
         await expect(checkAndroidAppGate(createGit('2'), { ref: REF, branch: BRANCH })).resolves.toMatchObject({ blocked: true });
-        expect(warn).toHaveBeenCalledWith('TODO(copy)', failure);
+        expect(warn).toHaveBeenCalledWith('Failed to update the Android update-blocked status file.', failure);
         expect(await fs.readFile(statusPath, 'utf8')).toBe('keep\n');
         expect(await fs.readdir(directory)).toEqual(['update-blocked.json']);
     });
@@ -350,8 +350,8 @@ describe('Android app update gate', () => {
 
         await expect(checkAndroidAppGate(createGit('2'), { ref: REF, branch: BRANCH })).resolves.toMatchObject({ blocked: true });
         expect(warn.mock.calls).toEqual(cleanupFails
-            ? [['TODO(copy)', failure], ['TODO(copy)', cleanupFailure]]
-            : [['TODO(copy)', failure]]);
+            ? [['Failed to update the Android update-blocked status file.', failure], ['Failed to remove the temporary Android update-blocked status file.', cleanupFailure]]
+            : [['Failed to update the Android update-blocked status file.', failure]]);
         expect(await fs.readFile(statusPath, 'utf8')).toBe('previous status\n');
         expect((await fs.readdir(directory)).sort()).toEqual(cleanupFails
             ? [path.basename(temporaryPath), 'update-blocked.json'].sort()
