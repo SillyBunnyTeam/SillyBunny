@@ -4,7 +4,7 @@
 // Usage:
 //   node android/release/check-staged-runtime.mjs [--runtime-lock <file>] [--node-out <dir>] [--npm-out <dir>]
 //     defaults: android/runtime.lock, android/runtime/node-out and android/runtime/npm-out next to this script
-//   Prints a JSON summary. Exit 0 when the staged payloads match the lock; 1 otherwise, with the placeholder and
+//   Prints a JSON summary. Exit 0 when the staged payloads match the lock; 1 otherwise, with a message and
 //   {"code":"staged-runtime-mismatch","problems":[...]} (each problem as stagedRuntimeProblems describes it) on
 //   stderr; 2 on a usage error.
 //
@@ -50,7 +50,7 @@ function sameJson(actual, expected) {
 }
 
 function toolError(details) {
-    return new ReleaseToolError(`TODO(copy) ${JSON.stringify(details)}`);
+    return new ReleaseToolError(`Staged Node and npm payloads failed the check against android/runtime.lock: ${JSON.stringify(details)}`);
 }
 
 /**

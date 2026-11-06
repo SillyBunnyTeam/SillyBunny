@@ -465,12 +465,12 @@ class CommandLineTests(MirrorFixture):
         result = self.run_script('404', '--check')
         self.assertEqual((result.returncode, result.stdout), (1, ''))
         self.assertEqual(result.stderr.splitlines(),
-                         ['TODO(copy)', json.dumps({'code': 'mirror-missing', 'reference': reference, 'status': 404})])
+                         ['runtime-mirror.py failed:', json.dumps({'code': 'mirror-missing', 'reference': reference, 'status': 404})])
         result = self.run_script('503', '--plan')
         self.assertEqual((result.returncode, result.stdout), (1, ''))
         self.assertEqual(json.loads(result.stderr.splitlines()[-1]), {'code': 'mirror-unreachable', 'status': 503})
         result = self.run_script('200')
-        self.assertEqual((result.returncode, result.stdout, result.stderr), (2, '', 'TODO(copy)\n'))
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (2, '', 'Invalid arguments. Run runtime-mirror.py --help for the options.\n'))
 
 
 if __name__ == '__main__':

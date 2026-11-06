@@ -33,14 +33,14 @@ finish() {
     local status=$?
     rm -f -- "${temporary[@]}" ${inputs:+"$inputs"}
     if (( status != 0 )) && [[ -z $reported ]]; then
-        printf 'TODO(copy)\n{"code": "build-failed", "status": %d, "step": "%s"}\n' "$status" "$step" >&2
+        printf 'build-node.sh failed:\n{"code": "build-failed", "status": %d, "step": "%s"}\n' "$status" "$step" >&2
     fi
 }
 trap finish EXIT
 
 fail() {
     reported=1
-    printf 'TODO(copy)\n{"code": "%s", "step": "%s"}\n' "$1" "$step" >&2
+    printf 'build-node.sh failed:\n{"code": "%s", "step": "%s"}\n' "$1" "$step" >&2
     exit 1
 }
 

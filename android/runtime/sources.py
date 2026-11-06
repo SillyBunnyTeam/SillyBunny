@@ -1745,48 +1745,69 @@ def refresh(runtime, runtime_path, cache, repository=None, history_tip=None):
     return lock
 
 
+USAGE = 'Usage: sources.py [-h] [--runtime-lock FILE] [--sources-lock FILE] [--cache DIR] [--output FILE] [--offline] [--require-node] [--refresh-lock] [--dry-run] [--history-repo DIR] [--history-tip COMMIT] [--verify FILE] [--mirror-only]\n'
+HELP = USAGE + '''
+Build, refresh or verify the sources archive for the Termux packages and Node in the APK.
+
+Options:
+  -h, --help            Show this help message and exit.
+  --runtime-lock FILE   Use this path for runtime.lock instead of android/runtime.lock.
+  --sources-lock FILE   Use this path for sources.lock instead of android/runtime/sources.lock.
+  --cache DIR           Use this directory as the download cache instead of android/runtime/cache/sources.
+  --output FILE         Write the sources archive to this file instead of android/runtime/out/SillyBunny-android-sources.tar.zst.
+  --offline             Never download; use only files already in the cache. Not supported with --refresh-lock.
+  --require-node        Fail unless sources.lock pins both Node and npm.
+  --refresh-lock        Rewrite sources.lock from runtime.lock, the Termux package history and the Node release, instead of building the archive.
+  --dry-run             Compute the refreshed lock without writing sources.lock. Needs --refresh-lock.
+  --history-repo DIR    Read the Termux history from this existing blobless clone of termux-packages instead of cloning one into the cache. Needs --refresh-lock.
+  --history-tip COMMIT  Resolve the packages at this commit of the Termux history instead of the latest master commit. Needs --refresh-lock.
+  --verify FILE         Verify this built sources archive and print its member count and SHA-256, instead of building one.
+  --mirror-only         Read pinned inputs only from the GHCR mirror that runtime.lock names, never from their origins. Not allowed with --refresh-lock.
+'''
+
+
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'TODO(copy)\n')
+        self.exit(2, 'Invalid arguments. Run sources.py --help for the options.\n')
 
     def format_usage(self):
-        return 'TODO(copy)\n'
+        return USAGE
 
     def format_help(self):
-        return 'TODO(copy)\n'
+        return HELP
 
 
 def main():
-    parser = Parser(add_help=False, description='TODO(copy)')
-    parser.add_argument('-h', '--help', action='help', help='TODO(copy)')
-    parser.add_argument('--runtime-lock', type=Path, default=ROOT.parent / 'runtime.lock', help='TODO(copy)')
-    parser.add_argument('--sources-lock', type=Path, default=ROOT / 'sources.lock', help='TODO(copy)')
-    parser.add_argument('--cache', type=Path, default=ROOT / 'cache' / 'sources', help='TODO(copy)')
-    parser.add_argument('--output', type=Path, default=ROOT / 'out' / 'SillyBunny-android-sources.tar.zst', help='TODO(copy)')
-    parser.add_argument('--offline', action='store_true', help='TODO(copy)')
-    parser.add_argument('--require-node', action='store_true', help='TODO(copy)')
-    parser.add_argument('--refresh-lock', action='store_true', help='TODO(copy)')
-    parser.add_argument('--dry-run', action='store_true', help='TODO(copy)')
-    parser.add_argument('--history-repo', type=Path, help='TODO(copy)')
-    parser.add_argument('--history-tip', help='TODO(copy)')
-    parser.add_argument('--verify', type=Path, help='TODO(copy)')
-    parser.add_argument('--mirror-only', action='store_true', help='TODO(copy)')
+    parser = Parser(add_help=False, description='Build, refresh or verify the sources archive for the Termux packages and Node in the APK.')
+    parser.add_argument('-h', '--help', action='help', help='Show this help message and exit.')
+    parser.add_argument('--runtime-lock', type=Path, default=ROOT.parent / 'runtime.lock', help='Use this path for runtime.lock instead of android/runtime.lock.')
+    parser.add_argument('--sources-lock', type=Path, default=ROOT / 'sources.lock', help='Use this path for sources.lock instead of android/runtime/sources.lock.')
+    parser.add_argument('--cache', type=Path, default=ROOT / 'cache' / 'sources', help='Use this directory as the download cache instead of android/runtime/cache/sources.')
+    parser.add_argument('--output', type=Path, default=ROOT / 'out' / 'SillyBunny-android-sources.tar.zst', help='Write the sources archive to this file instead of android/runtime/out/SillyBunny-android-sources.tar.zst.')
+    parser.add_argument('--offline', action='store_true', help='Never download; use only files already in the cache. Not supported with --refresh-lock.')
+    parser.add_argument('--require-node', action='store_true', help='Fail unless sources.lock pins both Node and npm.')
+    parser.add_argument('--refresh-lock', action='store_true', help='Rewrite sources.lock from runtime.lock, the Termux package history and the Node release, instead of building the archive.')
+    parser.add_argument('--dry-run', action='store_true', help='Compute the refreshed lock without writing sources.lock. Needs --refresh-lock.')
+    parser.add_argument('--history-repo', type=Path, help='Read the Termux history from this existing blobless clone of termux-packages instead of cloning one into the cache. Needs --refresh-lock.')
+    parser.add_argument('--history-tip', help='Resolve the packages at this commit of the Termux history instead of the latest master commit. Needs --refresh-lock.')
+    parser.add_argument('--verify', type=Path, help='Verify this built sources archive and print its member count and SHA-256, instead of building one.')
+    parser.add_argument('--mirror-only', action='store_true', help='Read pinned inputs only from the GHCR mirror that runtime.lock names, never from their origins. Not allowed with --refresh-lock.')
     args = parser.parse_args()
     if args.verify:
         manifest = verify_archive(args.verify)
         print(json.dumps({'verified': len(manifest['members']) + 1, 'sha256': digest(args.verify)}, sort_keys=True))
         return
     if args.dry_run and not args.refresh_lock or (args.history_repo or args.history_tip) and not args.refresh_lock:
-        parser.error('TODO(copy)')
+        parser.error('--dry-run, --history-repo and --history-tip need --refresh-lock')
     if args.mirror_only and args.refresh_lock:
-        parser.error('TODO(copy)')
+        parser.error('--mirror-only cannot be used with --refresh-lock')
     cache = Cache(args.cache / 'objects', args.offline)
     with (args.cache / '.sources.lock').open('a') as guard:
         fcntl.flock(guard, fcntl.LOCK_EX)
         runtime = load_json(args.runtime_lock)
         validate_runtime(runtime)
         if args.mirror_only and 'mirror' not in runtime:
-            parser.error('TODO(copy)')
+            parser.error('--mirror-only requires a mirror in runtime.lock')
         cache.mirror = runtime.get('mirror', {}).get('repository')
         cache.mirror_only = args.mirror_only
         if args.refresh_lock:
@@ -1809,7 +1830,7 @@ if __name__ == '__main__':
     try:
         main()
     except (ValueError, OSError, subprocess.CalledProcessError, tarfile.TarError) as error:
-        print('TODO(copy)', file=sys.stderr)
+        print('sources.py failed:', file=sys.stderr)
         if isinstance(error, SourceError):
             print(json.dumps({'code': error.code, **error.details}, sort_keys=True), file=sys.stderr)
         else:

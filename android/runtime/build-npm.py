@@ -208,26 +208,41 @@ def write_output(output, data, summary):
             staging.rmdir()
 
 
+USAGE = 'Usage: build-npm.py [-h] [--runtime-lock FILE] [--sources-lock FILE] [--cache DIR] [--offline] [--output DIR] [--provenance FILE]\n'
+HELP = USAGE + '''
+Build npm.zip and npm.json for the APK from the npm in the pinned Node source tarball.
+
+Options:
+  -h, --help           Show this help message and exit.
+  --runtime-lock FILE  Use this path for runtime.lock instead of android/runtime.lock.
+  --sources-lock FILE  Use this path for sources.lock instead of android/runtime/sources.lock.
+  --cache DIR          Use this directory as the download cache instead of android/runtime/cache/sources.
+  --offline            Never download; use only files already in the cache.
+  --output DIR         Write npm.zip and npm.json to this directory instead of android/runtime/npm-out. It must be absent, empty or a previous npm-out, and is replaced as a whole.
+  --provenance FILE    Check the npm version, file count and content size against this npm-provenance.json.
+'''
+
+
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'TODO(copy)\n')
+        self.exit(2, 'Invalid arguments. Run build-npm.py --help for the options.\n')
 
     def format_usage(self):
-        return 'TODO(copy)\n'
+        return USAGE
 
     def format_help(self):
-        return 'TODO(copy)\n'
+        return HELP
 
 
 def main(arguments=None):
-    parser = Parser(add_help=False, description='TODO(copy)')
-    parser.add_argument('-h', '--help', action='help', help='TODO(copy)')
-    parser.add_argument('--runtime-lock', type=Path, default=node.RUNTIME_LOCK, help='TODO(copy)')
-    parser.add_argument('--sources-lock', type=Path, default=node.SOURCES_LOCK, help='TODO(copy)')
-    parser.add_argument('--cache', type=Path, default=node.CACHE, help='TODO(copy)')
-    parser.add_argument('--offline', action='store_true', help='TODO(copy)')
-    parser.add_argument('--output', type=Path, default=NPM_OUT, help='TODO(copy)')
-    parser.add_argument('--provenance', type=Path, help='TODO(copy)')
+    parser = Parser(add_help=False, description='Build npm.zip and npm.json for the APK from the npm in the pinned Node source tarball.')
+    parser.add_argument('-h', '--help', action='help', help='Show this help message and exit.')
+    parser.add_argument('--runtime-lock', type=Path, default=node.RUNTIME_LOCK, help='Use this path for runtime.lock instead of android/runtime.lock.')
+    parser.add_argument('--sources-lock', type=Path, default=node.SOURCES_LOCK, help='Use this path for sources.lock instead of android/runtime/sources.lock.')
+    parser.add_argument('--cache', type=Path, default=node.CACHE, help='Use this directory as the download cache instead of android/runtime/cache/sources.')
+    parser.add_argument('--offline', action='store_true', help='Never download; use only files already in the cache.')
+    parser.add_argument('--output', type=Path, default=NPM_OUT, help='Write npm.zip and npm.json to this directory instead of android/runtime/npm-out. It must be absent, empty or a previous npm-out, and is replaced as a whole.')
+    parser.add_argument('--provenance', type=Path, help='Check the npm version, file count and content size against this npm-provenance.json.')
     args = parser.parse_args(arguments)
     pins = node.load_pins(args.runtime_lock, args.sources_lock)
     # Refuse an output this tool does not own before reading or downloading the tarball.
@@ -247,10 +262,10 @@ if __name__ == '__main__':
     try:
         main()
     except (node.NodeError, node.sources.SourceError) as error:
-        print('TODO(copy)', file=sys.stderr)
+        print('build-npm.py failed:', file=sys.stderr)
         print(json.dumps({'code': error.code, **error.details}, sort_keys=True, default=str), file=sys.stderr)
         sys.exit(1)
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
-        print('TODO(copy)', file=sys.stderr)
+        print('build-npm.py failed:', file=sys.stderr)
         print(json.dumps({'code': type(error).__name__}, sort_keys=True), file=sys.stderr)
         sys.exit(1)

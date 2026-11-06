@@ -9,7 +9,7 @@
 # android/app/build.gradle.kts names; Java for apksigner (JAVA_HOME or PATH).
 # Prints one JSON line on stdout, and everything else on stderr:
 #   {"signingCertSha256":"<hex>","minSdk":<n>,"targetSdk":<n>,"buildTools":"<dir>"}
-# Exit 0 when signed, 1 when a check fails, 2 on a usage error. A failure prints the placeholder line and one
+# Exit 0 when signed, 1 when a check fails, 2 on a usage error. A failure prints a message line and one
 # JSON line {"code": ..., ...} on stderr.
 #
 # The §6.3 checks:
@@ -32,7 +32,7 @@ json_text() {
     printf '%s' "${value//\"/\\\"}" | tr -d '\000-\037'
 }
 
-# fail_with <status> <code> [<name> <value>]...: the placeholder line, then {"code":"<code>","<name>":"<value>"}.
+# fail_with <status> <code> [<name> <value>]...: a message line, then {"code":"<code>","<name>":"<value>"}.
 fail_with() {
     local status=$1 json
     json="{\"code\":\"$2\""
@@ -41,7 +41,7 @@ fail_with() {
         json+=",\"$1\":\"$(json_text "$2")\""
         shift 2
     done
-    printf 'TODO(copy)\n%s}\n' "$json" >&2
+    printf 'sign-release-apks.sh failed:\n%s}\n' "$json" >&2
     exit "$status"
 }
 

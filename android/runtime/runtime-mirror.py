@@ -172,27 +172,42 @@ def stage(runtime, lock, directory, cache):
     return rows
 
 
+USAGE = 'Usage: runtime-mirror.py [-h] [--runtime-lock FILE] [--sources-lock FILE] [--cache DIR] (--plan | --check | --stage DIR)\n'
+HELP = USAGE + '''
+Plan, check or stage the input mirror: a GHCR copy of every input that a release build downloads by SHA-256 pin.
+
+Options:
+  -h, --help           Show this help message and exit.
+  --runtime-lock FILE  Use this path for runtime.lock instead of android/runtime.lock.
+  --sources-lock FILE  Use this path for sources.lock instead of android/runtime/sources.lock.
+  --cache DIR          Use this directory for cached debs and source files instead of android/runtime/cache.
+  --plan               Print the mirror reference for the pinned inputs and whether GHCR has it.
+  --check              Fail unless GHCR has the mirror for the pinned inputs.
+  --stage DIR          Fetch every pinned input into DIR, laid out for oras push. DIR must be absent or empty.
+'''
+
+
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'TODO(copy)\n')
+        self.exit(2, 'Invalid arguments. Run runtime-mirror.py --help for the options.\n')
 
     def format_usage(self):
-        return 'TODO(copy)\n'
+        return USAGE
 
     def format_help(self):
-        return 'TODO(copy)\n'
+        return HELP
 
 
 def main(arguments=None):
-    parser = Parser(add_help=False, description='TODO(copy)')
-    parser.add_argument('-h', '--help', action='help', help='TODO(copy)')
-    parser.add_argument('--runtime-lock', type=Path, default=ROOT.parent / 'runtime.lock', help='TODO(copy)')
-    parser.add_argument('--sources-lock', type=Path, default=ROOT / 'sources.lock', help='TODO(copy)')
-    parser.add_argument('--cache', type=Path, default=ROOT / 'cache', help='TODO(copy)')
+    parser = Parser(add_help=False, description='Plan, check or stage the input mirror: a GHCR copy of every input that a release build downloads by SHA-256 pin.')
+    parser.add_argument('-h', '--help', action='help', help='Show this help message and exit.')
+    parser.add_argument('--runtime-lock', type=Path, default=ROOT.parent / 'runtime.lock', help='Use this path for runtime.lock instead of android/runtime.lock.')
+    parser.add_argument('--sources-lock', type=Path, default=ROOT / 'sources.lock', help='Use this path for sources.lock instead of android/runtime/sources.lock.')
+    parser.add_argument('--cache', type=Path, default=ROOT / 'cache', help='Use this directory for cached debs and source files instead of android/runtime/cache.')
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument('--plan', action='store_true', help='TODO(copy)')
-    mode.add_argument('--check', action='store_true', help='TODO(copy)')
-    mode.add_argument('--stage', type=Path, metavar='DIR', help='TODO(copy)')
+    mode.add_argument('--plan', action='store_true', help='Print the mirror reference for the pinned inputs and whether GHCR has it.')
+    mode.add_argument('--check', action='store_true', help='Fail unless GHCR has the mirror for the pinned inputs.')
+    mode.add_argument('--stage', type=Path, metavar='DIR', help='Fetch every pinned input into DIR, laid out for oras push. DIR must be absent or empty.')
     args = parser.parse_args(arguments)
     runtime, lock = load_locks(args.runtime_lock, args.sources_lock)
     target = reference(runtime, lock)
@@ -217,7 +232,7 @@ if __name__ == '__main__':
     try:
         main()
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
-        print('TODO(copy)', file=sys.stderr)
+        print('runtime-mirror.py failed:', file=sys.stderr)
         if isinstance(error, sources.SourceError):
             print(json.dumps({'code': error.code, **error.details}, sort_keys=True, default=str), file=sys.stderr)
         else:

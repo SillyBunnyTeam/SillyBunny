@@ -14,8 +14,8 @@
 //   The token comes from GITHUB_TOKEN or GH_TOKEN, never from the command line. It is sent only to the API host
 //   and to the release's upload host; redirects to asset storage are followed without it. Drafts are listed only
 //   to tokens with push access.
-//   Prints a JSON summary. Exit 0 once attached; 1 when a check fails and 2 on a usage error, each with the
-//   placeholder and a JSON object {"code": ..., ...} on stderr.
+//   Prints a JSON summary. Exit 0 once attached; 1 when a check fails and 2 on a usage error, each with a
+//   message and a JSON object {"code": ..., ...} on stderr.
 //
 // A published release must hold every APK its android-update.json lists (plan §6.1): installed apps download
 // stable APKs from the release that served the manifest. So, before the manifest goes up:
@@ -38,15 +38,15 @@ import { MANIFEST_ASSET_NAME } from './release-decision.mjs';
 const USER_AGENT = 'sillybunny-android-release-tooling';
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
-/** A failed check: the placeholder plus its machine-readable details. `error.details` keeps them for callers. */
+/** A failed check: a message plus its machine-readable details. `error.details` keeps them for callers. */
 function toolError(code, details = {}) {
-    const error = new ReleaseToolError(`TODO(copy) ${JSON.stringify({ code, ...details })}`);
+    const error = new ReleaseToolError(`Could not attach android-update.json, so the draft release must not be published: ${JSON.stringify({ code, ...details })}`);
     error.details = { code, ...details };
     return error;
 }
 
 function usageError(code, details = {}) {
-    const error = new UsageError(`TODO(copy) ${JSON.stringify({ code, ...details })}`);
+    const error = new UsageError(`Invalid option or input for attaching android-update.json: ${JSON.stringify({ code, ...details })}`);
     error.details = { code, ...details };
     return error;
 }

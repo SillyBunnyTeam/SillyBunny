@@ -707,37 +707,58 @@ def stage_local(pins, locals_):
 def abi_path(value):
     abi, separator, path = value.partition('=')
     if not separator or abi not in ABIS or not path:
-        raise argparse.ArgumentTypeError('TODO(copy)')
+        raise argparse.ArgumentTypeError('expected ABI=PATH, where ABI is arm64-v8a, armeabi-v7a or x86_64')
     return abi, Path(path)
+
+
+USAGE = 'Usage: fetch-node.py [-h] [--runtime-lock FILE] [--sources-lock FILE] [--output DIR] [--cache DIR] [--offline] [--with-ndk] [--ndk DIR] [--abi ABI | --local ABI=PATH | --audit ABI=PATH | --build-inputs ABI | --check-config ABI=SOURCE]\n'
+HELP = USAGE + '''
+Stage the pinned Node runtime for the APK build: libnode.so for each ABI and node.json.
+
+Options:
+  -h, --help                 Show this help message and exit.
+  --runtime-lock FILE        Use this path for runtime.lock instead of android/runtime.lock.
+  --sources-lock FILE        Use this path for sources.lock instead of android/runtime/sources.lock.
+  --output DIR               Write the staged Node to this directory instead of android/runtime/node-out. It must be absent, empty or a previous node-out, and is replaced as a whole.
+  --cache DIR                Use this directory as the download cache instead of android/runtime/cache/sources.
+  --offline                  Never download; use only files already in the cache.
+  --with-ndk                 With --build-inputs, also fetch and check the pinned NDK zip.
+  --ndk DIR                  Unpacked NDK directory that --check-config compares the configured build with.
+  --abi ABI                  Pull this ABI from GHCR by the digest runtime.lock pins. Repeat for several; the default is every ABI runtime.lock lists.
+  --local ABI=PATH           Stage a local libnode.so build for development, as ABI=PATH, instead of pulling from GHCR. Repeat for several. Release builds refuse the result.
+  --audit ABI=PATH           Check one libnode.so, as ABI=PATH, against the ELF rules and print the result.
+  --build-inputs ABI         Print the pinned build inputs for this ABI as shell assignments, after checking each download against the locks.
+  --check-config ABI=SOURCE  Check the configured Node source tree for an ABI, given as ABI=SOURCE. Needs --ndk.
+'''
 
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'TODO(copy)\n')
+        self.exit(2, 'Invalid arguments. Run fetch-node.py --help for the options.\n')
 
     def format_usage(self):
-        return 'TODO(copy)\n'
+        return USAGE
 
     def format_help(self):
-        return 'TODO(copy)\n'
+        return HELP
 
 
 def main(arguments=None):
-    parser = Parser(add_help=False, description='TODO(copy)')
-    parser.add_argument('-h', '--help', action='help', help='TODO(copy)')
-    parser.add_argument('--runtime-lock', type=Path, default=RUNTIME_LOCK, help='TODO(copy)')
-    parser.add_argument('--sources-lock', type=Path, default=SOURCES_LOCK, help='TODO(copy)')
-    parser.add_argument('--output', type=Path, default=NODE_OUT, help='TODO(copy)')
-    parser.add_argument('--cache', type=Path, default=CACHE, help='TODO(copy)')
-    parser.add_argument('--offline', action='store_true', help='TODO(copy)')
-    parser.add_argument('--with-ndk', action='store_true', help='TODO(copy)')
-    parser.add_argument('--ndk', type=Path, help='TODO(copy)')
+    parser = Parser(add_help=False, description='Stage the pinned Node runtime for the APK build: libnode.so for each ABI and node.json.')
+    parser.add_argument('-h', '--help', action='help', help='Show this help message and exit.')
+    parser.add_argument('--runtime-lock', type=Path, default=RUNTIME_LOCK, help='Use this path for runtime.lock instead of android/runtime.lock.')
+    parser.add_argument('--sources-lock', type=Path, default=SOURCES_LOCK, help='Use this path for sources.lock instead of android/runtime/sources.lock.')
+    parser.add_argument('--output', type=Path, default=NODE_OUT, help='Write the staged Node to this directory instead of android/runtime/node-out. It must be absent, empty or a previous node-out, and is replaced as a whole.')
+    parser.add_argument('--cache', type=Path, default=CACHE, help='Use this directory as the download cache instead of android/runtime/cache/sources.')
+    parser.add_argument('--offline', action='store_true', help='Never download; use only files already in the cache.')
+    parser.add_argument('--with-ndk', action='store_true', help='With --build-inputs, also fetch and check the pinned NDK zip.')
+    parser.add_argument('--ndk', type=Path, help='Unpacked NDK directory that --check-config compares the configured build with.')
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument('--abi', action='append', choices=sorted(ABIS), help='TODO(copy)')
-    mode.add_argument('--local', action='append', type=abi_path, help='TODO(copy)')
-    mode.add_argument('--audit', type=abi_path, help='TODO(copy)')
-    mode.add_argument('--build-inputs', choices=sorted(ABIS), help='TODO(copy)')
-    mode.add_argument('--check-config', type=abi_path, help='TODO(copy)')
+    mode.add_argument('--abi', action='append', choices=sorted(ABIS), help='Pull this ABI from GHCR by the digest runtime.lock pins. Repeat for several; the default is every ABI runtime.lock lists.')
+    mode.add_argument('--local', action='append', type=abi_path, help='Stage a local libnode.so build for development, as ABI=PATH, instead of pulling from GHCR. Repeat for several. Release builds refuse the result.')
+    mode.add_argument('--audit', type=abi_path, help='Check one libnode.so, as ABI=PATH, against the ELF rules and print the result.')
+    mode.add_argument('--build-inputs', choices=sorted(ABIS), help='Print the pinned build inputs for this ABI as shell assignments, after checking each download against the locks.')
+    mode.add_argument('--check-config', type=abi_path, help='Check the configured Node source tree for an ABI, given as ABI=SOURCE. Needs --ndk.')
     args = parser.parse_args(arguments)
     pins = load_pins(args.runtime_lock, args.sources_lock)
     if args.build_inputs:
@@ -746,26 +767,26 @@ def main(arguments=None):
     if args.check_config:
         abi, source = args.check_config
         if abi not in pins.abis or args.ndk is None:
-            parser.error('TODO(copy)')
+            parser.error('--check-config needs --ndk and an ABI that android/runtime.lock lists')
         print(json.dumps(check_config(abi, source, args.ndk, pins.node['api']), sort_keys=True))
         return
     if args.audit:
         abi, path = args.audit
         if abi not in pins.abis:
-            parser.error('TODO(copy)')
+            parser.error('--audit needs an ABI that android/runtime.lock lists')
         print(json.dumps(audit_elf(path, abi, pins.node['api']), sort_keys=True))
         return
     if args.local:
         locals_ = dict(args.local)
         if len(locals_) != len(args.local) or not set(locals_) <= set(pins.abis):
-            parser.error('TODO(copy)')
+            parser.error('--local takes each ABI once, and only ABIs that android/runtime.lock lists')
         check_output(args.output, NODE_OUT_LAYOUT)
         files, source = stage_local(pins, locals_)
         abis = write_node_out(args.output, pins.version, files, source)
     else:
         selected = sorted(set(args.abi or pins.abis))
         if not set(selected) <= set(pins.abis):
-            parser.error('TODO(copy)')
+            parser.error('--abi must name ABIs that android/runtime.lock lists')
         # Refuse an output this tool does not own before downloading anything.
         check_output(args.output, NODE_OUT_LAYOUT)
         with tempfile.TemporaryDirectory(prefix='node-fetch-') as work:
@@ -778,10 +799,10 @@ if __name__ == '__main__':
     try:
         main()
     except (NodeError, sources.SourceError) as error:
-        print('TODO(copy)', file=sys.stderr)
+        print('fetch-node.py failed:', file=sys.stderr)
         print(json.dumps({'code': error.code, **error.details}, sort_keys=True, default=str), file=sys.stderr)
         sys.exit(1)
     except (OSError, subprocess.SubprocessError, ValueError) as error:
-        print('TODO(copy)', file=sys.stderr)
+        print('fetch-node.py failed:', file=sys.stderr)
         print(json.dumps({'code': type(error).__name__}, sort_keys=True), file=sys.stderr)
         sys.exit(1)

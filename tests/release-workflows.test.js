@@ -431,11 +431,10 @@ const decide = ({ previous = [], ...rest } = {}) => decideRelease({
     prerelease: false, inputsHash: HASH_B, versionCode: 2, versionName: '1.2.0', minAppVersion: 1n, runtimeLock: PINNED_LOCK, previous, ...rest,
 });
 
-/** The JSON details after the placeholder in a TODO(copy) error message. */
-function detailsOf(error) {
-    const match = /^TODO\(copy\) (\{.*\})$/.exec(error.message);
-    expect(match).not.toBeNull();
-    return JSON.parse(match[1]);
+/** The JSON details after the given lead of an error message. */
+function detailsOf(error, lead) {
+    expect(error.message.slice(0, lead.length + 2)).toBe(`${lead} {`);
+    return JSON.parse(error.message.slice(lead.length + 1));
 }
 
 function thrown(run) {
@@ -451,7 +450,7 @@ describe('the decision with an unpinned runtime.lock (--skip-unpinned-runtime)',
     test('skips the APKs when no earlier release carries android-update.json', () => {
         const decision = decide({ runtimeLock: UNPINNED_LOCK, skipUnpinnedRuntime: true });
         expect(decision).toMatchObject({ action: 'skip', previous: null, prerelease: false, defaultRef: 'release', unpinnedRuntime: ['node'] });
-        expect(decision.reasons).toEqual(['TODO(copy) {"code":"unpinned-runtime-skip","unpinned":["node"]}']);
+        expect(decision.reasons).toEqual(['android/runtime.lock does not pin the Node or npm payload yet and no earlier release has an android-update.json, so this release is drafted without APKs: {"code":"unpinned-runtime-skip","unpinned":["node"]}']);
         expect(decide({ prerelease: true, runtimeLock: UNPINNED_LOCK, skipUnpinnedRuntime: true })).toMatchObject({ action: 'skip', defaultRef: 'staging' });
     });
 
@@ -462,7 +461,7 @@ describe('the decision with an unpinned runtime.lock (--skip-unpinned-runtime)',
         ]) {
             const error = thrown(() => decide({ runtimeLock: UNPINNED_LOCK, skipUnpinnedRuntime: true, previous }));
             expect(error).toBeInstanceOf(ReleaseToolError);
-            expect(detailsOf(error)).toEqual({
+            expect(detailsOf(error, 'android/runtime.lock does not pin the Node or npm payload yet, and an earlier release has an android-update.json, so this release would become the newest one without it. Pin them first:')).toEqual({
                 code: 'unpinned-runtime-after-android-release',
                 unpinned: ['node'],
                 release: previous[0].tag,
@@ -477,7 +476,7 @@ describe('the decision with an unpinned runtime.lock (--skip-unpinned-runtime)',
         expect(decide({ skipUnpinnedRuntime: true, previous })).toMatchObject({ action: 'reattach', previous: { tag: 'v2.2.0' } });
         const error = thrown(() => decide({ runtimeLock: UNPINNED_LOCK, skipUnpinnedRuntime: true, allowUnpinnedRuntime: true }));
         expect(error).toBeInstanceOf(UsageError);
-        expect(detailsOf(error).code).toBe('conflicting-options');
+        expect(detailsOf(error, 'allowUnpinnedRuntime and skipUnpinnedRuntime cannot be used together:').code).toBe('conflicting-options');
     });
 });
 
@@ -574,7 +573,7 @@ describe('the staged runtime check (check-staged-runtime.mjs)', () => {
             write(path.join(dir, 'npm-out', 'npm.zip'), Buffer.concat([npmZip.subarray(1), Buffer.from('x')]));
             const failed = run();
             expect(failed.status).toBe(1);
-            const details = JSON.parse(/^check-staged-runtime: TODO\(copy\) (\{.*\})\n$/.exec(failed.stderr)[1]);
+            const details = JSON.parse(/^check-staged-runtime: Staged Node and npm payloads failed the check against android\/runtime\.lock: (\{.*\})\n$/.exec(failed.stderr)[1]);
             expect(details).toMatchObject({ code: 'staged-runtime-mismatch', problems: [{ code: 'mismatch', file: 'npm.zip', field: 'bytes' }] });
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -1132,7 +1131,7 @@ describePosix('the Android release scripts with fake tools (POSIX)', () => {
         };
         const out = path.join(temp, 'build-out');
         const built = run(['release', out]);
-        expect([built.status, built.stderr.includes('TODO(copy)')]).toEqual([0, false]);
+        expect([built.status, built.stderr.includes('build-release-apks.sh failed:')]).toEqual([0, false]);
         expect(built.log).toEqual([
             'fetch-termux.sh --mirror-only',
             'fetch-node.py --abi arm64-v8a --abi armeabi-v7a',
@@ -1254,7 +1253,7 @@ describePosix('the Android release scripts with fake tools (POSIX)', () => {
     test('sign-release-apks.sh signs v2 and v3 after zipalign, verifies, prints the certificate and deletes the keystore', () => {
         const setup = signSetup('sign');
         const result = setup.run();
-        expect([result.status, result.stderr.includes('TODO(copy)')]).toEqual([0, false]);
+        expect([result.status, result.stderr.includes('sign-release-apks.sh failed:')]).toEqual([0, false]);
         expect(JSON.parse(result.stdout)).toEqual({ signingCertSha256: CERT, minSdk: 29, targetSdk: 37, buildTools: setup.tools });
         expect(readdirSync(setup.out).sort()).toEqual(['SillyBunny-android-arm64-v8a.apk', 'SillyBunny-android-armeabi-v7a.apk']);
         expect(existsSync(setup.keystore)).toBe(false);

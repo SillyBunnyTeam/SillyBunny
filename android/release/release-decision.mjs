@@ -290,10 +290,10 @@ export function decideRelease({
         throw new UsageError('allowUnpinnedRuntime must be true or false');
     }
     if (typeof skipUnpinnedRuntime !== 'boolean') {
-        throw new UsageError('TODO(copy) {"code":"invalid-option","option":"skipUnpinnedRuntime"}');
+        throw new UsageError('skipUnpinnedRuntime must be true or false: {"code":"invalid-option","option":"skipUnpinnedRuntime"}');
     }
     if (allowUnpinnedRuntime && skipUnpinnedRuntime) {
-        throw new UsageError('TODO(copy) {"code":"conflicting-options","options":["allowUnpinnedRuntime","skipUnpinnedRuntime"]}');
+        throw new UsageError('allowUnpinnedRuntime and skipUnpinnedRuntime cannot be used together: {"code":"conflicting-options","options":["allowUnpinnedRuntime","skipUnpinnedRuntime"]}');
     }
     if (typeof inputsHash !== 'string' || !/^[0-9a-f]{64}$/.test(inputsHash)) {
         throw new ReleaseToolError('inputsHash must be 64 lowercase hex digits');
@@ -315,13 +315,13 @@ export function decideRelease({
             const newest = mostRecentRelease(withManifest);
             // This release would become the newest one without android-update.json, and installed apps check
             // for updates through the official latest URL: pin the runtime first.
-            throw new ReleaseToolError(`TODO(copy) ${JSON.stringify({ code: 'unpinned-runtime-after-android-release', unpinned, release: newest.tag, draft: newest.draft })}`);
+            throw new ReleaseToolError(`android/runtime.lock does not pin the Node or npm payload yet, and an earlier release has an android-update.json, so this release would become the newest one without it. Pin them first: ${JSON.stringify({ code: 'unpinned-runtime-after-android-release', unpinned, release: newest.tag, draft: newest.draft })}`);
         }
         return {
             action: 'skip',
             previous: null,
             // Nothing can fetch unpinned Node binaries, and no earlier release has android-update.json.
-            reasons: [`TODO(copy) ${JSON.stringify({ code: 'unpinned-runtime-skip', unpinned })}`],
+            reasons: [`android/runtime.lock does not pin the Node or npm payload yet and no earlier release has an android-update.json, so this release is drafted without APKs: ${JSON.stringify({ code: 'unpinned-runtime-skip', unpinned })}`],
             prerelease,
             defaultRef,
             inputsHash,
@@ -581,7 +581,7 @@ async function main(argv) {
     }
     const prerelease = parseBooleanOption(requireOption(values, 'prerelease'), 'prerelease');
     if (values['allow-unpinned-runtime'] === true && values['skip-unpinned-runtime'] === true) {
-        throw new UsageError('TODO(copy) {"code":"conflicting-options","options":["--allow-unpinned-runtime","--skip-unpinned-runtime"]}');
+        throw new UsageError('--allow-unpinned-runtime and --skip-unpinned-runtime cannot be used together: {"code":"conflicting-options","options":["--allow-unpinned-runtime","--skip-unpinned-runtime"]}');
     }
     const fromGitHub = values['github-repository'] !== undefined;
     if (fromGitHub === (values.previous !== undefined)) {

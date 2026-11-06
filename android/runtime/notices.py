@@ -32,7 +32,7 @@ from urllib.parse import quote, urlsplit
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).absolute().parent
-PLACEHOLDER = 'TODO(copy)'
+GENERATION_FAILED = 'The third-party notices could not be generated.'
 NOTICES_NAME = 'THIRD_PARTY_NOTICES'
 INDEX_NAME = 'THIRD_PARTY_NOTICES.json'
 SECTIONS = ('android', 'node', 'npm', 'termux')
@@ -58,7 +58,7 @@ COMMIT = re.compile(r'[0-9a-fA-F]{40}\Z')
 
 class NoticesError(ValueError):
     def __init__(self, code, **details):
-        super().__init__(PLACEHOLDER)
+        super().__init__(GENERATION_FAILED)
         self.code = code
         self.details = details
 
@@ -894,32 +894,53 @@ def build(runtime_lock=ROOT.parent / 'runtime.lock', sources_lock=ROOT / 'source
     return publish(contents, index, output_root)
 
 
-class PlaceholderParser(argparse.ArgumentParser):
+INVALID_ARGUMENTS = 'Invalid arguments. Run notices.py --help for the options.'
+USAGE = 'Usage: notices.py [-h] [--runtime-lock FILE] [--sources-lock FILE] [--licenses-root DIR] [--output-root DIR] [--node-source DIR] [--npm-root DIR] [--node-tarball FILE] [--npm-licenses DIR] [--android-libraries FILE] [--require-node]'
+HELP = USAGE + '''
+
+Generate THIRD_PARTY_NOTICES and its JSON index for the APK.
+
+Options:
+  -h, --help                Show this help message and exit.
+  --runtime-lock FILE       Use this path for runtime.lock instead of android/runtime.lock.
+  --sources-lock FILE       Use this path for sources.lock instead of android/runtime/sources.lock.
+  --licenses-root DIR       Read the Termux license files from this directory instead of android/runtime/out/licenses. fetch-termux.sh writes them there, one folder per package.
+  --output-root DIR         Publish THIRD_PARTY_NOTICES and THIRD_PARTY_NOTICES.json in this directory instead of android/runtime/out/assets.
+  --node-source DIR         Read LICENSE and src/node_version.h from this extracted Node source tree. Use it with --npm-root, not with --node-tarball.
+  --npm-root DIR            Read the npm package tree (deps/npm) from this directory, taken from the extracted Node source. Not allowed with --node-tarball.
+  --node-tarball FILE       Read the Node and npm licenses from the pinned Node source tarball, which must match sources.lock. Not allowed with --node-source or --npm-root.
+  --npm-licenses DIR        Read license texts for npm packages that ship none from this directory instead of android/runtime/licenses/npm.
+  --android-libraries FILE  Read the Android library list from this JSON file, written by the Gradle build of the app. The license texts it names sit beside it.
+  --require-node            Fail unless runtime.lock pins Node and npm and every input they and the Android libraries need is supplied. Release builds use this.
+'''
+
+
+class Parser(argparse.ArgumentParser):
     def format_help(self):
-        return PLACEHOLDER + '\n'
+        return HELP
 
     def format_usage(self):
-        return PLACEHOLDER + '\n'
+        return USAGE + '\n'
 
     def error(self, message):
-        self.exit(2, json.dumps({'message': PLACEHOLDER, 'code': 'cli-arguments'}, sort_keys=True) + '\n')
+        self.exit(2, json.dumps({'message': INVALID_ARGUMENTS, 'code': 'cli-arguments'}, sort_keys=True) + '\n')
 
 
 def main(arguments=None):
-    parser = PlaceholderParser(description=PLACEHOLDER, usage=PLACEHOLDER)
-    parser.add_argument('--runtime-lock', type=Path, default=ROOT.parent / 'runtime.lock', help=PLACEHOLDER)
-    parser.add_argument('--sources-lock', type=Path, default=ROOT / 'sources.lock', help=PLACEHOLDER)
-    parser.add_argument('--licenses-root', type=Path, default=ROOT / 'out' / 'licenses', help=PLACEHOLDER)
-    parser.add_argument('--output-root', type=Path, default=ROOT / 'out' / 'assets', help=PLACEHOLDER)
-    parser.add_argument('--node-source', type=Path, help=PLACEHOLDER)
-    parser.add_argument('--npm-root', type=Path, help=PLACEHOLDER)
-    parser.add_argument('--node-tarball', type=Path, help=PLACEHOLDER)
-    parser.add_argument('--npm-licenses', type=Path, default=NPM_LICENSES, help=PLACEHOLDER)
-    parser.add_argument('--android-libraries', type=Path, help=PLACEHOLDER)
-    parser.add_argument('--require-node', action='store_true', help=PLACEHOLDER)
+    parser = Parser(description='Generate THIRD_PARTY_NOTICES and its JSON index for the APK.', usage=USAGE)
+    parser.add_argument('--runtime-lock', type=Path, default=ROOT.parent / 'runtime.lock', help='Use this path for runtime.lock instead of android/runtime.lock.')
+    parser.add_argument('--sources-lock', type=Path, default=ROOT / 'sources.lock', help='Use this path for sources.lock instead of android/runtime/sources.lock.')
+    parser.add_argument('--licenses-root', type=Path, default=ROOT / 'out' / 'licenses', help='Read the Termux license files from this directory instead of android/runtime/out/licenses. fetch-termux.sh writes them there, one folder per package.')
+    parser.add_argument('--output-root', type=Path, default=ROOT / 'out' / 'assets', help='Publish THIRD_PARTY_NOTICES and THIRD_PARTY_NOTICES.json in this directory instead of android/runtime/out/assets.')
+    parser.add_argument('--node-source', type=Path, help='Read LICENSE and src/node_version.h from this extracted Node source tree. Use it with --npm-root, not with --node-tarball.')
+    parser.add_argument('--npm-root', type=Path, help='Read the npm package tree (deps/npm) from this directory, taken from the extracted Node source. Not allowed with --node-tarball.')
+    parser.add_argument('--node-tarball', type=Path, help='Read the Node and npm licenses from the pinned Node source tarball, which must match sources.lock. Not allowed with --node-source or --npm-root.')
+    parser.add_argument('--npm-licenses', type=Path, default=NPM_LICENSES, help='Read license texts for npm packages that ship none from this directory instead of android/runtime/licenses/npm.')
+    parser.add_argument('--android-libraries', type=Path, help='Read the Android library list from this JSON file, written by the Gradle build of the app. The license texts it names sit beside it.')
+    parser.add_argument('--require-node', action='store_true', help='Fail unless runtime.lock pins Node and npm and every input they and the Android libraries need is supplied. Release builds use this.')
     args = parser.parse_args(arguments)
     if args.node_tarball is not None and (args.node_source is not None or args.npm_root is not None):
-        parser.error(PLACEHOLDER)
+        parser.error(INVALID_ARGUMENTS)
     build(**vars(args))
 
 
@@ -927,8 +948,8 @@ if __name__ == '__main__':
     try:
         main()
     except NoticesError as error:
-        print(json.dumps({'message': PLACEHOLDER, 'code': error.code, 'details': error.details}, sort_keys=True), file=sys.stderr)
+        print(json.dumps({'message': GENERATION_FAILED, 'code': error.code, 'details': error.details}, sort_keys=True), file=sys.stderr)
         sys.exit(1)
     except OSError as error:
-        print(json.dumps({'message': PLACEHOLDER, 'code': 'filesystem', 'errno': error.errno, 'path': error.filename}, sort_keys=True), file=sys.stderr)
+        print(json.dumps({'message': GENERATION_FAILED, 'code': 'filesystem', 'errno': error.errno, 'path': error.filename}, sort_keys=True), file=sys.stderr)
         sys.exit(1)

@@ -135,26 +135,40 @@ def write_files(contents):
             temporary.unlink(missing_ok=True)
 
 
+USAGE = 'Usage: update-node-digests.py [-h] [--runtime-lock FILE] [--sources-lock FILE] (--plan | --published FILE | --reset)\n'
+HELP = USAGE + '''
+Plan, pin or reset the published Node build digests in android/runtime.lock.
+
+Options:
+  -h, --help           Show this help message and exit.
+  --runtime-lock FILE  Use this path for runtime.lock instead of android/runtime.lock.
+  --sources-lock FILE  Use this path for sources.lock instead of android/runtime/sources.lock.
+  --plan               Print the build plan: the Node pins and whether any ABI still needs a build.
+  --published FILE     Pin the digests, SHA-256 values and sizes that the publish job wrote to this file, in runtime.lock and sources.lock.
+  --reset              Drop every published pin and recompute the derived Node fields, so the next staging push builds and publishes again.
+'''
+
+
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        self.exit(2, 'TODO(copy)\n')
+        self.exit(2, 'Invalid arguments. Run update-node-digests.py --help for the options.\n')
 
     def format_usage(self):
-        return 'TODO(copy)\n'
+        return USAGE
 
     def format_help(self):
-        return 'TODO(copy)\n'
+        return HELP
 
 
 def main(arguments=None):
-    parser = Parser(add_help=False, description='TODO(copy)')
-    parser.add_argument('-h', '--help', action='help', help='TODO(copy)')
-    parser.add_argument('--runtime-lock', type=Path, default=node.RUNTIME_LOCK, help='TODO(copy)')
-    parser.add_argument('--sources-lock', type=Path, default=node.SOURCES_LOCK, help='TODO(copy)')
+    parser = Parser(add_help=False, description='Plan, pin or reset the published Node build digests in android/runtime.lock.')
+    parser.add_argument('-h', '--help', action='help', help='Show this help message and exit.')
+    parser.add_argument('--runtime-lock', type=Path, default=node.RUNTIME_LOCK, help='Use this path for runtime.lock instead of android/runtime.lock.')
+    parser.add_argument('--sources-lock', type=Path, default=node.SOURCES_LOCK, help='Use this path for sources.lock instead of android/runtime/sources.lock.')
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument('--plan', action='store_true', help='TODO(copy)')
-    mode.add_argument('--published', type=Path, help='TODO(copy)')
-    mode.add_argument('--reset', action='store_true', help='TODO(copy)')
+    mode.add_argument('--plan', action='store_true', help='Print the build plan: the Node pins and whether any ABI still needs a build.')
+    mode.add_argument('--published', type=Path, help='Pin the digests, SHA-256 values and sizes that the publish job wrote to this file, in runtime.lock and sources.lock.')
+    mode.add_argument('--reset', action='store_true', help='Drop every published pin and recompute the derived Node fields, so the next staging push builds and publishes again.')
     args = parser.parse_args(arguments)
     if args.reset:
         new_runtime, new_sources, tags = reset_locks(args.runtime_lock, args.sources_lock)
@@ -181,10 +195,10 @@ if __name__ == '__main__':
     try:
         main()
     except (node.NodeError, sources.SourceError) as error:
-        print('TODO(copy)', file=sys.stderr)
+        print('update-node-digests.py failed:', file=sys.stderr)
         print(json.dumps({'code': error.code, **error.details}, sort_keys=True, default=str), file=sys.stderr)
         sys.exit(1)
     except (OSError, ValueError) as error:
-        print('TODO(copy)', file=sys.stderr)
+        print('update-node-digests.py failed:', file=sys.stderr)
         print(json.dumps({'code': type(error).__name__}, sort_keys=True), file=sys.stderr)
         sys.exit(1)

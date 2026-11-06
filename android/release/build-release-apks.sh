@@ -8,7 +8,7 @@
 #   release    a stable build: -PdefaultRef=release
 #   out-dir    absent or empty. Receives SillyBunny-android-<abi>-unsigned.apk for arm64-v8a and armeabi-v7a,
 #              which sign-release-apks.sh signs, and the sources archive SillyBunny-android-sources.tar.zst.
-# Exit 0 when built, 1 when a check or step fails, 2 on a usage error. A failure prints the placeholder line and
+# Exit 0 when built, 1 when a check or step fails, 2 on a usage error. A failure prints a message line and
 # one JSON line {"code": ..., ...} on stderr.
 #
 # The steps, in one checkout:
@@ -36,7 +36,7 @@ json_text() {
     printf '%s' "${value//\"/\\\"}" | tr -d '\000-\037'
 }
 
-# fail_with <status> <code> [<name> <value>]...: the placeholder line, then {"code":"<code>","<name>":"<value>"}.
+# fail_with <status> <code> [<name> <value>]...: a message line, then {"code":"<code>","<name>":"<value>"}.
 fail_with() {
     local status=$1 json
     json="{\"code\":\"$2\""
@@ -45,7 +45,7 @@ fail_with() {
         json+=",\"$1\":\"$(json_text "$2")\""
         shift 2
     done
-    printf 'TODO(copy)\n%s}\n' "$json" >&2
+    printf 'build-release-apks.sh failed:\n%s}\n' "$json" >&2
     exit "$status"
 }
 
