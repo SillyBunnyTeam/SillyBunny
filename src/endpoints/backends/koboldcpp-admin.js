@@ -19,17 +19,16 @@ const ENTRY_TYPE_ORDER = ['model', 'config', 'action'];
  */
 
 /**
- * Gets the KoboldCpp base URL from a request body.
- * @param {any} body Request body
+ * @param {unknown} value KoboldCpp API URL as the user entered it
  * @returns {string} Base URL without a trailing slash or /v1, or an empty string if the URL is not valid
  */
-function getBaseUrl(body) {
-    if (typeof body?.api_server !== 'string') {
+export function getKoboldCppBaseUrl(value) {
+    if (typeof value !== 'string') {
         return '';
     }
 
     try {
-        const url = new URL(body.api_server.trim());
+        const url = new URL(value.trim());
         if (!['http:', 'https:'].includes(url.protocol)) {
             return '';
         }
@@ -142,7 +141,7 @@ export function findLoadedFile(entries, loadedModel) {
 }
 
 router.post('/models', async function (request, response) {
-    const baseUrl = getBaseUrl(request.body);
+    const baseUrl = getKoboldCppBaseUrl(request.body?.api_server);
     if (!baseUrl) {
         return response.sendStatus(400);
     }
@@ -161,36 +160,42 @@ router.post('/models', async function (request, response) {
     // KoboldCpp reports 0 when admin mode is off, 1 when it is on, and 2 when it also needs the admin password.
     const admin = [1, 2].includes(Number(version?.admin)) ? Number(version.admin) : 0;
 
-    /** @type {SwitcherEntry[]} */
-    let entries = [];
-    if (admin) {
-        try {
-            entries = getSwitcherEntries(await fetchJson(`${baseUrl}/api/admin/list_options`, { headers }));
-        } catch (error) {
-            console.warn('KoboldCpp admin options request failed:', error.message);
-        }
-    }
-
-    /** @type {string|null} */
-    let loadedModel = null;
-    try {
-        const models = await fetchJson(`${baseUrl}/v1/models`, { headers });
-        const id = models?.data?.[0]?.id;
-        loadedModel = typeof id === 'string' ? id : null;
-    } catch (error) {
-        console.warn('KoboldCpp model request failed:', error.message);
-    }
+    const [entries, loadedModel, contextSize] = await Promise.all([
+        admin
+            ? fetchJson(`${baseUrl}/api/admin/list_options`, { headers }).then(getSwitcherEntries, error => {
+                console.warn('KoboldCpp admin options request failed:', error.message);
+                return /** @type {SwitcherEntry[]} */ ([]);
+            })
+            : /** @type {SwitcherEntry[]} */ ([]),
+        fetchJson(`${baseUrl}/v1/models`, { headers }).then(models => {
+            const id = models?.data?.[0]?.id;
+            return typeof id === 'string' ? id : null;
+        }, error => {
+            console.warn('KoboldCpp model request failed:', error.message);
+            return null;
+        }),
+        fetchJson(`${baseUrl}/api/extra/true_max_context_length`, { headers }).then(context => {
+            const value = Number(context?.value);
+            return Number.isInteger(value) && value > 0 ? value : null;
+        }, error => {
+            console.warn('KoboldCpp context size request failed:', error.message);
+            return null;
+        }),
+    ]);
 
     return response.send({
         admin,
         entries,
         loadedModel,
         loadedFile: findLoadedFile(entries, loadedModel),
+        contextSize,
+        vision: version?.vision === true,
+        audio: version?.audio === true,
     });
 });
 
 router.post('/load', async function (request, response) {
-    const baseUrl = getBaseUrl(request.body);
+    const baseUrl = getKoboldCppBaseUrl(request.body?.api_server);
     const filename = request.body?.filename;
     if (!baseUrl || typeof filename !== 'string' || !filename) {
         return response.sendStatus(400);
@@ -213,7 +218,7 @@ router.post('/load', async function (request, response) {
 // KoboldCpp restarts its worker process to load a model. The old worker keeps answering for a short time
 // after the load request, so the client waits for an uptime shorter than the time since its request.
 router.post('/uptime', async function (request, response) {
-    const baseUrl = getBaseUrl(request.body);
+    const baseUrl = getKoboldCppBaseUrl(request.body?.api_server);
     if (!baseUrl) {
         return response.sendStatus(400);
     }

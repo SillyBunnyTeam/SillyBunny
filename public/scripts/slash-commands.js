@@ -201,6 +201,18 @@ function setupConnectAPIMap() {
             button: '#api_button_textgenerationwebui',
             type: textgen_types.OPENROUTER,
         },
+        // SillyBunny: "koboldcpp" names the KoboldCpp Text Completion API, so its Chat Completion source needs its own names.
+        'koboldcpp-chat': {
+            selected: 'openai',
+            button: '#api_button_openai',
+            source: chat_completion_sources.KOBOLDCPP,
+        },
+        // KoboldCpp Chat Completion alias
+        'kcpp-chat': {
+            selected: 'openai',
+            button: '#api_button_openai',
+            source: chat_completion_sources.KOBOLDCPP,
+        },
     };
 
     // Fill connections map from textgen_types and chat_completion_sources
@@ -3187,6 +3199,8 @@ export function initDefaultSlashCommands() {
                     new SlashCommandEnumValue('siliconflow', 'SiliconFlow', enumTypes.getBasedOnIndex(UNIQUE_APIS.findIndex(x => x === 'siliconflow')), 'S'),
                     new SlashCommandEnumValue('minimax', 'MiniMax', enumTypes.getBasedOnIndex(UNIQUE_APIS.findIndex(x => x === 'minimax')), 'M'),
                     new SlashCommandEnumValue('pollinations', 'Pollinations', enumTypes.getBasedOnIndex(UNIQUE_APIS.findIndex(x => x === 'pollinations')), 'P'),
+                    // SillyBunny: KoboldCpp's own Chat Completions API.
+                    new SlashCommandEnumValue('koboldcpp-chat', 'KoboldCpp Chat Completion', enumTypes.getBasedOnIndex(UNIQUE_APIS.findIndex(x => x === 'openai')), 'K'),
                     new SlashCommandEnumValue('kobold', 'KoboldAI Classic', enumTypes.getBasedOnIndex(UNIQUE_APIS.findIndex(x => x === 'kobold')), 'K'),
                     ...Object.values(textgen_types).filter(api => Object.keys(SERVER_INPUTS).includes(api)).map(api => new SlashCommandEnumValue(api, null, enumTypes.getBasedOnIndex(UNIQUE_APIS.findIndex(x => x === 'textgenerationwebui')), 'T')),
                 ],
@@ -6790,6 +6804,29 @@ async function setApiUrlCallback({ api = null, connect = 'true', quiet = 'false'
         }
 
         return oai_settings.pollinations_endpoint || POLLINATIONS_ENDPOINT.AUTHENTICATED;
+    }
+
+    // SillyBunny: "koboldcpp" names the KoboldCpp Text Completion API, so its Chat Completion source goes by "koboldcpp-chat".
+    const isCurrentlyKoboldCppChat = main_api === 'openai' && oai_settings.chat_completion_source === chat_completion_sources.KOBOLDCPP;
+    if (['koboldcpp-chat', 'kcpp-chat'].includes(api) || (!api && isCurrentlyKoboldCppChat)) {
+        if (!url) {
+            return oai_settings.koboldcpp_url ?? '';
+        }
+
+        if (!isCurrentlyKoboldCppChat && autoConnect) {
+            toastr.warning(t`KoboldCpp Chat Completion is not the currently selected API, so we cannot do an auto-connect. Consider switching to it via /api beforehand.`);
+            return '';
+        }
+
+        $('#koboldcpp_chat_url_text').val(url).trigger('input');
+        // trigger blur debounced, so we hide the autocomplete menu
+        setTimeout(() => $('#koboldcpp_chat_url_text').trigger('blur'), 1);
+
+        if (autoConnect) {
+            $('#api_button_openai').trigger('click');
+        }
+
+        return oai_settings.koboldcpp_url ?? '';
     }
 
     // Special handling for Kobold Classic API
