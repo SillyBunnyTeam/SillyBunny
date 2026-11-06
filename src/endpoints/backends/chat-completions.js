@@ -81,6 +81,8 @@ import {
 import { getVertexAIAuth, getProjectIdFromServiceAccount, getGoogleApiBaseUrl } from '../google.js';
 import { getCookieSecret } from '../../users.js';
 import { fetchGoogleModels, GoogleModelsHttpError } from './google-models.js';
+// SillyBunny: the browser shows the provider's own message instead of only the HTTP reason.
+import { extractProviderMessage } from '../../../public/scripts/sillybunny-provider-message.js';
 
 const API_OPENAI = 'https://api.openai.com/v1';
 const API_CLAUDE = 'https://api.anthropic.com/v1';
@@ -4078,7 +4080,9 @@ export async function handleChatCompletionsGenerate(request, response) {
             console.error('Chat completion request error: ', message, responseText);
 
             if (!response.headersSent) {
-                response.status(getSafeCompletionErrorStatus(fetchResponse.status)).send({ error: { message }, quota_error: quota_error });
+                // SillyBunny: the client has no other way to learn what the provider said, because it only sees this body.
+                const providerMessage = extractProviderMessage(responseText);
+                response.status(getSafeCompletionErrorStatus(fetchResponse.status)).send({ error: { message: providerMessage || message }, quota_error: quota_error });
             } else if (!response.writableEnded) {
                 response.write(responseText);
             } else {

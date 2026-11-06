@@ -4,51 +4,13 @@ export const APP_URL = process.env.SILLYBUNNY_TEST_BASE_URL || '/';
 
 /**
  * Loads the app and waits until startup has finished on any profile, including a fresh one.
- * The onboarding prompt must be answered (removing it unanswered stalls startup before APP_READY).
+ * A first run holds startup on the Welcome dialog until the persona has a name, and `waitForAppReady` names it.
  * @param {import('@playwright/test').Page} page
  */
 async function loadReadyApp(page) {
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
     await testSetup.waitForAppReady({ page });
-}
-
-export async function dismissOnboardingIfPresent(page) {
-    const openDialog = page.locator('dialog[open]').first();
-
-    await openDialog.waitFor({ state: 'visible', timeout: 2000 }).catch(() => {});
-
-    if (!(await openDialog.isVisible().catch(() => false))) {
-        return;
-    }
-
-    const dialogText = await openDialog.textContent({ timeout: 1000 }).catch(() => '');
-    const onboardingInput = openDialog.locator('textarea.popup-input, input.popup-input, input[type="text"], textarea').first();
-    const hasOnboardingInput = await onboardingInput.isVisible().catch(() => false);
-    const isWelcomeDialog = /Welcome to SillyBunny/i.test(dialogText ?? '');
-
-    if (!isWelcomeDialog && !hasOnboardingInput) {
-        return;
-    }
-
-    if (hasOnboardingInput) {
-        await onboardingInput.fill('Scroll Tester', { timeout: 1000 }).catch(() => {});
-    }
-
-    const okControl = openDialog.locator('.popup-button-ok, [data-result="1"]').first();
-
-    if (await okControl.isVisible().catch(() => false)) {
-        await okControl.click({ timeout: 1000 }).catch(() => {});
-    } else {
-        await page.evaluate(() => {
-            document.querySelectorAll('dialog[open]').forEach(dialog => {
-                dialog.close();
-                dialog.remove();
-            });
-        });
-    }
-
-    await page.locator('dialog[open]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
 }
 
 export async function dismissOpenDialogIfPresent(page) {
@@ -72,7 +34,7 @@ export async function selectSampleCharacter(page) {
             await context.getCharacters();
         }
 
-        const characterId = context.characters.findIndex(character => /Bunny Guide|Seraphina/.test(character?.name ?? character?.data?.name ?? ''));
+        const characterId = context.characters.findIndex(character => /Seraphina/.test(character?.name ?? character?.data?.name ?? ''));
 
         if (characterId < 0) {
             return false;
@@ -259,7 +221,7 @@ async function renderSyntheticLongChat(page, { messageCount, visibleCount }) {
             const isUser = index % 2 === 0;
             const baseText = `issue 167 synthetic message ${index}`;
             context.chat.push({
-                name: isUser ? 'Scroll Tester' : 'Bunny Guide',
+                name: isUser ? 'Scroll Tester' : 'Seraphina',
                 is_user: isUser,
                 is_system: false,
                 send_date: new Date(Date.UTC(2024, 0, 1, 0, index)).toISOString(),
@@ -332,7 +294,7 @@ export async function installSwipeCandidate(page, messageId) {
         const message = context.chat[targetMessageId];
 
         message.is_user = false;
-        message.name = 'Bunny Guide';
+        message.name = 'Seraphina';
         message.swipe_id = 0;
         message.swipes = [
             `issue 167 original swipe ${targetMessageId} ${'anchor filler '.repeat(20)}`,

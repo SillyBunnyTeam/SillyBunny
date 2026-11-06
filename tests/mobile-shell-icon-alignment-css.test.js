@@ -5,16 +5,13 @@ import path from 'node:path';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tabsCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8').replace(/\r\n/g, '\n');
+const importCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-character-import.css'), 'utf8');
 
 function getRuleBodies(selector) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const matches = [...tabsCss.matchAll(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, 'gs'))];
 
     return matches.map(match => match.groups?.body ?? '');
-}
-
-function getRuleBody(selector) {
-    return getRuleBodies(selector).at(-1) ?? '';
 }
 
 describe('mobile shell icon alignment css', () => {
@@ -27,13 +24,11 @@ describe('mobile shell icon alignment css', () => {
         expect(tabIconRule).toContain('justify-content: center;');
     });
 
-    test('keeps character import action icons centered inside their tiles', () => {
-        const importIconRule = getRuleBody('.sb-character-import-action > i');
-
-        expect(importIconRule).toContain('--fa-display: inline-flex;');
-        expect(importIconRule).toContain('width: 48px;');
-        expect(importIconRule).toContain('height: 48px;');
-        expect(importIconRule).toContain('align-items: center;');
-        expect(importIconRule).toContain('justify-content: center;');
+    test('centers the rebuilt Import drop-zone contents in its deferred stylesheet, not retired tiles', () => {
+        const zone = importCss.match(/\.sb-import-drop\s*\{([^}]+)\}/)[1];
+        expect(zone).toContain('display: flex;');
+        expect(zone).toContain('align-items: center;');
+        expect(zone).toContain('justify-content: center;');
+        expect(tabsCss).not.toContain('.sb-character-import-action');
     });
 });

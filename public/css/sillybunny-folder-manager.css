@@ -1,0 +1,47 @@
+/* Folder Manager content. The frame and the members page are the shared Window-tier dialog in
+   sillybunny-theme.css (sillybunny-editor/dialog.js). */
+.sb-folder-manager .sb-folder-manager__button {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    box-shadow: none;
+}
+
+.sb-folder-manager__folder-row { margin: 0; flex-wrap: wrap; content-visibility: visible; }
+.sb-folder-manager__folder-row { padding-inline: 8px; }
+@media (hover: hover) {
+    .sb-folder-manager .ds-entity-row--activatable:hover { background: var(--sb-flat-hover-bg); }
+}
+.sb-folder-manager .ds-entity-row--activatable:active { background: var(--sb-flat-active-bg); }
+.sb-folder-manager__folder-row .ds-entity-row__title,
+.sb-folder-manager__folder-row .sb-folder-manager__name { font-size: calc(var(--sb-type-body) * 0.9); font-weight: 600; line-height: 1.3; }
+.sb-folder-manager__folder-row .ds-entity-row__subtitle { font-size: calc(var(--sb-type-body) * 0.75); line-height: 1.4; }
+.sb-folder-manager__member-row { margin: 0; }
+.sb-folder-manager__folder-row .ds-entity-row__avatar { display: grid; place-items: center; background: transparent; }
+.sb-folder-manager__dot { display: block; width: 12px; height: 12px; flex: 0 0 12px; border-radius: 50%; background: var(--sb-folder-color, var(--sb-muted-fg)); }
+.sb-folder-manager__name-field { min-width: 0; }
+.sb-folder-manager__name { width: 100%; min-width: 0; min-height: 1.6em; padding: 0; margin: 0; border: 0; border-radius: var(--sb-radius-control); background: transparent; color: var(--SmartThemeBodyColor); font: inherit; outline: 0; box-shadow: none; }
+.sb-folder-manager__name:focus { background: var(--sb-layer-view); box-shadow: var(--sb-focus-ring-inset); }
+.sb-folder-manager__count { color: var(--sb-muted-fg); }
+.sb-folder-manager__error { display: block; padding: 2px 4px; color: var(--sb-color-danger); font-size: var(--sb-type-meta); white-space: normal; }
+.sb-folder-manager__colors { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; }
+.sb-folder-manager__empty { padding: 32px 12px; }
+
+.sb-folder-manager .sb-folder-manager__button { border-radius: 999px; background: transparent !important; }
+
+@media (hover: hover) {
+    .sb-folder-manager__button:hover, .sb-folder-manager__name:hover:not(:focus) { background: var(--sb-flat-hover-bg); }
+}
+
+@media (pointer: coarse) {
+    .sb-folder-manager :is(.sb-folder-manager__button, .sb-folder-manager__name) { min-height: 44px; min-width: 44px; }
+}

@@ -14,6 +14,8 @@ import { write } from '../character-card-parser.js';
 import { serverDirectory } from '../server-directory.js';
 import { Jimp, JimpMime } from '../jimp.js';
 import { DEFAULT_AVATAR_PATH } from '../constants.js';
+// SillyBunny: bundled assistant cards, sprites and worlds that nobody edited are brought up to date in the per-user pass.
+import { reconcileManagedContent } from '../sillybunny-managed-content.js';
 
 const contentDirectory = path.join(serverDirectory, 'default/content');
 const scaffoldDirectory = path.join(serverDirectory, 'default/scaffold');
@@ -143,6 +145,87 @@ const MANAGED_BUNDLED_QUICK_REPLIES = Object.freeze([
         bundledPath: 'presets/quick-replies/Memory Sharding.json',
         staleHashes: Object.freeze([]),
     },
+]);
+
+// SillyBunny divergence: seeding never overwrites an existing theme file, so a bundled theme that changes
+// after users copied it would stay stale in their data folder. A managed theme is replaced only while the
+// user's copy has the SHA-256 of an earlier bundled file; an edited copy has another hash and is left alone.
+// Libadwaita lists the pre-release seeds that still carried the Dark V 1.0 palette, plus its file from before
+// its text colours were raised to the DESIGN.md contrast floor. CONTRAST_REVISED_THEME_HASHES maps every other
+// theme that had text colours raised to the hash of its file from before.
+const CONTRAST_REVISED_THEME_HASHES = Object.freeze({
+    'Amber Dusk': '8f82f538222d0c006c49acb8c9246fcc434a67fed004153a708ff1fbca92d848',
+    Azure: '87426170fa7018df583aeda71f440ceb8f6234794265b6427371706d7fb064b1',
+    'Burnt Orange': '2cde7d3f33c697ce1a70173c873722c5a814bf8580caf743680ad84ca5b7c988',
+    Cappuccino: '06cea473697a1fd4042a3a57f40b1194c1d1db577b253486b893f3c17e941b95',
+    'Catppuccin Latte': '0a9d693c0f8f864eb4e4c104c7ea04ed18d3adfcd71cc5d02dcf85fb73b57a8c',
+    'Catppuccin Mocha': '4b437cb39d8aaf614c6d010f0bf388e17f175b4bedc2bf4816e1c0f679ec8ee4',
+    'Celestial Macaron': 'd670ff830f0b4184d44fdc689bf394c33e0cd0d47b99e15026ac14fc008561e0',
+    Cerulean: '499b1744aa6d861ae12a94b28c09654a83cb809676d158b8c8e681b3719fdf83',
+    Cinder: 'a163b45775fe91c41ad631442fcdd7dbecb5075f4e208fe0789f541d4ec9fb1a',
+    'Dark Lite': 'f894d42f22426d645f4b742ecf927a5901540050c26de3524bf9b3990c49f497',
+    'Dark V 1.0': 'cda9c1274c89350bc35c29ebca0edf251fd8b10be2b94f060c5b2a47b68d7018',
+    Dracula: 'c2bc89024d193955028b24d602568004e9b85d0ee0b6982e5273d35bfa497317',
+    'Dracula Light': 'fe0bcf898a273b6a4f9f18bae92829130d6c7facfd1eb6757d50e26839faf3e6',
+    'Everforest Dark': '1314da6c6174a33a4c9721638bec3e711fac5d96bac0375968d901219c4b6a19',
+    'Everforest Light': '448b6acab6b2194c39c6f44a990dbf4dc33d482d70bbd6a8e559b980d0a5135b',
+    Glacier: '330021d9fb6182c7433037a2ef950ed86170a3e4683a3c149d6ded88ecb6d660',
+    'Gruvbox Dark': 'dc2917da738305e3d3eb0d3336042505f28d081f8c98b6fad5f06efd00d75445',
+    'Gruvbox Light': '676929397107f356e222d9f0668eef72679ceb062ed904047726a72a4e65c0f7',
+    'Hacker-Terminal-Light': 'fa555e534a2ae0cf61a60ad5207b7e8823e43e7565e88d93889cb1841cd50672',
+    Lavender: '55aa33a93b8f678717d47ad109b1f95c32f6bad7d578c2135fd28b15840cd936',
+    Lime: '90cddb5b87d3c0368f7473214498bdf3a922785704d08c055ef4496a3979797b',
+    Magenta: 'a8d41ba8b0252d3b137acbb012a8b776f5919329e955922a0e51c70c8a7dc9c6',
+    Mint: 'f53fc0bbf962a4c8d84e3ea8e03edf72b643956a1019771ad34a4681c9bc29b2',
+    Monochrome: 'fe6606c7ff5697878280da1431530c7d8c7947cac69173dbc4c39f475030b339',
+    'Neon Abyss': 'ebef37330912ed4a0ddbf28d316b358b9a766f877950a1ecf5628e1bdb145da3',
+    'Neon Yellow': '9965a3b7cac8c6f1ac8e2037d3fdcbae1562c61b8b6b4063517b5086ce4de7c1',
+    Nord: '4f652df094a96403fe38cb47f9b0b27c0e0ea66356df291cfd428ee7c125b14f',
+    'Nord Light': '39b971d8c8a7140b4c66bb6a3b1a4c46280a0508d883d77bbdd092b13e63e671',
+    Plum: 'e9927741990141dd73e6a9778e0b0458051e211e81c74485f47babfed35a439e',
+    Rose: 'df951ec20b01efdd76cde448e6049df45a1180d5d71b322dd71a8450c282ab95',
+    'Rosé Pine': 'ae8c33dde31b5410ac1fd1ea8ffe95387a952d6018881b61525959ab88ad4854',
+    'Rosé Pine Dawn': '2056de45032c4f23c56caeab37b7562ed6c23c0ce329be1672ecbde5edc3958e',
+    Sage: 'bbfcef2913e10ae3d48c08dde23a79d931ce01723668f6f8128063ec658b7ce7',
+    Slate: 'cf80b17b2c4ef1d133830d17f0c7a2de5e8a9e262e9736b46facd1ef34f0ef2d',
+    'Solarized Dark': 'c8d84b6f3ce7e1e2c75df81aa5cffe90eed69c8109ecd70babc0f27a1ac10a6e',
+    'Solarized Light': 'f84c47d1e427fff57cde2ce8cd8f2bf031837ec568561bc4402bd2b3af7bd41f',
+    'Sonokai Andromeda': '27d9c84e863e5b3087b47d9c41d9cde153ba7fcdccef1583be5343db30e2f0b1',
+    'Sonokai Andromeda Light': '0872ccb77466781c2bd91ec2b6e67a17ff4143402b6bda8a5259101580129275',
+    'Sonokai Atlantis': '3dd8c04362cbbda64f041121052f687dcacfa87ec976a9ab94b5a5bbb05c7292',
+    'Sonokai Atlantis Light': 'ad12b5ecf8f42fd3cb72de7e4a9b33b5a505d547039e818353602beb83e3c2bf',
+    'Sonokai Default': '1df968101c458f1661c5bcb3678fb9f300a66019a5525c41d974d88873df20ce',
+    'Sonokai Default Light': '85de22d75041b5debb0ab5635dfcd8f00111780d7c8fa3e2679e3053e7440e46',
+    'Sonokai Espresso': '93e21b80027281643663cff6a8bda5888550fa0757641aa4b7a0691f08c88f3e',
+    'Sonokai Espresso Light': '1a0a28b6db578f3a8d391db2fbe5b30d663cc981a746a7afe0ef4cb63956669d',
+    'Sonokai Maia': '82b443123a5dd13d0d8a5280e56cc7bd1a0d6db182ad1c1e713fa992e9634f7b',
+    'Sonokai Maia Light': '0b1880cc056959f28f42524cdaaa74f61f3d31b1d6280273ced726d533e89bef',
+    'Sonokai Shusia': '02781a915b2fc3f0e5e2c5ec34d402e2c0dfac84bad96b6feda85e780f2badc7',
+    'Sonokai Shusia Light': '82d2b8f3473066874f1c8302ebec61c39f288ffa45e4ac3f70e324b1c959338f',
+    'Tokyo Night': '9317ef4b915372eaf01fa7355a1e8cd13cf82c79ab07a7a9082b76cd01e1d53d',
+    'Tokyo Night Day': '9b3c57d38826a79885db4332ef2751c043aee2ef2ec25063c923f1f00e31a803',
+    'Verdant Light': 'dfc5acb859d8821d4dc77ad37fa8314b670fcdbc535f758318da4192ba38a493',
+});
+
+const MANAGED_BUNDLED_THEMES = Object.freeze([
+    {
+        bundledPath: 'themes/Libadwaita.json',
+        staleHashes: Object.freeze([
+            'c0e039effbc0c83883b551d4e74b2c29a506079f09f9e2a66b3b6659cd7c536d',
+            'afcaa383c6b4ab81a3704e6f58eaec18eeaff63d9c95d0de76a4ef1ca75c30d9',
+        ]),
+    },
+    {
+        bundledPath: 'themes/Libadwaita Light.json',
+        staleHashes: Object.freeze([
+            '750603511a68a6823629bf706a095f728fadcc80f11af8321a109d237566bbb1',
+            'fdfc96c9fd2b29d2dc76104911c2f452830067352e07f20c5fb6b26604121f45',
+        ]),
+    },
+    ...Object.entries(CONTRAST_REVISED_THEME_HASHES).map(([name, staleHash]) => ({
+        bundledPath: `themes/${name}.json`,
+        staleHashes: Object.freeze([staleHash]),
+    })),
 ]);
 
 function isPresetContentType(type) {
@@ -340,10 +423,12 @@ export function findDefaultPreset(directories, { folder, name }) {
 }
 
 /**
- * Restores bundled default preset files for a user.
+ * Restores the bundled default preset files that a user is missing, whether they deleted them or never had them.
+ * A file that is there is never written over, edited or not: the copy is exclusive, so a file that appears
+ * while the restore runs is kept as well. A kept file is not reported as restored.
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {string[]|null} types Content types to restore, or null for all preset types
- * @returns {{restored: string[], failed: {filename: string, error: string}[]}}
+ * @returns {{restored: string[], failed: {filename: string, error: string}[]}} `restored` holds the presets that were written
  */
 export function restoreDefaultPresetFiles(directories, types = null) {
     const allowedTypes = Array.isArray(types) && types.length ? new Set(types) : null;
@@ -364,7 +449,15 @@ export function restoreDefaultPresetFiles(directories, types = null) {
             }
 
             fs.mkdirSync(targetFolder, { recursive: true });
-            fs.cpSync(sourcePath, targetPath, { recursive: true, force: true });
+            try {
+                // SillyBunny: an exclusive copy, so a restore never overwrites a preset that is there.
+                fs.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
+            } catch (error) {
+                if (error?.code === 'EEXIST') {
+                    continue;
+                }
+                throw error;
+            }
             setPermissionsSync(targetPath);
             clearDefaultPresetDeletion(directories, preset);
             restored.push(preset.filename);
@@ -610,13 +703,45 @@ export function reconcileManagedBundledQuickReplies(directories) {
 }
 
 /**
+ * Replaces stale pre-release copies of bundled themes without touching user-modified files.
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ */
+export function reconcileManagedBundledThemes(directories) {
+    const themesDirectory = getUserTargetByType(CONTENT_TYPES.THEME, directories);
+
+    if (!themesDirectory || !fs.existsSync(themesDirectory)) {
+        return;
+    }
+
+    for (const managedTheme of MANAGED_BUNDLED_THEMES) {
+        const targetPath = path.join(themesDirectory, path.parse(managedTheme.bundledPath).base);
+
+        try {
+            if (!fs.existsSync(targetPath) || !managedTheme.staleHashes.includes(getSha256(fs.readFileSync(targetPath)))) {
+                continue;
+            }
+
+            const bundledContent = fs.readFileSync(path.join(contentDirectory, managedTheme.bundledPath));
+            writeFileAtomicSync(targetPath, bundledContent);
+            setPermissionsSync(targetPath);
+            console.info(`Stale bundled theme replaced at ${targetPath}`);
+        } catch (error) {
+            console.warn(`Failed to reconcile bundled theme ${managedTheme.bundledPath}`, error);
+        }
+    }
+}
+
+// SillyBunny: exported, with a managed content directory, so seeding is testable against fixtures.
+/**
  * Seeds content for a user.
  * @param {ContentItem[]} contentIndex Content index
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {string[]} forceCategories List of categories to force check (even if content check is skipped)
+ * @param {object} [options]
+ * @param {string} [options.managedDirectory] Where the managed content manifest is; tests point it at fixtures.
  * @returns {Promise<boolean>} Whether any content was added
  */
-async function seedContentForUser(contentIndex, directories, forceCategories) {
+export async function seedContentForUser(contentIndex, directories, forceCategories, { managedDirectory = contentDirectory } = {}) {
     if (!fs.existsSync(directories.root)) {
         fs.mkdirSync(directories.root, { recursive: true });
     }
@@ -626,6 +751,9 @@ async function seedContentForUser(contentIndex, directories, forceCategories) {
     removeObsoleteContent(contentLog, directories);
     writeFileAtomicSync(contentLogPath, contentLog.join('\n'));
     reconcileManagedBundledQuickReplies(directories);
+    reconcileManagedBundledThemes(directories);
+    // SillyBunny: managed content is reconciled per user; a content directory without a manifest manages nothing.
+    reconcileManagedContent({ bundledDirectory: managedDirectory, directories, setPermissions: setPermissionsSync });
     const filteredContentIndex = contentIndex.filter(contentItem => {
         if (!isPresetContentType(contentItem.type)) {
             return true;

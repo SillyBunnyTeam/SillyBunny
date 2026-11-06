@@ -13,6 +13,9 @@ beforeAll(async () => {
         renderExtensionTemplateAsync: jest.fn(async () => ''),
         getContext: jest.fn(() => ({})),
     }));
+    await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+        t: jest.fn(),
+    }));
 
     await jest.unstable_mockModule('../public/lib.js', () => ({
         DiffMatchPatch: class DiffMatchPatch {
@@ -200,6 +203,7 @@ beforeAll(async () => {
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-runner.js', () => ({
+        COMPANION_RESULTS_UPDATED_EVENT: 'in_chat_agent_companion_results_updated',
         agentHasConnectedCompanionDependencies: jest.fn(() => false),
         collectRecentCompanionResults: jest.fn(() => []),
         getCompanionResults: jest.fn(() => ({})),
@@ -209,6 +213,7 @@ beforeAll(async () => {
         initCompanionRunner: jest.fn(),
         runConnectedCompanionsOnMessage: jest.fn(async () => []),
         runTrackerCompanionsOnMessage: jest.fn(async () => []),
+        runCompanionsOnMessage: jest.fn(async () => ({})),
         syncCompanionChatHistoryConfig: jest.fn(() => 0),
     }));
 
@@ -221,14 +226,19 @@ beforeAll(async () => {
         configureCompanionDashboard: jest.fn(),
         initCompanionWandMenuItem: jest.fn(),
         openCompanionDashboard: jest.fn(),
+        captureCompanionDashboardOrigin: jest.fn(),
+        restoreCompanionDashboardOrigin: jest.fn(),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/companion/companion-panel.js', () => ({
         configureCompanionPanel: jest.fn(),
         initCompanionPanel: jest.fn(),
+        isConversationModeActive: jest.fn(() => false),
         openCompanionPanel: jest.fn(),
         refreshCompanionPanel: jest.fn(),
         updateCompanionPanelHandleVisibility: jest.fn(),
+        captureCompanionPanelOrigin: jest.fn(),
+        restoreCompanionPanelOrigin: jest.fn(),
     }));
 
     await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({

@@ -4,6 +4,14 @@
         "type": "settings"
     },
     {
+        "filename": "themes/Libadwaita.json",
+        "type": "theme"
+    },
+    {
+        "filename": "themes/Libadwaita Light.json",
+        "type": "theme"
+    },
+    {
         "filename": "themes/Dark Lite.json",
         "type": "theme"
     },
@@ -312,11 +320,15 @@
         "type": "background"
     },
     {
-        "filename": "default_Seraphina.png",
+        "filename": "default_AssistantReisen.png",
         "type": "character"
     },
     {
-        "filename": "default_SillyBunnyGuide.png",
+        "filename": "default_AssistantTewi.png",
+        "type": "character"
+    },
+    {
+        "filename": "default_Seraphina.png",
         "type": "character"
     },
     {
@@ -324,7 +336,19 @@
         "type": "sprites"
     },
     {
+        "filename": "Assistant Reisen",
+        "type": "sprites"
+    },
+    {
+        "filename": "Assistant Tewi",
+        "type": "sprites"
+    },
+    {
         "filename": "Eldoria.json",
+        "type": "world"
+    },
+    {
+        "filename": "SillyBunny Lexicon.json",
         "type": "world"
     },
     {
@@ -485,14 +509,6 @@
     },
     {
         "filename": "presets/openai/Default.json",
-        "type": "openai_preset"
-    },
-    {
-        "filename": "presets/openai/Pura's Director Preset (SillyBunny).json",
-        "type": "openai_preset"
-    },
-    {
-        "filename": "presets/openai/Pura's Director Preset 15.1 (SillyBunny).json",
         "type": "openai_preset"
     },
     {

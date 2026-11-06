@@ -1,3 +1,4 @@
+<!-- SillyBunny: one checkbox per command, keyed by command id so its value is the id that goes into exclude. -->
 <div>
     <h3 data-i18n="Folder:">Folder:</h3>
     <select id="profile_folder_select" class="text_pole wide100p">
@@ -8,10 +9,10 @@
     </select>
     <h3 data-i18n="Included settings:">Included settings:</h3>
     <div class="justifyLeft flex-container flexFlowColumn flexNoGap">
-        {{#each settings}}
+        {{#each rows}}
         <label class="checkbox_label">
-            <input type="checkbox" value="{{@key}}" name="exclude"{{#if this}} checked{{/if}}>
-            <span data-i18n="{{@key}}">{{@key}}</span>
+            <input type="checkbox" value="{{id}}" name="exclude"{{#if checked}} checked{{/if}}>
+            <span data-i18n="{{label}}">{{label}}</span>
         </label>
         {{/each}}
     </div>

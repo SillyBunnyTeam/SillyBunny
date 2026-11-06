@@ -1,0 +1,124 @@
+{
+    "plates": {
+        "mansion-day": {
+            "master": "raw/s8/backdrop-mansion-day/20261103T224926Z-gpt-image-2.5-sunburst-h-pixel-backdrop-2.png",
+            "note": "The characters' home: the mansion on the right, the yard along the bottom. Its pixels are not on a firm grid (strength about 1.1), so the grid is the one found over the whole lower plate.",
+            "light": {
+                "x": 1
+            },
+            "detect": {
+                "box": {
+                    "x": 0,
+                    "y": 400,
+                    "width": 1536,
+                    "height": 600
+                },
+                "windows": {
+                    "across": [
+                        2.9,
+                        3.5
+                    ],
+                    "down": [
+                        3.7,
+                        4.3
+                    ]
+                }
+            },
+            "variants": {
+                "banner": {
+                    "note": "step 6, 2560x800: the yard along the bottom of the frame, the plate against its right edge so the veranda is behind the pair",
+                    "cell": 3.2,
+                    "step": 6,
+                    "x": 169,
+                    "y": 451,
+                    "columns": 427,
+                    "rows": 134,
+                    "at": {
+                        "left": -1,
+                        "top": -2
+                    },
+                    "bleed": true
+                },
+                "social": {
+                    "note": "step 3, 1280x640: zoomed out to 3.58 master px per art pixel, so that nearly the whole plate width and the moon fit, and the crop covers the canvas",
+                    "cell": 3.58,
+                    "step": 3,
+                    "x": 4,
+                    "y": 113,
+                    "columns": 427,
+                    "rows": 214,
+                    "at": {
+                        "left": -1,
+                        "top": -1
+                    },
+                    "bleed": true
+                }
+            }
+        },
+        "mansion-night": {
+            "master": "raw/s8/backdrop-mansion-night/20261103T225428Z-gpt-image-2.5-sunburst-h-edit-1.png",
+            "note": "The day plate edited in place: lamplight, lit lanterns, stars and a full moon with a halo. It takes the grid detection and the crops of the day plate.",
+            "light": {
+                "x": 0
+            },
+            "like": "mansion-day",
+            "compare": {
+                "against": "mansion-day",
+                "boxes": {
+                    "left bamboo": {
+                        "x": 0,
+                        "y": 200,
+                        "width": 330,
+                        "height": 620
+                    },
+                    "right bamboo": {
+                        "x": 1380,
+                        "y": 200,
+                        "width": 156,
+                        "height": 620
+                    },
+                    "garden wall and pine": {
+                        "x": 280,
+                        "y": 520,
+                        "width": 340,
+                        "height": 280
+                    },
+                    "roof": {
+                        "x": 560,
+                        "y": 260,
+                        "width": 976,
+                        "height": 280
+                    },
+                    "veranda and doors": {
+                        "x": 600,
+                        "y": 520,
+                        "width": 936,
+                        "height": 290
+                    },
+                    "yard": {
+                        "x": 0,
+                        "y": 800,
+                        "width": 1536,
+                        "height": 220
+                    },
+                    "moon": {
+                        "x": 1030,
+                        "y": 100,
+                        "width": 200,
+                        "height": 140
+                    }
+                },
+                "moonCentres": {
+                    "x": 1100,
+                    "y": 150,
+                    "width": 60,
+                    "height": 60
+                },
+                "moonRadii": {
+                    "min": 35,
+                    "max": 60
+                }
+            }
+        }
+    }
+}

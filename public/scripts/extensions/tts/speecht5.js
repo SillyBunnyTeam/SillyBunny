@@ -1,6 +1,9 @@
 import { getPreviewString, saveTtsProviderSettings } from './index.js';
 import { getBase64Async } from '../../utils.js';
 import { getRequestHeaders } from '../../../script.js';
+// SillyBunny: Speaker deletion uses the shared alert to keep the destructive action explicit.
+import { openAlert } from '../../sillybunny-editor/dialog.js';
+import { t } from '../../i18n.js';
 
 export { SpeechT5TtsProvider };
 
@@ -115,10 +118,17 @@ class SpeechT5TtsProvider {
             $('#speecht5_tts_speaker').val(speaker.name);
             this.onSettingsChange();
         });
-        $('#speecht5_tts_delete_speaker_button').on('click', () => {
-            const confirmDelete = confirm('Are you sure you want to delete this speaker?');
+        $('#speecht5_tts_delete_speaker_button').on('click', async () => {
+            // SillyBunny: Speaker deletion is irreversible, so the alert has no Return default.
+            const response = await openAlert({
+                heading: 'Are you sure you want to delete this speaker?',
+                responses: [
+                    { id: 'cancel', label: t`Cancel` },
+                    { id: 'delete', label: t`Delete`, appearance: 'destructive' },
+                ],
+            });
 
-            if (!confirmDelete) {
+            if (response !== 'delete') {
                 return;
             }
 

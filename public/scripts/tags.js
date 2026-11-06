@@ -12,24 +12,31 @@ import {
     event_types,
     DEFAULT_PRINT_TIMEOUT,
     printCharacters,
+    getThumbnailUrlForViewport,
+    default_avatar,
 } from '../script.js';
 import { FILTER_TYPES, FILTER_STATES, DEFAULT_FILTER_STATE, isFilterState, FilterHelper } from './filters.js';
 
-import { groupCandidatesFilter, groupMembersFilter, groups, selected_group } from './group-chats.js';
-import { download, onlyUnique, parseJsonFile, uuidv4, getSortableDelay, flashHighlight, equalsIgnoreCaseAndAccents, includesIgnoreCaseAndAccents, removeFromArray, getFreeName, debounce, findChar, escapeHtml } from './utils.js';
+import { groupCandidatesFilter, groupMembersFilter, groups, selected_group, getGroupAvatarElement } from './group-chats.js';
+import { download, onlyUnique, parseJsonFile, uuidv4, flashHighlight, equalsIgnoreCaseAndAccents, includesIgnoreCaseAndAccents, removeFromArray, getFreeName, findChar, escapeHtml } from './utils.js';
 import { power_user } from './power-user.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { isMobile } from './RossAscends-mods.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
-import { debounce_timeout } from './constants.js';
 import { INTERACTABLE_CONTROL_CLASS } from './keyboard.js';
 import { commonEnumProviders } from './slash-commands/SlashCommandCommonEnumsProvider.js';
 import { renderTemplateAsync } from './templates.js';
 import { t, translate } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { enumTypes, SlashCommandEnumValue } from './slash-commands/SlashCommandEnumValue.js';
+// SillyBunny: editor tag chips opt into local add/remove motion without changing legacy lists.
+import { animateHeightFrom, animateIn, fadeOutAndRemove } from './sillybunny-motion.js';
+// SillyBunny: share the dialog lifecycle and chip colour updates — see docs/ui-migration.md
+import { openTagManager, refreshTagManager, updateTagColors } from './sillybunny-tag-manager.js';
+// SillyBunny: tag deletion uses the shared destructive alert so Return cannot confirm it.
+import { openAlert } from './sillybunny-editor/dialog.js';
 
 export {
     TAG_FOLDER_TYPES,
@@ -132,10 +139,13 @@ function getVisibleAvatarsForGroupContext(type, currentGroup) {
     switch (type) {
         case tag_filter_type.group_members_list:
             return currentGroup.members;
-        case tag_filter_type.group_candidates_list:
+        case tag_filter_type.group_candidates_list: {
+            // SillyBunny: candidate membership is linear in the library size — see docs/ui-migration.md.
+            const memberAvatars = new Set(currentGroup.members);
             return characters
-                .filter(c => !currentGroup.members.includes(c.avatar))
+                .filter(c => !memberAvatars.has(c.avatar))
                 .map(c => c.avatar);
+        }
         default:
             console.warn('getVisibleAvatarsForGroupContext got invalid type, expected 1 or 2, got ', type);
             return [];
@@ -169,6 +179,10 @@ const ACTIONABLE_FILTER_STORAGE_KEYS = Object.freeze({
     FOLDER: 'TagFilterState_FOLDER',
 });
 
+// SillyBunny: the shared main-list filter helper keeps one identity while its
+// persisted state follows the Characters or Groups view — see docs/ui-migration.md
+let mainListFilterStoragePrefix = 'CharacterList';
+
 /**
  * Gets the storage key prefix for a filter helper to enable persistence.
  * @param {FilterHelper} filterHelper - The filter helper to check
@@ -176,13 +190,32 @@ const ACTIONABLE_FILTER_STORAGE_KEYS = Object.freeze({
  */
 function getFilterStorageKey(filterHelper) {
     if (filterHelper === entitiesFilter) {
-        return 'CharacterList';
+        return mainListFilterStoragePrefix;
     } else if (filterHelper === groupCandidatesFilter) {
         return 'GroupCandidates';
     } else if (filterHelper === groupMembersFilter) {
         return 'GroupMembers';
     }
     return null;
+}
+
+/**
+ * Sets the account-storage prefix used by the shared main character-list filter.
+ * @param {'CharacterList'|'GroupList'} prefix
+ */
+export function setMainListFilterStoragePrefix(prefix) {
+    if (!['CharacterList', 'GroupList'].includes(prefix)) {
+        throw new TypeError(`Invalid main list filter storage prefix: ${prefix}`);
+    }
+    mainListFilterStoragePrefix = prefix;
+}
+
+/**
+ * Gets the account-storage prefix used by the shared main character-list filter.
+ * @returns {'CharacterList'|'GroupList'}
+ */
+export function getMainListFilterStoragePrefix() {
+    return mainListFilterStoragePrefix;
 }
 
 /**
@@ -366,11 +399,13 @@ let expanded_tags_cache = [];
  * @param {Boolean} [param1.filterHidden] Optional switch with which filtering out hidden items (from closed folders) can be disabled.
  * @returns The filtered list of entities
  */
-function filterByTagState(entities, { globalDisplayFilters = false, subForEntity = undefined, filterHidden = true } = {}) {
+function filterByTagState(entities, { globalDisplayFilters = false, subForEntity = undefined, filterHidden = true, mainList = false } = {}) {
     const filterData = structuredClone(entitiesFilter.getFilterData(FILTER_TYPES.TAG));
 
     entities = entities.filter(entity => {
         if (entity.type === 'tag') {
+            // SillyBunny: folder sections replace tag-folder entities in the shared main list.
+            if (mainList && isBogusFolder(entity.item)) return false;
             // Remove folders that are already filtered on
             if (filterData.selected.includes(entity.id) || filterData.excluded.includes(entity.id)) {
                 return false;
@@ -386,7 +421,8 @@ function filterByTagState(entities, { globalDisplayFilters = false, subForEntity
 
         entities = entities.filter(entity => {
             // Hide entities that are in a closed folder, unless that one is opened
-            if (filterHidden && entity.type !== 'tag' && closedFolders.some(f => entitiesFilter.isElementTagged(entity, f.id) && !filterData.selected.includes(f.id))) {
+            // SillyBunny: the shared main list renders its own folders and never hides closed-tag members.
+            if (filterHidden && !mainList && entity.type !== 'tag' && closedFolders.some(f => entitiesFilter.isElementTagged(entity, f.id) && !filterData.selected.includes(f.id))) {
                 return false;
             }
 
@@ -541,8 +577,9 @@ function applyActionableTagFilter(filterHelper, tag, filterType, storageKey) {
         accountStorage.setItem(contextStorageKey, state);
     }
 
-    // Also update global state for main character list (backward compatibility)
-    if (isMainCharacterList(filterHelper)) {
+    // SillyBunny: Groups never overwrite Characters' legacy compatibility
+    // state while using the shared filter helper — see docs/ui-migration.md
+    if (isMainCharacterList(filterHelper) && mainListFilterStoragePrefix === 'CharacterList') {
         tag.filter_state = state;
     }
 
@@ -624,7 +661,8 @@ function renameTagKey(oldKey, newKey) {
 }
 
 function createTagMapFromList(listElement, key) {
-    const tagIds = [...($(listElement).find('.tag').map((_, el) => $(el).attr('id')))];
+    // SillyBunny: animated editor chips are pending removal, including on a cloned group form list.
+    const tagIds = [...($(listElement).find('.tag:not([data-sb-removing])').map((_, el) => $(el).attr('id')))];
     tag_map[key] = tagIds;
     saveSettingsDebounced();
 }
@@ -798,6 +836,12 @@ export function addTagsToEntity(tag, entityId, { tagListSelector = null, tagList
 
     // We should manually add the selected tag to the print tag function, so we cover places where the tag list did not automatically include it
     tagListOptions.addTag = tags;
+    if (tagListOptions.tagOptions?.animateAdded) {
+        tagListOptions.tagOptions = {
+            ...tagListOptions.tagOptions,
+            animateAddedIds: tags.map(item => item.id),
+        };
+    }
 
     // add tag to the UI and internal map - we reprint so sorting and new markup is done correctly
     if (tagListSelector) printTagList(tagListSelector, tagListOptions);
@@ -831,13 +875,27 @@ export function removeTagFromEntity(tag, entityId, { tagListSelector = null, tag
     printCharactersDebounced();
     saveSettingsDebounced();
 
+    const animatedElement = tagElement?.[0] ?? null;
+    const removeElement = (element) => {
+        if (!(element instanceof HTMLElement)) return;
+        // SillyBunny: only the two editor chip lists animate removals; legacy
+        // consumers keep their synchronous removal behavior.
+        const shouldAnimate = Boolean(element.closest('#tagList, #groupTagList'));
+        if (shouldAnimate) element.dataset.sbRemoving = 'true';
+        fadeOutAndRemove(element, { enabled: shouldAnimate });
+    };
+
     // We don't reprint the lists, we can just remove the html elements from them.
     if (tagListSelector) {
         const $selector = (typeof tagListSelector === 'string') ? $(tagListSelector) : tagListSelector;
-        $selector.find(`.tag[id="${tag.id}"]`).remove();
+        $selector.find(`.tag[id="${tag.id}"]`).each((_, element) => {
+            if (element !== animatedElement) removeElement(element);
+        });
     }
-    if (tagElement) tagElement.remove();
-    $(`${getInlineListSelector()} .tag[id="${tag.id}"]`).remove();
+    if (tagElement) removeElement(animatedElement);
+    $(`${getInlineListSelector()} .tag[id="${tag.id}"]`).each((_, element) => {
+        if (element !== animatedElement) removeElement(element);
+    });
 
     return result;
 }
@@ -1168,6 +1226,8 @@ function newTag(tagName) {
  * @property {boolean} [skipExistsCheck=false] - If true, the tag gets added even if a tag with the same id already exists.
  * @property {boolean} [isCharacterList=false] - If true, indicates that this is the character's list of tags.
  * @property {boolean} [isInactive=false] - If true, indicates that the tag is inactive (for styling purposes).
+ * @property {boolean} [animateAdded=false] - Animate chips added through an editor tag input.
+ * @property {string[]} [animateAddedIds] - IDs to animate during the opt-in add render.
  */
 
 /**
@@ -1191,6 +1251,9 @@ function newTag(tagName) {
  */
 function printTagList(element, { tags = undefined, addTag = undefined, forEntityOrKey = undefined, empty = true, sort = true, tagActionSelector = undefined, tagOptions = {}, inactiveTags = [] } = {}) {
     const $element = (typeof element === 'string') ? $(element) : element;
+    // SillyBunny: editor chips use the same neutral-pill/dot model as entity lists — see docs/ui-migration.md
+    $element.filter('#tagList, #groupTagList').addClass('ds-tag-chips');
+    refreshTagManager();
     const key = forEntityOrKey !== undefined ? getTagKeyForEntity(forEntityOrKey) : getTagKey();
     let printableTags = tags ? (typeof tags === 'function' ? tags() : tags) : getTagsList(key, sort);
 
@@ -1221,7 +1284,15 @@ function printTagList(element, { tags = undefined, addTag = undefined, forEntity
     const tagsDisplayLimit = expanded ? Number.MAX_SAFE_INTEGER : DEFAULT_TAGS_LIMIT;
 
     // Functions to determine tag properties
-    const isFilterActive = (/** @type {Tag} */ tag) => tag.filter_state && !isFilterState(tag.filter_state, FILTER_STATES.UNDEFINED);
+    // SillyBunny: active tags in each view stay visible beyond the chip limit
+    // without sharing tag.filter_state across views — see docs/ui-migration.md
+    const filterHelper = tagOptions.isGeneralList ? getFilterHelper($element) : null;
+    const isFilterActive = (/** @type {Tag} */ tag) => {
+        const state = filterHelper
+            ? determineTagFilterState(filterHelper, tag, 'filter_state' in tag && Boolean(tag.action))
+            : tag.filter_state;
+        return state && !isFilterState(state, FILTER_STATES.UNDEFINED);
+    };
     const shouldPrintTag = (/** @type {Tag} */ tag) => isBogusFolder(tag) || isFilterActive(tag);
 
     // Calculating the number of tags to print
@@ -1290,7 +1361,7 @@ function printTagList(element, { tags = undefined, addTag = undefined, forEntity
  * @param {TagOptions} [options={}] - Options for tag behavior
  * @returns {void}
  */
-function appendTagToList(listElement, tag, { removable = false, isFilter = false, action = undefined, removeAction = undefined, isGeneralList = false, skipExistsCheck = false, isInactive = false } = {}) {
+function appendTagToList(listElement, tag, { removable = false, isFilter = false, action = undefined, removeAction = undefined, isGeneralList = false, skipExistsCheck = false, isInactive = false, animateAdded = false, animateAddedIds = [] } = {}) {
     if (!listElement) {
         return;
     }
@@ -1306,7 +1377,14 @@ function appendTagToList(listElement, tag, { removable = false, isFilter = false
     tagElement.css('color', tag.color2);
 
     tagElement.find('.tag_name').text(tag.name);
-    const removeButton = tagElement.find('.tag_remove');
+    let removeButton = tagElement.find('.tag_remove');
+    // SillyBunny: keep tag-removal transports keyboard-operable on migrated surfaces — see docs/ui-migration.md.
+    if (removable && listElement[0]?.closest('.sb-editor-sheet, .sb-character-list')) {
+        const button = $('<button type="button" class="tag_remove"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>');
+        button.attr('aria-label', t`Remove`);
+        removeButton.replaceWith(button);
+        removeButton = button;
+    }
     removable ? removeButton.show() : removeButton.hide();
     if (removable && removeAction) {
         tagElement.attr('custom-remove-action', String(true));
@@ -1319,6 +1397,9 @@ function appendTagToList(listElement, tag, { removable = false, isFilter = false
     if (tag.class) {
         tagElement.addClass(tag.class);
     }
+    // SillyBunny: expose tag colours as tokens while preserving legacy inline colours.
+    tagElement[0].style.setProperty('--sb-tag-color', tag.color ?? '');
+    tagElement[0].style.setProperty('--sb-tag-color2', tag.color2 ?? '');
     if (tag.title) {
         tagElement.attr('title', tag.title);
     }
@@ -1356,6 +1437,9 @@ function appendTagToList(listElement, tag, { removable = false, isFilter = false
     }
 
     $(listElement).append(tagElement);
+    if (animateAdded && animateAddedIds.includes(tag.id) && ['tagList', 'groupTagList'].includes(listElement[0]?.id)) {
+        animateIn(tagElement[0], [{ opacity: 0 }, { opacity: 1 }]);
+    }
 }
 
 function onTagFilterClick(listElement) {
@@ -1367,8 +1451,9 @@ function onTagFilterClick(listElement) {
 
     const filterHelper = getFilterHelper($(listElement));
 
-    // Update the tag's filter_state for the main character list (backward compatibility)
-    if (existingTag && isMainCharacterList(filterHelper)) {
+    // SillyBunny: only Characters updates the persisted legacy tag state;
+    // Groups has independent account-storage keys — see docs/ui-migration.md
+    if (existingTag && isMainCharacterList(filterHelper) && mainListFilterStoragePrefix === 'CharacterList') {
         existingTag.filter_state = state;
         saveSettingsDebounced();
     }
@@ -1393,8 +1478,23 @@ function onTagFilterClick(listElement) {
  * Loads persisted filter states for a given filter context.
  * @param {FilterHelper} filterHelper - The filter helper instance
  * @param {string} storagePrefix - The storage key prefix for this context
+ * @param {{ replace?: boolean }} [options] Replace rather than append existing filter data
  */
-function loadFilterStatesForContext(filterHelper, storagePrefix) {
+// SillyBunny: view switches replace persisted filter data without changing the
+// shared filter helper's identity — see docs/ui-migration.md
+function loadFilterStatesForContext(filterHelper, storagePrefix, { replace = false } = {}) {
+    if (replace) {
+        for (const [filterType, filterData] of Object.entries({
+            [FILTER_TYPES.SEARCH]: '',
+            [FILTER_TYPES.FAV]: false,
+            [FILTER_TYPES.GROUP]: false,
+            [FILTER_TYPES.FOLDER]: false,
+            [FILTER_TYPES.TAG]: { excluded: [], selected: [] },
+        })) {
+            filterHelper.setFilterData(filterType, filterData, true);
+        }
+    }
+
     const validStates = new Set(Object.keys(FILTER_STATES));
     const readState = (/** @type {string} */ storageKey) => {
         const v = accountStorage.getItem(storageKey);
@@ -1418,7 +1518,9 @@ function loadFilterStatesForContext(filterHelper, storagePrefix) {
     }
 
     // Load regular tag filter states
-    const tagFilterData = filterHelper.getFilterData(FILTER_TYPES.TAG);
+    const tagFilterData = replace
+        ? { excluded: [], selected: [] }
+        : filterHelper.getFilterData(FILTER_TYPES.TAG);
     for (const tag of tags) {
         const storageKey = `${storagePrefix}_tag_${tag.id}`;
         const state = readState(storageKey);
@@ -1436,6 +1538,18 @@ function loadFilterStatesForContext(filterHelper, storagePrefix) {
         }
     }
     filterHelper.setFilterData(FILTER_TYPES.TAG, tagFilterData, true);
+}
+
+// SillyBunny: replace filter snapshots on the first visit to a list view so
+// persisted tag arrays cannot leak across Characters and Groups — see docs/ui-migration.md
+/**
+ * Loads persisted filter state for the selected view into the shared main-list filter.
+ * @param {'characters'|'groups'} view
+ */
+export function loadMainListFilterStates(view) {
+    const prefix = view === 'groups' ? 'GroupList' : 'CharacterList';
+    setMainListFilterStoragePrefix(prefix);
+    loadFilterStatesForContext(entitiesFilter, prefix, { replace: true });
 }
 
 /**
@@ -1482,6 +1596,7 @@ function toggleTagThreeState(element, { stateOverride = undefined, simulateClick
         states.forEach(state => {
             element.toggleClass(FILTER_STATES[state].class, state === states[targetStateIndex]);
         });
+        element.attr('aria-pressed', String(states[targetStateIndex] !== DEFAULT_FILTER_STATE));
 
         if (states[currentStateIndex] !== states[targetStateIndex]) {
             console.debug('toggle three-way filter from', states[currentStateIndex], 'to', states[targetStateIndex], 'on', element);
@@ -1499,7 +1614,12 @@ function runTagFilters(listElement) {
     filterHelper.setFilterData(FILTER_TYPES.TAG, { excluded: excludedTagIds, selected: tagIds });
 }
 
+// SillyBunny: cache presentation per live filter root, not per print request — see docs/ui-migration.md.
+const filterPresentations = new WeakMap();
+
 function printTagFilters(type = tag_filter_type.character) {
+    // SillyBunny: slash commands, imports and bulk edits reconcile the open manager — see docs/ui-migration.md
+    refreshTagManager();
     removeMissingTagFilters();
 
     let FILTER_SELECTOR;
@@ -1518,6 +1638,19 @@ function printTagFilters(type = tag_filter_type.character) {
             break;
     }
 
+    const root = $(FILTER_SELECTOR)[0];
+    if (!root) return;
+    const helper = getFilterHelper($(root));
+    const currentGroup = selected_group ? groups.find(group => group.id == selected_group) : null;
+    const signature = JSON.stringify([
+        tags.map(tag => Object.fromEntries(Object.entries(tag).filter(([key]) => key !== 'filter_state'))),
+        Object.entries(tag_map).filter(([, ids]) => ids?.length),
+        isGroupContext(type) ? null : mainListFilterStoragePrefix, power_user.bogus_folders, power_user.tag_sort_mode,
+        getTagFilterVisibility(type), [FILTER_TYPES.TAG, FILTER_TYPES.FAV, FILTER_TYPES.FOLDER, FILTER_TYPES.GROUP].map(type => helper.getFilterData(type)),
+        isGroupContext(type) ? getVisibleAvatarsForGroupContext(type, currentGroup) : null,
+    ]);
+    if (root.childElementCount && filterPresentations.get(root) === signature) return;
+    filterPresentations.set(root, signature);
     $(FILTER_SELECTOR).empty();
 
     // Print all action tags. (Rework 'Folder' button to some kind of onboarding if no folders are enabled yet)
@@ -1546,18 +1679,15 @@ function printTagFilters(type = tag_filter_type.character) {
 
         if (visibleAvatars.length > 0) {
             // Get tags that are assigned to at least one visible character
-            const activeCharacterTagIds = visibleAvatars
-                .map(avatar => tag_map[avatar] || [])
-                .flat()
-                .filter(onlyUnique);
+            const activeCharacterTagIds = new Set(visibleAvatars.flatMap(avatar => tag_map[avatar] || []));
 
             // Show all tags that exist in the tag_map
-            const allCharacterTagIds = Object.values(tag_map).flat().filter(onlyUnique);
-            tagsToDisplay = tags.filter(x => allCharacterTagIds.includes(x.id)).sort(compareTagsForSort);
+            const allCharacterTagIds = new Set(Object.values(tag_map).flat());
+            tagsToDisplay = tags.filter(x => allCharacterTagIds.has(x.id)).sort(compareTagsForSort);
 
             // Mark tags that are not in the active set as inactive
             inactiveTags = tagsToDisplay
-                .filter(x => !activeCharacterTagIds.includes(x.id))
+                .filter(x => !activeCharacterTagIds.has(x.id))
                 .map(x => x.id);
         } else {
             // No group selected, show no tags
@@ -1565,8 +1695,8 @@ function printTagFilters(type = tag_filter_type.character) {
         }
     } else {
         // For main character list, show all tags as before
-        const characterTagIds = Object.values(tag_map).flat();
-        tagsToDisplay = tags.filter(x => characterTagIds.includes(x.id)).sort(compareTagsForSort);
+        const characterTagIds = new Set(Object.values(tag_map).flat());
+        tagsToDisplay = tags.filter(x => characterTagIds.has(x.id)).sort(compareTagsForSort);
     }
 
     printTagList($(FILTER_SELECTOR), { empty: false, tags: tagsToDisplay, tagOptions: { isFilter: true, isGeneralList: true }, inactiveTags: inactiveTags });
@@ -1589,7 +1719,7 @@ function printTagFilters(type = tag_filter_type.character) {
     const showTagListButton = $(FILTER_SELECTOR).closest('.rm_tag_controls').find('.showTagList');
 
     // Update button state to match the saved setting
-    showTagListButton.toggleClass('selected', shouldShowTags);
+    showTagListButton.toggleClass('selected', shouldShowTags).attr('aria-pressed', String(shouldShowTags));
 
     if (shouldShowTags) {
         $(FILTER_SELECTOR).find('.tag:not(.actionable)').show();
@@ -1665,7 +1795,7 @@ function onGroupCreateClick() {
 export function applyTagsOnCharacterSelect(chid = null) {
     // If we are in create window, we cannot simply redraw, as there are no real persisted tags. Grab them, and pass them in
     if (menu_type === 'create') {
-        const currentTagIds = $('#tagList').find('.tag').map((_, el) => $(el).attr('id')).get();
+        const currentTagIds = $('#tagList').find('.tag:not([data-sb-removing])').map((_, el) => $(el).attr('id')).get();
         const currentTags = tags.filter(x => currentTagIds.includes(x.id));
         printTagList($('#tagList'), { forEntityOrKey: undefined, tags: currentTags, tagOptions: { removable: true } });
         return;
@@ -1676,9 +1806,12 @@ export function applyTagsOnCharacterSelect(chid = null) {
 }
 
 export function applyTagsOnGroupSelect(groupId = null) {
+    // SillyBunny: rebuild each context once, including create-mode drafts — see docs/ui-migration.md.
+    printTagFilters(tag_filter_type.group_candidates_list);
+    printTagFilters(tag_filter_type.group_members_list);
     // If we are in create window, we explicitly have to tell the system to print for the new group, not the one selected in the background
     if (menu_type === 'group_create') {
-        const currentTagIds = $('#groupTagList').find('.tag').map((_, el) => $(el).attr('id')).get();
+        const currentTagIds = $('#groupTagList').find('.tag:not([data-sb-removing])').map((_, el) => $(el).attr('id')).get();
         const currentTags = tags.filter(x => currentTagIds.includes(x.id));
         printTagList($('#groupTagList'), { forEntityOrKey: undefined, tags: currentTags, tagOptions: { removable: true } });
         return;
@@ -1686,8 +1819,6 @@ export function applyTagsOnGroupSelect(groupId = null) {
 
     groupId = groupId ?? (selected_group ? Number(selected_group) : undefined);
     printTagList($('#groupTagList'), { forEntityOrKey: groupId, tagOptions: { removable: true } });
-    printTagFilters(tag_filter_type.group_candidates_list);
-    printTagFilters(tag_filter_type.group_members_list);
 }
 
 /**
@@ -1709,56 +1840,46 @@ export function createTagInput(inputSelector, listSelector, tagListOptions = {})
 }
 
 async function onViewTagsListClick() {
-    const html = $(document.createElement('div'));
-    html.attr('id', 'tag_view_list');
-    html.append(await renderTemplateAsync('tagManagement', { bogus_folders: power_user.bogus_folders }));
-
-    const tagContainer = $('<div class="tag_view_list_tags ui-sortable"></div>');
-    html.append(tagContainer);
-
-    const $sortModeSelect = html.find('#tag_sort_mode_select');
-    $sortModeSelect.val(power_user.tag_sort_mode);
-    $sortModeSelect.on('change', function () {
-        const newMode = $(this).val().toString();
-        power_user.tag_sort_mode = newMode;
-        saveSettingsDebounced();
-        printViewTagList(tagContainer);
+    // SillyBunny: one opener retains upstream actions and live data identities — see docs/ui-migration.md
+    await openTagManager({
+        getState: () => ({ tags, tagMap: tag_map, characters, groups, settings: power_user }),
+        getAvatar: character => ({ src: character.avatar === 'none' ? default_avatar : getThumbnailUrlForViewport('avatar', character.avatar), alt: '' }),
+        getGroupAvatar: group => getGroupAvatarElement(group),
+        folderTypes: TAG_FOLDER_TYPES,
+        sort: sortTags,
+        create: createNewTag,
+        commit: commitTagManagement,
+        rename: (tag, name) => {
+            tag.name = name;
+            $(`.tag[id="${tag.id}"] .tag_name`).text(name);
+            applyCharacterTagsToMessageDivs();
+        },
+        actions: {
+            backup: onTagsBackupClick,
+            restore: onBackupRestoreClick,
+            prune: onTagsPruneClick,
+            delete: async row => {
+                await onTagDeleteClick.call(row);
+                refreshTagManagementFilters();
+            },
+            folder: row => onTagAsFolderClick.call(row),
+            color: (event, property) => onTagColorize(event, (tag, color) => tag[property] = color, property === 'color' ? 'background-color' : 'color'),
+            addMember: (tag, key) => addTagsToEntity(tag, key),
+            removeMember: (tag, key) => removeTagFromEntity(tag, key),
+        },
     });
-
-    printViewTagList(tagContainer);
-    makeTagListDraggable(tagContainer);
-
-    await callGenericPopup(html, POPUP_TYPE.TEXT, null, { allowVerticalScrolling: true, wide: true, large: true });
 }
 
-function makeTagListDraggable(tagContainer) {
-    const onTagsSort = () => {
-        tagContainer.find('.tag_view_item').each(function (i, tagElement) {
-            const id = $(tagElement).attr('id');
-            const tag = tags.find(x => x.id === id);
+// SillyBunny: live tag actions refresh all filter transports (and their observed menus) — see docs/ui-migration.md
+function refreshTagManagementFilters() {
+    for (const type of new Set(Object.values(tag_filter_type))) printTagFilters(type);
+}
 
-            // Update the sort order
-            tag.sort_order = i;
-        });
-
-        // If tags were dragged manually, we have to disable auto sorting
-        if (power_user.tag_sort_mode !== tag_sort_mode.MANUAL) {
-            power_user.tag_sort_mode = tag_sort_mode.MANUAL;
-            $('#tag_sort_mode_select').val(tag_sort_mode.MANUAL);
-            toastr.info('Switched to Manual sorting mode.');
-        }
-
-        // If the order of tags in display has changed, we need to redraw some UI elements. Do it debounced so it doesn't block and you can drag multiple tags.
-        printCharactersDebounced();
-        saveSettingsDebounced();
-    };
-
-    // @ts-ignore
-    $(tagContainer).sortable({
-        delay: getSortableDelay(),
-        stop: () => onTagsSort(),
-        handle: '.drag-handle',
-    });
+// SillyBunny: immediate actions retain upstream persistence and reprint timing — see docs/ui-migration.md
+function commitTagManagement() {
+    saveSettingsDebounced();
+    printCharactersDebounced();
+    refreshTagManagementFilters();
 }
 
 /**
@@ -2143,12 +2264,23 @@ async function onTagDeleteClick() {
         }).val(null).trigger('change');
     }
 
-    const result = await callGenericPopup(popupContent, POPUP_TYPE.CONFIRM);
-    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+    // SillyBunny: keep the merge control in the shared destructive Alert.
+    const alertBody = document.createElement('div');
+    const headingSelector = 'h1, h2, h3, h4, h5, h6';
+    popupContent.filter(headingSelector).add(popupContent.find(headingSelector)).remove();
+    alertBody.append(...popupContent.toArray().filter(node => !/^H[1-6]$/.test(node.tagName)));
+    const result = await openAlert({
+        heading: t`Delete Tag`,
+        bodyNode: alertBody,
+        responses: [{ id: 'cancel', label: t`Cancel` }, { id: 'delete', label: t`Delete`, appearance: 'destructive' }],
+        closeResponse: 'cancel',
+    });
+    if (result !== 'delete') {
         return;
     }
 
-    const mergeTagId = $('#merge_tag_select').val() ? String($('#merge_tag_select').val()) : null;
+    const mergeValue = popupContent.find('#merge_tag_select').val();
+    const mergeTagId = mergeValue ? String(mergeValue) : null;
 
     // Remove the tag from all entities that use it
     // If we have a replacement tag, add that one instead
@@ -2173,6 +2305,8 @@ async function onTagDeleteClick() {
 }
 
 function onTagRenameInput() {
+    // SillyBunny: the new validated input commits on Enter/blur, never per keystroke — see docs/ui-migration.md
+    if (this.dataset.sbRename) return;
     const id = $(this).closest('.tag_view_item').attr('id');
     const newName = $(this).text();
     const tag = tags.find(x => x.id === id);
@@ -2192,28 +2326,37 @@ function onTagRenameInput() {
  * @param {string} cssProperty - The CSS property to apply the color to
  */
 function onTagColorize(evt, setColor, cssProperty) {
-    const isDefaultColor = $(evt.target).data('default-color') === evt.detail.rgba;
+    // SillyBunny: picker initialization is not an edit; normalize equivalent CSS colours — see docs/ui-migration.md
+    const normalizeColor = value => {
+        const probe = document.createElement('span');
+        probe.style.color = value;
+        return probe.style.color;
+    };
+    const defaultColor = $(evt.target).data('default-color');
+    const isDefaultColor = normalizeColor(defaultColor) === normalizeColor(evt.detail.rgba);
     $(evt.target).closest('.tag_view_color_picker').find('.link_icon').toggle(!isDefaultColor);
 
     const id = $(evt.target).closest('.tag_view_item').attr('id');
+    const tag = tags.find(x => x.id === id);
     let newColor = evt.detail.rgba;
     if (isDefaultColor) newColor = '';
 
-    $(evt.target).closest('.tag_view_item').find('.tag_view_name').css(cssProperty, newColor);
-    const tag = tags.find(x => x.id === id);
+    // SillyBunny: the neutral name field is not a colour preview; dots carry tag colour — see docs/ui-migration.md
+    if ($(evt.target).closest('.sb-tag-manager').length) {
+        const property = cssProperty === 'background-color' ? 'color' : 'color2';
+        if (normalizeColor(tag[property] || defaultColor) === normalizeColor(newColor || defaultColor)) return;
+    } else {
+        $(evt.target).closest('.tag_view_item').find('.tag_view_name').css(cssProperty, newColor);
+    }
     setColor(tag, newColor);
-    saveSettingsDebounced();
-
-    // Debounce redrawing color of the tag in other elements
-    debouncedTagColoring(tag.id, cssProperty, newColor);
+    // SillyBunny: F6 updates chip tokens immediately before filter/list reprints — see docs/ui-migration.md
+    updateTagColors(tag);
+    commitTagManagement();
 }
 
-const debouncedTagColoring = debounce((tagId, cssProperty, newColor) => {
-    $(`.tag[id="${tagId}"]`).css(cssProperty, newColor);
-    $(`.bogus_folder_select[tagid="${tagId}"] .avatar`).css(cssProperty, newColor);
-}, debounce_timeout.quick);
-
 function onTagListHintClick() {
+    const tagControls = $(this).closest('.ds-tag-filter')[0];
+    const previousHeight = tagControls?.getBoundingClientRect().height;
     $(this).toggleClass('selected');
 
     const $tagSiblings = $(this).siblings('.tag:not(.actionable)');
@@ -2222,6 +2365,11 @@ function onTagListHintClick() {
         $tagSiblings.show();
     } else {
         $tagSiblings.hide();
+    }
+    const isSelected = $(this).hasClass('selected');
+    $(this).attr('aria-pressed', String(isSelected));
+    if (tagControls && Number.isFinite(previousHeight)) {
+        animateHeightFrom(tagControls, previousHeight);
     }
 
     $(this).siblings('.innerActionable').toggleClass('hidden');
@@ -2237,7 +2385,6 @@ function onTagListHintClick() {
         filterType = tag_filter_type.group_members_list;
     }
 
-    const isSelected = $(this).hasClass('selected');
     setTagFilterVisibility(filterType, isSelected);
     console.debug('show_tag_filters for type', filterType, ':', isSelected);
 }
@@ -2285,6 +2432,12 @@ function copyTags(data) {
  * @param {boolean} empty Whether to empty the container before printing
  */
 function printViewTagList(tagContainer, empty = true) {
+    // SillyBunny: restore/prune keep pending rename fields and scroll when reconciling — see docs/ui-migration.md
+    if (tagContainer.closest('.sb-tag-manager').length) {
+        refreshTagManager();
+        refreshTagManagementFilters();
+        return;
+    }
     if (empty) tagContainer.empty();
     const everything = Object.values(tag_map).flat();
     const counts = new Map(tags.map(tag => [tag.id, everything.filter(x => x === tag.id).length]));
@@ -2777,7 +2930,9 @@ function extractCharacterAvatar(avatarSrc) {
 function restoreSavedTagFilters() {
     try {
         // Load persisted filter states for all contexts (including character list)
-        loadFilterStatesForContext(entitiesFilter, 'CharacterList');
+        // SillyBunny: initial restoration uses the same replacing loader as
+        // later view switches — see docs/ui-migration.md
+        loadMainListFilterStates('characters');
         loadFilterStatesForContext(groupCandidatesFilter, 'GroupCandidates');
         loadFilterStatesForContext(groupMembersFilter, 'GroupMembers');
     } catch (e) {
@@ -2786,8 +2941,8 @@ function restoreSavedTagFilters() {
 }
 
 export function initTags() {
-    createTagInput('#tagInput', '#tagList', { tagOptions: { removable: true } });
-    createTagInput('#groupTagInput', '#groupTagList', { tagOptions: { removable: true } });
+    createTagInput('#tagInput', '#tagList', { tagOptions: { removable: true, animateAdded: true } });
+    createTagInput('#groupTagInput', '#groupTagList', { tagOptions: { removable: true, animateAdded: true } });
 
     $(document).on('click', '#rm_button_create', onCharacterCreateClick);
     $(document).on('click', '#rm_button_group_chats', onGroupCreateClick);
@@ -2810,6 +2965,8 @@ export function initTags() {
     eventSource.makeFirst(event_types.CHAT_CHANGED, () => selected_group ? applyTagsOnGroupSelect() : applyTagsOnCharacterSelect());
 
     $(document).on('focusout', '#tag_view_list .tag_view_name', (evt) => {
+        // SillyBunny: the new manager owns validation, reconciliation and focus — see docs/ui-migration.md
+        if (evt.target.dataset.sbRename) return;
         // Reorder/reprint tags, but only if the name actually has changed
         if (!$(evt.target).is('[dirty]')) return;
 

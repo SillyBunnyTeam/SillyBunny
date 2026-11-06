@@ -1,0 +1,632 @@
+/* The windows that open from Home: Welcome, Help, About, Keyboard Shortcuts, Getting Started and Bundled Extras.
+   Deferred: sillybunny-window-styles.js loads it with the editor-shell sheet before a window opens. */
+
+/* ── Logo ───────────────────────────────────────────────────────────────── */
+
+.sbAboutLogo {
+    flex: none;
+    width: 64px;
+    height: 64px;
+}
+
+/* ── Shared page layout ─────────────────────────────────────────────────── */
+
+:is(.sbWelcomeDialog, .sbAboutDialog, .sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog) .sb-dialog__body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* A flex item that holds a clipped boxed list could otherwise shrink to nothing. */
+:is(.sbWelcomeDialog, .sbAboutDialog, .sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog) .sb-dialog__body > * {
+    flex: none;
+}
+
+:is(.sbWelcomeDialog, .sbAboutDialog) .sb-dialog__body p {
+    margin: 0;
+}
+
+.sbWindowSection {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.sbWindowSection > h3 {
+    margin: 0;
+    padding-inline: 4px;
+}
+
+.sbWindowSection > p {
+    padding-inline: 4px;
+}
+
+.sbWindowActions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.sbWindowActions > button {
+    flex: none;
+    width: auto;
+    white-space: nowrap;
+}
+
+/* ── Art beside the content of a window ─────────────────────────────────── */
+
+/* The art of a character is a panel beside the whole body of the window, or a banner above it. The panel and the line
+   that the character says are direct children of the body, so the rules for the children of a body apply to them.
+   The panel then sits in the body's start padding, stays in view while the body scrolls, and takes no height of its
+   own, so the content keeps its place. Its script sets the size of the panel, the gap, and the padding and row gap
+   that this body really has, because they change with the density and the presentation of the window. The window
+   itself is wider by the panel's width (`--sb-dialog-aside` in `sillybunny-theme.css`). */
+.sbArtLine {
+    margin: 0;
+}
+
+/* The surface is the container, because its width does not change with the padding that a panel adds to the body.
+   No panel is narrower than about 120px (the smallest art at two thirds of a CSS pixel per art pixel, with its
+   padding), so below 520px no panel can leave the content a 360px column beside the body's own padding and the gap.
+   The script has chosen a banner by then, and this keeps a resize from overlapping the content for the frame
+   before it notices. */
+.sbArtSurface {
+    container: sbart / inline-size;
+}
+
+@container sbart (min-width: 520px) {
+    /* The surface in the selector outranks the padding of the Help page. */
+    .sbArtSurface .sbArtHost[data-sb-art-mode='panel'] {
+        padding-inline-start: calc(var(--sb-art-w) + var(--sb-art-gap) + var(--sb-art-inset));
+        min-block-size: calc(var(--sb-art-h) + var(--sb-art-inset-block));
+    }
+
+    .sbArtHost[data-sb-art-mode='panel'] > .sbArtPanel[data-sb-art-mode='panel'] {
+        position: sticky;
+        inset-block-start: 0;
+        align-self: flex-start;
+        inline-size: var(--sb-art-w);
+        margin-inline-start: calc(-1 * (var(--sb-art-w) + var(--sb-art-gap)));
+        margin-block-end: calc(-1 * (var(--sb-art-h) + var(--sb-art-row-gap)));
+    }
+}
+
+/* ── Welcome ────────────────────────────────────────────────────────────── */
+
+.sbWelcomeIntro {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sbWelcomeNote {
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    text-align: center;
+}
+
+.sbWelcomePersonaAvatar {
+    flex: none;
+    inline-size: 40px;
+    block-size: 40px;
+    margin-inline-end: 12px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+/* The empty name field of an untouched persona shows the default name as its hint, so its title stays raised above it. */
+.ds-row-entry--floating.sbWelcomeNameHint .ds-row-entry__field > .ds-row-entry__title {
+    top: 0.45em;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    transform: none;
+}
+
+.ds-row-entry--floating.sbWelcomeNameHint .ds-row-entry__field > input::placeholder {
+    color: var(--sb-input-placeholder) !important;
+}
+
+.sbWelcomeImportStatus {
+    margin: 0;
+    color: var(--sb-color-danger);
+    font-size: var(--sb-type-meta);
+    overflow-wrap: anywhere;
+}
+
+.sbWelcomeSteps {
+    display: flex;
+    justify-content: center;
+}
+
+.sbWelcomeDots {
+    display: inline-flex;
+    gap: 8px;
+}
+
+.sbWelcomeDots > i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent);
+}
+
+.sbWelcomeDots > i.is-current {
+    background: var(--SmartThemeBodyColor);
+}
+
+/* Forced colours replace every background, so the current dot is told apart by its outline and fill colour. */
+@media (forced-colors: active) {
+    .sbWelcomeDots > i {
+        border: 1px solid CanvasText;
+        background: Canvas;
+    }
+
+    .sbWelcomeDots > i.is-current {
+        border-color: Highlight;
+        background: Highlight;
+        outline: 2px solid Highlight;
+        outline-offset: 2px;
+    }
+}
+
+/* ── About ──────────────────────────────────────────────────────────────── */
+
+.sbAboutHeader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+}
+
+.sbAboutName {
+    margin: 0;
+    font-size: var(--sb-type-headline);
+    font-weight: 800;
+    line-height: 1.18;
+}
+
+/* A link row is an anchor made to look like the activatable button row. */
+.sbAboutDialog a.ds-row {
+    color: inherit;
+    text-decoration: none;
+}
+
+.sbDebugInfo {
+    box-sizing: border-box;
+    width: 100%;
+    /* sillybunny-about.js sizes the block to its text; a longer text scrolls inside it. */
+    max-block-size: min(32rem, 60dvh);
+    padding-block: 8px 12px;
+    resize: none;
+    font-family: var(--monoFontFamily);
+    font-size: calc(var(--mainFontSize) * 0.84);
+    line-height: 1.45;
+}
+
+/* ── Keyboard Shortcuts ─────────────────────────────────────────────────── */
+
+/* The outer kbd names the combination and carries no keycap of its own; each key inside it is a keycap. */
+kbd.sbKeys {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--sb-muted-fg);
+    font-family: var(--mainFontFamily);
+}
+
+kbd.sbKeys > kbd {
+    min-width: 1.6em;
+    padding: 4px 8px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+    box-shadow: none;
+    color: var(--SmartThemeBodyColor);
+    font-family: var(--monoFontFamily);
+    font-size: calc(var(--mainFontSize) * 0.84);
+    text-align: center;
+}
+
+/* A row label breaks at spaces only. When its longest word cannot share the line with the keys, buttons or chips of the
+   row, those move below it. The shared row lets a label shrink to nothing and break anywhere, so the windows that hold
+   long labels beside a suffix opt out of that here. */
+:is(.sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog, .sbHelpDialog) .ds-row {
+    flex-wrap: wrap;
+}
+
+:is(.sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog, .sbHelpDialog) .ds-row-text {
+    min-inline-size: min-content;
+    overflow-wrap: break-word;
+}
+
+/* A note line is cut short with an ellipsis, so its length must not count as a word that the row has to make room for. */
+.sbHomeStepNotes {
+    contain: inline-size;
+}
+
+/* ── Help ───────────────────────────────────────────────────────────────── */
+
+/* The list editor fills the window body edge to edge. The sheet presentation pads every body, so the
+   selector outranks that rule. */
+.sbHelpDialog .sb-dialog__page .sb-dialog__body.sbHelpBody {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+}
+
+.sbHelpShell {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    min-block-size: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.sbHelpSidebar {
+    box-sizing: border-box;
+    gap: 12px;
+    padding: 12px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.sbHelpSidebar > * {
+    flex: none;
+}
+
+/* The open page takes the neutral selected fill and an accent icon. The label keeps its weight, because a
+   heavier label wraps the longer section titles and moves the rows below it. */
+.sbHelpNavRow[aria-current='page'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+@media (hover: hover) {
+    .sbHelpNavRow[aria-current='page']:not(:disabled):hover {
+        background: var(--sb-flat-selected-hover-bg);
+    }
+}
+
+.sbHelpNavRow[aria-current='page']:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
+/* Beside the open page a row is one line with no arrow. Its description and arrow show when the rows are a page of their own. */
+.sb-list-editor[data-collapsed='false'] .sbHelpNavRow :is(.ds-row-subtitle, .ds-row__chevron) {
+    display: none;
+}
+
+.sbHelpRowIcon,
+.sbWelcomeRowIcon {
+    flex: none;
+    inline-size: 1.25em;
+    margin-inline-end: 12px;
+    color: var(--sb-muted-fg);
+    text-align: center;
+}
+
+.sbHelpNavRow[aria-current='page'] .sbHelpRowIcon {
+    color: var(--sb-accent);
+}
+
+.sbHelpPage {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.sbHelpPage:focus,
+.sbHelpPageTitle:focus {
+    outline: none;
+}
+
+.sbHelpPage > p {
+    margin: 0;
+}
+
+.sbHelpPage > .sb-editor-section {
+    flex: none;
+}
+
+.sbHelpDetail > .sbHelpPage {
+    box-sizing: border-box;
+    flex: 1 1 0;
+    min-height: 0;
+    padding: 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.sbHelpPageTitle {
+    margin: 0;
+    font-size: var(--sb-type-headline);
+    font-weight: 800;
+    line-height: 1.18;
+}
+
+.sbHelpTrail > ol {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 4px;
+    margin: 0;
+    padding: 0;
+    font-size: var(--sb-type-meta);
+    list-style: none;
+}
+
+.sbHelpTrail li {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sbHelpTrail li > span {
+    color: var(--sb-muted-fg);
+}
+
+.sbHelpTrailLink {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    min-height: 28px;
+    margin: 0;
+    padding: 2px 6px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sbHelpTrail li:first-child > .sbHelpTrailLink {
+    margin-inline-start: -6px;
+}
+
+.sbHelpTrailLink:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHelpTrailLink:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHelpTrailLink:hover {
+        background: var(--sb-flat-hover-bg);
+        text-decoration: underline;
+    }
+}
+
+@media (pointer: coarse) {
+    .sbHelpTrailLink {
+        min-height: 44px;
+        padding-inline: 10px;
+    }
+
+    .sbHelpTrail li:first-child > .sbHelpTrailLink {
+        margin-inline-start: -10px;
+    }
+}
+
+@media (forced-colors: active) {
+    /* A link with no fill or border is told apart by its underline once the accent colour is gone. */
+    .sbHelpTrailLink {
+        color: LinkText;
+        text-decoration: underline;
+    }
+
+    .sbHelpNavRow[aria-current='page'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}
+
+/* ── Getting Started and Bundled Extras ─────────────────────────────────── */
+
+.sbHomeFlatButton {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    --sb-flat-button-inline: 12px;
+    min-height: 32px;
+    margin: 0;
+    padding: 4px var(--sb-flat-button-inline);
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--sb-type-meta);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sbHomeFlatButton[aria-pressed='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sbHomeFlatButton:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHomeFlatButton:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHomeFlatButton:not([aria-pressed='true']):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+@media (pointer: coarse) {
+    .sbHomeFlatButton {
+        --sb-flat-button-inline: 14px;
+        min-height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sbHomeFlatButton {
+        transition: none;
+    }
+}
+
+body.reduced-motion .sbHomeFlatButton {
+    transition: none;
+}
+
+@media (forced-colors: active) {
+    /* The fill that a flat button lacks is its only edge, so forced colours leave it with none. */
+    .sbHomeFlatButton {
+        outline: 1px solid ButtonBorder;
+        outline-offset: -1px;
+    }
+
+    .sbHomeFlatButton[aria-pressed='true'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}
+
+/* Optional and Skipped read as notes, so they are dimmed and not bold. The note line is in the row only while there
+   is a note to show, and a note that does not fit is cut short, so it never wraps the title. */
+.sbHomeStepNotes {
+    display: block;
+    overflow: hidden;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sbHomeStepNotes[hidden] {
+    display: none;
+}
+
+.sbHomeTag + .sbHomeTag:not([hidden]) {
+    margin-inline-start: 8px;
+}
+
+.sbWelcomeRowProgress {
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    white-space: nowrap;
+}
+
+.sbHomeStepRow[data-sb-step-state='skipped'] .ds-row-label {
+    color: var(--sb-muted-fg);
+}
+
+/* In the note line a chip is as tall as the line, so a state never makes the line, and with it the row, taller. */
+.sbHomeStepNotes .sbStatusChip {
+    padding-block: 0;
+    vertical-align: top;
+}
+
+/* The check of a finished step is the prefix of its row, in the Success Green that the Done chip tints. Every row keeps
+   the room of the check, so the titles stay in line. */
+.sbHomeStepDone {
+    flex: none;
+    margin-inline-end: 12px;
+    color: var(--sb-color-success);
+    visibility: hidden;
+}
+
+.sbHomeStepRow[data-sb-step-state='done'] .sbHomeStepDone {
+    visibility: visible;
+}
+
+.sbHomeStepRow .ds-row-suffix {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+/* Learn More sits under the title as a link, so the padding of the flat button is pulled out and the text, not the
+   button, lines up with the start of the title. */
+.sbHomeStepLearnMore {
+    margin-inline-start: calc(-1 * var(--sb-flat-button-inline));
+}
+
+/* A Bundled Extras row ends with its state and the buttons that the state offers, in one line that never wraps. */
+.sbBundledExtraControls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+/* A status chip (DESIGN.md Chips) states a condition: a neutral tint, or a Success Green tint with a check. The text
+   takes the contrast ink of the surface, because a tint under the body colour can fall below 4.5:1 in a theme whose
+   body colour is close to the tint. */
+.sbStatusChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--sb-radius-md);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--sb-contrast-strong, var(--SmartThemeBodyColor));
+    font-size: var(--sb-type-meta);
+}
+
+.sbStatusChip[data-sb-tone='success'] {
+    background: color-mix(in srgb, var(--sb-color-success) 16%, transparent);
+}
+
+.sbStatusChip > i {
+    color: var(--sb-color-success);
+    font-size: 0.85em;
+}
+
+.sbBundledExtraState {
+    margin-inline-end: 4px;
+}
+
+/* Opening at a group scrolls its heading to the top of the body, so it keeps a margin from the header. */
+.sbBundledExtrasDialog .ds-pref-group-heading {
+    scroll-margin-block-start: 12px;
+}
+
+/* ── Choose Assistant ───────────────────────────────────────────────────── */
+
+/* A row chooses a character and opens nothing, so it has no chevron. */
+.sbAssistantPickerDialog .ds-row__chevron {
+    display: none;
+}
+
+.sbAssistantPickerThumb {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--sb-radius-md);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    object-fit: cover;
+}
+
+/* The current choice has a check and a tint. The check is what remains when forced colours take the tint away. */
+.sbAssistantPickerDialog .ds-row[aria-current='true'] {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.sbAssistantPickerSelected {
+    color: var(--sb-contrast-strong, var(--SmartThemeBodyColor));
+}

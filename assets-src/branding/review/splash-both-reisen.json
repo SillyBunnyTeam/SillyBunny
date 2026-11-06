@@ -1,0 +1,30 @@
+{
+    "faces": [
+        {
+            "name": "face",
+            "left": {
+                "x": 386,
+                "y": 156,
+                "width": 100,
+                "height": 140
+            },
+            "right": {
+                "x": 506,
+                "y": 156,
+                "width": 100,
+                "height": 140
+            }
+        }
+    ],
+    "hands": [
+        {
+            "name": "hand on the book",
+            "box": {
+                "x": 420,
+                "y": 360,
+                "width": 110,
+                "height": 110
+            }
+        }
+    ]
+}

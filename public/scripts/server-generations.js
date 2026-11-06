@@ -38,6 +38,7 @@ import { GENERATION_COMMIT_PLAN_VERSION, getMessageIdentity, hashCommitText } fr
 import { t } from './i18n.js';
 import { getCurrentReasoningEffort } from './openai.js';
 import { parseAutoReasoningFromString, parseReasoningInSwipes } from './reasoning.js';
+import { isTemporaryChat } from './sillybunny-temporary-chat-state.js';
 import { getActiveGenerationIds, onActiveGenerationsChange, onServerOwnedReplyMissing, pageId } from './resumable-generation.js';
 
 const EVENTS_URL = '/api/resumable-generations/events';
@@ -73,6 +74,10 @@ const shownIds = new Set();
  * @returns {{ chat: { avatar?: string, group?: string }, file: string }|null} Where the open chat lives on disk
  */
 function getOpenChatTarget() {
+    // A temporary chat has no file, so the server has nothing to commit a reply to or to watch.
+    if (isTemporaryChat()) {
+        return null;
+    }
     if (selected_group) {
         const chatId = getCurrentChatId();
         return chatId ? { chat: { group: String(selected_group) }, file: String(chatId) } : null;

@@ -1,0 +1,1565 @@
+/* ── Shell width ────────────────────────────────────────────────────────── */
+
+/* Page Width (--sheldWidth) sets the Home width the way it sets the windows' width, with 1120px as the floor.
+   dvw matches the windows rule in sillybunny-theme.css and equals the width of the shell's containing block,
+   because the page never scrolls. */
+:root {
+    --sb-home-width: min(max(1120px, var(--sheldWidth, 50vw)), calc(100dvw - 32px));
+}
+
+/* Home takes a wider shell than the user's chat width. Below 769px, and on tablets up to 1180px, the shell
+   is already edge to edge. A MovingUI shell the user moved or resized keeps its own geometry: MovingUI
+   always saves `margin: unset` with it, and its inline `!important` values outrank this rule anyway.
+   --sb-home-widened tells the docked side panels to lay out against --sb-home-width. The top bar keeps the width
+   it has in a chat, so its buttons stay where the user's hand expects them when Home and a chat swap. */
+@media (min-width: 769px) {
+    body:not(.movingUI) #sheld[data-sb-home='on'],
+    body.movingUI #sheld[data-sb-home='on']:not([style*='margin: unset']) {
+        --sb-home-widened: 1;
+        width: var(--sb-home-width);
+    }
+
+    /* Roleplay ends its column one composer gap above the window bottom (the padding of #form_sheld). Home has
+       no composer, so the chat column takes that gap itself and keeps its rounded bottom clear of the window
+       edge. This rule and data-sb-home change together, so the resize observer in RossAscends-mods.js sees one
+       size change and does not scroll #chat. */
+    #sheld[data-sb-home='on'] > #chat {
+        margin-block-end: max(var(--sb-chat-composer-edge-gap), var(--sb-safe-area-bottom));
+    }
+}
+
+/* Only the way back to the chat width animates. The transition sits on the state without the attribute, so
+   entering Home, which includes every page load, changes the width at once. */
+@media (min-width: 769px) and (prefers-reduced-motion: no-preference) {
+    body:not(.reduced-motion) #sheld:not([data-sb-home='on']) {
+        transition: width var(--sb-transition);
+    }
+}
+
+#sheld[data-sb-home='on'] > #form_sheld {
+    display: none;
+}
+
+/* The base #chat max-height subtracts --bottomFormBlockSize, which assumes a composer below the chat. Home has none. */
+#sheld[data-sb-home='on'] > #chat {
+    max-height: none;
+}
+
+/* The line of every Home edge comes from the text colour, as libadwaita derives its border colour, so it stays
+   visible whatever colour and alpha the theme gives its borders. The theme border only tints it. It is defined on
+   the shell so the column can draw it as well as the controls inside. */
+#sheld[data-sb-home='on'] {
+    --sb-home-line: color-mix(in srgb, var(--SmartThemeBodyColor) 25%, color-mix(in srgb, var(--sb-shell-border) 72%, transparent));
+}
+
+@media (prefers-contrast: more) {
+    #sheld[data-sb-home='on'] {
+        --sb-home-line: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+    }
+}
+
+/* The column paints the Window layer with the theme's chat tint on top at the tint's own alpha. A tint with a
+   near-zero alpha, whose colour its author never saw, therefore never becomes a surface, and the wallpaper does not
+   show through the column at the default Surface Transparency. The page tone is the Window layer mixed a little
+   toward the text colour, so the Window layer always lies on the side of it away from the text, and every theme
+   gives the column a tonal step against the page, like a libadwaita content view against its canvas. The Window
+   layer is also a surface every theme designs, since its dialogs and drawers use it. The tint layer is what #chat
+   paints elsewhere: --sb-chat-view-bg on wide windows, which scales the alpha and follows Surface Transparency, and
+   the raw tint on narrow ones. The Window layer follows Surface Transparency too. Without relative colour syntax it
+   keeps its own alpha. */
+#sheld[data-sb-home='on'] > #chat {
+    background-color: var(--sb-layer-window-source);
+    background-image: linear-gradient(var(--SmartThemeChatTintColor), var(--SmartThemeChatTintColor));
+}
+
+/* A wide window shows the page around the column, and in a light theme the tonal step alone is slight, so the
+   column draws the line of the controls inside it. An inset shadow keeps the size and the radius of the column, and
+   forced colours drop shadows, so there an outline in the text colour draws the edge. A narrow window has no page
+   around it. */
+@media (min-width: 769px) {
+    #sheld[data-sb-home='on'] > #chat {
+        background-image: linear-gradient(var(--sb-chat-view-bg), var(--sb-chat-view-bg));
+        box-shadow: inset 0 0 0 1px var(--sb-home-line);
+    }
+}
+
+@media (min-width: 769px) and (forced-colors: active) {
+    #sheld[data-sb-home='on'] > #chat {
+        outline: 1px solid CanvasText;
+        outline-offset: -1px;
+    }
+}
+
+@supports (color: rgb(from black r g b / 1)) {
+    #sheld[data-sb-home='on'] > #chat {
+        background-color: rgb(from var(--sb-layer-window-source) r g b / var(--sb-page-overlay-opacity));
+    }
+}
+
+#chat .mes[type="assistant_message"] .mes_button {
+    display: none;
+}
+
+.welcomeForkNotice {
+    margin-top: 14px;
+    margin-inline: auto;
+    max-width: min(100%, 600px);
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: calc(var(--mainFontSize) * 0.82);
+    line-height: 1.5;
+    display: block;
+    align-self: center;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
+    border: 0;
+    box-shadow: none;
+    text-align: center;
+}
+
+.welcomeForkNotice strong {
+    font-weight: 800;
+}
+
+.welcomeForkNotice a {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* ── Panel and layout ───────────────────────────────────────────────────── */
+
+.welcomePanel {
+    container: welcome-home / inline-size;
+    position: relative;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    width: 100%;
+    color: var(--SmartThemeBodyColor);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+/* A region is hidden through the attribute, so no component display value may beat it. */
+.welcomePanel [hidden] {
+    display: none !important;
+}
+
+/* One column at every width. The 32px gap sits between sections; the header pulls the band 16px closer. */
+.sbHomeLayout {
+    --sb-home-tint: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    --sb-home-tint-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    box-sizing: border-box;
+    width: 100%;
+    padding-block: 12px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+}
+
+.sbHomeSection,
+.sbHomeTiles {
+    min-width: 0;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+/* The header is one cell that holds the identity and the menu button on top of each other. The identity has
+   three tracks, so the word sits in the middle of the column whatever the widths of the logo and the version,
+   and the button, at the end of the same cell, never moves it. */
+.sbHomeHeader {
+    --sb-home-title-size: var(--sb-type-display);
+    --sb-home-title-leading: 1.12;
+    --sb-home-version-leading: 1.35;
+    --sb-home-version-gap: 2px;
+    /* The height of the line of the title. The logo is 32px, and a smaller title line still centres on it. */
+    --sb-home-title-line: max(32px, calc(var(--sb-home-title-size) * var(--sb-home-title-leading)));
+    display: grid;
+    align-items: center;
+    box-sizing: content-box;
+    min-height: 44px;
+    margin-block-end: -16px;
+}
+
+.sbHomeIdentity {
+    grid-area: 1 / 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: baseline;
+    min-width: 0;
+}
+
+/* The wordmark box only groups the title and the version in the markup. Its children take the tracks. */
+.sbHomeWordmark {
+    display: contents;
+}
+
+.sbHomeLogo {
+    grid-column: 1;
+    justify-self: end;
+    align-self: center;
+    width: 32px;
+    height: 32px;
+    margin-inline-end: 10px;
+}
+
+/* The title fills the height of the logo, so the logo, the button and the text line share one centre. */
+.sbHomeTitle {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    margin: 0;
+    font-size: var(--sb-home-title-size);
+    font-weight: 800;
+    line-height: var(--sb-home-title-leading);
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
+/* Baseline alignment keeps the smaller version on the text line of the title. */
+.sbHomeVersion {
+    grid-column: 3;
+    justify-self: start;
+    margin-inline-start: 8px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    line-height: var(--sb-home-version-leading);
+    white-space: nowrap;
+}
+
+/* header-fit.js sets this when the version no longer fits between the title and the menu button. The version
+   then hangs under the title, outside the centred row, so the header grows by exactly what it takes. A title
+   line taller than the 44px row makes the row grow with it, so there is no spare space to count then. */
+.sbHomeHeader[data-sb-version-below] {
+    padding-block-end: max(0px, calc(
+        var(--sb-type-meta) * var(--sb-home-version-leading) + var(--sb-home-version-gap)
+        - max(0px, (44px - var(--sb-home-title-line)) / 2)
+    ));
+}
+
+.sbHomeHeader[data-sb-version-below] .sbHomeIdentity {
+    grid-template-rows: auto 0;
+}
+
+.sbHomeHeader[data-sb-version-below] .sbHomeVersion {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: center;
+    align-self: start;
+    margin-inline-start: 0;
+    margin-block-start: var(--sb-home-version-gap);
+    /* No width, so a long version cannot widen the middle track and push the title off the centre of the
+       column. Its text overflows equally to both sides of the centre of the track. */
+    display: flex;
+    justify-content: center;
+    width: 0;
+}
+
+.sbHomeMenuButton {
+    grid-area: 1 / 1;
+    justify-self: end;
+}
+
+.sbHomeMenuButton {
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font-size: var(--sb-type-body);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sbHomeMenuButton[aria-expanded='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+/* The menus of Home hang off body, so this rule is not under .welcomePanel. A glyph that is 1.25em wide (fa-comments,
+   fa-masks-theater) spills out of the 14px icon box of an action menu row and nearly touches the label.
+   0.8em makes it as wide as the box, so the gap matches the other rows. */
+.sb-action-menu-item > .sbHomeMenuIconFit:first-child {
+    font-size: 0.8em;
+}
+
+.sbHomeMenuButton:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* Every pressed rule of Home follows the hover rules of its control. Both have the same specificity, so the
+   later one wins, and a press must win while the pointer is still over the control. */
+@media (hover: hover) {
+    .sbHomeMenuButton:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sbHomeMenuButton:active {
+    background: var(--sb-flat-active-bg);
+}
+
+/* ── Band ───────────────────────────────────────────────────────────────── */
+
+.sbHomeBand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    box-sizing: border-box;
+    padding: 24px 24px 32px;
+    border: 1px solid var(--sb-home-line);
+    border-radius: var(--sb-radius-xl);
+    background: var(--sb-layer-window);
+}
+
+/* The hero is pixel art at a whole number of device pixels per art pixel, on the lavender panel of the art panels
+   (`.sbArtPanel`, below). Its script sizes the picture to the width of the band less the padding of the panel, and
+   `data-sb-art-fit` says whether it kept the fixed step, took a smaller one, or was shrunk. */
+.sbHomeBand > .sbHomeHeroArt {
+    flex: none;
+}
+
+.sbHomeHeroText {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: 65ch;
+    min-width: 0;
+    text-align: center;
+}
+
+.sbHomeHeroText p {
+    margin: 0;
+    max-width: 100%;
+}
+
+.sbHomeDescription,
+.sbHomeGreeting {
+    font-size: var(--sb-type-body);
+    line-height: 1.55;
+}
+
+.sbHomeFork {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 2px 8px;
+    font-size: var(--sb-type-meta);
+    line-height: 1.5;
+}
+
+.sbHomeForkLink {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    border-radius: var(--sb-radius-control);
+    color: var(--sb-accent-ink);
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.sbHomeForkLink:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* ── Art placeholders ───────────────────────────────────────────────────── */
+
+.sbHomeArt {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--sb-muted-fg);
+    font-family: var(--monoFontFamily);
+    font-size: var(--sb-type-caption);
+    line-height: 1.35;
+    text-align: center;
+}
+
+/* The portraits on a card are smooth pictures, so they are not drawn as pixel art. */
+.sbHomeArt[data-sb-art-placeholder='row-reisen'],
+.sbHomeArt[data-sb-art-placeholder='row-tewi'],
+.sbHomeArt[data-sb-art-placeholder='row-pointer'] {
+    width: 64px;
+    height: 64px;
+}
+
+/* ── Pixel art panels and banners ───────────────────────────────────────── */
+
+/* A character on the brand lavender (#b99bf2), faded over the surface of the window or the page, so it reads on the
+   light and the dark theme alike. The lavender is part of the artwork and does not follow the theme. The art is
+   pixel art, sized to a whole number of device pixels per art pixel, so the browser must not smooth it. The panel is
+   shown whole, standing on its bottom edge. A banner shows the figure from the head down, to the hips at most and to
+   30% of the viewport height at most, and its bottom edge fades out. */
+.sbArtPanel {
+    --sb-art-backdrop: 185 155 242;
+    box-sizing: border-box;
+    display: flex;
+    flex: none;
+    align-items: flex-end;
+    justify-content: center;
+    gap: var(--sb-art-figure-gap, 8px);
+    padding: var(--sb-art-pad, 12px);
+    border-radius: var(--sb-radius-lg);
+    background: linear-gradient(to bottom, rgb(var(--sb-art-backdrop) / 20%), rgb(var(--sb-art-backdrop) / 5%));
+}
+
+.sbArtPanel[data-sb-art-mode='banner'] {
+    align-items: flex-start;
+    align-self: stretch;
+    padding-inline: 0;
+    padding-block-end: 0;
+    -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent);
+    mask-image: linear-gradient(to bottom, #000 58%, transparent);
+}
+
+/* A viewport this short has no room for a banner of a useful size, so the content gets all the room. */
+.sbArtPanel[data-sb-art-mode='hidden'] {
+    display: none;
+}
+
+.sbArtFigure {
+    position: relative;
+    display: block;
+    flex: none;
+    overflow: hidden;
+    line-height: 0;
+}
+
+.sbPixelArt {
+    display: block;
+    max-width: none;
+    image-rendering: pixelated;
+}
+
+/* A picture that is shrunk below one device pixel per art pixel has uneven stripes under nearest-neighbour sampling.
+   Smooth sampling is the lesser evil there. */
+.sbArtPanel[data-sb-art-fit='smooth'] .sbPixelArt {
+    image-rendering: auto;
+}
+
+/* Forced colours replace every background, and a gradient would not survive. The figure keeps its own colours. */
+@media (forced-colors: active) {
+    .sbArtPanel {
+        background: none;
+    }
+}
+
+/* The thumbnail of a card fills the box that the placeholder art has. It is a picture, so it is not drawn as pixel art. */
+.sbHomeArt > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: auto;
+}
+
+/* ── Tiles ──────────────────────────────────────────────────────────────── */
+
+/* A tile that is removed or hidden leaves no empty track, so the others share the row. */
+.sbHomeTiles {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 12px;
+}
+
+.sbHomeTile {
+    -webkit-appearance: none;
+    appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 132px;
+    margin: 0;
+    padding: 20px 12px 16px;
+    border: 1px solid var(--sb-home-line);
+    border-radius: var(--sb-radius-lg);
+    background: var(--sb-home-tint);
+    color: inherit;
+    font: inherit;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.sbHomeTile:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHomeTile:hover {
+        background: var(--sb-home-tint-hover);
+    }
+}
+
+.sbHomeTile:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHomeTileIcon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    margin-block-end: 6px;
+    border-radius: 50%;
+    background: var(--sb-raised-bg);
+    font-size: 20px;
+}
+
+.sbHomeTileTitle {
+    min-width: 0;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+    overflow-wrap: break-word;
+    text-wrap: balance;
+}
+
+.sbHomeTileSub,
+.sbHomeTileLine {
+    min-width: 0;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+/* The progress is the state of the tile, so it takes the label role, a little apart from the line above it. */
+.sbHomeTileSub {
+    margin-block-start: 8px;
+    font-size: var(--sb-type-caption);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+}
+
+/* ── Assistants ─────────────────────────────────────────────────────────── */
+
+.sbHomeCards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    /* Every line is as tall as the tallest, so the card to choose from on a line of its own is as tall as a card with a footer. */
+    grid-auto-rows: 1fr;
+    gap: 12px;
+}
+
+/* The card is its own container, so the footer labels drop by the card's width and not the window's. */
+.sbHomeCard {
+    --sb-home-card-pad: 16px;
+    container: sbhomecard / inline-size;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 16px var(--sb-home-card-pad) 0;
+    border: 1px solid var(--sb-home-line);
+    border-radius: var(--sb-radius-lg);
+    background: var(--sb-home-tint);
+    transition: background-color var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .sbHomeCard:hover {
+        background: var(--sb-home-tint-hover);
+    }
+}
+
+/* The footer buttons sit above the card's own button, so only a press on the card fills the card. */
+.sbHomeCard:has(.sbHomeCardOpen:active) {
+    background: var(--sb-flat-active-bg);
+}
+
+.sbHomeCard:has(.sbHomeCardOpen:focus-visible) {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sbHomeCardOpen {
+    -webkit-appearance: none;
+    appearance: none;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+}
+
+.sbHomeCardOpen:focus-visible {
+    outline: 2px solid transparent;
+}
+
+.sbHomeCardArt {
+    display: flex;
+    align-self: center;
+}
+
+.sbHomeCardText {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    text-align: center;
+}
+
+.sbHomeCardName {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+}
+
+.sbHomeCardSub {
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    line-height: 1.35;
+}
+
+/* The footer reaches the card's border through negative margins of the card's padding. The strip lets a click
+   fall through to the card's own button, and only the buttons in it take clicks. */
+.sbHomeCardFooter {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    margin: auto calc(-1 * var(--sb-home-card-pad)) 0;
+    padding: 4px 8px;
+    border-top: 1px solid var(--sb-home-line);
+    pointer-events: none;
+}
+
+.sbHomeCardFooter > * {
+    pointer-events: auto;
+}
+
+.sbHomeCardFooter > .sbHomeRowMenu {
+    margin-inline-start: auto;
+}
+
+.sbHomeFootButton {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 1 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 32px;
+    margin: 0;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font: inherit;
+    font-size: var(--sb-type-meta);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.sbHomeFootButton:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHomeFootButton:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+.sbHomeFootButton:active {
+    background: var(--sb-flat-active-bg);
+}
+
+/* How wide the labels are depends on the font size and on the translation, so footer-fit.js measures whether both
+   fit and sets data-sb-footer-compact on the card when they do not. The two labels then go together. While it
+   measures, data-sb-footer-measure keeps the buttons at their natural width and the menu button next to them, so
+   the row spans what it needs. If a measure is missed, the buttons shrink and the label ends in an ellipsis,
+   which keeps the menu button inside the card. */
+.sbHomeFootLabel {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sbHomeCard[data-sb-footer-measure] .sbHomeFootButton {
+    flex: none;
+}
+
+.sbHomeCard[data-sb-footer-measure] .sbHomeCardFooter > .sbHomeRowMenu {
+    margin-inline-start: 0;
+}
+
+.sbHomeCard[data-sb-footer-compact] .sbHomeFootLabel {
+    display: none;
+}
+
+.sbHomeCard[data-sb-footer-compact] .sbHomeFootButton {
+    min-width: 32px;
+}
+
+/* The icon-only footer has a fixed size whatever the font: three 44px targets plus the gaps and the padding need
+   164px of footer, which is 132px of card content at the 16px card padding and 140px at the 12px one. Below 140px
+   of card content the gaps and the padding tighten, so the menu button keeps its 44px. */
+@container sbhomecard (max-width: 140px) {
+    .sbHomeCardFooter {
+        gap: 4px;
+        padding-inline: 4px;
+    }
+}
+
+/* ── Choose Assistant ───────────────────────────────────────────────────── */
+
+/* The third slot with no character is a card of the same size as the others, so it has the padding that the footer
+   gives them at the bottom. */
+.sbHomeCard--choose {
+    padding-block-end: 16px;
+}
+
+.sbHomeChooseIcon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    align-self: center;
+    width: 64px;
+    height: 64px;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    color: var(--sb-muted-fg);
+    font-size: 24px;
+}
+
+/* Compact has no mascot art: the portraits are gone, so the icon of the card shrinks to its row size and centres. */
+.welcomePanel[data-home-panel-mode='compact'] .sbHomeChooseIcon {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+}
+
+/* Stacked above the text, even the small icon makes this card taller than a card with a footer, and the cards of the
+   line would grow when the slot is empty. Beside the text it adds no height, so the footers set the line. */
+.welcomePanel[data-home-panel-mode='compact'] .sbHomeCard--choose {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Two cards per line is the narrow case. 716px is the container width below which three 220px cards no longer fit in
+   one line. */
+@container welcome-home (max-width: 716px) {
+    .sbHomeCards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ── Recent Chats ───────────────────────────────────────────────────────── */
+
+.sbHomeGroupHeader {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin: 0 0 12px;
+    padding-inline: 4px;
+}
+
+.recentChatsTitle,
+.sbHomeGroupTitle {
+    margin: 0;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.18;
+    letter-spacing: 0;
+}
+
+/* One row that scrolls sideways when it does not fit. The scrollbar is hidden as in the character list; the
+   buttons stay reachable by keyboard, because focus scrolls them into view. */
+.welcomeRecentTabs {
+    display: flex;
+    flex: 0 1 auto;
+    gap: 2px;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    padding: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+.welcomeRecentTabs::-webkit-scrollbar {
+    display: none;
+}
+
+.welcomeRecentTab {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: none;
+    min-height: 32px;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--sb-type-meta);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.welcomeRecentTab.active {
+    background: var(--sb-flat-selected-bg);
+}
+
+.welcomeRecentTab:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .welcomeRecentTab:not(.active):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.welcomeRecentTab:not(.active):active {
+    background: var(--sb-flat-active-bg);
+}
+
+.welcomeRecent {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--sb-home-line);
+    border-radius: var(--sb-radius-lg);
+    background: var(--sb-home-tint);
+}
+
+.welcomeRecent .recentChatList {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.welcomeRecent .recentChat {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-sizing: border-box;
+    min-height: 52px;
+    padding: 8px 12px;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.welcomeRecent .recentChat.hidden,
+.welcomeRecent .recentChat.recentChatFiltered {
+    display: none;
+}
+
+.welcomeRecent .recentChat:not(.hidden):not(.recentChatFiltered) ~ .recentChat:not(.hidden):not(.recentChatFiltered)::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 1px;
+    pointer-events: none;
+    background: var(--sb-home-line);
+}
+
+/* :active matches the ancestors of a pressed element, so a plain :active would fill the row while one of its action
+   buttons is pressed. Only a press on the row's own button fills the row, as on the cards. The :has() also gives
+   this rule more specificity than the hover rule, so the pressed fill wins whatever the order. */
+.welcomeRecent .recentChat:has(.recentChatOpen:active) {
+    background: var(--sb-flat-active-bg);
+}
+
+@media (hover: hover) {
+    .welcomeRecent .recentChat:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.welcomeRecent .recentChatOpen {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: pointer;
+}
+
+.welcomeRecent .recentChatOpen:focus-visible {
+    outline: 2px solid transparent;
+}
+
+.welcomeRecent .recentChat:has(.recentChatOpen:focus-visible) {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.welcomeRecent .recentChat .avatar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    /* A group chat swaps in the shared collage, whose rule gives it min-width: var(--avatar-base-width), wider than 44px. */
+    min-width: 0;
+    overflow: hidden;
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.welcomeRecent .recentChat .avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+body.hideChatAvatars .welcomeRecent .recentChat .avatar {
+    display: none;
+}
+
+.welcomeRecent .recentChat .recentChatPinned {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: 2;
+    color: var(--sb-accent-ink);
+    opacity: 0.92;
+    pointer-events: none;
+}
+
+.welcomeRecent .recentChatInfo {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.welcomeRecent .chatNameContainer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        'name actions'
+        'date actions';
+    align-items: center;
+    column-gap: 8px;
+    font-size: var(--sb-type-body);
+}
+
+.welcomeRecent .chatName {
+    grid-area: name;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.welcomeRecent .characterName {
+    font-weight: 700;
+}
+
+.welcomeRecent .chatDate {
+    grid-area: date;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-caption);
+}
+
+.welcomeRecent .chatActions {
+    grid-area: actions;
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.welcomeRecent .chatActions button {
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.welcomeRecent .chatActions button:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.welcomeRecent .chatActions .pinChat[aria-pressed='true'] {
+    color: var(--sb-accent-ink);
+}
+
+@media (hover: hover) {
+    .welcomeRecent .chatActions button:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+.welcomeRecent .chatActions button:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.welcomeRecent .chatMessageContainer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+}
+
+.welcomeRecent .chatMessage {
+    display: -webkit-box;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+body.big-avatars .welcomeRecent .chatMessage {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+}
+
+.welcomeRecent .chatStats {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+}
+
+.welcomeRecent .counterBlock {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.welcomeRecent .counterBlock:not(:last-child)::after {
+    content: "|";
+    margin-left: 4px;
+    color: var(--sb-home-line);
+}
+
+.welcomeRecent .showMoreChats {
+    -webkit-appearance: none;
+    appearance: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-top: 1px solid var(--sb-home-line);
+    border-radius: 0;
+    background: transparent;
+    color: var(--sb-muted-fg);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
+}
+
+.welcomeRecent .showMoreChats > small {
+    transition: transform var(--sb-transition-fast);
+}
+
+.welcomeRecent .showMoreChats.rotated > small {
+    transform: rotate(180deg);
+}
+
+.welcomeRecent .showMoreChats:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .welcomeRecent .showMoreChats:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.welcomeRecent .showMoreChats:active {
+    background: var(--sb-flat-active-bg);
+}
+
+.welcomeRecent .noRecentChat {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+}
+
+/* The empty list is a status page with the mascot in place of the symbolic icon, so it takes the sizes of the shared
+   status page. The shared sheet loads late and Home does not wait for it, so the sizes are set here. */
+.welcomeRecent .sbHomeEmpty {
+    flex-direction: column;
+    justify-content: center;
+    gap: 0;
+    padding: 24px 16px;
+    text-align: center;
+}
+
+.sbHomeEmpty > .sbArtPanel {
+    margin-block-end: 12px;
+}
+
+/* On wide Home the mascot stands beside the text, as a panel does in a window. The container is the Home panel, whose
+   width does not depend on this layout. Below 640px no panel leaves the text a 360px column beside the paddings of the
+   Home column and of the empty state. The script makes the exact choice and sets `data-sb-art-mode`. */
+@container welcome-home (min-width: 640px) {
+    .welcomeRecent .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        column-gap: 16px;
+        text-align: start;
+    }
+
+    .sbHomeEmpty > .sbArtPanel[data-sb-art-mode='panel'] {
+        grid-row: 1 / span 2;
+        margin-block-end: 0;
+    }
+
+    .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) > :is(.sbHomeEmptyTitle, .sbHomeEmptyDescription) {
+        grid-column: 2;
+        justify-self: start;
+    }
+
+    .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) > .sbHomeEmptyTitle {
+        align-self: end;
+    }
+
+    .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) > .sbHomeEmptyDescription {
+        align-self: start;
+    }
+}
+
+.sbHomeEmptyTitle {
+    width: min(100%, 36ch);
+    margin: 0 0 12px;
+    font-size: var(--sb-type-headline);
+    font-weight: 800;
+    line-height: 1.18;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+}
+
+.sbHomeEmptyDescription {
+    width: min(100%, 36ch);
+    margin: 0;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-body);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.welcomeRecent .sb-status-page {
+    padding: 24px 16px;
+}
+
+.welcomeRecent .sb-status-page--compact .sb-status-page__icon {
+    margin-block-end: 12px;
+    font-size: 48px;
+}
+
+.welcomeRecent .sb-status-page__description {
+    margin-block-end: 0;
+}
+
+/* ── Menu buttons of the cards ──────────────────────────────────────────── */
+
+.sbHomeRowMenu {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.sbHomeRowMenu[aria-expanded='true'] {
+    background: var(--sb-flat-selected-bg);
+}
+
+.sbHomeRowMenu:focus-visible {
+    outline: 2px solid transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (hover: hover) {
+    .sbHomeRowMenu:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+.sbHomeRowMenu:active {
+    background: var(--sb-flat-active-bg);
+}
+
+/* ── List Only ──────────────────────────────────────────────────────────── */
+
+/* Only the header and the list are left, so the panel fills #chat and the list takes the free height.
+   The floor keeps the list usable on short windows, where #chat scrolls. The column keeps the width of the
+   other modes. */
+.welcomePanel[data-home-panel-mode='list'] {
+    display: flex;
+    flex: 1 0 auto;
+    flex-direction: column;
+    min-height: 400px;
+}
+
+.welcomePanel[data-home-panel-mode='list'] .sbHomeLayout {
+    flex: 1 1 auto;
+}
+
+.welcomePanel[data-home-panel-mode='list'] .sbHomeRecent {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.welcomePanel[data-home-panel-mode='list'] .welcomeRecent {
+    flex: 1 1 auto;
+}
+
+/* ── Narrow content and touch ───────────────────────────────────────────── */
+
+/* The card portraits and the icon of the Choose Assistant card go to 2x together above this container width, so one
+   screen has one scale for them. */
+@container welcome-home (width > 740px) {
+    .sbHomeArt[data-sb-art-placeholder='row-reisen'],
+    .sbHomeArt[data-sb-art-placeholder='row-tewi'],
+    .sbHomeArt[data-sb-art-placeholder='row-pointer'],
+    .sbHomeChooseIcon {
+        width: 128px;
+        height: 128px;
+    }
+
+    .sbHomeChooseIcon {
+        font-size: 32px;
+    }
+}
+
+@container welcome-home (max-width: 560px) {
+    .sbHomeLayout {
+        padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
+    }
+
+    /* The display size plus the logo and the version no longer fit beside each other in a narrow column. */
+    .sbHomeHeader {
+        --sb-home-title-size: var(--sb-type-headline);
+        --sb-home-title-leading: 1.18;
+    }
+
+    .sbHomeBand {
+        padding-inline: 16px;
+    }
+
+    .sbHomeTile {
+        padding-inline: 6px;
+    }
+}
+
+/* The tiles follow the text size, not only the width: they stack when one of three would be narrower than 5em, which is
+   a little more than the 4.3em where the longest word of a voiced line starts to break. The limit is that width in em plus
+   the 24px of gaps and the 16px that the layout keeps beside the tiles, so no width at the normal text size reaches it. */
+@container welcome-home (max-width: calc(15em + 40px)) {
+    .sbHomeTiles {
+        grid-auto-flow: row;
+        grid-auto-rows: 1fr;
+    }
+}
+
+/* The narrowest phones give the column 8px of side padding, so the content keeps its room. */
+@container welcome-home (max-width: 390px) {
+    .sbHomeLayout {
+        padding-inline: max(8px, env(safe-area-inset-left, 0px)) max(8px, env(safe-area-inset-right, 0px));
+    }
+}
+
+@media (pointer: coarse) {
+    .sbHomeMenuButton {
+        width: 44px;
+        height: 44px;
+    }
+
+    .sbHomeForkLink,
+    .welcomeRecentTab,
+    .welcomeRecent .showMoreChats {
+        min-height: 44px;
+    }
+
+    .welcomeRecent .chatActions button,
+    .sbHomeRowMenu {
+        width: 44px;
+        height: 44px;
+    }
+
+    .sbHomeFootButton {
+        min-height: 44px;
+    }
+
+    .sbHomeCard[data-sb-footer-compact] .sbHomeFootButton {
+        min-width: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sbHomeMenuButton,
+    .sbHomeTile,
+    .sbHomeCard,
+    .sbHomeFootButton,
+    .sbHomeRowMenu,
+    .welcomeRecentTab,
+    .welcomeRecent .recentChat,
+    .welcomeRecent .chatActions button,
+    .welcomeRecent .showMoreChats,
+    .welcomeRecent .showMoreChats > small {
+        transition: none;
+    }
+}
+
+body.reduced-motion .sbHomeMenuButton,
+body.reduced-motion .sbHomeTile,
+body.reduced-motion .sbHomeCard,
+body.reduced-motion .sbHomeFootButton,
+body.reduced-motion .sbHomeRowMenu,
+body.reduced-motion .welcomeRecentTab,
+body.reduced-motion .welcomeRecent .recentChat,
+body.reduced-motion .welcomeRecent .chatActions button,
+body.reduced-motion .welcomeRecent .showMoreChats,
+body.reduced-motion .welcomeRecent .showMoreChats > small {
+    transition: none;
+}
+
+@media (forced-colors: active) {
+    .welcomeRecentTab.active,
+    .sbHomeRowMenu[aria-expanded='true'],
+    .sbHomeMenuButton[aria-expanded='true'] {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+}
+
+/* ── Getting Started toast ──────────────────────────────────────────────── */
+
+/* The toast hangs off body, so these rules are not under .welcomePanel. Its button is flat and keeps the ink of the
+   toast layer, because the window styles that the step rows use are not loaded until a window opens. */
+.sbHomeToast {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.sbHomeToastAction {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    min-height: 32px;
+    margin: 4px 0 0;
+    margin-inline-start: -12px;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sbHomeToastAction:active {
+    background: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.sbHomeToastAction:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -2px;
+}
+
+@media (hover: hover) {
+    .sbHomeToastAction:hover {
+        background: color-mix(in srgb, currentColor 14%, transparent);
+    }
+}
+
+@media (pointer: coarse) {
+    .sbHomeToastAction {
+        min-height: 44px;
+    }
+}
+
+/* ── Greeting picture ───────────────────────────────────────────────────── */
+
+/* A chat rule, kept in this sheet because the blocking stylesheets are at their budget (see check:frontend-budgets). */
+
+/* The picture above the main greeting of a bundled assistant (see greeting-art.js). It is a sibling of .mes_text. The
+   script sets its right padding to that of the text, so that the right edges meet, and sets the width and the file of
+   the image. The height follows from the attributes of the image, so a column that shrinks before the script runs
+   again cannot stretch the picture. Whole steps are drawn pixelated from the 1x file; the rest fills the room smoothly
+   from the 2x file. */
+.sbGreetingArt {
+    display: block;
+    box-sizing: border-box;
+    margin: 0;
+    padding: var(--spacing-xs) 0 var(--spacing-sm);
+}
+
+.sbGreetingArtOpen {
+    position: relative;
+    display: block;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: none;
+    color: inherit;
+    font: inherit;
+    line-height: 0;
+    overflow: hidden;
+    cursor: zoom-in;
+}
+
+/* A hairline keeps a picture with a light edge from dissolving into a light chat. The focus ring replaces it, because
+   the ring is the one focus treatment of a button and an image would hide a ring drawn under it. */
+.sbGreetingArtOpen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    pointer-events: none;
+}
+
+.sbGreetingArtOpen:focus-visible {
+    outline: none;
+}
+
+.sbGreetingArtOpen:focus-visible::after {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* Forced colours drop box shadows, so the hairline and the ring become borders of the same box, in system colours. */
+@media (forced-colors: active) {
+    .sbGreetingArtOpen::after {
+        border: 1px solid CanvasText;
+    }
+
+    .sbGreetingArtOpen:focus-visible::after {
+        border-width: 2px;
+        border-color: Highlight;
+    }
+}
+
+.sbGreetingArtImage,
+.sbGreetingArtLarge {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.sbGreetingArtLarge {
+    margin-inline: auto;
+    border-radius: var(--sb-radius-control);
+}
+
+.sbGreetingArt[data-sb-scale='pixel'] .sbGreetingArtImage,
+.sbGreetingArtLarge[data-sb-scale='pixel'] {
+    image-rendering: pixelated;
+}
+
+.sbGreetingArt[data-sb-scale='smooth'] .sbGreetingArtImage,
+.sbGreetingArtLarge[data-sb-scale='smooth'] {
+    image-rendering: auto;
+}

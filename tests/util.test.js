@@ -211,6 +211,19 @@ describe('forwardFetchResponse', () => {
         expect(warnSpy).toHaveBeenCalledWith(`Streaming request failed with status 403 Forbidden: ${body}`);
     });
 
+    test('should report the real status of a provider 401 in a header when it sends 400 to the browser', async () => {
+        jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const response = createMockExpressResponse();
+        response.setHeader = jest.fn();
+        const bodyPromise = collectResponseBody(response);
+
+        await forwardFetchResponse(new Response('Unauthorized', { status: 401, statusText: 'Unauthorized' }), response);
+
+        await bodyPromise;
+        expect(response.statusCode).toBe(400);
+        expect(response.setHeader).toHaveBeenCalledWith('X-Upstream-Status', '401');
+    });
+
     test('should log plain text error bodies and return the original body for non-2xx streaming responses', async () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         const body = 'Plain text upstream failure';

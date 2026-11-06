@@ -1,0 +1,70 @@
+{
+    "format": 1,
+    "items": [
+        {
+            "filename": "default_AssistantReisen.png",
+            "type": "character",
+            "version": 1,
+            "fingerprint": "f8b6c57f0d794677216f507beb3ed92cd10c9549bebadc8b7a5370ad1b358af0",
+            "previousFingerprints": []
+        },
+        {
+            "filename": "default_AssistantTewi.png",
+            "type": "character",
+            "version": 1,
+            "fingerprint": "53758d17adebf92efa9becd54566b0c1605fe110a0d18c548a5466843c0016b0",
+            "previousFingerprints": []
+        },
+        {
+            "filename": "Assistant Reisen",
+            "type": "sprites",
+            "version": 1,
+            "files": [
+                {
+                    "name": "joy.webp",
+                    "sha256": "c9f806585bf14c66617b8424a25fb968a00236aa571cccbc4069344db7065ced",
+                    "previous": []
+                },
+                {
+                    "name": "neutral.webp",
+                    "sha256": "632e4b2a1575600ae06f5a7e855513fe4ce1c7cd26d18f30ea2c41011cd97394",
+                    "previous": []
+                },
+                {
+                    "name": "sadness.webp",
+                    "sha256": "ac1e85aaf0221699ebbe8fdd6d24f41b2f49a86f06a5f6f89a8b7ba522f5ed83",
+                    "previous": []
+                }
+            ]
+        },
+        {
+            "filename": "Assistant Tewi",
+            "type": "sprites",
+            "version": 1,
+            "files": [
+                {
+                    "name": "joy.webp",
+                    "sha256": "5a9b30734bc1a262602bec8fe58fb70f839a656d1dd3b603bc2c9406e7e0b500",
+                    "previous": []
+                },
+                {
+                    "name": "neutral.webp",
+                    "sha256": "4404a59893a49bd6e9122451838ec80c2303a96a70851d63d8dea70f22433428",
+                    "previous": []
+                },
+                {
+                    "name": "sadness.webp",
+                    "sha256": "5c384419020ca26a3384dec625c3ec6f31fa1e88bbc8c8b52887b57b909885d3",
+                    "previous": []
+                }
+            ]
+        },
+        {
+            "filename": "SillyBunny Lexicon.json",
+            "type": "world",
+            "version": 1,
+            "fingerprint": "062f6578149eac9721de0b179f1bd57cf100dc6c796c2f884120ddb6d22e4d44",
+            "previousFingerprints": []
+        }
+    ]
+}

@@ -11,6 +11,8 @@
 import { chromium } from 'playwright';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { testSetup } from './frontend/frontent-test-utils.js';
+import { keepWelcomeClosed } from './helpers/welcome-dialog.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -24,7 +26,7 @@ const mobileOnly = args.includes('--mobile-only');
 
 if (!versionArg) {
     console.error('Error: --version parameter is required');
-    console.error('Usage: node tests/capture-screenshots.js --version=1.7.0 [--conversation-character="Bunny Guide"]');
+    console.error('Usage: node tests/capture-screenshots.js --version=1.7.0 [--conversation-character="Seraphina"]');
     process.exit(1);
 }
 
@@ -41,15 +43,6 @@ const viewports = {
     desktop: { width: 1920, height: 1080 },
     mobile: { width: 390, height: 844 },
 };
-
-async function dismissOnboardingIfPresent(page) {
-    const onboardingDialog = page.locator('dialog[open]:has(.onboarding)').first();
-    if (await onboardingDialog.isVisible().catch(() => false)) {
-        await onboardingDialog.locator('.popup-input').fill('Screenshot Tester');
-        await onboardingDialog.locator('.popup-button-ok').click({ force: true });
-        await page.waitForTimeout(1000);
-    }
-}
 
 async function forceClick(page, selector) {
     await page.waitForSelector(selector, { state: 'attached', timeout: 10000 });
@@ -192,15 +185,9 @@ const sections = [
         description: 'Active chat with Assistant',
         setup: async (page) => {
             await ensureOnlyOpen(page, 'none');
-            // Check if "Open Assistant" is visible on the Home page, if not click Home toggle
-            const isHome = await page.locator('button[data-assistant-id="guide"][data-action="open-assistant"]').first().isVisible().catch(() => false);
-            if (!isHome) {
-                await forceClick(page, '#sb-home-toggle');
-            }
-            // Click "Open Assistant"
-            const assistantBtn = page.locator('button[data-assistant-id="guide"][data-action="open-assistant"]').first();
-            await assistantBtn.click({ force: true, timeout: 5000 }).catch(async () => {
-                await assistantBtn.dispatchEvent('click');
+            await page.evaluate(async () => {
+                const { openPermanentAssistantCard } = await import('/scripts/welcome-screen.js');
+                await openPermanentAssistantCard();
             });
             // Wait for chat to load
             await page.waitForSelector('#chat', { state: 'visible', timeout: 10000 });
@@ -252,6 +239,7 @@ async function captureScreenshots(viewportType) {
 
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport });
+    await keepWelcomeClosed(context);
     const page = await context.newPage();
 
     // Log browser errors
@@ -268,7 +256,7 @@ async function captureScreenshots(viewportType) {
 
         // Wait for app to initialize
         await page.waitForTimeout(6000);
-        await dismissOnboardingIfPresent(page);
+        await testSetup.waitForAppReady({ page });
 
         // Capture each section
         for (const section of sections) {

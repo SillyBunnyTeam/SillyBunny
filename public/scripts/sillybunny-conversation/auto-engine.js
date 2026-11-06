@@ -1,4 +1,5 @@
 import { chat, is_send_press } from '../../script.js';
+import { isTemporaryChat } from '../sillybunny-temporary-chat-state.js';
 import { selected_group } from '../group-chats.js';
 import {
     DEFAULT_INACTIVITY_THRESHOLD,
@@ -751,6 +752,10 @@ export function captureGroupAsideRequest(character, { personaId = getConversatio
 }
 
 export function captureRoleplayDMRequest({ avatar = getCurrentCharAvatar(), personaId = getConversationPersonaId(), roleplayContext = '', sourceMessageId = null } = {}) {
+    // A temporary chat is never kept, so the character does not react to it in the Conversation store.
+    if (isTemporaryChat()) {
+        return null;
+    }
     const sourceMessage = sourceMessageId !== null && typeof sourceMessageId !== 'undefined' ? chat[sourceMessageId] : null;
     const branchId = getConversationThreadStore(avatar, { create: false, groupId: '', personaId })?.activeBranchId || '';
     const capturedContext = String(roleplayContext || buildConversationRoleplayContext(chat, sourceMessageId)).trim();

@@ -56,5 +56,11 @@ module.exports = {
         jest: {
             version: 29,
         },
+        playwright: {
+            // `sizeFreeTestFor()` in helpers/matrix.js hands a spec its `test` or a no-op, so the Playwright rules must see the alias as a test.
+            globalAliases: {
+                test: ['sizeFreeTest'],
+            },
+        },
     },
 };

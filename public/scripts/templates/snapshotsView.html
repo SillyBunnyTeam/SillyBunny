@@ -1,4 +1,5 @@
-<div class="padding5">
+<!-- SillyBunny: Existing snapshot controls stay intact so their bound handlers remain authoritative. -->
+<div class="padding5 sb-snapshots-window">
     <h3 class="title_restorable">
         <span data-i18n="Settings Snapshots">Settings Snapshots</span>
         <div class="makeSnapshotButton menu_button menu_button_icon" data-i18n="[title]Record a snapshot of your current settings." title="Record a snapshot of your current settings.">
@@ -10,18 +11,18 @@
     <div class="snapshotList flex-container flexFlowColumn">
     </div>
     <div class="template_element snapshotTemplate">
-        <div class="snapshot inline-drawer wide100p">
-            <div class="inline-drawer-toggle inline-drawer-header flexGap10">
-                <div class="flex-container flexFlowColumn flexNoGap justifyLeft">
-                    <span class="snapshotName"></span>
-                    <div class="flex-container flexGap10">
+        <div class="snapshot inline-drawer wide100p ds-pref-group sb-window-snapshot">
+            <div class="snapshotExpandButton inline-drawer-toggle inline-drawer-header ds-row flexGap10" role="button" tabindex="0" aria-expanded="false">
+                <div class="flex-container flexFlowColumn flexNoGap justifyLeft ds-row-text">
+                    <span class="snapshotName ds-row-label"></span>
+                    <div class="flex-container flexGap10 ds-row-subtitle">
                         <small class="snapshotDate"></small>
                         <small>(<span class="snapshotSize"></span>)</small>
                     </div>
                 </div>
-                <div class="expander"></div>
-                <div class="menu_button fa-solid fa-recycle snapshotRestoreButton" data-i18n="[title]Restore this snapshot" title="Restore this snapshot"></div>
-                <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+                <div class="expander" aria-hidden="true"></div>
+                <div class="menu_button fa-solid fa-recycle snapshotRestoreButton sb-dialog__icon-button" data-i18n="[title]Restore this snapshot" title="Restore this snapshot" role="button" aria-label="Restore this snapshot"></div>
+                <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down" aria-hidden="true"></div>
             </div>
             <div class="inline-drawer-content">
                 <textarea class="text_pole textarea_compact fontsize80p snapshotContent" readonly placeholder="Loading..." rows="25"></textarea>

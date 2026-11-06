@@ -846,6 +846,8 @@ export async function forwardFetchResponse(from, to, request = null, onDisconnec
     //  equivalents or left out altogether without affecting the protocol."
     if (statusCode === 401) {
         statusCode = 400;
+        // SillyBunny: the browser reads the real status from this header, so it can still point the user at the API key.
+        to.setHeader?.('X-Upstream-Status', '401');
     }
 
     to.statusCode = statusCode;

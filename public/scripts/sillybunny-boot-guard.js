@@ -447,6 +447,10 @@
 
     window.SillyBunnyBootGuard = {
         bootCompleted: function () {
+            // The preloader calls this on every dismissal; the boot timing wants the first.
+            if (!bootCompleted && window.performance && typeof window.performance.mark === 'function') {
+                window.performance.mark('sb-boot-dismiss');
+            }
             bootCompleted = true;
             if (timeoutId) {
                 window.clearTimeout(timeoutId);

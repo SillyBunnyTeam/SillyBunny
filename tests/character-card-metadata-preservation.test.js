@@ -189,6 +189,40 @@ describe('character card metadata preservation', () => {
         expect(statAfter.mtimeMs).toBe(statBefore.mtimeMs);
     });
 
+    test('saves V3 nickname and group-only greetings, and keeps them when a save omits them', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        await createAlice();
+        const initialCharacter = await getCharacter('Alice.png');
+        expect(initialCharacter.data.nickname).toBe('');
+        expect(initialCharacter.data.group_only_greetings).toEqual([]);
+
+        const editResponse = await postJson('/api/characters/edit', {
+            ...saveCharacterBody(initialCharacter),
+            nickname: 'Ally',
+            group_only_greetings: JSON.stringify(['Hello, everyone.', 42, 'Hi all.']),
+        });
+        expect(editResponse.status).toBe(200);
+        const edited = await getCharacter('Alice.png');
+        expect(edited.data.nickname).toBe('Ally');
+        expect(edited.data.group_only_greetings).toEqual(['Hello, everyone.', 'Hi all.']);
+
+        expect((await saveCharacter(edited)).status).toBe(200);
+        const preserved = await getCharacter('Alice.png');
+        expect(preserved.data.nickname).toBe('Ally');
+        expect(preserved.data.group_only_greetings).toEqual(['Hello, everyone.', 'Hi all.']);
+
+        const clearResponse = await postJson('/api/characters/edit', {
+            ...saveCharacterBody(preserved),
+            nickname: '',
+            group_only_greetings: '[]',
+        });
+        expect(clearResponse.status).toBe(200);
+        const cleared = await getCharacter('Alice.png');
+        expect(cleared.data.nickname).toBe('');
+        expect(cleared.data.group_only_greetings).toEqual([]);
+    });
+
     test('does not persist the routing-only avatar field during a merge', async () => {
         jest.spyOn(console, 'error').mockImplementation(() => {});
         jest.spyOn(console, 'info').mockImplementation(() => {});
@@ -432,7 +466,11 @@ describe('character card metadata preservation', () => {
     });
 
     function saveCharacter(character, avatarUrl = 'Alice.png') {
-        return postJson('/api/characters/edit', {
+        return postJson('/api/characters/edit', saveCharacterBody(character, avatarUrl));
+    }
+
+    function saveCharacterBody(character, avatarUrl = 'Alice.png') {
+        return {
             avatar_url: avatarUrl,
             ch_name: character.name,
             description: character.description,
@@ -456,7 +494,7 @@ describe('character card metadata preservation', () => {
             chat: character.chat,
             create_date: character.create_date,
             json_data: character.json_data,
-        });
+        };
     }
 
     async function createAlice() {

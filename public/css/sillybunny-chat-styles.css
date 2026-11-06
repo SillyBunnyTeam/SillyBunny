@@ -45,6 +45,12 @@
     --moonlit-sb-swipe-inline-offset: 24px;
     --moonlit-sb-user-message-bg: color-mix(in srgb, var(--SmartThemeUserMesBlurTintColor) var(--sb-shell-surface-opacity-percent, 100%), transparent);
     --moonlit-sb-bot-message-bg: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor) var(--sb-shell-surface-opacity-percent, 100%), transparent);
+    /* libadwaita card vocabulary shared by the ported styles: card radius for message cards,
+       alert radius for chat bubbles, no borders or drop shadows (cards separate by tone). */
+    --moonlit-sb-card-radius: var(--sb-radius-card, 12px);
+    --moonlit-sb-bubble-radius: var(--sb-radius-alert, 18px);
+    --moonlit-sb-pill-bg: var(--sb-raised-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
+    --moonlit-sb-hairline: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     --customCSS-bg-opacity: 1;
     --customCSS-bg-blur: 0;
     --sheldBackgroundColor: transparent;
@@ -124,11 +130,11 @@ body.echostyle #chat {
         padding: 0;
         margin-top: 5px;
         margin-bottom: 0;
-        border-radius: 15px;
+        border-radius: var(--moonlit-sb-card-radius);
 
         &::before {
             overflow: hidden;
-            border-radius: 15px;
+            border-radius: var(--moonlit-sb-card-radius);
         }
 
         .mes_block {
@@ -151,10 +157,8 @@ body.echostyle #chat {
             min-height: 200px;
             overflow: hidden;
             margin-top: calc(var(--custom-ChatAvatar) * 0.35);
-            border-radius: 10px;
-            backdrop-filter: var(--SmartThemeBackdropFilter);
-            -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
-            box-shadow: 3px 3px 8px rgba(0, 0, 0, 3%);
+            border-radius: var(--moonlit-sb-card-radius);
+            box-shadow: none;
         }
 
         .mes_timer,
@@ -195,7 +199,7 @@ body.echostyle #chat {
                 position: relative;
                 right: 0;
                 left: auto;
-                border-radius: 10px;
+                border-radius: var(--moonlit-sb-card-radius);
                 overflow: hidden;
                 background-color: var(--moonlit-sb-user-message-bg);
 
@@ -221,7 +225,7 @@ body.echostyle #chat {
                     linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
                     -webkit-mask-composite: destination-in;
                     mask-composite: intersect;
-                    border-radius: 10px 0 0 10px;
+                    border-radius: var(--moonlit-sb-card-radius) 0 0 var(--moonlit-sb-card-radius);
                     z-index: 3;
 
                     @media screen and (max-width: 1000px) {
@@ -273,7 +277,7 @@ body.echostyle #chat {
                     linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
                     -webkit-mask-composite: destination-in;
                     mask-composite: intersect;
-                    border-radius: 0 10px 10px 0;
+                    border-radius: 0 var(--moonlit-sb-card-radius) var(--moonlit-sb-card-radius) 0;
                     z-index: 3;
 
                     @media screen and (max-width: 1000px) {
@@ -302,9 +306,9 @@ body.echostyle #chat {
         padding-top: 5px;
     }
     .mesIDDisplay {
-        background: rgba(225, 225, 225, 0.2);
+        background: var(--moonlit-sb-pill-bg);
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: 999px;
         opacity: 0.8;
     }
     .timestamp {
@@ -353,7 +357,7 @@ body.echostyle #chat {
             white-space: nowrap;
             text-overflow: ellipsis;
             opacity: 0.9 !important;
-            letter-spacing: 1.5px;
+            letter-spacing: 0;
         }
     }
 
@@ -384,7 +388,7 @@ body.whisperstyle #chat {
         position: relative;
         padding: 0.8em;
         padding-top: 40px !important;
-        border-radius: 15px;
+        border-radius: var(--moonlit-sb-card-radius);
 
         &::before {
             content: "";
@@ -402,7 +406,7 @@ body.whisperstyle #chat {
             -webkit-mask-size: 100% 100%;
             -webkit-mask-repeat: no-repeat;
             z-index: 0;
-            border-radius: 0 15px 0 0 !important;
+            border-radius: 0 var(--moonlit-sb-card-radius) 0 0 !important;
             opacity: 0.8;
         }
         &.last_mes::before {
@@ -413,8 +417,9 @@ body.whisperstyle #chat {
             position: absolute;
             top: 70px;
             right: 0;
-            width: 5px;
+            width: 3px;
             height: 30px;
+            border-radius: 999px 0 0 999px;
             opacity: 0.9;
             z-index: 3;
         }
@@ -435,7 +440,7 @@ body.whisperstyle #chat {
             background-color: var(--moonlit-sb-user-message-bg) !important;
 
             &::after {
-                border-right: 3.5px solid var(--customThemeColor);
+                background: var(--customThemeColor, var(--sb-accent));
             }
         }
         /* Whisper: Character Message 低語：角色訊息 */
@@ -443,7 +448,7 @@ body.whisperstyle #chat {
             background-color: var(--moonlit-sb-bot-message-bg) !important;
 
             &::after {
-                border-right: 3.5px solid var(--SmartThemeBodyColor);
+                background: var(--sb-muted-fg, var(--SmartThemeBodyColor));
             }
         }
 
@@ -503,9 +508,9 @@ body.whisperstyle #chat {
         min-height: 45px;
     }
     .mesIDDisplay {
-        background: var(--customBgColor1);
+        background: var(--customBgColor1, var(--moonlit-sb-pill-bg));
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: 999px;
         opacity: 0.8;
     }
     .timestamp {
@@ -549,7 +554,7 @@ body.whisperstyle #chat {
             white-space: nowrap;
             text-overflow: ellipsis;
             opacity: 0.9 !important;
-            letter-spacing: 1.5px;
+            letter-spacing: 0;
         }
     }
 
@@ -561,7 +566,7 @@ body.whisperstyle #chat {
     }
 
     .menu_button {
-        background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 25%, transparent);
+        background: transparent;
     }
 }
 
@@ -577,7 +582,7 @@ body.hushstyle #chat {
         color: var(--SmartThemeBodyColor);
         position: relative;
         padding: 1em;
-        border-radius: 15px;
+        border-radius: var(--moonlit-sb-card-radius);
 
         &.last_mes::before {
             filter: none;
@@ -587,8 +592,9 @@ body.hushstyle #chat {
             position: absolute;
             top: 40px;
             right: 0;
-            width: 5px;
+            width: 3px;
             height: 30px;
+            border-radius: 999px 0 0 999px;
             opacity: 0.9;
             z-index: 3;
         }
@@ -598,7 +604,7 @@ body.hushstyle #chat {
             background-color: var(--moonlit-sb-user-message-bg) !important;
 
             &::after {
-                border-right: 3.5px solid var(--customThemeColor);
+                background: var(--customThemeColor, var(--sb-accent));
             }
         }
         /* Soft: Character Message 輕聲：角色訊息 */
@@ -606,7 +612,7 @@ body.hushstyle #chat {
             background-color: var(--moonlit-sb-bot-message-bg) !important;
 
             &::after {
-                border-right: 3.5px solid var(--SmartThemeBodyColor);
+                background: var(--sb-muted-fg, var(--SmartThemeBodyColor));
             }
         }
 
@@ -665,9 +671,9 @@ body.hushstyle #chat {
         min-height: 45px;
     }
     .mesIDDisplay {
-        background: var(--customBgColor1);
+        background: var(--customBgColor1, var(--moonlit-sb-pill-bg));
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: 999px;
         opacity: 0.8;
     }
     .timestamp {
@@ -709,7 +715,7 @@ body.hushstyle #chat {
             white-space: nowrap;
             text-overflow: ellipsis;
             opacity: 0.9 !important;
-            letter-spacing: 1.5px;
+            letter-spacing: 0;
         }
     }
 
@@ -726,7 +732,8 @@ body.hushstyle #chat {
 body.ripplestyle #chat {
     .mes {
         background: var(--moonlit-sb-bot-message-bg) !important;
-        border-radius: 15px;
+        border-radius: var(--moonlit-sb-card-radius);
+        overflow: clip;
         padding: 0 !important;
         margin: 8px 0 !important;
 
@@ -754,7 +761,7 @@ body.ripplestyle #chat {
                 aspect-ratio: 2 / 3;
                 border: none !important;
                 margin-right: unset;
-                border-radius: 15px 0 0 0 !important;
+                border-radius: var(--moonlit-sb-card-radius) 0 0 0 !important;
                 overflow: hidden;
                 flex: unset !important;
 
@@ -764,7 +771,7 @@ body.ripplestyle #chat {
                     min-width:var(--customRippleAvatarWidth);
                     min-height: calc(var(--customRippleAvatarWidth) * var(--customRippleAvatarRatio));
                     border: 0 !important;
-                    border-radius: 15px 0 0 0 !important;
+                    border-radius: var(--moonlit-sb-card-radius) 0 0 0 !important;
                     -webkit-mask-image:
                         linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
                         linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
@@ -793,10 +800,9 @@ body.ripplestyle #chat {
             .ch_name::after {
                 content: "";
                 width: 100%;
-                border-bottom: 1px solid var(--SmartThemeBodyColor);
+                border-bottom: 1px solid var(--moonlit-sb-hairline);
                 padding-bottom: 5px;
                 margin-bottom: 5px;
-                opacity: 0.45;
             }
         }
     }
@@ -950,8 +956,8 @@ body.tidestyle #chat {
                 margin: 0;
                 margin-bottom: 8px !important;
                 background: var(--moonlit-sb-bot-message-bg);
-                padding: 5px 11px !important;
-                border-radius: 18px;
+                padding: 6px 12px !important;
+                border-radius: var(--moonlit-sb-bubble-radius);
             }
 
             @media screen and (max-width: 1000px) {
@@ -997,7 +1003,7 @@ body.tidestyle #chat {
                 position: relative;
                 right: 0;
                 left: auto;
-                border-radius: 10px;
+                border-radius: 0;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
@@ -1010,7 +1016,7 @@ body.tidestyle #chat {
 
             p {
                 background: var(--moonlit-sb-user-message-bg);
-                border-radius: 18px;
+                border-radius: var(--moonlit-sb-bubble-radius);
             }
         }
     }
@@ -1031,9 +1037,9 @@ body.tidestyle #chat {
         padding-top: 10px;
     }
     .mesIDDisplay {
-        background: rgba(225, 225, 225, 0.2);
+        background: var(--moonlit-sb-pill-bg);
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: 999px;
         opacity: 0.8;
     }
     .timestamp {
@@ -1079,7 +1085,7 @@ body.tidestyle #chat {
             white-space: nowrap;
             text-overflow: ellipsis;
             opacity: 0.9 !important;
-            letter-spacing: 1.5px;
+            letter-spacing: 0;
         }
     }
 }
@@ -1094,10 +1100,10 @@ body.ripplestyle {
 }
 body.ripplestyle {
     .mesIDDisplay {
-        background: var(--customBgColor2) !important;
+        background: var(--customBgColor2, var(--moonlit-sb-pill-bg)) !important;
         width: fit-content;
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: 999px;
         justify-self: center;
         text-align: center;
         margin-top: 5px !important;
@@ -1105,23 +1111,17 @@ body.ripplestyle {
     }
 }
 
-body.echostyle {
-    #chat .mes_text {
-        border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    }
+/* libadwaita cards and bubbles: no border or drop shadow. Tide bubbles sit close to the chat
+   view's tone, so they keep the card outline shade as an inset ring that takes no layout space. */
+body.echostyle #chat .mes_text,
+body:is(.whisperstyle, .hushstyle, .ripplestyle) #chat .mes,
+body.tidestyle #chat .mes_text p {
+    border: 0;
+    box-shadow: none;
 }
-body.whisperstyle,
-body.hushstyle,
-body.ripplestyle {
-    #chat .mes {
-        border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    }
 
-}
-body.tidestyle {
-    #chat .mes_text p {
-        border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent) !important;
-    }
+body.tidestyle #chat .mes_text p {
+    box-shadow: inset 0 0 0 1px var(--moonlit-sb-hairline);
 }
 
 /* 滑動訊息編號 */
@@ -1220,7 +1220,8 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes .ch_name .
         width: auto;
     }
 
-    body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes[is_user="false"]:not(.smallSysMes) .mesAvatarWrapper {
+    body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes[is_user="false"]:not(.smallSysMes) .mesAvatarWrapper,
+    body:is(.whisperstyle, .hushstyle) #chat .mes[is_user="true"]:not(.smallSysMes) .mesAvatarWrapper {
         flex-direction: row;
     }
 
@@ -1345,6 +1346,12 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     right: auto !important;
     transform: none !important;
     width: var(--moonlit-sb-swipe-control-size);
+}
+
+/* The shared chevron rule above sets `position: relative` for both chevrons, but .swipe_left is a
+   direct child of .mes (not inside .swipeRightBlock), so in flow it pushed the message body down a line. */
+body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .mes.last_mes > .swipe_left {
+    position: absolute !important;
 }
 
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipes-counter {

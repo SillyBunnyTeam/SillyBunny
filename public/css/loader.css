@@ -1,3 +1,5 @@
+/* Startup splash. The head script seeds --sb-boot-bg/--sb-boot-fg from the last session's resolved
+   theme surface, so the splash keeps one opaque color from first paint until it fades out. */
 #preloader {
     position: fixed;
     margin: 0;
@@ -9,12 +11,212 @@
     height: 100vh;
     width: 100dvw;
     height: 100dvh;
-    background-color: var(--SmartThemeBlurTintColor);
-    color: var(--SmartThemeBodyColor);
-    /*for some reason the full screen blur does not work on iOS*/
-    -webkit-backdrop-filter: blur(30px);
-    backdrop-filter: blur(30px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--sb-boot-bg, var(--sb-page-bg, #1d2128));
+    color: var(--sb-boot-fg, var(--SmartThemeBodyColor));
     opacity: 1;
+    transition: opacity var(--sb-transition-slow);
+}
+
+#preloader.sb-boot-exit {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* SillyBunny: the pixel-art mascot, flavour line, pixel sparkles and animated dots replace the upstream throbber, logo
+   and message. sillybunny-splash.js sizes the mascot before the first paint, to a whole number of device pixels per
+   art pixel or, on a screen too short for the first step, to a fraction of one, and sets its source. The mascot is a
+   still, so a reduced-motion override only has to drop the animations of the letters, the sparkles and the dots. The
+   media-query override uses :nth-child(n) to match the specificity of the per-dot selectors; it then wins on its own
+   and does not depend on the global reduced-motion rule in sillybunny-theme.css. */
+.sb-boot-splash {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+}
+
+.sb-boot-mascot {
+    display: block;
+    flex: none;
+    max-width: none;
+    image-rendering: pixelated;
+}
+
+.sb-boot-mascot[data-fit='smooth'] {
+    image-rendering: auto;
+}
+
+/* The loop of the splash plays in a box that the mascot is moved into, so the box has the size and the place of the
+   mascot at every step and the pictures lie over it. The overflow keeps the motion inside the picture. */
+.sb-boot-loop {
+    position: relative;
+    display: block;
+    flex: none;
+    overflow: hidden;
+}
+
+.sb-boot-loop-layer,
+.sb-boot-effect {
+    position: absolute;
+    max-width: none;
+    pointer-events: none;
+}
+
+.sb-boot-loop-layer {
+    image-rendering: pixelated;
+}
+
+.sb-boot-line {
+    margin: 0;
+    max-width: min(32rem, calc(100vw - 3rem));
+    font-size: var(--sb-type-title);
+    font-weight: 500;
+    text-align: center;
+}
+
+/* The line sits between two pairs of sparkles. The text is the one item that can shrink and wrap, so a narrow screen
+   or a large text size takes the room from the line and not from the sparkles. */
+.sb-boot-flavour {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75em;
+}
+
+.sb-boot-flavour-text {
+    min-width: 0;
+}
+
+/* Typed out letter by letter. The finished line is the style of a letter, and the animation only holds it hidden until
+   its turn after the ones before it, so a rule that removes animations (the Reduced Motion class of the theme does,
+   and it can arrive while the splash is up) leaves the whole line shown and never an empty one. The delays come from
+   custom properties that the script sets, so the line can be of any length. The letter shows when its animation
+   ends, which does not depend on the progress reaching exactly 1, so a delay that calc() rounds a hair short cannot
+   keep a later letter hidden. */
+.sb-boot-letter {
+    animation: sb-boot-letter-in 1ms steps(1, end) backwards;
+    animation-delay: calc(var(--n) * var(--sb-boot-letter-step) + var(--sb-boot-reveal-start));
+}
+
+@keyframes sb-boot-letter-in {
+    from {
+        opacity: 0;
+    }
+}
+
+/* Four-point stars drawn on the grid of the mascot, so one art pixel of a star is as big as one of the picture. They
+   appear when the typing starts and then twinkle, each a little behind the one before. */
+.sb-boot-star,
+.sb-boot-effect {
+    fill: currentColor;
+    color: currentColor;
+    color: color-mix(in srgb, var(--sb-boot-fg, currentColor) 60%, var(--sb-boot-bg, transparent));
+    shape-rendering: crispEdges;
+}
+
+.sb-boot-star {
+    flex: none;
+    display: block;
+    width: calc(var(--sb-boot-px, 1px) * 7);
+    height: calc(var(--sb-boot-px, 1px) * 7);
+    animation: sb-boot-star-in 1ms steps(1, end) backwards, sb-boot-twinkle 1600ms steps(1, end) infinite;
+    animation-delay: var(--sb-boot-reveal-start, 0ms), calc(var(--sb-boot-reveal-start, 0ms) + var(--sb-boot-star-offset, 0ms));
+}
+
+.sb-boot-star--big {
+    width: calc(var(--sb-boot-px, 1px) * 11);
+    height: calc(var(--sb-boot-px, 1px) * 11);
+}
+
+.sb-boot-star:nth-of-type(2) {
+    --sb-boot-star-offset: 400ms;
+}
+
+.sb-boot-star:nth-of-type(3) {
+    --sb-boot-star-offset: 800ms;
+}
+
+.sb-boot-star:nth-of-type(4) {
+    --sb-boot-star-offset: 1200ms;
+}
+
+@keyframes sb-boot-star-in {
+    from {
+        visibility: hidden;
+    }
+}
+
+@keyframes sb-boot-twinkle {
+    50% {
+        opacity: 0.35;
+    }
+}
+
+.sb-boot-dots > span:nth-child(1) {
+    animation: sb-boot-dot-1 1200ms steps(1, end) infinite;
+}
+
+.sb-boot-dots > span:nth-child(2) {
+    animation: sb-boot-dot-2 1200ms steps(1, end) infinite;
+}
+
+.sb-boot-dots > span:nth-child(3) {
+    animation: sb-boot-dot-3 1200ms steps(1, end) infinite;
+}
+
+/* The dots wait for the last letter. Until then the first keyframe holds them hidden. */
+.sb-boot-dots > span:nth-child(n) {
+    animation-delay: var(--sb-boot-dots-start, 0ms);
+    animation-fill-mode: backwards;
+}
+
+@keyframes sb-boot-dot-1 {
+    0% {
+        opacity: 0;
+    }
+
+    25% {
+        opacity: 1;
+    }
+}
+
+@keyframes sb-boot-dot-2 {
+    0% {
+        opacity: 0;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+@keyframes sb-boot-dot-3 {
+    0% {
+        opacity: 0;
+    }
+
+    75% {
+        opacity: 1;
+    }
+}
+
+/* The finished line, the still sparkles and the dots, all shown at once. */
+@media (prefers-reduced-motion: reduce) {
+    .sb-boot-dots > span:nth-child(n),
+    .sb-boot-letter,
+    .sb-boot-star {
+        animation: none;
+    }
+}
+
+#preloader.sb-boot-reduced .sb-boot-dots > span,
+#preloader.sb-boot-reduced .sb-boot-letter,
+#preloader.sb-boot-reduced .sb-boot-star {
+    animation: none;
 }
 
 #load-spinner {
@@ -53,38 +255,4 @@
 .action-loader-stop:hover {
     opacity: 1;
     color: color-mix(in srgb, currentColor 40%, #e74c3c 60%);
-}
-
-/* Splash screen styles for branded loading */
-#loader.splash-screen {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4rem;
-    width: 100%;
-    height: 100%;
-    transition: all var(--sb-transition-slow);
-}
-
-#loader.splash-screen #load-spinner {
-    position: static;
-    top: unset;
-    left: unset;
-}
-
-.splash-logo {
-    /* max original px, or 50% on mobile */
-    width: min(150px, 50%);
-    height: auto;
-    image-rendering: pixelated;
-    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
-}
-
-.splash-message {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 500;
-    opacity: 0.9;
-    letter-spacing: 0.02em;
 }

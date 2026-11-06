@@ -57,17 +57,19 @@ describe('chat file hardening wiring', () => {
         expect(groupSource).toContain('maxRecoveryStates: maxTotalChatBackups');
     });
 
-    test('uses the full chat list area while browsing backups', async () => {
-        const [source, styles] = await Promise.all([
+    test('uses the framed list area while browsing backups', async () => {
+        const [source, styles, adapter] = await Promise.all([
             readSource('../public/scripts/chat-backups.js'),
             readSource('../public/css/chat-backups.css'),
+            readSource('../public/scripts/sillybunny-chat-dialogs.js'),
         ]);
 
         expect(source).toContain('classList.add(\'chatBackupsOpen\')');
         expect(source).toContain('classList.remove(\'chatBackupsOpen\')');
-        expect(styles).toContain('#select_chat_popup.chatBackupsOpen .chatBackupsList');
-        expect(styles).toContain('max-height: none;');
-        expect(styles).toContain('#select_chat_div)');
+        expect(adapter).toContain('const showingBackups = pageContent.classList.contains(\'chatBackupsOpen\')');
+        expect(adapter).toContain('currentBackupsList.hidden = !showingBackups');
+        expect(adapter).toContain('chatList.hidden = showingBackups');
+        expect(styles).toContain('.chatBackupsList');
     });
 
     test('renders backup content inline without opening a nested WebKit modal', async () => {

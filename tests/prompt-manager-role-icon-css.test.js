@@ -15,10 +15,10 @@ function getRuleBody(cssSource, selector) {
 
 describe('prompt manager role icon css', () => {
     test('keeps Font Awesome role icons outside prompt name truncation', () => {
-        const promptNameSelector = '#completion_prompt_manager #completion_prompt_manager_list .completion_prompt_manager_prompt_name';
+        const promptNameSelector = '#completion_prompt_manager #completion_prompt_manager_list li .pm-row-primary';
         const truncationRule = getRuleBody(
             promptManagerCss,
-            `${promptNameSelector} > a,\n${promptNameSelector} > span[title]:not(.fa-solid)`,
+            `${promptNameSelector} > a,\n${promptNameSelector} > span:not(.fa-solid):not(.pm-row-chip)`,
         );
 
         expect(truncationRule).toContain('min-width: 0;');

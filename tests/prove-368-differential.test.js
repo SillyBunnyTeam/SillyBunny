@@ -42,6 +42,7 @@ function reloadContext({ group = false, active = false } = {}) {
         activeGenerationRun: active ? {} : null,
         delay: jest.fn(),
         flushPendingChatSavesForNavigation: jest.fn(async () => true),
+        isTemporaryChat: () => false,
         getRequestHeaders: () => ({}),
         shouldAbortReloadForActiveGeneration,
         shouldDiscardReloadTarget,

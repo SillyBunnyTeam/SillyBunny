@@ -36,6 +36,8 @@ import { createTagMapFromList } from './tags.js';
 import { renderTemplateAsync } from './templates.js';
 import { compressRequest } from './request-compression.js';
 import { t } from './i18n.js';
+// SillyBunny: a temporary chat has no file to branch or checkpoint from.
+import { assertChatFileWritable } from './sillybunny-temporary-chat-state.js';
 
 import {
     getUniqueName,
@@ -505,6 +507,8 @@ function registerBookmarksSlashCommands() {
         name: 'branch-create',
         returns: 'Name of the new branch',
         callback: async (args, text) => {
+            // SillyBunny: say why instead of returning an empty name.
+            assertChatFileWritable();
             const mesId = Number(args.mesId ?? text ?? getLastMessageId());
             if (!validateMessageId(mesId, 'Create Branch')) return '';
 
@@ -534,6 +538,8 @@ function registerBookmarksSlashCommands() {
         name: 'checkpoint-create',
         returns: 'Name of the new checkpoint',
         callback: async (args, text) => {
+            // SillyBunny: say why instead of returning an empty name.
+            assertChatFileWritable();
             const mesId = Number(args.mesId ?? getLastMessageId());
             if (!validateMessageId(mesId, 'Create Checkpoint')) return '';
 

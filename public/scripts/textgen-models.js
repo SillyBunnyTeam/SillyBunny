@@ -1204,7 +1204,9 @@ export function initTextGenModels() {
     }
 
     // Keep API Select2 dropdowns inside the scrolling API drawer so they move with the control.
-    const apiDropdownParent = $('#rm_api_block');
+    // SillyBunny (feat/v1.9.0-ui-overhaul): that drawer is now the Connections panel, which moved
+    // the provider forms out of the emptied `#rm_api_block`.
+    const apiDropdownParent = $('.sb-connections-panel').length ? $('.sb-connections-panel') : $('#rm_api_block');
     const select2Defaults = {
         dropdownParent: apiDropdownParent.length ? apiDropdownParent : $(document.body),
         minimumResultsForSearch: 0,
@@ -1321,6 +1323,29 @@ export function initTextGenModels() {
             select2.trigger('query', { term: select2.selection.$search.val() || '' });
         }
     });
+    // SillyBunny: Select2 multiple fields toggle on every click and ignore clicks once the inline
+    // search has text, so a click could close the menu or only focus the search box. Clicks on
+    // the field always open it; outside clicks, Escape, and Tab still close it.
+    document.addEventListener('click', event => {
+        const target = event.target instanceof Element ? event.target : null;
+        const selection = target?.closest('.select2-selection--multiple');
+        const select = selection?.closest('.select2-container')?.previousElementSibling;
+        if (!select?.matches('.openrouter_providers, .openrouter_quantizations')
+            || target.closest('.select2-selection__choice__remove')) {
+            return;
+        }
+
+        const select2 = $(select).data('select2');
+        if (!select2 || select2.isDisabled()) {
+            return;
+        }
+
+        event.stopPropagation();
+        if (!select2.isOpen()) {
+            select2.open();
+        }
+        select2.selection.$search.trigger('focus');
+    }, true);
     providersSelect.on('select2:select', function (/** @type {any} */ evt) {
         const element = evt.params.data.element;
         const $element = $(element);

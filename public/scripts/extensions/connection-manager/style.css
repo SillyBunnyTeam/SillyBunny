@@ -1,19 +1,19 @@
-#connection_profile_details_content {
+.profile-summary-scope {
     margin: 5px 0;
 }
 
-#connection_profile_details_content ul {
+.profile-summary-scope ul {
     margin: 0;
 }
 
-#connection_profile_details_content .profile-summary--two-col {
+.profile-summary-scope .profile-summary--two-col {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px 14px;
     padding-left: 18px;
 }
 
-#connection_profile_details_content .profile-summary--two-col li {
+.profile-summary-scope .profile-summary--two-col li {
     min-width: 0;
     display: grid;
     grid-template-columns: minmax(9rem, max-content) minmax(0, 1fr);
@@ -21,25 +21,25 @@
     overflow-wrap: anywhere;
 }
 
-#connection_profile_details_content .profile-summary-label {
+.profile-summary-scope .profile-summary-label {
     min-width: 0;
 }
 
-#connection_profile_details_content .profile-summary-label::after {
+.profile-summary-scope .profile-summary-label::after {
     content: ':';
 }
 
-#connection_profile_details_content .profile-summary-value {
+.profile-summary-scope .profile-summary-value {
     min-width: 0;
     overflow-wrap: anywhere;
 }
 
 @media screen and (max-width: 700px) {
-    #connection_profile_details_content .profile-summary--two-col {
+    .profile-summary-scope .profile-summary--two-col {
         grid-template-columns: 1fr;
     }
 
-    #connection_profile_details_content .profile-summary--two-col li {
+    .profile-summary-scope .profile-summary--two-col li {
         grid-template-columns: 1fr;
     }
 }
@@ -58,54 +58,76 @@
 }
 
 .connection-profile-actions {
-    --connection-profile-action-size: 30px;
     display: flex;
     flex-wrap: wrap;
-    justify-content: start;
-    gap: 4px;
+    gap: 6px;
     width: 100%;
     min-width: 0;
-    overflow: visible;
 }
 
-.connection-profile-actions > .menu_button {
-    flex: 0 0 var(--connection-profile-action-size);
-    width: var(--connection-profile-action-size) !important;
-    min-width: var(--connection-profile-action-size) !important;
-    max-width: var(--connection-profile-action-size) !important;
-    min-height: 28px !important;
-    height: 28px !important;
-    max-height: 28px !important;
-    padding: 0;
+.sb-profile-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-height: 32px;
+    padding: 5px 10px;
+    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 80%, transparent);
     border-radius: 8px;
-    font-size: calc(var(--mainFontSize) * 0.78);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-size: calc(var(--mainFontSize) * 0.82);
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 150ms ease, border-color 150ms ease;
     user-select: none;
     -webkit-user-select: none;
 }
 
-@media screen and (max-width: 450px) {
-    .connection-profile-actions {
-        --connection-profile-action-size: clamp(24px, calc((100% - 16px) / 9), 30px);
-        flex-wrap: nowrap;
-        gap: 2px;
-    }
+.sb-profile-action-btn:hover {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+    border-color: color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 100%, transparent);
+}
 
-    .connection-profile-actions > .menu_button {
-        min-height: var(--connection-profile-action-size) !important;
-        height: var(--connection-profile-action-size) !important;
-        max-height: var(--connection-profile-action-size) !important;
-        border-radius: 8px;
-        font-size: calc(var(--mainFontSize) * 0.72);
-    }
+.sb-profile-action-btn:active {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+}
+
+.sb-profile-action-btn:focus-visible {
+    outline: 2px solid var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
+    outline-offset: 2px;
+}
+
+.sb-profile-action-btn--danger {
+    color: var(--color-danger, #fb7185);
+    border-color: color-mix(in srgb, var(--color-danger, #fb7185) 30%, transparent);
+}
+
+.sb-profile-action-btn--danger:hover {
+    background: color-mix(in srgb, var(--color-danger, #fb7185) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-danger, #fb7185) 55%, transparent);
 }
 
 #toggle_profile_favorite.is_fav {
     color: var(--SmartThemeQuoteColor, gold);
+    border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, gold) 40%, transparent);
     opacity: 1;
 }
 
 #toggle_profile_favorite:not(.is_fav) {
-    opacity: 0.55;
+    opacity: 0.6;
+}
+
+@media screen and (max-width: 450px) {
+    .connection-profile-actions {
+        gap: 4px;
+    }
+
+    .sb-profile-action-btn {
+        padding: 5px 8px;
+        font-size: calc(var(--mainFontSize) * 0.76);
+    }
 }
 
 .connection-profile-folder-manager {
@@ -178,5 +200,105 @@
 
     .connection-profile-folder-manager .folder-add-row .menu_button {
         width: 100%;
+    }
+}
+
+/* SillyBunny: profile-switch summary toast list. Toasts are 300px wide with overflow hidden, so the list scrolls itself. */
+.sb-profile-switch-summary {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 2px;
+    overflow-wrap: anywhere;
+    max-height: min(50dvh, 320px);
+    overflow-y: auto;
+}
+
+/* SillyBunny: "Also sets" line under the profile actions. No display rule, so the hidden attribute works. */
+.sb-connection-profile-sets {
+    margin: 0;
+    min-width: 0;
+    font-size: var(--sb-type-meta);
+    line-height: 1.4;
+    color: var(--sb-input-placeholder);
+    overflow-wrap: anywhere;
+}
+
+/* SillyBunny: adapters use one Popup scroller, not the upstream nested folder list. */
+.sb-connection-dialog-content {
+    min-width: 0;
+    margin: 0;
+}
+
+.sb-connection-dialog-content .folder-item {
+    display: block;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+}
+
+.sb-connection-dialog-content .folder-item:not(:last-child) {
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.sb-connection-dialog-content .folder-item > .ds-row {
+    border-bottom: 0;
+}
+
+.sb-connection-dialog-content .folder-profile-count {
+    font: inherit;
+    color: inherit;
+}
+
+.sb-connection-dialog-content #add_new_folder {
+    white-space: nowrap;
+    min-height: 44px;
+}
+
+.sb-connection-dialog-content .ds-row-check > input:indeterminate {
+    border-color: var(--sb-accent);
+    background: var(--sb-accent);
+}
+
+.sb-connection-dialog-content .ds-row-check > input:indeterminate::before {
+    transform: scale(1);
+    -webkit-clip-path: inset(40% 0);
+    clip-path: inset(40% 0);
+}
+
+.sb-connection-dialog-content .folder-delete-btn {
+    display: grid;
+    place-items: center;
+    min-width: 34px;
+    min-height: 34px;
+    color: var(--color-danger);
+    opacity: 1;
+}
+
+.sb-connection-dialog-content .folder-delete-btn:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    border-radius: var(--sb-radius-button);
+}
+
+dialog.popup.sb-dialog .sb-connection-dialog-content .popup-input {
+    width: 100%;
+    margin: 0;
+    resize: none;
+    min-height: 46px;
+}
+
+.sb-connection-dialog-content .profile-summary-label::after {
+    content: none;
+}
+
+.sb-connection-dialog-content .ds-row-property__value {
+    overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse) {
+    .sb-connection-dialog-content .folder-delete-btn {
+        min-width: 44px;
+        min-height: 44px;
     }
 }

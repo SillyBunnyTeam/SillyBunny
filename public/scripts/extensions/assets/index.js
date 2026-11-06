@@ -502,7 +502,8 @@ async function openCharacterBrowser(forceDefault) {
         listElement.append(characterElement);
     }
 
-    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: true, large: true, allowVerticalScrolling: true, allowHorizontalScrolling: false });
+    // SillyBunny: keep the long catalogue in the shared Window frame.
+    callGenericPopup(template, POPUP_TYPE.TEXT, '', { okButton: 'Close', wide: true, large: true, tier: 'window', title: t`Characters`, allowVerticalScrolling: true, allowHorizontalScrolling: false });
 }
 
 //#############################//
