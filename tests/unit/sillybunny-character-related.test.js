@@ -100,6 +100,7 @@ afterEach(() => {
 
 test('Related shows deduplicated primary/extra lorebooks, containing groups and connected existing personas', () => {
     expect(document.getElementById('sb_character_related').hidden).toBe(false);
+    expect(document.getElementById('sb_character_section_related').textContent).toBe('Related');
     expect(rows().map(row => [row.dataset.relatedKind, row.dataset.targetId, row.querySelector('.ds-row-label').textContent])).toEqual([
         ['world-info', 'Primary', 'Primary'], ['world-info', 'Extra', 'Extra'],
         ['group-editor', '42', 'Team'], ['persona-editor', 'persona.png', 'Reader'],

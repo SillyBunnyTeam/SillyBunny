@@ -707,8 +707,7 @@ function _dispatchTransportClick(selector) {
 
 function _bindRelatedLinks() {
     const heading = document.getElementById('sb_character_section_related');
-    // HUMAN: replace — Related section heading.
-    if (heading) heading.textContent = t`lorum ipsum`;
+    if (heading) heading.textContent = t`Related`;
     for (const type of [
         event_types.WORLDINFO_SETTINGS_UPDATED, event_types.SETTINGS_UPDATED,
         event_types.CHARACTER_EDITED, event_types.CHARACTER_PAGE_LOADED,
