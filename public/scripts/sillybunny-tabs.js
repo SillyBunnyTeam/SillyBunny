@@ -10285,7 +10285,7 @@ function updateSillyTavernImportInteractivity() {
 function updateFolderImportVisibility() {
     const folderPane = getImporterRefs()?.folderPane;
     if (folderPane instanceof HTMLElement) {
-        // .sb-import-pane sets display: flex, which the hidden attribute does not override.
+        // .ds-row sets display: flex, which the hidden attribute does not override.
         folderPane.style.display = isAdmin() ? '' : 'none';
     }
 }
