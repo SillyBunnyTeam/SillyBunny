@@ -512,7 +512,7 @@ export async function main(argv) {
     try {
         const { values } = parseArgs({ args, options: OPTIONS, strict: true, allowPositionals: false });
         if (values.help || command === 'help') {
-            process.stdout.write('TODO(copy)\n');
+            process.stdout.write('Usage: node tests/android-smoke/launcher.js start|push-marker|raise-min-app-version|publish|heads|manifest|seed-data|checksum [options]\n');
             return;
         }
         const handler = Object.hasOwn(COMMANDS, command) ? COMMANDS[command] : null;
@@ -522,14 +522,14 @@ export async function main(argv) {
         await handler(values);
     } catch (error) {
         if (error instanceof UsageError) {
-            print({ ok: false, error: 'TODO(copy)', code: error.code, ...error.details });
+            print({ ok: false, error: 'Invalid command line. Run with --help for usage.', code: error.code, ...error.details });
             process.exitCode = 2;
         } else if (String(error?.code ?? '').startsWith('ERR_PARSE_ARGS')) {
-            print({ ok: false, error: 'TODO(copy)', code: 'invalid-arguments' });
+            print({ ok: false, error: 'Unknown option, missing value or unexpected argument. Run with --help for usage.', code: 'invalid-arguments' });
             process.exitCode = 2;
         } else {
             // Diagnostics for the CI log: the failing step's own message (git, fs, validation).
-            print({ ok: false, error: 'TODO(copy)', code: 'failed', detail: String(error?.message ?? error) });
+            print({ ok: false, error: 'Fixture command failed', code: 'failed', detail: String(error?.message ?? error) });
             process.exitCode = 1;
         }
     }

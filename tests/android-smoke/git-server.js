@@ -285,7 +285,7 @@ export async function startGitServer({
         const refuse = (status) => {
             entry.refused = true;
             response.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache', 'Connection': 'close' });
-            response.end('TODO(copy)\n');
+            response.end('The fixture Git server refused this request.\n');
             finish(status);
         };
 
@@ -386,7 +386,7 @@ export async function startGitServer({
         const fail = () => {
             if (!response.headersSent) {
                 response.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8', 'Connection': 'close' });
-                response.end('TODO(copy)\n');
+                response.end('The fixture Git server got no valid answer from git http-backend.\n');
                 status = 502;
             } else {
                 response.destroy();

@@ -616,9 +616,9 @@ describe('smoke-runner: verdicts and summaries', () => {
         expect(runSummary(records, 'unhandled rejections outside the steps: page.close: `closed`\nat\thttp://<label>.localhost:50123/')).toEqual([
             ...summaryTable(records),
             '',
-            'TODO(copy): `unhandled rejections outside the steps: page.close: \'closed\' at http://<label>.localhost:50123/`',
+            'Android smoke command failed: `unhandled rejections outside the steps: page.close: \'closed\' at http://<label>.localhost:50123/`',
         ]);
-        expect(runSummary([], 'device emulator-5628 is offline')).toEqual([...summaryTable([]), '', 'TODO(copy): `device emulator-5628 is offline`']);
+        expect(runSummary([], 'device emulator-5628 is offline')).toEqual([...summaryTable([]), '', 'Android smoke command failed: `device emulator-5628 is offline`']);
     });
 });
 
@@ -667,13 +667,13 @@ describe('smoke-guard', () => {
     test('a skip is a notice and a job-summary line; a failure is an error; a run is outputs only', () => {
         const skip = guardReport({ ok: true, run: false, code: GUARD_CODES.unpinned, abis: {} });
         expect(skip.outputs).toEqual({ run: 'false', reason: 'node-digests-unpinned' });
-        expect(skip.commands).toEqual(['::notice title=TODO(copy)::TODO(copy)']);
-        expect(skip.summary).toEqual(['TODO(copy)', '', '- outcome: `skipped`', '- reason: `node-digests-unpinned`', '']);
+        expect(skip.commands).toEqual(['::notice title=Android smoke skipped::No Node digest is pinned in android/runtime.lock yet, so there is nothing to test.']);
+        expect(skip.summary).toEqual(['Android smoke skipped. No Node digest is pinned in android/runtime.lock yet.', '', '- outcome: `skipped`', '- reason: `node-digests-unpinned`', '']);
         expect(guardReport({ ok: true, run: true, code: GUARD_CODES.pinned, abis: {} })).toEqual({
             outputs: { run: 'true', reason: 'node-digests-pinned' }, commands: [], summary: [],
         });
         expect(guardReport({ ok: false, run: false, code: GUARD_CODES.partial, abis: {} })).toEqual({
-            outputs: { run: 'false', reason: 'node-digests-partial' }, commands: ['::error title=TODO(copy)::TODO(copy)'], summary: [],
+            outputs: { run: 'false', reason: 'node-digests-partial' }, commands: ['::error title=Android runtime lock is invalid::android/runtime.lock is unreadable, malformed or pins Node for only some ABIs. The step log names the code and detail.'], summary: [],
         });
     });
 
@@ -1047,9 +1047,9 @@ describePosix('adb.js app files through a stand-in adb and run-as', () => {
         const device = fakeDevice();
         try {
             await device.adb.runAs(DEFAULT_PACKAGE, ['mkdir', '-p', 'files/SillyBunny/.git']);
-            await device.adb.writeAppFile(DEFAULT_PACKAGE, 'files/SillyBunny/.git/HEAD', 'TODO(copy)\n');
+            await device.adb.writeAppFile(DEFAULT_PACKAGE, 'files/SillyBunny/.git/HEAD', 'corrupted\n');
             expect(device.commands().slice(-1)).toEqual([`run-as ${DEFAULT_PACKAGE} sh -c 'base64 -d > files/SillyBunny/.git/HEAD'`]);
-            expect(device.file('files/SillyBunny/.git/HEAD').toString('utf8')).toBe('TODO(copy)\n');
+            expect(device.file('files/SillyBunny/.git/HEAD').toString('utf8')).toBe('corrupted\n');
 
             const odd = 'files/SillyBunny/data/default-user/chats/smoke fixture/it\'s "x".jsonl';
             await device.adb.runAs(DEFAULT_PACKAGE, ['mkdir', '-p', path.posix.dirname(odd)]);
@@ -1288,7 +1288,7 @@ describe('smoke-steps: the WebView and the frontend', () => {
         await expect(settleFrontend(page, { intervalMs: 1 })).resolves.toEqual({ answered: ['popup', 'onboarding', 'wizard'] });
         // Five quiet polls in a row after the last answer; the quiet poll before the wizard does not count.
         expect(page.names).toHaveLength(10);
-        expect(new Set(page.names)).toEqual(new Set(['TODO(copy)']));
+        expect(new Set(page.names)).toEqual(new Set(['Smoke Tester']));
     });
 
     test('settleFrontend counts a failed look, a preloader or a missing APP_READY as not settled', async () => {
@@ -1439,7 +1439,7 @@ describe('run-smoke.js command line', () => {
         expect(JSON.parse(json.stdout)).toEqual({ ok: true, guestPorts: { ...GUEST_PORTS }, properties: gradleProperties(), args: args.stdout.trim().split(' ') });
     });
 
-    test('answers usage errors with exit code 2, a placeholder message and a machine code', () => {
+    test('answers usage errors with exit code 2, the failure message and a machine code', () => {
         const cases = [
             [['run', '--default-ref', 'main'], { code: 'invalid-default-ref', option: 'default-ref', value: 'main' }],
             [['bogus'], { code: 'unknown-command', value: 'bogus' }],
@@ -1450,9 +1450,9 @@ describe('run-smoke.js command line', () => {
         for (const [args, expected] of cases) {
             const result = runCli(args, { ANDROID_SERIAL: '' });
             expect([args.join(' '), result.code]).toEqual([args.join(' '), 2]);
-            expect(JSON.parse(result.stdout)).toEqual({ ok: false, error: 'TODO(copy)', ...expected });
+            expect(JSON.parse(result.stdout)).toEqual({ ok: false, error: 'Android smoke command failed', ...expected });
         }
-        expect(runCli(['help'])).toMatchObject({ code: 0, stdout: 'TODO(copy)\n' });
+        expect(runCli(['help'])).toMatchObject({ code: 0, stdout: 'Android smoke command failed\n' });
     });
 
     test('lists the steps', () => {
@@ -1469,6 +1469,6 @@ describe('run-smoke.js command line', () => {
         expect(JSON.parse(passed.stdout)).toEqual({ ok: true, results: [{ apk: clean, bun: [] }] });
         const failed = runCli(['apk-check', '--apk', clean, '--apk', bun]);
         expect(failed.code).toBe(1);
-        expect(JSON.parse(failed.stdout)).toMatchObject({ ok: false, error: 'TODO(copy)', code: 'bun-in-apk', results: [{ bun: [] }, { bun: ['lib/x86_64/libbun.so'] }] });
+        expect(JSON.parse(failed.stdout)).toMatchObject({ ok: false, error: 'Android smoke command failed', code: 'bun-in-apk', results: [{ bun: [] }, { bun: ['lib/x86_64/libbun.so'] }] });
     });
 });

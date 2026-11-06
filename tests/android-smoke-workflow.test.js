@@ -19,7 +19,7 @@ const PINNED_LINE = /^([\w.-]+\/[\w.-]+)@([0-9a-f]{40}) # (v\d+(?:\.\d+)*)$/;
 const ON_FAILURE = 'failure() || cancelled()';
 const DEFAULT_REF_ANNOTATION = '::error title=Invalid default-ref input::The default-ref input must be staging or release.';
 const RESULT_ANNOTATION = '::error title=Android smoke failed::A plan, build or smoke job did not succeed. The step log lists each job result.';
-const INVALID_LOCK_ANNOTATION = '::error title=TODO(copy)::TODO(copy)';
+const INVALID_LOCK_ANNOTATION = '::error title=Android runtime lock is invalid::android/runtime.lock is unreadable, malformed or pins Node for only some ABIs. The step log names the code and detail.';
 // Plan §7.1's list, plus the smoke's own workflow and harness, and the tests package files the harness loads.
 const ANDROID_FILES = [
     'android/*',
@@ -339,7 +339,7 @@ describe('android-smoke.yml jobs', () => {
         const unpinned = runGuard(lockWith([]));
         expect(unpinned.code).toBe(0);
         expect(unpinned.outputs).toBe('run=false\nreason=node-digests-unpinned\n');
-        expect(unpinned.stdout).toContain('::notice title=TODO(copy)::TODO(copy)');
+        expect(unpinned.stdout).toContain('::notice title=Android smoke skipped::No Node digest is pinned in android/runtime.lock yet, so there is nothing to test.');
         expect(unpinned.summary).toContain('- outcome: `skipped`');
         expect(unpinned.summary).toContain('- reason: `node-digests-unpinned`');
 

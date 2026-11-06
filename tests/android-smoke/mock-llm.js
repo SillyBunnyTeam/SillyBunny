@@ -30,7 +30,7 @@ function sendJson(response, status, body, headers = {}) {
 }
 
 function sendError(response, status, type, headers = {}) {
-    sendJson(response, status, { error: { message: 'TODO(copy)', type, code: null } }, headers);
+    sendJson(response, status, { error: { message: 'The mock LLM server rejected this request.', type, code: null } }, headers);
 }
 
 function readJson(request, limit) {

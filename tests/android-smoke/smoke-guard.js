@@ -104,7 +104,7 @@ export function guardReport(decision) {
     if (!decision.ok) {
         return {
             outputs: { run: 'false', reason: decision.code },
-            commands: ['::error title=TODO(copy)::TODO(copy)'],
+            commands: ['::error title=Android runtime lock is invalid::android/runtime.lock is unreadable, malformed or pins Node for only some ABIs. The step log names the code and detail.'],
             summary: [],
         };
     }
@@ -113,8 +113,8 @@ export function guardReport(decision) {
     }
     return {
         outputs: { run: 'false', reason: decision.code },
-        commands: ['::notice title=TODO(copy)::TODO(copy)'],
-        summary: ['TODO(copy)', '', `- outcome: \`${SKIPPED}\``, `- reason: \`${decision.code}\``, ''],
+        commands: ['::notice title=Android smoke skipped::No Node digest is pinned in android/runtime.lock yet, so there is nothing to test.'],
+        summary: ['Android smoke skipped. No Node digest is pinned in android/runtime.lock yet.', '', `- outcome: \`${SKIPPED}\``, `- reason: \`${decision.code}\``, ''],
     };
 }
 

@@ -25,7 +25,7 @@
  *   steps       The step table.
  *
  * `--serial` defaults to ANDROID_SERIAL (set by the emulator runner action). Exit codes: 0 pass (or skip),
- * 1 failure, 2 usage error. Errors print `{ok:false, error:'TODO(copy)', code, ...}`.
+ * 1 failure, 2 usage error. Errors print `{ok:false, error:MESSAGE, code, ...}`.
  *
  * Only Node built-ins load up front, so `guard`, `gradle-args` and `apk-check` work before `npm ci` in tests/;
  * the device commands import Playwright and the fixtures when they start.
@@ -63,8 +63,11 @@ import {
 import { appendOutputs, appendSummary, evaluateRuntimeLockFile, guardReport } from './smoke-guard.js';
 import { parseStepSelection, runSteps, STEPS, summarize, summaryTable } from './smoke-runner.js';
 
-/** The placeholder every message a person reads carries until the copy exists. */
-const MESSAGE = 'TODO(copy)';
+/**
+ * The error text of every failed command, the help output and the lead of the summary's failure line.
+ * The summary adds a colon after it, so it takes no final punctuation.
+ */
+const MESSAGE = 'Android smoke command failed';
 
 /** A command-line mistake: a machine code and the offending option, never prose. */
 export class UsageError extends Error {

@@ -83,7 +83,7 @@ export async function startStaticServer({ root, host = '127.0.0.1', port, maxPor
             bytes: 0,
         };
         const reply = (status, extraHeaders = {}) => {
-            const text = 'TODO(copy)\n';
+            const text = 'The fixture update server cannot serve this request.\n';
             response.writeHead(status, {
                 'Content-Type': 'text/plain; charset=utf-8',
                 'Content-Length': Buffer.byteLength(text),
