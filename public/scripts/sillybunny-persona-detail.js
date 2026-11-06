@@ -199,7 +199,6 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     const useLabel = t`Use this persona`;
     const use = createButtonRow({ label: useLabel, field: 'use', icon: 'circle-check', onActivate: () => { void runImmediate(() => usePersona(currentId)); } });
     const defaultPersona = createSwitchRow({ label: t`Default Persona`, field: 'default', onChange: enabled => { void runImmediate(() => setPersonaDefault(currentId, enabled)); } });
-    // HUMAN: replace — Identity section heading.
     const identitySection = createPrefGroup({ title: t`Identity`, field: 'section-identity', rows: [identityAvatar, title, inUse, use, defaultPersona] });
     identitySection.section.dataset.sbSection = 'identity';
     body.append(identitySection.section);
@@ -262,8 +261,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     lorebookTrigger.setAttribute('aria-expanded', 'false');
     lorebookTrigger.addEventListener('click', openLorebookPicker);
     const lorebook = createRow({ label: t`Link to Persona Lorebook`, field: 'lorebook', suffix: lorebookTrigger });
-    // HUMAN: replace — Open the linked lorebook.
-    const openBook = createButtonRow({ label: t`lorum ipsum`, field: 'lorebook-open', icon: 'arrow-up-right-from-square', onActivate: () => { void openLinkedLorebook(); } });
+    const openBook = createButtonRow({ label: t`Open Lorebook`, field: 'lorebook-open', icon: 'arrow-up-right-from-square', onActivate: () => { void openLinkedLorebook(); } });
     const lorebookSection = createPrefGroup({ title: t`Lorebook`, field: 'section-lorebook', rows: [lorebook, openBook] });
     lorebookSection.section.dataset.sbSection = 'lorebook';
     body.append(lorebookSection.section);

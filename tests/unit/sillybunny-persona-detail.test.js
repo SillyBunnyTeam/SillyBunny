@@ -512,6 +512,7 @@ describe('Scenario notes and immediate state', () => {
         await settle();
         expect(setPersonaLorebook).toHaveBeenCalledWith('first.png', 'Book B');
         expect(controller.isDirty()).toBe(false);
+        expect(host.querySelector('[data-sb-editor-field="lorebook-open"]').textContent).toBe('Open Lorebook');
         host.querySelector('[data-sb-editor-field="lorebook-open"]').click();
         await settle();
         expect(openWorldInfoEditor).toHaveBeenCalledWith('Book B');
