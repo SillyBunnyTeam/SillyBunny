@@ -366,8 +366,7 @@ export function mountWorldInfoEditor(container) {
         const options = [...(sort?.options ?? [])].filter(option => !option.hidden);
         menu(trigger, filterButton.getAttribute('aria-label'), [
             {
-                // HUMAN: replace — Show section title.
-                title: t`lorum ipsum`,
+                title: t`Show`,
                 items: viewButtons.map(control => ({
                     ...menuItem(translate(control.textContent.trim()), 'list', () => control.click()),
                     kind: 'radio',
@@ -375,8 +374,7 @@ export function mountWorldInfoEditor(container) {
                 })),
             },
             {
-                // HUMAN: replace — Sort by section title.
-                title: t`lorum ipsum`,
+                title: t`Sort By`,
                 items: options.map(option => ({
                     ...menuItem(translate(option.textContent.trim()), 'arrow-down-wide-short', () => {
                         sort.value = option.value;

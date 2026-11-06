@@ -522,7 +522,7 @@ describe('World Info shell', () => {
         container.querySelector('.sb-wi-sort-button').click();
         await settle();
         const { sections } = openActionMenu.mock.calls.at(-1)[0];
-        expect(sections.map(section => section.title)).toEqual(['lorum ipsum', 'lorum ipsum']);
+        expect(sections.map(section => section.title)).toEqual(['Show', 'Sort By']);
         expect(sections.map(section => section.items.map(item => item.checked))).toEqual([[true, false], [true, false]]);
         const trigger = container.querySelector('.sb-wi-book-switcher');
         trigger.click();
