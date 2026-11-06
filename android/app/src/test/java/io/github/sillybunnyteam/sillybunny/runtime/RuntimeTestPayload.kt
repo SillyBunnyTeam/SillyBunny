@@ -19,7 +19,7 @@ internal class RuntimeTestPayload(private val root: File) {
     val assets = sortedMapOf<String, ByteArray>()
     val natives = NATIVES.associateWith { "native $it".toByteArray() }.toSortedMap()
     val npmItems = listOf(
-        TestZip.file(".npmrc", "lorum\n"),
+        TestZip.file(".npmrc", "registry=https://registry.npmjs.org/\n"),
         TestZip.file("package.json", "{\"name\":\"npm\",\"version\":\"11.19.1\"}"),
         TestZip.file("bin/npm-cli.js", "require('../lib/cli.js')(process)\n"),
         TestZip.file("bin/npx-cli.js", "require('../lib/cli.js')(process)\n"),

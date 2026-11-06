@@ -29,8 +29,8 @@ internal class DocumentProxy(
     override fun onGetSize(): Long = perform { if (truncatePending) 0L else Os.fstat(descriptor).st_size }
 
     override fun onRead(offset: Long, size: Int, data: ByteArray): Int = perform {
-        if (!mode.readable) throw ErrnoException("TODO(copy)", OsConstants.EBADF)
-        if (offset < 0 || size !in 0..data.size) throw ErrnoException("TODO(copy)", OsConstants.EINVAL)
+        if (!mode.readable) throw ErrnoException("read of a document opened write-only", OsConstants.EBADF)
+        if (offset < 0 || size !in 0..data.size) throw ErrnoException("read with an offset or size out of range", OsConstants.EINVAL)
         if (truncatePending) return@perform 0
         var read = 0
         while (read < size) {
@@ -42,8 +42,8 @@ internal class DocumentProxy(
     }
 
     override fun onWrite(offset: Long, size: Int, data: ByteArray): Int = perform {
-        if (!mode.writable) throw ErrnoException("TODO(copy)", OsConstants.EBADF)
-        if (offset < 0 || size !in 0..data.size) throw ErrnoException("TODO(copy)", OsConstants.EINVAL)
+        if (!mode.writable) throw ErrnoException("write to a document opened read-only", OsConstants.EBADF)
+        if (offset < 0 || size !in 0..data.size) throw ErrnoException("write with an offset or size out of range", OsConstants.EINVAL)
         truncateIfPending()
         var written = 0
         while (written < size) {
@@ -52,7 +52,7 @@ internal class DocumentProxy(
             } else {
                 Os.pwrite(descriptor, data, written, size - written, offset + written)
             }
-            if (count <= 0) throw ErrnoException("TODO(copy)", OsConstants.EIO)
+            if (count <= 0) throw ErrnoException("write that made no progress", OsConstants.EIO)
             written += count
         }
         written
@@ -69,7 +69,7 @@ internal class DocumentProxy(
 
     fun checkActive() {
         if (!active || !workspace.isAvailable) {
-            throw ErrnoException("TODO(copy)", OsConstants.EBADF)
+            throw ErrnoException("document access after the lease closed or maintenance began", OsConstants.EBADF)
         }
     }
 
@@ -124,7 +124,7 @@ internal class DocumentProxy(
         } catch (failure: ErrnoException) {
             throw failure
         } catch (_: Exception) {
-            throw ErrnoException("TODO(copy)", OsConstants.EIO)
+            throw ErrnoException("document I/O", OsConstants.EIO)
         }
     }
 

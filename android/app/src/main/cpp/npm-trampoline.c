@@ -8,7 +8,7 @@
 
 static int fail(int error)
 {
-    fprintf(stderr, "TODO(copy) %d\n", error ? error : EIO);
+    fprintf(stderr, "npm or npx could not start Node. Error code %d\n", error ? error : EIO);
     return 127;
 }
 

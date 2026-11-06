@@ -82,11 +82,11 @@ class DataDocumentsProvider : DocumentsProvider() {
         sortOrder: String?,
     ): Cursor = access {
         val parent = ids.resolve(parentDocumentId)
-        if (!parent.directory) throw FileNotFoundException("TODO(copy)")
+        if (!parent.directory) throw FileNotFoundException("Parent is not a directory")
         val children = if (parent.relative == null) {
             listOf("data", "config.yaml")
         } else {
-            parent.file.list()?.toList() ?: throw FileNotFoundException("TODO(copy)")
+            parent.file.list()?.toList() ?: throw FileNotFoundException("Directory cannot be listed")
         }
         val listed = linkedMapOf<String, DocumentObservers.Child>()
         documentCursor(projection).apply {
@@ -127,7 +127,7 @@ class DataDocumentsProvider : DocumentsProvider() {
     override fun createDocument(parentDocumentId: String, mimeType: String, displayName: String): String = access {
         val parent = ids.resolve(parentDocumentId)
         if (!parent.directory || parent.relative?.let { it == "data" || it.startsWith("data/") } != true) {
-            throw FileNotFoundException("TODO(copy)")
+            throw FileNotFoundException("Parent is not data or a directory below it")
         }
         val name = DocumentNames.validate(displayName)
         val path = parent.file.toPath().resolve(name)
@@ -159,7 +159,7 @@ class DataDocumentsProvider : DocumentsProvider() {
         if (entry.file.name == name) return@access null
         val relative = requireNotNull(entry.relative)
         val target = entry.file.toPath().resolveSibling(name)
-        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) throw FileNotFoundException("TODO(copy)")
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) throw FileNotFoundException("Name already exists in this directory")
         // Only issued IDs can carry grants or cursors, and the ledger records every one of them, so the
         // subtree is never walked, marked or recorded. Old descendant IDs stop resolving with the old path.
         val oldIds = ids.issuedUnder(relative)
@@ -210,7 +210,7 @@ class DataDocumentsProvider : DocumentsProvider() {
         val proxy = access {
             signal?.throwIfCanceled()
             val entry = ids.resolve(documentId)
-            if (entry.directory) throw FileNotFoundException("TODO(copy)")
+            if (entry.directory) throw FileNotFoundException("A directory cannot be opened as a file")
             val requestedMode = DocumentMode.parse(mode)
             val descriptor = files.open(entry, requestedMode.openFlags)
             try {
@@ -265,7 +265,7 @@ class DataDocumentsProvider : DocumentsProvider() {
     private fun documentCursor(projection: Array<out String>?) = MatrixCursor(projection ?: DOCUMENT_PROJECTION)
 
     private fun requireMutable(entry: DocumentFiles.Entry) {
-        if (entry.relative?.startsWith("data/") != true) throw FileNotFoundException("TODO(copy)")
+        if (entry.relative?.startsWith("data/") != true) throw FileNotFoundException("Only items inside data can be renamed or deleted")
     }
 
     private fun MatrixCursor.addDocument(entry: DocumentFiles.Entry, id: String, context: Context) {

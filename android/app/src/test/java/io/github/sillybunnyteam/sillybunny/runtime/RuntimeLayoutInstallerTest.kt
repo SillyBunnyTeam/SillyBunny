@@ -63,7 +63,7 @@ class RuntimeLayoutInstallerTest {
         assertEquals(0, paths.opensslModulesDir.list()!!.size)
         assertEquals("require('../lib/cli.js')(process)\n", paths.npmCli.readText())
         assertTrue(paths.npxCli.isFile)
-        assertEquals("lorum\n", File(paths.npmPackageDir, ".npmrc").readText())
+        assertEquals("registry=https://registry.npmjs.org/\n", File(paths.npmPackageDir, ".npmrc").readText())
 
         val installed = InstalledRuntime.parse(paths.installedRuntime.readBytes())
         assertEquals(result.installed, installed)
@@ -295,7 +295,7 @@ class RuntimeLayoutInstallerTest {
             val local = RuntimeTestPayload(temporary.newFolder("mode-$mode"))
             val installed = ready(local.installer(mode).ensure()).installed
             assertEquals(mode, installed.npmSyncMode)
-            assertEquals("lorum\n", File(local.paths.npmPackageDir, ".npmrc").readText())
+            assertEquals("registry=https://registry.npmjs.org/\n", File(local.paths.npmPackageDir, ".npmrc").readText())
             treeOf(local.paths.npmPackageDir)
         }
         assertTrue(trees.first().contains("bin/"))

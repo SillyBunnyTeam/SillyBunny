@@ -18,7 +18,7 @@ class NpmArchiveTest {
     val temporary = TemporaryFolder()
 
     private val good = listOf(
-        file(".npmrc", "registry=lorum\n"),
+        file(".npmrc", "registry=https://registry.npmjs.org/\n"),
         file("package.json", "{\"name\":\"npm\"}", TestZip.STORED),
         Item("bin/"),
         file("bin/npm-cli.js", "require('../lib/cli.js')\n"),
@@ -35,7 +35,7 @@ class NpmArchiveTest {
         NpmSyncMode.entries.forEach { mode ->
             val target = File(temporary.root, "npm-$mode")
             archive.extractTo(target, mode)
-            assertEquals("registry=lorum\n", File(target, ".npmrc").readText())
+            assertEquals("registry=https://registry.npmjs.org/\n", File(target, ".npmrc").readText())
             assertEquals("module.exports = 1\n".repeat(50), File(target, "lib/cli.js").readText())
             assertEquals(0L, File(target, "empty.txt").length())
             assertTrue(File(target, "node_modules/@npmcli/arborist/index.js").isFile)

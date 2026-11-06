@@ -136,7 +136,7 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
         ids.clear()
         currentRootId()?.let(::revokeGrants)
         newGeneration()
-        if (maintenanceFile.exists() && !maintenanceFile.delete()) throw FileNotFoundException("TODO(copy)")
+        if (maintenanceFile.exists() && !maintenanceFile.delete()) throw FileNotFoundException("Could not delete the documents-maintenance file, so file access stays closed")
         maintenance = false
         rootsChanged(currentRootId())
     }
@@ -342,7 +342,7 @@ internal class DocumentsWorkspace private constructor(val context: Context) {
         } else {
             newGeneration()
         }
-        if (!stored.matches(DocumentFiles.UUID_PATTERN)) throw FileNotFoundException("TODO(copy)")
+        if (!stored.matches(DocumentFiles.UUID_PATTERN)) throw FileNotFoundException("The documents-generation file does not hold a valid UUID")
         generation = stored
         return stored
     }
