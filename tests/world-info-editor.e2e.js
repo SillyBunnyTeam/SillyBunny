@@ -647,7 +647,7 @@ test.describe('World Info selection mode', () => {
         await editor.locator('.sb-selection-select-all').click();
         await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
         await editor.locator('.sb-wi-search').evaluate(node => { node.value = 'missing'; node.dispatchEvent(new Event('input', { bubbles: true })); });
-        await expect(editor.locator('.sb-wi-list-status')).toHaveText('No results');
+        await expect(editor.locator('.sb-wi-list-status')).toHaveText('No Results');
         await expect(editor.locator('.sb-selection-title')).toHaveText('3 selected');
         await page.evaluate(() => {
             const select = document.getElementById('world_editor_select');

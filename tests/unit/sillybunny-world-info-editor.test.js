@@ -439,6 +439,7 @@ describe('World Info shell', () => {
 
     test('an empty book routes to an empty status with New Entry', async () => {
         await mount({ name: 'Book A', data: book(0) });
+        expect(container.querySelector('.sb-wi-list-status .sb-status-page__title').textContent).toBe('No Entries');
         expect(container.querySelector('.sb-wi-list-status').textContent).toContain('New Entry');
         expect(container.querySelector('.sb-wi-list-box').hidden).toBe(true);
         expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(true);
@@ -455,10 +456,21 @@ describe('World Info shell', () => {
         expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(false);
     });
 
-    test('filtered nonempty books route to No results, including view-only filters', async () => {
+    test.each([
+        ['1 entry · 1 active', 1, 0],
+        ['3 entries · 2 active', 3, 1],
+        ['0 entries · 0 active', 0, 0],
+    ])('the header reads "%s" from one string per form', async (text, count, disabled) => {
+        const data = book(count);
+        Object.values(data.entries).slice(0, disabled).forEach(entry => { entry.disable = true; });
+        await mount({ name: 'Book A', data });
+        expect(container.querySelector('.sb-wi-list-subtitle').textContent).toBe(text);
+    });
+
+    test('filtered nonempty books route to No Results, including view-only filters', async () => {
         visibleEntries = [];
         await mount({ name: 'Book A', data: book(3) });
-        expect(container.querySelector('.sb-wi-list-status').textContent).toBe('No results');
+        expect(container.querySelector('.sb-wi-list-status').textContent).toBe('No Results');
         expect(container.querySelector('.sb-wi-list-status button')).toBeNull();
         expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(true);
     });
@@ -545,7 +557,7 @@ describe('World Info shell', () => {
         await mount({ name: 'Book A', data: book(2) });
         await render(liveState, 7);
         expect(mountEntry).toHaveBeenLastCalledWith(expect.objectContaining({ uid: 7, data: liveState.data }));
-        expect(container.querySelector('.sb-wi-list-status').textContent).toBe('No results');
+        expect(container.querySelector('.sb-wi-list-status').textContent).toBe('No Results');
     });
 
     test.each([[0, null], [1, 'save'], [2, 'discard']])('delayed numeric navigation guards edits made after New Entry (choice %i)', async (choice, method) => {

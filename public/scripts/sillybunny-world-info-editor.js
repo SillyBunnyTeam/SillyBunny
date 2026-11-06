@@ -621,8 +621,7 @@ export function mountWorldInfoEditor(container) {
         const total = allEntries.length;
         const active = allEntries.filter(entry => !entry.disable).length;
         if (selection?.isActive) selection.select(existingSelectedUids());
-        // HUMAN: replace — entry-count and active-count subtitle labels.
-        bookSubtitle.textContent = `${total} ${t`lorum ipsum`} · ${active} ${t`lorum ipsum`}`;
+        bookSubtitle.textContent = total === 1 ? t`${total} entry · ${active} active` : t`${total} entries · ${active} active`;
         listStatus.hidden = Boolean(state.data && entries.length);
         entriesHeading.hidden = !listStatus.hidden;
         entryBox.hidden = !listStatus.hidden;
@@ -636,10 +635,9 @@ export function mountWorldInfoEditor(container) {
                 ],
             });
         } else if (!entries.length) {
-            // HUMAN: replace — empty-book title; a filtered nonempty book instead shows No results.
             showStatus(listStatus, {
                 icon: total ? 'magnifying-glass' : 'book-open',
-                title: total ? t`No results` : t`lorum ipsum`, compact: true,
+                title: total ? t`No Results` : t`No Entries`, compact: true,
                 actions: total ? [] : [{ label: t`New Entry`, primary: true, onActivate: () => run(() => clickTransport('world_popup_new')) }],
             });
         }
