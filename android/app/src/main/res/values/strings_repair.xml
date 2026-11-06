@@ -4,16 +4,16 @@
          their label, never formatted into it. -->
 
     <!-- Repair confirmation (plan §4.7): what will happen, and that nothing is deleted. -->
-    <string name="repair_confirm_title">TODO(copy)</string>
+    <string name="repair_confirm_title">Repair SillyBunny?</string>
     <string name="repair_confirm_body">TODO(copy)</string>
     <string name="repair_confirm_nothing_deleted">TODO(copy)</string>
     <!-- File managers lose their access during Repair and must be granted it again afterwards (plan §4.8). -->
     <string name="repair_confirm_file_access">TODO(copy)</string>
-    <string name="repair_confirm_action">TODO(copy)</string>
-    <string name="repair_close_action">TODO(copy)</string>
+    <string name="repair_confirm_action">Repair SillyBunny</string>
+    <string name="repair_close_action">Close</string>
 
     <!-- Progress. -->
-    <string name="repair_progress_title">TODO(copy)</string>
+    <string name="repair_progress_title">Repairing SillyBunny</string>
     <string name="repair_progress_description">TODO(copy)</string>
     <string name="repair_step_checking">TODO(copy)</string>
     <string name="repair_step_stopping_server">TODO(copy)</string>
@@ -23,12 +23,12 @@
     <string name="repair_step_reinstalling">TODO(copy)</string>
     <string name="repair_step_starting_server">TODO(copy)</string>
     <string name="repair_cancelling">TODO(copy)</string>
-    <string name="repair_lines_description">TODO(copy)</string>
-    <string name="repair_cancel_action">TODO(copy)</string>
-    <string name="repair_cancel_dialog_title">TODO(copy)</string>
+    <string name="repair_lines_description">Reinstall output</string>
+    <string name="repair_cancel_action">Cancel reinstall…</string>
+    <string name="repair_cancel_dialog_title">Cancel reinstall?</string>
     <string name="repair_cancel_dialog_body">TODO(copy)</string>
-    <string name="repair_cancel_dialog_confirm">TODO(copy)</string>
-    <string name="repair_cancel_dialog_dismiss">TODO(copy)</string>
+    <string name="repair_cancel_dialog_confirm">Cancel reinstall</string>
+    <string name="repair_cancel_dialog_dismiss">Continue reinstall</string>
 
     <!-- Refusals: nothing was stopped or moved. -->
     <string name="repair_refused_title">TODO(copy)</string>
@@ -59,53 +59,53 @@
     <string name="repair_failed_cancelled">TODO(copy)</string>
     <string name="repair_failed_interrupted">TODO(copy)</string>
     <string name="repair_failed_unexpected_error">TODO(copy)</string>
-    <string name="repair_exit_code_label">TODO(copy)</string>
+    <string name="repair_exit_code_label">Exit code</string>
     <string name="repair_data_location_label">TODO(copy)</string>
     <!-- The branch a reinstall installs (shown with progress and failures), and the default it can switch to. -->
-    <string name="repair_ref_label">TODO(copy)</string>
-    <string name="repair_default_ref_label">TODO(copy)</string>
+    <string name="repair_ref_label">Branch</string>
+    <string name="repair_default_ref_label">Default branch</string>
     <string name="repair_nothing_moved">TODO(copy)</string>
-    <string name="repair_retry_action">TODO(copy)</string>
+    <string name="repair_retry_action">Try again</string>
     <string name="repair_retry_default_action">TODO(copy)</string>
-    <string name="repair_view_logs_action">TODO(copy)</string>
-    <string name="repair_share_logs_action">TODO(copy)</string>
+    <string name="repair_view_logs_action">View logs</string>
+    <string name="repair_share_logs_action">Share logs…</string>
 
     <!-- Success. -->
-    <string name="repair_succeeded_title">TODO(copy)</string>
+    <string name="repair_succeeded_title">SillyBunny repaired</string>
     <string name="repair_succeeded_body">TODO(copy)</string>
     <string name="repair_succeeded_file_access">TODO(copy)</string>
-    <string name="repair_kept_folder_label">TODO(copy)</string>
+    <string name="repair_kept_folder_label">Leftover folder</string>
     <string name="repair_server_not_started">TODO(copy)</string>
-    <string name="repair_start_server_action">TODO(copy)</string>
-    <string name="repair_done_action">TODO(copy)</string>
+    <string name="repair_start_server_action">Start server</string>
+    <string name="repair_done_action">Close</string>
 
     <!-- Leftover folders (plan §4.6). -->
-    <string name="leftover_title">TODO(copy)</string>
+    <string name="leftover_title">Leftover folders</string>
     <string name="leftover_loading_description">TODO(copy)</string>
     <string name="leftover_empty">TODO(copy)</string>
-    <string name="leftover_moved_at_label">TODO(copy)</string>
-    <string name="leftover_size_label">TODO(copy)</string>
+    <string name="leftover_moved_at_label">Moved on</string>
+    <string name="leftover_size_label">Size</string>
     <string name="leftover_size_approximate_label">TODO(copy)</string>
-    <string name="leftover_measuring">TODO(copy)</string>
+    <string name="leftover_measuring">Measuring size</string>
     <string name="leftover_refusal_not_a_leftover">TODO(copy)</string>
     <string name="leftover_refusal_repair_source">TODO(copy)</string>
     <string name="leftover_refusal_holds_data_root">TODO(copy)</string>
     <string name="leftover_refusal_data_root_unknown">TODO(copy)</string>
     <string name="leftover_refusal_unsupported">TODO(copy)</string>
-    <string name="leftover_close_action">TODO(copy)</string>
+    <string name="leftover_close_action">Close</string>
 
     <!-- The separate, confirmed deletion screen: one named folder at a time. -->
     <string name="leftover_delete_title">TODO(copy)</string>
     <string name="leftover_delete_warning">TODO(copy)</string>
-    <string name="leftover_delete_action">TODO(copy)</string>
+    <string name="leftover_delete_action">Delete folder…</string>
     <string name="leftover_delete_dialog_title">TODO(copy)</string>
     <string name="leftover_delete_dialog_body">TODO(copy)</string>
-    <string name="leftover_delete_dialog_confirm">TODO(copy)</string>
-    <string name="leftover_delete_dialog_dismiss">TODO(copy)</string>
-    <string name="leftover_deleting">TODO(copy)</string>
-    <string name="leftover_deleted">TODO(copy)</string>
+    <string name="leftover_delete_dialog_confirm">Delete folder</string>
+    <string name="leftover_delete_dialog_dismiss">Keep folder</string>
+    <string name="leftover_deleting">Deleting folder</string>
+    <string name="leftover_deleted">Folder deleted</string>
     <string name="leftover_partial">TODO(copy)</string>
-    <string name="leftover_removed_label">TODO(copy)</string>
-    <string name="leftover_remaining_label">TODO(copy)</string>
-    <string name="leftover_back_action">TODO(copy)</string>
+    <string name="leftover_removed_label">Items deleted</string>
+    <string name="leftover_remaining_label">Items left</string>
+    <string name="leftover_back_action">Back</string>
 </resources>

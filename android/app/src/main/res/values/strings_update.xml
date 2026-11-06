@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="update_title">TODO(copy)</string>
+    <string name="update_title">App update</string>
     <string name="update_required_title">TODO(copy)</string>
     <string name="update_available_body">TODO(copy)</string>
     <string name="update_required_body">TODO(copy)</string>
-    <string name="update_confirm">TODO(copy)</string>
-    <string name="update_later">TODO(copy)</string>
-    <string name="update_retry">TODO(copy)</string>
+    <string name="update_confirm">Update</string>
+    <string name="update_later">Later</string>
+    <string name="update_retry">Try again</string>
     <string name="update_checking">TODO(copy)</string>
     <string name="update_downloading">TODO(copy)</string>
     <string name="update_installing">TODO(copy)</string>
