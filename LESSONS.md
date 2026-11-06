@@ -268,6 +268,17 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/forwarded-client-address.test.js`, `tests/require-https-client-address.test.js`, `tests/basic-auth-configured-credentials.test.js`, `tests/host-whitelist-enabled-switch.test.js`.
 - **Fixes:** `1b127a865` (whitelist), `06dc7a6e0` (rate-limit keys), `e059e5d23` (`requireHttps`), `0a836ed40` (basic auth credentials), `30ecce06d` (host whitelist switch).
 
+### Slash commands and STscript
+
+- **Breaks:** the STscript parser reads a script differently from how it is written. A closing mark, a pipe or an escaped character is skipped or taken twice, so a command ends up in another command's value, a value gains text such as `undefined` or `[Closure]`, or the parser throws a `TypeError` instead of a parser error.
+- **Cause:** the parser moves one index through the text. Branches that return from a nested parse (a nested block comment, the quoted rest of a split-count command, an unclosed quote in lenient parsing) took one more character. Positions were counted back from an index that had already moved past whitespace or a closing quote. The split branches lost an escaped first character, because the parser took it before it started to split.
+- **Files:** `public/scripts/slash-commands/SlashCommandParser.js`, `public/scripts/slash-commands/SlashCommandParserError.js`.
+- **Guards:** every `SlashCommandParserError` carries the text and the index. The error handler of `executeSlashCommandsWithOptions()` reads its line, column and hint, and without them it throws a `TypeError` instead of showing the parser error.
+- **Tests:** `tests/frontend/StscriptParserFixes.e2e.js` (one test or more for each fix, through `tests/frontend/stscript-parser-harness.js`).
+- **Limit:** macro positions are still counted back from the end of a value, so a macro is indexed one character late for each escape that follows it in the value. With `REPLACE_GETVAR`, the macro index describes the replaced text, not the source.
+- **Open:** `SlashCommandExecutionError.hint` slices its source as the parser error did, so an execution error on a line that another line follows shows the line without its last character (`/let x 1 | /let x 2` followed by a new line shows `/let x `).
+- **Fixes:** `15b28ab1b` (nested block comments), `cebf47278` (`/let` with an empty `key=`), `627eb8cc8` (split argument error without text), `aa6f61ce1` (escaped first split value), `b420e832d` (`/parser-flag` without a name), `996ce24cf` (quote flags for closures), `f3e74ca1d` (quoted split-count rest), `87bd300e0` (closure in a joined rest), `cfc4fcf73` (macro positions in quoted values), `5e17bdc22` (unclosed quote in lenient parsing), `039e44a8e` (unknown command position), `643ad824a` (error hint line).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
