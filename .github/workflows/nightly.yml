@@ -176,7 +176,7 @@ jobs:
 
   report:
     name: 🌙 Report result
-    needs: [gate, checks]
+    needs: [gate, checks, android]
     if: always() && needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -190,12 +190,15 @@ jobs:
           GH_REPO: ${{ github.repository }}
           SHA: ${{ needs.gate.outputs.sha }}
           RESULT: ${{ needs.checks.result }}
+          ANDROID_RESULT: ${{ needs.android.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          case "$RESULT" in
-            success) state=success ;;
-            cancelled) state=error ;;
+          # A failure in either job outranks a cancellation in the other.
+          case "$RESULT/$ANDROID_RESULT" in
+            success/success) state=success ;;
+            failure/* | */failure) state=failure ;;
+            cancelled/* | */cancelled) state=error ;;
             *) state=failure ;;
           esac
           gh api "repos/$GH_REPO/statuses/$SHA" -f state="$state" -f context="$NIGHTLY_STATUS_CONTEXT" -f target_url="$RUN_URL" > /dev/null
@@ -257,3 +260,14 @@ jobs:
           elif [ -n "$issue" ]; then
             gh issue close "$issue" --comment "No longer stale (latest stable: $tag)."
           fi
+
+  # The Android smoke (task 6.4) of the staging SHA the gate resolved; see android-smoke.yml.
+  android:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/android-smoke.yml
+    with:
+      default-ref: staging
+      ref: ${{ needs.gate.outputs.sha }}

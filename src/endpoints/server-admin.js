@@ -8,6 +8,8 @@ import yaml from 'yaml';
 import { sync as commandExistsSync } from 'command-exists';
 import simpleGit from 'simple-git';
 
+// SillyBunny: share the APK runtime gate between Server Tools update paths.
+import { ANDROID_APP_UPDATE_REQUIRED, checkAndroidAppGate } from '../android-app-gate.js';
 import { APP_NAME, formatRuntimeLabel, isBunRuntime, isNativeTermuxEnvironment } from '../runtime.js';
 import {
     getBranchDisplayNames,
@@ -1099,7 +1101,27 @@ router.post('/update', requireAdminMiddleware, async (_request, response) => {
         }
 
         await git.fetch();
-        await git.raw(['merge', '--ff-only', repository.trackingBranch]);
+
+        // SillyBunny: block APK updates requiring a newer runtime before merging.
+        const androidAppGate = await checkAndroidAppGate(git, { ref: repository.trackingBranch, branch: repository.branch });
+        if (androidAppGate.blocked) {
+            if (stashed) {
+                stashPopWarning = await restoreAutoStash(git);
+            }
+            return response.status(409).json({
+                error: 'TODO(copy)',
+                code: ANDROID_APP_UPDATE_REQUIRED,
+                required: androidAppGate.required,
+                installed: androidAppGate.installed,
+                reason: androidAppGate.reason,
+                repository,
+                stashed,
+                stashPopWarning,
+            });
+        }
+
+        // SillyBunny: merge the checked APK commit even if a concurrent fetch moves the ref.
+        await git.raw(['merge', '--ff-only', androidAppGate.commit ?? repository.trackingBranch]);
 
         if (stashed) {
             stashPopWarning = await restoreAutoStash(git, { reason: 'after update' });
@@ -1224,8 +1246,25 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
 
         const currentBranch = toTrimmedString(await git.revparse(['--abbrev-ref', 'HEAD']).catch(() => ''));
 
+        // SillyBunny: gate the resolved APK branch before either checkout path.
+        const androidAppGate = await checkAndroidAppGate(git, { ref: remoteBranch || branch, branch: currentBranch });
+        if (androidAppGate.blocked) {
+            if (hasLocalChanges && autoStash) {
+                await restoreAutoStash(git);
+            }
+            return response.status(409).json({
+                error: 'TODO(copy)',
+                code: ANDROID_APP_UPDATE_REQUIRED,
+                required: androidAppGate.required,
+                installed: androidAppGate.installed,
+                reason: androidAppGate.reason,
+                branch,
+            });
+        }
+
         if (remoteBranch && isRuntimeBranch(currentBranch)) {
-            await git.raw(['checkout', '-B', currentBranch, remoteBranch]);
+            // SillyBunny: keep runtime APK checkouts pinned to the checked commit.
+            await git.raw(['checkout', '-B', currentBranch, androidAppGate.commit ?? remoteBranch]);
             await git.raw(['branch', `--set-upstream-to=${remoteBranch}`, currentBranch]);
         } else {
             await git.checkout(branch);

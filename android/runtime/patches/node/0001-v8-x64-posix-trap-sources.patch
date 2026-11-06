@@ -1,0 +1,12 @@
+--- a/tools/v8_gypfiles/v8.gyp
++++ b/tools/v8_gypfiles/v8.gyp
+@@ -1240,7 +1240,8 @@
+             }],
+             ['v8_enable_webassembly==1', {
+               'conditions': [
+-                ['OS in "linux mac ios freebsd openharmony"', {
++                # Android cross builds still use native POSIX snapshot tools.
++                ['OS in "linux mac ios freebsd openharmony android"', {
+                   'sources': [
+                     '<(V8_ROOT)/src/trap-handler/handler-inside-posix.cc',
+                     '<(V8_ROOT)/src/trap-handler/handler-outside-posix.cc',

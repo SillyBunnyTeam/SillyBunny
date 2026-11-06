@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fixture-sw</title></head><body><h1>sw</h1>
+<script>
+window.results = {};
+async function registerWorker() {
+  try {
+    await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready;
+    if (!navigator.serviceWorker.controller) {
+      await new Promise((resolve) => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
+    }
+    results.registered = 'ok';
+    results.probe = await fetch('/sw-probe?via=sw').then((r) => r.text());
+    results.leak = await fetch('/sw-leak').then((r) => r.text(), (e) => 'err:' + e.name);
+    results.leakLabel = await fetch('/sw-leak-label').then((r) => r.text(), (e) => 'err:' + e.name);
+  } catch (e) {
+    results.registered = 'err:' + e.name + ':' + e.message;
+  }
+}
+async function unregisterAll() {
+  delete results.unregistered;
+  const regs = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(regs.map((r) => r.unregister()));
+  results.unregistered = String(regs.length);
+}
+</script>
+</body></html>

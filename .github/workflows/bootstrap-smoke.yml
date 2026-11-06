@@ -487,3 +487,77 @@ jobs:
           if ($output -notmatch 'already installed') { throw 'Rerunning the installer did not report an existing install.' }
           $headAfter = git -C $installDir rev-parse HEAD
           if ($headAfter -ne $headBefore) { throw "Rerunning the installer moved HEAD from $headBefore to $headAfter." }
+
+  # The Android smoke (plan §7.1) runs only when a pull request changes a file it depends on. The match is a
+  # script step because tests/bootstrap-installer.test.js keeps this workflow free of trigger file filters.
+  android-changes:
+    name: Android smoke change detection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The pull request's merge commit and its first parent, the base branch tip.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Detect Android-relevant changes
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          # case-statement globs, in which * also matches /.
+          ANDROID_FILES: |
+            android/*
+            start.sh
+            scripts/*
+            src/middleware/launchToken.js
+            src/server-main.js
+            src/android-app-gate.js
+            src/endpoints/server-admin.js
+            package.json
+            package-lock.json
+            bun.lock
+            .npmrc
+            .github/workflows/android-smoke.yml
+            tests/android-smoke/*
+            tests/frontend/frontent-test-utils.js
+            tests/package.json
+            tests/package-lock.json
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != pull_request ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # --no-renames lists both paths of a rename, so a file moved out of android/ still counts. -z prints
+          # each path as it is, without the quoting git adds to non-ASCII and other unusual names.
+          changed=$(git diff --no-renames --name-only -z HEAD^1 HEAD | tr '\0' '\n')
+          run=false
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            while IFS= read -r pattern; do
+              [ -n "$pattern" ] || continue
+              # shellcheck disable=SC2254 # the patterns are globs on purpose
+              case "$file" in
+                $pattern)
+                  echo "Android-relevant: $file"
+                  run=true
+                  ;;
+              esac
+            done <<< "$ANDROID_FILES"
+          done <<< "$changed"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  android:
+    needs: android-changes
+    if: needs.android-changes.outputs.run == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/android-smoke.yml
+    with:
+      default-ref: ${{ github.base_ref == 'release' && 'release' || 'staging' }}

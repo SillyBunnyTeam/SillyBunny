@@ -26,3 +26,6 @@
 # Release artifacts and release automation
 /.github/workflows/release*.yml @TheLonelyDevil9 @Geechan
 /.github/workflows/release*.yaml @TheLonelyDevil9 @Geechan
+
+# Android app, its runtime pins and the APK release signing tooling
+/android/** @TheLonelyDevil9 @Geechan

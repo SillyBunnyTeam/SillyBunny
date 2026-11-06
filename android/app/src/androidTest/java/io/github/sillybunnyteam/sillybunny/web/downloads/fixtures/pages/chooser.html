@@ -1,0 +1,97 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:44px;margin:4px 8px;background:#ccd;border:0;font:15px sans-serif;line-height:44px;text-align:center;color:#000}</style>
+<title>fixture-chooser</title></head><body>
+<input class="b" id="single" type="file" accept=".json,.settings">
+<input class="b" id="multi" type="file" multiple accept=".json,image/png,.yaml,.yml,.charx,.byaf">
+<input class="b" id="mime" type="file" multiple accept="image/png,image/jpeg">
+<input class="b" id="wild" type="file" accept="image/*">
+<input class="b" id="star" type="file" multiple accept="*.json">
+<input class="b" id="any" type="file" multiple>
+<button class="b" id="later">later</button>
+<button class="b" id="tooLate">too late</button>
+<button class="b" id="detached">detached</button>
+<label class="b" id="label" for="hidden">label</label><input id="hidden" type="file" accept=".jsonl" style="display:none">
+<button class="b" id="fsOpen">fs open</button>
+<button class="b" id="fsOpenWrite">fs open write</button>
+<button class="b" id="fsSave">fs save</button>
+<button class="b" id="fsDir">fs dir</button>
+<script>
+'use strict';
+window.results = {};
+// Blob.text() needs Chrome 76; the API 29 image's WebView 74 only has FileReader.
+const readText = (file) => typeof file.text === 'function' ? file.text() : new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+});
+const describe = (files) => JSON.stringify(Array.from(files, (file) => ({ name: file.name, type: file.type, size: file.size })));
+const watch = (input, id) => {
+    input.addEventListener('change', async () => {
+        results[id] = describe(input.files);
+        try {
+            results[id + 'Text'] = input.files.length ? await readText(input.files[0]) : '';
+        } catch (error) {
+            results[id + 'Text'] = 'error ' + error.name;
+        }
+    });
+    input.addEventListener('cancel', () => { results[id + 'Cancel'] = true; });
+};
+for (const id of ['single', 'multi', 'mime', 'wild', 'star', 'any', 'hidden']) {
+    watch(document.getElementById(id), id);
+}
+// Async activation, as after a confirmation popup: the click comes later than the tap.
+const delayed = (delay, id) => () => setTimeout(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    watch(input, id);
+    input.click();
+    results[id + 'Clicked'] = true;
+}, delay);
+document.getElementById('later').addEventListener('click', delayed(1000, 'later'));
+document.getElementById('tooLate').addEventListener('click', delayed(6000, 'tooLate'));
+document.getElementById('detached').addEventListener('click', () => {
+    // A detached input created on demand, as the ZIP import and slash-command helpers do.
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.setAttribute('accept', '.zip,application/zip,application/x-zip-compressed');
+    watch(input, 'detached');
+    input.click();
+});
+const fileSystem = (id, run) => document.getElementById(id).addEventListener('click', async () => {
+    results[id] = 'started';
+    try {
+        results[id] = await run();
+    } catch (error) {
+        results[id] = 'error ' + error.name;
+    }
+});
+fileSystem('fsOpen', async () => {
+    if (!window.showOpenFilePicker) return 'missing';
+    const [handle] = await showOpenFilePicker();
+    return 'file ' + (await handle.getFile()).name;
+});
+fileSystem('fsOpenWrite', async () => {
+    if (!window.showOpenFilePicker) return 'missing';
+    const [handle] = await showOpenFilePicker();
+    const writable = await handle.createWritable();
+    await writable.write('edited');
+    await writable.close();
+    return 'written ' + (await handle.getFile()).name;
+});
+fileSystem('fsSave', async () => {
+    if (!window.showSaveFilePicker) return 'missing';
+    const handle = await showSaveFilePicker({ suggestedName: 'saved.json' });
+    const writable = await handle.createWritable();
+    await writable.write('{"saved":true}');
+    await writable.close();
+    return 'saved ' + handle.name;
+});
+fileSystem('fsDir', async () => {
+    if (!window.showDirectoryPicker) return 'missing';
+    const handle = await showDirectoryPicker();
+    return 'dir ' + handle.name;
+});
+</script>
+</body></html>

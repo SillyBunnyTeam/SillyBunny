@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">SillyBunny</string>
+    <string name="server_service_subtype">Runs a local Node.js server on this device, listening on loopback only, that the app’s WebView uses. The service keeps that server, and the install and Repair jobs that set it up, alive while the app is in the background. The user can stop it from the ongoing notification.</string>
+</resources>
