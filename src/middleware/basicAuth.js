@@ -4,6 +4,7 @@
  * Also supports session-based Bearer token authentication when sessionAuth is enabled.
  */
 import { Buffer } from 'node:buffer';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import storage from 'node-persist';
 import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
@@ -21,6 +22,25 @@ const basicAuthLimiter = new RateLimiterMemory({
     points: BASIC_AUTH_ATTEMPTS > 0 ? BASIC_AUTH_ATTEMPTS : Number.MAX_SAFE_INTEGER,
     duration: 60,
 });
+
+/**
+ * Checks credentials from the request against the configured user in constant time.
+ * Both sides are hashed first, because timingSafeEqual needs inputs of the same length.
+ * @param {string} username Username from the request
+ * @param {string} password Password from the request
+ * @param {unknown} configuredUsername Configured username
+ * @param {unknown} configuredPassword Configured password
+ * @returns {boolean} False when a configured value is empty or not a string
+ */
+function matchesConfiguredUser(username, password, configuredUsername, configuredPassword) {
+    if (typeof configuredUsername !== 'string' || typeof configuredPassword !== 'string' || !configuredUsername || !configuredPassword) {
+        return false;
+    }
+    const digest = value => crypto.createHash('sha256').update(value).digest();
+    const usernameMatches = crypto.timingSafeEqual(digest(username), digest(configuredUsername));
+    const passwordMatches = crypto.timingSafeEqual(digest(password), digest(configuredPassword));
+    return usernameMatches && passwordMatches;
+}
 
 const basicAuthMiddleware = async function (request, response, callback) {
     const unauthorizedResponse = (res) => {
@@ -81,7 +101,8 @@ const basicAuthMiddleware = async function (request, response, callback) {
             .split(':');
         const password = passwordParts.join(':');
 
-        if (!usePerUserAuth && username === basicAuthUserName && password === basicAuthUserPassword) {
+        // SillyBunny: an empty configured credential matches nothing, and the time of the comparison does not depend on how much of the input is correct.
+        if (!usePerUserAuth && matchesConfiguredUser(username, password, basicAuthUserName, basicAuthUserPassword)) {
             await basicAuthLimiter.delete(ip);
             return callback();
         } else if (usePerUserAuth) {

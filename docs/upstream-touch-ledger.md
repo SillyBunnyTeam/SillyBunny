@@ -471,6 +471,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-08-11 PR #754 remote-save integrity fix. |
 | Owner | Bugfix integrator. |
 
+### `src/endpoints/files.js`, `src/endpoints/chats.js`, `src/endpoints/groups.js`, `src/endpoints/vectors.js`, and `src/endpoints/assets.js` - user folder paths and route errors
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/files.js`, `src/endpoints/chats.js`, `src/endpoints/groups.js`, `src/endpoints/vectors.js`, `src/endpoints/assets.js`. |
+| Area | Data Bank file delete and verify, group chat lists, chat export, chat info, group delete, vector indexes and purge, asset delete and download, and character asset lists. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | `files.js`: `/delete` and `/verify` check the joined path with `isPathUnderParent()` instead of `startsWith()`. `chats.js`: the new `getGroupChatPath()` returns the chat file path for a string or number ID whose path stays inside the group chats folder, and null otherwise; `/search` and `/recent` skip an ID that it refuses. `/export` runs its whole body inside one `try` block, answers 400 for a `file` that is not a string or that sanitizes to an empty name, and awaits a promise that its read stream and readline settle, with `error` listeners on both; its `line` listener skips a line that throws and logs one warning with the count. `getChatInfo()` reads `mes` only when it is a string. `groups.js`: `hasValidChatIds()` makes `/create` and `/edit` answer 400 for a chat list with an ID that `getGroupChatPath()` refuses, and `/delete` answers 400 for an `id` that is not a string or a number. `vectors.js`: `getIndex()` throws `InvalidVectorFolderError` for a source or collection ID that sanitizes to an empty name, `regenerateCorruptedIndexErrorHandler()` answers 400 for that error and catches errors from its own regeneration, and `/purge` answers 400 for a collection ID that sanitizes to an empty name. `assets.js`: `validateAssetFileName()` refuses a value that is not a string; `/download`, `/delete` and `/character` compare the category with `===`; `/character` answers 400 for a `name` that is not a string; `/download` writes through `pipeline()` instead of `pipe()` and `finished()`, and its catch block answers only when `response.headersSent` is false. |
+| Protecting tests | `tests/route-guards-scenarios.test.js` and `tests/route-guards-rows.test.js`; the rows use the hostile file name harness in `tests/util/hostile-file-names-*.js`. `tests/base64-atomic-writes.test.js` mocks `util.js` with `isPathUnderParent`, which `files.js` imports. |
+| Validation | `npm run test:unit --prefix tests -- route-guards-scenarios.test.js route-guards-rows.test.js` (each test fails with the base commit's version of the files it covers: all 31 with the first four files, and the 12 asset tests with `assets.js`), the suites that load these routers, `npm run lint`, `npm run lint --prefix tests`, one request for each guard on Bun 1.4.4 and Node 24.22.1 scratch servers, and the new suites on Linux with Node 24. |
+| Rollback path | Revert the hunks in the five files, delete `tests/route-guards-scenarios.test.js` and `tests/route-guards-rows.test.js`, and remove `isPathUnderParent` from the `util.js` mock in `tests/base64-atomic-writes.test.js`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 user folder paths and route errors, with the asset routes. |
+| Owner | TODO(copy) |
+
 ### `public/index.html`, `public/style.css`, `public/css/mobile-styles.css`, `public/script.js`, and `public/scripts/group-chats.js` - group chat branch creation
 | Field | Value |
 | --- | --- |
@@ -840,6 +854,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Feature maintainer. |
 
+### `src/server-main.js` - route errors and crash exit
+| Field | Value |
+| --- | --- |
+| File | `src/server-main.js`. |
+| Area | Server lifecycle and request error handling. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/route-errors.js` for route errors; `src/server-supervisor.js` owns `SERVER_CRASH_EXIT_CODE` and the crash relaunch. |
+| Adapter shape | `forwardAsyncRouteErrors()` runs once before `express()`. The startup chain registers `handleRouteError` with `app.use()` right after `apply404Middleware`, before the server listens. The CSRF block passes `csrfSyncProtection.invalidCsrfTokenError` to `answerWithErrorMessage()` after it sets that error's message, so the refusal answers 403 with the message as plain text. The `uncaughtException` and `unhandledRejection` handlers call `exitAfterCrash()`, which starts a `SUPERVISOR_FORCE_KILL_TIMEOUT_MS` timer that exits with `SERVER_CRASH_EXIT_CODE` and runs `exitProcess(SERVER_CRASH_EXIT_CODE)`. |
+| Protecting tests | `tests/route-errors.test.js`, `tests/server-supervisor-crash-restart.test.js`, `tests/csrf-refusal-retry.test.js`. `tests/shutdown.test.js` and `tests/server-restart-monitor.test.js` read `src/server-main.js` and pass unchanged. |
+| Validation | `npm run test:unit --prefix tests -- route-errors.test.js server-supervisor-crash-restart.test.js csrf-refusal-retry.test.js`, `node --check src/server-main.js`, `npm run lint`, and scratch servers under Bun 1.4.4 and Node.js 24.22.1 in production mode: a rejected async route answers 500 while the server keeps answering, an uncaught exception relaunches the server, the sixth crash within 10 minutes ends the supervisor with exit code 1, and with `FORCE_COLOR=1` a request with a stale CSRF token gets 403 `text/plain` with `Invalid CSRF token. Please refresh the page and try again.` and no escape characters, after which the Chat Backups list in headless Chromium refreshes the token once and loads. |
+| Rollback path | Remove the `forwardAsyncRouteErrors()` call, the `handleRouteError` registration, the `answerWithErrorMessage()` call, `exitAfterCrash()` (the handlers call `exitProcess()` again) and the `src/route-errors.js` import, then delete `src/route-errors.js`, `tests/route-errors.test.js` and `tests/csrf-refusal-retry.test.js`. No stored data or settings change. After the rollback a rejected async route leaves its request unanswered and ends the server with exit code 0, which the supervisor does not relaunch, and the CSRF refusal says only `Forbidden` in production, so the client does not refresh its token. To drop only the CSRF answer, remove the `answerWithErrorMessage()` call. |
+| Last reviewed | 2026-11-05 async route errors answered, crashes relaunched, and the CSRF refusal answered with its text. |
+| Owner | TODO(copy) |
+
 ### `src/server-startup.js` - listen retry and port-conflict diagnostics
 | Field | Value |
 | --- | --- |
@@ -853,6 +881,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | In `src/server-startup.js`, bind once again: remove `retryOnAddressInUse()` and the `reportPortHolders()` calls from `#startHTTPorHTTPS()`, the close of a server that failed to bind and the `trackListeningServer()` calls in both create functions, and the `diagnosePortConflict()` banner and the Bun socket-inheritance hint from the failure messages. Remove the `closeListeningServers()` call in `src/server-main.js` before deleting `src/server-listen.js` and `tests/server-listen.test.js`. A relaunch that races the old process then dies on the first `EADDRINUSE`. No saved data changes. |
 | Last reviewed | 2026-10-23 Bun socket-inheritance hint limited to Bun before 1.4.0. |
 | Owner | Server runtime integrator. |
+
+### `src/express-common.js`, `src/middleware/whitelist.js`, `src/middleware/basicAuth.js` and `src/middleware/hostWhitelist.js` - client addresses and configured credentials
+| Field | Value |
+| --- | --- |
+| File | `src/express-common.js`, `src/middleware/whitelist.js`, `src/middleware/basicAuth.js`, `src/middleware/hostWhitelist.js`, and the comments for `rateLimiting.preferRealIpHeader`, `forwardedHeaders` and `forwardedHeaders.xForwardedFor` in `default/config.yaml`. |
+| Area | Access control: IP whitelist, rate-limit keys, basic auth and host whitelist. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | `express-common.js`: `getForwardedIps(req, trustedProxies)` replaces `getRealOrForwardedIp()`. It returns the address in each enabled forwarded header and reads `X-Forwarded-For` from the right past trusted hops. `isIpInPatterns()` matches through a strict parser (`normalizeIpAddress()`), so a value that is not an IP address matches nothing and an IPv4-mapped value matches its IPv4 entry. `getTrustedProxies()` returns the valid `whitelist` entries. `getIpAddress()` adds a forwarded address only when the socket address is a trusted hop and every enabled header names the same valid address. `whitelist.js`: blocks unless every address from `getForwardedIps()` is listed, names the first unlisted one, and matches through `isIpInPatterns()`. `basicAuth.js`: `matchesConfiguredUser()` refuses an empty or non-string configured username or password and compares with `crypto.timingSafeEqual()` over SHA-256 digests. `hostWhitelist.js`: reads `hostWhitelist.enabled` with the `'boolean'` converter. |
+| Protecting tests | `tests/forwarded-client-address.test.js`, `tests/basic-auth-configured-credentials.test.js`, `tests/host-whitelist-enabled-switch.test.js`. `tests/require-https-client-address.test.js` covers `src/middleware/requireHttps.js`, a SillyBunny file that uses `getTrustedProxies()` and `isIpInPatterns()`. |
+| Validation | `npm run test:unit -- tests/forwarded-client-address.test.js tests/require-https-client-address.test.js tests/basic-auth-configured-credentials.test.js tests/host-whitelist-enabled-switch.test.js` (35 of the 41 tests fail with the base commit's sources), the same files on Linux, `npm run lint` in the root and in `tests/`, and a boot with `bun server.js` and `node server.js`. |
+| Rollback path | Revert the five commits that the `LESSONS.md` section "Client addresses behind proxies" lists, or the hunks of each file. `src/middleware/requireHttps.js` imports `getTrustedProxies()` and `isIpInPatterns()`, so its commit reverts with the others. Restore those three `default/config.yaml` comments to the upstream text. No stored data, settings or config keys change. |
+| Last reviewed | 2026-11-05 forwarded client addresses, configured basic auth credentials and the forwarded header comments. |
+| Owner | TODO(copy) |
 
 ### `src/transformers.js` - caption image decoding
 | Field | Value |
@@ -875,12 +917,96 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Character import, create and rename file names. |
 | Divergence reason | SillyBunny must sanitise character file names on every platform and write a card only as a PNG directly inside the characters folder. A name from an import, create or rename that sanitises to nothing or loses its extension to the 255-byte cut would otherwise decide where the card is written. |
 | Target seam | none yet. |
-| Adapter shape | `getPngName()` sanitises the name on every platform with `sanitizeSafeCharacterReplacements` (an empty result becomes `character`), then drops a trailing `.png` in any case, because `getPngFileName()` keeps that extension; the name it returns always maps to `<name>.png`. `writeCharacterData()` fails when `resolveCharacterAvatarPath()` rejects the target name. The V2/V3 JSON branch of `importFromJson()` sanitises `data.name` and `name` before `readFromV2()`, as SillyTavern's does since `1bb2a5ea1`. `getPreservedName()` keeps `sanitiseFilenameForWindows()`. |
-| Protecting tests | `tests/character-card-metadata-preservation.test.js`, `tests/entity-date-added-endpoints.test.js` and `tests/entity-last-chat-endpoints.test.js` create, edit and rename cards through `getPngName()` and `writeCharacterData()`. |
-| Validation | `npm run test:unit --prefix tests` (on Windows, the same 10 suites and 33 tests fail as on the base commit), `npm run lint`. |
-| Rollback path | Revert the `getPngName()`, `writeCharacterData()` and `importFromJson()` hunks. No stored data or settings change. |
-| Last reviewed | 2026-11-02 character file names sanitised on every platform. |
+| Adapter shape | `getPngName()` sanitises the name on every platform with `sanitizeSafeCharacterReplacements` (an empty result becomes `character`), then drops a trailing `.png` in any case, because `getPngFileName()` keeps that extension; the name it returns always maps to `<name>.png`. `writeCharacterData()` fails when `resolveCharacterAvatarPath()` rejects the target name. The V2/V3 JSON branch of `importFromJson()` sanitises `data.name` and `name` before `readFromV2()`, as SillyTavern's does since `1bb2a5ea1`. `getPreservedName()` keeps `sanitiseFilenameForWindows()`. `POST /create` answers 400 when `sanitize()` turns a given `file_name` into an empty string, because the same name also names the card's chats folder. |
+| Protecting tests | `tests/character-card-metadata-preservation.test.js`, `tests/entity-date-added-endpoints.test.js` and `tests/entity-last-chat-endpoints.test.js` create, edit and rename cards through `getPngName()` and `writeCharacterData()`. `tests/character-route-names.test.js` sends create requests whose `file_name` sanitizes to nothing. |
+| Validation | `npm run test:unit --prefix tests -- character-route-names.test.js entity-date-added-endpoints.test.js entity-last-chat-endpoints.test.js` (on the base commit the four create rows answer 200), `npm run lint`. |
+| Rollback path | Revert the `getPngName()`, `writeCharacterData()` and `importFromJson()` hunks, and the `file_name` check in `POST /create`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 create file names that sanitize to nothing. |
 | Owner | Server and data compatibility integrator. |
+
+### `src/endpoints/characters.js` - archive card assets and import formats
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | CHARX and BYAF asset storage, and the format lookup of `POST /import`. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/image-file-type.js` for the image check; none yet for the asset folders and the format lookup. |
+| Adapter shape | `getCardAssetFolder()` returns the sanitized card name, else the card's file name, or `null` when that name is not a folder directly inside the characters and user images folders. `importFromCharX()` passes it to `persistCharXAssets()` and skips the assets for `null`; `importFromByaf()` uses it for the alternate icon folder. `isArchiveImage()` passes a file to `isImageFile()` from `src/image-file-type.js`, which accepts it only when its extension is png, apng, jpg, jpeg, jfif, gif, webp, avif or bmp and its leading bytes match that type, and logs the files that fail. `importFromCharX()` filters the parser's auxiliary assets with it; `importFromByaf()` filters the chat backgrounds before it writes them and the chats, and filters the alternate icons. The stored bytes stay as they are. `POST /import` takes the import function only when `Object.hasOwn(formatImportFunctions, format)`. `src/charx.js` and `src/byaf.js` stay as in SillyTavern. |
+| Protecting tests | `tests/character-archive-assets.test.js`, `tests/character-route-names.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- character-archive-assets.test.js character-route-names.test.js` (all 13 pass after the image check moved to `src/image-file-type.js`; when that check accepts every file, the 3 image tests fail), `npm run lint`. |
+| Rollback path | Revert the `getCardAssetFolder()` and `isArchiveImage()` additions, the `isImageFile()` import, their uses in `importFromCharX()` and `importFromByaf()`, and the `Object.hasOwn()` lookup in `POST /import`. `src/image-file-type.js` stays while `src/endpoints/sprites.js` uses it. No stored data or settings change. |
+| Last reviewed | 2026-11-05 image check moved to `src/image-file-type.js`. |
+| Owner | TODO(copy) |
+
+### `src/endpoints/characters.js` - route input types and errors
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | Request checks and error handling of `POST /rename`, `POST /edit`, `POST /delete` and `POST /import`. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | `POST /rename` answers 400 when `avatar_url` or `new_name` is not a string, before `sanitize()` and `path.parse()`. `POST /edit` answers 400 when `avatar_url` is not a non-empty string, before `path.join()`, and runs `charaFormatData()`, the `chat` and `create_date` assignments and `JSON.stringify()` inside a `try` block that answers 400. `POST /delete` answers 400 when `delete_chats` is an object, before `delete_chats == true`, and calls `invalidateThumbnail()` inside a `try` block that logs the error. `POST /import` calls `recoverFileWriteSync()` for `preserved_name` inside a `try` block that answers 500. `charaFormatData()` stays as in SillyTavern. |
+| Protecting tests | `tests/character-route-inputs.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- character-route-inputs.test.js` (with the base commit's `characters.js`, all 19 tests fail: each request gets no answer, and its error reaches Jest as an unhandled rejection), `npm run lint`. |
+| Rollback path | Revert the type checks in `POST /rename`, `POST /edit` and `POST /delete`, and the `try` blocks around the formatting in `POST /edit`, `invalidateThumbnail()` in `POST /delete` and `recoverFileWriteSync()` in `POST /import`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 route input types and errors. |
+| Owner | TODO(copy) |
+
+### `src/endpoints/sprites.js` - sprite file types
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/sprites.js`. |
+| Area | Sprite uploads (`POST /api/sprites/upload` and `POST /api/sprites/upload-zip`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/image-file-type.js`. |
+| Adapter shape | `/upload-zip` keeps an entry of `getImageBuffers()` only when `isImageFile(path.extname(sanitize(filename)), buffer)` passes. `/upload` reads the leading bytes of the upload with `readImageSignature()`, keeps the uploaded extension when `isImageFile()` passes, else takes `getImageExtension()`, and sanitizes the name. When the sanitized name fails `isImageFile()`, the route deletes the upload and answers 400 before it creates the sprite folder or deletes an existing sprite. The stored bytes stay as they are. |
+| Protecting tests | `tests/sprite-upload-images.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- sprite-upload-images.test.js` (with the base commit's `sprites.js`, all 8 tests fail), `npm run lint`. |
+| Rollback path | Revert the `/upload-zip` filter, the `/upload` check and the import in `src/endpoints/sprites.js`. Keep `src/image-file-type.js`, which the character imports use. No stored data or settings change. |
+| Last reviewed | 2026-11-05 sprite upload file types. |
+| Owner | TODO(copy) |
+
+### `src/character-card-parser.js` - PNG chunk bounds
+| Field | Value |
+| --- | --- |
+| File | `src/character-card-parser.js`. |
+| Area | Character card PNG parsing (`read()`, `write()` and `parse()`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/png/extract.js`. |
+| Adapter shape | The module imports `extract` from `./png/extract.js` instead of `png-chunks-extract`. That `extract()` walks the chunk headers up to IEND and throws `PNG chunk at byte <n> runs past the end of the file` when a chunk header or the data length it declares does not fit in the file, then returns the result of `png-chunks-extract`. Data without the PNG signature goes to `png-chunks-extract` unchecked. |
+| Protecting tests | `tests/png-chunk-bounds.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- png-chunk-bounds.test.js` (on the base commit 8 of its 12 tests fail; the other 4 pin what the check leaves unchanged), `npm run lint`. |
+| Rollback path | Import `extract` from `png-chunks-extract` again, then delete `src/png/extract.js` and `tests/png-chunk-bounds.test.js`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 PNG chunk bounds. |
+| Owner | TODO(copy) |
+
+### `src/server-main.js` - session auth routes
+| Field | Value |
+| --- | --- |
+| File | `src/server-main.js`. |
+| Area | Session auth login and logout routes. |
+| Divergence reason | TODO(copy) |
+| Target seam | `src/middleware/sessionAuth.js`. |
+| Adapter shape | When `isSessionAuthEnabled()` is true, the block above basic auth calls `registerSessionAuthRoutes(app, { whitelistMode: cliArgs.whitelistMode })`. That function registers `POST /api/auth/login` and `POST /api/auth/logout` behind the IP whitelist middleware (when `whitelistMode` is on, from its own `getWhitelistMiddleware()` call) and `hostWhitelistMiddleware`, and gives login its own rate limit. The file imports only `isSessionAuthEnabled` and `registerSessionAuthRoutes` from `./middleware/sessionAuth.js`. |
+| Protecting tests | `tests/session-auth-routes.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- session-auth-routes.test.js` (on the `upstream/staging` sources, its route tests fail because `registerSessionAuthRoutes()` does not exist, and its `validateCredentials()` tests fail by assertion), `npm run lint`, and scratch servers with session auth, accounts and `perUserBasicAuth` on under Bun 1.4.4 and Node 24.22.1: a client that the whitelist blocks gets 403, the login after five failures gets 429, and an object password gets 400 while the server keeps running. With `perUserBasicAuth` off and an empty `basicAuthUser`, startup logs one warning. |
+| Rollback path | Put the inline login and logout routes back in the block, import `createSession`, `destroySession` and `validateCredentials` again, and delete `registerSessionAuthRoutes()`, `handleLogin()`, `handleLogout()` and the login limiter from `src/middleware/sessionAuth.js`. No stored data or settings change. Session login then runs before the whitelist checks again and has no rate limit. |
+| Last reviewed | 2026-11-05 session auth route guards. |
+| Owner | TODO(copy) |
+
+### `src/users.js`, `src/endpoints/users-public.js`, `src/endpoints/users-private.js`, and `src/endpoints/users-admin.js` - account route guards
+| Field | Value |
+| --- | --- |
+| File | `src/users.js`, `src/endpoints/users-public.js`, `src/endpoints/users-private.js`, `src/endpoints/users-admin.js`. |
+| Area | Account routes: request fields, password attempts, user folders and the user lookup for a session. |
+| Divergence reason | TODO(copy) |
+| Target seam | none yet. |
+| Adapter shape | Each route that reads a handle checks that it is a non-empty string before `toKey()` or `getUserDirectories()`, and password, new password and avatar fields are checked for strings before `getPasswordHash()` or the data URL check; `/login` hashes a missing password as an empty one. `users-private.js` adds `passwordLimiter` (`rateLimiting.accountsLoginMaxAttempts`, 60 s, keyed by handle) and `checkAccountPassword()`, which `/change-password`, `/reset-settings` and `/reset-step2` call; their `catch` blocks answer 429 with Retry-After for a `RateLimiterRes`, and `/reset-step2` checks the reset limiter before the password. `users.js` adds `isUserRootInsideDataRoot()`, which `/delete` with `purge` and `/backup` call after a storage lookup that answers 404 for an unknown handle. `setUserDataMiddleware()` wraps its `storage.getItem()` in a `try` that answers 500. Each changed route carries a `SillyBunny:` marker. |
+| Protecting tests | `tests/users-request-fields.test.js`, `tests/users-password-attempts.test.js`, `tests/users-folder-guards.test.js`, `tests/users-session-read-failure.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- users-request-fields.test.js users-password-attempts.test.js users-folder-guards.test.js users-session-read-failure.test.js` (every test fails on the `upstream/staging` sources), `npm run lint`, and the Bun and Node scratch servers above: an array handle gets 400, `/change-password` after five wrong passwords gets 429, a purge of a handle that is not an account gets 404 and removes nothing, and a corrupt user record gets 500 while the server keeps running. |
+| Rollback path | Revert the hunks marked `SillyBunny:` in these four files, which removes `passwordLimiter`, `checkAccountPassword()` and `isUserRootInsideDataRoot()` with their calls. No stored data or settings change. |
+| Last reviewed | 2026-11-05 account route guards. |
+| Owner | TODO(copy) |
 
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
@@ -940,11 +1066,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Account data and backup compatibility. |
 | Divergence reason | SillyBunny preserves fork-owned account metadata, user directories, and import markers while maintaining upstream archive safety. |
 | Target seam | `src/users.js`, `src/entity-date-added.js`, and the private-user endpoint helpers. |
-| Adapter shape | Keep archive validation, route contracts, and account-directory resolution in this upstream-origin adapter; keep fork-specific metadata helpers isolated. |
-| Protecting tests | `tests/backups-hardening.test.js`, plus manual export/import smoke with a fork account archive. |
-| Validation | `node --check src/endpoints/users-private.js`, `npm run lint`, archive traversal regression smoke. |
-| Rollback path | Revert the fork metadata branches while retaining upstream archive validation. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Adapter shape | Keep archive validation, route contracts, and account-directory resolution in this upstream-origin adapter; keep fork-specific metadata helpers isolated. `/import-sillytavern/folder` and `/import-sillytavern/extensions` run behind `requireAdminMiddleware`, so only an admin imports from a server folder; the read check behind it (`getImportReadCheck()` and `resolveReadableImportRoot()`, also passed to `copyDirectoryTree()`) passes every path for an admin. `syncThirdPartyExtension()` keeps the existing extension at `<temp folder>-previous` until the synced copy is in place. `detectZipImportBase()` refuses a backup ZIP before anything is written when `hasPortableNames()` rejects the name of an entry that would be imported. `importZipContents()` catches a throw from `createWriteStream()`, and when an entry fails it closes the archive and removes the file that the entry opened. The ZIP route answers 500 for an error with a syscall and 400 for other errors. |
+| Protecting tests | `tests/backups-hardening.test.js`, `tests/users-import-guards.test.js`, `tests/users-import-accounts-off.test.js`, `tests/users-backup-zip-failures.test.js`, `tests/users-extension-sync-swap.test.js`, plus manual export/import smoke with a fork account archive. |
+| Validation | `node --check src/endpoints/users-private.js`, `npm run lint`, archive traversal regression smoke; `npm run test:unit --prefix tests -- users-import-guards.test.js users-import-accounts-off.test.js users-backup-zip-failures.test.js users-extension-sync-swap.test.js` (the tests for members fail on the sources before `8cd9ab2be`, and each backup ZIP failure test fails on the sources before its commit, `4109a0812` to `2d093e8af`). |
+| Rollback path | Revert the fork metadata branches while retaining upstream archive validation. To let other users import server folders again, remove `requireAdminMiddleware` from the two folder routes, and remove `updateFolderImportVisibility()` with its call and its `SETTINGS_LOADED` listener from `public/scripts/sillybunny-tabs.js`. To undo the backup ZIP failure handling, remove `hasPortableNames()` and its check in `detectZipImportBase()`, the `try` around `createWriteStream()`, the `zipfile.close()` and the partial file removal in `importZipContents()`, and the syscall branch of the ZIP route. To undo the import read check, remove `getImportReadCheck()` and `resolveReadableImportRoot()` and their calls; to undo the extension swap, restore the `rm()` before the `rename()` in `syncThirdPartyExtension()`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 admin-only server folder import and backup ZIP failure handling. |
 | Owner | Account and release integrator. |
 
 ### `src/electron/` - Electron launcher removal
