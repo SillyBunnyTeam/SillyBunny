@@ -35,13 +35,21 @@ async function holdBoot(page) {
     return release;
 }
 
+/**
+ * The picture of the splash: the box of its loop once the loop is in the page, otherwise the still. A playing loop hides
+ * the still under its own pictures, so a wait for the still alone times out when the loop starts first.
+ */
+function splashPicture(page) {
+    return page.locator('#preloader .sb-boot-loop, #preloader .sb-boot-mascot').first();
+}
+
 async function openSplash(page, { variant, reducedMotionMirror = false }) {
     await page.addInitScript(({ chosen, mirror }) => {
         localStorage.setItem('sb-splash-character', chosen);
         if (mirror) localStorage.setItem('sb-reduced-motion', 'true');
     }, { chosen: variant, mirror: reducedMotionMirror });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#preloader .sb-boot-mascot')).toBeVisible({ timeout: STARTUP_TIMEOUT });
+    await expect(splashPicture(page)).toBeVisible({ timeout: STARTUP_TIMEOUT });
 }
 
 function readMascot(page) {
@@ -670,7 +678,7 @@ test.describe('Splash colours', () => {
 
         releaseBoot = await holdBoot(page);
         await page.goto('/', { waitUntil: 'domcontentloaded' });
-        await expect(page.locator('#preloader .sb-boot-mascot')).toBeVisible({ timeout: STARTUP_TIMEOUT });
+        await expect(splashPicture(page)).toBeVisible({ timeout: STARTUP_TIMEOUT });
         await expect(page.locator('.sb-boot-line-text')).not.toBeEmpty();
 
         const colours = await readSplashColours(page);
