@@ -29,7 +29,7 @@ export const RESUMABLE_GENERATION_HEADER = 'x-generation-id';
 const GENERATION_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 /** A finished reply waits this long for the page to come back for it. */
 const FINISHED_RETENTION_MS = 15 * 60 * 1000;
-/** A reply still running after this long is cancelled, attached client or not. */
+/** A reply still running this long after its last upstream request is cancelled, attached client or not. */
 const MAX_LIFETIME_MS = 60 * 60 * 1000;
 const MAX_GENERATIONS = 200;
 /** One profile cannot hold more than this many replies, live or finished. */
@@ -136,7 +136,7 @@ export class ResumableGeneration {
     constructor(key, id = '') {
         this.key = key;
         this.id = id;
-        this.createdAt = Date.now();
+        this.lastRequestAt = Date.now();
         /** @type {number|null} */
         this.finishedAt = null;
         /** @type {number|null} */
@@ -161,6 +161,14 @@ export class ResumableGeneration {
 
     get done() {
         return this.finishedAt !== null;
+    }
+
+    /**
+     * Restarts the lifetime limit, because one reply can take several upstream requests that together outlast it.
+     * @param {number} [now] Current time
+     */
+    extendLifetime(now = Date.now()) {
+        this.lastRequestAt = now;
     }
 
     /**
@@ -635,7 +643,7 @@ function sweepGenerations(now = Date.now()) {
         // this only holds it through a slow commit.
         const expired = generation.done
             ? generation.evictable && now - generation.finishedAt > FINISHED_RETENTION_MS
-            : now - generation.createdAt > MAX_LIFETIME_MS;
+            : now - generation.lastRequestAt > MAX_LIFETIME_MS;
         if (expired) {
             generation.forceDiscard();
         }
