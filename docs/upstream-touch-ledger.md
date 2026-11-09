@@ -398,12 +398,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | Area | Generation lifecycle and settings (Claude chat-completion request builders). |
 | Divergence reason | `claude-fable-5` rejects `temperature`/`top_p`/`top_k`, explicit `thinking:{type:'disabled'}`, and assistant prefill with HTTP 400, and upstream's Claude model gating, dropdown, 1M-context regex, and vision list do not know the model. SillyBunny gates fable into the existing per-model flags, strips the removed samplers on both the native and OpenAI-compatible paths, and forwards real upstream error bodies on non-streaming failures instead of a generic 500. |
-| Target seam | None yet; the core fix follows upstream's existing per-model regex/delete-block patterns so it can be contributed to SillyTavern and dropped here on a future upstream sync. |
-| Adapter shape | `isFableModel` flag OR'd into existing gating regexes plus a sampler delete-block in `sendClaudeRequest`; a source-aware delete-block in `createGenerationParameters`; one dropdown option, one regex alternation, one vision-list entry; error passthrough kept as a separate commit. |
-| Protecting tests | None yet; current protection is static validation and the PR #403 relay isolation test record (minimal 200, +samplers 400, adaptive+effort 200, thinking-disabled 400, system-message 400 on non-converting relay). Add focused unit coverage if fable gating grows beyond regex alternations. |
-| Validation | `npm run lint`, `node --check src/endpoints/backends/chat-completions.js`, `node --check public/scripts/openai.js`, direct relay curls against `https://api.linkapi.ai/v1/messages` and `/chat/completions` (2026-06-10), regression check that opus-4-6/sonnet-4-6/sonnet-4-5 payloads are unchanged. |
-| Rollback path | Revert the fable regex alternations and delete-blocks to restore stock behavior (fable then 400s again on samplers); the error passthrough commit can be reverted independently. |
-| Last reviewed | 2026-06-10 PR #403 claude-fable-5 400 fix. |
+| Target seam | `public/scripts/openai-model-capabilities.js` for the client sampler constraints. The server flags have no seam yet; they follow upstream's per-model regex pattern, so a future upstream sync can drop them. |
+| Adapter shape | `isFableModel` flag OR'd into the existing gating regexes and `noSamplingModel` in `sendClaudeRequest`, next to upstream's `useNativeJsonOutput` flag for `claude-fable-5-1` and `claude-opus-5-5`; one `applyClaudeModelParameterConstraints` call in `createGenerationParameters`; dropdown options for `claude-fable-5` and `claude-fable-5-1`, one regex alternation, one vision-list entry; error passthrough kept as a separate commit. |
+| Protecting tests | `tests/claude-sonnet5.test.js`, `tests/openai-static-models.test.js`, `tests/server-parity.test.js`. The PR #403 relay isolation record (minimal 200, +samplers 400, adaptive+effort 200, thinking-disabled 400, system-message 400 on non-converting relay) remains the live-request evidence. |
+| Validation | `npm run lint` in the root and in `tests/`, focused Jest for the protecting test files, full `npm run test:unit`, and `node --check` on the changed JavaScript files. Earlier live evidence: direct relay curls against `https://api.linkapi.ai/v1/messages` and `/chat/completions` (2026-06-10), and a regression check that opus-4-6/sonnet-4-6/sonnet-4-5 payloads are unchanged. |
+| Rollback path | Revert the fable regex alternations and remove the `applyClaudeModelParameterConstraints` call to restore stock behavior (fable then 400s again on samplers); the error passthrough commit can be reverted independently. |
+| Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
 | Owner | Bugfix integrator. |
 
 ### `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, and `src/prompt-converters.js` - Google model catalog
@@ -417,7 +417,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/openai-static-models.test.js`, `tests/google-model-request.test.js`, `tests/prompt-converters.test.js`, `tests/story-mode-request-controls.test.js`. |
 | Validation | `npm run lint` in the root and in `tests/`, focused Jest for the four protecting test files, full `npm run test:unit`, `npm run check:frontend-budgets`, and `node --check` on the changed JavaScript files. |
 | Rollback path | Revert the option entries, the two AI Studio migration entries and the regex alternations. No data cleanup is needed, because a saved `gemini-3.8-flash` or `gemini-3.6-flash` selection stays valid on AI Studio. |
-| Last reviewed | 2026-10-29 Google model catalog update. |
+| Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
+| Owner | Bugfix integrator. |
+
+### `public/scripts/tool-calling.js` and `public/scripts/openai.js` - GPT-6 Sol and Luna reasoning off
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/tool-calling.js`, `public/scripts/openai.js`. |
+| Area | Generation lifecycle (OpenAI tool gate and reasoning effort). |
+| Divergence reason | SillyBunny must open the Chat Completions tool gate for GPT-6 Sol and Luna when Reasoning Effort is None, and send `none` to them when the user picks None. Upstream's gate checks for Min, but SillyBunny sends Min as `minimal` and turns reasoning off with None, so the upstream gate would allow tools on a request that still reasons and block them on one that does not. |
+| Target seam | None yet; both changes are single conditions inside upstream functions, so there is no module to move them to. |
+| Adapter shape | `isToolCallingSupported` compares `settings.reasoning_effort` with `'none'` where upstream compares it with `'min'`, marked with `// SillyBunny:`. The None case of `getReasoningEffort` adds `gpt-6-(?:sol\|luna)` to its GPT-5.1 regex. |
+| Protecting tests | `tests/reasoning-effort-none.test.js`, `tests/upstream-provider-parity.test.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, focused Jest for the protecting test files, full `npm run test:unit`, `npm run check:frontend-budgets`, and `node --check` on the changed JavaScript files. |
+| Rollback path | Restore `'min'` in the tool gate and remove the Sol and Luna alternation. Min then opens Chat Completions tools while SillyBunny sends it as `'minimal'`, and None stays unsent on both models. No data cleanup is needed. |
+| Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
 | Owner | Bugfix integrator. |
 
 ### `public/index.html` - in-chat agent message action buttons
@@ -788,7 +802,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/sillybunny-launcher-smol.test.js`, `tests/server-supervisor.test.js`, `tests/frontend-assets.test.js`, root lint, frontend build, README mirror check, and workflow static validation. |
 | Validation | `npm ci --dry-run`, launcher unit tests, shell/JSON/YAML syntax checks, `npm run lint`, `npm run build:frontend`, and release workflow smoke. |
 | Rollback path | Revert each launcher, workflow, or packaging adapter independently while retaining user data and upstream application formats. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
 | Owner | Release integrator. |
 
 ### Bundled defaults and install-time content
