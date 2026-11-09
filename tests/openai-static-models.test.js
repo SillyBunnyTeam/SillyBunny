@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm';
 import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
 
 const gpt56Models = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
+const gpt6Models = ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'];
 const currentGemmaModels = ['gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
 const currentClaudeModels = ['claude-opus-5', 'claude-sonnet-5'];
 const currentGoogleStudioModels = ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite-image', 'gemini-nano-banana-2.1'];
@@ -113,12 +114,12 @@ function getDataTypeOptionIds(source, dataType) {
     return [...source.matchAll(new RegExp(`<option[^>]*data-type="${dataType}"[^>]*value="([^"]+)"`, 'g'))].map(m => m[1]);
 }
 
-test('OpenAI pickers include GPT-5.6 and GPT-6 Astra and omit retired native OpenAI models', () => {
+test('OpenAI pickers include GPT-5.6 and GPT-6 and omit retired native OpenAI models', () => {
     const mainPicker = getSelectOptionIds(readSource('../public/index.html'), 'model_openai_select');
     const captionPicker = getSelectOptionIds(readSource('../public/scripts/extensions/caption/settings.html'), 'caption_multimodal_model');
 
-    expect(mainPicker).toEqual(expect.arrayContaining([...gpt56Models, 'gpt-6-astra']));
-    expect(captionPicker).toEqual(expect.arrayContaining([...gpt56Models, 'gpt-6-astra']));
+    expect(mainPicker).toEqual(expect.arrayContaining([...gpt56Models, ...gpt6Models]));
+    expect(captionPicker).toEqual(expect.arrayContaining([...gpt56Models, ...gpt6Models]));
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredMainModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredCaptionModels));
     expect(readSource('../public/index.html')).toContain('<option value="gpt-5.3-chat-latest">gpt-5.3-chat-latest (deprecated)</option>');
@@ -156,11 +157,19 @@ for (const model of ['gpt-6-astra', 'gpt-6-astra-2026-09-14']) {
 }
 
 
-test('GPT-5.6 and GPT-6 Astra support distinct max reasoning effort and 1.05-million-token context', () => {
+test('GPT-6 models are listed once in the image-capable model list', () => {
+    const openAiScript = readSource('../public/scripts/openai.js');
+    const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
+    const occurrences = Object.fromEntries(gpt6Models.map(model => [model, visionModels.split(`'${model}'`).length - 1]));
+
+    expect(occurrences).toEqual({ 'gpt-6-astra': 1, 'gpt-6-sol': 1, 'gpt-6-luna': 1 });
+});
+
+test('GPT-5.6 and GPT-6 support distinct max reasoning effort and 1.05-million-token context', () => {
     const constants = readSource('../src/constants.js');
     const openAiScript = readSource('../public/scripts/openai.js');
 
-    const models = [...gpt56Models, 'gpt-6-astra'];
+    const models = [...gpt56Models, ...gpt6Models];
     for (const model of models) {
         expect(constants).toContain(`'${model}'`);
     }
@@ -185,6 +194,8 @@ test('GPT-5.6 and GPT-6 Astra support distinct max reasoning effort and 1.05-mil
 
 for (const [model, expected] of [
     ['gpt-6-astra-2026-09-14', 1050000],
+    ['gpt-6-sol', 1050000],
+    ['gpt-6-luna', 1050000],
     ['gpt-5.4', 1000000],
     ['gpt-5-mini', 400000],
     ['gpt-4o', 128000],
@@ -219,8 +230,10 @@ test('Claude pickers include current Claude 5 models and omit all retired Claude
 
     expect(mainPicker).toEqual(expect.arrayContaining(currentClaudeModels));
     expect(mainPicker).toContain('claude-fable-5-1');
+    expect(mainPicker).toContain('claude-opus-5-5');
     expect(captionPicker).toEqual(expect.arrayContaining(currentClaudeModels));
     expect(captionPicker).toContain('claude-fable-5-1');
+    expect(captionPicker).toContain('claude-opus-5-5');
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
     expect(openAiScript).toContain('claude_model: \'claude-opus-5\'');
@@ -358,6 +371,7 @@ test('new provider models are the defaults where requested', () => {
     const openAiScript = readSource('../public/scripts/openai.js');
     const defaultPreset = JSON.parse(readSource('../default/content/presets/openai/Default.json'));
 
+    expect(openAiScript).toContain('openai_model: \'gpt-6-sol\'');
     expect(openAiScript).toContain('google_model: \'gemini-3.8-flash\'');
     expect(openAiScript).toContain('vertexai_model: \'gemini-3.8-flash\'');
     expect(openAiScript).toContain('minimax_model: \'MiniMax-M3\'');

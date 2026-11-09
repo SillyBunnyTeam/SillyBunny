@@ -384,7 +384,7 @@ async function sendClaudeRequest(request, response) {
         const convertedPrompt = convertClaudeMessages(request.body.messages, request.body.assistant_prefill, useSystemPrompt, useTools, getPromptNames(request));
         // SillyBunny: claude-fable-5 support (substring match also catches router ids like 'anthropic/claude-fable-5')
         const isFableModel = /claude-fable/.test(request.body.model);
-        const isFable51Model = /claude-fable-5-1/.test(request.body.model);
+        const useNativeJsonOutput = /claude-(fable-5-1|opus-5-5)/.test(request.body.model);
         // SillyBunny: Claude Sonnet 5 and Opus 5 require adaptive thinking and reject sampling params and assistant prefill.
         const isSonnetOrOpus5 = /claude-(?:sonnet|opus)-5/.test(request.body.model);
         const isOpus55Model = /claude-opus-5-5(?:[-/:]|$)/.test(request.body.model);
@@ -435,9 +435,9 @@ async function sendClaudeRequest(request, response) {
             }
         }
 
-        // Fable 5.1 rejects forced tools, but supports native JSON outputs.
+        // Fable 5.1 and Opus 5.5 reject forced tools, but support native JSON outputs.
         if (request.body.json_schema) {
-            if (isFable51Model) {
+            if (useNativeJsonOutput) {
                 requestBody.output_config = {
                     format: {
                         type: 'json_schema',
