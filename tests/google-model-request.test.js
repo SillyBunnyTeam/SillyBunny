@@ -127,6 +127,64 @@ describe('Google model request compatibility', () => {
         expect(capturedBody.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'medium' });
     });
 
+    test('sends the highest documented thinking level when Gemini 4 is asked for max', async () => {
+        const response = await makeRequest('gemini-4-argon', { reasoning_effort: 'max' });
+
+        expect(response.status).toBe(200);
+        expect(capturedBody.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'high' });
+    });
+
+    test('turns off the fetch idle timeout so a long thinking pass can stay silent', async () => {
+        const response = await makeRequest('gemini-4-argon');
+
+        expect(response.status).toBe(200);
+        expect(nodeFetchMock.mock.calls[0][1].timeout).toBe(0);
+    });
+
+    describe('replies that end early', () => {
+        function replyWith(candidate) {
+            nodeFetchMock.mockImplementation(async () => new Response(JSON.stringify({ candidates: [candidate] }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            }));
+        }
+
+        test.each(['MAX_TOKENS', 'CONTINUATION'])('marks partial text as a length finish on %s', async (finishReason) => {
+            replyWith({ content: { parts: [{ text: 'partial' }] }, finishReason });
+
+            const json = await (await makeRequest('gemini-4-argon')).json();
+
+            expect(json.choices[0].message.content).toBe('partial');
+            expect(json.choices[0].finish_reason).toBe('length');
+        });
+
+        test('leaves a normal finish without a finish reason', async () => {
+            replyWith({ content: { parts: [{ text: 'complete' }] }, finishReason: 'STOP' });
+
+            const json = await (await makeRequest('gemini-4-argon')).json();
+
+            expect(json.choices[0].message.content).toBe('complete');
+            expect(json.choices[0]).not.toHaveProperty('finish_reason');
+        });
+
+        test.each(['MAX_TOKENS', 'CONTINUATION'])('does not call a thinking-only %s reply an empty candidate', async (finishReason) => {
+            replyWith({ content: { parts: [{ text: 'thinking', thought: true }] }, finishReason, continuationToken: 'token' });
+
+            const json = await (await makeRequest('gemini-4-argon')).json();
+
+            expect(json.error.message).toBeTruthy();
+            expect(json.error.message).not.toContain('Candidate text empty');
+        });
+
+        test('keeps the generic error when another finish leaves no reply text', async () => {
+            replyWith({ content: { parts: [] }, finishReason: 'SAFETY' });
+
+            const json = await (await makeRequest('gemini-4-argon')).json();
+
+            expect(json.error.message).toContain('Candidate text empty');
+        });
+    });
+
     test('requests image output with a size for Nano Banana 2.1', async () => {
         const response = await makeRequest('gemini-nano-banana-2.1', {
             request_images: true,
