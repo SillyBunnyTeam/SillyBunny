@@ -287,7 +287,12 @@ describe('calculateGoogleBudgetTokens', () => {
         expect(mod.calculateGoogleBudgetTokens(8192, 'auto', 'gemini-4-argon')).toBeNull();
         expect(mod.calculateGoogleBudgetTokens(8192, 'min', 'gemini-4-argon')).toBe('low');
         expect(mod.calculateGoogleBudgetTokens(8192, 'medium', 'gemini-4-argon')).toBe('medium');
-        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-4-argon')).toBe('max');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'high', 'gemini-4-argon')).toBe('high');
+    });
+
+    test('Gemini 4 Argon sends its highest documented level for the rungs above high', () => {
+        expect(mod.calculateGoogleBudgetTokens(8192, 'xhigh', 'gemini-4-argon')).toBe('high');
+        expect(mod.calculateGoogleBudgetTokens(8192, 'max', 'gemini-4-argon')).toBe('high');
     });
 
     test('Gemini 3.6 Flash uses Gemini 3 thinking levels', () => {

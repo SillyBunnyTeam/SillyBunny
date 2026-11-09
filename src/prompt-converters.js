@@ -1317,6 +1317,10 @@ export function calculateGoogleBudgetTokens(maxTokens, reasoningEffort, model) {
         if (reasoningEffort === REASONING_EFFORT.min && /gemini-3\.[78]-flash|gemini-4/.test(model)) {
             return REASONING_EFFORT.low;
         }
+        // SillyBunny: Gemini 4 documents no thinking level above high, so the rungs above it send high.
+        if ([REASONING_EFFORT.xhigh, REASONING_EFFORT.max].includes(reasoningEffort) && /gemini-4/.test(model)) {
+            return REASONING_EFFORT.high;
+        }
         return toWireReasoningEffort(reasoningEffort);
     }
 

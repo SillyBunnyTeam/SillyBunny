@@ -17,7 +17,7 @@ const APP_PORT = 3040;
 const UPSTREAM_ORIGIN = `http://127.0.0.1:${UPSTREAM_PORT}`;
 const APP_ORIGIN = `http://127.0.0.1:${APP_PORT}`;
 
-const actualNodeFetch = (await import('node-fetch')).default;
+const { default: actualNodeFetch, Response: NodeFetchResponse } = await import('node-fetch');
 const nodeFetchMock = jest.fn((url, options) => actualNodeFetch(url, options));
 await jest.unstable_mockModule('node-fetch', () => ({
     default: nodeFetchMock,
@@ -329,6 +329,91 @@ describe('Gemini Interactions API integration', () => {
         expect(events[1].choices).toEqual([
             { index: 0, delta: { content: 'Hello from Interactions.' }, finish_reason: null },
         ]);
+    });
+
+    test('turns off the fetch idle timeout so a long thinking pass can stay silent', async () => {
+        const fetchSpy = createProviderFetchSpy(() => {
+            throw new Error('Unexpected provider call');
+        });
+        const response = await generate({});
+        expect(response.status).toBe(200);
+
+        expect(fetchSpy.mock.calls[0][1].timeout).toBe(0);
+    });
+
+    test('sends the highest documented thinking level when Gemini 4 is asked for max', async () => {
+        const fetchSpy = createProviderFetchSpy(() => {
+            throw new Error('Unexpected provider call');
+        });
+        const response = await generate({ model: 'gemini-4-argon', reasoning_effort: 'max' });
+        expect(response.status).toBe(200);
+
+        const outgoing = JSON.parse(fetchSpy.mock.calls[0][1].body);
+        expect(outgoing.generation_config.thinking_level).toBe('high');
+    });
+
+    describe('interactions that end early', () => {
+        const PROVIDER_ORIGIN = 'http://interactions.invalid';
+        const CUT_OFF_STATUSES = ['requires_continuation', 'incomplete'];
+
+        function replyWithEvents(...events) {
+            createProviderFetchSpy(() => new NodeFetchResponse(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+                status: 200,
+                headers: { 'Content-Type': 'text/event-stream' },
+            }));
+        }
+
+        test.each(CUT_OFF_STATUSES)('reports a non-streamed %s interaction as a length finish', async (status) => {
+            createProviderFetchSpy(() => new NodeFetchResponse(JSON.stringify({
+                id: 'int-cut-off',
+                status,
+                continuation_token: 'token',
+                steps: [{ type: 'model_output', content: [{ type: 'text', text: 'partial' }] }],
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+            const json = await (await generate({ reverse_proxy: PROVIDER_ORIGIN })).json();
+
+            expect(json.choices[0].message.content).toBe('partial');
+            expect(json.choices[0].finish_reason).toBe('length');
+        });
+
+        test.each(CUT_OFF_STATUSES)('ends a streamed %s interaction with a length finish', async (status) => {
+            replyWithEvents(
+                { event_type: 'step.delta', index: 0, delta: { type: 'text', text: 'partial' } },
+                { event_type: 'interaction.completed', interaction: { id: 'int-cut-off', status, continuation_token: 'token' } },
+            );
+
+            const events = await readSseEvents(await generate({ stream: true, reverse_proxy: PROVIDER_ORIGIN }));
+
+            expect(events.map(event => event.choices[0])).toEqual([
+                { index: 0, delta: { content: 'partial' }, finish_reason: null },
+                { index: 0, delta: {}, finish_reason: 'length' },
+            ]);
+        });
+
+        test('reads a cut-off status from a status update event', async () => {
+            replyWithEvents(
+                { event_type: 'step.delta', index: 0, delta: { type: 'text', text: 'partial' } },
+                { event_type: 'interaction.status_update', interaction_id: 'int-cut-off', status: 'requires_continuation' },
+                { event_type: 'interaction.completed', interaction: { id: 'int-cut-off' } },
+            );
+
+            const events = await readSseEvents(await generate({ stream: true, reverse_proxy: PROVIDER_ORIGIN }));
+
+            expect(events.at(-1).choices[0].finish_reason).toBe('length');
+        });
+
+        test('lets the final status replace an earlier cut-off status', async () => {
+            replyWithEvents(
+                { event_type: 'step.delta', index: 0, delta: { type: 'text', text: 'complete' } },
+                { event_type: 'interaction.status_update', interaction_id: 'int-resumed', status: 'requires_continuation' },
+                { event_type: 'interaction.completed', interaction: { id: 'int-resumed', status: 'completed' } },
+            );
+
+            const events = await readSseEvents(await generate({ stream: true, reverse_proxy: PROVIDER_ORIGIN }));
+
+            expect(events.map(event => event.choices[0].finish_reason)).toEqual([null]);
+        });
     });
 
     test('lists models through the shared Google catalog for the interactions source', async () => {
