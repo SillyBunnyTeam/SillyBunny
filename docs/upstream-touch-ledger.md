@@ -735,6 +735,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-02 macro whitespace markers. |
 | Owner | Browser runtime integrator. |
 
+### `public/scripts/slash-commands/SlashCommandParser.js` and `public/scripts/slash-commands/SlashCommandParserError.js` - STscript parser fixes
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/slash-commands/SlashCommandParser.js`, `public/scripts/slash-commands/SlashCommandParserError.js`. |
+| Area | STscript parsing, parser errors and autocomplete positions. |
+| Divergence reason | SillyBunny must parse STscript as written and report malformed input as a parser error at the right position. Upstream's parser skips a character after a nested block comment closes, mis-reads quoted values, escaped characters and closures in split-count commands, and throws a TypeError for an empty `/parser-flag` or `/let key=`. |
+| Target seam | none yet: each change is inside a parser method, and the methods share one index through the text. |
+| Adapter shape | `parseBlockComment()` takes a character only when no nested comment starts at it. `parseParserFlag()` throws `Unexpected end of unnamed argument`, with the text and the index, when no flag name follows. `parseCommand()` reports an unknown command at `start`, the first character of its name, and lists the name from a `/let` `key=` only when that argument has a value. `parseUnnamedArgument()` leaves an escaped first character to the split branches when it splits, tests for the end of the argument again after the quoted rest of a split-count command, adds a quote flag for each closure, gives its `Unexpected end of unnamed argument` error the text and the index, and joins a closure in the rest as its source text. `parseQuotedValue()` counts macro positions back from the closing quote and discards the closing character only when it is a quote. `SlashCommandParserError.hint` slices the source up to the newline that ends the error line. |
+| Protecting tests | `tests/frontend/StscriptParserFixes.e2e.js` (one test or more for each change, through `tests/frontend/stscript-parser-harness.js`; every test fails on the upstream parser), `tests/frontend/MacroSlashCommands.e2e.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, `npm run check:frontend-budgets`, `npm run test:unit -- input-history-account-storage.test.js openrouter-oauth-return.test.js pathfinder-search.test.js quick-reply-config.test.js quick-reply-settings-ui.test.js webkit-prefix-companions.test.js` in `tests/`, and `npm run test:e2e -- frontend/StscriptParserFixes.e2e.js frontend/MacroSlashCommands.e2e.js frontend/ReasoningHiddenBlocks.e2e.js frontend/AddSwipeNoReload.e2e.js frontend/DeleteToolCalls.e2e.js card-script-sandbox.e2e.js` against a Bun 1.4.4 server in Chromium. |
+| Rollback path | Revert the `SillyBunny:` hunks in the two files. The hunks are independent, except that a closure in a joined rest reads the quote flag that each closure adds. No stored data, settings or saved scripts change. Scripts then parse as they do upstream, and `tests/frontend/StscriptParserFixes.e2e.js` fails until it is removed. |
+| Last reviewed | 2026-11-05 STscript parser fixes. |
+| Owner | Browser runtime integrator. |
+
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |
