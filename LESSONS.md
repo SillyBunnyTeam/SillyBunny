@@ -93,6 +93,24 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/chat-cloning-lifecycle.test.js`, `tests/chat-save-guard.test.js`, `tests/chat-save-queue-runtime.test.js`, `tests/chat-integrity-rotation.test.js`, `tests/reload-chat-safeguard.test.js`, `tests/prove-368-differential.test.js`, `tests/server-generation-commit.test.js`, `tests/resumable-generation-frontend.test.js`, `tests/story-mode-request-controls.test.js`.
 - **Fixes:** #819 (queued saves across swipes clone chats), #849 (staged reloads wipe chats), #373 (extra pre-write backups push older backups out), #856 (issue #706: a chat saves when opened).
 
+### Chat, group, file, vector and asset route input
+
+- **Breaks:** a request field, a stored group chat ID, a line in a chat file or a failed download makes a route use a path outside its folder, or makes the route throw outside its error handling.
+- **Cause:** a rejection from an async route reaches `handleRouteError()` in `src/route-errors.js`, which answers 500 without saying what was wrong, and a throw in a stream or readline event crashes the server, which the supervisor then restarts. So that code must answer its own errors. A JSON body or an extended query string can send an object whose `toString` is not a function, and loose equality, `String()`, template literals and `toString()` throw for it. `pipe()` leaves an error from its source stream unhandled. Paths were checked with a string prefix or not at all, and `sanitize()` (sanitize-filename 1.6.3) turns `.`, `..` and Windows device names into an empty name, which makes the joined path name the folder itself.
+- **Files:** `src/endpoints/files.js`, `src/endpoints/chats.js`, `src/endpoints/groups.js`, `src/endpoints/vectors.js`, `src/endpoints/assets.js`.
+- **Guards:**
+  - `/api/files/delete` and `/verify` accept a path only inside the files folder (`isPathUnderParent()`). A string prefix also accepts sibling folders whose names start with the files folder name.
+  - `getGroupChatPath()` in `src/endpoints/chats.js` joins a stored group chat ID only when it is a string or a number and its path stays inside the group chats folder. Chat search and recent chats skip any other ID, and group create and edit answer 400 for a chat list that holds one. A slash inside the folder, as in a checkpoint name, and numeric IDs from older groups still pass.
+  - Chat export runs inside one `try` block and answers 400 for a `file` that is not a string or that sanitizes to an empty name. It waits for its read stream through a promise with `error` listeners on the stream and on readline, because readline re-emits input stream errors and an `error` event without a listener throws. It skips a line that is not a chat message, such as an empty line in an older chat file.
+  - `getChatInfo()`, which chat search, recent chats and group chat info read through, counts and matches `mes` only when it is a string, because nothing catches a throw in its readline event.
+  - Group delete answers 400 for an `id` that is not a string or a number.
+  - The vector routes return `regenerateCorruptedIndexErrorHandler()` from their catch blocks, so it catches errors from its own regeneration and answers 500.
+  - `getIndex()` refuses a vector source or collection ID that sanitizes to an empty name, and the routes answer 400. Vector purge answers 400 for such a collection ID, so each purge path is one collection folder inside its source folder.
+  - `validateAssetFileName()` in `src/endpoints/assets.js` refuses a file name that is not a string, so asset delete, asset download and Data Bank upload answer 400 for one. The asset routes compare the category with `===`, and the character asset list answers 400 for a `name` that is not a string.
+  - Asset download writes the body through `pipeline()`, so an error in the download body answers 500. With `pipe()`, the request never got an answer under Node.js, and Bun raised the error as uncaught. Its catch block answers only when nothing was sent, because the character branch answers before it removes the temp file.
+- **Tests:** `tests/route-guards-scenarios.test.js`, `tests/route-guards-rows.test.js` (rows on the hostile file name harness, `tests/util/hostile-file-names-*.js`).
+- **Fixes:** `8bd570ff8` (files folder), `7c1cb041b` (group chat IDs), `5f40fd1cb` (chat export and chat info), `cab2e7be3` (group delete id), `3819943a4` (vector index regeneration), `5c194ad04` (vector folder names), `42e7698e4` (asset routes).
+
 ### Cache, boot and reload
 
 - **Breaks:** boot continues before the cache is invalidated; a module is evaluated twice.
@@ -101,6 +119,23 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/frontend-asset-middleware.test.js`, `tests/restart-cache-clear.test.js`.
 - **No test:** `b6d657e08` (#380, stale iOS service-worker cache), `fe3e25446` (#429, versioned module URLs evaluate `script.js` twice).
 - **Fixes:** #416 (restore JavaScript revalidation), #906 (boot races the restart cache-clear reload).
+
+### Route errors and crashes
+
+- **Breaks:** one request that fails outside its route's error handling ends the server, and the server stays down.
+- **Cause:** Express 4 ignores the promise that a route handler or middleware returns, so a rejected async route got no answer and reached the `unhandledRejection` handler in `src/server-main.js`. That handler and the `uncaughtException` handler exited with code 0, which the supervisor passes on as a stop. A throw in a stream, readline or timer callback still reaches `uncaughtException`, because no route is on the stack there.
+- **Breaks:** the client's CSRF retry (#475) never runs.
+- **Cause:** `fetchWithCsrfRetry()` in `public/scripts/csrf-token-refresh.js` refreshes the token and repeats the request only for a 403 whose body contains `Invalid CSRF token`. Express's default error handler sends only the status text in production, and `server.js` defaults `NODE_ENV` to production, as `Start.bat`, `Start-Node.bat`, `start.sh`, the `Dockerfile` and `docker/docker-compose.yml` set it, so the 403 said only `Forbidden`.
+- **Files:** `src/route-errors.js`, `src/server-main.js`, `src/server-supervisor.js`.
+- **Guards:**
+  - `forwardAsyncRouteErrors()` in `src/route-errors.js` replaces `handle_request()` and `handle_error()` on the Express 4 `Layer` prototype, so a rejected promise from a handler or an error handler goes to `next()`, as the Express 5 router does. It covers every app, router and route made from the server's copy of Express, including the routers that server plugins get. It does not cover a router made from another copy of Express or code that runs outside a route. A falsy rejection reason becomes `Error('Rejected promise')`, because `next()` with a falsy value goes on to the next route. Express 5 does this itself, so the module goes with an upgrade to Express 5.
+  - `handleRouteError()` is registered after the not-found handler, before the server listens. Express calls a four-parameter middleware only for errors and skips the not-found handler for them, so both only have to come after every route, plugin routes included. It logs the error as Express's default handler did, and a client disconnect as the same warning as the process handlers. It answers with the error's own 4xx or 5xx status (400 or 413 from the body parser, 403 for a CSRF token) or 500, with only the status text as the body in every `NODE_ENV`; Express's default handler sent the stack trace outside production. It does not answer a response that has started: it destroys the socket of an unfinished one and leaves a finished one alone.
+  - The CSRF refusal is the one error answered with its own message. csrf-sync 4.2.1 makes one `invalidCsrfTokenError` per protection object and passes that object to `next()` for every refused request. `src/server-main.js` sets its message and passes it to `answerWithErrorMessage()`, so `handleRouteError()` answers it with 403 and that message as `text/plain`, without the chalk color codes, which `stripVTControlCharacters()` from `node:util` removes under Bun and Node.js. The match is the object itself, not the `EBADCSRFTOKEN` code that other CSRF libraries also use, so another error with that code keeps the status text.
+  - The `uncaughtException` and `unhandledRejection` handlers exit with `SERVER_CRASH_EXIT_CODE` (1) after the usual cleanup, or after `SUPERVISOR_FORCE_KILL_TIMEOUT_MS` when a cleanup step fails or does not finish.
+  - `runSupervisor()` relaunches a child that reported startup (`SERVER_STARTUP_READY_MESSAGE`) and then exits with a non-zero code or a signal while no stop was requested. It waits `SUPERVISOR_CRASH_RESTART_DELAY_MS` (1 s), doubled for each crash restart within `SUPERVISOR_CRASH_WINDOW_MS` (10 minutes), and a crash after `SUPERVISOR_CRASH_RESTART_LIMIT` (5) such restarts ends the supervisor with the child's exit code. A stop request ends the wait at once. A failure before startup, exit code 0, the restart, plugin update and supervisor reload codes and a requested stop behave as before. The launchers loop only on exit code 75, and Docker's `restart: unless-stopped` restarts on any exit, so they need no change.
+- **Limit:** a crash restart loses what the server process holds in memory, such as session-auth sessions and server-side generations that were running.
+- **Tests:** `tests/route-errors.test.js`, `tests/server-supervisor-crash-restart.test.js`, `tests/csrf-refusal-retry.test.js` (the csrf-sync setup of `src/server-main.js` with a colored message, and `fetchWithCsrfRetry()` against its real answers).
+- **Fixes:** `ae27417cc` (async route errors), `120fa5fbf` (crash restarts), `a41adfe62` (crash exit code), `b0735ddab` (CSRF refusal text).
 
 ### Runtimes, Termux, launchers and updates
 
@@ -114,6 +149,34 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/server-supervisor.test.js`, `tests/base64-atomic-writes.test.js`, `tests/server-admin-update-install.test.js`, `tests/server-plugin-manager.test.js`, `tests/server-plugin-update-helper.test.js`.
 - **No test:** `c1a87366c` (#522, Bun bootstrap on Termux), `cd7429421` (issue #672, unescaped parentheses in `Start-Node.bat`).
 - **Fixes:** #806 (explicit Base64 decode on Bun), #912 (run npm through Node.js on Windows).
+
+### Character import and upload files
+
+- **Breaks:** data in an imported card or archive, in an uploaded sprite or sprite pack, or in a create request decides which folder the server writes to, which file type it stores, or how long the card parser runs.
+- **Cause:** the import and upload code takes names, extensions and chunk lengths from the data it receives. A name that sanitizes to nothing makes the parent folder the target folder, an archive or uploaded file keeps its own extension, `sanitize-filename` keeps only the first 255 bytes of a name and so can cut off an extension at its end, and `png-chunks-extract` allocates, copies and checksums the length that a chunk declares before it finds that the file is shorter.
+- **Files:** `src/endpoints/characters.js`, `src/endpoints/sprites.js`, `src/image-file-type.js`, `src/character-card-parser.js`, `src/png/extract.js`, `src/charx.js`, `src/byaf.js`.
+- **Guards:**
+  - `getCardAssetFolder()` in `src/endpoints/characters.js` names the asset folder of a CHARX or BYAF card after the sanitized card name, or after the card's file name when the name sanitizes to nothing. A CHARX import skips its assets when that name is not a folder directly inside the characters and user images folders. A preserved name such as `...png` gives that on POSIX systems, where `getPreservedName()` does not sanitize.
+  - `isImageFile()` in `src/image-file-type.js` accepts a file only when its extension is png, apng, jpg, jpeg, jfif, gif, webp, avif or bmp and its leading bytes are an image of that type. A BYAF import stores a background or an alternate icon, and a CHARX import an asset, only when it passes; `isArchiveImage()` in `characters.js` logs the others. The stored bytes are the archive's bytes. A BYAF chat names only the backgrounds that were stored.
+  - `POST /api/sprites/upload-zip` stores a pack entry only when its sanitized name passes `isImageFile()`. `POST /api/sprites/upload` keeps the uploaded extension when that passes, takes the extension of the image type that the bytes are (`getImageExtension()`) when it does not, and answers 400 when the sanitized name still fails, before it replaces an existing sprite. A sprite uploaded from a URL arrives as `image.png` whatever its type, so a wrong image extension is replaced and not refused. `readImageSignature()` reads only the leading bytes of the upload.
+  - `POST /api/characters/import` takes the import function only when `Object.hasOwn(formatImportFunctions, format)`, so every other file type gets the unsupported format answer.
+  - `POST /api/characters/create` answers 400 to a `file_name` that sanitizes to nothing, such as `.` or `..`, because the same name also names the card's chats folder.
+  - `src/png/extract.js` walks the chunk headers up to IEND before `png-chunks-extract` runs, and throws `PNG chunk at byte <n> runs past the end of the file` when a chunk header or the data length it declares does not fit in the file. `read()` and `write()` in `src/character-card-parser.js` use it. A file that ends inside the CRC of a chunk still gets the CRC error, and a file that ends inside the CRC of IEND still imports.
+- **Tests:** `tests/character-archive-assets.test.js`, `tests/character-route-names.test.js`, `tests/png-chunk-bounds.test.js`, `tests/sprite-upload-images.test.js`.
+- **Fixes:** `803c96bf0` (import formats), `45683ee8b` (create file names), `1d06397ae` (archive asset folders), `42c2a54d6` (archive images), `cf407575c` (PNG chunk lengths), `afac16c92` (shared image check), `2049ad29e` (sprite uploads).
+
+### Character route input
+
+- **Breaks:** a request field of an unexpected type, or a file that a route cannot recover or remove, makes a character route throw outside its `try` block, so the request gets the generic 500 from `handleRouteError()` in `src/route-errors.js` instead of a 400 that names the problem.
+- **Cause:** a rejection from an async route reaches `handleRouteError()` in `src/route-errors.js`, which answers 500 without saying what was wrong. `sanitize()`, `path.parse()` and `path.join()` throw on a value that is not a string, and `getFileNameValidationFunction()` in `src/middleware/validateFileName.js` checks a field only for separators and NUL, so a number, a list or an object reaches the route. A JSON body can send an object whose `toString` is not a function, and loose equality, string concatenation and `Number()` throw for it. `charaFormatData()` keeps a `json_data` that parses to a primitive (`tryParse(...) || {}`), and setting a field on a primitive throws in an ES module.
+- **Files:** `src/endpoints/characters.js`.
+- **Guards:**
+  - `POST /api/characters/rename` answers 400 when `avatar_url` or `new_name` is not a string.
+  - `POST /api/characters/edit` answers 400 when `avatar_url` is missing, empty or not a string. It formats the body inside a `try` block that answers 400 when `charaFormatData()` throws or returns a primitive.
+  - `POST /api/characters/delete` answers 400 when `delete_chats` is an object. It logs a thumbnail that `invalidateThumbnail()` cannot remove and still answers 200, because the card is already deleted.
+  - `POST /api/characters/import` answers 500 when `recoverFileWriteSync()` throws for the card that `preserved_name` names, for example on a damaged write-recovery record.
+- **Tests:** `tests/character-route-inputs.test.js`. Its harness option `requestTimeoutMs` makes a request that a route never answers fail at a deadline, and Jest fails the running test with the unhandled rejection.
+- **Fixes:** `5e6923c81` (request fields), `62068ea31` (file steps).
 
 ### Security and credentials
 
@@ -129,6 +192,30 @@ This is the largest class by a wide margin.
 - **Fixes:** #110 (sandbox helpers), #144 (block remote loads from the sandbox), #348 (gate verbose prompt logging), #560 (bind custom endpoint profiles to their saved secrets).
 - **Order matters:** at startup, `readSecretState()` (`public/scripts/secrets.js`) runs before `getSettings()` calls `accountStorage.init()`, and `accountStorage.getItem()` returns `null` until then. Call `checkOpenRouterAuth()` only after `getSettings()` (`public/script.js`). An earlier call does not find the PKCE code verifier and removes the OAuth query from the URL, so the OpenRouter key exchange never happens. SillyTavern moved the call out of `readSecretState()` in `97dba399e`; the SillyTavern 1.18 port (`9fe08ef34`) kept it. Test: `tests/openrouter-oauth-return.test.js`.
 - **Open:** the other `Jimp.read()` and `Jimp.fromBuffer()` callers (`src/endpoints/avatars.js`, `characters.js`, `content-manager.js`, `image-metadata.js` and `thumbnails.js`) have no signature check. `@jimp/core` 1.6.0 uses file-type 16.5.4, and its `Jimp.fromBuffer()` did not return within 8 s on that ASF header under Node.js or Bun. `@jimp/core` 1.6.1 uses file-type 21.
+
+### Accounts and session login
+
+- **Breaks:** an account or session route reads a request field, a handle or a server path that it has not checked, or answers before the checks that guard the other routes.
+- **Cause:** Express 4 does not catch a rejection from an async route or middleware, so that code must answer its own errors. `toKey()` reads an array as the handle in it, and `getUserDirectories()` joins a handle into a path as it is.
+- **Files:** `src/middleware/sessionAuth.js`, `src/server-main.js`, `src/users.js`, `src/endpoints/users-public.js`, `src/endpoints/users-private.js`, `src/endpoints/users-admin.js`, `public/scripts/sillybunny-tabs.js`.
+- **Guards:**
+  - `registerSessionAuthRoutes()` in `src/middleware/sessionAuth.js` registers `POST /api/auth/login` and `/api/auth/logout` above basic auth, behind the IP whitelist (when `whitelistMode` is on) and the host whitelist. Login counts failed attempts per client address with `rateLimiting.basicAuthMaxAttempts` over 60 s, answers 400 to a username or password that is not a string, and answers 500 when it fails (`5e0281e7d`). `validateCredentials()` refuses every login while `basicAuthUser.username` or `basicAuthUser.password` is empty, and registering the routes logs one warning for it (`193fba8c2`).
+  - `matchesConfiguredUser()` in `src/middleware/sessionAuth.js` compares a single-user login with `basicAuthUser` through `crypto.timingSafeEqual()` over SHA-256 digests, and matches nothing when a configured value is not a string (`abb168c1a`).
+  - Every account route answers 400 to a handle that is not a string, and to a password, new password or avatar that is not a string. A route that compares the account's password answers 400 when that password is missing; a login counts a missing password as an empty one (`2f2e50820`).
+  - `/change-password`, `/reset-settings` and `/reset-step2` count each password comparison per account with `rateLimiting.accountsLoginMaxAttempts` over 60 s, and check that limit before the password. `/reset-step2` also checks the reset code limit before the password (`e95c02fae`).
+  - `/api/users/delete` and `/api/users/backup` answer 404 for a handle that is not an account. A purge or a backup also needs `isUserRootInsideDataRoot()` in `src/users.js`: the account folder must be a folder directly inside the data root (`c9fc49cbd`).
+  - Only an admin may use `/import-sillytavern/folder` and `/import-sillytavern/extensions`, which read a folder that the request names on the server (`requireAdminMiddleware`, `8cd9ab2be`). Other users import with the backup ZIP; with accounts off, the default user is an admin. The read check from `29c3a4e18` (`getImportReadCheck()`) stays behind it and passes every path for an admin.
+  - The import card shows its Import From Folder Path pane only while `isAdmin()` from `public/scripts/user.js` is true (`updateFolderImportVisibility()` in `public/scripts/sillybunny-tabs.js`, `4abda4f55`), so a member does not see the folder import and the extension sync that the server refuses. The card checks when it is built and again on `SETTINGS_LOADED`, because with accounts on, `isAdmin()` is true until the client knows that accounts are on and then false until `/api/users/me` answers, and `getSettings()` does both before it emits that event. `.sb-import-pane` sets `display: flex`, so the check sets `style.display`; the `hidden` attribute does not hide the pane. A change to who may use the folder routes must also change this check.
+  - An extension sync moves the existing extension aside, and moves it back when the synced copy cannot be moved into place (`77c6012bd`).
+  - Before it writes anything, the backup ZIP import answers 400 when sanitize-filename would change a folder or file name of an entry that it imports: a NUL or control character, a character that Windows refuses such as `:`, a reserved device name such as `CON`, or a trailing dot or space (`hasPortableNames()`, `4109a0812`). Under Node, a NUL byte made `createWriteStream()` throw in a yauzl callback, which no route handler reaches, and ended the server.
+  - The import also catches a throw from `createWriteStream()`. yauzl's stream for a stored entry emits an error when it is destroyed, so the import listens for that error before `destroy()` (`6b41a15ff`). A failed entry closes the archive, because yauzl closes it only after its last entry or its own error, and removes the file that the entry had opened (`8a4d834ae`). An error with a syscall answers 500 with the generic message; an archive error answers 400 with its message (`2d093e8af`).
+  - `setUserDataMiddleware()` answers 500 when it cannot read the user record of a session (`132d2a531`).
+- **Tests:** `tests/session-auth-routes.test.js`, `tests/users-request-fields.test.js`, `tests/users-password-attempts.test.js`, `tests/users-folder-guards.test.js`, `tests/users-import-guards.test.js`, `tests/users-import-accounts-off.test.js`, `tests/users-backup-zip-failures.test.js`, `tests/users-extension-sync-swap.test.js`, `tests/users-session-read-failure.test.js`, `tests/folder-import-visibility.e2e.js`. Every test in `tests/session-auth-routes.test.js` reloads the server modules, so each one passes `MODULE_RELOAD_TIMEOUT_MS` from `tests/util/module-reload-timeout.js` instead of Jest's 5 s default (`06af52715`).
+- **Limit:** `registerSessionAuthRoutes()` calls `getWhitelistMiddleware()` once more, so in Docker `addDockerHostsToWhitelist()` resolves the Docker host names twice at startup (code reading).
+- **Limit:** a backup ZIP import that fails part of the way keeps the files that it wrote before the failed entry, and the folders that it made for that entry.
+- **Limit:** `tests/folder-import-visibility.e2e.js` runs its cases with accounts on only when `SILLYBUNNY_TEST_ACCOUNTS_URL` names a server with accounts on and `SILLYBUNNY_TEST_ADMIN_HANDLE` and `SILLYBUNNY_TEST_MEMBER_HANDLE` name its accounts, with `_PASSWORD` variables for accounts that have a password. A run against one server skips those cases, and skips the single-user case when that server has accounts on.
+- **Backup ZIP trust:** the backup ZIP import (`/import-sillytavern/zip`) restores every file in the account folders that it imports, extensions included, and the account's `settings.json` and `secrets.json`. The client loads the restored third-party extensions after the import reloads the page. A backup ZIP is therefore trusted input, like an extension install, and the import does not filter file types.
+- **Text checks:** many unit suites read `public/scripts/sillybunny-tabs.js` as text and look for exact strings. `tests/conversation-mode-character-selection.test.js` looks for the file's `'../script.js'` import line as it is, so the folder pane check imports `event_types` and `eventSource` from `./events.js` on a line of its own (`4abda4f55`). After you change a file, run the suites that `git grep -l <file name> -- tests/` lists.
 
 ### CI and workflows
 
@@ -168,6 +255,22 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/sillybunny-macro-whitespace.test.js` (runs the real engine in Jest), `tests/frontend/sillybunny-macro-whitespace.e2e.js`.
 - **Limit:** `{{trim}}` still removes `{{newline}}` output next to it, as the legacy engine did. Put `{{noop}}` between them to keep the newline.
 - **Limit:** prompt text that already contains U+FDD0 or U+FDD1 loses those characters.
+
+### Client addresses behind proxies
+
+- **Breaks:** the whitelist, a rate limit or `requireHttps` decides on a forwarded value that no trusted proxy set.
+- **Cause:** a reverse proxy adds the address it received the request from at the right end of `X-Forwarded-For`, and it can pass the other forwarded headers on from the client unchanged. The server cannot tell which headers its proxy set.
+- **Files:** `src/express-common.js`, `src/middleware/whitelist.js`, `src/middleware/requireHttps.js`, `src/middleware/basicAuth.js`, `src/middleware/hostWhitelist.js`.
+- **Guards:**
+  - The trusted hops are the valid entries of the `whitelist` setting (`getTrustedProxies()` in `src/express-common.js`). `whitelist.txt` and the Docker host addresses do not count. `getForwardedIps()` returns the address in each enabled forwarded header and reads `X-Forwarded-For` from the right: it skips trusted hops, and the first other entry is the client.
+  - With `enableForwardedWhitelist` on, the whitelist blocks a request unless every address that `getForwardedIps()` returns is listed, and it names the first unlisted one.
+  - `getIpAddress()` adds a forwarded address only when the socket address is a trusted hop and every enabled header names the same valid address. Otherwise it returns the socket address. The basic auth, account login, account recovery, password reset and conversation message limiters and the access log read their address through it.
+  - `isIpInPatterns()` parses addresses strictly and treats a value that is not an IP address as unlisted, so a malformed forwarded value or a socket without an address gets 403, not 500. An IPv4-mapped value matches its IPv4 entry.
+  - `requireHttps` lets plain HTTP through only from a loopback socket address without forwarding headers, whatever the `Host` header says. It reads the first `X-Forwarded-Proto` value, and only from a trusted hop.
+  - Basic auth matches no request when the configured username or password is empty or is not a string, and it compares the configured user with `crypto.timingSafeEqual()` over SHA-256 digests.
+  - `hostWhitelist.enabled` goes through the `'boolean'` converter, so `SILLYTAVERN_HOSTWHITELIST_ENABLED=false` turns the host check off.
+- **Tests:** `tests/forwarded-client-address.test.js`, `tests/require-https-client-address.test.js`, `tests/basic-auth-configured-credentials.test.js`, `tests/host-whitelist-enabled-switch.test.js`.
+- **Fixes:** `1b127a865` (whitelist), `06dc7a6e0` (rate-limit keys), `e059e5d23` (`requireHttps`), `0a836ed40` (basic auth credentials), `30ecce06d` (host whitelist switch).
 
 ## Reverts and release problems
 
