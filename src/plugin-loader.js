@@ -3,7 +3,8 @@ import path from 'node:path';
 import url from 'node:url';
 
 import express from 'express';
-import { default as git, CheckRepoActions } from 'simple-git';
+// SillyBunny: simple-git 4 has no default export.
+import { simpleGit as git, CheckRepoActions } from 'simple-git';
 import { sync as commandExistsSync } from 'command-exists';
 import { getConfig, getConfigValue, color } from './util.js';
 import {
