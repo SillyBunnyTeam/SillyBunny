@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -13,6 +13,9 @@ import {
     sendRequestWithoutHost,
     startApp,
 } from './util/middleware-harness.js';
+import { MODULE_RELOAD_TIMEOUT_MS } from './util/module-reload-timeout.js';
+
+jest.setTimeout(MODULE_RELOAD_TIMEOUT_MS);
 
 const REMOTE_HOST = 'app.example';
 // The test requests come from 127.0.0.1, so they name a remote client in X-Forwarded-For, as a reverse proxy on this machine would.

@@ -14,6 +14,9 @@ import {
     startApp,
     writeErrorPage,
 } from './util/middleware-harness.js';
+import { MODULE_RELOAD_TIMEOUT_MS } from './util/module-reload-timeout.js';
+
+jest.setTimeout(MODULE_RELOAD_TIMEOUT_MS);
 
 const USERNAME = 'test-user';
 const PASSWORD = 'pa:ss:word';

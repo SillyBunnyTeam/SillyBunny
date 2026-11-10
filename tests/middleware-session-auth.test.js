@@ -1,6 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from '@jest/globals';
 
 import { createTempDirectory, removeTempDirectory, resetServerModules, seedAccounts } from './util/middleware-harness.js';
+import { MODULE_RELOAD_TIMEOUT_MS } from './util/module-reload-timeout.js';
+
+jest.setTimeout(MODULE_RELOAD_TIMEOUT_MS);
 
 const FIXED_TIME = Date.UTC(2026, 0, 15, 12, 0, 0);
 const MINUTE_MS = 60 * 1000;

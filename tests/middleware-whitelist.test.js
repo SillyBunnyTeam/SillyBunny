@@ -14,6 +14,9 @@ import {
     startApp,
     writeErrorPage,
 } from './util/middleware-harness.js';
+import { MODULE_RELOAD_TIMEOUT_MS } from './util/module-reload-timeout.js';
+
+jest.setTimeout(MODULE_RELOAD_TIMEOUT_MS);
 
 let dockerDetected = false;
 jest.unstable_mockModule('is-docker', () => ({ default: () => dockerDetected }));
