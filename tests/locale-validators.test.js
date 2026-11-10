@@ -136,7 +136,7 @@ function compareWithBaseline(section, found, describeEntry) {
     const stale = [];
     for (const [id, entry] of current) {
         if (JSON.stringify(known.get(id)?.detail) !== JSON.stringify(entry.detail)) {
-            added.push(describeEntry(entry));
+            added.push(`Fix the locale data, or record a problem that must stay in ${baselineFile}: ${describeEntry(entry)}`);
         }
     }
     for (const [id, entry] of known) {
