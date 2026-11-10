@@ -15,6 +15,7 @@ const attachArtMotion = jest.fn((figure, id) => {
 jest.unstable_mockModule('../../public/scripts/sillybunny-home/art-player.js', () => ({ attachArtMotion }));
 
 const { createArtPanel, createHeroArt } = await import('../../public/scripts/sillybunny-home/art-layout.js');
+const { PAGING_CLASS } = await import('../../public/scripts/sillybunny-editor/page-motion.js');
 
 window.ResizeObserver = class {
     observe() {}
@@ -137,5 +138,71 @@ describe('the hero', () => {
 
         expect(stops[0].stop).toHaveBeenCalled();
         expect(hero.isConnected).toBe(true);
+    });
+});
+
+describe('a panel in a dialog whose pages move', () => {
+    const flush = async () => {
+        for (let round = 0; round < 4; round++) {
+            await Promise.resolve();
+        }
+    };
+
+    /** A panel in the body of a page, which jsdom gives no width, so the layout would have nothing to decide on without one. */
+    function mountPanelInDialog() {
+        const surface = document.createElement('section');
+        surface.className = 'sb-dialog';
+        const host = document.createElement('div');
+        host.className = 'sb-dialog__body';
+        Object.defineProperty(host, 'clientWidth', { configurable: true, value: 900 });
+        const { panel } = createArtPanel(['gs-reisen']);
+        host.append(panel);
+        surface.append(host);
+        document.body.append(surface);
+        return { surface, host, panel };
+    }
+
+    const askForLayout = () => {
+        window.dispatchEvent(new Event('resize'));
+        jest.advanceTimersByTime(50);
+    };
+
+    test('lays itself out when it enters the document, which is part of the page being mounted', () => {
+        const { host } = mountPanelInDialog();
+
+        expect(stops[0].refresh).toHaveBeenCalled();
+        expect(host.dataset.sbArtMode).toBeDefined();
+    });
+
+    test('makes no write for a layout that is asked for during the slide, and makes it when the slide ends', async () => {
+        const { surface, host } = mountPanelInDialog();
+        stops[0].refresh.mockClear();
+        host.removeAttribute('data-sb-art-mode');
+        surface.classList.add(PAGING_CLASS);
+
+        askForLayout();
+        await flush();
+        askForLayout();
+
+        expect(stops[0].refresh).not.toHaveBeenCalled();
+        expect(host.dataset.sbArtMode).toBeUndefined();
+
+        surface.classList.remove(PAGING_CLASS);
+        await flush();
+        jest.advanceTimersByTime(50);
+
+        expect(stops[0].refresh).toHaveBeenCalled();
+        expect(host.dataset.sbArtMode).toBeDefined();
+    });
+
+    test('is laid out at once when its pages are at rest', () => {
+        const { host } = mountPanelInDialog();
+        stops[0].refresh.mockClear();
+        host.removeAttribute('data-sb-art-mode');
+
+        askForLayout();
+
+        expect(stops[0].refresh).toHaveBeenCalled();
+        expect(host.dataset.sbArtMode).toBeDefined();
     });
 });

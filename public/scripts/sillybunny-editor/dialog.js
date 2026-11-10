@@ -18,6 +18,7 @@ import { bindSheetGestures } from './sheet-gestures.js';
 import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { MODAL_ATTRIBUTE, getTopmostDialog, hostOverlayLayer, releaseOverlayLayers } from './overlay-host.js';
 import { FOCUSABLE_SELECTOR, closeChain, coverSurface, findCoveredSurface, registerChainLevel, returnFocusTo, unregisterChainLevel } from './page-chain.js';
+import { PAGING_CLASS } from './page-motion.js';
 import { installSlideShade } from './slide-shade.js';
 
 /*
@@ -40,7 +41,8 @@ const SLIDE_DIM = 0.5;
 /**
  * The motions that keep the shadow of a dialog surface off, as `is-paging` (slide-shade.js): its page slides and its
  * height motion. A late change of a page's height restarts the height motion after the slide has ended, so the class
- * stays until the last of them is over and the shadow does not return in the middle of a motion.
+ * stays until the last of them is over and the shadow does not return in the middle of a motion. Page content also
+ * reads the class as the signal that its pages move, so it must stay set for the whole of each motion.
  * @type {WeakMap<HTMLElement, Set<object>>}
  */
 const pagingHolds = new WeakMap();
@@ -55,10 +57,10 @@ function holdPaging(surface) {
     pagingHolds.set(surface, holds);
     const hold = {};
     holds.add(hold);
-    surface.classList.add('is-paging');
+    surface.classList.add(PAGING_CLASS);
     return () => {
         holds.delete(hold);
-        if (!holds.size) surface.classList.remove('is-paging');
+        if (!holds.size) surface.classList.remove(PAGING_CLASS);
     };
 }
 
@@ -90,7 +92,7 @@ function holdPagingUntilDisposed(surface) {
 /** Ends every hold of a surface that is going away, so a motion that never ends cannot keep the class. */
 function clearPaging(surface) {
     pagingHolds.get(surface)?.clear();
-    surface.classList.remove('is-paging');
+    surface.classList.remove(PAGING_CLASS);
 }
 
 /**

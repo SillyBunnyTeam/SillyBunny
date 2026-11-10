@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { parseBreathScene } from '../../public/scripts/sillybunny-home/art-motion.js';
 import { attachArtMotion, startArtMotion } from '../../public/scripts/sillybunny-home/art-player.js';
+import { PAGING_CLASS } from '../../public/scripts/sillybunny-editor/page-motion.js';
 import { createPixelFigure, sizePixelFigure } from '../../public/scripts/sillybunny-home/pixel-art.js';
 
 const SCENE = parseBreathScene({
@@ -692,6 +693,274 @@ describe('a figure whose scene failed', () => {
         expect(add).not.toHaveBeenCalled();
         expect(reducedQuery.listeners.size).toBe(0);
         expect(figure.dataset.sbArtMotion).toBe('failed');
+    });
+});
+
+describe('while the page of the figure slides', () => {
+    /** A figure in a page of a dialog, and a record of every change made to the figure and to what it holds. */
+    function mountInDialog({ moving = true } = {}) {
+        const surface = document.createElement('section');
+        surface.className = 'sb-dialog';
+        surface.classList.toggle(PAGING_CLASS, moving);
+        const page = document.createElement('section');
+        page.className = 'sb-dialog__page';
+        const figure = createPixelFigure('hero-duo');
+        page.append(figure);
+        surface.append(page);
+        document.body.append(surface);
+        sizePixelFigure(figure, { step: 2, ratio: 2 });
+        const seen = [];
+        const observer = new MutationObserver(records => seen.push(...records));
+        observer.observe(figure, { subtree: true, childList: true, attributes: true });
+        const describeRecord = record => (record.type === 'attributes'
+            ? `${record.target.nodeName} ${record.attributeName}`
+            : `${record.target.nodeName} +${record.addedNodes.length} -${record.removedNodes.length}`);
+        const writes = {
+            takeRecords: () => {
+                seen.push(...observer.takeRecords());
+                return seen.splice(0).map(describeRecord);
+            },
+        };
+        return { surface, page, figure, writes };
+    }
+
+    const endSlide = async (surface) => {
+        surface.classList.remove(PAGING_CLASS);
+        await flush();
+    };
+
+    test('makes no write to the figure, and keeps loading its pictures, so the first frame is ready when the slide ends', async () => {
+        const { surface, figure, writes } = mountInDialog();
+        const { observer, load } = start(figure);
+
+        await appear(observer);
+
+        expect(load).toHaveBeenCalledTimes(1);
+        expect(writes.takeRecords()).toEqual([]);
+        expect(figure.querySelectorAll('img')).toHaveLength(1);
+        expect(figure.dataset.sbArtMotion).toBeUndefined();
+        expect(jest.getTimerCount()).toBe(0);
+
+        await endSlide(surface);
+
+        expect(figure.querySelectorAll('img[data-sb-art-layer]').length).toBeGreaterThan(0);
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+        expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    test('starts only once, however many times the layout asks it to look again during the slide', async () => {
+        const { surface, figure, writes } = mountInDialog();
+        const { player, observer, load } = start(figure);
+        await appear(observer);
+
+        player.refresh();
+        player.refresh();
+        await flush();
+        expect(writes.takeRecords()).toEqual([]);
+        await endSlide(surface);
+
+        expect(load).toHaveBeenCalledTimes(1);
+        expect(jest.getTimerCount()).toBe(1);
+    });
+
+    test('keeps what a figure that already plays shows, and does not change a picture until the slide ends', async () => {
+        const { surface, figure, writes } = mountInDialog({ moving: false });
+        const { observer } = start(figure);
+        await appear(observer);
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+        writes.takeRecords();
+
+        surface.classList.add(PAGING_CLASS);
+        jest.advanceTimersByTime(5000);
+        await flush();
+
+        expect(writes.takeRecords()).toEqual([]);
+        expect(jest.getTimerCount()).toBe(0);
+
+        await endSlide(surface);
+
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+        expect(jest.getTimerCount()).toBe(1);
+        jest.advanceTimersByTime(5000);
+        expect(writes.takeRecords().length).toBeGreaterThan(0);
+    });
+
+    test('does not go back to its still when it leaves the view during the slide, until the slide ends', async () => {
+        const { surface, figure, writes } = mountInDialog({ moving: false });
+        const { observer } = start(figure);
+        await appear(observer);
+        writes.takeRecords();
+
+        surface.classList.add(PAGING_CLASS);
+        observer.report(false);
+        await flush();
+        expect(writes.takeRecords()).toEqual([]);
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+
+        await endSlide(surface);
+
+        expect(figure.dataset.sbArtMotion).toBe('still');
+        expect(jest.getTimerCount()).toBe(0);
+    });
+
+    test('does not insert the pictures of a scene that finished loading during the slide, and ends the wait when it is stopped', async () => {
+        const { surface, figure, writes } = mountInDialog();
+        const { player, observer } = start(figure);
+        await appear(observer);
+
+        player.stop();
+        await endSlide(surface);
+
+        expect(figure.querySelectorAll('img')).toHaveLength(1);
+        expect(figure.dataset.sbArtMotion).toBeUndefined();
+        expect(jest.getTimerCount()).toBe(0);
+        expect(writes.takeRecords().filter(record => record.includes('+'))).toEqual([]);
+    });
+
+    test('does not put a scene into a figure that left the page while it waited, and loads again when the figure returns', async () => {
+        const { surface, figure } = mountInDialog();
+        const { observer, load } = start(figure);
+        await appear(observer);
+        expect(load).toHaveBeenCalledTimes(1);
+
+        // A dialog that closes in the middle of a slide drops the class and leaves the page.
+        surface.remove();
+        surface.classList.remove(PAGING_CLASS);
+        await flush();
+
+        expect(figure.querySelectorAll('img')).toHaveLength(1);
+        expect(figure.dataset.sbArtMotion).toBeUndefined();
+        expect(jest.getTimerCount()).toBe(0);
+
+        document.body.append(surface);
+        observer.report(true);
+        await flush();
+
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+        expect(layerImages(figure).length).toBeGreaterThan(0);
+    });
+
+    test('makes no write for a figure that left the page while it waited to resume', async () => {
+        const { surface, figure, writes } = mountInDialog({ moving: false });
+        const { observer } = start(figure);
+        await appear(observer);
+        surface.classList.add(PAGING_CLASS);
+        jest.advanceTimersByTime(5000);
+        writes.takeRecords();
+
+        surface.remove();
+        surface.classList.remove(PAGING_CLASS);
+        await flush();
+
+        expect(jest.getTimerCount()).toBe(0);
+        expect(writes.takeRecords().filter(record => record.includes('style'))).toEqual([]);
+    });
+
+    test('plays at once in a dialog whose pages are at rest, and anywhere outside a dialog', async () => {
+        const rest = mountInDialog({ moving: false });
+        const restPlayer = start(rest.figure);
+        await appear(restPlayer.observer);
+        expect(rest.figure.dataset.sbArtMotion).toBe('playing');
+
+        const hero = mountFigure();
+        const outside = start(hero);
+        document.body.classList.add(PAGING_CLASS);
+        await appear(outside.observer);
+        expect(hero.dataset.sbArtMotion).toBe('playing');
+    });
+});
+
+describe('a figure in a hidden page', () => {
+    /** A figure in a page that the dialog keeps but does not show, such as a covered page when its slide has ended. */
+    function mountInPage() {
+        const page = document.createElement('section');
+        page.className = 'sb-dialog__page';
+        const figure = createPixelFigure('hero-duo');
+        page.append(figure);
+        document.body.append(page);
+        sizePixelFigure(figure, { step: 2, ratio: 2 });
+        const seen = [];
+        const observer = new MutationObserver(records => seen.push(...records));
+        observer.observe(figure, { subtree: true, childList: true, attributes: true });
+        const writes = () => {
+            seen.push(...observer.takeRecords());
+            return seen.splice(0).map(record => `${record.target.nodeName} ${record.attributeName ?? 'children'}`);
+        };
+        return { page, figure, writes };
+    }
+
+    test('does not load, and writes nothing, until its page shows', async () => {
+        const { page, figure, writes } = mountInPage();
+        page.hidden = true;
+        const { observer, load } = start(figure);
+
+        await appear(observer);
+
+        expect(load).not.toHaveBeenCalled();
+        expect(writes()).toEqual([]);
+        expect(jest.getTimerCount()).toBe(0);
+
+        page.hidden = false;
+        observer.report(true);
+        await flush();
+
+        expect(load).toHaveBeenCalledTimes(1);
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+    });
+
+    test('does not move while its page is hidden, even when it is still in view for the observer', async () => {
+        const { page, figure } = mountInPage();
+        const { player, observer } = start(figure);
+        await appear(observer);
+        expect(jest.getTimerCount()).toBe(1);
+
+        page.hidden = true;
+        player.refresh();
+
+        expect(jest.getTimerCount()).toBe(0);
+        expect(figure.dataset.sbArtMotion).toBe('still');
+
+        page.hidden = false;
+        player.refresh();
+
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+        expect(jest.getTimerCount()).toBe(1);
+    });
+
+    test('goes to its still without a style write when it leaves the view in a hidden page, and shows it when it plays again', async () => {
+        const { page, figure, writes } = mountInPage();
+        const { observer } = start(figure);
+        await appear(observer);
+        // The figure starts in the breath pose, so putting the neutral pictures back would write to the layers.
+        expect(shown(figure)).toContain('tall-b.webp');
+        writes();
+
+        page.hidden = true;
+        observer.report(false);
+
+        expect(writes().filter(write => write.endsWith('style'))).toEqual([]);
+        expect(figure.dataset.sbArtMotion).toBe('still');
+        expect(jest.getTimerCount()).toBe(0);
+
+        page.hidden = false;
+        observer.report(true);
+        await flush();
+
+        expect(figure.dataset.sbArtMotion).toBe('playing');
+        expect(figure.firstElementChild.style.visibility).toBe('hidden');
+        expect(shown(figure)).toContain('tall-b.webp');
+    });
+
+    test('puts the neutral pictures back when it pauses in a page that shows', async () => {
+        const { figure, writes } = mountInPage();
+        const { observer } = start(figure);
+        await appear(observer);
+        writes();
+
+        observer.report(false);
+
+        expect(writes().filter(write => write.endsWith('style')).length).toBeGreaterThan(0);
+        expect(shown(figure)).toContain('tall-c.webp');
     });
 });
 

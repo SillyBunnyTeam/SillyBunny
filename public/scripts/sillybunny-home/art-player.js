@@ -1,3 +1,4 @@
+import { afterPageMotion, isPageMotionRunning } from '../sillybunny-editor/page-motion.js';
 import { prefersReducedMotion } from '../sillybunny-motion.js';
 import { createBlinkState, parseBreathScene, planScene } from './art-motion.js';
 import { placePixelLayer } from './pixel-art.js';
@@ -16,9 +17,14 @@ import { getPixelArt, getPixelMotionFile, pictureUrl } from './art-sources.js';
  * A picture that the layout shrinks by a fraction to fit its place (`data-sb-art-fit="smooth"`) keeps its still. Its
  * art pixels are not whole device pixels there, so layers placed on them would round each to a different edge and show
  * seams that the single still does not have.
+ *
+ * A picture in a dialog page that slides makes no write to the document until the slide has ended. The pictures still
+ * load and decode during the slide, and a figure that plays keeps the picture it shows until then.
  */
 
 /** @typedef {import('./art-motion.js').MotionScene} MotionScene */
+
+const EARLY_WAKE_RETRY_MS = 50;
 
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
@@ -204,6 +210,11 @@ export function startArtMotion(figure, { loadScene, urlOf, random = Math.random,
     let rig = null;
     /** @type {(() => void) | null} */
     let unwatch = null;
+    /** @type {Rig | null} */
+    let pendingRig = null;
+    /** @type {(() => void) | null} */
+    let cancelWait = null;
+    let retryTimer = 0;
 
     /** @param {string} state */
     const report = (state) => {
@@ -222,6 +233,8 @@ export function startArtMotion(figure, { loadScene, urlOf, random = Math.random,
         /** @type {HTMLImageElement} */ (entry.images.get(file)).style.visibility = 'visible';
         entry.shown = file;
     };
+
+    const inHiddenPage = () => figure.closest('[hidden]') !== null;
 
     /** Shows the still, or the neutral picture of every figure, which is the same picture. */
     const showStill = () => {
@@ -242,9 +255,14 @@ export function startArtMotion(figure, { loadScene, urlOf, random = Math.random,
     };
 
     const tick = () => {
+        timer = 0;
         // A figure that left the document while a timer was pending has nothing to move.
         if (!rig || !figure.isConnected) {
             pause();
+            return;
+        }
+        if (isPageMotionRunning(figure)) {
+            waitForPagesToRest();
             return;
         }
         const plan = planScene(blinkState, now() - startedAt, rig.scene, random);
@@ -256,7 +274,11 @@ export function startArtMotion(figure, { loadScene, urlOf, random = Math.random,
     const pause = () => {
         clearTimeout(timer);
         timer = 0;
-        showStill();
+        // Nothing shows a figure that is detached or in a hidden page, so the writes of the still would be wasted
+        // restyles. The still is put back when the figure plays again.
+        if (figure.isConnected && !inHiddenPage()) {
+            showStill();
+        }
         if (playing) {
             playing = false;
             report('still');
@@ -276,7 +298,69 @@ export function startArtMotion(figure, { loadScene, urlOf, random = Math.random,
         tick();
     };
 
-    const canMove = () => placed && inView && figure.isConnected && !document.hidden && !readReducedMotion() && !isShrunkSmooth(figure);
+    const canMove = () => placed && inView && figure.isConnected && !inHiddenPage() && !document.hidden && !readReducedMotion() && !isShrunkSmooth(figure);
+
+    /** Looks at the figure again once, when the pages of its dialog have stopped moving. */
+    const waitForPagesToRest = () => {
+        if (retryTimer) {
+            return;
+        }
+        cancelWait ??= afterPageMotion(figure, () => {
+            cancelWait = null;
+            if (stopped) {
+                return;
+            }
+            // A wake-up that comes while the pages still move would otherwise register the wait again in the same
+            // microtask, and the page would never get to run its tasks.
+            if (isPageMotionRunning(figure)) {
+                retryTimer = setTimeout(() => {
+                    retryTimer = 0;
+                    waitForPagesToRest();
+                }, EARLY_WAKE_RETRY_MS);
+                return;
+            }
+            if (pendingRig) {
+                const built = pendingRig;
+                pendingRig = null;
+                install(built);
+                return;
+            }
+            refresh();
+        });
+    };
+
+    /** @param {Rig} built Pictures that are decoded but not yet in the page. */
+    const install = (built) => {
+        if (stopped) {
+            return;
+        }
+        // The dialog may have closed during the slide. The next refresh loads the scene again if the figure returns.
+        if (!figure.isConnected) {
+            pendingRig = null;
+            if (status === 'loading') {
+                status = 'idle';
+            }
+            return;
+        }
+        if (isPageMotionRunning(figure)) {
+            pendingRig = built;
+            waitForPagesToRest();
+            return;
+        }
+        // The layout may have changed the step while the pictures decoded, and it places only what is in the figure.
+        const unit = readUnit(figure);
+        if (unit === null) {
+            status = 'idle';
+            return;
+        }
+        built.nodes.forEach(node => placePixelLayer(node, unit));
+        figure.append(...built.nodes);
+        rig = built;
+        status = 'ready';
+        report('still');
+        showStill();
+        refresh();
+    };
 
     const load = () => {
         // The layout sizes a figure after it makes it. A figure that has no size yet is not a failure: the next refresh asks again.
@@ -301,19 +385,7 @@ export function startArtMotion(figure, { loadScene, urlOf, random = Math.random,
                     status = 'idle';
                     return;
                 }
-                // The layout may have changed the step while the pictures decoded, and it places only what is in the figure.
-                const unit = readUnit(figure);
-                if (unit === null) {
-                    status = 'idle';
-                    return;
-                }
-                built.nodes.forEach(node => placePixelLayer(node, unit));
-                figure.append(...built.nodes);
-                rig = built;
-                status = 'ready';
-                report('still');
-                showStill();
-                refresh();
+                install(built);
             })
             .catch((error) => {
                 if (stopped) {
@@ -339,14 +411,31 @@ export function startArtMotion(figure, { loadScene, urlOf, random = Math.random,
             unwatch();
             unwatch = null;
         }
+        const pagesMove = isPageMotionRunning(figure);
         if (!canMove()) {
-            pause();
+            if (pagesMove) {
+                waitForPagesToRest();
+            } else {
+                pause();
+            }
+            return;
+        }
+        if (pagesMove) {
+            // Loading makes no write, so the pictures can be ready when the slide ends.
+            if (status === 'idle') {
+                load();
+            }
+            waitForPagesToRest();
             return;
         }
         if (status === 'idle') {
             load();
         } else if (status === 'ready') {
-            play();
+            if (!playing) {
+                play();
+            } else if (!timer) {
+                tick();
+            }
         }
     }
 
@@ -359,6 +448,11 @@ export function startArtMotion(figure, { loadScene, urlOf, random = Math.random,
     function release() {
         clearTimeout(timer);
         timer = 0;
+        cancelWait?.();
+        cancelWait = null;
+        clearTimeout(retryTimer);
+        retryTimer = 0;
+        pendingRig = null;
         observer.disconnect();
         unwatch?.();
         unwatch = null;

@@ -1,4 +1,5 @@
 import { readDialogAside, writeDialogAside } from '../sillybunny-editor/dialog-aside.js';
+import { afterPageMotion, isPageMotionRunning } from '../sillybunny-editor/page-motion.js';
 import { attachArtMotion } from './art-player.js';
 import { getPixelArt } from './art-sources.js';
 import {
@@ -141,6 +142,7 @@ export function planArtMode({ contentWidth, availableHeight, panelWidth, panelHe
  * @property {boolean} seen Whether the panel has been in the document.
  * @property {boolean} alignQueued
  * @property {'panel' | 'hero'} [kind] A hero is one figure fitted to the width of its band, with no panel, mode or window.
+ * @property {(() => void) | null} [cancelWait] Ends the wait for the pages of the window to stop moving.
  */
 
 /** @type {Set<ArtController>} */
@@ -549,6 +551,8 @@ function queueAlignment(controller) {
  */
 function stop(controller) {
     controllers.delete(controller);
+    controller.cancelWait?.();
+    controller.cancelWait = null;
     if (controller.host) {
         resizeObserver?.unobserve(controller.host);
         controller.host = null;
@@ -564,6 +568,18 @@ function stop(controller) {
     window.removeEventListener('resize', scheduleLayout);
 }
 
+/**
+ * While the pages of the window move, the panel keeps the layout it was mounted with, and the layout pass runs once
+ * they have stopped.
+ * @param {ArtController} controller
+ */
+function waitForPagesToRest(controller) {
+    controller.cancelWait ??= afterPageMotion(controller.panel, () => {
+        controller.cancelWait = null;
+        scheduleLayout();
+    });
+}
+
 function run() {
     frame = 0;
     const plans = [];
@@ -571,6 +587,10 @@ function run() {
         if (controller.seen && !controller.panel.isConnected) {
             controller.figures.forEach(({ motion }) => motion?.stop());
             stop(controller);
+            continue;
+        }
+        if (isPageMotionRunning(controller.panel)) {
+            waitForPagesToRest(controller);
             continue;
         }
         plans.push([controller, measure(controller)]);
@@ -654,7 +674,7 @@ export function createArtPanel(ids) {
     panel.setAttribute('aria-hidden', 'true');
     panel.dataset.sbArtMode = 'banner';
     /** @type {ArtController} */
-    const controller = { panel, ids: [], figures: [], host: null, seen: false, alignQueued: false };
+    const controller = { panel, ids: [], figures: [], host: null, seen: false, alignQueued: false, cancelWait: null };
     const place = (next) => {
         setFigures(controller, next);
         panel.style.setProperty('--sb-art-pad', `${PANEL_PADDING}px`);
@@ -709,7 +729,7 @@ export function createHeroArt(id) {
     // Sized for the fixed step before it is in the document, and fitted to its band as soon as the band has a width.
     sizePixelFigure(figure, readFixedScale());
     /** @type {ArtController} */
-    const controller = { kind: 'hero', panel, ids: [id], figures: [{ id, figure, motion: attachArtMotion(figure, id) }], host: null, seen: false, alignQueued: false };
+    const controller = { kind: 'hero', panel, ids: [id], figures: [{ id, figure, motion: attachArtMotion(figure, id) }], host: null, seen: false, alignQueued: false, cancelWait: null };
     register(controller);
     return {
         panel,
