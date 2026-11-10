@@ -132,8 +132,7 @@ function createCardText({ name, titleId, subtitleId, subtitle: subtitleText, con
 }
 
 /**
- * The art is a box that stands where artwork will go, unless the card of the character is the art: then the box holds
- * its thumbnail.
+ * The art is the thumbnail of the card of the character, in a box. A card that has no file has the box alone.
  */
 function createCardArt({ art }, getThumbnailUrl) {
     const box = createElement('div', 'sbHomeCardArt');
@@ -144,6 +143,8 @@ function createCardArt({ art }, getThumbnailUrl) {
         image.src = getThumbnailUrl(art.avatar);
         image.alt = '';
         image.decoding = 'async';
+        // The server answers 404 when it cannot make a thumbnail, and a broken picture would draw its own frame in the box.
+        image.addEventListener('error', () => image.remove(), { once: true });
         picture.replaceChildren(image);
     }
     box.append(picture);

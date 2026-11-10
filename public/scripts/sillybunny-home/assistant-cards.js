@@ -77,7 +77,7 @@ function describeAssistant(assistant, library, managed) {
         id: assistant.id,
         kind: 'bundled',
         name: assistant.name,
-        art: { name: assistant.art, avatar: null },
+        art: { name: assistant.art, avatar: found?.avatar ?? null },
         avatar: found?.avatar ?? null,
         state,
         offers: findOffers({ filename: assistant.defaultAvatar, cardState: state, items: managed.items, dismissed: managed.dismissed }),

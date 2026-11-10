@@ -365,12 +365,34 @@ describe('a card with an update from the managed content', () => {
 });
 
 describe('the art of a card', () => {
-    test('is a placeholder box for an assistant that has no picture yet', () => {
-        const { panel } = render([AVAILABLE_REISEN]);
+    test('is the thumbnail of the card of a bundled assistant that has one, drawn as the pointer card is', () => {
+        const { panel } = render([{ ...AVAILABLE_REISEN, art: { name: 'row-reisen', avatar: 'default_AssistantReisen.png' } }]);
 
         const art = cardOf(panel, 'assistant-reisen').querySelector('.sbHomeCardArt .sbHomeArt');
         expect(art.dataset.sbArtPlaceholder).toBe('row-reisen');
+        expect(art.querySelector('img').getAttribute('src')).toBe('/thumb/default_AssistantReisen.png');
+        expect(art.textContent).toBe('');
+    });
+
+    test('is the empty box again when the thumbnail fails to load, as the server answers 404 for a card it cannot make one of', () => {
+        const { panel } = render([POINTER]);
+        const art = cardOf(panel, 'assistant-own').querySelector('.sbHomeCardArt .sbHomeArt');
+
+        art.querySelector('img').dispatchEvent(new Event('error'));
+
         expect(art.querySelector('img')).toBeNull();
+        expect(art.textContent).toBe('');
+        expect(art.getAttribute('aria-hidden')).toBe('true');
+    });
+
+    test.each([['missing', MISSING_TEWI], ['deleted', DELETED_TEWI]])('is a box with no text and no picture for a card that is %s', (_state, card) => {
+        const { panel } = render([card]);
+
+        const art = cardOf(panel, 'assistant-tewi').querySelector('.sbHomeCardArt .sbHomeArt');
+        expect(art.dataset.sbArtPlaceholder).toBe('row-tewi');
+        expect(art.getAttribute('aria-hidden')).toBe('true');
+        expect(art.querySelector('img')).toBeNull();
+        expect(art.textContent).toBe('');
     });
 
     test('is the thumbnail of the card of the character when the model gives an avatar', () => {

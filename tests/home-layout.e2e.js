@@ -1567,7 +1567,8 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                 const box = page.locator(`.welcomePanel ${artSelector(id)}`);
                 await expect(box).toBeVisible();
                 await expect(box).toHaveAttribute('aria-hidden', 'true');
-                await expect(box).toHaveText(id);
+                await expect(box).toHaveText('');
+                await expect(box.locator('img')).toHaveCount(1);
                 const rect = await measure(page, `.welcomePanel ${artSelector(id)}`);
                 expect([id, Math.round(rect.width), Math.round(rect.height)]).toEqual([id, width, height]);
             }
@@ -2149,8 +2150,12 @@ for (const { name, options } of WIDE_VIEWPORTS) {
                     'row-tewi': [64 * scale, 64 * scale],
                     'choose-icon': [64 * scale, 64 * scale],
                 });
-                // The card portraits are smooth pictures, so they are not drawn as pixel art.
-                expect(await page.locator('.welcomePanel [data-sb-art-placeholder="row-reisen"]').evaluate(node => getComputedStyle(node).imageRendering)).toBe('auto');
+                // The card portraits are smooth pictures, so they are not drawn as pixel art. The picture is what is sampled, so it is the picture that is read.
+                for (const art of ['row-reisen', 'row-tewi']) {
+                    const picture = page.locator(`.welcomePanel [data-sb-art-placeholder="${art}"] img`);
+                    await expect(picture, art).toHaveCount(1);
+                    expect(await picture.evaluate(node => getComputedStyle(node).imageRendering), art).toBe('auto');
+                }
             });
         }
     });

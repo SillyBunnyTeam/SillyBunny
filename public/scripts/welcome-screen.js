@@ -10,6 +10,7 @@ import {
     getCurrentChatId,
     getRequestHeaders,
     getThumbnailUrl,
+    getThumbnailUrlForViewport, // SillyBunny: Home's assistant thumbnails are the preset of the viewport, so a phone does not fetch the desktop files.
     openCharacterChat,
     printCharactersDebounced,
     renameGroupOrCharacterChat,
@@ -762,7 +763,7 @@ async function sendWelcomePanel(chats, expand = false) {
                     getPickerEntries: () => getAssistantPickerEntries({ library: getAssistantLibrary(), pointerAvatar: accountStorage.getItem(assistantAvatarKey) }),
                     setPointer: chooseHomeAssistant,
                     actions: { ...assistantActions, ...managedAssistants.actions },
-                    getThumbnailUrl: avatar => getThumbnailUrl('avatar', avatar),
+                    getThumbnailUrl: avatar => getThumbnailUrlForViewport('avatar', avatar),
                 },
             });
             // SillyBunny: a status that arrives after the cards were made replaces them, unless a menu or a dialog is open.

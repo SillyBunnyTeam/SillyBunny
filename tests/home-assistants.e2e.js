@@ -22,6 +22,7 @@ const SUBTITLES = {
 };
 const actionErrorToast = page => page.locator('#toast-container .toast-message', { hasText: HOME_COPY.assistantActionError });
 const THUMBNAIL = readFileSync(new URL('../public/img/ai4.png', import.meta.url));
+const MOBILE_USER_AGENT = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 
 const VIEWPORTS = [
     { name: 'desktop 1440x900', portrait: 128, options: { viewport: { width: 1440, height: 900 } } },
@@ -53,8 +54,8 @@ const card = avatar => makeCharacterCard(avatar, NAMES[avatar] ?? avatar);
  * @param {{ library: string[], accountStorage?: Record<string, string>, lastMode?: 'roleplay' | 'conversation', exact?: boolean }} options
  *   `exact` drops the characters that the data root holds, so the picker lists the library of the test and nothing else.
  */
-async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay', exact = false }) {
-    const world = { library: new Set(library), chatSaves: [], lastChats: [] };
+async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay', exact = false, missingThumbnails = [] }) {
+    const world = { library: new Set(library), chatSaves: [], lastChats: [], thumbnailRequests: [] };
     const bundled = [REISEN, TEWI, NAHIDA];
 
     page.on('request', (request) => {
@@ -70,7 +71,15 @@ async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay',
     for (const avatar of library) {
         registerFixtureChat(page, { avatar, name: NAMES[avatar] ?? avatar, chat: `qa-${avatar}` });
     }
-    await page.route('**/thumbnail?*', route => route.fulfill({ contentType: 'image/png', body: THUMBNAIL }));
+    // The server answers 404 when it cannot make a thumbnail, and a card of a character that was deleted meanwhile is the same.
+    await page.route('**/thumbnail?*', (route) => {
+        const url = new URL(route.request().url());
+        world.thumbnailRequests.push(url.search);
+        if (missingThumbnails.includes(url.searchParams.get('file'))) {
+            return route.fulfill({ status: 404, body: '' });
+        }
+        return route.fulfill({ contentType: 'image/png', body: THUMBNAIL });
+    });
     await page.route('**/api/characters/all', async (route) => {
         if (exact) return route.fulfill({ json: [...world.library].map(card) });
         const real = await fetchJsonOrSkip(route);
@@ -143,38 +152,60 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 }
             });
 
-            test('show the thumbnail of the card for the pointer character, and a placeholder box for Reisen and Tewi', async ({ page }) => {
+            test('show the thumbnail of their own card on every card: Reisen, Tewi and the pointer character', async ({ page }) => {
                 await boot(page, { library: [...BOTH, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
+                const thumbnailOf = avatar => page.evaluate(async file => (await import('/script.js')).getThumbnailUrlForViewport('avatar', file), avatar);
 
-                await expect(cardOf(page, 'assistant-own').locator('.sbHomeArt[data-sb-art-placeholder="row-pointer"] img')).toHaveAttribute('src', /file=Alice\.png/);
-                await expect.poll(() => cardOf(page, 'assistant-own').locator('.sbHomeArt img').evaluate(image => image.complete && image.naturalWidth)).toBeGreaterThan(0);
-                await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeArt[data-sb-art-placeholder="row-reisen"]')).toBeVisible();
-                await expect(cardOf(page, 'assistant-reisen').locator('img')).toHaveCount(0);
+                for (const [key, avatar, art] of [['assistant-reisen', REISEN, 'row-reisen'], ['assistant-tewi', TEWI, 'row-tewi'], ['assistant-own', 'Alice.png', 'row-pointer']]) {
+                    const image = cardOf(page, key).locator(`.sbHomeArt[data-sb-art-placeholder="${art}"] img`);
+                    await expect(image, key).toHaveAttribute('src', await thumbnailOf(avatar));
+                    await expect.poll(() => image.evaluate(node => node.complete && node.naturalWidth), key).toBeGreaterThan(0);
+                }
 
-                // Every portrait has the box of the placeholder of Reisen: the one pixel scale of the screen, the same corners, and a thumbnail that covers it.
+                // Every portrait has the same box: the one pixel scale of the screen, the same corners, and a thumbnail that covers it, cropped alike.
                 const boxes = await page.locator(`${HOME} .sbHomeCard:not(.sbHomeCard--choose) .sbHomeArt`).evaluateAll(nodes => nodes.map((node) => {
                     const box = node.getBoundingClientRect();
                     const image = node.querySelector('img');
-                    const imageBox = image?.getBoundingClientRect();
+                    const imageBox = image.getBoundingClientRect();
                     return {
                         art: node.dataset.sbArtPlaceholder,
                         size: [Math.round(box.width), Math.round(box.height)],
                         radius: getComputedStyle(node).borderTopLeftRadius,
-                        rendering: [getComputedStyle(node).imageRendering, image ? getComputedStyle(image).imageRendering : 'auto'],
-                        image: imageBox ? { size: [Math.round(imageBox.width), Math.round(imageBox.height)], fit: getComputedStyle(image).objectFit } : null,
+                        rendering: [getComputedStyle(node).imageRendering, getComputedStyle(image).imageRendering],
+                        image: { size: [Math.round(imageBox.width), Math.round(imageBox.height)], fit: getComputedStyle(image).objectFit, position: getComputedStyle(image).objectPosition },
                     };
                 }));
-                const reisen = boxes.find(box => box.art === 'row-reisen');
-                expect(reisen.size).toEqual([portrait, portrait]);
+                expect(boxes.map(box => box.art)).toEqual(['row-reisen', 'row-tewi', 'row-pointer']);
+                const pointer = boxes.find(box => box.art === 'row-pointer');
+                expect(pointer.size).toEqual([portrait, portrait]);
                 for (const box of boxes) {
-                    expect(box.size, `${box.art} box`).toEqual(reisen.size);
-                    expect(box.radius, `${box.art} corners`).toBe(reisen.radius);
+                    expect(box.size, `${box.art} box`).toEqual(pointer.size);
+                    expect(box.radius, `${box.art} corners`).toBe(pointer.radius);
                     // The portraits are smooth pictures: they are scaled with the smooth filter, not drawn as pixel art.
                     expect(box.rendering, `${box.art} is not drawn as pixel art`).toEqual(['auto', 'auto']);
+                    expect(box.image, `${box.art} picture`).toEqual({ size: pointer.size, fit: 'cover', position: pointer.image.position });
                 }
-                const pictures = boxes.filter(box => box.image);
-                expect(pictures.map(box => box.art)).toEqual(['row-pointer']);
-                expect(pictures.map(box => box.image)).toEqual([{ size: reisen.size, fit: 'cover' }]);
+            });
+
+            test('show no art name as text: a box that has no picture is empty, and so is every other', async ({ page }) => {
+                await boot(page, { library: [REISEN, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
+                await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeArt img')).toHaveCount(1);
+
+                const shown = await page.evaluate(() => {
+                    const panel = document.querySelector('#chat > .welcomePanel');
+                    const boxes = [...panel.querySelectorAll('[data-sb-art-placeholder]')];
+                    return {
+                        names: boxes.map(box => box.dataset.sbArtPlaceholder),
+                        text: panel.innerText,
+                        withText: boxes.filter(box => box.textContent.trim() !== '').map(box => box.dataset.sbArtPlaceholder),
+                    };
+                });
+
+                expect(shown.names).toEqual(expect.arrayContaining(['row-reisen', 'row-tewi', 'row-pointer']));
+                expect(shown.withText).toEqual([]);
+                for (const artName of shown.names) {
+                    expect(shown.text, artName).not.toContain(artName);
+                }
             });
 
             test('keep the box of their art once a window has opened, because the art rules of a window stay inside the window', async ({ page }) => {
@@ -208,6 +239,52 @@ for (const { name, portrait, options } of VIEWPORTS) {
             });
         });
 
+        test.describe('the thumbnails', () => {
+            // The app tells a phone from its user agent, and Playwright's `isMobile` leaves that alone.
+            if (options.hasTouch) {
+                test.use({ userAgent: MOBILE_USER_AGENT });
+            }
+            const MOBILE = Boolean(options.hasTouch);
+            const PRESET = MOBILE ? '&preset=mobile' : '';
+            const thumbnailUrl = avatar => `/thumbnail?type=avatar&file=${encodeURIComponent(avatar)}${PRESET}`;
+
+            test('are the preset of the viewport: the mobile one on a phone, the desktop one otherwise', async ({ page }) => {
+                const world = await boot(page, { library: [...BOTH, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
+
+                for (const [key, avatar] of [['assistant-reisen', REISEN], ['assistant-tewi', TEWI], ['assistant-own', 'Alice.png']]) {
+                    await expect(cardOf(page, key).locator('.sbHomeArt img'), key).toHaveAttribute('src', thumbnailUrl(avatar));
+                }
+                const requested = world.thumbnailRequests.filter(search => /file=(default_Assistant|Alice)/.test(search));
+                expect(requested.length).toBeGreaterThanOrEqual(3);
+                for (const search of requested) {
+                    expect(search.includes('preset=mobile'), search).toBe(MOBILE);
+                }
+            });
+
+            test('are the same in the picker', async ({ page }) => {
+                await boot(page, { library: [...BOTH, 'Alice.png'], exact: true });
+
+                await overlayOf(cardOf(page, 'assistant-own')).click();
+
+                await expect(hosts(page)).toBeVisible();
+                await expect(hosts(page).locator('img.sbAssistantPickerThumb')).toHaveAttribute('src', thumbnailUrl('Alice.png'));
+            });
+
+            test('leave the box of a card whose thumbnail cannot be made empty, with no picture and no text', async ({ page }) => {
+                const world = await boot(page, { library: [...BOTH, 'Alice.png'], accountStorage: { assistant: 'Alice.png' }, missingThumbnails: [TEWI, 'Alice.png'] });
+
+                await expect.poll(() => world.thumbnailRequests.filter(search => search.includes(`file=${TEWI}`)).length).toBeGreaterThan(0);
+                for (const [key, art] of [['assistant-tewi', 'row-tewi'], ['assistant-own', 'row-pointer']]) {
+                    const box = cardOf(page, key).locator(`.sbHomeArt[data-sb-art-placeholder="${art}"]`);
+                    await expect(box, key).toBeVisible();
+                    await expect(box.locator('img'), key).toHaveCount(0);
+                    await expect(box, key).toHaveText('');
+                    expect(await box.evaluate(node => getComputedStyle(node).backgroundColor), key).not.toBe('rgba(0, 0, 0, 0)');
+                }
+                await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeArt img')).toHaveCount(1);
+            });
+        });
+
         test.describe('a card with no file', () => {
             sizeFreeTest('is insensitive when the library never had the card: its buttons are disabled and it has no menu', async ({ page }) => {
                 await boot(page, { library: [REISEN] });
@@ -219,6 +296,20 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await expect(menuOf(tewi)).toHaveCount(0);
                 await expect(tewi.locator('.sbHomeCardFooter > *')).toHaveCount(2);
                 await expect(overlayOf(cardOf(page, 'assistant-reisen'))).toBeEnabled();
+            });
+
+            test('shows a tinted box of the size of the portraits, with no picture and no text, in place of its art', async ({ page }) => {
+                await boot(page, { library: [REISEN] });
+                await expect(overlayOf(cardOf(page, 'assistant-reisen'))).toBeEnabled();
+                const art = cardOf(page, 'assistant-tewi').locator('.sbHomeArt[data-sb-art-placeholder="row-tewi"]');
+
+                await expect(art).toBeVisible();
+                await expect(art).toHaveAttribute('aria-hidden', 'true');
+                await expect(art).toHaveText('');
+                await expect(art.locator('img')).toHaveCount(0);
+                const box = await art.boundingBox();
+                expect([Math.round(box.width), Math.round(box.height)]).toEqual([portrait, portrait]);
+                expect(await art.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
             });
 
             sizeFreeTest('is insensitive in the same way when the account recorded that the card was deleted', async ({ page }) => {
