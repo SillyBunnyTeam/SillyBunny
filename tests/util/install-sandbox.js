@@ -37,6 +37,18 @@ export function createInstallSandbox(prefix) {
     };
 }
 
+/**
+ * Throws when the mock from createInstallSandbox() does not reach src/server-directory.js.
+ * Call it before code that moves, rewrites or deletes files, because without the mock those paths point at the real install folder.
+ */
+export async function assertSandboxedInstall(sandbox) {
+    const { serverDirectory } = await import('../../src/server-directory.js');
+    if (serverDirectory !== sandbox.installDir) {
+        sandbox.dispose();
+        throw new Error('The install sandbox does not replace serverDirectory, so the migrations would change the real install folder.');
+    }
+}
+
 /** Keeps the directory itself, because it can be the working directory and Windows cannot remove that. */
 export function emptyDirectory(directory) {
     for (const entry of fs.readdirSync(directory)) {

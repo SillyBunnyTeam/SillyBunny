@@ -2,9 +2,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, tes
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { createInstallSandbox, snapshotTree, writeFiles } from './util/install-sandbox.js';
+import { assertSandboxedInstall, createInstallSandbox, snapshotTree, writeFiles } from './util/install-sandbox.js';
 
 const sandbox = createInstallSandbox('sillybunny-startup-migrations');
+await assertSandboxedInstall(sandbox);
 const originalWorkingDirectory = process.cwd();
 const originalDataRoot = global.DATA_ROOT;
 
