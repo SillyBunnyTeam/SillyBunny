@@ -763,6 +763,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
 | Owner | TODO(copy) |
 
+### `tests/frontend/MacroEngine.e2e.js`, `MacroLexer.e2e.js`, `MacroParser.e2e.js`, `MacroRegistry.e2e.js`, `MacroSlashCommands.e2e.js` and `MacroStoryString.e2e.js` - one booted page per worker
+| Field | Value |
+| --- | --- |
+| File | `tests/frontend/MacroEngine.e2e.js`, `tests/frontend/MacroLexer.e2e.js`, `tests/frontend/MacroParser.e2e.js`, `tests/frontend/MacroRegistry.e2e.js`, `tests/frontend/MacroSlashCommands.e2e.js`, `tests/frontend/MacroStoryString.e2e.js`. |
+| Area | Test infrastructure: app boots in the macro and STscript browser tests. |
+| Divergence reason | TODO(copy) |
+| Target seam | `tests/frontend/shared-page.js`. Its `test` gives a `page` that boots once per worker, restores the chat metadata (which holds the local variables) and the global variables of the boot before each test, fails a test when the page has navigated since its boot, and answers `/api/settings/save` itself after the boot. Its `testSetup.awaitST` and `testSetup.goST` do nothing, because the page has booted. |
+| Adapter shape | In each file, the `@playwright/test` and `./frontent-test-utils.js` imports become one import of `test`, `expect` and `testSetup` from `./shared-page.js`, under a `SillyBunny:` comment. The test bodies and their `beforeEach(testSetup.awaitST)` or `beforeEach(testSetup.goST)` lines are unchanged. `tests/frontend/sillybunny-macro-whitespace.e2e.js` is a SillyBunny file and uses the same import. A file may join only when it leaves no other state behind; MessageFormatter, MacroEnvBuilder and StscriptParserFixes leave state that breaks other files, and the remaining files write chats, lorebooks or settings. |
+| Protecting tests | The six files and `tests/frontend/sillybunny-macro-whitespace.e2e.js` themselves. Among them, at least 14 MacroEngine tests expect empty variables (for example the scoped `getvar::x` test and the `.myvar ??` tests), so a missing restore fails them. |
+| Validation | `npm run lint` in `tests/`. The seven files with one worker (520 tests, one boot, 507 passed and 13 skipped), with the `e2e` runner's 8 servers × 8 workers and `--repeat-each=3` (1,521 passed, 39 skipped), and `tests/frontend/` with one worker (582 passed, 13 skipped; 252 s, against 1,501 s before). A failed test on the shared page still attaches its screenshot and error context; it has no video. Chromium, Playwright 1.64.1. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
+| Owner | TODO(copy) |
+
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |
