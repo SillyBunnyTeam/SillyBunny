@@ -311,8 +311,8 @@ This is the largest class by a wide margin.
 ### World Info scanning
 
 - **Breaks:** a lorebook entry activates when its keys and settings say it should not, stays off when they say it should activate, or activates and never reaches the prompt.
-- **Files:** `public/scripts/world-info.js` (upstream), `public/scripts/world-info-scan-core.js`, `public/scripts/world-info-character-book.js`.
-- **Tests:** `tests/world-info-scan-core.test.js`, `tests/world-info-scan-target.test.js`, `tests/world-info-character-book.test.js`, `tests/world-info-activation.test.js` (the activation rules in `tests/util/world-info-cases.js`), `tests/world-info-harness.test.js` (the harness stops with the name of a declaration that `world-info.js` renames or removes, and its constants match the file), `tests/frontend/WorldInfoActivation.e2e.js`.
+- **Files:** `public/scripts/world-info.js` (upstream), `public/scripts/world-info-scan-core.js`, `public/scripts/world-info-scan-chat.js`, `public/scripts/world-info-character-book.js`.
+- **Tests:** `tests/world-info-scan-core.test.js`, `tests/world-info-scan-chat.test.js`, `tests/world-info-scan-target.test.js`, `tests/world-info-character-book.test.js`, `tests/world-info-activation.test.js` (the activation rules in `tests/util/world-info-cases.js`), `tests/world-info-harness.test.js` (the harness stops with the name of a declaration that `world-info.js` renames or removes, and its constants match the file), `tests/frontend/WorldInfoActivation.e2e.js`.
 - **Limit:** the Jest suites run `checkWorldInfo()` and its helpers cut out of `world-info.js` by `tests/util/world-info-harness.js`, with one token per word and settings that each test sets. `tests/frontend/WorldInfoActivation.e2e.js` runs seven rows of the table through the real module, tokenizer and macro engine.
 - **Fixes:** #393 (legacy string positions activated but never reached the prompt), `c11467f9b` and `612ea61d6` (scanning and serialization of lorebook entries).
 
