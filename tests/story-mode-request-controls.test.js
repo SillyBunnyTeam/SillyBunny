@@ -1,9 +1,8 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest test.each tables are not Playwright tests. */
 import { describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
 import { EventEmitter } from 'node:events';
 import vm from 'node:vm';
-import { parse } from 'acorn';
+import { loadDeclarations as load, readClientModule } from './util/load-declarations.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, requestUsesReasoning, warnsOnGenerationLengthFinish } from '../public/scripts/generation-request-controls.js';
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../public/scripts/openai-model-capabilities.js';
 import { resolveGenerationOutputBufferState, resolveGenerationUnblockState, resolveStopGenerationState } from '../public/scripts/generation-lifecycle/index.js';
@@ -11,22 +10,6 @@ import { event_types } from '../public/scripts/events.js';
 import { collectHiddenGenerationMessages } from '../public/scripts/generation-hidden-messages.js';
 import { OVERSWIPE_BEHAVIOR, SWIPE_DIRECTION, SWIPE_SOURCE, SWIPE_STATE } from '../public/scripts/constants.js';
 import * as samplingParameterPolicy from '../public/scripts/sampling-parameter-policy.js';
-
-const sources = Object.fromEntries(['script.js', 'scripts/openai.js', 'scripts/reasoning.js', 'scripts/group-chats.js', 'scripts/utils.js', 'scripts/st-context.js', 'scripts/sse-stream.js', 'scripts/textgen-settings.js'].map(file => {
-    const source = readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8');
-    return [file, { source, ast: parse(source, { ecmaVersion: 'latest', sourceType: 'module' }) }];
-}));
-
-// Like the host lifecycle tests, run real declarations without booting the browser application.
-function load(context, file, names) {
-    const { source, ast } = sources[file];
-    for (const name of names) {
-        const node = ast.body.map(node => node.declaration ?? node)
-            .find(node => node.id?.name === name || node.declarations?.some(item => item.id.name === name));
-        if (!node) throw new Error(`Missing declaration: ${name}`);
-        vm.runInContext(source.slice(node.start, node.end), context);
-    }
-}
 
 function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer = false, composer = '' } = {}) {
     const eventSource = new EventEmitter();
@@ -380,7 +363,7 @@ describe('request-local output controls', () => {
     });
 
     test('advertises the exact integration capability on the context object', () => {
-        expect(sources['scripts/st-context.js'].source).toContain('generationSupportsRequestControls: true');
+        expect(readClientModule('scripts/st-context.js').source).toContain('generationSupportsRequestControls: true');
     });
 
     test('length metadata ignores absent or malformed choices and secondary swipes', () => {
@@ -730,7 +713,7 @@ describe('owned host generation flow', () => {
         context.getTokenCount = () => 1;
         context.triggerAutoContinue('enough prose', false, controls);
         expect(dom.trigger).toHaveBeenCalledWith('click', { generationOptions: controls });
-        expect(sources['script.js'].source).toContain('...customData?.generationOptions,');
+        expect(readClientModule('script.js').source).toContain('...customData?.generationOptions,');
         expect(context.power_user.auto_continue.enabled).toBe(true);
     });
 
