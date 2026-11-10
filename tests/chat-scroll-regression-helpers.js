@@ -54,9 +54,9 @@ export async function dismissOnboardingIfPresent(page) {
 /**
  * Closes every open dialog.
  *
- * A boot saves the settings about one second after APP_READY. When another page on the same server saved after
- * this page loaded its settings, the server refuses that save, and the page opens the settings conflict prompt.
- * So the first call after a boot waits for a dialog. Later calls can pass `waitMs: 0`.
+ * A page that saves a settings change soon after its boot gets the settings conflict prompt when another page on
+ * the same server saved a change after this page loaded its settings. So the first call after a boot waits for a
+ * dialog. Later calls can pass `waitMs: 0`.
  * @param {import('@playwright/test').Page} page
  * @param {{ waitMs?: number }} [options] How long to wait for a dialog to open
  */
@@ -66,8 +66,14 @@ export async function dismissOpenDialogIfPresent(page, { waitMs = 1000 } = {}) {
     if (waitMs > 0) {
         await openDialog.waitFor({ state: 'visible', timeout: waitMs }).catch(() => {});
     }
-    await page.evaluate(() => {
-        document.querySelectorAll('dialog[open]').forEach(dialog => {
+    await page.evaluate(async () => {
+        // A popup settles its promise only when it completes, and the settings save queue waits for the promise of
+        // the settings conflict prompt. So popups complete, and only other dialogs are removed.
+        const { Popup } = await import('/scripts/popup.js');
+        for (const popup of [...Popup.util.popups]) {
+            popup.completeCancelled().catch(() => {});
+        }
+        document.querySelectorAll('dialog[open]:not([closing])').forEach(dialog => {
             dialog.close();
             dialog.remove();
         });
