@@ -33,35 +33,54 @@ function countListeners(state) {
 }
 
 function mount(panel, state, openers = {}) {
-    mountTiles(panel, { state, onRowChanged: jest.fn(), openGettingStarted: jest.fn(), openBundledExtras: jest.fn(), openHelp: jest.fn(), ...openers });
+    return mountTiles(panel, { state, onRowChanged: jest.fn(), openGettingStarted: jest.fn(), openBundledExtras: jest.fn(), openHelp: jest.fn(), ...openers });
 }
 
 describe('Getting Started tile subscription', () => {
-    test('a second mount leaves one listener on the state, and the first panel can be collected', () => {
+    test('a mount holds one listener on the state, and the stop it returns takes it off', () => {
         const state = createGettingStartedState(['a', 'b']);
         const { counted, counter } = countListeners(state);
-        const first = renderPanel();
-        const second = renderPanel();
 
-        mount(first, counted);
+        const stop = mount(renderPanel(), counted);
         expect(counter.active).toBe(1);
-        mount(second, counted);
+        stop();
 
-        expect(counter.active).toBe(1);
+        expect(counter.active).toBe(0);
     });
 
-    test('the listener of the latest mount keeps the tile in step with the state', () => {
+    test('a stopped panel no longer follows the state, and the panel that is still mounted does', () => {
         const state = createGettingStartedState(['a', 'b']);
         const first = renderPanel();
         const second = renderPanel();
-        mount(first, state);
+        const stopFirst = mount(first, state);
         mount(second, state);
+        stopFirst();
 
         state.setHidden(true);
 
         expect(second.querySelectorAll('.sbHomeTile')).toHaveLength(2);
         expect(second.querySelector('[data-sb-home-key="getting-started"]')).toBeNull();
         expect(first.querySelector('[data-sb-home-key="getting-started"]')).not.toBeNull();
+    });
+
+    test('a mount does not take the listener of another panel off, because the caller owns each stop', () => {
+        const state = createGettingStartedState(['a', 'b']);
+        const { counted, counter } = countListeners(state);
+
+        mount(renderPanel(), counted);
+        mount(renderPanel(), counted);
+
+        expect(counter.active).toBe(2);
+    });
+
+    test('a panel with no tile row holds no listener and returns a stop that does nothing', () => {
+        const state = createGettingStartedState(['a', 'b']);
+        const { counted, counter } = countListeners(state);
+
+        const stop = mount(document.createElement('div'), counted);
+
+        expect(counter.active).toBe(0);
+        expect(() => stop()).not.toThrow();
     });
 });
 

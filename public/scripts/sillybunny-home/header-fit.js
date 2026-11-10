@@ -5,9 +5,6 @@ const BELOW = 'data-sb-version-below';
 /** The space the version keeps from the menu button, in px. */
 const VERSION_BUTTON_GAP = 8;
 
-/** @type {(() => void) | null} */
-let stopPrevious = null;
-
 /**
  * Whether the version, with a gap on both sides, touches the menu button.
  * @param {DOMRect} version
@@ -37,16 +34,15 @@ export function updateVersionPlacement(header) {
 }
 
 /**
- * Keeps the placement of the version in a Home panel in step with the room it has. Only one Home panel exists
- * at a time, so the observer of the previous panel is stopped here; it would keep that panel alive.
+ * Keeps the placement of the version in a Home panel in step with the room it has. The observers and the font
+ * listener keep the panel alive, so the caller has to run the returned stop when it drops the panel.
  * @param {HTMLElement} panel
+ * @returns {() => void} Stops the fit.
  */
 export function fitHomeHeader(panel) {
-    stopPrevious?.();
-    stopPrevious = null;
     const header = panel.querySelector(HEADER_SELECTOR);
     if (!(header instanceof HTMLElement)) {
-        return;
+        return () => {};
     }
 
     let stopped = false;
@@ -77,7 +73,7 @@ export function fitHomeHeader(panel) {
     document.fonts?.addEventListener?.('loadingdone', schedule);
     schedule();
 
-    stopPrevious = () => {
+    return () => {
         stopped = true;
         observer.disconnect();
         textObserver.disconnect();

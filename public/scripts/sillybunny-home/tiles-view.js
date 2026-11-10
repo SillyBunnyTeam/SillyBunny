@@ -133,11 +133,9 @@ function mountGettingStartedTile(row, state, openGettingStarted, onRowChanged) {
     return state.subscribe(() => sync({ announce: true }));
 }
 
-/** @type {(() => void) | null} */
-let stopPreviousTiles = null;
-
 /**
- * Fills the tile row: Getting Started, Help and Bundled Extras.
+ * Fills the tile row: Getting Started, Help and Bundled Extras. The listener on the state keeps the panel alive, so
+ * the caller has to run the returned stop when it drops the panel.
  * @param {HTMLElement} panel The `.welcomePanel` root.
  * @param {object} options
  * @param {ReturnType<typeof import('./getting-started.js').createGettingStartedState>} options.state
@@ -145,19 +143,17 @@ let stopPreviousTiles = null;
  * @param {() => void} options.openGettingStarted
  * @param {() => void} options.openBundledExtras
  * @param {() => void} options.openHelp
+ * @returns {() => void} Stops following the state.
  */
 export function mountTiles(panel, { state, onRowChanged, openGettingStarted, openBundledExtras, openHelp }) {
-    // Only one Home panel exists at a time. A listener left on the state would keep the replaced panel alive.
-    stopPreviousTiles?.();
-    stopPreviousTiles = null;
     const row = panel.querySelector('[data-sb-home-region="tiles"]');
     if (!row) {
-        return;
+        return () => {};
     }
 
     const { tile: help } = createDestinationTile('help', tile => openFromTile(tile, openHelp));
     const { tile: extras } = createDestinationTile('extras', tile => openFromTile(tile, openBundledExtras));
 
     row.replaceChildren(help, extras);
-    stopPreviousTiles = mountGettingStartedTile(row, state, openGettingStarted, onRowChanged);
+    return mountGettingStartedTile(row, state, openGettingStarted, onRowChanged);
 }

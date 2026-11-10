@@ -69,14 +69,13 @@ beforeEach(() => {
         configurable: true,
         value: {
             ready: fontsReady.promise,
-            addEventListener: (type, listener) => fontListeners.set(type, listener),
-            removeEventListener: (type) => fontListeners.delete(type),
+            addEventListener: (type, listener) => fontListeners.set(listener, type),
+            removeEventListener: (_type, listener) => fontListeners.delete(listener),
         },
     });
 });
 
 afterEach(() => {
-    fitHomeHeader(document.createElement('div'));
     document.body.replaceChildren();
     delete document.fonts;
 });
@@ -154,7 +153,7 @@ describe('header fit observer', () => {
         expect(header.hasAttribute(BELOW)).toBe(true);
 
         header.removeAttribute(BELOW);
-        fontListeners.get('loadingdone')();
+        [...fontListeners.keys()][0]();
         expect(frames).toHaveLength(1);
         runFrames();
         expect(header.hasAttribute(BELOW)).toBe(true);
@@ -174,29 +173,68 @@ describe('header fit observer', () => {
         expect(header.hasAttribute(BELOW)).toBe(true);
     });
 
-    test('a second mount disconnects the observer of the first, and the first panel is no longer measured', () => {
-        const old = tight();
-        fitHomeHeader(old.parentElement);
-        const measured = old.querySelector('.sbHomeVersion').getBoundingClientRect;
+    test('a mount does not stop the observer of another panel, because the caller owns each stop', () => {
         fitHomeHeader(tight().parentElement);
-        measured.mockClear();
+        fitHomeHeader(tight().parentElement);
 
-        expect(observers.map(observer => observer.disconnected)).toEqual([true, false]);
-        observers[0].callback();
-        runFrames();
-        expect(measured).not.toHaveBeenCalled();
+        expect(observers.map(observer => observer.disconnected)).toEqual([false, false]);
+    });
+
+    test('a panel without a header starts nothing and returns a stop that does nothing', () => {
+        const stop = fitHomeHeader(document.createElement('div'));
+
+        expect(observers).toHaveLength(0);
+        expect(fontListeners.size).toBe(0);
+        expect(() => stop()).not.toThrow();
+    });
+});
+
+describe('stopping the header fit', () => {
+    const tight = () => renderHeader({ version: box(180, 260), button: box(250, 290) });
+
+    test('disconnects both observers and removes the font listener', () => {
+        const RealMutationObserver = window.MutationObserver;
+        const textObservers = [];
+        window.MutationObserver = class extends RealMutationObserver {
+            disconnected = false;
+
+            constructor(callback) {
+                super(callback);
+                textObservers.push(this);
+            }
+
+            disconnect() {
+                this.disconnected = true;
+                super.disconnect();
+            }
+        };
+        try {
+            const stop = fitHomeHeader(tight().parentElement);
+            expect(observers).toHaveLength(1);
+            expect(textObservers).toHaveLength(1);
+            expect(fontListeners.size).toBe(1);
+
+            stop();
+
+            expect(observers[0].disconnected).toBe(true);
+            expect(textObservers[0].disconnected).toBe(true);
+            expect(fontListeners.size).toBe(0);
+        } finally {
+            window.MutationObserver = RealMutationObserver;
+        }
     });
 
     test('nothing runs after it is stopped: not a queued frame, a font event, a text change or a late fonts promise', async () => {
         const old = tight();
-        fitHomeHeader(old.parentElement);
+        const stop = fitHomeHeader(old.parentElement);
         const measured = old.querySelector('.sbHomeVersion').getBoundingClientRect;
         observers[0].callback();
-        fitHomeHeader(document.createElement('div'));
+        const listener = [...fontListeners.keys()][0];
+        stop();
         measured.mockClear();
 
         runFrames();
-        fontListeners.get('loadingdone')?.();
+        listener();
         old.querySelector('.sbHomeVersion').textContent = 'v3';
         fontsReady.resolve();
         await settleMicrotasks();
@@ -204,5 +242,16 @@ describe('header fit observer', () => {
 
         expect(fontListeners.size).toBe(0);
         expect(measured).not.toHaveBeenCalled();
+    });
+
+    test('stops only its own panel, and stopping twice does no harm', () => {
+        const stopFirst = fitHomeHeader(tight().parentElement);
+        fitHomeHeader(tight().parentElement);
+
+        stopFirst();
+        stopFirst();
+
+        expect(observers.map(observer => observer.disconnected)).toEqual([true, false]);
+        expect(fontListeners.size).toBe(1);
     });
 });

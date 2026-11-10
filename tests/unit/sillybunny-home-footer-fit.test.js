@@ -10,6 +10,8 @@ const MEASURING = 'data-sb-footer-measure';
 
 let observers;
 let frames;
+let fontListeners;
+let fontsReady;
 
 class FakeResizeObserver {
     constructor(callback) {
@@ -70,11 +72,21 @@ beforeEach(() => {
         frames.push(callback);
         return frames.length;
     };
+    fontListeners = new Map();
+    fontsReady = Promise.withResolvers();
+    Object.defineProperty(document, 'fonts', {
+        configurable: true,
+        value: {
+            ready: fontsReady.promise,
+            addEventListener: (type, listener) => fontListeners.set(listener, type),
+            removeEventListener: (_type, listener) => fontListeners.delete(listener),
+        },
+    });
 });
 
 afterEach(() => {
     document.body.replaceChildren();
-    fitCardFooters(document.createElement('div'));
+    delete document.fonts;
 });
 
 describe('footer label fit', () => {
@@ -158,26 +170,61 @@ describe('footer fit observer', () => {
         expect(card.hasAttribute(COMPACT)).toBe(true);
     });
 
-    test('a second mount disconnects the observer of the first, and the first panel is no longer measured', () => {
-        const old = renderCard({ labelsNeed: 340, footerWidth: 300 });
-        const next = renderCard({ labelsNeed: 340, footerWidth: 300 });
-        fitCardFooters(renderPanel(old));
-        fitCardFooters(renderPanel(next));
+    test('a mount does not stop the observer of another panel, because the caller owns each stop', () => {
+        fitCardFooters(renderPanel(renderCard({ labelsNeed: 340, footerWidth: 300 })));
+        fitCardFooters(renderPanel(renderCard({ labelsNeed: 340, footerWidth: 300 })));
 
-        expect(observers.map(observer => observer.disconnected)).toEqual([true, false]);
+        expect(observers.map(observer => observer.disconnected)).toEqual([false, false]);
+    });
+
+    test('a panel with no card with a footer starts nothing and returns a stop that does nothing', () => {
+        const stop = fitCardFooters(renderPanel());
+
+        expect(observers).toHaveLength(0);
+        expect(fontListeners.size).toBe(0);
+        expect(() => stop()).not.toThrow();
+    });
+});
+
+describe('stopping the footer fit', () => {
+    test('disconnects the observer, removes the font listener, and the panel is no longer measured', () => {
+        const old = renderCard({ labelsNeed: 340, footerWidth: 300 });
+        const stop = fitCardFooters(renderPanel(old));
+        observers[0].callback();
+        expect([...fontListeners.values()]).toEqual(['loadingdone']);
+
+        stop();
+
+        expect(observers[0].disconnected).toBe(true);
+        expect(fontListeners.size).toBe(0);
+        runFrames();
         observers[0].callback();
         runFrames();
         expect(old.card.hasAttribute(COMPACT)).toBe(false);
     });
 
-    test('a frame that was queued before the panel was replaced measures nothing', () => {
+    test('measures nothing for a font that arrives late, after the stop', async () => {
         const old = renderCard({ labelsNeed: 340, footerWidth: 300 });
-        fitCardFooters(renderPanel(old));
-        observers[0].callback();
+        const stop = fitCardFooters(renderPanel(old));
+        runFrames();
+        old.card.removeAttribute(COMPACT);
 
-        fitCardFooters(renderPanel(renderCard({ labelsNeed: 340, footerWidth: 360 })));
+        stop();
+        fontsReady.resolve();
+        await new Promise(resolve => setTimeout(resolve, 0));
         runFrames();
 
         expect(old.card.hasAttribute(COMPACT)).toBe(false);
+    });
+
+    test('stops only its own panel, and stopping twice does no harm', () => {
+        const stopFirst = fitCardFooters(renderPanel(renderCard({ labelsNeed: 340, footerWidth: 300 })));
+        fitCardFooters(renderPanel(renderCard({ labelsNeed: 340, footerWidth: 300 })));
+
+        stopFirst();
+        stopFirst();
+
+        expect(observers.map(observer => observer.disconnected)).toEqual([true, false]);
+        expect(fontListeners.size).toBe(1);
     });
 });

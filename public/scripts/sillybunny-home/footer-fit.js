@@ -3,9 +3,6 @@ const FOOTER_SELECTOR = '.sbHomeCardFooter';
 const COMPACT = 'data-sb-footer-compact';
 const MEASURING = 'data-sb-footer-measure';
 
-/** @type {(() => void) | null} */
-let stopPrevious = null;
-
 /**
  * Whether the buttons need more room than the footer's content box has. `scrollWidth` cannot tell: buttons that
  * spill into the end padding leave it equal to `clientWidth`, yet the flex shrink works on the content box and
@@ -43,16 +40,15 @@ export function updateFooterLabels(cards) {
 }
 
 /**
- * Keeps the footer labels of the cards in a Home panel in step with the room they have. Only one Home panel
- * exists at a time, so the observer of the previous panel is stopped here; it would keep that panel alive.
+ * Keeps the footer labels of the cards in a Home panel in step with the room they have. The observer and the font
+ * listener keep the panel alive, so the caller has to run the returned stop when it drops the panel.
  * @param {HTMLElement} panel
+ * @returns {() => void} Stops the fit.
  */
 export function fitCardFooters(panel) {
-    stopPrevious?.();
-    stopPrevious = null;
     const cards = [...panel.querySelectorAll(CARD_SELECTOR)].filter(card => card.querySelector(FOOTER_SELECTOR));
     if (cards.length === 0) {
-        return;
+        return () => {};
     }
 
     let stopped = false;
@@ -79,7 +75,7 @@ export function fitCardFooters(panel) {
     document.fonts?.addEventListener?.('loadingdone', schedule);
     schedule();
 
-    stopPrevious = () => {
+    return () => {
         stopped = true;
         observer.disconnect();
         document.fonts?.removeEventListener?.('loadingdone', schedule);
