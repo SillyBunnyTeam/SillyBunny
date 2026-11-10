@@ -344,7 +344,7 @@ import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getS
 import { fetchResumable, registerGenerationCommitPlan, settleGenerationCommit } from './scripts/resumable-generation.js';
 import { GENERATION_PLACEHOLDER_KEY, getMessageIdentity } from './scripts/generation-commit-plan.js';
 import { createGenerationCommitPlan, initServerGenerations, reloadServerCommittedReply } from './scripts/server-generations.js';
-import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse } from './scripts/generation-request-controls.js';
+import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, warnsOnGenerationLengthFinish } from './scripts/generation-request-controls.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -6415,6 +6415,8 @@ class StreamingProcessor {
         this.requestControls = requestControls;
         this.maxOutputTokens = Number.isFinite(requestControls.maxOutputTokens) && requestControls.maxOutputTokens > 0 ? requestControls.maxOutputTokens : 0;
         this.finishReason = null;
+        // SillyBunny: finishReason also covers the local prose cap, but only the provider's own length finish gets a warning.
+        this.providerLengthFinish = false;
         this.lastRawText = null;
         this.lastReasoningPrefix = null;
         this.limitedOutput = null;
@@ -6468,6 +6470,8 @@ class StreamingProcessor {
     }
 
     #applyProseLimit(state, isFinal = false) {
+        // SillyBunny: this comes before the early return because a provider can cut a reply off with no prose cap set.
+        this.providerLengthFinish ||= state?.finishReason === 'length';
         if (!this.maxOutputTokens || (isFinal && this.lastRawText === null)) {
             return false;
         }
@@ -9002,7 +9006,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     const isStreamFinished = !isStreamCancelled && activeStreamingProcessor.isFinished;
                     const isStreamWithToolCalls = Array.isArray(activeStreamingProcessor.toolCalls) && activeStreamingProcessor.toolCalls.length;
 
-                    if (isStreamFinished && !isStreamWithToolCalls && isReasoningOnlyStream) {
+                    // SillyBunny: a cut-off reply can look finished or blank, so its warning replaces the reasoning-only one.
+                    if (isStreamFinished && !isStreamWithToolCalls && activeStreamingProcessor.providerLengthFinish && warnsOnGenerationLengthFinish(main_api, oai_settings.chat_completion_source)) {
+                        toastr.warning(t`Gemini stopped before finishing this reply. Try a lower Reasoning Effort or a higher Max Response Length.`);
+                    } else if (isStreamFinished && !isStreamWithToolCalls && isReasoningOnlyStream) {
                         toastr.warning(t`The model finished reasoning but returned no reply text.`);
                     }
                     if (canPerformToolCalls && isStreamFinished && isStreamWithToolCalls) {
@@ -9204,7 +9211,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 reasoning = reasoning.trim();
             }
 
-            if (!getMessage.trim() && reasoning && type !== 'quiet') {
+            // SillyBunny: a cut-off reply can look finished or blank, so its warning replaces the reasoning-only one.
+            if (type !== 'quiet' && isGenerationLengthFinish(data) && warnsOnGenerationLengthFinish(main_api, oai_settings.chat_completion_source)) {
+                toastr.warning(t`Gemini stopped before finishing this reply. Try a lower Reasoning Effort or a higher Max Response Length.`);
+            } else if (!getMessage.trim() && reasoning && type !== 'quiet') {
                 toastr.warning(t`The model finished reasoning but returned no reply text.`);
             }
 
@@ -15942,7 +15952,7 @@ export async function createOrEditCharacter(e) {
             return;
         }
         try {
-            //if the character name text area isn't empty (only posible when creating a new character)
+            //if the character name text area isn't empty (only possible when creating a new character)
             let url = '/api/characters/create';
 
             if (crop_data != undefined) {

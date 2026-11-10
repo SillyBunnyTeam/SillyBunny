@@ -18,6 +18,7 @@ await jest.unstable_mockModule('../src/endpoints/assets.js', () => ({
 await jest.unstable_mockModule('../src/util.js', () => ({
     clientRelativePath: () => '/files/memory.txt',
     getImageBuffers: jest.fn(),
+    isPathUnderParent: jest.fn(),
 }));
 
 const { router: filesRouter } = await import('../src/endpoints/files.js');
