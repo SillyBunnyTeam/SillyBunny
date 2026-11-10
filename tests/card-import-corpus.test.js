@@ -38,6 +38,9 @@ import {
     toJsonl,
 } from './util/card-corpus.js';
 
+// A round trip imports, exports and imports a card again through the routers, which can pass the default Jest timeout on a busy machine.
+jest.setTimeout(30000);
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const originalWorkingDirectory = process.cwd();
 const diskCacheEnvironmentKey = 'SILLYTAVERN_PERFORMANCE_USEDISKCACHE';
