@@ -28,7 +28,8 @@ export class SlashCommandParserError extends Error {
             end++;
         }
         let hint  = [];
-        let lines = this.text.slice(start + 1, end - 1).split('\n');
+        // SillyBunny: end is the index of the newline, so the slice stops there and the line keeps its last character.
+        let lines = this.text.slice(start + 1, end).split('\n');
         let lineNum = this.line - lines.length + 1;
         let tabOffset = 0;
         for (const line of lines) {
