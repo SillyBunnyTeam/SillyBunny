@@ -295,7 +295,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
             await chooseModeFromMenu(page, 'roleplay');
 
             await expectChat(page);
-            expect(await readOpenChat(page)).toEqual({ chatId: newest.chat, avatar: newest.avatar });
+            await expect.poll(() => readOpenChat(page), { timeout: STARTUP_TIMEOUT }).toEqual({ chatId: newest.chat, avatar: newest.avatar });
             expect(requests).toHaveLength(1);
             expect(requests[0].pinned).toEqual([]);
         });
