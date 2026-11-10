@@ -990,7 +990,9 @@ for (const { label, size } of BANNER_SIZES) {
         test.describe('in forced colours', () => {
             test.use({ forcedColors: 'active' });
 
-            test('has CanvasText on Canvas for its title, and a button of ButtonText with a border', async ({ page }) => {
+            test('has CanvasText on Canvas for its title, and a button of ButtonText with a border', async ({ page, browserName }) => {
+                // eslint-disable-next-line playwright/no-skipped-test -- an engine gap, not a pending test
+                test.skip(browserName === 'webkit', 'WebKit has no forced-colours palette to replace the banner colours with Canvas');
                 await startTemporary(page, await boot(page));
 
                 const system = await page.evaluate(() => {

@@ -290,7 +290,9 @@ for (const { name, options, checksColours } of VIEWPORTS) {
         });
 
         test.describe('a preset', () => {
-            sizeFreeTest('that the app applies without a gesture of the user does not finish Set Up a Preset', async ({ page }) => {
+            sizeFreeTest('that the app applies without a gesture of the user does not finish Set Up a Preset', async ({ page, browserName }) => {
+                // eslint-disable-next-line playwright/no-skipped-test -- an engine gap, not a pending test
+                test.skip(browserName !== 'chromium', 'Only the Chrome DevTools Protocol can run a script without a gesture of the user');
                 await bootHome(page);
 
                 await emitWithoutGesture(page, 'PRESET_CHANGED', { apiId: 'openai', name: 'Default' });
@@ -437,7 +439,7 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expect.poll(() => savedGettingStarted(captured)?.hidden, { timeout: SAVE_TIMEOUT }).toBe(false);
         });
 
-        sizeFreeTest('what the app saved comes back after a reload, and a preset load of the first moments does not count', async ({ page }) => {
+        sizeFreeTest('what the app saved comes back after a reload, and a preset load of the first moments does not count', async ({ page, browserName }) => {
             const captured = await bootHome(page);
             await emit(page, 'ONLINE_STATUS_CHANGED', 'valid');
             await expect(progressOf(page)).toHaveText('1 of 4');
@@ -452,6 +454,9 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             await expectHome(page);
             await expect(progressOf(page)).toHaveText('1 of 4');
 
+            // Only the Chrome DevTools Protocol can run a script without a gesture of the user.
+            // eslint-disable-next-line playwright/no-conditional-in-test
+            if (browserName !== 'chromium') return;
             await emitWithoutGesture(page, 'PRESET_CHANGED', { apiId: 'openai', name: 'Default' });
 
             await expect(progressOf(page)).toHaveText('1 of 4');

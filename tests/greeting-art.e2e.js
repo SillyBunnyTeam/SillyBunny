@@ -569,7 +569,9 @@ test.describe('the size of the picture follows its room', () => {
     });
 
     // The query for a fractional ratio can be one that never reports a change, so the window's own resize has to do it.
-    test('is chosen again on a window resize when the pixel ratio changed and its media query said nothing', async ({ page }) => {
+    test('is chosen again on a window resize when the pixel ratio changed and its media query said nothing', async ({ page, browserName }) => {
+        // eslint-disable-next-line playwright/no-skipped-test -- an engine gap, not a pending test
+        test.skip(browserName !== 'chromium', 'The pixel ratio is changed through a CDP session, which only Chromium offers');
         await page.addInitScript(() => {
             const original = window.matchMedia.bind(window);
             window.matchMedia = query => (/resolution/.test(query)
@@ -594,7 +596,9 @@ test.describe('the size of the picture follows its room', () => {
     // Emulating a pixel ratio does not make Chromium report that the resolution query changed unless the window also
     // changes size, which is what moving a window to another screen does not do. The spec changes the ratio by emulation
     // and reports the change itself, on the lists that the page asked for, so what it proves is how the page answers.
-    test('is chosen again when the pixel ratio changes, and keeps listening for the next change', async ({ page }) => {
+    test('is chosen again when the pixel ratio changes, and keeps listening for the next change', async ({ page, browserName }) => {
+        // eslint-disable-next-line playwright/no-skipped-test -- an engine gap, not a pending test
+        test.skip(browserName !== 'chromium', 'The pixel ratio is changed through a CDP session, which only Chromium offers');
         await page.addInitScript(() => {
             const original = window.matchMedia.bind(window);
             window.qaResolutionLists = [];
@@ -863,7 +867,7 @@ test.describe('the greeting picture in a theme and a colour mode of its own', ()
     test.describe('in forced colours', () => {
         test.use({ forcedColors: 'active' });
 
-        test('the picture keeps an edge that the palette does not drop', async ({ page }) => {
+        test('the picture keeps an edge that the palette does not drop', async ({ page, browserName }) => {
             await boot(page);
             await openFromHome(page, 'assistant-reisen', 'Start New Chat');
             await expectOneFigure(page);
@@ -878,7 +882,9 @@ test.describe('the greeting picture in a theme and a colour mode of its own', ()
                 return { own: drawn(own), after: drawn(after), shadow: after.boxShadow };
             });
 
-            expect(edge.shadow, 'forced colours remove the shadow').toBe('none');
+            // WebKit matches the query without applying the palette, so it keeps the shadow that forced colours remove elsewhere.
+            // eslint-disable-next-line playwright/no-conditional-in-test, playwright/no-conditional-expect
+            if (browserName !== 'webkit') expect(edge.shadow, 'forced colours remove the shadow').toBe('none');
             expect(Object.values(edge.own).concat(Object.values(edge.after)), 'an outline or a border of the button or its edge layer').toContain(true);
         });
 
