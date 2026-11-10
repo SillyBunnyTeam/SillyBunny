@@ -100,6 +100,25 @@ async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay',
     return world;
 }
 
+/** Records every source that a picture of a card is given, with the card that holds it, from the page's first script, so one that is replaced a moment later is still seen. Read it from `window.qaCardSources`. */
+const recordCardSources = page => page.addInitScript(() => {
+    window.qaCardSources = [];
+    const record = (node) => {
+        for (const image of node instanceof HTMLImageElement ? [node] : (node instanceof Element ? node.querySelectorAll('img') : [])) {
+            const card = image.closest('.sbHomeCard');
+            if (card && image.closest('.sbHomeArt')) window.qaCardSources.push({ card: card.dataset.sbHomeKey, src: image.getAttribute('src') });
+        }
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+        new MutationObserver((records) => {
+            for (const entry of records) {
+                record(entry.type === 'attributes' ? entry.target : null);
+                entry.addedNodes.forEach(record);
+            }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
+    }, { once: true });
+});
+
 const currentChat = page => page.evaluate(async () => (await import('/script.js')).getCurrentChatId());
 const currentAvatar = page => page.evaluate(async () => {
     const script = await import('/script.js');
@@ -241,15 +260,20 @@ for (const { name, portrait, options } of VIEWPORTS) {
         test.describe('the thumbnails', () => {
             const thumbnailUrl = avatar => `/thumbnail?type=avatar&file=${encodeURIComponent(avatar)}&preset=mobile`;
 
-            test('are the small mobile preset at every viewport, and the full-size file is never fetched for a card', async ({ page }) => {
+            test('are the small mobile preset at every viewport: each picture of a card is given its own mobile file, and no other', async ({ page }) => {
+                // Other surfaces ask for the same avatars at the desktop preset, such as the rows of the Characters drawer, so the requests of the page say nothing about a card. What a card's picture is given does.
+                await recordCardSources(page);
                 const world = await boot(page, { library: [...BOTH, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
+                const cards = [['assistant-reisen', REISEN], ['assistant-tewi', TEWI], ['assistant-own', 'Alice.png']];
 
-                for (const [key, avatar] of [['assistant-reisen', REISEN], ['assistant-tewi', TEWI], ['assistant-own', 'Alice.png']]) {
+                for (const [key, avatar] of cards) {
                     await expect(cardOf(page, key).locator('.sbHomeArt img'), key).toHaveAttribute('src', thumbnailUrl(avatar));
                 }
-                const requested = world.thumbnailRequests.filter(search => /file=(default_Assistant|Alice)/.test(search));
-                expect(requested.length).toBeGreaterThanOrEqual(3);
-                expect(requested.filter(search => !search.includes('preset=mobile'))).toEqual([]);
+                const sources = await page.evaluate(() => window.qaCardSources);
+                for (const [key, avatar] of cards) {
+                    expect([...new Set(sources.filter(entry => entry.card === key).map(entry => entry.src))], key).toEqual([thumbnailUrl(avatar)]);
+                    expect(world.thumbnailRequests, key).toContain(`?type=avatar&file=${encodeURIComponent(avatar)}&preset=mobile`);
+                }
             });
 
             test('are the same in the picker', async ({ page }) => {
