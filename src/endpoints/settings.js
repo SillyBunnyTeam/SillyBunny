@@ -6,7 +6,7 @@ import _ from 'lodash';
 import bytes from 'bytes';
 
 import { SETTINGS_FILE } from '../constants.js';
-import { prepareSettingsSave } from '../settings-version.js';
+import { getSettingsVersion, isUnchangedSettingsSave, prepareSettingsSave } from '../settings-version.js';
 import {
     getConfigValue,
     generateTimestamp,
@@ -263,9 +263,16 @@ router.post('/save', function (request, response) {
             return response.status(400).send({ error: 'invalid_settings' });
         }
 
-        const currentSettings = fs.existsSync(pathToSettings)
+        const settingsExist = fs.existsSync(pathToSettings);
+        const currentSettings = settingsExist
             ? JSON.parse(fs.readFileSync(pathToSettings, 'utf8'))
             : {};
+
+        // SillyBunny: every boot saves the settings without a change. Such a save keeps the version, so it does not
+        // make the other open tabs and devices stale, and a stale page that sends the stored settings gets the version.
+        if (settingsExist && isUnchangedSettingsSave(request.body, currentSettings)) {
+            return response.send({ result: 'ok', version: getSettingsVersion(currentSettings), unchanged: true });
+        }
 
         // SillyBunny: prevent one open device or tab from overwriting newer settings from another.
         const preparedSave = prepareSettingsSave(request.body, currentSettings);

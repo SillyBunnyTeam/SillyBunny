@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { APP_URL, dismissOnboardingIfPresent, dismissOpenDialogIfPresent, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 
-test.describe.configure({ mode: 'default' });
 test.use({ serviceWorkers: 'block' });
 
 const BILLING_WARNING = 'Using allowed and/or ignored providers forces PAYG and adds a 5% markup.';
@@ -36,9 +35,23 @@ async function installRoutes(page, baseURL) {
     ]);
     const held = [];
     const catalogue = { json: [{ id: 'chutes', label: 'Chutes' }, { id: 'cerebras', label: 'Cerebras' }] };
+    // Other tests save real settings changes to the same server, and the version check then refuses the saves of a
+    // page that loaded before them. The settings of this context stay in the browser, through saves and reloads.
+    let savedSettings = null;
+    let settingsVersion = Date.now();
     await page.context().route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.origin !== origin) return route.abort();
+        if (url.pathname === '/api/settings/save') {
+            savedSettings = route.request().postDataJSON();
+            settingsVersion = Math.max(settingsVersion, Number(savedSettings._version) || 0) + 1;
+            savedSettings._version = settingsVersion;
+            return route.fulfill({ json: { result: 'ok', version: settingsVersion } });
+        }
+        if (url.pathname === '/api/settings/get' && savedSettings) {
+            const response = await route.fetch();
+            return route.fulfill({ response, json: { ...await response.json(), settings: JSON.stringify(savedSettings) } });
+        }
         if (url.pathname === '/api/backends/chat-completions/status') {
             return route.fulfill({ json: { data: MODELS } });
         }

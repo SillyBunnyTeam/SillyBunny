@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { getSettingsVersion, prepareSettingsSave } from '../src/settings-version.js';
+import { getSettingsVersion, isUnchangedSettingsSave, prepareSettingsSave } from '../src/settings-version.js';
 
 describe('settings version guard', () => {
     test('initializes unversioned settings on first guarded save', () => {
@@ -27,6 +27,22 @@ describe('settings version guard', () => {
         const result = prepareSettingsSave({ _version: 5, username: 'Open Tab User' }, { _version: 3, username: 'Restored User' });
 
         expect(result).toEqual({ ok: false, currentVersion: 3 });
+    });
+
+    test('finds a save without a change, whatever the versions and the key order', () => {
+        expect(isUnchangedSettingsSave(
+            { _version: 1, power_user: { list: [1, { on: true }] }, username: 'User' },
+            { username: 'User', power_user: { list: [1, { on: true }] }, _version: 5 },
+        )).toBe(true);
+    });
+
+    test('finds a change in a nested value, an array or the keys', () => {
+        const stored = { _version: 2, username: 'User', power_user: { list: [1, { on: true }] } };
+
+        expect(isUnchangedSettingsSave({ _version: 2, username: 'User', power_user: { list: [1, { on: false }] } }, stored)).toBe(false);
+        expect(isUnchangedSettingsSave({ _version: 2, username: 'User', power_user: { list: [1] } }, stored)).toBe(false);
+        expect(isUnchangedSettingsSave({ _version: 2, username: 'User', power_user: { list: [1, { on: true }] }, theme: 'dark' }, stored)).toBe(false);
+        expect(isUnchangedSettingsSave({ _version: 2, username: 'User' }, stored)).toBe(false);
     });
 
     test('normalizes invalid settings versions to zero', () => {
