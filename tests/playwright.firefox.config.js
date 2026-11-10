@@ -19,7 +19,7 @@ const NOT_RUNNABLE_IN_FIREFOX = [
         // A drag that ends below the viewport edge is clamped there: the sheet stops following the pointer and the
         // pointerup never arrives, so the sheet neither closes nor reaches the drag distance. Chromium delivers both.
         reason: 'sheet-swipe drags past the bottom edge of the viewport, where Firefox delivers no mouse events',
-        pattern: /sheet-swipe\.e2e\.js .*(a long swipe closes through the normal path|the exit animation continues from the dragged position|a swipe that starts on the header closes|under reduced motion a long swipe closes at once|mid-drag sheet follows the finger|slides out from the drag position|persona picker keeps one handle)/,
+        pattern: /sheet-swipe\.e2e\.js .*(a long swipe closes through the normal path|the exit animation continues from the dragged position|a swipe that starts on the header closes|under reduced motion a long swipe closes at once|mid-drag sheet follows the finger|slides out from the drag position|(?:persona|add-DM) picker keeps one handle)/,
     },
     {
         // `page.setViewportSize()` called before the first navigation never settles in a Firefox context with
@@ -44,6 +44,13 @@ const NOT_RUNNABLE_IN_FIREFOX = [
         // Firefox has to show whether the focus then leaves for the browser's own controls, which a modal allows.
         reason: 'Tab in a modal with no browser controls to take the focus does not wrap',
         pattern: /dialogs-accessibility\.e2e\.js .*(Popup Alert \(destructive confirm\)|Popup Dialog \(form\) over its parent|Chat Archive .*390×844).*keyboard: opens with focus inside/,
+    },
+    {
+        // Home is not a modal, and the Backend button in #top-bar is a real tab stop after its last control. From that
+        // control, Chromium moves the focus to the document and then to that button; Playwright's Firefox keeps it on
+        // the last control however often Tab is pressed (microsoft/playwright#39268).
+        reason: 'Tab on the last control of the document does not leave the page in Playwright\'s Firefox',
+        pattern: /dialogs-accessibility\.e2e\.js .*Home page \(the header, tiles, assistant cards and Recent Chats rows\).*keyboard: opens with focus inside/,
     },
 ];
 
