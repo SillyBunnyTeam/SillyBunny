@@ -22,7 +22,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
             const scrollTop = await page.locator('#sb_character_import_panel').evaluate(host => (host.closest('.sb-shell-panel-scroller') ?? host.closest('.scrollableInner')).scrollTop);
             expect(scrollTop).toBeGreaterThan(0);
-            await page.screenshot({ path: `/tmp/opencode/step7-import-${viewport.width}.png` });
+            await page.screenshot({ path: test.info().outputPath(`step7-import-${viewport.width}.png`) });
             await results.getByRole('button', { name: 'Edit', exact: true }).click();
             await expect(page.locator('#avatar_url_pole')).toHaveValue('qa-imported.png');
             await expect(page.locator('#right-nav-panel')).toHaveAttribute('data-menu-type', 'character_edit');
@@ -150,7 +150,7 @@ for (const width of [1440, 768, 390]) {
             await expect(page.locator('#sb_character_import_library')).toHaveText('Browse Characters');
             await page.locator('#sb_import_heading_file').scrollIntoViewIfNeeded();
             await page.mouse.move(0, 0);
-            await page.screenshot({ path: `/tmp/opencode/step7-import-${suffix}-top.png` });
+            await page.screenshot({ path: test.info().outputPath(`step7-import-${suffix}-top.png`) });
             const results = page.locator('#sb_character_import_results');
             await results.scrollIntoViewIfNeeded();
             await expect.poll(() => results.locator('img').first().evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
@@ -166,24 +166,24 @@ for (const width of [1440, 768, 390]) {
             expect(geometry.height).toBeGreaterThanOrEqual(40);
             await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
             await page.mouse.move(0, 0);
-            await page.screenshot({ path: `/tmp/opencode/step7-import-${suffix}.png` });
+            await page.screenshot({ path: test.info().outputPath(`step7-import-${suffix}.png`) });
             await results.getByRole('button', { name: 'Edit', exact: true }).click();
             await expect(page.locator('#avatar_url_pole')).toHaveValue('qa-imported.png');
             expect(importHeading).toEqual(await page.locator('#sb_character_section_character_fields').evaluate(typography));
             expect(importFrame).toEqual(await page.locator('[data-sb-section="character-fields"] > .ds-pref-group').evaluate(frame));
             await page.mouse.move(0, 0);
-            await page.screenshot({ path: `/tmp/opencode/step7-import-reference-character-${suffix}.png` });
+            await page.screenshot({ path: test.info().outputPath(`step7-import-reference-character-${suffix}.png`) });
             await page.evaluate(async () => {
                 const { openPersonaEditor } = await import('/scripts/sillybunny-persona-editor.js');
                 await openPersonaEditor({ avatarId: 'qa-import-persona.png' });
             });
             await expect(page.locator('#PersonaManagement .sb-persona-entry')).toBeVisible();
-            await page.screenshot({ path: `/tmp/opencode/step7-import-reference-persona-${suffix}.png` });
+            await page.screenshot({ path: test.info().outputPath(`step7-import-reference-persona-${suffix}.png`) });
             await page.evaluate(async book => { await (await import('/scripts/world-info.js')).openWorldInfoEditor(book); }, BOOK);
             // The book may already be selected and cover its sidebar on narrow layouts.
             await page.locator('#WorldInfo .sb-wi-row').first().dispatchEvent('click');
             await expect(page.locator('#WorldInfo .sb-wi-entry')).toBeVisible();
-            await page.screenshot({ path: `/tmp/opencode/step7-import-reference-wi-${suffix}.png` });
+            await page.screenshot({ path: test.info().outputPath(`step7-import-reference-wi-${suffix}.png`) });
         }
     });
 }

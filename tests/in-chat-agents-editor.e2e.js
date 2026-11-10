@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { acceptPopup } from './helpers/popup.js';
-import { mkdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { q56Screenshot } from './helpers/q56-review.js';
 import {
     activatePromptAction,
@@ -27,7 +27,6 @@ test.use({
     contextOptions: { reducedMotion: 'reduce' },
 });
 const mounted = new WeakMap();
-const screens = '/home/geechan/.opencode/plan/sb-qa/screens/a3';
 const modeRoles = { 1440: 'radio', 390: 'button' };
 
 async function setup(page, baseURL, width) {
@@ -37,10 +36,9 @@ async function setup(page, baseURL, width) {
 }
 
 async function screenshot(page, name) {
-    await mkdir(screens, { recursive: true });
     await expect(page.locator('.toast-error')).toHaveCount(0);
     await page.mouse.move(1, 1);
-    await page.screenshot({ path: `${screens}/stage3-${name}.png` });
+    await page.screenshot({ path: test.info().outputPath(`stage3-${name}.png`) });
 }
 
 async function expectActiveOption(listbox, label) {
@@ -236,11 +234,9 @@ test.afterEach(async ({ page }) => {
     expect(await page.evaluate(() => window.__editorMaxDialogs ?? 0)).toBeLessThanOrEqual(1);
 });
 
-const round2Screens = '/home/geechan/.opencode/plan/sb-qa/screens/round2';
 async function round2Screenshot(page, name) {
-    await mkdir(round2Screens, { recursive: true });
     await page.mouse.move(1, 1);
-    await page.screenshot({ path: `${round2Screens}/${name}.png` });
+    await page.screenshot({ path: test.info().outputPath(`round2-${name}.png`) });
 }
 
 for (const { width, height } of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
@@ -292,7 +288,6 @@ for (const { width, height } of [{ width: 1440, height: 900 }, { width: 390, hei
         expect(Math.abs(empty.titleCenter - empty.fieldCenter)).toBeLessThanOrEqual(3);
         expect(empty.titleFontSize).toBe(empty.inputFontSize);
         expect(empty.titleTextShadow).toBe('none');
-        await mkdir('/tmp/opencode/round1-step1-shots/after', { recursive: true });
         await page.mouse.move(1, 1);
 
         await input.focus();
@@ -531,7 +526,7 @@ test('round2 More survives saved, switched, preview, helper, template and create
 
 test('390px phone property sheet matches Prompt pills, controls, title and summary format', async ({ page, baseURL }, testInfo) => {
     const editor = await setup(page, baseURL, 390);
-    const parityScreens = '/home/geechan/.opencode/plan/sb-qa/screens/parity';
+    const parityScreens = testInfo.outputPath('parity');
     const sample = async (sheet, groupLabel) => {
         await page.mouse.move(1, 1);
         await sheet.locator('h2').focus();
@@ -762,7 +757,7 @@ for (const width of [1440, 768, 390, 360]) {
 for (const width of [1440, 390]) {
     test(`${width}px open Category listbox matches Prompt Role popover styles, placement and ARIA`, async ({ page, baseURL }, testInfo) => {
         const editor = await setup(page, baseURL, width);
-        const parityScreens = '/home/geechan/.opencode/plan/sb-qa/screens/parity';
+        const parityScreens = testInfo.outputPath('parity');
         await editor.open('pre');
         await openAgentProperties(editor.detail);
         const category = page.locator('.ica-agent-properties:visible').getByRole('button', { name: 'Category', exact: true });
@@ -807,7 +802,7 @@ for (const width of [1440, 390]) {
     test(`${width}px Category button matches Role and its listbox preserves keyboard and editor rules`, async ({ page, baseURL }, testInfo) => {
         const editor = await setup(page, baseURL, width);
         await editor.open('pre');
-        const parityScreens = '/home/geechan/.opencode/plan/sb-qa/screens/parity';
+        const parityScreens = testInfo.outputPath('parity');
         await page.mouse.move(1, 1);
         await page.screenshot({ path: `${parityScreens}/after-agents-${width}.png` });
         await openAgentProperties(editor.detail);

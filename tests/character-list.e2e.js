@@ -713,18 +713,18 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         expect(appearance.glyphFitsInnerCircle).toBe(true);
         expect(appearance.centeredByGrid).toBe(true);
         if (process.env.CAPTURE_SELECTION_SHOTS) {
-            await page.screenshot({ path: `/tmp/opencode/4b7c-shots-4/characters-${viewport.width}.png` });
+            await page.screenshot({ path: test.info().outputPath(`characters-${viewport.width}.png`) });
             if (viewport.width === 1440) {
                 const bounds = await check.boundingBox();
-                await page.screenshot({ path: '/tmp/opencode/4b7c-shots-4/check-crop-1440.png', clip: { x: bounds.x - 4, y: bounds.y - 4, width: bounds.width + 8, height: bounds.height + 8 } });
+                await page.screenshot({ path: test.info().outputPath('check-crop-1440.png'), clip: { x: bounds.x - 4, y: bounds.y - 4, width: bounds.width + 8, height: bounds.height + 8 } });
                 await page.keyboard.press('Tab');
                 await check.evaluate(element => element.focus());
                 await expect(check).toBeFocused();
                 await expect.poll(() => check.evaluate(element => element.matches(':focus-visible'))).toBe(true);
-                await page.screenshot({ path: '/tmp/opencode/4b7c-shots-4/check-focus-1440.png' });
+                await page.screenshot({ path: test.info().outputPath('check-focus-1440.png') });
                 await page.evaluate(() => window.$('#themes').val('Libadwaita Light').trigger('change'));
                 await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', 'light');
-                await page.screenshot({ path: '/tmp/opencode/4b7c-shots-4/characters-1440-light.png' });
+                await page.screenshot({ path: test.info().outputPath('characters-1440-light.png') });
             }
         }
     });

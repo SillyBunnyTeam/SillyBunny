@@ -435,21 +435,21 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: '
         await expect(namedTag.locator('.sb-tag-filter-menu-dot')).toHaveCSS('background-color', 'rgb(90, 160, 220)');
         await expect.poll(() => rowTag.evaluate(element => getComputedStyle(element).getPropertyValue('--sb-tag-color').trim())).toBe('rgb(90, 160, 220)');
 
-        await picker.screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-off.png` });
-        await page.locator('#rm_group_members').screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-row-chips.png` });
+        await picker.screenshot({ path: test.info().outputPath(`tagfilter-${viewport.name}-off.png`) });
+        await page.locator('#rm_group_members').screenshot({ path: test.info().outputPath(`tagfilter-${viewport.name}-row-chips.png`) });
         await namedTag.click();
         await expect(namedTag).toHaveAttribute('aria-selected', 'true');
         await expect(namedTag).toBeInViewport();
         await expect(namedTag.locator('.fa-check')).toBeVisible();
         await expect(search).toBeFocused();
         await expect(tagButton.locator('.sb-tag-filter-menu-count')).toHaveText('1');
-        await picker.screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-selected.png` });
+        await picker.screenshot({ path: test.info().outputPath(`tagfilter-${viewport.name}-selected.png`) });
         await namedTag.click();
         await expect(namedTag).toHaveAttribute('aria-selected', 'false');
         await expect(namedTag).toBeInViewport();
         await expect(namedTag.locator('.fa-minus')).toBeVisible();
         await expect(search).toBeFocused();
-        await picker.screenshot({ path: `/tmp/opencode/tagfilter-${viewport.name}-excluded.png` });
+        await picker.screenshot({ path: test.info().outputPath(`tagfilter-${viewport.name}-excluded.png`) });
         await namedTag.click();
         await expect(namedTag.locator('.fa-minus')).toHaveCount(0);
         await expect(tagButton.locator('.sb-tag-filter-menu-count')).toBeHidden();

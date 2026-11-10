@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { mkdir } from 'node:fs/promises';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { expectOpensAtFinalSize, installOpeningSampler, MOTION } from './helpers/dialog-opening.js';
@@ -80,7 +79,6 @@ async function assertPickerLayout(page, messageId, screenshotPath) {
         return { rowRight: rowBounds.right, actionRight: buttonBounds.right };
     });
     expect(geometry.actionRight).toBeLessThanOrEqual(geometry.rowRight);
-    await mkdir('/tmp/opencode/round1-step6-shots', { recursive: true });
     await page.screenshot({ path: screenshotPath, fullPage: false });
 }
 
@@ -129,7 +127,7 @@ test.describe('swipe picker shared Window', () => {
         await page.setViewportSize({ width: 1440, height: 900 });
         const saves = await interceptChatSaves(page);
         const messageId = await createSwipeFixture(page);
-        await assertPickerLayout(page, messageId, '/tmp/opencode/round1-step6-shots/after-desktop.png');
+        await assertPickerLayout(page, messageId, testInfo.outputPath('after-desktop.png'));
         const dialog = page.locator('dialog[open].sb-dialog--window');
 
         await page.evaluate(() => {
@@ -181,7 +179,6 @@ test.describe('swipe picker shared Window', () => {
         const goBounds = await go.evaluate(node => node.getBoundingClientRect().toJSON());
         expect(goBounds.right).toBeLessThan(footerBounds.right - 8);
         await expect(dialog.locator('.swipe_picker_block[highlight]')).toBeInViewport();
-        await mkdir('/tmp/opencode/round1-step6-shots', { recursive: true });
 
         const lastRow = dialog.locator('.swipe_picker_block').last();
         await lastRow.scrollIntoViewIfNeeded();

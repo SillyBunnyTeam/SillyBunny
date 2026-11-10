@@ -1,12 +1,8 @@
-import { expect } from '@playwright/test';
-import { mkdir } from 'node:fs/promises';
-
-export const q56Screens = '/home/geechan/.opencode/plan/sb-qa/screens/q56';
+import { expect, test } from '@playwright/test';
 
 export async function q56Screenshot(page, name) {
-    await mkdir(q56Screens, { recursive: true });
     await page.mouse.move(1, 1);
-    await page.screenshot({ path: `${q56Screens}/${name}.png` });
+    await page.screenshot({ path: test.info().outputPath(`q56-${name}.png`) });
 }
 
 export async function buttonStates(button) {
