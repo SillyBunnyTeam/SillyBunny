@@ -56,7 +56,7 @@ async function openChat(page) {
     await testSetup.waitForAppReady({ page });
     await dismissOpenDialogIfPresent(page);
     await selectSampleCharacter(page);
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: 0 });
 }
 
 /**

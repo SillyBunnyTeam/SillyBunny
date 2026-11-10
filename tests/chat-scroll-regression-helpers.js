@@ -51,10 +51,21 @@ export async function dismissOnboardingIfPresent(page) {
     await page.locator('dialog[open]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
 }
 
-export async function dismissOpenDialogIfPresent(page) {
+/**
+ * Closes every open dialog.
+ *
+ * A boot saves the settings about one second after APP_READY. When another page on the same server saved after
+ * this page loaded its settings, the server refuses that save, and the page opens the settings conflict prompt.
+ * So the first call after a boot waits for a dialog. Later calls can pass `waitMs: 0`.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ waitMs?: number }} [options] How long to wait for a dialog to open
+ */
+export async function dismissOpenDialogIfPresent(page, { waitMs = 1000 } = {}) {
     const openDialog = page.locator('dialog[open]').first();
 
-    await openDialog.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {});
+    if (waitMs > 0) {
+        await openDialog.waitFor({ state: 'visible', timeout: waitMs }).catch(() => {});
+    }
     await page.evaluate(() => {
         document.querySelectorAll('dialog[open]').forEach(dialog => {
             dialog.close();
@@ -189,7 +200,7 @@ export async function openReadyChat(page, { chatSaveDelayMs = 0, selectCharacter
     if (selectCharacter) {
         await selectSampleCharacter(page);
     }
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: 0 });
     await waitForChatRenderIdle(page);
 }
 
@@ -232,7 +243,7 @@ export async function openQuietChatForSmoke(page, options = {}) {
     if (selectCharacter) {
         await selectSampleCharacter(page);
     }
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: 0 });
     await quietChatForSmoke(page);
     await waitForChatRenderIdle(page, { idleMs: 500, timeoutMs: 10000, waitForImages: false });
 }
