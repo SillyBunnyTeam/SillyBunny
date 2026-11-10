@@ -3,10 +3,9 @@ import fs from 'node:fs';
 import process from 'node:process';
 import dns from 'node:dns';
 import Handlebars from 'handlebars';
-import ipMatching from 'ip-matching';
 import isDocker from 'is-docker';
 
-import { filterValidIpPatterns, getIpFromRequest, getRealOrForwardedIp } from '../express-common.js';
+import { filterValidIpPatterns, getForwardedIps, getIpFromRequest, isIpInPatterns } from '../express-common.js';
 import { color, getConfigValue, safeReadFileSync } from '../util.js';
 
 const whitelistPath = path.join(process.cwd(), './whitelist.txt');
@@ -67,7 +66,10 @@ export default async function getWhitelistMiddleware() {
 
     return function (req, res, next) {
         const clientIp = getIpFromRequest(req);
-        const forwardedIp = enableForwardedWhitelist && getRealOrForwardedIp(req);
+        // SillyBunny: every forwarded client address must be listed, because the server cannot tell which forwarded header its proxy set.
+        const forwardedIps = enableForwardedWhitelist ? getForwardedIps(req, whitelist) : [];
+        const unlistedForwardedIp = forwardedIps.find(ip => !isIPInWhitelist(whitelist, ip));
+        const forwardedIp = unlistedForwardedIp ?? forwardedIps[0];
         const userAgent = req.headers['user-agent'];
 
         /**
@@ -77,12 +79,13 @@ export default async function getWhitelistMiddleware() {
          * @returns {boolean} True if the IP matches any whitelist entry
          */
         function isIPInWhitelist(whitelist, ip) {
-            return whitelist.some(x => ipMatching.matches(ip, ipMatching.getMatch(x)));
+            // SillyBunny: a value that is not an IP address is unlisted instead of an error.
+            return isIpInPatterns(ip, whitelist);
         }
 
         //clientIp = req.connection.remoteAddress.split(':').pop();
         if (!isIPInWhitelist(whitelist, clientIp)
-            || (forwardedIp && !isIPInWhitelist(whitelist, forwardedIp))
+            || unlistedForwardedIp !== undefined
         ) {
             // Log the connection attempt with real IP address
             const ipDetails = forwardedIp
