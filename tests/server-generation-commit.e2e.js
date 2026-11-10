@@ -239,7 +239,7 @@ for (const { name, options } of [
             try {
                 await openChat(page);
                 await connectFakeModel(page, `http://127.0.0.1:${model.address().port}/v1`);
-                await page.locator('#left-nav-panel .sb-shell-close').click();
+                await page.locator('#sb-settings-close').click();
                 // Enter adds a new line on touch layouts, so send with the button.
                 await page.locator('#send_textarea').fill(`stop during reasoning ${Date.now()}`);
                 await page.locator('#send_but').click();
