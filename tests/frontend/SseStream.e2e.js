@@ -157,7 +157,14 @@ async function runStreams({ construct = 'smooth', streams, settings = {}, platfo
 }
 
 test.describe('SseStream', () => {
-    test.beforeEach(testSetup.awaitST);
+    // A service worker that controls the page would answer requests before page.route sees them.
+    test.use({ serviceWorkers: 'block' });
+    test.beforeEach(async ({ page }) => {
+        // The tests change smooth streaming settings in the page, so a settings save must not reach the shared server.
+        let settingsVersion = Date.now();
+        await page.route('**/api/settings/save', route => route.fulfill({ status: 200, json: { version: ++settingsVersion } }));
+        await testSetup.awaitST({ page });
+    });
 
     test.describe('getEventSourceStream', () => {
         const kindOf = async (page, platform, settings = {}) => {
