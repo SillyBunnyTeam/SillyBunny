@@ -10,6 +10,7 @@ import {
     findSequentialSpecs,
     getDefaultWorkers,
     getProjects,
+    getRequestHeaders,
     getServerCommand,
     getServerConfig,
     getServerCount,
@@ -56,6 +57,14 @@ describe('e2e servers', () => {
         ]);
     });
 
+    test('asks for uncompressed responses only from the servers that the config starts, unless told otherwise', () => {
+        const identity = { 'Accept-Encoding': 'identity' };
+        expect(getRequestHeaders({}, true)).toEqual(identity);
+        expect(getRequestHeaders({}, false)).toEqual({});
+        expect(getRequestHeaders({ SILLYBUNNY_TEST_COMPRESSION: '1' }, true)).toEqual({});
+        expect(getRequestHeaders({ SILLYBUNNY_TEST_COMPRESSION: '0' }, false)).toEqual(identity);
+    });
+
     test('starts a server with Bun, or with Node.js when asked, without a shell', () => {
         const server = { port: 5001, dataRoot: '/tmp/sillybunny test $data' };
         const args = ['server.js', '--browserLaunchEnabled=false', '--port', '5001', '--dataRoot', '/tmp/sillybunny test $data'];
@@ -83,6 +92,7 @@ describe('e2e servers', () => {
         const config = await getServerConfig(env);
 
         expect(config.use.baseURL).toBe(SERVERS[1].url);
+        expect(config.use.extraHTTPHeaders).toEqual({ 'Accept-Encoding': 'identity' });
         expect(env.SILLYBUNNY_TEST_BASE_URL).toBe(SERVERS[1].url);
         expect(config.config.webServer.command).toContain('e2e-servers-launch.js');
         expect(config.config.webServer.wait.stdout.test(READY_MESSAGE)).toBe(true);

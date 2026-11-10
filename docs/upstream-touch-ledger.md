@@ -749,16 +749,16 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05 STscript parser fixes. |
 | Owner | Browser runtime integrator. |
 
-### `tests/playwright.config.js` - test servers and worker count
+### `tests/playwright.config.js` - test servers, worker count and request headers
 | Field | Value |
 | --- | --- |
 | File | `tests/playwright.config.js`. |
-| Area | Test infrastructure: Playwright worker count and test servers. |
+| Area | Test infrastructure: Playwright worker count, test servers and the `Accept-Encoding` request header. |
 | Divergence reason | TODO(copy) |
 | Target seam | `tests/e2e-servers.js`, with `tests/e2e-servers-launch.js` (starts the servers at once) and `tests/e2e-servers-prime.js` (boots the app once on each server). |
-| Adapter shape | One `await getServerConfig()` call. Its `use` is spread last into `use`, its `workers` replaces `'50%'`, and its `config` (`webServer`, `globalSetup`, `projects`) is spread last into the config. With a base URL variable set, or without `SILLYBUNNY_TEST_SERVERS`, `use` and `config` are empty and only the worker count differs from upstream. |
-| Protecting tests | `tests/e2e-servers.test.js` (server count, worker count, routing, server commands, sequential spec files, projects) and `tests/e2e-servers.e2e.js` (each worker uses the server of its parallel index; it runs only with `SILLYBUNNY_TEST_SERVERS`). |
-| Validation | `npm run lint` and `npm run test:unit` in `tests/`. `SILLYBUNNY_TEST_SERVERS=8 npx playwright test` (full suite on 8 Bun servers and 64 workers), `SILLYBUNNY_TEST_SERVERS=3 npx playwright test e2e-servers.e2e.js --repeat-each=12`, and against one Bun server with `SILLYBUNNY_TEST_BASE_URL`: `frontend/MacroLexer.e2e.js` with the default workers (16 on a 128-thread machine) and `frontend/MacroParser.e2e.js --workers=1`. Cleanup checked after a normal end, an interrupt, a server that cannot start (`bun` not on `PATH`), a port that another process holds while another server runs already, and a server that stops after the others are ready. Chromium, Playwright 1.64.1. |
+| Adapter shape | One `await getServerConfig()` call. Its `use` is spread last into `use`, its `workers` replaces `'50%'`, and its `config` (`webServer`, `globalSetup`, `projects`) is spread last into the config. When the config starts the servers, `use` adds `extraHTTPHeaders` with `Accept-Encoding: identity`. With a base URL variable set, or without `SILLYBUNNY_TEST_SERVERS`, `use` and `config` are empty and only the worker count differs from upstream. `SILLYBUNNY_TEST_COMPRESSION=1` or `0` sets the header for any run. |
+| Protecting tests | `tests/e2e-servers.test.js` (server count, worker count, routing, request headers, server commands, sequential spec files, projects) and `tests/e2e-servers.e2e.js` (each worker uses the server of its parallel index; it runs only with `SILLYBUNNY_TEST_SERVERS`). |
+| Validation | `npm run lint` and `npm run test:unit` in `tests/`. `SILLYBUNNY_TEST_SERVERS=8 npx playwright test` (full suite on 8 Bun servers and 64 workers), `SILLYBUNNY_TEST_SERVERS=3 npx playwright test e2e-servers.e2e.js --repeat-each=12`, and against one Bun server with `SILLYBUNNY_TEST_BASE_URL`: `frontend/MacroLexer.e2e.js` with the default workers (16 on a 128-thread machine) and `frontend/MacroParser.e2e.js --workers=1`. Cleanup checked after a normal end, an interrupt, a server that cannot start (`bun` not on `PATH`), a port that another process holds while another server runs already, and a server that stops after the others are ready. One app boot with the identity header got no compressed response (674 same-origin responses), and 529 Brotli responses without it. Chromium, Playwright 1.64.1. |
 | Rollback path | TODO(copy) |
 | Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
 | Owner | TODO(copy) |

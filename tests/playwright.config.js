@@ -12,7 +12,7 @@ export default defineConfig({
         baseURL,
         video: 'only-on-failure',
         screenshot: 'only-on-failure',
-        // SillyBunny: the server of this worker, when the config starts the servers.
+        // SillyBunny: the server of this worker and the request headers.
         ...sillyBunny.use,
     },
     // SillyBunny: '50%' of a large machine is more workers than one server can serve before tests time out.

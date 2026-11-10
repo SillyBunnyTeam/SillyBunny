@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 export const SERVER_COUNT_VARIABLE = 'SILLYBUNNY_TEST_SERVERS';
 export const SERVER_RUNTIME_VARIABLE = 'SILLYBUNNY_TEST_SERVER_RUNTIME';
+export const COMPRESSION_VARIABLE = 'SILLYBUNNY_TEST_COMPRESSION';
 // The main process writes the servers here before it starts any worker, and each worker inherits it.
 export const SERVER_LIST_VARIABLE = 'SILLYBUNNY_TEST_SERVER_LIST';
 export const SEQUENTIAL_SPECS_VARIABLE = 'SILLYBUNNY_TEST_SEQUENTIAL_SPECS';
@@ -63,6 +64,23 @@ export function getDefaultWorkers(serverCount, cpuCount) {
  */
 export function getServerUrl(servers, parallelIndex) {
     return servers[parallelIndex % servers.length].url;
+}
+
+/**
+ * Gets the headers that the browser adds to every request.
+ *
+ * Response compression is the largest server cost of an app boot, and it saves no time on a loopback connection.
+ * So the browser asks for uncompressed responses when many workers share the servers that the config starts. Runs
+ * against a server that runs already keep compression, because real browsers always ask for it, and the release
+ * tests must cover it. SILLYBUNNY_TEST_COMPRESSION=1 or 0 sets it for any run.
+ * @param {NodeJS.ProcessEnv} env Environment variables
+ * @param {boolean} startsServers Whether the config starts the servers
+ * @returns {Record<string, string>}
+ */
+export function getRequestHeaders(env, startsServers) {
+    const setting = env[COMPRESSION_VARIABLE];
+    const compress = setting === '1' || (setting !== '0' && !startsServers);
+    return compress ? {} : { 'Accept-Encoding': 'identity' };
 }
 
 /**
@@ -197,6 +215,10 @@ async function createServerList(count) {
 export async function getServerConfig(env = process.env) {
     const cpuCount = os.cpus().length;
     const parallelIndex = env.TEST_PARALLEL_INDEX;
+    const getUse = startsServers => {
+        const headers = getRequestHeaders(env, startsServers);
+        return Object.keys(headers).length ? { extraHTTPHeaders: headers } : {};
+    };
 
     let servers = env[SERVER_LIST_VARIABLE] ? JSON.parse(env[SERVER_LIST_VARIABLE]) : null;
     if (!servers) {
@@ -205,14 +227,14 @@ export async function getServerConfig(env = process.env) {
             if (parallelIndex === undefined && env[SERVER_COUNT_VARIABLE]) {
                 console.warn(`${SERVER_COUNT_VARIABLE} has no effect, because a base URL variable names a server.`);
             }
-            return { workers: getDefaultWorkers(0, cpuCount), use: {}, config: {} };
+            return { workers: getDefaultWorkers(0, cpuCount), use: getUse(false), config: {} };
         }
         getServerRuntime(env);
         servers = await createServerList(count);
         env[SERVER_LIST_VARIABLE] = JSON.stringify(servers);
     }
 
-    const use = {};
+    const use = getUse(true);
     if (parallelIndex === undefined) {
         // The main process runs no test. A worker that did not import the config again has no base URL, so it
         // fails at its first navigation. It does not use the server of another worker.
