@@ -69,14 +69,42 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `public/script.js` |
 | Area | Generation lifecycle and chat persistence. |
-| Divergence reason | TODO(copy) |
+| Divergence reason | SillyBunny must finish and save a reply that Stop interrupts. Stop clears `streamingProcessor` before `Generate()` reaches `onFinishStreaming()`, the only path that ends the reasoning, records its duration, removes the server-generation placeholder mark and saves the chat, so a reply stopped during reasoning would stay on Thinking with no duration and a reply stopped during its text would be lost on reload. |
 | Target seam | `none yet`: the steps use private `StreamingProcessor` state, so they stay in `public/script.js`; `public/scripts/generation-lifecycle/` keeps the stop decision. |
 | Adapter shape | `stopGeneration()` calls `StreamingProcessor.finalizeStoppedMessage()` after `onStopStreaming()` and does not await it. The method removes `extra[GENERATION_PLACEHOLDER_KEY]`, applies the stream's pending reasoning and calls `reasoningHandler.finish()`, which persists `extra.reasoning`, `extra.reasoning_duration` and `extra.reasoning_type` and emits `STREAM_REASONING_DONE`. Then it calls `syncMesToSwipe()`, `updateMessageBlock()` and `saveChatConditional()`. It does not emit `MESSAGE_RECEIVED`. `#isOriginMessage()`, split out of `#isCurrent()`, stops it when the chat or the message changes, because Stop has already cleared `streamingProcessor` and the run. The `pagehide` handler calls only `onStopStreaming()`, so a page that goes away still hands its reply to the server. |
 | Protecting tests | `tests/story-mode-request-controls.test.js` (Stop during streamed reasoning, a chat change after Stop, explicit cancellation), `tests/server-generation-commit.e2e.js` (Stop during streamed reasoning on desktop and mobile), `tests/generation-lifecycle-wiring.test.js`, `tests/pathfinder-streaming-origin.test.js`, `tests/resumable-generation-frontend.test.js`. |
 | Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- story-mode-request-controls.test.js pathfinder-streaming-origin.test.js pathfinder-generation-wiring.test.js generation-lifecycle resumable-generation-frontend.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js` against a Bun 1.4.4 server at 1440x900 and at 390x844 with an iPhone user agent. |
 | Rollback path | Remove the `finalizeStoppedMessage()` call from `stopGeneration()` and the method. Stop then leaves the stopped reply unsaved and its reasoning in the thinking state, with a null `extra.reasoning_duration`. `#isOriginMessage()` can stay, because `#isCurrent()` returns the same result through it. Saved chats need no change, because the method writes only existing message fields. |
 | Last reviewed | 2026-10-29 Stop during streamed reasoning fix. |
-| Owner | TODO(copy) |
+| Owner | Generation lifecycle owner. |
+
+### `public/script.js`, `src/endpoints/backends/chat-completions.js`, and `src/prompt-converters.js` - Gemini replies that end early
+| Field | Value |
+| --- | --- |
+| File | `public/script.js`, `src/endpoints/backends/chat-completions.js`, `src/prompt-converters.js`. |
+| Area | Generation lifecycle (Gemini finish reporting, fetch idle timeout and thinking levels). |
+| Divergence reason | SillyBunny must tell the user when a Gemini reply stops at a token limit, because thinking counts against the output limit and each request has its own cap, so a stopped reply looks finished or is saved blank. It must also keep long thinking from hitting Bun's fetch idle timeout, and send `high` for the `xhigh` and `max` levels on Gemini 4, which documents no level above it. |
+| Target seam | `public/scripts/generation-request-controls.js` owns the finish checks. The server changes are `none yet`: they sit on the Gemini request handlers and in `calculateGoogleBudgetTokens()`, and no SillyBunny module wraps those. |
+| Adapter shape | `public/script.js`: `StreamingProcessor.providerLengthFinish`, set first in `#applyProseLimit()`, and one `warnsOnGenerationLengthFinish()` branch ahead of each reasoning-only toast in `Generate()`. `chat-completions.js`: `timeout: 0` on the generateContent and Interactions fetches; `finish_reason: 'length'` and a separate empty-reply error for `MAX_TOKENS` and `CONTINUATION` in `sendMakerSuiteRequest()`; `INTERACTION_CUT_OFF_STATUSES` in `transformInteractionToChatCompletion()`; a final length chunk from `finishStream()` in `forwardInteractionStream()`. `prompt-converters.js`: `xhigh` and `max` send `high` on Gemini 4 in `getGemini3ThinkingLevel()`. |
+| Protecting tests | `tests/story-mode-request-controls.test.js`, `tests/google-model-request.test.js`, `tests/gemini-interactions.test.js`, `tests/prompt-converters.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- story-mode-request-controls.test.js google-model-request.test.js gemini-interactions.test.js prompt-converters.test.js pathfinder-generation-wiring.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js`, Bun and Node.js boots, and a browser replay of each finish against a local stub of the Gemini API at desktop and mobile widths. |
+| Rollback path | Remove the two `warnsOnGenerationLengthFinish()` branches, `providerLengthFinish`, the cut-off handling in `chat-completions.js`, the two `timeout: 0` options and the Gemini 4 branch in `getGemini3ThinkingLevel()`. The changes do not write persistent data, so no cleanup is needed. |
+| Last reviewed | 2026-11-04 Gemini long decode reporting fix. |
+| Owner | Generation lifecycle owner. |
+
+### `src/endpoints/backends/chat-completions.js` - Gemini long decode
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/backends/chat-completions.js`. |
+| Area | Generation lifecycle (Gemini replies across several requests). |
+| Divergence reason | SillyBunny must continue a Gemini reply across several requests until it finishes, because Gemini 4 can write one reply over several requests and a single request stops at its per-request cap. The client sees one reply, streamed or not. |
+| Target seam | `src/gemini-long-decode.js` owns the continuation loop, the stream stitching and the request rules. |
+| Adapter shape | `sendMakerSuiteRequest()`: `sendRequest()` around the fetch, `capFirstGenerateContentBody()` for the first request, `continueGenerateContentStream()` around the response that `forwardFetchResponse()` receives, `collectGenerateContentHops()`, `mergeGenerateContentHops()` and `getGenerateContentText()` on the non-streaming path, and `getVertexApiVersion()` in the Vertex URLs. `sendGeminiInteractionsRequest()`: `continueInteractionStream()` around the response that `forwardInteractionStream()` receives, and `collectInteractionHops()` with `mergeInteractionHops()` on the non-streaming path. In both handlers, `sendHop()` calls `extendLifetime()` on the resumable generation before each later request. |
+| Protecting tests | `tests/gemini-long-decode.test.js`, `tests/google-model-request.test.js`, `tests/gemini-interactions.test.js`, `tests/resumable-generations.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- gemini-long-decode.test.js google-model-request.test.js gemini-interactions.test.js resumable-generations.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js`, Bun and Node.js boots, a browser replay of multi-request replies against a local stub of the Gemini API at desktop and mobile widths, and live replies of up to 70,000 tokens through a local relay to Vertex AI. |
+| Rollback path | Put the direct `fetch()` calls, `generateResponse.json()` results and the text expression back in the two handlers, put `v1` back in the Vertex URLs, delete `src/gemini-long-decode.js` and remove `extendLifetime()` from `src/resumable-generations.js`. The changes do not write persistent data, so no cleanup is needed. |
+| Last reviewed | 2026-11-05 Gemini long decode. |
+| Owner | Generation lifecycle owner. |
 
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
@@ -90,6 +118,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert the integrity rotation response contract and client adoption to the prior per-load integrity behavior. |
 | Last reviewed | 2026-08-11 PR #754 remote-save integrity fix. |
 | Owner | Bugfix integrator. |
+
+### `src/endpoints/files.js`, `src/endpoints/chats.js`, `src/endpoints/groups.js`, `src/endpoints/vectors.js`, and `src/endpoints/assets.js` - user folder paths and route errors
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/files.js`, `src/endpoints/chats.js`, `src/endpoints/groups.js`, `src/endpoints/vectors.js`, `src/endpoints/assets.js`. |
+| Area | Data Bank file delete and verify, group chat lists, chat export, chat info, group delete, vector indexes and purge, asset delete and download, and character asset lists. |
+| Divergence reason | SillyBunny must keep user-supplied file, group chat, vector and asset paths inside their folders and answer bad input from the route itself. Paths there were checked with a string prefix, which also accepts sibling folders that start with the same name, or not at all, and a throw in a stream or readline event crashes the server. |
+| Target seam | none yet. |
+| Adapter shape | `files.js`: `/delete` and `/verify` check the joined path with `isPathUnderParent()` instead of `startsWith()`. `chats.js`: the new `getGroupChatPath()` returns the chat file path for a string or number ID whose path stays inside the group chats folder, and null otherwise; `/search` and `/recent` skip an ID that it refuses. `/export` runs its whole body inside one `try` block, answers 400 for a `file` that is not a string or that sanitizes to an empty name, and awaits a promise that its read stream and readline settle, with `error` listeners on both; its `line` listener skips a line that throws and logs one warning with the count. `getChatInfo()` reads `mes` only when it is a string. `groups.js`: `hasValidChatIds()` makes `/create` and `/edit` answer 400 for a chat list with an ID that `getGroupChatPath()` refuses, and `/delete` answers 400 for an `id` that is not a string or a number. `vectors.js`: `getIndex()` throws `InvalidVectorFolderError` for a source or collection ID that sanitizes to an empty name, `regenerateCorruptedIndexErrorHandler()` answers 400 for that error and catches errors from its own regeneration, and `/purge` answers 400 for a collection ID that sanitizes to an empty name. `assets.js`: `validateAssetFileName()` refuses a value that is not a string; `/download`, `/delete` and `/character` compare the category with `===`; `/character` answers 400 for a `name` that is not a string; `/download` writes through `pipeline()` instead of `pipe()` and `finished()`, and its catch block answers only when `response.headersSent` is false. |
+| Protecting tests | `tests/route-guards-scenarios.test.js` and `tests/route-guards-rows.test.js`; the rows use the hostile file name harness in `tests/util/hostile-file-names-*.js`. `tests/base64-atomic-writes.test.js` mocks `util.js` with `isPathUnderParent`, which `files.js` imports. |
+| Validation | `npm run test:unit --prefix tests -- route-guards-scenarios.test.js route-guards-rows.test.js` (each test fails with the base commit's version of the files it covers: all 31 with the first four files, and the 12 asset tests with `assets.js`), the suites that load these routers, `npm run lint`, `npm run lint --prefix tests`, one request for each guard on Bun 1.4.4 and Node 24.22.1 scratch servers, and the new suites on Linux with Node 24. |
+| Rollback path | Revert the hunks in the five files, delete `tests/route-guards-scenarios.test.js` and `tests/route-guards-rows.test.js`, and remove `isPathUnderParent` from the `util.js` mock in `tests/base64-atomic-writes.test.js`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 user folder paths and route errors, with the asset routes. |
+| Owner | Server and data compatibility integrator. |
 
 ### `public/index.html`, `public/style.css`, `public/css/mobile-styles.css`, `public/script.js`, and `public/scripts/group-chats.js` - group chat branch creation
 | Field | Value |
@@ -356,12 +398,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | Area | Generation lifecycle and settings (Claude chat-completion request builders). |
 | Divergence reason | `claude-fable-5` rejects `temperature`/`top_p`/`top_k`, explicit `thinking:{type:'disabled'}`, and assistant prefill with HTTP 400, and upstream's Claude model gating, dropdown, 1M-context regex, and vision list do not know the model. SillyBunny gates fable into the existing per-model flags, strips the removed samplers on both the native and OpenAI-compatible paths, and forwards real upstream error bodies on non-streaming failures instead of a generic 500. |
-| Target seam | None yet; the core fix follows upstream's existing per-model regex/delete-block patterns so it can be contributed to SillyTavern and dropped here on a future upstream sync. |
-| Adapter shape | `isFableModel` flag OR'd into existing gating regexes plus a sampler delete-block in `sendClaudeRequest`; a source-aware delete-block in `createGenerationParameters`; one dropdown option, one regex alternation, one vision-list entry; error passthrough kept as a separate commit. |
-| Protecting tests | None yet; current protection is static validation and the PR #403 relay isolation test record (minimal 200, +samplers 400, adaptive+effort 200, thinking-disabled 400, system-message 400 on non-converting relay). Add focused unit coverage if fable gating grows beyond regex alternations. |
-| Validation | `npm run lint`, `node --check src/endpoints/backends/chat-completions.js`, `node --check public/scripts/openai.js`, direct relay curls against `https://api.linkapi.ai/v1/messages` and `/chat/completions` (2026-06-10), regression check that opus-4-6/sonnet-4-6/sonnet-4-5 payloads are unchanged. |
-| Rollback path | Revert the fable regex alternations and delete-blocks to restore stock behavior (fable then 400s again on samplers); the error passthrough commit can be reverted independently. |
-| Last reviewed | 2026-06-10 PR #403 claude-fable-5 400 fix. |
+| Target seam | `public/scripts/openai-model-capabilities.js` for the client sampler constraints. The server flags have no seam yet; they follow upstream's per-model regex pattern, so a future upstream sync can drop them. |
+| Adapter shape | `isFableModel` flag OR'd into the existing gating regexes and `noSamplingModel` in `sendClaudeRequest`, next to upstream's `useNativeJsonOutput` flag for `claude-fable-5-1` and `claude-opus-5-5`; one `applyClaudeModelParameterConstraints` call in `createGenerationParameters`; dropdown options for `claude-fable-5` and `claude-fable-5-1`, one regex alternation, one vision-list entry; error passthrough kept as a separate commit. |
+| Protecting tests | `tests/claude-sonnet5.test.js`, `tests/openai-static-models.test.js`, `tests/server-parity.test.js`. The PR #403 relay isolation record (minimal 200, +samplers 400, adaptive+effort 200, thinking-disabled 400, system-message 400 on non-converting relay) remains the live-request evidence. |
+| Validation | `npm run lint` in the root and in `tests/`, focused Jest for the protecting test files, full `npm run test:unit`, and `node --check` on the changed JavaScript files. Earlier live evidence: direct relay curls against `https://api.linkapi.ai/v1/messages` and `/chat/completions` (2026-06-10), and a regression check that opus-4-6/sonnet-4-6/sonnet-4-5 payloads are unchanged. |
+| Rollback path | Revert the fable regex alternations and remove the `applyClaudeModelParameterConstraints` call to restore stock behavior (fable then 400s again on samplers); the error passthrough commit can be reverted independently. |
+| Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
 | Owner | Bugfix integrator. |
 
 ### `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, and `src/prompt-converters.js` - Google model catalog
@@ -369,14 +411,28 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`, `src/prompt-converters.js`. |
 | Area | Settings and generation lifecycle (Google AI Studio and Vertex AI model pickers and Gemini request builders). |
-| Divergence reason | TODO(copy) |
+| Divergence reason | SillyBunny must offer the newest Google models in the AI Studio, Vertex AI and caption pickers with the request parameters they accept, ahead of upstream's catalog. Models with an announced retirement date are labelled deprecated, and saved AI Studio selections of IDs that AI Studio now routes elsewhere move to the model that answers. |
 | Target seam | None yet; the changes follow upstream's per-model option lists and regex patterns, so a future upstream sync can drop them once upstream covers these models. |
 | Adapter shape | Static `<option>` entries and `(deprecated)` labels in both pickers and the caption list; two AI Studio entries in `migrateChatCompletionSettings`; context, vision, video and audio list entries in `openai.js`; regex alternations and list entries in `getGeminiBody`, `convertGooglePrompt` and `calculateGoogleBudgetTokens`. |
 | Protecting tests | `tests/openai-static-models.test.js`, `tests/google-model-request.test.js`, `tests/prompt-converters.test.js`, `tests/story-mode-request-controls.test.js`. |
 | Validation | `npm run lint` in the root and in `tests/`, focused Jest for the four protecting test files, full `npm run test:unit`, `npm run check:frontend-budgets`, and `node --check` on the changed JavaScript files. |
 | Rollback path | Revert the option entries, the two AI Studio migration entries and the regex alternations. No data cleanup is needed, because a saved `gemini-3.8-flash` or `gemini-3.6-flash` selection stays valid on AI Studio. |
-| Last reviewed | 2026-10-29 Google model catalog update. |
-| Owner | TODO(copy) |
+| Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
+| Owner | Bugfix integrator. |
+
+### `public/scripts/tool-calling.js` and `public/scripts/openai.js` - GPT-6 Sol and Luna reasoning off
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/tool-calling.js`, `public/scripts/openai.js`. |
+| Area | Generation lifecycle (OpenAI tool gate and reasoning effort). |
+| Divergence reason | SillyBunny must open the Chat Completions tool gate for GPT-6 Sol and Luna when Reasoning Effort is None, and send `none` to them when the user picks None. Upstream's gate checks for Min, but SillyBunny sends Min as `minimal` and turns reasoning off with None, so the upstream gate would allow tools on a request that still reasons and block them on one that does not. |
+| Target seam | None yet; both changes are single conditions inside upstream functions, so there is no module to move them to. |
+| Adapter shape | `isToolCallingSupported` compares `settings.reasoning_effort` with `'none'` where upstream compares it with `'min'`, marked with `// SillyBunny:`. The None case of `getReasoningEffort` adds `gpt-6-(?:sol\|luna)` to its GPT-5.1 regex. |
+| Protecting tests | `tests/reasoning-effort-none.test.js`, `tests/upstream-provider-parity.test.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, focused Jest for the protecting test files, full `npm run test:unit`, `npm run check:frontend-budgets`, and `node --check` on the changed JavaScript files. |
+| Rollback path | Restore `'min'` in the tool gate and remove the Sol and Luna alternation. Min then opens Chat Completions tools while SillyBunny sends it as `'minimal'`, and None stays unsent on both models. No data cleanup is needed. |
+| Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
+| Owner | Bugfix integrator. |
 
 ### `public/index.html` - in-chat agent message action buttons
 | Field | Value |
@@ -404,47 +460,159 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Feature maintainer. |
 
+### `src/server-main.js` - route errors and crash exit
+| Field | Value |
+| --- | --- |
+| File | `src/server-main.js`. |
+| Area | Server lifecycle and request error handling. |
+| Divergence reason | SillyBunny must answer a rejected async route with a 500, relaunch the server after a crash, and send the CSRF refusal with its message. Express 4 ignores a rejected promise, so the request gets no answer; the crash handlers exit with code 0, which the supervisor treats as a stop; and a bare `Forbidden` keeps the client from refreshing its CSRF token. |
+| Target seam | `src/route-errors.js` for route errors; `src/server-supervisor.js` owns `SERVER_CRASH_EXIT_CODE` and the crash relaunch. |
+| Adapter shape | `forwardAsyncRouteErrors()` runs once before `express()`. The startup chain registers `handleRouteError` with `app.use()` right after `apply404Middleware`, before the server listens. The CSRF block passes `csrfSyncProtection.invalidCsrfTokenError` to `answerWithErrorMessage()` after it sets that error's message, so the refusal answers 403 with the message as plain text. The `uncaughtException` and `unhandledRejection` handlers call `exitAfterCrash()`, which starts a `SUPERVISOR_FORCE_KILL_TIMEOUT_MS` timer that exits with `SERVER_CRASH_EXIT_CODE` and runs `exitProcess(SERVER_CRASH_EXIT_CODE)`. |
+| Protecting tests | `tests/route-errors.test.js`, `tests/server-supervisor-crash-restart.test.js`, `tests/csrf-refusal-retry.test.js`. `tests/shutdown.test.js` and `tests/server-restart-monitor.test.js` read `src/server-main.js` and pass unchanged. |
+| Validation | `npm run test:unit --prefix tests -- route-errors.test.js server-supervisor-crash-restart.test.js csrf-refusal-retry.test.js`, `node --check src/server-main.js`, `npm run lint`, and scratch servers under Bun 1.4.4 and Node.js 24.22.1 in production mode: a rejected async route answers 500 while the server keeps answering, an uncaught exception relaunches the server, the sixth crash within 10 minutes ends the supervisor with exit code 1, and with `FORCE_COLOR=1` a request with a stale CSRF token gets 403 `text/plain` with `Invalid CSRF token. Please refresh the page and try again.` and no escape characters, after which the Chat Backups list in headless Chromium refreshes the token once and loads. |
+| Rollback path | Remove the `forwardAsyncRouteErrors()` call, the `handleRouteError` registration, the `answerWithErrorMessage()` call, `exitAfterCrash()` (the handlers call `exitProcess()` again) and the `src/route-errors.js` import, then delete `src/route-errors.js`, `tests/route-errors.test.js` and `tests/csrf-refusal-retry.test.js`. No stored data or settings change. After the rollback a rejected async route leaves its request unanswered and ends the server with exit code 0, which the supervisor does not relaunch, and the CSRF refusal says only `Forbidden` in production, so the client does not refresh its token. To drop only the CSRF answer, remove the `answerWithErrorMessage()` call. |
+| Last reviewed | 2026-11-05 async route errors answered, crashes relaunched, and the CSRF refusal answered with its text. |
+| Owner | Server runtime integrator. |
+
 ### `src/server-startup.js` - listen retry and port-conflict diagnostics
 | Field | Value |
 | --- | --- |
 | File | `src/server-startup.js`. |
 | Area | Server lifecycle. |
-| Divergence reason | TODO(copy) |
+| Divergence reason | SillyBunny must wait for a busy listen port instead of exiting on the first `EADDRINUSE`, because a relaunch can start before the previous process has released its socket. If the port stays busy, it must print which application holds it and how to fix that. |
 | Target seam | `src/server-listen.js`. |
 | Adapter shape | `#startHTTPorHTTPS()` runs the IPv6 and IPv4 binds at the same time through `retryOnAddressInUse()` and calls `reportPortHolders()` on the first retry. Both create functions close a server that failed to bind and call `trackListeningServer()` once it listens. `#handleServerListenFail()` calls `reportPortHolders()` again and prints the `diagnosePortConflict()` result through `formatPortConflictBanner()` before it exits. `#getAddressInUseMessage()` uses `APP_NAME` and adds the Bun socket-inheritance hint only when `hasBunSocketInheritBug()` is true. |
 | Protecting tests | `tests/server-listen.test.js`. |
 | Validation | `npm run test:unit --prefix tests -- server-listen.test.js`, `node --check src/server-startup.js`, `npm run lint`. |
-| Rollback path | TODO(copy) |
+| Rollback path | In `src/server-startup.js`, bind once again: remove `retryOnAddressInUse()` and the `reportPortHolders()` calls from `#startHTTPorHTTPS()`, the close of a server that failed to bind and the `trackListeningServer()` calls in both create functions, and the `diagnosePortConflict()` banner and the Bun socket-inheritance hint from the failure messages. Remove the `closeListeningServers()` call in `src/server-main.js` before deleting `src/server-listen.js` and `tests/server-listen.test.js`. A relaunch that races the old process then dies on the first `EADDRINUSE`. No saved data changes. |
 | Last reviewed | 2026-10-23 Bun socket-inheritance hint limited to Bun before 1.4.0. |
-| Owner | TODO(copy) |
+| Owner | Server runtime integrator. |
+
+### `src/express-common.js`, `src/middleware/whitelist.js`, `src/middleware/basicAuth.js` and `src/middleware/hostWhitelist.js` - client addresses and configured credentials
+| Field | Value |
+| --- | --- |
+| File | `src/express-common.js`, `src/middleware/whitelist.js`, `src/middleware/basicAuth.js`, `src/middleware/hostWhitelist.js`, and the comments for `rateLimiting.preferRealIpHeader`, `forwardedHeaders` and `forwardedHeaders.xForwardedFor` in `default/config.yaml`. |
+| Area | Access control: IP whitelist, rate-limit keys, basic auth and host whitelist. |
+| Divergence reason | SillyBunny must trust a forwarded client address only when a listed proxy set it, because a reverse proxy adds the address it saw at the right end of `X-Forwarded-For` and can pass other forwarded headers through from the client unchanged, so the whitelist and rate limits could otherwise decide on a spoofed value. Basic auth must also refuse an empty or non-string configured username or password. |
+| Target seam | none yet. |
+| Adapter shape | `express-common.js`: `getForwardedIps(req, trustedProxies)` replaces `getRealOrForwardedIp()`. It returns the address in each enabled forwarded header and reads `X-Forwarded-For` from the right past trusted hops. `isIpInPatterns()` matches through a strict parser (`normalizeIpAddress()`), so a value that is not an IP address matches nothing and an IPv4-mapped value matches its IPv4 entry. `getTrustedProxies()` returns the valid `whitelist` entries. `getIpAddress()` adds a forwarded address only when the socket address is a trusted hop and every enabled header names the same valid address. `whitelist.js`: blocks unless every address from `getForwardedIps()` is listed, names the first unlisted one, and matches through `isIpInPatterns()`. `basicAuth.js`: `matchesConfiguredUser()` refuses an empty or non-string configured username or password and compares with `crypto.timingSafeEqual()` over SHA-256 digests. `hostWhitelist.js`: reads `hostWhitelist.enabled` with the `'boolean'` converter. |
+| Protecting tests | `tests/forwarded-client-address.test.js`, `tests/basic-auth-configured-credentials.test.js`, `tests/host-whitelist-enabled-switch.test.js`. `tests/require-https-client-address.test.js` covers `src/middleware/requireHttps.js`, a SillyBunny file that uses `getTrustedProxies()` and `isIpInPatterns()`. |
+| Validation | `npm run test:unit -- tests/forwarded-client-address.test.js tests/require-https-client-address.test.js tests/basic-auth-configured-credentials.test.js tests/host-whitelist-enabled-switch.test.js` (35 of the 41 tests fail with the base commit's sources), the same files on Linux, `npm run lint` in the root and in `tests/`, and a boot with `bun server.js` and `node server.js`. |
+| Rollback path | Revert the five commits that the `LESSONS.md` section "Client addresses behind proxies" lists, or the hunks of each file. `src/middleware/requireHttps.js` imports `getTrustedProxies()` and `isIpInPatterns()`, so its commit reverts with the others. Restore those three `default/config.yaml` comments to the upstream text. No stored data, settings or config keys change. |
+| Last reviewed | 2026-11-05 forwarded client addresses, configured basic auth credentials and the forwarded header comments. |
+| Owner | Server runtime integrator. |
 
 ### `src/transformers.js` - caption image decoding
 | Field | Value |
 | --- | --- |
 | File | `src/transformers.js`. |
 | Area | Image captioning (`POST /api/extra/caption`). |
-| Divergence reason | TODO(copy) |
+| Divergence reason | SillyBunny must decode caption images itself and reject bytes that do not start with an image signature. `RawImage.fromBlob()` finds the format with file-type 16, which loops forever on a crafted ASF header and stops the whole server (GHSA-5v7r-6r5c-r473), and under Bun it needs a canvas that Bun does not have, so every image fails. |
 | Target seam | `src/transformers-image.js`. |
 | Adapter shape | `getRawImage()` decodes the base64 string into a `Buffer` and returns `decodeRawImage(buffer)`, or `null` when that throws. `decodeRawImage()` throws for bytes that do not start with a PNG, JPEG, GIF, BMP, TIFF, WebP or AVIF signature, so jimp's file-type check never sees them. It decodes the rest with the server's jimp (`src/jimp.js`) instead of calling `RawImage.fromBlob()`, and returns an RGBA `JimpRawImage`, a `RawImage` subclass whose `resize()` also uses jimp instead of `OffscreenCanvas`. `crop()` and `center_crop()` stay upstream; the default captioning model does not call them. |
 | Protecting tests | `tests/transformers-image.test.js`. The test defines `self` before sillytavern-transformers loads, so the library takes the code path that it takes under Bun. |
 | Validation | `npm run test:unit --prefix tests -- transformers-image.test.js` (on the base commit, the ASF test fails when its child process reaches the 30 s deadline, the PNG test gets `null`, and the preprocessing test fails with `OffscreenCanvas not supported by this browser.`), `npm run lint`. |
 | Rollback path | Restore the upstream `getRawImage()` body (`RawImage.fromBlob()` on a `Blob` of the decoded bytes) and the `RawImage` import, then delete `src/transformers-image.js` and `tests/transformers-image.test.js`. No stored data or settings change. The rollback brings back the server hang on a malformed ASF header and the 400 for every image under Bun. |
 | Last reviewed | 2026-11-02 caption image signature check (GHSA-5v7r-6r5c-r473). |
-| Owner | TODO(copy) |
+| Owner | Server runtime integrator. |
 
 ### `src/endpoints/characters.js` - character file names
 | Field | Value |
 | --- | --- |
 | File | `src/endpoints/characters.js`. |
 | Area | Character import, create and rename file names. |
-| Divergence reason | TODO(copy) |
+| Divergence reason | SillyBunny must sanitise character file names on every platform and write a card only as a PNG directly inside the characters folder. A name from an import, create or rename that sanitises to nothing or loses its extension to the 255-byte cut would otherwise decide where the card is written. |
 | Target seam | none yet. |
-| Adapter shape | `getPngName()` sanitises the name on every platform with `sanitizeSafeCharacterReplacements` (an empty result becomes `character`), then drops a trailing `.png` in any case, because `getPngFileName()` keeps that extension; the name it returns always maps to `<name>.png`. `writeCharacterData()` fails when `resolveCharacterAvatarPath()` rejects the target name. The V2/V3 JSON branch of `importFromJson()` sanitises `data.name` and `name` before `readFromV2()`, as SillyTavern's does since `1bb2a5ea1`. `getPreservedName()` keeps `sanitiseFilenameForWindows()`. |
-| Protecting tests | `tests/character-card-metadata-preservation.test.js`, `tests/entity-date-added-endpoints.test.js` and `tests/entity-last-chat-endpoints.test.js` create, edit and rename cards through `getPngName()` and `writeCharacterData()`. |
-| Validation | `npm run test:unit --prefix tests` (on Windows, the same 10 suites and 33 tests fail as on the base commit), `npm run lint`. |
-| Rollback path | Revert the `getPngName()`, `writeCharacterData()` and `importFromJson()` hunks. No stored data or settings change. |
-| Last reviewed | 2026-11-02 character file names sanitised on every platform. |
-| Owner | TODO(copy) |
+| Adapter shape | `getPngName()` sanitises the name on every platform with `sanitizeSafeCharacterReplacements` (an empty result becomes `character`), then drops a trailing `.png` in any case, because `getPngFileName()` keeps that extension; the name it returns always maps to `<name>.png`. `writeCharacterData()` fails when `resolveCharacterAvatarPath()` rejects the target name. The V2/V3 JSON branch of `importFromJson()` sanitises `data.name` and `name` before `readFromV2()`, as SillyTavern's does since `1bb2a5ea1`. `getPreservedName()` keeps `sanitiseFilenameForWindows()`. `POST /create` answers 400 when `sanitize()` turns a given `file_name` into an empty string, because the same name also names the card's chats folder. |
+| Protecting tests | `tests/character-card-metadata-preservation.test.js`, `tests/entity-date-added-endpoints.test.js` and `tests/entity-last-chat-endpoints.test.js` create, edit and rename cards through `getPngName()` and `writeCharacterData()`. `tests/character-route-names.test.js` sends create requests whose `file_name` sanitizes to nothing. |
+| Validation | `npm run test:unit --prefix tests -- character-route-names.test.js entity-date-added-endpoints.test.js entity-last-chat-endpoints.test.js` (on the base commit the four create rows answer 200), `npm run lint`. |
+| Rollback path | Revert the `getPngName()`, `writeCharacterData()` and `importFromJson()` hunks, and the `file_name` check in `POST /create`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 create file names that sanitize to nothing. |
+| Owner | Server and data compatibility integrator. |
+
+### `src/endpoints/characters.js` - archive card assets and import formats
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | CHARX and BYAF asset storage, and the format lookup of `POST /import`. |
+| Divergence reason | SillyBunny must not let a CHARX or BYAF archive choose where its assets are stored or which file types are kept. Asset folders must be folders of their own inside the characters and images folders, stored images must pass a signature check, and `POST /import` must run only import functions that exist for the format. |
+| Target seam | `src/image-file-type.js` for the image check; none yet for the asset folders and the format lookup. |
+| Adapter shape | `getCardAssetFolder()` returns the sanitized card name, else the card's file name, or `null` when that name is not a folder directly inside the characters and user images folders. `importFromCharX()` passes it to `persistCharXAssets()` and skips the assets for `null`; `importFromByaf()` uses it for the alternate icon folder. `isArchiveImage()` passes a file to `isImageFile()` from `src/image-file-type.js`, which accepts it only when its extension is png, apng, jpg, jpeg, jfif, gif, webp, avif or bmp and its leading bytes match that type, and logs the files that fail. `importFromCharX()` filters the parser's auxiliary assets with it; `importFromByaf()` filters the chat backgrounds before it writes them and the chats, and filters the alternate icons. The stored bytes stay as they are. `POST /import` takes the import function only when `Object.hasOwn(formatImportFunctions, format)`. `src/charx.js` and `src/byaf.js` stay as in SillyTavern. |
+| Protecting tests | `tests/character-archive-assets.test.js`, `tests/character-route-names.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- character-archive-assets.test.js character-route-names.test.js` (all 13 pass after the image check moved to `src/image-file-type.js`; when that check accepts every file, the 3 image tests fail), `npm run lint`. |
+| Rollback path | Revert the `getCardAssetFolder()` and `isArchiveImage()` additions, the `isImageFile()` import, their uses in `importFromCharX()` and `importFromByaf()`, and the `Object.hasOwn()` lookup in `POST /import`. `src/image-file-type.js` stays while `src/endpoints/sprites.js` uses it. No stored data or settings change. |
+| Last reviewed | 2026-11-05 image check moved to `src/image-file-type.js`. |
+| Owner | Server and data compatibility integrator. |
+
+### `src/endpoints/characters.js` - route input types and errors
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js`. |
+| Area | Request checks and error handling of `POST /rename`, `POST /edit`, `POST /delete` and `POST /import`. |
+| Divergence reason | SillyBunny must answer a character route request that has a wrong-typed field, or a file the route cannot recover or remove, with its own 400 or 500 instead of letting the error escape the route. `sanitize()`, `path.parse()` and `path.join()` throw on a value that is not a string, so the request otherwise gets no answer or a generic 500. |
+| Target seam | none yet. |
+| Adapter shape | `POST /rename` answers 400 when `avatar_url` or `new_name` is not a string, before `sanitize()` and `path.parse()`. `POST /edit` answers 400 when `avatar_url` is not a non-empty string, before `path.join()`, and runs `charaFormatData()`, the `chat` and `create_date` assignments and `JSON.stringify()` inside a `try` block that answers 400. `POST /delete` answers 400 when `delete_chats` is an object, before `delete_chats == true`, and calls `invalidateThumbnail()` inside a `try` block that logs the error. `POST /import` calls `recoverFileWriteSync()` for `preserved_name` inside a `try` block that answers 500. `charaFormatData()` stays as in SillyTavern. |
+| Protecting tests | `tests/character-route-inputs.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- character-route-inputs.test.js` (with the base commit's `characters.js`, all 19 tests fail: each request gets no answer, and its error reaches Jest as an unhandled rejection), `npm run lint`. |
+| Rollback path | Revert the type checks in `POST /rename`, `POST /edit` and `POST /delete`, and the `try` blocks around the formatting in `POST /edit`, `invalidateThumbnail()` in `POST /delete` and `recoverFileWriteSync()` in `POST /import`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 route input types and errors. |
+| Owner | Server and data compatibility integrator. |
+
+### `src/endpoints/sprites.js` - sprite file types
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/sprites.js`. |
+| Area | Sprite uploads (`POST /api/sprites/upload` and `POST /api/sprites/upload-zip`). |
+| Divergence reason | SillyBunny must store a sprite only when its bytes are an image of the type its extension names, because the upload and zip routes otherwise keep whatever extension the file carries. A failed upload answers 400 before it creates the sprite folder or replaces an existing sprite. |
+| Target seam | `src/image-file-type.js`. |
+| Adapter shape | `/upload-zip` keeps an entry of `getImageBuffers()` only when `isImageFile(path.extname(sanitize(filename)), buffer)` passes. `/upload` reads the leading bytes of the upload with `readImageSignature()`, keeps the uploaded extension when `isImageFile()` passes, else takes `getImageExtension()`, and sanitizes the name. When the sanitized name fails `isImageFile()`, the route deletes the upload and answers 400 before it creates the sprite folder or deletes an existing sprite. The stored bytes stay as they are. |
+| Protecting tests | `tests/sprite-upload-images.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- sprite-upload-images.test.js` (with the base commit's `sprites.js`, all 8 tests fail), `npm run lint`. |
+| Rollback path | Revert the `/upload-zip` filter, the `/upload` check and the import in `src/endpoints/sprites.js`. Keep `src/image-file-type.js`, which the character imports use. No stored data or settings change. |
+| Last reviewed | 2026-11-05 sprite upload file types. |
+| Owner | Server and data compatibility integrator. |
+
+### `src/character-card-parser.js` - PNG chunk bounds
+| Field | Value |
+| --- | --- |
+| File | `src/character-card-parser.js`. |
+| Area | Character card PNG parsing (`read()`, `write()` and `parse()`). |
+| Divergence reason | SillyBunny must reject a character card PNG whose chunk declares more data than the file holds before `png-chunks-extract` reads it. That library allocates, copies and checksums the declared length first, so a small crafted file can make the parser spend memory and time on it. |
+| Target seam | `src/png/extract.js`. |
+| Adapter shape | The module imports `extract` from `./png/extract.js` instead of `png-chunks-extract`. That `extract()` walks the chunk headers up to IEND and throws `PNG chunk at byte <n> runs past the end of the file` when a chunk header or the data length it declares does not fit in the file, then returns the result of `png-chunks-extract`. Data without the PNG signature goes to `png-chunks-extract` unchecked. |
+| Protecting tests | `tests/png-chunk-bounds.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- png-chunk-bounds.test.js` (on the base commit 8 of its 12 tests fail; the other 4 pin what the check leaves unchanged), `npm run lint`. |
+| Rollback path | Import `extract` from `png-chunks-extract` again, then delete `src/png/extract.js` and `tests/png-chunk-bounds.test.js`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 PNG chunk bounds. |
+| Owner | Server runtime integrator. |
+
+### `src/server-main.js` - session auth routes
+| Field | Value |
+| --- | --- |
+| File | `src/server-main.js`. |
+| Area | Session auth login and logout routes. |
+| Divergence reason | SillyBunny must put session login and logout behind the IP whitelist and the host whitelist, with their own login rate limit. Inline routes in `src/server-main.js` answer before those checks, so a client the whitelist blocks could still try passwords without a limit. |
+| Target seam | `src/middleware/sessionAuth.js`. |
+| Adapter shape | When `isSessionAuthEnabled()` is true, the block above basic auth calls `registerSessionAuthRoutes(app, { whitelistMode: cliArgs.whitelistMode })`. That function registers `POST /api/auth/login` and `POST /api/auth/logout` behind the IP whitelist middleware (when `whitelistMode` is on, from its own `getWhitelistMiddleware()` call) and `hostWhitelistMiddleware`, and gives login its own rate limit. The file imports only `isSessionAuthEnabled` and `registerSessionAuthRoutes` from `./middleware/sessionAuth.js`. |
+| Protecting tests | `tests/session-auth-routes.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- session-auth-routes.test.js` (on the `upstream/staging` sources, its route tests fail because `registerSessionAuthRoutes()` does not exist, and its `validateCredentials()` tests fail by assertion), `npm run lint`, and scratch servers with session auth, accounts and `perUserBasicAuth` on under Bun 1.4.4 and Node 24.22.1: a client that the whitelist blocks gets 403, the login after five failures gets 429, and an object password gets 400 while the server keeps running. With `perUserBasicAuth` off and an empty `basicAuthUser`, startup logs one warning. |
+| Rollback path | Put the inline login and logout routes back in the block, import `createSession`, `destroySession` and `validateCredentials` again, and delete `registerSessionAuthRoutes()`, `handleLogin()`, `handleLogout()` and the login limiter from `src/middleware/sessionAuth.js`. No stored data or settings change. Session login then runs before the whitelist checks again and has no rate limit. |
+| Last reviewed | 2026-11-05 session auth route guards. |
+| Owner | Server runtime integrator. |
+
+### `src/users.js`, `src/endpoints/users-public.js`, `src/endpoints/users-private.js`, and `src/endpoints/users-admin.js` - account route guards
+| Field | Value |
+| --- | --- |
+| File | `src/users.js`, `src/endpoints/users-public.js`, `src/endpoints/users-private.js`, `src/endpoints/users-admin.js`. |
+| Area | Account routes: request fields, password attempts, user folders and the user lookup for a session. |
+| Divergence reason | SillyBunny must check the request fields, handles and user folders that each account route uses before it acts on them, and limit password attempts per account. `toKey()` reads an array as the handle in it and `getUserDirectories()` joins a handle into a path as it is, so a crafted request could break a route or reach a folder outside the data root. |
+| Target seam | none yet. |
+| Adapter shape | Each route that reads a handle checks that it is a non-empty string before `toKey()` or `getUserDirectories()`, and password, new password and avatar fields are checked for strings before `getPasswordHash()` or the data URL check; `/login` hashes a missing password as an empty one. `users-private.js` adds `passwordLimiter` (`rateLimiting.accountsLoginMaxAttempts`, 60 s, keyed by handle) and `checkAccountPassword()`, which `/change-password`, `/reset-settings` and `/reset-step2` call; their `catch` blocks answer 429 with Retry-After for a `RateLimiterRes`, and `/reset-step2` checks the reset limiter before the password. `users.js` adds `isUserRootInsideDataRoot()`, which `/delete` with `purge` and `/backup` call after a storage lookup that answers 404 for an unknown handle. `setUserDataMiddleware()` wraps its `storage.getItem()` in a `try` that answers 500. Each changed route carries a `SillyBunny:` marker. |
+| Protecting tests | `tests/users-request-fields.test.js`, `tests/users-password-attempts.test.js`, `tests/users-folder-guards.test.js`, `tests/users-session-read-failure.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- users-request-fields.test.js users-password-attempts.test.js users-folder-guards.test.js users-session-read-failure.test.js` (every test fails on the `upstream/staging` sources), `npm run lint`, and the Bun and Node scratch servers above: an array handle gets 400, `/change-password` after five wrong passwords gets 429, a purge of a handle that is not an account gets 404 and removes nothing, and a corrupt user record gets 500 while the server keeps running. |
+| Rollback path | Revert the hunks marked `SillyBunny:` in these four files, which removes `passwordLimiter`, `checkAccountPassword()` and `isUserRootInsideDataRoot()` with their calls. No stored data or settings change. |
+| Last reviewed | 2026-11-05 account route guards. |
+| Owner | Server and data compatibility integrator. |
 
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters
 | Field | Value |
@@ -504,11 +672,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Account data and backup compatibility. |
 | Divergence reason | SillyBunny preserves fork-owned account metadata, user directories, and import markers while maintaining upstream archive safety. |
 | Target seam | `src/users.js`, `src/entity-date-added.js`, and the private-user endpoint helpers. |
-| Adapter shape | Keep archive validation, route contracts, and account-directory resolution in this upstream-origin adapter; keep fork-specific metadata helpers isolated. |
-| Protecting tests | `tests/backups-hardening.test.js`, plus manual export/import smoke with a fork account archive. |
-| Validation | `node --check src/endpoints/users-private.js`, `npm run lint`, archive traversal regression smoke. |
-| Rollback path | Revert the fork metadata branches while retaining upstream archive validation. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Adapter shape | Keep archive validation, route contracts, and account-directory resolution in this upstream-origin adapter; keep fork-specific metadata helpers isolated. `/import-sillytavern/folder` and `/import-sillytavern/extensions` run behind `requireAdminMiddleware`, so only an admin imports from a server folder; the read check behind it (`getImportReadCheck()` and `resolveReadableImportRoot()`, also passed to `copyDirectoryTree()`) passes every path for an admin. `syncThirdPartyExtension()` keeps the existing extension at `<temp folder>-previous` until the synced copy is in place. `detectZipImportBase()` refuses a backup ZIP before anything is written when `hasPortableNames()` rejects the name of an entry that would be imported. `importZipContents()` catches a throw from `createWriteStream()`, and when an entry fails it closes the archive and removes the file that the entry opened. The ZIP route answers 500 for an error with a syscall and 400 for other errors. |
+| Protecting tests | `tests/backups-hardening.test.js`, `tests/users-import-guards.test.js`, `tests/users-import-accounts-off.test.js`, `tests/users-backup-zip-failures.test.js`, `tests/users-extension-sync-swap.test.js`, plus manual export/import smoke with a fork account archive. |
+| Validation | `node --check src/endpoints/users-private.js`, `npm run lint`, archive traversal regression smoke; `npm run test:unit --prefix tests -- users-import-guards.test.js users-import-accounts-off.test.js users-backup-zip-failures.test.js users-extension-sync-swap.test.js` (the tests for members fail on the sources before `8cd9ab2be`, and each backup ZIP failure test fails on the sources before its commit, `4109a0812` to `2d093e8af`). |
+| Rollback path | Revert the fork metadata branches while retaining upstream archive validation. To let other users import server folders again, remove `requireAdminMiddleware` from the two folder routes, and remove `updateFolderImportVisibility()` with its call and its `SETTINGS_LOADED` listener from `public/scripts/sillybunny-tabs.js`. To undo the backup ZIP failure handling, remove `hasPortableNames()` and its check in `detectZipImportBase()`, the `try` around `createWriteStream()`, the `zipfile.close()` and the partial file removal in `importZipContents()`, and the syscall branch of the ZIP route. To undo the import read check, remove `getImportReadCheck()` and `resolveReadableImportRoot()` and their calls; to undo the extension swap, restore the `rm()` before the `rename()` in `syncThirdPartyExtension()`. No stored data or settings change. |
+| Last reviewed | 2026-11-05 admin-only server folder import and backup ZIP failure handling. |
 | Owner | Account and release integrator. |
 
 ### `src/electron/` - Electron launcher removal
@@ -516,14 +684,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `src/electron/Start.bat`, `src/electron/package.json` and `src/electron/package-lock.json`, removed. SillyTavern also ships `src/electron/index.js` and `src/electron/start.sh`, which SillyBunny never adopted. |
 | Area | Packaging and launchers. |
-| Divergence reason | TODO(copy) |
+| Divergence reason | SillyBunny must not ship an Electron launcher package that cannot start: `package.json` names an `index.js` that SillyBunny never adopted, and `Start.bat` installs with `--ignore-scripts`, which skips the Electron binary download. The package's lockfile also carries npm audit advisories that no script, test or workflow covers. |
 | Target seam | None. The root launchers start `server.js`, and SillyBunny ships no Electron entry point. |
 | Adapter shape | None. A SillyTavern sync that changes `src/electron/**` leaves those changes out. |
 | Protecting tests | None. |
 | Validation | `git grep -n -i "src/electron"` finds no code, test or workflow reference. `.github/pr-auto-labels-by-files.yml` parses as YAML. |
 | Rollback path | Revert the commit that removed the package (`git log --diff-filter=D -- src/electron/package.json`), which restores the three files at electron 41.1.1. The launcher still does not start until `src/electron/index.js` comes from SillyTavern, because `package.json` names it as `main`, and until the Electron binary is installed, because `Start.bat` installs with `--ignore-scripts` and the electron package downloads its binary only in its `postinstall` script. |
 | Last reviewed | 2026-11-02, package removal. |
-| Owner | TODO(copy) |
+| Owner | Release integrator. |
 
 ### World Info files - shell integration and safe persistence
 | Field | Value |
@@ -544,28 +712,42 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `public/scripts/world-info.js` |
 | Area | World Info scanning and Conversation mode. |
-| Divergence reason | TODO(copy) |
+| Divergence reason | SillyBunny must scan the lorebooks of a Conversation character that is not the open chat, with that thread's lorebook override and persona. Upstream scans only the active chat, so the same scan would read and change its extension prompts, forced activations, sticky and cooldown state and Author's Note, and emit scan events. |
 | Target seam | `public/scripts/sillybunny-conversation/world-info.js`. |
 | Adapter shape | `checkWorldInfo()` and `getSortedEntries()` take an optional `scanTarget` (`WIScanTarget`), and `WorldInfoBuffer` takes the substitution function for keys. With a target, the scan reads the target character's linked books and the global books, reads `chatWorld` and `personaWorld` in place of the chat and persona lorebooks, and applies character filters, `{{char}}`, `{{user}}` and the regex `{{char}}` to the target. It skips the active chat's extension prompts, forced activations, sticky and cooldown writes, Author's Note write, `WORLDINFO_ENTRIES_LOADED` and `WORLDINFO_SCAN_DONE`. Without a target the scan does not change. |
 | Protecting tests | `tests/world-info-scan-target.test.js` (characterization of the active-chat scan, plus target scans), `tests/frontend/ConversationLorebooks.e2e.js`. |
 | Validation | `npm run test:unit -- world-info-scan-target.test.js` in `tests/`, `npx eslint public/scripts/world-info.js`, `npm run test:e2e -- frontend/ConversationLorebooks.e2e.js` against a running server in Chromium and WebKit. |
-| Rollback path | TODO(copy) |
+| Rollback path | Remove the optional `scanTarget` parameter and its branches from `getCharacterLore()`, `getChatLore()`, `getPersonaLore()`, `getSortedEntries()` and `checkWorldInfo()`, and the key substitution argument of `WorldInfoBuffer`, in `public/scripts/world-info.js`. The Conversation scan in `public/scripts/sillybunny-conversation/world-info.js` would then read the active chat's lorebooks instead of the thread character's, so revert `getConversationWorldInfo()` as well. No saved data changes, because a target scan writes no sticky, cooldown or Author's Note state. |
 | Last reviewed | 2026-10-23 Conversation lorebooks. |
-| Owner | TODO(copy) |
+| Owner | World Info and shell integrator. |
 
 ### `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroRegistry.js`, and `public/scripts/macros/definitions/core-macros.js` - macro whitespace markers
 | Field | Value |
 | --- | --- |
 | File | `public/scripts/macros/engine/MacroEngine.js`, `public/scripts/macros/engine/MacroCstWalker.js`, `public/scripts/macros/engine/MacroRegistry.js`, `public/scripts/macros/definitions/core-macros.js` |
 | Area | Macros 2.0 whitespace trimming. |
-| Divergence reason | TODO(copy) |
+| Divergence reason | SillyBunny must keep the whitespace that `{{newline}}`, `{{space}}` and `{{noop}}` produce when the engine trims. The engine trims text after it resolves macros, so `{{if}}` branches, scoped content and variable shorthand values lose that whitespace, and `{{noop}}` no longer stops the legacy `{{trim}}`. |
 | Target seam | `public/scripts/macros/sillybunny-whitespace-markers.js`. |
 | Adapter shape | `MacroCstWalker` marks `{{newline}}`, `{{space}}` and `{{noop}}` output, and removes the markers from arguments, from scoped content after its trim, and from variable shorthand values after their trim. `MacroEngine.evaluate()` gives marked text to the `core:` post-processors that run before all others, runs the legacy `{{trim}}` through `applyLegacyTrim()`, and gives the other post-processors text without markers. `resolve()` passes `keepWhitespaceMarkers` to `MacroEngine.evaluate()`. Only the `{{if}}` handler sets it, for its branch, so that its trim keeps the marked output. |
 | Protecting tests | `tests/sillybunny-macro-whitespace.test.js`, `tests/frontend/sillybunny-macro-whitespace.e2e.js`, `tests/frontend/MacroEngine.e2e.js`. |
 | Validation | `npm run lint` in the root and in `tests/`, `npm run test:unit -- sillybunny-macro-whitespace.test.js` and the full `npm run test:unit` in `tests/`, `npm run check:frontend-budgets`, and `npm run test:e2e -- frontend/sillybunny-macro-whitespace.e2e.js frontend/MacroEngine.e2e.js` against a running server in Chromium. |
 | Rollback path | Remove the `SillyBunny:` lines in the four files and delete the marker module; the engine then trims as upstream does, and the specs that test the markers fail until they are removed. If upstream merges its own fix for SillyTavern/SillyTavern#5673 and SillyTavern/SillyTavern#5674 (open as SillyTavern/SillyTavern#6040), take the upstream code in the sync, drop this adapter, and keep the whitespace cases in `tests/frontend/sillybunny-macro-whitespace.e2e.js` that still apply. |
 | Last reviewed | 2026-11-02 macro whitespace markers. |
-| Owner | TODO(copy) |
+| Owner | Browser runtime integrator. |
+
+### `public/scripts/slash-commands/SlashCommandParser.js` and `public/scripts/slash-commands/SlashCommandParserError.js` - STscript parser fixes
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/slash-commands/SlashCommandParser.js`, `public/scripts/slash-commands/SlashCommandParserError.js`. |
+| Area | STscript parsing, parser errors and autocomplete positions. |
+| Divergence reason | SillyBunny must parse STscript as written and report malformed input as a parser error at the right position. Upstream's parser skips a character after a nested block comment closes, mis-reads quoted values, escaped characters and closures in split-count commands, and throws a TypeError for an empty `/parser-flag` or `/let key=`. |
+| Target seam | none yet: each change is inside a parser method, and the methods share one index through the text. |
+| Adapter shape | `parseBlockComment()` takes a character only when no nested comment starts at it. `parseParserFlag()` throws `Unexpected end of unnamed argument`, with the text and the index, when no flag name follows. `parseCommand()` reports an unknown command at `start`, the first character of its name, and lists the name from a `/let` `key=` only when that argument has a value. `parseUnnamedArgument()` leaves an escaped first character to the split branches when it splits, tests for the end of the argument again after the quoted rest of a split-count command, adds a quote flag for each closure, gives its `Unexpected end of unnamed argument` error the text and the index, and joins a closure in the rest as its source text. `parseQuotedValue()` counts macro positions back from the closing quote and discards the closing character only when it is a quote. `SlashCommandParserError.hint` slices the source up to the newline that ends the error line. |
+| Protecting tests | `tests/frontend/StscriptParserFixes.e2e.js` (one test or more for each change, through `tests/frontend/stscript-parser-harness.js`; every test fails on the upstream parser), `tests/frontend/MacroSlashCommands.e2e.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, `npm run check:frontend-budgets`, `npm run test:unit -- input-history-account-storage.test.js openrouter-oauth-return.test.js pathfinder-search.test.js quick-reply-config.test.js quick-reply-settings-ui.test.js webkit-prefix-companions.test.js` in `tests/`, and `npm run test:e2e -- frontend/StscriptParserFixes.e2e.js frontend/MacroSlashCommands.e2e.js frontend/ReasoningHiddenBlocks.e2e.js frontend/AddSwipeNoReload.e2e.js frontend/DeleteToolCalls.e2e.js card-script-sandbox.e2e.js` against a Bun 1.4.4 server in Chromium. |
+| Rollback path | Revert the `SillyBunny:` hunks in the two files. The hunks are independent, except that a closure in a joined rest reads the quote flag that each closure adds. No stored data, settings or saved scripts change. Scripts then parse as they do upstream, and `tests/frontend/StscriptParserFixes.e2e.js` fails until it is removed. |
+| Last reviewed | 2026-11-05 STscript parser fixes. |
+| Owner | Browser runtime integrator. |
 
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
@@ -634,7 +816,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/sillybunny-launcher-smol.test.js`, `tests/server-supervisor.test.js`, `tests/frontend-assets.test.js`, root lint, frontend build, README mirror check, and workflow static validation. |
 | Validation | `npm ci --dry-run`, launcher unit tests, shell/JSON/YAML syntax checks, `npm run lint`, `npm run build:frontend`, and release workflow smoke. |
 | Rollback path | Revert each launcher, workflow, or packaging adapter independently while retaining user data and upstream application formats. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
 | Owner | Release integrator. |
 
 ### Bundled defaults and install-time content

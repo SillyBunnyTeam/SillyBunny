@@ -124,6 +124,57 @@ describe('upstream provider request integration', () => {
         });
     }
 
+    for (const [source, model] of [
+        ['openai', 'gpt-6-sol'],
+        ['openai', 'gpt-6-luna'],
+        ['openai_responses', 'gpt-6-sol'],
+        ['openai_responses', 'gpt-6-luna'],
+        ['azure_openai', 'gpt-6-sol'],
+        ['azure_openai', 'gpt-6-luna'],
+        ['openrouter', 'openai/gpt-6-sol'],
+        ['openrouter', 'openai/gpt-6-luna'],
+    ]) {
+        test(`normalizes Sol and Luna generation parameters at max effort for ${source} model ${model}`, async () => {
+            const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'max' });
+            const { generate_data: payload } = await runtime.build(model, 'normal', [{ role: 'user', content: 'Hello' }]);
+
+            expect(payload).toMatchObject({ model, max_completion_tokens: 120, reasoning_effort: 'max' });
+            expect(payload).not.toHaveProperty('max_tokens');
+            expect(payload).not.toHaveProperty('temperature');
+            expect(payload).not.toHaveProperty('top_p');
+            expect(payload).not.toHaveProperty('logprobs');
+            expect(payload).not.toHaveProperty('top_logprobs');
+        });
+    }
+
+    for (const [source, model] of [
+        ['openai', 'gpt-6-sol'],
+        ['openai', 'gpt-6-luna'],
+        ['openai_responses', 'gpt-6-sol'],
+        ['openai_responses', 'gpt-6-luna'],
+        ['azure_openai', 'gpt-6-sol'],
+        ['azure_openai', 'gpt-6-luna'],
+    ]) {
+        test(`keeps Sol and Luna sampling when reasoning is none for ${source} model ${model}`, async () => {
+            const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'none' });
+            const { generate_data: payload } = await runtime.build(model, 'normal', [{ role: 'user', content: 'Hello' }]);
+
+            expect(payload).toMatchObject({ model, max_completion_tokens: 120, reasoning_effort: 'none', temperature: 1, top_p: 0.9 });
+            expect(payload).not.toHaveProperty('max_tokens');
+        });
+    }
+
+    for (const source of ['openai', 'openai_responses', 'azure_openai']) {
+        test(`drops Astra reasoning effort and sampling when reasoning is none for ${source}`, async () => {
+            const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'none' });
+            const { generate_data: payload } = await runtime.build('gpt-6-astra', 'normal', [{ role: 'user', content: 'Hello' }]);
+
+            expect(payload.reasoning_effort).toBeUndefined();
+            expect(payload).not.toHaveProperty('temperature');
+            expect(payload).not.toHaveProperty('top_p');
+        });
+    }
+
     for (const source of ['openai', 'azure_openai', 'openrouter']) {
         test(`preserves earlier GPT sampling behavior for ${source}`, async () => {
             const runtime = makeRuntime({ chat_completion_source: source });
@@ -142,6 +193,8 @@ describe('upstream provider request integration', () => {
         ['gpt-6-astra', 'gpt-4o'],
         ['openai/gpt-6-astra', 'gpt-4o'],
         ['gpt-6-astra-2026-09-14', 'gpt-4o'],
+        ['gpt-6-sol', 'gpt-4o'],
+        ['gpt-6-luna', 'gpt-4o'],
         ['gpt-5.6-sol', 'gpt-4o'],
         ['gpt-4', 'gpt-4'],
         ['gpt-3.5-turbo', 'gpt-3.5-turbo'],

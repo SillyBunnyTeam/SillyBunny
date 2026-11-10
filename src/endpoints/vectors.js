@@ -289,6 +289,9 @@ function getModelScope(sourceSettings) {
     return (sourceSettings?.model || '');
 }
 
+// SillyBunny: thrown for a source or collection ID that sanitizes to an empty folder name, so that routes can answer 400.
+class InvalidVectorFolderError extends Error {}
+
 /**
  * Gets the index for the vector collection
  * @param {import('../users.js').UserDirectoryList} directories - User directories
@@ -299,7 +302,13 @@ function getModelScope(sourceSettings) {
  */
 async function getIndex(directories, collectionId, source, sourceSettings) {
     const model = getModelScope(sourceSettings);
-    const pathToFile = path.join(directories.vectors, sanitize(source), sanitize(collectionId), sanitize(model));
+    const sourceFolder = sanitize(source);
+    const collectionFolder = sanitize(collectionId);
+    // SillyBunny: an empty folder name puts the index in the folder above, and deleting that index removes other collections.
+    if (!sourceFolder || !collectionFolder) {
+        throw new InvalidVectorFolderError(`Invalid vector source "${source}" or collection ID "${collectionId}".`);
+    }
+    const pathToFile = path.join(directories.vectors, sourceFolder, collectionFolder, sanitize(model));
     const store = new vectra.LocalIndex(pathToFile);
 
     if (!await store.isIndexCreated()) {
@@ -445,22 +454,32 @@ async function multiQueryCollection(directories, collectionIds, source, sourceSe
  * @returns {Promise<any>} Promise
  */
 async function regenerateCorruptedIndexErrorHandler(req, res, error) {
-    if (error instanceof SyntaxError && !req.query.regenerated) {
-        const collectionId = String(req.body.collectionId);
-        const source = String(req.body.source) || 'transformers';
-        const sourceSettings = getSourceSettings(source, req);
+    // SillyBunny: a refused folder name is an error in the request.
+    if (error instanceof InvalidVectorFolderError) {
+        return res.sendStatus(400);
+    }
 
-        if (collectionId && source) {
-            const index = await getIndex(req.user.directories, collectionId, source, sourceSettings);
-            const exists = await index.isIndexCreated();
+    // SillyBunny: routes return this promise from their catch blocks, so an error from the regeneration must not leave this function.
+    try {
+        if (error instanceof SyntaxError && !req.query.regenerated) {
+            const collectionId = String(req.body.collectionId);
+            const source = String(req.body.source) || 'transformers';
+            const sourceSettings = getSourceSettings(source, req);
 
-            if (exists) {
-                const path = index.folderPath;
-                console.warn(`Corrupted index detected at ${path}, regenerating...`);
-                await index.deleteIndex();
-                return res.redirect(307, req.originalUrl + '?regenerated=true');
+            if (collectionId && source) {
+                const index = await getIndex(req.user.directories, collectionId, source, sourceSettings);
+                const exists = await index.isIndexCreated();
+
+                if (exists) {
+                    const path = index.folderPath;
+                    console.warn(`Corrupted index detected at ${path}, regenerating...`);
+                    await index.deleteIndex();
+                    return res.redirect(307, req.originalUrl + '?regenerated=true');
+                }
             }
         }
+    } catch (regenerateError) {
+        console.error('Could not regenerate the vector index.', regenerateError);
     }
 
     console.error(error);
@@ -587,9 +606,14 @@ router.post('/purge', async (req, res) => {
         }
 
         const collectionId = String(req.body.collectionId);
+        // SillyBunny: an ID that sanitizes to an empty name would make each purge path the whole source folder.
+        const collectionFolder = sanitize(collectionId);
+        if (!collectionFolder) {
+            return res.sendStatus(400);
+        }
 
         for (const source of SOURCES) {
-            const sourcePath = path.join(req.user.directories.vectors, sanitize(source), sanitize(collectionId));
+            const sourcePath = path.join(req.user.directories.vectors, sanitize(source), collectionFolder);
             if (!fs.existsSync(sourcePath)) {
                 continue;
             }
