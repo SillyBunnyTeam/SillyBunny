@@ -123,7 +123,12 @@ describe('Claude 5 backend request handling', () => {
         expect(body.top_k).toBeUndefined();
     });
 
-    test.each(['claude-fable-5-1', 'anthropic/claude-fable-5-1'])('%s uses native JSON output alongside adaptive thinking', async (model) => {
+    test.each([
+        'claude-fable-5-1',
+        'anthropic/claude-fable-5-1',
+        'claude-opus-5-5',
+        'anthropic/claude-opus-5-5',
+    ])('%s uses native JSON output alongside adaptive thinking', async (model) => {
         const getBody = captureClaudePayload();
         const schema = {
             type: 'object',
