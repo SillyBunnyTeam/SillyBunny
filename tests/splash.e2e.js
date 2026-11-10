@@ -4,6 +4,7 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { sizeFreeTestFor } from './helpers/matrix.js';
 import { contrastOf, over, resolveColor, TEXT_CONTRAST } from './helpers/page-contrast.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { settledRead } from './helpers/settled-read.js';
 import { stubTheme } from './helpers/theme-stub.js';
 
 test.use({ serviceWorkers: 'block' });
@@ -572,8 +573,9 @@ for (const { name, options } of VIEWPORTS) {
             await expect(select).toHaveValue('random');
             await expect(row.locator('.ds-row-subtitle')).toHaveText(SETTINGS_COPY.splashSubtitle);
             await expect(row.locator('.ds-row-subtitle')).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
-            const fitsBeside = await row.evaluate(node => node.getBoundingClientRect().right <= document.documentElement.clientWidth + 1);
-            expect(fitsBeside).toBe(true);
+            // The sheet slides in from the side, so the row is read once it has stopped moving.
+            const edge = await settledRead(page, () => row.evaluate(node => ({ right: node.getBoundingClientRect().right, width: document.documentElement.clientWidth })));
+            expect(edge.right).toBeLessThanOrEqual(edge.width + 1);
         });
 
         sizeFreeTest('choosing a character stores it in this browser and in the account, and the next start shows it', async ({ page }) => {
