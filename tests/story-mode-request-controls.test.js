@@ -3,7 +3,7 @@ import { describe, expect, jest, test } from '@jest/globals';
 import { EventEmitter } from 'node:events';
 import vm from 'node:vm';
 import { loadDeclarations as load, readClientModule } from './util/load-declarations.js';
-import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, requestUsesReasoning } from '../public/scripts/generation-request-controls.js';
+import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, requestUsesReasoning, warnsOnGenerationLengthFinish } from '../public/scripts/generation-request-controls.js';
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../public/scripts/openai-model-capabilities.js';
 import { resolveGenerationOutputBufferState, resolveGenerationUnblockState, resolveStopGenerationState } from '../public/scripts/generation-lifecycle/index.js';
 import { event_types } from '../public/scripts/events.js';
@@ -78,7 +78,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
         $: () => dom, chatElement: { find: () => ({}) },
         eventSource, event_types,
         resolveGenerationOutputBufferState, resolveGenerationUnblockState, resolveStopGenerationState,
-        applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse,
+        applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, warnsOnGenerationLengthFinish,
         applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model,
         getLinkApiRequestFormat: () => 'openai',
         getRequestHeaders: () => ({}),
@@ -305,6 +305,8 @@ describe('request-local output controls', () => {
         { model: 'gpt-4o', include_reasoning: true },
         { model: 'gpt-4o', include_reasoning: true, reasoning_effort: 'high' },
         { model: 'gpt-5.1', max_completion_tokens: 8192, reasoning_effort: 'none' },
+        { model: 'gpt-6-sol', reasoning_effort: 'none' },
+        { model: 'gpt-6-luna', reasoning_effort: 'none' },
         { model: 'qwen3', thinking: { type: 'disabled', budget_tokens: 4096 } },
         { model: 'qwen3', think: false },
         { model: 'grok-4-fast-non-reasoning' },
@@ -318,6 +320,8 @@ describe('request-local output controls', () => {
         { model: 'openai/o3', max_completion_tokens: 8192 },
         { model: 'gpt-5.1', reasoning_effort: 'high' },
         { model: 'gpt-6-astra' },
+        { model: 'gpt-6-sol', reasoning_effort: 'high' },
+        { model: 'gpt-6-luna', reasoning_effort: 'high' },
         { model: 'deepseek-reasoner', reasoning_effort: 'none' },
         { model: 'deepseek-ai/DeepSeek-R1' },
         { model: 'moonshot/kimi-k3' },
@@ -368,6 +372,128 @@ describe('request-local output controls', () => {
         }
         expect(isGenerationLengthFinish({ delta: { stop_reason: 'max_tokens' } })).toBe(true);
         expect(isGenerationLengthFinish({ candidates: [{ finishReason: 'MAX_TOKENS' }] })).toBe(true);
+        expect(isGenerationLengthFinish({ candidates: [{ finishReason: 'CONTINUATION', continuationToken: 'token' }] })).toBe(true);
+    });
+
+    test('a Gemini checkpoint or normal finish is not a length finish', () => {
+        expect(isGenerationLengthFinish({ candidates: [{ continuationToken: 'token' }] })).toBe(false);
+        expect(isGenerationLengthFinish({ candidates: [{ finishReason: 'STOP' }] })).toBe(false);
+    });
+});
+
+describe('Gemini replies that end early', () => {
+    const REASONING_ONLY_WARNING = 'The model finished reasoning but returned no reply text.';
+    const STREAM_MODES = [['stream', false], ['buffered stream', true]];
+    const CONTINUE = { suppressUserMessage: true, suppressAutoContinue: true };
+
+    const gemini = (parts, extra = {}) => ({ candidates: [{ content: { role: 'model', parts }, ...extra }] });
+    const text = value => [{ text: value }];
+    const thought = value => [{ text: value, thought: true }];
+    const delta = (content, finish_reason = null) => ({ choices: [{ index: 0, delta: content, finish_reason }] });
+    const eventStream = events => new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('') + 'data: [DONE]\n\n');
+
+    function makeStream(source, buffer, events) {
+        const runtime = makeRuntime({ stream: true, buffer, model: 'gemini-4-argon' });
+        Object.assign(runtime.context.oai_settings, { chat_completion_source: source, google_model: 'gemini-4-argon', vertexai_model: 'gemini-4-argon', reasoning_effort: 'high' });
+        runtime.context.fetchResumable.mockImplementation(async () => eventStream(events));
+        return runtime;
+    }
+
+    function makeComplete(source, reply) {
+        const runtime = makeRuntime({ model: 'gemini-4-argon' });
+        Object.assign(runtime.context.oai_settings, { chat_completion_source: source, google_model: 'gemini-4-argon', vertexai_model: 'gemini-4-argon', reasoning_effort: 'high' });
+        runtime.context.fetchResumable.mockResolvedValue({ ok: true, json: async () => reply });
+        return runtime;
+    }
+
+    function expectCutOffWarning(context) {
+        expect(context.toastr.warning).toHaveBeenCalledTimes(1);
+        expect(context.toastr.warning).not.toHaveBeenCalledWith(REASONING_ONLY_WARNING);
+    }
+
+    describe.each(STREAM_MODES)('%s', (_name, buffer) => {
+        test.each([
+            ['AI Studio on MAX_TOKENS', 'makersuite', [gemini(text('partial')), gemini(text(''), { finishReason: 'MAX_TOKENS' })]],
+            ['AI Studio on CONTINUATION', 'makersuite', [gemini(text('partial')), gemini(text(''), { finishReason: 'CONTINUATION', continuationToken: 'token' })]],
+            ['Vertex on MAX_TOKENS', 'vertexai', [gemini(text('partial')), gemini(text(''), { finishReason: 'MAX_TOKENS' })]],
+            ['Vertex on CONTINUATION', 'vertexai', [gemini(text('partial')), gemini(text(''), { finishReason: 'CONTINUATION', continuationToken: 'token' })]],
+            ['Interactions on a length finish', 'gemini_interactions', [delta({ content: 'partial' }), delta({}, 'length')]],
+        ])('warns that partial text was cut off: %s', async (_label, source, events) => {
+            const { context } = makeStream(source, buffer, events);
+            await context.Generate('continue', CONTINUE);
+            expect(context.chat[0].mes).toBe('Existing prose. partial');
+            expectCutOffWarning(context);
+        });
+
+        test.each([
+            ['thoughts only', [gemini(thought('thinking')), gemini(text(''), { finishReason: 'CONTINUATION', continuationToken: 'token' })]],
+            ['no thoughts', [gemini(text(''), { finishReason: 'MAX_TOKENS' })]],
+        ])('gives one cut-off warning when the reply is blank: %s', async (_label, events) => {
+            const { context } = makeStream('makersuite', buffer, events);
+            await context.Generate('continue', CONTINUE);
+            expect(context.chat[0].mes).toBe('Existing prose. ');
+            expectCutOffWarning(context);
+        });
+
+        test('stays quiet through a checkpoint and a normal finish', async () => {
+            const { context } = makeStream('makersuite', buffer, [
+                gemini(text('before ')),
+                gemini(text('at '), { continuationToken: 'token' }),
+                gemini(text('after'), { finishReason: 'STOP' }),
+            ]);
+            await context.Generate('continue', CONTINUE);
+            expect(context.chat[0].mes).toBe('Existing prose. before at after');
+            expect(context.toastr.warning).not.toHaveBeenCalled();
+        });
+
+        test('keeps the reasoning-only warning when the model finished normally', async () => {
+            const { context } = makeStream('makersuite', buffer, [gemini(thought('thinking')), gemini(text(''), { finishReason: 'STOP' })]);
+            await context.Generate('continue', CONTINUE);
+            expect(context.toastr.warning).toHaveBeenCalledTimes(1);
+            expect(context.toastr.warning).toHaveBeenCalledWith(REASONING_ONLY_WARNING);
+        });
+
+        test('does not warn about the local prose cap, which the provider did not report', async () => {
+            const { context } = makeStream('makersuite', buffer, [gemini(text('abcdefgh-overrun')), gemini(text(''), { finishReason: 'STOP' })]);
+            const result = await context.Generate('continue', { ...CONTINUE, maxOutputTokens: 2 });
+            expect(result.finishReason).toBe('length');
+            expect(context.toastr.warning).not.toHaveBeenCalled();
+        });
+
+        test('leaves a length finish from another provider quiet', async () => {
+            const { context } = makeStream('openai', buffer, [delta({ content: 'partial' }), delta({}, 'length')]);
+            await context.Generate('continue', CONTINUE);
+            expect(context.chat[0].mes).toBe('Existing prose. partial');
+            expect(context.toastr.warning).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('complete response', () => {
+        test.each(['makersuite', 'vertexai', 'gemini_interactions'])('warns that partial text was cut off: %s', async (source) => {
+            const { context } = makeComplete(source, { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] });
+            await context.Generate('continue', CONTINUE);
+            expect(context.chat[0].mes).toBe('Existing prose. partial');
+            expectCutOffWarning(context);
+        });
+
+        test('gives one cut-off warning when an interaction returned thoughts only', async () => {
+            const { context } = makeComplete('gemini_interactions', { choices: [{ message: { content: '', reasoning_content: 'thinking' }, finish_reason: 'length' }] });
+            await context.Generate('continue', CONTINUE);
+            expect(context.chat[0].extra.reasoning).toBe('thinking');
+            expectCutOffWarning(context);
+        });
+
+        test('leaves a background generation quiet', async () => {
+            const { context } = makeComplete('makersuite', { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] });
+            await context.Generate('quiet', { quiet_prompt: 'Summarize', suppressUserMessage: true });
+            expect(context.toastr.warning).not.toHaveBeenCalled();
+        });
+
+        test('leaves a length finish from another provider quiet', async () => {
+            const { context } = makeComplete('openai', { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] });
+            await context.Generate('continue', CONTINUE);
+            expect(context.toastr.warning).not.toHaveBeenCalled();
+        });
     });
 });
 

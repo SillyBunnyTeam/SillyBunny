@@ -5,7 +5,8 @@ import { isHostAllowed, hostValidationMiddleware } from 'host-validation-middlew
 const knownHosts = new Set();
 const maxKnownHosts = 1000;
 
-const hostWhitelistEnabled = !!getConfigValue('hostWhitelist.enabled', false);
+// SillyBunny: an environment variable arrives as text, so "false" must go through the boolean converter to turn the check off.
+const hostWhitelistEnabled = !!getConfigValue('hostWhitelist.enabled', false, 'boolean');
 const hostWhitelist = Object.freeze(getConfigValue('hostWhitelist.hosts', []));
 const hostWhitelistScan = !!getConfigValue('hostWhitelist.scan', false, 'boolean');
 

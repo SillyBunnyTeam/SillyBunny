@@ -29,6 +29,8 @@ import { setCharacterSpoilerFreeFieldsHidden } from './power-user.js';
 import { escapeRegex } from './util/escape-regex.js';
 import { flashHighlight, showFontAwesomePicker } from './utils.js';
 import { extension_settings } from './extensions.js';
+import { isAdmin } from './user.js';
+import { event_types, eventSource } from './events.js';
 import { characters, flushCharacterSaveDebounced, getOneCharacter, getThumbnailUrl, parseAvatarSource, refreshCsrfToken, saveSettingsDebounced, this_chid } from '../script.js';
 import {
     SAMPLING_PARAMETER_DESCRIPTORS,
@@ -10900,6 +10902,18 @@ function updateSillyTavernImportInteractivity() {
     }
 }
 
+/**
+ * Shows the folder import pane only to admins, because the server refuses the folder import and the extension sync to other users.
+ * With accounts off, isAdmin() is true.
+ */
+function updateFolderImportVisibility() {
+    const folderPane = getImporterRefs()?.folderPane;
+    if (folderPane instanceof HTMLElement) {
+        // .sb-import-pane sets display: flex, which the hidden attribute does not override.
+        folderPane.style.display = isAdmin() ? '' : 'none';
+    }
+}
+
 function setSillyTavernImportBusy(isBusy) {
     getImporterState().busy = Boolean(isBusy);
     updateSillyTavernImportInteractivity();
@@ -11335,6 +11349,7 @@ function injectSillyTavernImportCard() {
 
     getImporterState().refs = {
         card,
+        folderPane,
         pathInput,
         folderButton,
         syncButton,
@@ -11368,6 +11383,10 @@ function injectSillyTavernImportCard() {
     });
 
     updateSillyTavernImportInteractivity();
+    updateFolderImportVisibility();
+    // isAdmin() is true until the client knows that accounts are on, and then false until /api/users/me answers.
+    // getSettings() does both before it emits SETTINGS_LOADED, so a card built after that event already sees the final value.
+    eventSource.on(event_types.SETTINGS_LOADED, updateFolderImportVisibility);
 }
 
 function createThemeSettingsDrawer({ id, title, content, className = '' }) {

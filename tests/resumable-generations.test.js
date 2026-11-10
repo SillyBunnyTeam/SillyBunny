@@ -259,6 +259,23 @@ describe('resumable generation registry', () => {
         expect(finished.done).toBe(true);
     });
 
+    test('sweep counts the lifetime from the last upstream request', () => {
+        const { generation } = registerGeneration('sweep-extended');
+        const hook = jest.fn();
+        generation.onCancel(hook);
+
+        const now = Date.now();
+        generation.extendLifetime(now + testExports.MAX_LIFETIME_MS);
+
+        testExports.sweepGenerations(now + testExports.MAX_LIFETIME_MS + 1000);
+        expect(testExports.generations.has('tester:sweep-extended')).toBe(true);
+        expect(hook).not.toHaveBeenCalled();
+
+        testExports.sweepGenerations(now + (2 * testExports.MAX_LIFETIME_MS) + 1000);
+        expect(testExports.generations.has('tester:sweep-extended')).toBe(false);
+        expect(hook).toHaveBeenCalledTimes(1);
+    });
+
     test('waiting for headers can be cancelled when the waiting client disappears', async () => {
         const { generation } = registerGeneration('waiter-1');
         const wait = generation.waitForHeaders();
