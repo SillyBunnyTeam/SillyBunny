@@ -15,7 +15,9 @@ jest.unstable_mockModule('node:fs', () => ({
     },
 }));
 
+const childProcess = await import('node:child_process');
 jest.unstable_mockModule('node:child_process', () => ({
+    ...childProcess,
     execFile: mockExecFile,
 }));
 

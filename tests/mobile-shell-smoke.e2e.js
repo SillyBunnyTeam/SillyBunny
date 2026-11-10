@@ -6,8 +6,6 @@ import { openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-reg
 // panel) so the Phase 1 decomposition of sillybunny-tabs.js has a net.
 // Run with: SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:<port> npx playwright test mobile-shell-smoke.e2e.js
 
-test.describe.configure({ mode: 'serial' });
-
 const IPHONE_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const VIEWPORT_SURFACE_SELECTOR = [
     '#left-nav-panel.openDrawer',
