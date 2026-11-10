@@ -777,6 +777,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
 | Owner | Test and release integrator. |
 
+### `src/endpoints/settings.js` and `public/script.js` - settings saves without a change
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/settings.js`, `public/script.js`. |
+| Area | Settings: the version check that keeps a stale tab or device from overwriting newer settings. |
+| Divergence reason | TODO(copy) |
+| Target seam | `isUnchangedSettingsSave()` in `src/settings-version.js` (server) and `createSettingsSync()` in `public/scripts/sillybunny-settings-sync.js` (page). |
+| Adapter shape | `POST /api/settings/save` answers a save whose content equals the stored settings, apart from `_version`, with `{ result: 'ok', version: <stored>, unchanged: true }` before the version check: no write, no autosave backup, no new version. `saveSettingsInner()` accepts such an answer when its version is not lower than the one it sent; every other answer still needs a higher version. `prepareSettingsSave()`, which the Conversation REST API shares, is unchanged. `public/script.js` also remembers the key-sorted settings text that `getSettings()` loaded and that each confirmed save sent, without `_version`, and `saveSettingsInner()` sends no request when the payload equals it; it still sets `settings` and emits `SETTINGS_UPDATED`. Adapter lines: the import, `const settingsSync = createSettingsSync()`, one `remember()` after the load, the check before the request, and one `remember()` after a confirmed save. |
+| Protecting tests | `tests/settings-version-guard.test.js` (equal and changed content), `tests/settings-save-unchanged.test.js` (route: no write and the same version, a stale page with the stored settings, a stale page with a change still refused), `tests/openai-custom-endpoint-credentials.test.js` (client: same version, newer version, older version refused; no request when nothing changed; a request after each change; nothing remembered from a failed or refused save), `tests/sillybunny-settings-sync.test.js` (key order, nested values, array order, one state per page). |
+| Validation | `npm run lint` in the root and in `tests/`, the protecting tests, `tests/sillybunny-conversation-api.test.js` and `tests/chat-integrity-rotation.test.js`. In Chromium against a Bun server: a second and third boot posted exactly the stored settings (0 differing paths); 8 pages booting at once got 8 `unchanged` answers and no prompt with the server change alone, and sent no save at all with the page change (`staging`: 7 of 8 got 409 and the prompt); a real change in one tab still gave an older tab 409 and the prompt; a page that booted just before another tab saved a real change sent no save and got no prompt. `npm run check:frontend-budgets`; boots with `bun server.js` and `node server.js`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
+| Owner | TODO(copy) |
+
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |
