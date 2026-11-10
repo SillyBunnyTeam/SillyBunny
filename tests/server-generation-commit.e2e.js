@@ -6,13 +6,6 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 test.use({ serviceWorkers: 'block' });
 
-// The tests that connect the fake model save different settings, a custom URL with its own port, at the same time on
-// one server. Saved for real, a page that loaded before another test's save would get the settings conflict prompt.
-test.beforeEach(async ({ context }) => {
-    let settingsVersion = Date.now();
-    await context.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
-});
-
 const MODEL = 'fake-stream-model';
 const CHUNKS = Array.from({ length: 20 }, (_, index) => `word${index} `);
 const FULL_REPLY = CHUNKS.join('').trim();
