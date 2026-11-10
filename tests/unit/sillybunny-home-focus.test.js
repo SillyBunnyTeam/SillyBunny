@@ -217,6 +217,80 @@ describe('tile and card controls', () => {
         expect(restoreHomeFocus(newPanel, target)).toBe(newPanel.querySelector('[data-sb-home-key="assistant-reisen"] .sbHomeCardOpen'));
     });
 
+    describe('the Connect a Model button of a card', () => {
+        const withConnect = ['open', 'connect', 'start', 'menu'];
+        const withoutConnect = ['open', 'start', 'menu'];
+        const HTML = {
+            open: '<button type="button" class="sbHomeCardOpen">Open</button>',
+            connect: '<button type="button" class="sbHomeCardConnect">Connect a Model</button>',
+            start: '<button type="button" class="sbHomeFootButton">Start</button>',
+            menu: '<button type="button" class="sbHomeRowMenu">Menu</button>',
+        };
+        const renderCard = (parts) => {
+            const panel = renderPanel([]);
+            panel.insertAdjacentHTML('beforeend', `<div class="sbHomeCard" data-sb-home-key="assistant-reisen">${parts.map(part => HTML[part]).join('')}</div>`);
+            return panel;
+        };
+        const control = (panel, selector) => panel.querySelector(`[data-sb-home-key="assistant-reisen"] ${selector}`);
+
+        test('is not counted, so a card that gains it, such as a restored one, keeps focus on the same footer button', () => {
+            const oldPanel = mount(renderCard(withoutConnect));
+            const target = captureHomeFocus(oldPanel, control(oldPanel, '.sbHomeFootButton'));
+            oldPanel.remove();
+            const newPanel = mount(renderCard(withConnect));
+
+            expect(restoreHomeFocus(newPanel, target)).toBe(control(newPanel, '.sbHomeFootButton'));
+        });
+
+        test('is not counted, so a card that loses it keeps focus on the same footer button', () => {
+            const oldPanel = mount(renderCard(withConnect));
+            const target = captureHomeFocus(oldPanel, control(oldPanel, '.sbHomeFootButton'));
+            oldPanel.remove();
+            const newPanel = mount(renderCard(withoutConnect));
+
+            expect(restoreHomeFocus(newPanel, target)).toBe(control(newPanel, '.sbHomeFootButton'));
+        });
+
+        test('has focus restored to itself', () => {
+            const oldPanel = mount(renderCard(withConnect));
+            const target = captureHomeFocus(oldPanel, control(oldPanel, '.sbHomeCardConnect'));
+            oldPanel.remove();
+            const newPanel = mount(renderCard(withConnect));
+
+            expect(target.section).toEqual({ key: 'assistant-reisen', part: 'connect' });
+            expect(restoreHomeFocus(newPanel, target)).toBe(control(newPanel, '.sbHomeCardConnect'));
+        });
+
+        test('sends focus to the first control of the card when it is gone from the new card', () => {
+            const oldPanel = mount(renderCard(withConnect));
+            const target = captureHomeFocus(oldPanel, control(oldPanel, '.sbHomeCardConnect'));
+            oldPanel.remove();
+            const newPanel = mount(renderCard(withoutConnect));
+
+            expect(restoreHomeFocus(newPanel, target)).toBe(control(newPanel, '.sbHomeCardOpen'));
+        });
+
+        test('sends focus to the first control of the card when it is hidden, as it is while online', () => {
+            const oldPanel = mount(renderCard(withConnect));
+            const target = captureHomeFocus(oldPanel, control(oldPanel, '.sbHomeCardConnect'));
+            oldPanel.remove();
+            const newPanel = mount(renderCard(withConnect));
+            // A browser does not focus an element that is not rendered; jsdom does, so the refusal is stood in for.
+            control(newPanel, '.sbHomeCardConnect').focus = () => {};
+
+            expect(restoreHomeFocus(newPanel, target)).toBe(control(newPanel, '.sbHomeCardOpen'));
+        });
+
+        test('sends focus to the main menu button when the card is gone', () => {
+            const oldPanel = mount(renderCard(withConnect));
+            const target = captureHomeFocus(oldPanel, control(oldPanel, '.sbHomeCardConnect'));
+            oldPanel.remove();
+            const newPanel = mount(renderPanel([]));
+
+            expect(restoreHomeFocus(newPanel, target)).toBe(newPanel.querySelector('.sbHomeMenuButton'));
+        });
+    });
+
     test('a control outside any keyed tile or card is still the main menu', () => {
         const panel = mount(renderSections());
 

@@ -90,7 +90,42 @@ describe('a card with a file', () => {
         const { panel } = render([AVAILABLE_REISEN]);
         const card = cardOf(panel, 'assistant-reisen');
 
-        expect([...card.querySelectorAll('button')].map(button => button.disabled)).toEqual([false, false, false, false]);
+        expect([...card.querySelectorAll('button:not(.sbHomeCardConnect)')].map(button => button.disabled)).toEqual([false, false, false, false]);
+    });
+
+    test('has a Connect a Model button after the card button and the subtitle, outside what the card button is described by', () => {
+        const { panel } = render([AVAILABLE_REISEN]);
+        const card = cardOf(panel, 'assistant-reisen');
+        const connect = card.querySelector('.sbHomeCardConnect');
+
+        expect(connect.tagName).toBe('BUTTON');
+        expect(connect.type).toBe('button');
+        expect(connect.textContent).toBe('Connect a Model');
+        expect(connect.disabled).toBe(false);
+        expect(card.querySelector('.sbHomeCardSub').contains(connect)).toBe(false);
+        expect(connect.previousElementSibling).toBe(card.querySelector('.sbHomeCardSub'));
+        expect(overlay(card).compareDocumentPosition(connect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(overlay(card).getAttribute('aria-describedby')).toBe(card.querySelector('.sbHomeCardSub').id);
+        expect(connect.id).not.toBe(overlay(card).getAttribute('aria-describedby'));
+    });
+
+    test('has it on the card of a chosen character as well', () => {
+        const { panel } = render([AVAILABLE_REISEN, POINTER]);
+
+        expect(cardOf(panel, 'assistant-own').querySelectorAll('.sbHomeCardConnect')).toHaveLength(1);
+    });
+
+    test('opens Backend, Connections from the Connect a Model button, and starts no chat', () => {
+        const openTab = jest.fn();
+        window.SillyBunnyShell = { openTab };
+        const { panel, actions } = render([AVAILABLE_REISEN]);
+
+        cardOf(panel, 'assistant-reisen').querySelector('.sbHomeCardConnect').click();
+
+        expect(openTab).toHaveBeenCalledWith('left', 'connections');
+        expect(actions.newChat).not.toHaveBeenCalled();
+        expect(actions.temporaryChat).not.toHaveBeenCalled();
+        delete window.SillyBunnyShell;
     });
 
     test('opens a new chat from the card button and from Start New Chat', () => {
@@ -174,6 +209,12 @@ describe.each([['missing', MISSING_TEWI], ['deleted', DELETED_TEWI]])('a card wh
 
         expect(actions.newChat).not.toHaveBeenCalled();
         expect(actions.temporaryChat).not.toHaveBeenCalled();
+    });
+
+    test('has no Connect a Model button, because it has no chat to open', () => {
+        const { panel } = render([card]);
+
+        expect(cardOf(panel, 'assistant-tewi').querySelector('.sbHomeCardConnect')).toBeNull();
     });
 
     test('says so to assistive technology through the disabled buttons alone', () => {
@@ -372,6 +413,7 @@ describe('the third slot with no character chosen', () => {
         const card = choose();
 
         expect(card.querySelectorAll('button')).toHaveLength(1);
+        expect(card.querySelector('.sbHomeCardConnect')).toBeNull();
         expect(overlay(card).getAttribute('aria-label')).toBe('Choose Assistant');
         expect(overlay(card).getAttribute('aria-describedby')).toBe(card.querySelector('.sbHomeCardSub').id);
         expect(overlay(card).getAttribute('aria-haspopup')).toBe('dialog');

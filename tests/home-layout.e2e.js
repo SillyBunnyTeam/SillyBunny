@@ -1071,7 +1071,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                 await expect(card.locator('.sbHomeFootButton i.fa-plus')).toHaveCount(1);
                 await expect(card.locator('.sbHomeFootButton i.fa-hourglass-half')).toHaveCount(1);
                 await expect(card.locator('.sbHomeRowMenu i.fa-ellipsis-vertical')).toHaveCount(1);
-                await expect(card.locator('button')).toHaveCount(4);
+                await expect(card.locator('button:not(.sbHomeCardConnect)')).toHaveCount(4);
             }
             const border = await assistantCard(page, 'Reisen').locator('.sbHomeCardFooter').evaluate(footer => getComputedStyle(footer).borderTopWidth);
             expect(border).toBe('1px');
@@ -1096,12 +1096,12 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             }
         });
 
-        sizeFreeTest('Tab visits the card button, Start New Chat, Temporary Chat and the menu in that order', async ({ page }) => {
+        sizeFreeTest('Tab visits the card button, Connect a Model while offline, Start New Chat, Temporary Chat and the menu in that order', async ({ page }) => {
             await chooseMode(page, 'full');
             const card = assistantCard(page, 'Tewi');
 
             await card.locator('.sbHomeCardOpen').focus();
-            for (const control of [card.locator('.sbHomeFootButton').nth(0), card.locator('.sbHomeFootButton').nth(1), card.locator('.sbHomeRowMenu')]) {
+            for (const control of [card.locator('.sbHomeCardConnect'), card.locator('.sbHomeFootButton').nth(0), card.locator('.sbHomeFootButton').nth(1), card.locator('.sbHomeRowMenu')]) {
                 await page.keyboard.press('Tab');
                 await expect(control).toBeFocused();
             }

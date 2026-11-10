@@ -98,6 +98,7 @@ import {
 import { openAlert } from './scripts/sillybunny-editor/dialog.js';
 import { openChatHistoryDialog } from './scripts/sillybunny-chat-dialogs.js';
 import { notifyNotConnected } from './scripts/sillybunny-connection-notices.js'; // SillyBunny: Send with no API connection says so and points to Connections.
+import { setConnectionStatus, setStatusCheckPending } from './scripts/sillybunny-connection-state.js'; // SillyBunny: the connection state is an attribute of the document, so Home can tell offline from still connecting.
 
 import {
     collapseNewlines,
@@ -1323,11 +1324,13 @@ export function setActiveGroup(entityOrKey) {
 export function startStatusLoading() {
     $('.api_loading').show();
     $('.api_button').addClass('disabled');
+    setStatusCheckPending(true); // SillyBunny: `online_status` is `no_connection` until a check ends, so a check in flight must not read as offline.
 }
 
 export function stopStatusLoading() {
     $('.api_loading').hide();
     $('.api_button').removeClass('disabled');
+    setStatusCheckPending(false); // SillyBunny: ends the pending state. A superseded check leaves that to its replacement, or to `changeMainAPI`.
 }
 
 export function resultCheckStatus() {
@@ -11468,6 +11471,7 @@ export function setCharacterName(value) {
 export function setOnlineStatus(value) {
     const previousStatus = online_status;
     online_status = value;
+    setConnectionStatus(online_status); // SillyBunny: runs on every set, so a failed check that leaves `no_connection` unchanged still settles to offline.
     displayOnlineStatus();
     if (previousStatus !== online_status) {
         eventSource.emitAndWait(event_types.ONLINE_STATUS_CHANGED, online_status);
@@ -12726,8 +12730,10 @@ export function changeMainAPI(api = null) {
 
     main_api = selectedVal;
     setOnlineStatus('no_connection');
+    setStatusCheckPending(false); // SillyBunny: the change handler has cancelled any check in flight, and a Chat Completion check that was superseded returns without ending its state.
 
     if (main_api == 'koboldhorde') {
+        setStatusCheckPending(true); // SillyBunny: the Horde check never calls `startStatusLoading`, but it ends in `resultCheckStatus`.
         getStatusHorde();
         getHordeModels(true);
     }

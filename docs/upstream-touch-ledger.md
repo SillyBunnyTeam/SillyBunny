@@ -1620,6 +1620,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-01, PR #870. |
 | Owner | UI overhaul integrator. |
 
+### `public/script.js` - API connection state attribute
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` |
+| Area | API connection status: telling an offline app from one whose first status check has not ended. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-connection-state.js` (`getConnectionState`, `createConnectionReflection`, `setConnectionStatus`, `setStatusCheckPending`): the rule and the `data-sb-connection` attribute of `<html>` (`connecting`, `offline`, `online`; absent until the first hook runs). `public/css/sillybunny-home.css` shows the Connect a Model button of the assistant cards from it, with CSS only. |
+| Adapter shape | One import and five one-line calls, each under a `// SillyBunny:` marker: `setConnectionStatus(online_status)` in `setOnlineStatus` (on every call, not only on a change); `setStatusCheckPending(true)` in `startStatusLoading`; `setStatusCheckPending(false)` in `stopStatusLoading`; `setStatusCheckPending(false)` in `changeMainAPI`, right after `setOnlineStatus('no_connection')`, because a Chat Completion check that a change of `#main_api` supersedes returns without ending its state; and `setStatusCheckPending(true)` before `getStatusHorde()` in `changeMainAPI`, because the Horde check never calls `startStatusLoading` but ends in `resultCheckStatus`. No spinner or other upstream behaviour changes. Known limit: a Text Completion, Kobold or Novel check that a newer check supersedes catches its abort, sets `no_connection` and calls `resultCheckStatus()`, so the state reads `offline` while the newer check is still in flight and the button can appear and vanish. It takes a change of type or URL, or a second Connect, during an open check, and never happens at boot. |
+| Protecting tests | `tests/unit/sillybunny-connection-state.test.js`; `tests/openai-status-reconnect.test.js` (pending from Connect until the check ends, and after a manual cancel); `tests/home-offline-link.e2e.js` (a held status request: no frame shows the button while the check is open; the failed, connected and no-key boots; a check superseded by a change of `#main_api`; Horde; Cancel); `tests/unit/sillybunny-assistants-view.test.js`; `tests/unit/sillybunny-home-focus.test.js`. |
+| Validation | 2026-11-10: root and tests lint; the focused unit tests and the full unit suite; `npm run check:frontend-budgets`; Chromium e2e: `home-offline-link`, `home-assistants`, `home-layout`, `getting-started`, `home-contrast`, `home-press`, `home-mode-memory`, `home-state`, `managed-updates` and `greeting-art` at the full matrix (1157 passed; the two failures are one timing test of `managed-updates`, which passes alone with `-s 1 -w 1`). 2026-11-10 (review fixes): the superseded-check, 44 px target and focus fallback tests; full unit suite, lint and budgets; `home-offline-link`, `home-assistants`, `home-layout` and `managed-updates` at the full matrix (929 passed; the same `managed-updates` timing test failed under load and passes alone). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-10, Home offline link. |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

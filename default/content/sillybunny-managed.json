@@ -16,13 +16,6 @@
             "previousFingerprints": []
         },
         {
-            "filename": "SillyBunny Lexicon.json",
-            "type": "world",
-            "version": 1,
-            "fingerprint": "8fc16bdbf7ad190744c53b5a0f5f8f80895872747506d72e30e1de93cef53d42",
-            "previousFingerprints": []
-        },
-        {
             "filename": "Assistant Reisen",
             "type": "sprites",
             "version": 1,
@@ -315,6 +308,13 @@
                     "previous": []
                 }
             ]
+        },
+        {
+            "filename": "SillyBunny Lexicon.json",
+            "type": "world",
+            "version": 1,
+            "fingerprint": "ce8a45e5385ff7b477fa8f0a76c6eddd12344291b49c80a082b34a31e3493041",
+            "previousFingerprints": []
         }
     ]
 }

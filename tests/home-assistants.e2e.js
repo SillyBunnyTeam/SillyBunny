@@ -199,8 +199,8 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await boot(page, { library: BOTH });
 
                 for (const key of ['assistant-reisen', 'assistant-tewi']) {
-                    await expect(cardOf(page, key).locator('button')).toHaveCount(4);
-                    for (const control of await cardOf(page, key).locator('button').all()) {
+                    await expect(cardOf(page, key).locator('button:not(.sbHomeCardConnect)')).toHaveCount(4);
+                    for (const control of await cardOf(page, key).locator('button:not(.sbHomeCardConnect)').all()) {
                         await expect(control, key).toBeEnabled();
                     }
                     await expect(cardOf(page, key).locator('[data-sb-stub]')).toHaveCount(0);
@@ -477,7 +477,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 await expect(own.locator('.sbHomeCardName')).toHaveText('Alice');
                 await expect(own.locator('.sbHomeCardSub')).toHaveText(SUBTITLES.pointer);
                 await expect(own.locator('.sbHomeArt[data-sb-art-placeholder="row-pointer"] img')).toHaveAttribute('src', /file=Alice\.png/);
-                await expect(own.locator('button')).toHaveCount(4);
+                await expect(own.locator('button:not(.sbHomeCardConnect)')).toHaveCount(4);
                 await expect(own.locator('.sbHomeFootLabel')).toHaveText(['Start New Chat', 'Temporary Chat']);
                 await expect(menuOf(own)).toHaveCount(1);
                 await expect(own.locator('.sbHomeChooseIcon')).toHaveCount(0);

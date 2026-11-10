@@ -370,7 +370,8 @@
     text-decoration: underline;
 }
 
-.sbHomeForkLink:focus-visible {
+.sbHomeForkLink:focus-visible,
+.sbHomeCardConnect:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
 }
@@ -648,6 +649,36 @@
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
     line-height: 1.35;
+}
+
+/* A link-like button under the subtitle. It sits above the card's own button, as the footer does, so a press on it
+   opens no chat. Only a page that is offline shows it, and display: none also keeps a hidden one out of the tab order. */
+.sbHomeCardConnect {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    z-index: 2;
+    display: none;
+    align-items: center;
+    max-width: 100%;
+    min-height: 24px;
+    margin: 0;
+    padding: 0 4px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-accent-ink);
+    font: inherit;
+    font-size: var(--sb-type-meta);
+    font-weight: 700;
+    text-align: center;
+    text-decoration: underline;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+:root[data-sb-connection='offline'] .sbHomeCardConnect {
+    display: inline-flex;
 }
 
 /* The footer reaches the card's border through negative margins of the card's padding. The strip lets a click
@@ -1373,6 +1404,7 @@ body.big-avatars .welcomeRecent .chatMessage {
     }
 
     .sbHomeForkLink,
+    .sbHomeCardConnect,
     .welcomeRecentTab,
     .welcomeRecent .showMoreChats {
         min-height: 44px;

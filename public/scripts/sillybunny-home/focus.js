@@ -8,7 +8,9 @@ const ROW_CONTROLS = Object.freeze({
 const SHOWN_ROW_SELECTOR = '.recentChat:not(.hidden):not(.recentChatFiltered)';
 const MAIN_MENU_SELECTOR = '.sbHomeMenuButton';
 const KEYED_SELECTOR = '[data-sb-home-key]';
-const KEYED_CONTROLS_SELECTOR = 'button, a[href]';
+const CONNECT_SELECTOR = '.sbHomeCardConnect';
+// The Connect a Model button is not counted: it is hidden while the app is online, so counting it would move every later position.
+const KEYED_CONTROLS_SELECTOR = `button:not(${CONNECT_SELECTOR}), a[href]`;
 
 /**
  * Where focus was in a Home panel that is about to be replaced.
@@ -18,7 +20,7 @@ const KEYED_CONTROLS_SELECTOR = 'button, a[href]';
  * @property {'open'|'pin'|'chat-menu'|'section'|'main-menu'} control
  * @property {import('./recent-chat.js').RecentChatIdentity|null} identity
  * @property {number} index Position among the shown rows, or -1 outside a row.
- * @property {{ key: string, part: 'self'|number }} [section] Set for `section`. `part` is `self` when the keyed element itself holds focus, or the position of the control among its controls.
+ * @property {{ key: string, part: 'self'|'connect'|number }} [section] Set for `section`. `part` is `self` when the keyed element itself holds focus, `connect` for the Connect a Model button, or the position of the control among its other controls.
  */
 
 function getShownRows(panel) {
@@ -54,20 +56,24 @@ function captureSectionControl(active) {
     if (!(keyed instanceof HTMLElement) || !key) {
         return null;
     }
-    const position = Array.from(keyed.querySelectorAll(KEYED_CONTROLS_SELECTOR)).indexOf(active);
+    const position = active.matches(CONNECT_SELECTOR) ? 'connect' : Array.from(keyed.querySelectorAll(KEYED_CONTROLS_SELECTOR)).indexOf(active);
     const part = active === keyed ? 'self' : position;
     return part === -1 ? null : { control: 'section', identity: null, index: -1, section: { key, part } };
 }
 
-function findSectionControl(panel, { key, part }) {
+/** The control to focus, then the first control of the card, for when the first one is gone or hidden. */
+function findSectionControls(panel, { key, part }) {
     const keyed = Array.from(panel.querySelectorAll(KEYED_SELECTOR))
         .find(candidate => candidate instanceof HTMLElement && candidate.dataset.sbHomeKey === key);
     if (part === 'self') {
-        return keyed;
+        return [keyed];
+    }
+    const controls = keyed?.querySelectorAll(KEYED_CONTROLS_SELECTOR);
+    if (part === 'connect') {
+        return [keyed?.querySelector(CONNECT_SELECTOR), controls?.[0]];
     }
     // A card can come back with fewer controls, such as the third assistant card after Remove Assistant.
-    const controls = keyed?.querySelectorAll(KEYED_CONTROLS_SELECTOR);
-    return controls?.[part] ?? controls?.[0];
+    return [controls?.[part] ?? controls?.[0]];
 }
 
 function focusFirstTaking(candidates) {
@@ -96,7 +102,7 @@ export function restoreHomeFocus(panel, target) {
 
     const menuButton = panel.querySelector(MAIN_MENU_SELECTOR);
     if (target.control === 'section' && target.section) {
-        return focusFirstTaking([findSectionControl(panel, target.section), menuButton]);
+        return focusFirstTaking([...findSectionControls(panel, target.section), menuButton]);
     }
     if (target.control === 'main-menu' || !target.identity) {
         return focusFirstTaking([menuButton]);
