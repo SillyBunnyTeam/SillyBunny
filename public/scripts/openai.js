@@ -615,7 +615,7 @@ const default_settings = {
     group_nudge_prompt: default_group_nudge_prompt,
     scenario_format: default_scenario_format,
     personality_format: default_personality_format,
-    openai_model: 'gpt-5.6-terra',
+    openai_model: 'gpt-6-sol',
     claude_model: 'claude-opus-5',
     claude_disable_temperature: false,
     claude_disable_top_p: false,
@@ -5421,10 +5421,10 @@ function getReasoningEffort(settings = null, model = null) {
 
         switch (settings.reasoning_effort) {
             case reasoning_effort_types.none:
-                // GPT-5.1 and newer accept 'none' as a real value that pins thinking off;
+                // GPT-5.1 and newer, GPT-6 Sol and GPT-6 Luna accept 'none' as a real value that pins thinking off;
                 // omitting the field instead lets the model pick its own default depth.
                 // Everywhere else 'none' stays unsent, since endpoints that do not list it reject it.
-                return [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI, chat_completion_sources.CUSTOM].includes(settings.chat_completion_source) && /^gpt-5\.([1-9]|\d{2,})/.test(model)
+                return [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI, chat_completion_sources.CUSTOM].includes(settings.chat_completion_source) && /^(?:gpt-5\.(?:[1-9]|\d{2,})|gpt-6-(?:sol|luna))/.test(model)
                     ? reasoning_effort_types.none
                     : undefined;
             case reasoning_effort_types.min:
@@ -5923,13 +5923,15 @@ export async function createGenerationParameters(settings, model, type, messages
         }
     }
 
-    if (gptSources.includes(settings.chat_completion_source) && /gpt-6-astra/.test(model)) {
+    if (gptSources.includes(settings.chat_completion_source) && /gpt-6-/.test(model)) {
         generate_data.max_completion_tokens = generate_data.max_tokens;
         delete generate_data.max_tokens;
-        delete generate_data.temperature;
-        delete generate_data.top_p;
-        delete generate_data.logprobs;
-        delete generate_data.top_logprobs;
+        if (model.includes('gpt-6-astra') || generate_data.reasoning_effort !== 'none') {
+            delete generate_data.temperature;
+            delete generate_data.top_p;
+            delete generate_data.logprobs;
+            delete generate_data.top_logprobs;
+        }
     }
 
     // SillyBunny: Claude Fable and Sonnet 5 reject sampling parameters, including through provider-prefixed proxy model ids.
@@ -8452,7 +8454,7 @@ function getMaxContextOpenAI(value) {
 
     /** @type {[RegExp, number][]} */
     const contextMap = [
-        [/^gpt-6-astra/, max_1050k],
+        [/^gpt-6-/, max_1050k],
         [/^gpt-5\.6/, max_1050k],
         [/^gpt-5\.[45]/, max_1mil],
         [/^gpt-5/, max_400k],
@@ -9796,8 +9798,10 @@ export function isImageInliningSupported() {
         'gpt-4.1',
         'gpt-4.5-preview',
         'gpt-4o',
+        'gpt-6-astra',
+        'gpt-6-sol',
+        'gpt-6-luna',
         'gpt-5',
-        'gpt-6-astra', // SillyBunny: Astra supports image input in both native OpenAI API modes.
         'o1',
         'o3',
         'o4-mini',
