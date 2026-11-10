@@ -173,7 +173,7 @@ const openConnections = page => openPanel(page, 'connections');
 
 /** @param {import('@playwright/test').Page} page @param {string} label */
 async function selectProfileMenuAction(page, label) {
-    await page.locator('.ds-profile-row .ds-select-row__menu').click();
+    await page.locator('.sb-connections-profile .ds-select-row__menu').click();
     await page.locator('.sb-action-menu-item', { hasText: label }).click();
 }
 
