@@ -19,7 +19,13 @@ import {
 } from './chat-scroll-regression-helpers.js';
 
 test.setTimeout(60_000);
-test.describe.configure({ mode: 'serial' });
+
+// The tests change chat settings to different values at the same time on one server. Saved for real, a page that
+// loaded before another test's save would get the settings conflict prompt over the chat.
+test.beforeEach(async ({ page }) => {
+    let settingsVersion = Date.now();
+    await page.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
+});
 
 test.describe('issue 167 chat scroll regressions', () => {
     test.beforeEach(async ({ page }) => {
