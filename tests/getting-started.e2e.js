@@ -193,9 +193,13 @@ for (const { name, options, checksColours } of VIEWPORTS) {
             });
 
             if (checksColours) {
-                test('keeps the Done chip, the Skipped chip and the check readable in the dark theme, the light theme and every bundled theme', async ({ page }) => {
+                test('keeps the Done chip, the Skipped chip and the check readable in the dark theme, the light theme and every bundled theme', async ({ page, browserName }) => {
+                    // eslint-disable-next-line playwright/no-slowed-test -- an engine speed difference, not a test to fix later
+                    test.slow(browserName === 'webkit', 'Switching and reading every bundled theme takes WebKit about three times as long as Chromium');
                     await bootHome(page, { value: gettingStartedValue({ steps: STATES.steps }) });
                     const host = await openWindow(page);
+                    // The window focuses its first button, which WebKit draws with a focus ring on the pixels that sit under the chip.
+                    await page.evaluate(() => document.activeElement?.blur());
                     const readings = [];
 
                     for (const theme of BUNDLED_THEME_NAMES) {

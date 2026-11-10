@@ -131,6 +131,11 @@ function readHeldPanel(page) {
     }, FOLLOWED);
 }
 
+/** The hero art starts watching its band when its layout runs, a frame after the panel appears, which WebKit reaches later than Chromium does. */
+async function waitUntilFollowed(page) {
+    await expect.poll(async () => (await readHeldPanel(page)).resize, { message: 'the panel is followed' }).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);
+}
+
 /** Marks where the font listeners of the Home that the test renders next begin, so that other listeners are not counted. */
 function markFontListeners(page) {
     return page.evaluate(() => {
@@ -187,8 +192,8 @@ test.describe('Home observers', () => {
         await markFontListeners(page);
         await renderHome(page, recentChatEntries(characters));
         await holdPanel(page);
+        await waitUntilFollowed(page);
         const shown = await readHeldPanel(page);
-        expect(shown.resize).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);
         expect(shown.headerMutation).toBeGreaterThanOrEqual(1);
         expect(await readFontListeners(page), 'the fits of the panel listen for fonts').toBeGreaterThan(0);
 
@@ -213,8 +218,7 @@ test.describe('Home observers', () => {
         await expect.poll(() => page.evaluate(() => window.qaPanel !== document.querySelector('#chat > .welcomePanel'))).toBe(true);
 
         await expect.poll(() => readHeldPanel(page), { timeout: 5000 }).toMatchObject({ connected: false, resize: 0, headerMutation: 0 });
-        const nextResize = await page.evaluate(selector => window.qaObservers.watching('ResizeObserver', [...document.querySelectorAll('#chat > .welcomePanel')].flatMap(panel => [...panel.querySelectorAll(selector)])), FOLLOWED);
-        expect(nextResize).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);
+        await expect.poll(() => page.evaluate(selector => window.qaObservers.watching('ResizeObserver', [...document.querySelectorAll('#chat > .welcomePanel')].flatMap(panel => [...panel.querySelectorAll(selector)])), FOLLOWED), { message: 'the new panel is followed' }).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);
         await expect.poll(() => readFontListeners(page), { message: 'the new panel listens in place of the old one' }).toBe(shownFontListeners);
     });
 
@@ -222,8 +226,8 @@ test.describe('Home observers', () => {
         await expect.poll(() => countFooterCards(page)).toBeGreaterThan(0);
         await expect.poll(() => countCompactCards(page), { message: 'at 1440 both labels fit' }).toBe(0);
         await holdPanel(page);
+        await waitUntilFollowed(page);
         const shown = await readHeldPanel(page);
-        expect(shown.resize).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);
 
         await openConversationOverHome(page);
         await expect(page.locator('#sheld')).not.toHaveAttribute('data-sb-home', /.*/);
@@ -249,6 +253,7 @@ test.describe('Home observers', () => {
 
     test('a chat that opens under Conversation, which leaves the Home state off, still stops what followed the panel', async ({ page }) => {
         await holdPanel(page);
+        await waitUntilFollowed(page);
         await openConversationOverHome(page);
         await expect(page.locator('#sheld')).not.toHaveAttribute('data-sb-home', /.*/);
         expect((await readHeldPanel(page)).resize).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);

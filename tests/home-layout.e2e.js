@@ -1420,8 +1420,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                     scrollbarWidthStyle: getComputedStyle(row).scrollbarWidth,
                 };
                 buttons[buttons.length - 1].focus();
-                const focusedScroll = row.scrollLeft;
-                return { before, narrow, focusedScroll, count: buttons.length };
+                return { before, narrow, count: buttons.length };
             });
 
             expect(filters.count).toBe(4);
@@ -1431,7 +1430,8 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             expect(filters.narrow.scrolls).toBe(true);
             expect(filters.narrow.scrollbarHeight).toBeLessThanOrEqual(0);
             expect(filters.narrow.scrollbarWidthStyle).toBe('none');
-            expect(filters.focusedScroll, 'keyboard focus scrolls the row').toBeGreaterThan(0);
+            // Chromium scrolls the focused button into view inside focus(); WebKit does it in a later rendering update.
+            await expect.poll(() => page.locator('.welcomePanel .welcomeRecentTabs').evaluate(row => row.scrollLeft), { message: 'keyboard focus scrolls the row' }).toBeGreaterThan(0);
         });
 
         test('the filters stay inside the Recent Chats heading row', async ({ page }) => {

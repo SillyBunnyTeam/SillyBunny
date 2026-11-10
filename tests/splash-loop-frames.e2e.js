@@ -31,8 +31,11 @@ async function launch(testInfo, { scale, width, height, motion }) {
 }
 
 /** Opens the splash of `variant` and keeps it up, with the clock of the page under the control of the test. */
-async function openSplash(page, variant, { stopped = false } = {}) {
+async function openSplash(page, variant, { stopped = false, sameLine = false } = {}) {
     await protectMaintainerServer(page);
+    // The splash picks its line at random, and the width of the line moves the picture by up to a device pixel, so two pages
+    // that share one screenshot clip need the same line.
+    if (sameLine) await page.addInitScript(() => { Math.random = () => 0; });
     let release = () => {};
     const released = new Promise((resolve) => { release = resolve; });
     await page.route('**/api/settings/get', async (route) => {
@@ -167,7 +170,7 @@ test.describe('the first frame on the screen', () => {
                 const still = await launch(testInfo, { scale, width: 1440, height: 900, motion: false });
                 let stillShot;
                 try {
-                    const release = await openSplash(still.page, variant);
+                    const release = await openSplash(still.page, variant, { sameLine: true });
                     await expect(still.page.locator('.sb-boot-mascot')).toBeVisible({ timeout: STARTUP_TIMEOUT });
                     await expect.poll(() => still.page.locator('.sb-boot-mascot').evaluate(image => image.complete && image.naturalWidth)).toBeGreaterThan(0);
                     stillShot = await still.page.screenshot({ clip: await pictureBox(still.page) });
@@ -179,7 +182,7 @@ test.describe('the first frame on the screen', () => {
                 // The loop, with the clock stopped at the start and moved on until the first frame is on the screen.
                 const loop = await launch(testInfo, { scale, width: 1440, height: 900, motion: true });
                 try {
-                    const release = await openSplash(loop.page, variant, { stopped: true });
+                    const release = await openSplash(loop.page, variant, { stopped: true, sameLine: true });
                     await loop.page.addStyleTag({ content: '.sb-boot-effect { display: none !important; }' });
                     const shown = () => loop.page.locator('.sb-boot-loop-layer').evaluateAll(images => images.filter(image => image.style.visibility === 'visible').length);
                     await expect.poll(async () => {

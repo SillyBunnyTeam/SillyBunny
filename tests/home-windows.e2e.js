@@ -6,6 +6,7 @@ import { WELCOME_COPY } from './helpers/copy-welcome.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 import { PINNED_ASSISTANT_ACCOUNT } from './helpers/assistant-library.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
+import { copiedText, trackClipboard } from './helpers/browser-neutral.js';
 import { applyHomeTestSettings } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { ABOUT_LOGO, expectRealLogo } from './helpers/logo.js';
@@ -1849,8 +1850,8 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(fit.scrollHeight).toBeLessThanOrEqual(fit.clientHeight + 1);
             });
 
-            sizeFreeTest('Troubleshooting shows real debug info that Copy puts on the clipboard and Save downloads', async ({ page, context }) => {
-                await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+            sizeFreeTest('Troubleshooting shows real debug info that Copy puts on the clipboard and Save downloads', async ({ page, browserName }) => {
+                await trackClipboard(page, browserName);
                 const version = await readVersion(page);
                 const host = await openFromMenu(page, 'About SillyBunny');
                 const current = shownPage(host);
@@ -1872,7 +1873,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 expect(text).toMatch(/Enabled extensions: \d+/);
 
                 await current.getByRole('button', { name: 'Copy', exact: true }).click();
-                await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+                await expect.poll(() => copiedText(page, browserName)).toBe(text);
                 await expect(current.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
                 await expect(current.locator('.sr-only[aria-live="polite"]')).toHaveText('Copied');
                 await expect(current.getByRole('button', { name: 'Copy', exact: true })).toBeVisible();
