@@ -22,7 +22,6 @@ const SUBTITLES = {
 };
 const actionErrorToast = page => page.locator('#toast-container .toast-message', { hasText: HOME_COPY.assistantActionError });
 const THUMBNAIL = readFileSync(new URL('../public/img/ai4.png', import.meta.url));
-const MOBILE_USER_AGENT = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 
 const VIEWPORTS = [
     { name: 'desktop 1440x900', portrait: 128, options: { viewport: { width: 1440, height: 900 } } },
@@ -154,7 +153,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
             test('show the thumbnail of their own card on every card: Reisen, Tewi and the pointer character', async ({ page }) => {
                 await boot(page, { library: [...BOTH, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
-                const thumbnailOf = avatar => page.evaluate(async file => (await import('/script.js')).getThumbnailUrlForViewport('avatar', file), avatar);
+                const thumbnailOf = avatar => page.evaluate(async file => (await import('/script.js')).getMobileThumbnailUrl('avatar', file), avatar);
 
                 for (const [key, avatar, art] of [['assistant-reisen', REISEN, 'row-reisen'], ['assistant-tewi', TEWI, 'row-tewi'], ['assistant-own', 'Alice.png', 'row-pointer']]) {
                     const image = cardOf(page, key).locator(`.sbHomeArt[data-sb-art-placeholder="${art}"] img`);
@@ -240,15 +239,9 @@ for (const { name, portrait, options } of VIEWPORTS) {
         });
 
         test.describe('the thumbnails', () => {
-            // The app tells a phone from its user agent, and Playwright's `isMobile` leaves that alone.
-            if (options.hasTouch) {
-                test.use({ userAgent: MOBILE_USER_AGENT });
-            }
-            const MOBILE = Boolean(options.hasTouch);
-            const PRESET = MOBILE ? '&preset=mobile' : '';
-            const thumbnailUrl = avatar => `/thumbnail?type=avatar&file=${encodeURIComponent(avatar)}${PRESET}`;
+            const thumbnailUrl = avatar => `/thumbnail?type=avatar&file=${encodeURIComponent(avatar)}&preset=mobile`;
 
-            test('are the preset of the viewport: the mobile one on a phone, the desktop one otherwise', async ({ page }) => {
+            test('are the small mobile preset at every viewport, and the full-size file is never fetched for a card', async ({ page }) => {
                 const world = await boot(page, { library: [...BOTH, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
 
                 for (const [key, avatar] of [['assistant-reisen', REISEN], ['assistant-tewi', TEWI], ['assistant-own', 'Alice.png']]) {
@@ -256,9 +249,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 }
                 const requested = world.thumbnailRequests.filter(search => /file=(default_Assistant|Alice)/.test(search));
                 expect(requested.length).toBeGreaterThanOrEqual(3);
-                for (const search of requested) {
-                    expect(search.includes('preset=mobile'), search).toBe(MOBILE);
-                }
+                expect(requested.filter(search => !search.includes('preset=mobile'))).toEqual([]);
             });
 
             test('are the same in the picker', async ({ page }) => {

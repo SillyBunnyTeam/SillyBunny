@@ -10,7 +10,7 @@ import {
     getCurrentChatId,
     getRequestHeaders,
     getThumbnailUrl,
-    getThumbnailUrlForViewport, // SillyBunny: Home's assistant thumbnails are the preset of the viewport, so a phone does not fetch the desktop files.
+    getMobileThumbnailUrl, // SillyBunny: Home's assistant thumbnails are the small mobile preset on every viewport, which is all a card's 128px box needs.
     openCharacterChat,
     printCharactersDebounced,
     renameGroupOrCharacterChat,
@@ -594,20 +594,27 @@ async function refreshCharacterAvatarCache(avatar) {
     }
 
     const thumbnailUrl = getThumbnailUrl('avatar', avatar);
+    // SillyBunny: Home's cards load the mobile preset, so that file is refreshed too, and a picture that has it keeps it.
+    const mobileThumbnailUrl = getMobileThumbnailUrl('avatar', avatar);
 
     try {
         await fetch(thumbnailUrl, { method: 'GET', cache: 'reload' });
+        // SillyBunny: the mobile file is the one that Home's cards load.
+        await fetch(mobileThumbnailUrl, { method: 'GET', cache: 'reload' });
         await fetch(`/characters/${encodeURIComponent(avatar)}`, { method: 'GET', cache: 'reload' });
     } catch (error) {
         console.warn(`Failed to refresh avatar cache for ${avatar}.`, error);
     }
 
     const cacheBustedThumbnailUrl = getThumbnailUrl('avatar', avatar, true);
+    // SillyBunny: a picture on the mobile preset gets its new source on that preset.
+    const cacheBustedMobileThumbnailUrl = getMobileThumbnailUrl('avatar', avatar, true);
     const avatarImages = document.querySelectorAll(`img[src^="${thumbnailUrl}"]`);
 
     for (const img of avatarImages) {
         if (img instanceof HTMLImageElement) {
-            img.src = cacheBustedThumbnailUrl;
+            // SillyBunny: the prefix above also matches the mobile URL, which must not become the full-size file.
+            img.src = img.getAttribute('src')?.startsWith(mobileThumbnailUrl) ? cacheBustedMobileThumbnailUrl : cacheBustedThumbnailUrl;
         }
     }
 }
@@ -763,7 +770,7 @@ async function sendWelcomePanel(chats, expand = false) {
                     getPickerEntries: () => getAssistantPickerEntries({ library: getAssistantLibrary(), pointerAvatar: accountStorage.getItem(assistantAvatarKey) }),
                     setPointer: chooseHomeAssistant,
                     actions: { ...assistantActions, ...managedAssistants.actions },
-                    getThumbnailUrl: avatar => getThumbnailUrlForViewport('avatar', avatar),
+                    getThumbnailUrl: avatar => getMobileThumbnailUrl('avatar', avatar),
                 },
             });
             // SillyBunny: a status that arrives after the cards were made replaces them, unless a menu or a dialog is open.

@@ -20,6 +20,7 @@ const REISEN = 'default_AssistantReisen.png';
 const TEWI = 'default_AssistantTewi.png';
 const NAMES = { [REISEN]: 'Assistant Reisen', [TEWI]: 'Assistant Tewi' };
 const MIGRATED = { WelcomePage_AssistantPointerMigrated: 'true' };
+const THUMBNAIL = readFileSync(new URL('../public/img/ai4.png', import.meta.url));
 
 // The files that the server would manage are the ones of the fixture manifest, so the specs name what ships in it.
 const FIXTURE_ITEMS = JSON.parse(readFileSync(new URL('./fixtures/managed-content/content/sillybunny-managed.json', import.meta.url), 'utf8'))
@@ -72,6 +73,7 @@ async function boot(page, { library, status = {}, accountStorage = {}, statusDel
         library: new Set(library),
         status: new Map(Object.entries(status)),
         requests: [],
+        thumbnails: [],
         refuse: {},
         statusFails,
         statusEmpty,
@@ -98,7 +100,13 @@ async function boot(page, { library, status = {}, accountStorage = {}, statusDel
     for (const avatar of library) {
         registerFixtureChat(page, { avatar, name: NAMES[avatar] ?? avatar, chat: `qa-${avatar}` });
     }
-    await page.route('**/thumbnail?*', route => route.fulfill({ status: 204 }));
+    // A picture that loads keeps the image in the card, which is what a refresh of the cached file finds again.
+    await page.route('**/thumbnail?*', (route) => {
+        const request = route.request();
+        // A picture asks as an image, and the refresh of a cached file asks with fetch.
+        world.thumbnails.push({ search: new URL(request.url()).search, fetched: request.resourceType() === 'fetch' });
+        return route.fulfill({ contentType: 'image/png', body: THUMBNAIL });
+    });
     await page.route('**/api/characters/all', async (route) => {
         const real = await fetchJsonOrSkip(route);
         if (!real) return;
@@ -149,6 +157,24 @@ const SLOW_STATUS = 3000;
 const FAST_STATUS = 100;
 /** After the time that the first render waits, so the first answer comes after the cards were made. */
 const LATE_STATUS = 700;
+
+/** Records every source that a picture of a card is given, from the page's first script, so one that is replaced a moment later is still seen. Read it from `window.qaCardSources`. */
+const recordCardSources = page => page.addInitScript(() => {
+    window.qaCardSources = [];
+    const record = (node) => {
+        for (const image of node instanceof HTMLImageElement ? [node] : (node instanceof Element ? node.querySelectorAll('img') : [])) {
+            if (image.closest('.sbHomeArt')) window.qaCardSources.push(image.getAttribute('src'));
+        }
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+        new MutationObserver((records) => {
+            for (const entry of records) {
+                record(entry.type === 'attributes' ? entry.target : null);
+                entry.addedNodes.forEach(record);
+            }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
+    }, { once: true });
+});
 
 /** Marks the card of Reisen in the page, so a test can tell whether Home made the cards again. */
 /** Lets the page run for a while, where the test asserts that something does not happen. */
@@ -323,6 +349,35 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
                 await expect.poll(() => labelsOfOpenMenu(page, 'assistant-reisen')).toEqual(['New Chat in Conversation']);
                 expect(await stored(page, DISMISSED_KEY)).toBeNull();
                 await expectNoToast(failureToast(page));
+            });
+
+            test('Update refreshes the cached file of the mobile preset, which is the one that Home loads', async ({ page }) => {
+                const world = await boot(page, { library: [REISEN, TEWI], status: { [REISEN]: EDITED } });
+                await openMenu(page, 'assistant-reisen');
+                await page.getByRole('menuitem', { name: 'Update Available' }).click();
+
+                await alertOf(page).getByRole('button', { name: 'Update' }).click();
+
+                // The toast comes before Home shows the change, which is where the cached files are refreshed.
+                await expect(updatedToast(page)).toBeVisible();
+                await expect.poll(() => world.thumbnails.filter(({ search, fetched }) => fetched && search.includes(`file=${REISEN}&preset=mobile`)).length).toBeGreaterThan(0);
+            });
+
+            test('Update gives the picture of the card a new source on the mobile preset, never the full-size file', async ({ page }) => {
+                await recordCardSources(page);
+                await boot(page, { library: [REISEN, TEWI], status: { [REISEN]: EDITED } });
+                await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeArt img')).toHaveCount(1);
+                await openMenu(page, 'assistant-reisen');
+                await page.getByRole('menuitem', { name: 'Update Available' }).click();
+
+                await alertOf(page).getByRole('button', { name: 'Update' }).click();
+
+                const sourcesOfCards = () => page.evaluate(() => window.qaCardSources);
+                // The picture is given its new source after the toast, once the cached files are refreshed.
+                await expect.poll(async () => (await sourcesOfCards()).some(source => /&t=\d+/.test(source))).toBe(true);
+                const sources = await sourcesOfCards();
+                expect(sources.filter(source => !source.includes('preset=mobile'))).toEqual([]);
+                expect(sources.some(source => source.includes(`file=${REISEN}&preset=mobile&t=`))).toBe(true);
             });
 
             test('Update shows the card as current at once, before the server answers the status again', async ({ page }) => {
