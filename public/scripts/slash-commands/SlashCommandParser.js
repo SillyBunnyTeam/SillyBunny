@@ -935,9 +935,11 @@ export class SlashCommandParser {
         cmd.name = this.take(); //set "*" as name
         while (!this.testBlockCommentEnd()) {
             if (this.testBlockComment()) {
+                // SillyBunny: the nested comment takes its own "*|", and the next character can start the outer "*|", so it is not taken here.
                 this.parseBlockComment();
+            } else {
+                this.take();
             }
-            this.take();
         }
         this.take(2); // take closing "*|"
         cmd.end = this.index - 1;
@@ -987,6 +989,8 @@ export class SlashCommandParser {
         cmd.unnamedArgumentList = this.parseUnnamedArgument(true);
         const [flag, state] = cmd.unnamedArgumentList ?? [null, null];
         cmd.endUnnamedArgs = this.index;
+        // SillyBunny: without a flag name there is no flag to set, so the command is malformed.
+        if (!flag) throw new SlashCommandParserError(`Unexpected end of unnamed argument at index ${this.userIndex}.`, this.text, this.index);
         if (Object.keys(PARSER_FLAG).includes(flag.value.toString())) {
             this.flags[PARSER_FLAG[flag.value.toString()]] = isTrueBoolean(state?.value.toString() ?? 'on');
         }
@@ -1072,7 +1076,8 @@ export class SlashCommandParser {
         this.take(); // discard "/"
         while (!/\s/.test(this.char) && !this.testCommandEnd()) cmd.name += this.take(); // take chars until whitespace or end
         this.discardWhitespace();
-        if (this.verifyCommandNames && !this.commands[cmd.name]) throw new SlashCommandParserError(`Unknown command at position ${this.index - cmd.name.length}: "/${cmd.name}"`, this.text, this.index - cmd.name.length);
+        // SillyBunny: report where the command name starts, because the whitespace after the name has moved the index.
+        if (this.verifyCommandNames && !this.commands[cmd.name]) throw new SlashCommandParserError(`Unknown command at position ${start}: "/${cmd.name}"`, this.text, start);
         cmd.command = this.commands[cmd.name];
         cmd.startNamedArgs = this.index;
         cmd.endNamedArgs = this.index;
@@ -1093,7 +1098,8 @@ export class SlashCommandParser {
             if (cmd.name == 'let') {
                 const keyArg = cmd.namedArgumentList.find(it => it.name == 'key');
                 if (keyArg) {
-                    this.scope.variableNames.push(keyArg.value.toString());
+                    // SillyBunny: an empty "key=" has no value, so there is no variable name to list.
+                    if (keyArg.value !== undefined) this.scope.variableNames.push(keyArg.value.toString());
                 } else if (typeof cmd.unnamedArgumentList[0]?.value == 'string') {
                     this.scope.variableNames.push(cmd.unnamedArgumentList[0].value);
                 }
@@ -1150,8 +1156,9 @@ export class SlashCommandParser {
     }
     parseUnnamedArgument(split, splitCount = null, rawQuotes = false) {
         const wasSplit = split;
+        // SillyBunny: when splitting, an escaped first character belongs to the first value, and the split branches take it.
         /**@type {SlashCommandClosure|String}*/
-        let value = this.jumpedEscapeSequence ? this.take() : ''; // take the first, already tested, char if it is an escaped one
+        let value = !split && this.jumpedEscapeSequence ? this.take() : ''; // take the first, already tested, char if it is an escaped one
         let isList = split;
         let listValues = [];
         let listQuoted = []; // keep track of which listValues were quoted
@@ -1180,6 +1187,8 @@ export class SlashCommandParser {
                     listQuoted.push(true);
                     assignment = new SlashCommandUnnamedArgumentAssignment();
                     assignment.start = this.index;
+                    // SillyBunny: test for the end of the argument again, because a pipe, a closure end or the end of the text can follow the closing quote.
+                    continue;
                 }
             }
             if (this.testClosure()) {
@@ -1207,6 +1216,8 @@ export class SlashCommandParser {
                 assignment.value = this.parseClosure();
                 assignment.end = this.index;
                 listValues.push(assignment);
+                // SillyBunny: a closure needs a quote flag too, so that each flag stays at the index of its value.
+                listQuoted.push(false);
                 assignment = new SlashCommandUnnamedArgumentAssignment();
                 assignment.start = this.index;
                 if (split) this.discardWhitespace();
@@ -1233,7 +1244,8 @@ export class SlashCommandParser {
                     listQuoted.push(false);
                     assignment = new SlashCommandUnnamedArgumentAssignment();
                 } else {
-                    throw new SlashCommandParserError(`Unexpected end of unnamed argument at index ${this.userIndex}.`);
+                    // SillyBunny: a parser error needs the text and the index to show where it is.
+                    throw new SlashCommandParserError(`Unexpected end of unnamed argument at index ${this.userIndex}.`, this.text, this.index);
                 }
                 this.discardWhitespace();
             } else {
@@ -1279,6 +1291,8 @@ export class SlashCommandParser {
                 joined.value = '';
                 for (let i = splitCount; i < listValues.length; i++) {
                     if (listQuoted[i]) joined.value += `"${listValues[i].value}"`;
+                    // SillyBunny: the joined value is a string, so a closure keeps its source text instead of becoming "[Closure]".
+                    else if (listValues[i].value instanceof SlashCommandClosure) joined.value += this.text.slice(listValues[i].start, listValues[i].end);
                     else joined.value += listValues[i].value;
                 }
                 listValues = [
@@ -1315,11 +1329,14 @@ export class SlashCommandParser {
         this.take(); // discard opening quote
         let value = '';
         while (!this.testQuotedValueEnd()) value += this.take(); // take all chars until closing quote
-        this.take(); // discard closing quote
+        // SillyBunny: the value ends before the closing quote, so macro positions are counted back from there.
+        const valueEnd = this.index;
+        // SillyBunny: in lenient mode the value can end at a pipe or a closure end, and that symbol belongs to the command, so only a quote is discarded.
+        if (this.testSymbol('"')) this.take(); // discard closing quote
         if (this.flags[PARSER_FLAG.REPLACE_GETVAR]) {
             value = this.replaceGetvar(value);
         }
-        this.indexMacros(this.index - value.length, value);
+        this.indexMacros(valueEnd - value.length, value);
         return value;
     }
 

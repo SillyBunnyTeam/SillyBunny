@@ -25,7 +25,6 @@ const FIRST_ORPHAN_HASH = 'e'.repeat(64);
 const SECOND_ORPHAN_HASH = 'f'.repeat(64);
 const SEARCH_CONTENT_DEBOUNCE_MS = 600;
 
-test.describe.configure({ mode: 'serial' });
 test.use({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
