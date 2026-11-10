@@ -112,21 +112,23 @@ function holdPanel(page) {
     });
 }
 
-/**
- * What still follows the held panel: the elements that the footer and header fits observe, which are the cards with a
- * footer, the header, the title and the version.
- */
+/** The elements that the footer and header fits observe, and the hero art and its band, which the art layout observes. */
+const FOLLOWED = '.sbHomeCard, .sbHomeHeader, .sbHomeTitle, .sbHomeVersion, .sbHomeHeroArt, .sbHomeBand';
+/** The two cards with a footer, the header, the title and the version, the hero art and its band. */
+const FOLLOWED_WHILE_SHOWN = 7;
+
+/** What still follows the held panel, by `FOLLOWED`, and whether the panel is still in the document. */
 function readHeldPanel(page) {
-    return page.evaluate(() => {
+    return page.evaluate((selector) => {
         const panel = window.qaPanel;
         const header = panel.querySelector('.sbHomeHeader');
-        const fitted = [...panel.querySelectorAll('.sbHomeCard, .sbHomeHeader, .sbHomeTitle, .sbHomeVersion')];
+        const fitted = [...panel.querySelectorAll(selector)];
         return {
             connected: panel.isConnected,
             resize: window.qaObservers.watching('ResizeObserver', fitted),
             headerMutation: window.qaObservers.watching('MutationObserver', [header]),
         };
-    });
+    }, FOLLOWED);
 }
 
 /** Marks where the font listeners of the Home that the test renders next begin, so that other listeners are not counted. */
@@ -186,8 +188,7 @@ test.describe('Home observers', () => {
         await renderHome(page, recentChatEntries(characters));
         await holdPanel(page);
         const shown = await readHeldPanel(page);
-        // Each card with a footer, the header, the title and the version are observed while the panel is shown.
-        expect(shown.resize).toBeGreaterThanOrEqual(5);
+        expect(shown.resize).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);
         expect(shown.headerMutation).toBeGreaterThanOrEqual(1);
         expect(await readFontListeners(page), 'the fits of the panel listen for fonts').toBeGreaterThan(0);
 
@@ -212,8 +213,8 @@ test.describe('Home observers', () => {
         await expect.poll(() => page.evaluate(() => window.qaPanel !== document.querySelector('#chat > .welcomePanel'))).toBe(true);
 
         await expect.poll(() => readHeldPanel(page), { timeout: 5000 }).toMatchObject({ connected: false, resize: 0, headerMutation: 0 });
-        const nextResize = await page.evaluate(() => window.qaObservers.watching('ResizeObserver', [...document.querySelectorAll('#chat > .welcomePanel :is(.sbHomeCard, .sbHomeHeader, .sbHomeTitle, .sbHomeVersion)')]));
-        expect(nextResize).toBeGreaterThanOrEqual(5);
+        const nextResize = await page.evaluate(selector => window.qaObservers.watching('ResizeObserver', [...document.querySelectorAll('#chat > .welcomePanel')].flatMap(panel => [...panel.querySelectorAll(selector)])), FOLLOWED);
+        expect(nextResize).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);
         await expect.poll(() => readFontListeners(page), { message: 'the new panel listens in place of the old one' }).toBe(shownFontListeners);
     });
 
@@ -222,7 +223,7 @@ test.describe('Home observers', () => {
         await expect.poll(() => countCompactCards(page), { message: 'at 1440 both labels fit' }).toBe(0);
         await holdPanel(page);
         const shown = await readHeldPanel(page);
-        expect(shown.resize).toBeGreaterThanOrEqual(5);
+        expect(shown.resize).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);
 
         await openConversationOverHome(page);
         await expect(page.locator('#sheld')).not.toHaveAttribute('data-sb-home', /.*/);
@@ -250,7 +251,7 @@ test.describe('Home observers', () => {
         await holdPanel(page);
         await openConversationOverHome(page);
         await expect(page.locator('#sheld')).not.toHaveAttribute('data-sb-home', /.*/);
-        expect((await readHeldPanel(page)).resize).toBeGreaterThanOrEqual(5);
+        expect((await readHeldPanel(page)).resize).toBeGreaterThanOrEqual(FOLLOWED_WHILE_SHOWN);
 
         await page.evaluate(async () => {
             const { clearChat } = await import('/script.js');

@@ -693,8 +693,10 @@ export function createArtPanel(ids) {
 /**
  * The hero of Home: one picture in the band, centred above the text, on the same lavender panel that the art of a window
  * has. It is `aria-hidden`, and a screen reader reads the text of the band alone.
+ * The layout and the motion of the hero hold it until `stop` runs, because it is a plain element and has no callback of
+ * its own for leaving the document. Without `stop`, the layout drops it only when a later layout finds it removed.
  * @param {'hero-duo' | 'hero-duo-night'} id
- * @returns {HTMLElement}
+ * @returns {{ panel: HTMLElement, stop: () => void }} `stop` ends the motion and takes the hero out of the layout.
  */
 export function createHeroArt(id) {
     const figure = createPixelFigure(id);
@@ -709,5 +711,11 @@ export function createHeroArt(id) {
     /** @type {ArtController} */
     const controller = { kind: 'hero', panel, ids: [id], figures: [{ id, figure, motion: attachArtMotion(figure, id) }], host: null, seen: false, alignQueued: false };
     register(controller);
-    return panel;
+    return {
+        panel,
+        stop() {
+            controller.figures.forEach(({ motion }) => motion?.stop());
+            stop(controller);
+        },
+    };
 }

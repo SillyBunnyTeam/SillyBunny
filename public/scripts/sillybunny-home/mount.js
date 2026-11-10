@@ -134,7 +134,13 @@ function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChat
  *   that arrived after the panel was mounted. It keeps the focus on the control that had it.
  */
 export function mountHome(panel, context) {
-    panel.querySelector('[data-sb-home-region="hero"]')?.prepend(createHeroArt(chooseHeroArt(new Date())));
+    const lifetime = beginPanelLifetime(panel);
+    const heroRegion = panel.querySelector('[data-sb-home-region="hero"]');
+    if (heroRegion) {
+        const hero = createHeroArt(chooseHeroArt(new Date()));
+        lifetime.keep('hero', hero.stop);
+        heroRegion.prepend(hero.panel);
+    }
     panel.querySelectorAll('[data-sb-home-version]').forEach((node) => {
         node.textContent = getVersionLabel(context.version);
     });
@@ -143,7 +149,6 @@ export function mountHome(panel, context) {
         link.setAttribute('rel', 'noopener noreferrer');
     });
     const gettingStarted = getSharedGettingStartedState();
-    const lifetime = beginPanelLifetime(panel);
     mountEmptyStateArt(panel);
     mountFilteredEmptyState(panel);
     mountMenuButton(panel, context, gettingStarted);

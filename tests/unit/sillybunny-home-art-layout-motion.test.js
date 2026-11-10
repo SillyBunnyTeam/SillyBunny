@@ -82,7 +82,7 @@ describe('the hero', () => {
     });
 
     test('asks its motion to look again whenever the layout has set its fit, because a smooth fit keeps the still', () => {
-        const hero = createHeroArt('hero-duo');
+        const { panel: hero } = createHeroArt('hero-duo');
         const band = document.createElement('div');
         band.append(hero);
         document.body.append(band);
@@ -95,7 +95,7 @@ describe('the hero', () => {
     });
 
     test('ends its motion when it has been in the page and is taken out', () => {
-        const hero = createHeroArt('hero-duo');
+        const { panel: hero } = createHeroArt('hero-duo');
         const band = document.createElement('div');
         band.append(hero);
         document.body.append(band);
@@ -109,5 +109,33 @@ describe('the hero', () => {
         jest.advanceTimersByTime(50);
 
         expect(stops[0].stop).toHaveBeenCalledTimes(1);
+    });
+
+    test('its stop ends the motion at once and takes the hero out of the layout, so a later layout leaves it alone', () => {
+        const { panel: hero, stop } = createHeroArt('hero-duo');
+        const band = document.createElement('div');
+        band.append(hero);
+        document.body.append(band);
+        window.dispatchEvent(new Event('resize'));
+        jest.advanceTimersByTime(50);
+        stops[0].refresh.mockClear();
+
+        stop();
+        window.dispatchEvent(new Event('resize'));
+        jest.advanceTimersByTime(50);
+
+        expect(stops[0].stop).toHaveBeenCalledTimes(1);
+        expect(stops[0].refresh).not.toHaveBeenCalled();
+    });
+
+    test('its stop works while the hero is still in the page, which a render in place does, and twice', () => {
+        const { panel: hero, stop } = createHeroArt('hero-duo');
+        document.body.append(hero);
+
+        stop();
+        stop();
+
+        expect(stops[0].stop).toHaveBeenCalled();
+        expect(hero.isConnected).toBe(true);
     });
 });

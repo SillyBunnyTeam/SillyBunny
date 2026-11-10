@@ -374,7 +374,7 @@ describe('createArtPanel', () => {
 describe('createHeroArt', () => {
     test.each(['hero-duo', 'hero-duo-night'])('%s is a panel in the class that the band styles, with one hidden figure of its own size inside', (id) => {
         const { width, height } = getPixelArt(id);
-        const panel = createHeroArt(id);
+        const { panel } = createHeroArt(id);
         const figure = panel.firstElementChild;
 
         expect(panel.classList.contains('sbHomeHeroArt')).toBe(true);
@@ -386,14 +386,14 @@ describe('createHeroArt', () => {
     });
 
     test('is on the same panel as the art of a window, so it shares the backdrop, the padding and the radius', () => {
-        const panel = createHeroArt('hero-duo');
+        const { panel } = createHeroArt('hero-duo');
 
         expect(panel.classList.contains('sbArtPanel')).toBe(true);
         expect(panel.dataset.sbArtMode).toBe('panel');
     });
 
     test('leaves the padding to the style sheet, which gives a narrow band a smaller one', () => {
-        const panel = createHeroArt('hero-duo');
+        const { panel } = createHeroArt('hero-duo');
 
         expect(panel.style.getPropertyValue('--sb-art-pad')).toBe('');
     });
@@ -402,12 +402,21 @@ describe('createHeroArt', () => {
         window.devicePixelRatio = 3;
         const { width, height } = getPixelArt('hero-duo');
 
-        const figure = createHeroArt('hero-duo').firstElementChild;
+        const figure = createHeroArt('hero-duo').panel.firstElementChild;
 
         expect([figure.style.width, figure.style.height]).toEqual([`${width}px`, `${height}px`]);
     });
 
     test('fails fast on a hero that is not in the export', () => {
         expect(() => createHeroArt('hero-trio')).toThrow('hero-trio');
+    });
+
+    test('its stop takes the panel out of the layout, whether or not the panel is in the document', () => {
+        const { panel, stop } = createHeroArt('hero-duo');
+        expect(observer.observe).toHaveBeenCalledWith(panel);
+
+        stop();
+
+        expect(observer.unobserve).toHaveBeenCalledWith(panel);
     });
 });

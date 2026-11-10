@@ -11,9 +11,14 @@ jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 }));
 jest.unstable_mockModule('../../public/scripts/sillybunny-editor/list-shell.js', () => ({ loadListEditorStyles: jest.fn(() => Promise.resolve()) }));
 jest.unstable_mockModule('../../public/scripts/sillybunny-editor/status-page.js', () => ({ createStatusPage: jest.fn(() => ({ element: document.createElement('div') })) }));
+const heroStops = [];
 jest.unstable_mockModule(`${HOME}art-layout.js`, () => ({
     createArtPanel: jest.fn(() => ({ panel: document.createElement('div') })),
-    createHeroArt: jest.fn(() => document.createElement('div')),
+    createHeroArt: jest.fn(() => {
+        const stop = jest.fn();
+        heroStops.push(stop);
+        return { panel: document.createElement('div'), stop };
+    }),
 }));
 jest.unstable_mockModule(`${HOME}assistants-view.js`, () => ({ mountAssistants: jest.fn() }));
 jest.unstable_mockModule(`${HOME}getting-started-boot.js`, () => ({}));
@@ -70,6 +75,7 @@ function renderPanel() {
             <span class="sbHomeVersion"></span>
             <button class="sbHomeMenuButton"></button>
         </header>
+        <div data-sb-home-region="hero"></div>
         <section data-sb-home-region="tiles"></section>
         <div data-sb-home-list="assistants">
             <article class="sbHomeCard"><div class="sbHomeCardFooter"><button></button></div></article>
@@ -111,6 +117,7 @@ const live = () => observers.filter(observer => !observer.disconnected);
 beforeEach(() => {
     observers = [];
     frames = [];
+    heroStops.length = 0;
     fontListeners = new Map();
     const mine = { active: 0 };
     subscribers = mine;
@@ -219,6 +226,34 @@ describe('what mountHome keeps alive for a Home panel', () => {
         await settle();
         expect(live()).toHaveLength(0);
         expect(subscribers.active).toBe(0);
+    });
+
+    test('the hero art is put in its region, and its stop runs when the panel leaves the chat', async () => {
+        const { panel } = mountIntoChat();
+
+        expect(panel.querySelector('[data-sb-home-region="hero"]').children).toHaveLength(1);
+        expect(heroStops).toHaveLength(1);
+        expect(heroStops[0]).not.toHaveBeenCalled();
+
+        chat.replaceChildren();
+        await settle();
+
+        expect(heroStops[0]).toHaveBeenCalledTimes(1);
+    });
+
+    test('the hero art is kept while Conversation covers the panel, and an in-place render stops the one it replaces', async () => {
+        const first = mountIntoChat();
+        sheld.setAttribute('data-sb-conversation-mode', 'on');
+        document.dispatchEvent(new CustomEvent('sb:home-state-changed', { detail: { active: false } }));
+        await settle();
+        expect(heroStops[0]).not.toHaveBeenCalled();
+
+        mountIntoChat(first.panel);
+        await settle();
+
+        expect(heroStops).toHaveLength(2);
+        expect(heroStops[0]).toHaveBeenCalledTimes(1);
+        expect(heroStops[1]).not.toHaveBeenCalled();
     });
 
     test('making the cards again keeps one footer observer, and a render after the panel left starts none that stays', async () => {
