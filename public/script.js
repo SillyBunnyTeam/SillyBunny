@@ -432,6 +432,8 @@ import {
     markCardScriptToastShown,
 } from './scripts/card-script-detection.js';
 import { configureCardScriptRuntime, initCardScriptRuntime } from './scripts/card-script-runtime.js';
+// SillyBunny: a page sends no settings save when nothing changed since its last load or save.
+import { createSettingsSync } from './scripts/sillybunny-settings-sync.js';
 
 const DEFERRED_STARTUP_STYLESHEETS = Object.freeze([
     { href: 'css/bright.min.css', id: 'deferred-highlight-theme-css' },
@@ -979,6 +981,7 @@ let settingsSaveQueue = Promise.resolve();
 let settingsConflictReloadRequired = false;
 let settingsConflictPromptOpen = false;
 let settingsConflictPromptDismissed = false;
+const settingsSync = createSettingsSync();
 export let amount_gen = 80; //default max length of AI generated responses
 export let max_context = 2048;
 
@@ -12837,6 +12840,8 @@ export async function getSettings() {
     const data = await response.json();
     if (data.result != 'file not find' && data.settings) {
         settings = JSON.parse(data.settings);
+        // SillyBunny: the loaded text, before the page changes the objects that it parses into.
+        settingsSync.remember(settingsSync.getFingerprint(data.settings));
         lastServerSettingsVersion = normalizeSettingsVersion(settings._version);
         settingsConflictReloadRequired = false;
         settingsConflictPromptDismissed = false;
@@ -13043,10 +13048,20 @@ async function saveSettingsInner(loopCounter = 0) {
     };
 
     try {
+        const body = JSON.stringify(payload);
+        // SillyBunny: a page that changed nothing sends no request. Every boot saves, and the server refuses that save
+        // from a page whose settings another tab or device changed since this page loaded them.
+        const fingerprint = settingsSync.getFingerprint(body);
+        if (settingsSync.isSynced(fingerprint)) {
+            settings = payload;
+            await eventSource.emit(event_types.SETTINGS_UPDATED);
+            return true;
+        }
+
         const saveSettingsRequest = await compressRequest({
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify(payload),
+            body,
             cache: 'no-cache',
         });
         const result = await fetch('/api/settings/save', saveSettingsRequest);
@@ -13066,9 +13081,15 @@ async function saveSettingsInner(loopCounter = 0) {
 
         const saveResult = await result.json().catch(() => ({}));
         const savedSettingsVersion = normalizeSettingsVersion(saveResult?.version);
-        if (savedSettingsVersion <= payload._version) {
+        // SillyBunny: a save without a change keeps the stored version, which can equal the one this page sent.
+        const isValidVersion = saveResult?.unchanged === true
+            ? savedSettingsVersion >= payload._version
+            : savedSettingsVersion > payload._version;
+        if (!isValidVersion) {
             throw new Error('Settings save returned an invalid version token');
         }
+        // SillyBunny: the server holds the sent settings now.
+        settingsSync.remember(fingerprint);
 
         lastServerSettingsVersion = savedSettingsVersion;
         payload._version = lastServerSettingsVersion;

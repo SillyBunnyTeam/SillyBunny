@@ -344,6 +344,7 @@ describe('settings payload', () => {
             eventSource: { emit: jest.fn(async () => {}) },
             event_types: { SETTINGS_UPDATED: 'settings_updated' },
             saveSettingsDebounced: jest.fn(),
+            settingsSync: { getFingerprint: json => json, remember() {}, isSynced: () => false },
             ...overrides,
         });
         loadFunctions(context, ['saveSettingsInner']);

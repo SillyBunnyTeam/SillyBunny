@@ -4,8 +4,14 @@ import { APP_URL, dismissOpenDialogIfPresent, selectSampleCharacter } from './ch
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
-test.describe.configure({ mode: 'serial' });
 test.use({ serviceWorkers: 'block' });
+
+// The tests that connect the fake model save different settings, a custom URL with its own port, at the same time on
+// one server. Saved for real, a page that loaded before another test's save would get the settings conflict prompt.
+test.beforeEach(async ({ context }) => {
+    let settingsVersion = Date.now();
+    await context.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
+});
 
 const MODEL = 'fake-stream-model';
 const CHUNKS = Array.from({ length: 20 }, (_, index) => `word${index} `);
@@ -48,7 +54,7 @@ function startFakeModel(intervalMs, deltaField = 'content') {
 }
 
 /**
- * Loads the app with real chat saves, unlike openReadyChat(), and opens the sample character's chat.
+ * Loads the app with real chat saves, unlike openReadyChat(), and opens a new chat of the sample character.
  * Settings, cards and statistics are still stubbed, so connecting the fake model stays in the page and never reaches
  * the saved settings of the test server.
  * @param {import('@playwright/test').Page} page
@@ -62,7 +68,9 @@ async function openChat(page) {
     await testSetup.waitForAppReady({ page });
     await dismissOpenDialogIfPresent(page);
     await selectSampleCharacter(page);
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: 0 });
+    // Pages that write one chat file at the same time fail each other's chat integrity check.
+    await page.evaluate(async () => (await import('/script.js')).doNewChat());
 }
 
 /**

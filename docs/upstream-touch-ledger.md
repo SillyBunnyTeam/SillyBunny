@@ -1185,6 +1185,48 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05 STscript parser fixes. |
 | Owner | Browser runtime integrator. |
 
+### `tests/playwright.config.js` - test servers, worker count and request headers
+| Field | Value |
+| --- | --- |
+| File | `tests/playwright.config.js`. |
+| Area | Test infrastructure: Playwright worker count, test servers and the `Accept-Encoding` request header. |
+| Divergence reason | Upstream's `workers: '50%'` sends more workers to one server than it can serve on a large machine, and the extra workers only add timeouts. SillyBunny caps the default and can start several isolated servers, so that one Playwright process spreads its workers over them. |
+| Target seam | `tests/e2e-servers.js`, with `tests/e2e-servers-launch.js` (starts the servers at once) and `tests/e2e-servers-prime.js` (boots the app once on each server). |
+| Adapter shape | One `await getServerConfig()` call. Its `use` is spread last into `use`, its `workers` replaces `'50%'`, and its `config` (`webServer`, `globalSetup`, `projects`) is spread last into the config. When the config starts the servers, `use` adds `extraHTTPHeaders` with `Accept-Encoding: identity`. With a base URL variable set, or without `SILLYBUNNY_TEST_SERVERS`, `use` and `config` are empty and only the worker count differs from upstream. `SILLYBUNNY_TEST_COMPRESSION=1` or `0` sets the header for any run. |
+| Protecting tests | `tests/e2e-servers.test.js` (server count, worker count, routing, request headers, server commands, sequential spec files, projects) and `tests/e2e-servers.e2e.js` (each worker uses the server of its parallel index; it runs only with `SILLYBUNNY_TEST_SERVERS`). |
+| Validation | `npm run lint` and `npm run test:unit` in `tests/`. `SILLYBUNNY_TEST_SERVERS=8 npx playwright test` (full suite on 8 Bun servers and 64 workers), `SILLYBUNNY_TEST_SERVERS=3 npx playwright test e2e-servers.e2e.js --repeat-each=12`, and against one Bun server with `SILLYBUNNY_TEST_BASE_URL`: `frontend/MacroLexer.e2e.js` with the default workers (16 on a 128-thread machine) and `frontend/MacroParser.e2e.js --workers=1`. Cleanup checked after a normal end, an interrupt, a server that cannot start (`bun` not on `PATH`), a port that another process holds while another server runs already, and a server that stops after the others are ready. One app boot with the identity header got no compressed response (674 same-origin responses), and 529 Brotli responses without it. Chromium, Playwright 1.64.1. |
+| Rollback path | Revert the `SillyBunny:` hunks in `tests/playwright.config.js`, and delete `tests/e2e-servers.js`, `tests/e2e-servers-launch.js`, `tests/e2e-servers-prime.js`, `tests/e2e-servers.e2e.js` and `tests/e2e-servers.test.js`. Runs then use `'50%'` workers against one running server, as upstream does. No app code, stored data or settings change. |
+| Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
+| Owner | Test and release integrator. |
+
+### `tests/frontend/MacroEngine.e2e.js`, `MacroLexer.e2e.js`, `MacroParser.e2e.js`, `MacroRegistry.e2e.js`, `MacroSlashCommands.e2e.js` and `MacroStoryString.e2e.js` - one booted page per worker
+| Field | Value |
+| --- | --- |
+| File | `tests/frontend/MacroEngine.e2e.js`, `tests/frontend/MacroLexer.e2e.js`, `tests/frontend/MacroParser.e2e.js`, `tests/frontend/MacroRegistry.e2e.js`, `tests/frontend/MacroSlashCommands.e2e.js`, `tests/frontend/MacroStoryString.e2e.js`. |
+| Area | Test infrastructure: app boots in the macro and STscript browser tests. |
+| Divergence reason | These tests run the macro engine, its parser and registry, and slash commands inside the page, and need the booted app only as the place to run. Upstream boots the whole app for each test, so the boot was most of their run time. |
+| Target seam | `tests/frontend/shared-page.js`. Its `test` gives a `page` that boots once per worker, restores the chat metadata (which holds the local variables) and the global variables of the boot before each test, fails a test when the page has navigated since its boot, and answers `/api/settings/save` itself after the boot. Its `testSetup.awaitST` and `testSetup.goST` do nothing, because the page has booted. |
+| Adapter shape | In each file, the `@playwright/test` and `./frontent-test-utils.js` imports become one import of `test`, `expect` and `testSetup` from `./shared-page.js`, under a `SillyBunny:` comment. The test bodies and their `beforeEach(testSetup.awaitST)` or `beforeEach(testSetup.goST)` lines are unchanged. `tests/frontend/sillybunny-macro-whitespace.e2e.js` is a SillyBunny file and uses the same import. A file may join only when it leaves no other state behind; MessageFormatter, MacroEnvBuilder and StscriptParserFixes leave state that breaks other files, and the remaining files write chats, lorebooks or settings. |
+| Protecting tests | The six files and `tests/frontend/sillybunny-macro-whitespace.e2e.js` themselves. Among them, at least 14 MacroEngine tests expect empty variables (for example the scoped `getvar::x` test and the `.myvar ??` tests), so a missing restore fails them. |
+| Validation | `npm run lint` in `tests/`. The seven files with one worker (520 tests, one boot, 507 passed and 13 skipped), with the `e2e` runner's 8 servers × 8 workers and `--repeat-each=3` (1,521 passed, 39 skipped), and `tests/frontend/` with one worker (582 passed, 13 skipped; 252 s, against 1,501 s before). A failed test on the shared page still attaches its screenshot and error context; it has no video. Chromium, Playwright 1.64.1. |
+| Rollback path | Restore the two upstream import lines in each file, and delete `tests/frontend/shared-page.js` when no file imports it. The tests then boot the app for each test, as upstream does. No app code, stored data or settings change. |
+| Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
+| Owner | Test and release integrator. |
+
+### `src/endpoints/settings.js` and `public/script.js` - settings saves without a change
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/settings.js`, `public/script.js`. |
+| Area | Settings: the version check that keeps a stale tab or device from overwriting newer settings. |
+| Divergence reason | SillyBunny refuses a settings save from a page that loaded before another page saved, so that a stale tab or device cannot overwrite newer settings. Upstream has no such check, and every boot saves the settings without a change, so the check refused saves and showed the conflict prompt without a real conflict. |
+| Target seam | `isUnchangedSettingsSave()` in `src/settings-version.js` (server) and `createSettingsSync()` in `public/scripts/sillybunny-settings-sync.js` (page). |
+| Adapter shape | `POST /api/settings/save` answers a save whose content equals the stored settings, apart from `_version`, with `{ result: 'ok', version: <stored>, unchanged: true }` before the version check: no write, no autosave backup, no new version. `saveSettingsInner()` accepts such an answer when its version is not lower than the one it sent; every other answer still needs a higher version. `prepareSettingsSave()`, which the Conversation REST API shares, is unchanged. `public/script.js` also remembers the key-sorted settings text that `getSettings()` loaded and that each confirmed save sent, without `_version`, and `saveSettingsInner()` sends no request when the payload equals it; it still sets `settings` and emits `SETTINGS_UPDATED`. Adapter lines: the import, `const settingsSync = createSettingsSync()`, one `remember()` after the load, the check before the request, and one `remember()` after a confirmed save. |
+| Protecting tests | `tests/settings-version-guard.test.js` (equal and changed content), `tests/settings-save-unchanged.test.js` (route: no write and the same version, a stale page with the stored settings, a stale page with a change still refused), `tests/openai-custom-endpoint-credentials.test.js` (client: same version, newer version, older version refused; no request when nothing changed; a request after each change; nothing remembered from a failed or refused save), `tests/sillybunny-settings-sync.test.js` (key order, nested values, array order, one state per page). |
+| Validation | `npm run lint` in the root and in `tests/`, the protecting tests, `tests/sillybunny-conversation-api.test.js` and `tests/chat-integrity-rotation.test.js`. In Chromium against a Bun server: a second and third boot posted exactly the stored settings (0 differing paths); 8 pages booting at once got 8 `unchanged` answers and no prompt with the server change alone, and sent no save at all with the page change (`staging`: 7 of 8 got 409 and the prompt); a real change in one tab still gave an older tab 409 and the prompt; a page that booted just before another tab saved a real change sent no save and got no prompt. `npm run check:frontend-budgets`; boots with `bun server.js` and `node server.js`. |
+| Rollback path | Revert the `SillyBunny:` hunks in `src/endpoints/settings.js` and `public/script.js`, and delete `public/scripts/sillybunny-settings-sync.js` and `isUnchangedSettingsSave()`. Every boot then saves and raises the settings version again, and other open tabs and devices show the conflict prompt at their next save. No stored data or settings format changes. |
+| Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
+| Owner | Server and data compatibility integrator. |
+
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |

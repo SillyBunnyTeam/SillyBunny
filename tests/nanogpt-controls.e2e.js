@@ -5,7 +5,6 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { keepSavesInPage } from './helpers/saves-in-page.js';
 import { keepWelcomeClosed } from './helpers/welcome-dialog.js';
 
-test.describe.configure({ mode: 'default' });
 test.use({ serviceWorkers: 'block' });
 
 const BILLING_WARNING = 'Using allowed and/or ignored providers forces PAYG and adds a 5% markup.';
