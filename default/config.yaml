@@ -191,8 +191,9 @@ logging:
   minLogLevel: 1
 # -- RATE LIMITING CONFIGURATION --
 rateLimiting:
-  # Use any of the enabled headers in the `forwardedHeaders` section to identify the client IP for rate limiting.
-  # If disabled, only the socket IP will be used, which may not work correctly if you are behind a reverse proxy.
+  # Use the client IP from the headers enabled in the `forwardedHeaders` section for rate limiting.
+  # The headers count only on requests from an IP in `whitelist`, such as your reverse proxy, and only when they all name the same IP.
+  # Otherwise, or if disabled, the socket IP is used, so all clients behind a reverse proxy share one limit.
   preferRealIpHeader: false
   # Set the maximum number of allowed failed basic authentication attempts before rate limiting is applied. Set to 0 to disable rate limiting for basic auth.
   basicAuthMaxAttempts: 5
@@ -202,12 +203,13 @@ rateLimiting:
   accountsRecoverMaxAttempts: 5
   # Set the maximum number of allowed failed account reset attempts before rate limiting is applied. Set to 0 to disable rate limiting for account resets.
   accountsResetMaxAttempts: 5
-# Set to true to enable support for real IPs in certain request headers for features like IP whitelisting, rate limiting and access logging.
-# Only change if you are sure that you use a correctly configured reverse proxy, otherwise this may lead to IP spoofing.
+# Set to true to read real client IPs from these request headers for features like IP whitelisting, rate limiting and access logging.
+# A client cannot use them to get past the whitelist: with `enableForwardedWhitelist`, every enabled header must name an allowed IP.
+# Rate limiting and access logging use them only on requests from an IP in `whitelist`, such as your reverse proxy.
 forwardedHeaders:
   # X-Real-IP header (common with Nginx and Caddy)
   xRealIp: true
-  # X-Forwarded-For header (common with many proxies, but may contain multiple IPs - only the first one will be used)
+  # X-Forwarded-For header (common with many proxies). When it lists several IPs, the client IP is the last one that is not in `whitelist`.
   xForwardedFor: true
   # CF-Connecting-IP header (used by Cloudflare Tunnels)
   cfConnectingIp: false
