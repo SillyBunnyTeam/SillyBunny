@@ -1,6 +1,9 @@
-import { afterAll, beforeEach, describe, expect, test } from '@jest/globals';
+import { afterAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { MEMBER, OPEN_MEMBER, lastLoggedCode, readReply, startAccountServer } from './util/user-account-harness.js';
+
+// A completed account reset copies the default content again, which can pass the default Jest timeout on a busy machine.
+jest.setTimeout(30000);
 
 // The limiters keep their counts per client address in module state, which lives as long as this file.
 // Each test therefore acts as its own client address.
