@@ -15,6 +15,8 @@ const AUTOSAVE_DELAY_MS = 1000;
  * @param {{ firstRun?: boolean, autosave?: boolean|null }} [options] `autosave: null` leaves the key absent.
  */
 async function loadApp(page, { firstRun = false, autosave = true } = {}) {
+    // The tests move this clock through the autosave debounce instead of waiting it out. It runs at real speed otherwise.
+    await page.clock.install();
     const saves = [];
     const origin = new URL(test.info().project.use.baseURL ?? 'http://127.0.0.1:4444').origin;
     const readOnlyEndpoints = new Set([
@@ -102,7 +104,21 @@ async function nudgeTemperature(page, steps = 1) {
     return Number(await slider.inputValue());
 }
 
-const waitPastDebounce = page => page.waitForTimeout(AUTOSAVE_DELAY_MS + 700);
+// A write that the debounce starts reaches the route handler in real time, after the clock has moved.
+const WRITE_TAIL_MS = 300;
+
+/** Moves past the debounce of the last trusted edit, for checks that no save follows. */
+async function waitPastDebounce(page) {
+    await page.clock.runFor(AUTOSAVE_DELAY_MS + 700);
+    // eslint-disable-next-line playwright/no-wait-for-timeout -- A write that was not sent has no event to wait for.
+    await page.waitForTimeout(WRITE_TAIL_MS);
+}
+
+/** Moves through the debounce of the last trusted edit and waits for its save. */
+async function expectSaves(page, saves, count) {
+    await page.clock.runFor(AUTOSAVE_DELAY_MS);
+    await expect.poll(() => saves.length, { intervals: [25] }).toBe(count);
+}
 
 const presetMenuButton = panel => panel.locator('[data-sb-preset-row]:visible').getByRole('button', { name: 'Preset Menu', exact: true });
 
@@ -137,9 +153,9 @@ test('edits in Sampling, Presets and Editor each save the owning preset once aft
     expect(saves).toHaveLength(0);
 
     const temperature = await nudgeTemperature(page, 3);
-    await page.waitForTimeout(AUTOSAVE_DELAY_MS - 400);
+    await page.clock.runFor(AUTOSAVE_DELAY_MS - 400);
     expect(saves, 'saves wait for the debounce').toHaveLength(0);
-    await expect.poll(() => saves.length).toBe(1);
+    await expectSaves(page, saves, 1);
     expect(saves[0]).toMatchObject({ apiId: 'openai', name: USER_PRESET });
     expect(saves[0].preset.temperature).toBeCloseTo(temperature);
 
@@ -147,7 +163,7 @@ test('edits in Sampling, Presets and Editor each save the owning preset once aft
     const maxTokens = presets.locator('#openai_max_tokens');
     await maxTokens.scrollIntoViewIfNeeded();
     await maxTokens.fill('777');
-    await expect.poll(() => saves.length).toBe(2);
+    await expectSaves(page, saves, 2);
     expect(saves[1]).toMatchObject({ apiId: 'openai', name: USER_PRESET, preset: { openai_max_tokens: 777 } });
 
     const editor = await openPanel(page, 'editor');
@@ -157,7 +173,7 @@ test('edits in Sampling, Presets and Editor each save the owning preset once aft
     await page.keyboard.press('End');
     await page.keyboard.type(' autosaved');
     await editor.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect.poll(() => saves.length).toBe(3);
+    await expectSaves(page, saves, 3);
     expect(saves[2]).toMatchObject({ apiId: 'openai', name: USER_PRESET });
     expect(saves[2].preset.impersonation_prompt).toMatch(/ autosaved$/);
 
@@ -177,7 +193,7 @@ test('Text Completions edits save the Text Completions preset', async ({ page })
     await slider.scrollIntoViewIfNeeded();
     await slider.focus();
     await page.keyboard.press('ArrowRight');
-    await expect.poll(() => saves.length).toBe(1);
+    await expectSaves(page, saves, 1);
     expect(saves[0]).toMatchObject({ apiId: 'textgenerationwebui', name: USER_PRESET });
     await waitPastDebounce(page);
     expect(saves.map(save => save.apiId)).toEqual(['textgenerationwebui']);
@@ -222,7 +238,7 @@ test('prompt editor drafts autosave only when committed through Save', async ({ 
     await waitPastDebounce(page);
     expect(saves).toHaveLength(0);
     await panel.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect.poll(() => saves.length).toBe(1);
+    await expectSaves(page, saves, 1);
     expect(saves[0]).toMatchObject({ apiId: 'openai', name: USER_PRESET });
     expect(saves[0].preset.prompts.find(prompt => prompt.identifier === 'main').content).toBe('Committed editor prompt');
     await waitPastDebounce(page);
@@ -233,14 +249,14 @@ test('editing a bundled preset forks it once and keeps saving the copy', async (
     const saves = await loadApp(page);
     await selectPreset(page, 'openai', 'Default');
     await nudgeTemperature(page);
-    await expect.poll(() => saves.length).toBe(1);
+    await expectSaves(page, saves, 1);
     expect(saves[0]).toMatchObject({ apiId: 'openai', name: 'Default (copy)' });
     await expect(page.locator('#toast-container')).toContainText('Bundled presets are read-only. Your changes were saved to "Default (copy)".');
     await expect(page.locator('#settings_preset_openai option:checked')).toHaveText('Default (copy)');
     expect(await page.evaluate(async () => (await import('/scripts/openai.js')).oai_settings.preset_settings_openai)).toBe('Default (copy)');
 
     const temperature = await nudgeTemperature(page);
-    await expect.poll(() => saves.length).toBe(2);
+    await expectSaves(page, saves, 2);
     expect(saves[1]).toMatchObject({ apiId: 'openai', name: 'Default (copy)' });
     expect(saves[1].preset.temperature).toBeCloseTo(temperature);
     expect(saves.filter(save => save.name === 'Default')).toHaveLength(0);
@@ -257,7 +273,8 @@ test('Update is disabled for bundled presets only and saves the same shape as au
     await expect(readOnlyUpdate).toHaveAttribute('aria-disabled', 'true');
     await expect(readOnlyUpdate).toHaveAttribute('title', 'Bundled presets are read-only. Use Save as to keep your changes.');
     await readOnlyUpdate.click({ force: true });
-    await page.waitForTimeout(500);
+    // eslint-disable-next-line playwright/no-wait-for-timeout -- A write that was not sent has no event to wait for.
+    await page.waitForTimeout(WRITE_TAIL_MS);
     expect(saves).toHaveLength(0);
     await expect(menu.getByRole('menuitem', { name: 'Save As…', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('Escape');
@@ -280,7 +297,7 @@ test('Update is disabled for bundled presets only and saves the same shape as au
 
     await page.evaluate(async () => { (await import('/scripts/power-user.js')).power_user.sb_preset_autosave = true; });
     await nudgeTemperature(page);
-    await expect.poll(() => saves.length).toBe(2);
+    await expectSaves(page, saves, 2);
     expect(Object.keys(saves[1].preset).sort()).toEqual(Object.keys(updateBody.preset).sort());
     expect(saves[1].name).toBe(updateBody.name);
 });

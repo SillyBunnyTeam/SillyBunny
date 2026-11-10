@@ -10,6 +10,12 @@ import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 // that server). Such a config resolves '@playwright/test' from its own folder, so set NODE_PATH=<repo>/tests/node_modules.
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
+// Silent windows without a pending settle move this clock instead of waiting in real time. It runs at real speed
+// otherwise. One test loads the app twice, so the clock is installed once per test, not in loadApp().
+test.beforeEach(async ({ page }) => {
+    await page.clock.install();
+});
+
 // Longer than the 750 ms quiet window plus the 3 s busy grace, so a late summary would have shown.
 const SILENT_WAIT_MS = 4000;
 const AUTOSAVE_DELAY_MS = 1000;
@@ -19,8 +25,8 @@ const MOBILE_VIEWPORT = Object.freeze({ width: 390, height: 844 });
 const SECOND_PRESET = 'SB Notice Second';
 // The prompt-editor guard can hold the preset step of a switch for the preset manager's 10 s wait.
 const GUARDED_SUMMARY_TIMEOUT_MS = 25000;
-// The Edit handler shows "Included settings list updated" right after its popup closes, so a toast would be added by then.
-const EDIT_TOAST_WAIT_MS = 1500;
+// A write that the debounce starts reaches the route handler in real time, after the clock has moved.
+const WRITE_TAIL_MS = 300;
 // Longer than the 750 ms quiet window, so a report that does not wait for the Regex apply closes before the save returns.
 const REGEX_SAVE_DELAY_MS = 1800;
 
@@ -251,24 +257,6 @@ async function startFrom(page, name) {
 }
 
 /**
- * Records every attribute and child list write under an element for a while (bunny-preset-tools-idle-writes.e2e.js).
- * @param {import('@playwright/test').Page} page
- * @param {string} selector Element to watch
- * @param {number} ms How long to watch
- * @returns {Promise<string[]>} One line per mutation record
- */
-function recordMutations(page, selector, ms) {
-    return page.evaluate(async ({ selector, ms }) => {
-        const records = [];
-        const observer = new MutationObserver(list => records.push(...list));
-        observer.observe(document.querySelector(selector), { attributes: true, childList: true, subtree: true });
-        await new Promise(resolve => setTimeout(resolve, ms));
-        observer.disconnect();
-        return records.map(record => `${record.type} ${record.attributeName ?? ''} ${record.target.id || record.target.className}`.trim());
-    }, { selector, ms });
-}
-
-/**
  * Starts recording every attribute and child list write under some elements, until `stopRecordingMutations`.
  * @param {import('@playwright/test').Page} page
  * @param {string[]} selectors Elements to watch
@@ -286,7 +274,7 @@ async function startRecordingMutations(page, selectors) {
 /**
  * Stops the recording `startRecordingMutations` started.
  * @param {import('@playwright/test').Page} page
- * @returns {Promise<string[]>} One line per mutation record, in the format of `recordMutations`
+ * @returns {Promise<string[]>} One line per mutation record: its type, the attribute name and the target
  */
 function stopRecordingMutations(page) {
     return page.evaluate(() => {
@@ -429,7 +417,9 @@ test('a picker switch shows one summary toast and saves no preset', async ({ pag
     await expect(summary.locator('li')).toContainText(['Chat Completion Presets', 'Reasoning Effort']);
     await expect(summary.locator('li', { hasText: 'Chat Completion Presets' })).toHaveText(`Chat Completion Presets: Default → ${SECOND_PRESET}`);
     await expect(summary.locator('li', { hasText: 'Reasoning Effort' })).toHaveText('Reasoning Effort: High → Low');
-    await sleep(page, AUTOSAVE_DELAY_MS + 700);
+    await page.clock.runFor(AUTOSAVE_DELAY_MS + 700);
+    // eslint-disable-next-line playwright/no-wait-for-timeout -- A write that was not sent has no event to wait for.
+    await page.waitForTimeout(WRITE_TAIL_MS);
     expect(saves).toHaveLength(0);
 });
 
@@ -460,12 +450,12 @@ test('the mobile chat-tools picker reports', async ({ page }) => {
 test('/profile is silent and quiet=false reports', async ({ page }) => {
     test.slow(); // Two switches and a 4 s silent window.
     await loadApp(page);
-    await runProfileCommand(page, { await: 'true' }, 'CC_B');
+    await runProfileCommand(page, { await: 'true', timeout: '0' }, 'CC_B');
     await expect.poll(() => page.evaluate(() => window.SillyTavern.getContext().extensionSettings.connectionManager.selectedProfile)).toBe(CC_B.id);
-    await sleep(page, SILENT_WAIT_MS);
+    await page.clock.runFor(SILENT_WAIT_MS);
     await expect(summaryOf(page)).toHaveCount(0);
 
-    await runProfileCommand(page, { await: 'true', quiet: 'false' }, 'CC_A');
+    await runProfileCommand(page, { await: 'true', quiet: 'false', timeout: '0' }, 'CC_A');
     await expectSummaryFor(page, 'CC_A');
     await expect(summaryOf(page).locator('li')).toContainText(['Reasoning Effort: Low → High', 'Verbosity: High → Low']);
 });
@@ -520,7 +510,9 @@ test('the Connections tab writes nothing while idle', async ({ page }) => {
     await selectProfile(page, 'CC_A');
     await expectSummaryFor(page, 'CC_A');
     await expect(page.locator('.sb-connections-profile')).toHaveCount(1);
-    expect(await recordMutations(page, '.sb-connections-profile', 3000)).toEqual([]);
+    await startRecordingMutations(page, ['.sb-connections-profile']);
+    await page.clock.runFor(3000);
+    expect(await stopRecordingMutations(page)).toEqual([]);
 });
 
 test('View opens a dialog with unique labels and no TC rows on a CC profile', async ({ page }) => {
@@ -570,7 +562,7 @@ test('content reloaded shows with autosave on and off', async ({ page }) => {
             await page.keyboard.press('End');
             await page.keyboard.type(' edited');
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/power-user.js')).power_user.reasoning.prefix)).toMatch(/ edited$/);
-            await runProfileCommand(page, { await: 'true', quiet: 'false' }, 'CC_A');
+            await runProfileCommand(page, { await: 'true', quiet: 'false', timeout: '0' }, 'CC_A');
             await expectSummaryFor(page, 'CC_A');
             const line = summaryOf(page).locator('li', { hasText: 'Reasoning Template' });
             await expect(line).toHaveCount(1);
@@ -594,7 +586,7 @@ test('rapid A then B shows one toast for B', async ({ page }) => {
     const summary = summaryOf(page);
     await expect(summary.locator('li', { hasText: 'Reasoning Effort' })).toHaveText('Reasoning Effort: None → Low');
     await expect(summary.locator('li', { hasText: 'Verbosity' })).toHaveText('Verbosity: Auto → High');
-    await sleep(page, SILENT_WAIT_MS);
+    await page.clock.runFor(SILENT_WAIT_MS);
     await expect(summary).toHaveCount(1);
     await expect(summary.locator('.toast-title')).toHaveText('CC_B');
     expect(await readSummaryTitles(page)).toEqual(['CC_B']);
@@ -685,9 +677,14 @@ test('legacy exclude entries survive View and Edit', async ({ page }) => {
     const edit = page.locator('dialog[open]', { has: page.locator('input[name="exclude"]') });
     await expect(edit).toBeVisible();
     await recordToastTexts(page);
+    // The handler shows "Included settings list updated" before it saves and announces the update.
+    await page.evaluate(() => {
+        const { eventSource, eventTypes } = window.SillyTavern.getContext();
+        window.sbProfileUpdated = new Promise(resolve => eventSource.once(eventTypes.CONNECTION_PROFILE_UPDATED, resolve));
+    });
     await edit.locator('.popup-button-ok', { hasText: /^Save$/ }).click();
     await expect(page.locator('dialog[open]')).toHaveCount(0);
-    await sleep(page, EDIT_TOAST_WAIT_MS);
+    await page.evaluate(() => window.sbProfileUpdated);
     expect((await readToastTexts(page)).filter(text => text.includes('Included settings list updated'))).toEqual([]);
     const exclude = await page.evaluate(id => window.SillyTavern.getContext().extensionSettings.connectionManager.profiles.find(item => item.id === id).exclude, CC_LEGACY.id);
     expect(exclude).toEqual(CC_LEGACY.exclude);
