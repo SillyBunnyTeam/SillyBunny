@@ -308,6 +308,14 @@ This is the largest class by a wide margin.
 - **Open:** `SlashCommandExecutionError.hint` slices its source as the parser error did, so an execution error on a line that another line follows shows the line without its last character (`/let x 1 | /let x 2` followed by a new line shows `/let x `).
 - **Fixes:** `15b28ab1b` (nested block comments), `cebf47278` (`/let` with an empty `key=`), `627eb8cc8` (split argument error without text), `aa6f61ce1` (escaped first split value), `b420e832d` (`/parser-flag` without a name), `996ce24cf` (quote flags for closures), `f3e74ca1d` (quoted split-count rest), `87bd300e0` (closure in a joined rest), `cfc4fcf73` (macro positions in quoted values), `5e17bdc22` (unclosed quote in lenient parsing), `039e44a8e` (unknown command position), `643ad824a` (error hint line).
 
+### World Info scanning
+
+- **Breaks:** a lorebook entry activates when its keys and settings say it should not, stays off when they say it should activate, or activates and never reaches the prompt.
+- **Files:** `public/scripts/world-info.js` (upstream), `public/scripts/world-info-scan-core.js`, `public/scripts/world-info-scan-chat.js`, `public/scripts/world-info-character-book.js`.
+- **Tests:** `tests/world-info-scan-core.test.js`, `tests/world-info-scan-chat.test.js`, `tests/world-info-scan-target.test.js`, `tests/world-info-character-book.test.js`, `tests/world-info-activation.test.js` (the activation rules in `tests/util/world-info-cases.js`), `tests/world-info-harness.test.js` (the harness stops with the name of a declaration that `world-info.js` renames or removes, and its constants match the file), `tests/frontend/WorldInfoActivation.e2e.js`.
+- **Limit:** the Jest suites run `checkWorldInfo()` and its helpers cut out of `world-info.js` by `tests/util/world-info-harness.js`, with one token per word and settings that each test sets. `tests/frontend/WorldInfoActivation.e2e.js` runs seven rows of the table through the real module, tokenizer and macro engine.
+- **Fixes:** #393 (legacy string positions activated but never reached the prompt), `c11467f9b` and `612ea61d6` (scanning and serialization of lorebook entries).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
