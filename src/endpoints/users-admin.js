@@ -14,6 +14,7 @@ import {
     getPasswordHash,
     getUserDirectories,
     ensurePublicDirectoriesExist,
+    isUserRootInsideDataRoot,
 } from '../users.js';
 import { DEFAULT_USER } from '../constants.js';
 
@@ -65,7 +66,8 @@ router.post('/get', requireAdminMiddleware, async (_request, response) => {
 
 router.post('/disable', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Disable user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -94,7 +96,8 @@ router.post('/disable', requireAdminMiddleware, async (request, response) => {
 
 router.post('/enable', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Enable user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -118,7 +121,8 @@ router.post('/enable', requireAdminMiddleware, async (request, response) => {
 
 router.post('/promote', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Promote user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -142,7 +146,8 @@ router.post('/promote', requireAdminMiddleware, async (request, response) => {
 
 router.post('/demote', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Demote user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -171,7 +176,8 @@ router.post('/demote', requireAdminMiddleware, async (request, response) => {
 
 router.post('/create', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle || !request.body.name) {
+        // SillyBunny: slugify() turns any value into text, and getPasswordHash() throws on a value that is not a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle || !request.body.name || typeof (request.body.password ?? '') !== 'string') {
             console.warn('Create user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -218,7 +224,8 @@ router.post('/create', requireAdminMiddleware, async (request, response) => {
 
 router.post('/delete', requireAdminMiddleware, async (request, response) => {
     try {
-        if (!request.body.handle) {
+        // SillyBunny: toKey() reads an array as the handle in it, so a handle must be a string.
+        if (typeof request.body.handle !== 'string' || !request.body.handle) {
             console.warn('Delete user failed: Missing required fields');
             return response.status(400).json({ error: 'Missing required fields' });
         }
@@ -231,6 +238,18 @@ router.post('/delete', requireAdminMiddleware, async (request, response) => {
         if (request.body.handle === DEFAULT_USER.handle) {
             console.warn('Delete user failed: Cannot delete default user');
             return response.status(400).json({ error: 'Sorry, but the default user cannot be deleted. It is required as a fallback.' });
+        }
+
+        // SillyBunny: a purge removes the folder that the handle names, so the handle must belong to an account whose folder is directly inside the data root.
+        const user = await storage.getItem(toKey(request.body.handle));
+        if (!user) {
+            console.error('Delete user failed: User not found');
+            return response.status(404).json({ error: 'User not found' });
+        }
+
+        if (request.body.purge && !isUserRootInsideDataRoot(request.body.handle)) {
+            console.error('Delete user failed: Invalid handle');
+            return response.status(400).json({ error: 'Invalid handle' });
         }
 
         await storage.removeItem(toKey(request.body.handle));
