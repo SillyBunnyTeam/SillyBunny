@@ -190,11 +190,12 @@ for (const { name, options } of VIEWPORTS) {
             const box = await page.evaluate(() => {
                 const mascot = document.querySelector('.sb-boot-mascot').getBoundingClientRect();
                 const holder = document.querySelector('.sb-boot-loop');
-                return { mascot: [mascot.left, mascot.top, mascot.width, mascot.height], holder: [holder.getBoundingClientRect().left, holder.getBoundingClientRect().top, holder.getBoundingClientRect().width, holder.getBoundingClientRect().height], overflow: getComputedStyle(holder).overflow };
+                return { mascot: [mascot.left, mascot.top, mascot.width, mascot.height], holder: [holder.getBoundingClientRect().left, holder.getBoundingClientRect().top, holder.getBoundingClientRect().width, holder.getBoundingClientRect().height], overflow: getComputedStyle(holder).overflow, clipPath: getComputedStyle(holder).clipPath };
             });
 
             expect(box.holder).toEqual(box.mascot);
-            expect(box.overflow).toBe('hidden');
+            expect(box.clipPath, 'the box clips with an outset, which keeps the edge pixels of the picture at a fractional scale').toBe('inset(-1px)');
+            expect(box.overflow, 'an overflow clip is rounded to a device pixel and drops the first row or column of the picture').toBe('visible');
         });
 
         test('draws the effects on a canvas as big as the picture, so none is cut off by the box of its figure', async ({ page }) => {

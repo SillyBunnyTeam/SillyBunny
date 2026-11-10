@@ -163,7 +163,7 @@ const pictureBox = page => page.evaluate(() => {
 });
 
 test.describe('the first frame on the screen', () => {
-    for (const scale of [1, 1.5, 2, 3]) {
+    for (const scale of [1, 1.1, 1.25, 1.5, 1.75, 2, 3]) {
         for (const variant of VARIANTS) {
             test(`${variant} looks like its still at scale ${scale}`, async ({}, testInfo) => {
                 // The still, under Reduced Motion, which asks for no loop.

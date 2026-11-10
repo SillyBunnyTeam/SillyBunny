@@ -47,7 +47,7 @@
         tewi: 'splash-tewi--anim.json',
         both: 'splash-both--anim.json',
     };
-    var LOOP_SCRIPT_VERSION = '20261105a';
+    var LOOP_SCRIPT_VERSION = '20261110a';
     // The longest that the start of a loop waits for the main thread to be idle, in milliseconds.
     var LOOP_IDLE_LIMIT_MS = 2000;
 

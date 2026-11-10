@@ -608,7 +608,7 @@
         }
 
         // The pictures go into a box that the still goes into as well, so the box has the size and the place of the still
-        // at every step and nothing around it moves. Its overflow keeps the motion inside the picture.
+        // at every step and nothing around it moves. Its clip keeps the motion inside the picture.
         function install(built) {
             wrapper = document.createElement('span');
             wrapper.className = 'sb-boot-loop';

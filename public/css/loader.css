@@ -50,13 +50,17 @@
     image-rendering: auto;
 }
 
-/* The loop of the splash plays in a box that the mascot is moved into, so the box has the size and the place of the
-   mascot at every step and the pictures lie over it. The overflow keeps the motion inside the picture. */
+/* SillyBunny: The loop of the splash plays in a box that the mascot is moved into, so the box has the size and the place
+   of the mascot at every step and the pictures lie over it. The clip keeps the motion inside the picture. It is a
+   clip-path that reaches one CSS pixel past the box and not overflow: hidden, because an overflow clip is rounded to
+   whole device pixels, and at a fractional scale WebKit rounds away the first row or column of the picture. Rounding
+   moves an edge by less than one device pixel, which is at most one CSS pixel at a scale of 1 and above. The pictures
+   and the effects are no larger than the box, so the outset shows nothing that the box would hide. */
 .sb-boot-loop {
     position: relative;
     display: block;
     flex: none;
-    overflow: hidden;
+    clip-path: inset(-1px);
 }
 
 .sb-boot-loop-layer,
