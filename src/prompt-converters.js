@@ -416,7 +416,7 @@ export function convertCohereMessages(messages, names) {
     }
 
     messages.forEach((msg, index) => {
-        // Tool calls require an assistent primer
+        // Tool calls require an assistant primer
         if (Array.isArray(msg.tool_calls)) {
             if (index > 0 && messages[index - 1].role === 'assistant') {
                 msg.content = messages[index - 1].content;
@@ -1316,6 +1316,10 @@ export function calculateGoogleBudgetTokens(maxTokens, reasoningEffort, model) {
         // These models have no minimal thinking level, so min falls back to their lowest level.
         if (reasoningEffort === REASONING_EFFORT.min && /gemini-3\.[78]-flash|gemini-4/.test(model)) {
             return REASONING_EFFORT.low;
+        }
+        // SillyBunny: Gemini 4 documents no thinking level above high, so the rungs above it send high.
+        if ([REASONING_EFFORT.xhigh, REASONING_EFFORT.max].includes(reasoningEffort) && /gemini-4/.test(model)) {
+            return REASONING_EFFORT.high;
         }
         return toWireReasoningEffort(reasoningEffort);
     }
