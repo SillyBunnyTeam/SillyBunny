@@ -233,12 +233,15 @@ function runCommand(value, args = {}) {
     return command.callback(args, value);
 }
 
-function getDropdown() {
-    const options = dom.select.children.flatMap(child => child instanceof FakeOption ? [child] : child.children);
+/**
+ * @param {FakeSelect} [select] Text Completion or Chat Completion dropdown
+ */
+function getDropdown(select = dom.select) {
+    const options = select.children.flatMap(child => child instanceof FakeOption ? [child] : child.children);
     return {
         labels: options.map(option => option.text),
         values: options.map(option => option.value),
-        value: dom.select.value,
+        value: select.value,
         hint: dom.hintShown ? dom.hint : '',
     };
 }
@@ -271,11 +274,11 @@ beforeEach(() => {
     servers = {
         [SERVER_URL]: createServer(modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] })),
     };
-    dom = { select: new FakeSelect('select'), hint: '', hintShown: false, onChange: null };
+    dom = { select: new FakeSelect('select'), chatSelect: new FakeSelect('select'), hint: '', hintShown: false, onChange: null };
     globalThis.HTMLSelectElement = FakeSelect;
     globalThis.Option = FakeOption;
     globalThis.document = {
-        getElementById: id => (id === 'koboldcpp_model' ? dom.select : null),
+        getElementById: id => ({ koboldcpp_model: dom.select, koboldcpp_chat_model: dom.chatSelect })[id] ?? null,
         createElement: tagName => new FakeElement(tagName),
     };
     globalThis.$ = fakeJquery;
@@ -465,6 +468,113 @@ describe('end of the restart wait', () => {
         expect(server.polls).toBe(1);
         expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
         expect(script.resultCheckStatus).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+    });
+});
+
+describe('model switch in Chat Completion', () => {
+    /**
+     * Imports the switcher with KoboldCpp selected as the Chat Completion source.
+     * @param {{ onlineStatus?: string }} [options] Values that script.js exports
+     */
+    function loadChatSwitcher(options = {}) {
+        oaiSettings.chat_completion_source = 'koboldcpp';
+        oaiSettings.koboldcpp_url = SERVER_URL;
+        return loadSwitcher({ mainApi: 'openai', ...options });
+    }
+
+    test('reconnects with the Chat Completion status check after the restart', async () => {
+        const server = servers[SERVER_URL];
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
+        server.uptimes = [NEW_WORKER];
+        await loadChatSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('beta.gguf');
+
+        expect(script.getStatusOpen).toHaveBeenCalledTimes(1);
+        expect(script.getStatusTextgen).not.toHaveBeenCalled();
+        expect(getDropdown(dom.chatSelect).value).toBe('beta.gguf');
+    });
+
+    test('the Cancel button stops the wait and resets the connection status itself', async () => {
+        const server = servers[SERVER_URL];
+        server.onPoll = () => statusCheck.abort();
+        await loadChatSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(1);
+        expect(script.startStatusLoading).toHaveBeenCalledTimes(1);
+        expect(script.stopStatusLoading).not.toHaveBeenCalled();
+        expect(script.resultCheckStatus).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+        expect(getDropdown(dom.chatSelect).labels).toEqual(['-- Connect to the API --']);
+    });
+
+    test('a change of the Chat Completion source stops the wait and enables Connect again', async () => {
+        const server = servers[SERVER_URL];
+        server.onPoll = () => {
+            statusCheck.abort();
+            oaiSettings.chat_completion_source = 'openrouter';
+        };
+        await loadChatSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(1);
+        expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
+        expect(script.resultCheckStatus).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+    });
+
+    test('a KoboldCpp URL typed during the wait stops it, enables Connect and clears the list', async () => {
+        const server = servers[SERVER_URL];
+        server.onPoll = () => {
+            oaiSettings.koboldcpp_url = NEW_SERVER_URL;
+        };
+        await loadChatSwitcher({ onlineStatus: 'no_connection' });
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+        await settle();
+
+        expect(server.polls).toBe(1);
+        expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+        expect(getDropdown(dom.chatSelect).labels).toEqual(['-- Connect to the API --']);
+    });
+
+    test('a status check for a new KoboldCpp URL stops the wait, which then lists the new server', async () => {
+        const server = servers[SERVER_URL];
+        servers[NEW_SERVER_URL] = createServer(modelsAnswer(['gamma.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/gamma', loadedFiles: ['gamma.gguf'] }));
+        let switcher;
+        server.onPoll = () => {
+            // A Chat Completion status check aborts the one before it, and it can finish before the wait sees the change.
+            oaiSettings.koboldcpp_url = NEW_SERVER_URL;
+            statusCheck.abort();
+            void switcher.refreshKoboldCppModels('chat');
+        };
+        switcher = await loadChatSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+        await settle();
+
+        expect(server.polls).toBe(1);
+        expect(script.stopStatusLoading).not.toHaveBeenCalled();
+        expect(getDropdown(dom.chatSelect)).toMatchObject({ values: ['gamma.gguf', ...ACTIONS], value: 'gamma.gguf' });
+    });
+
+    test('stopping the script stops the wait and enables Connect again', async () => {
+        const server = servers[SERVER_URL];
+        const scriptAbort = { signal: { aborted: false } };
+        server.onPoll = () => {
+            scriptAbort.signal.aborted = true;
+        };
+        await loadChatSwitcher();
+
+        await expect(runCommand('beta.gguf', { _abortController: scriptAbort })).resolves.toBe('');
+
+        expect(server.polls).toBe(1);
+        expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
         expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
     });
 });
