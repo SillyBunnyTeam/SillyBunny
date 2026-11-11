@@ -18,6 +18,15 @@ class FakeElement {
         this.dataset = {};
         this.style = {};
         this.classList = { add: () => {}, toggle: () => {}, contains: () => false };
+        this.attributes = {};
+    }
+
+    setAttribute(name, value) {
+        this.attributes[name] = String(value);
+    }
+
+    getAttribute(name) {
+        return this.attributes[name] ?? null;
     }
 
     append(...children) {
@@ -55,6 +64,7 @@ let dom;
 let toasts;
 let command;
 let popupResult;
+let popupContent;
 
 /**
  * @param {string[]} names Option strings in the order the server sorts them
@@ -173,6 +183,10 @@ async function loadSwitcher({ mainApi = 'textgenerationwebui', onlineStatus = 'k
     await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
         POPUP_TYPE: { TEXT: 1 },
         Popup: class {
+            constructor(content) {
+                popupContent = content;
+            }
+
             async show() {
                 return popupResult;
             }
@@ -249,6 +263,7 @@ beforeEach(() => {
     settings = { type: 'koboldcpp', server_urls: { koboldcpp: SERVER_URL } };
     statusCheck = new AbortController();
     popupResult = null;
+    popupContent = null;
     command = null;
     script = {
         getStatusTextgen: jest.fn(async () => {}),
@@ -600,6 +615,19 @@ describe('/kcpp-model results', () => {
         await expect(runCommand('')).resolves.toBe('');
 
         expect(server.loads).toEqual(['beta.gguf']);
+    });
+
+    test('gives the picker search box, entries and loaded mark their accessible roles and names', async () => {
+        await loadSwitcher();
+
+        await runCommand('');
+
+        const search = popupContent.children.find(child => child.type === 'search');
+        const items = popupContent.children.filter(child => child.dataset.entry);
+        const [mark] = items.find(item => item.dataset.entry === 'alpha.gguf').children;
+        expect(search.getAttribute('aria-label')).toBe('Search...');
+        expect(items.map(item => item.getAttribute('role'))).toEqual(['button', 'button', 'button', 'button']);
+        expect(mark).toMatchObject({ tagName: 'i', title: 'Loaded', attributes: { role: 'img', 'aria-label': 'Loaded' } });
     });
 
     test('answers that KoboldCpp is still restarting while a switch waits', async () => {

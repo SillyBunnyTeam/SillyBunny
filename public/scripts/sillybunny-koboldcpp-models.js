@@ -466,6 +466,7 @@ async function pickEntry(state) {
     search.type = 'search';
     search.classList.add('text_pole');
     search.placeholder = t`Search...`;
+    search.setAttribute('aria-label', search.placeholder);
     content.append(heading, search);
 
     for (const [type, label] of getEntryGroups()) {
@@ -482,6 +483,7 @@ async function pickEntry(state) {
         for (const entry of entries) {
             const item = document.createElement('div');
             item.classList.add('menu_button', 'menu_button_icon', 'wide100p', 'justifyLeft');
+            item.setAttribute('role', 'button');
             item.tabIndex = 0;
             item.dataset.entry = entry.name;
             item.dataset.group = type;
@@ -489,6 +491,8 @@ async function pickEntry(state) {
                 const icon = document.createElement('i');
                 icon.classList.add('fa-solid', 'fa-circle-check', 'toggleEnabled');
                 icon.title = t`Loaded`;
+                icon.setAttribute('role', 'img');
+                icon.setAttribute('aria-label', icon.title);
                 item.append(icon);
             }
             const text = document.createElement('span');
