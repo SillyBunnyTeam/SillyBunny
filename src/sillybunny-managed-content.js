@@ -682,9 +682,13 @@ function mergeCardFiles(bundledFile, userFile) {
 /**
  * @param {object} options
  * @param {string} options.bundledDirectory Where the manifest and the bundled files are.
- * @param {{ root: string, characters: string, worlds: string, backups: string }} options.directories The user's data folders.
+ * @param {{ root: string, characters: string, worlds: string, backups: string, thumbnailsAvatar?: string, thumbnailsAvatarMobile?: string }} options.directories The user's data folders.
  * @param {() => Date} [options.now]
  * @param {(target: string) => void} [options.setPermissions] Called on every file written.
+ * @param {(filename: string) => void} [options.invalidateThumbnail] Removes the cached thumbnails of a card. It is
+ *   called after a card file is written, and at the start for a card whose thumbnails are older than the file. A
+ *   hook that throws is logged and changes nothing else. Without it, thumbnails are not touched; the thumbnail
+ *   module is not imported here because it reads the configuration when it loads.
  * @param {() => ManagedItem[]} [options.readItems] Where the items come from. Tests give items that the manifest
  *   check would refuse, to show that the paths are guarded again where they are built.
  */
@@ -694,6 +698,7 @@ export function createManagedContent({
     now = () => new Date(),
     setPermissions = () => {},
     readItems = () => readManifest(bundledDirectory).items,
+    invalidateThumbnail,
 }) {
     function loadItems() {
         try {
@@ -869,7 +874,51 @@ export function createManagedContent({
         const content = build(readBundled(item.filename), user.kind === 'file' ? user.buffer : null);
         const backup = backups && user.kind === 'file' ? backups.file(target, item.filename) : null;
         writeManaged(item, target, content);
+        if (item.type === ITEM_TYPES.CARD) {
+            dropThumbnails(item.filename);
+        }
         return backup;
+    }
+
+    /** The thumbnail route never checks a cached file against the card, so a card that was written must lose its own. */
+    function dropThumbnails(filename) {
+        try {
+            invalidateThumbnail?.(filename);
+        } catch (error) {
+            console.warn(`The cached thumbnails of managed content ${filename} could not be dropped`, error);
+        }
+    }
+
+    /**
+     * Drops the thumbnails that are older than the card file, which is how a card that an earlier version replaced
+     * still shows its old picture. The same comparison as the thumbnail module makes when it generates one.
+     * @param {ManagedItem[]} items
+     * @param {Set<string>} written The cards that were just written, whose thumbnails are already dropped.
+     */
+    function dropStaleThumbnails(items, written) {
+        if (!invalidateThumbnail) {
+            return;
+        }
+        for (const item of items) {
+            if (item.type !== ITEM_TYPES.CARD || written.has(item.filename)) {
+                continue;
+            }
+            try {
+                const card = fs.lstatSync(userPath(item));
+                const stale = card.isFile() && [directories.thumbnailsAvatar, directories.thumbnailsAvatarMobile].some((folder) => {
+                    try {
+                        return folder && card.mtimeMs > fs.statSync(path.join(folder, item.filename)).ctimeMs;
+                    } catch {
+                        return false;
+                    }
+                });
+                if (stale) {
+                    dropThumbnails(item.filename);
+                }
+            } catch {
+                // A card that is not there or not a plain file has no thumbnail worth dropping.
+            }
+        }
     }
 
     /**
@@ -1001,6 +1050,7 @@ export function createManagedContent({
                     console.warn(`Failed to update managed content ${item.filename}`, error);
                 }
             }
+            dropStaleThumbnails(items, new Set(updated));
             return updated;
         },
 

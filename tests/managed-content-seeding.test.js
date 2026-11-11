@@ -19,8 +19,13 @@ jest.unstable_mockModule('../src/util.js', () => ({
     setPermissionsSync: jest.fn(),
 }));
 
+jest.unstable_mockModule('../src/endpoints/thumbnails.js', () => ({
+    invalidateThumbnail: jest.fn(),
+}));
+
 /** @type {import('../src/endpoints/content-manager.js')} */
 let contentManager;
+let thumbnails;
 
 const REISEN = 'default_AssistantReisen.png';
 const LEXICON = 'SillyBunny Lexicon.json';
@@ -34,10 +39,12 @@ const temporaryRoots = [];
 
 beforeAll(async () => {
     contentManager = await import('../src/endpoints/content-manager.js');
+    thumbnails = await import('../src/endpoints/thumbnails.js');
 });
 
 afterEach(() => {
     jest.restoreAllMocks();
+    thumbnails.invalidateThumbnail.mockClear();
     for (const root of temporaryRoots.splice(0)) {
         fs.rmSync(root, { recursive: true, force: true });
     }
@@ -103,6 +110,36 @@ describe('seeding with managed content', () => {
         expect(fingerprintCard(fs.readFileSync(path.join(user.characters, REISEN)))).toBe(second.manifest.items[0].fingerprint);
         expect(fs.readFileSync(path.join(user.characters, SPRITES, 'joy.webp'))).toEqual(createSpriteFile(2));
         expect(fs.readFileSync(edited)).toEqual(createWorldFile([{ key: ['alpha'], content: 'My lore.' }]));
+    });
+
+    test('drops the cached thumbnails of a card it replaces, through the thumbnail module of the app, and of no other file', async () => {
+        const first = publish(1);
+        const second = publish(2, first.manifest);
+        const user = createUser();
+        await contentManager.seedContentForUser(first.index, user, [], { managedDirectory: first.directory });
+        expect(thumbnails.invalidateThumbnail).not.toHaveBeenCalled();
+
+        await contentManager.seedContentForUser(second.index, user, [], { managedDirectory: second.directory });
+
+        expect(thumbnails.invalidateThumbnail.mock.calls).toEqual([[user, 'avatar', REISEN]]);
+    });
+
+    test('drops the cached thumbnails of a card that is older than the card file, and of no card that is not', async () => {
+        const { directory, index } = publish(1);
+        const user = { ...createUser() };
+        user.thumbnailsAvatar = path.join(user.root, 'thumbnails', 'avatar');
+        user.thumbnailsAvatarMobile = path.join(user.thumbnailsAvatar, 'mobile');
+        fs.mkdirSync(user.thumbnailsAvatarMobile, { recursive: true });
+        await contentManager.seedContentForUser(index, user, [], { managedDirectory: directory });
+        fs.writeFileSync(path.join(user.thumbnailsAvatarMobile, REISEN), 'cached');
+        await contentManager.seedContentForUser(index, user, [], { managedDirectory: directory });
+        expect(thumbnails.invalidateThumbnail).not.toHaveBeenCalled();
+        const later = new Date(Date.now() + 60_000);
+        fs.utimesSync(path.join(user.characters, REISEN), later, later);
+
+        await contentManager.seedContentForUser(index, user, [], { managedDirectory: directory });
+
+        expect(thumbnails.invalidateThumbnail.mock.calls).toEqual([[user, 'avatar', REISEN]]);
     });
 
     test('does not bring back a card that the user deleted', async () => {

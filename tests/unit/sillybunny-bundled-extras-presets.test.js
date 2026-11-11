@@ -15,6 +15,8 @@ jest.unstable_mockModule('../../src/util.js', () => ({
     recoverFileWriteSync: jest.fn(),
     setPermissionsSync: jest.fn(),
 }));
+// content-manager loads the thumbnail module, which needs more of util.js than this mock gives.
+jest.unstable_mockModule('../../src/endpoints/thumbnails.js', () => ({ invalidateThumbnail: jest.fn() }));
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
 }));

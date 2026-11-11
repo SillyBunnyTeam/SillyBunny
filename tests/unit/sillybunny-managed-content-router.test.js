@@ -71,7 +71,14 @@ describe('the managed content routes', () => {
 
     function addUser(handle) {
         const root = path.join(tempRoot, handle);
-        const directories = { root, characters: path.join(root, 'characters'), worlds: path.join(root, 'worlds'), backups: path.join(root, 'backups') };
+        const directories = {
+            root,
+            characters: path.join(root, 'characters'),
+            worlds: path.join(root, 'worlds'),
+            backups: path.join(root, 'backups'),
+            thumbnailsAvatar: path.join(root, 'thumbnails', 'avatar'),
+            thumbnailsAvatarMobile: path.join(root, 'thumbnails', 'avatar', 'mobile'),
+        };
         Object.values(directories).forEach(directory => fs.mkdirSync(directory, { recursive: true }));
         users.set(handle, { profile: { handle }, directories });
         return directories;
@@ -470,6 +477,58 @@ describe('the managed content routes', () => {
 
             expect(result).toMatchObject({ status: 200, body: { backup: null } });
             expect(fs.readFileSync(path.join(directories.characters, REISEN))).toEqual(fs.readFileSync(path.join(bundled, REISEN)));
+        });
+
+        describe('the cached thumbnails of a card', () => {
+            const cacheThumbnails = (filename) => {
+                const files = [path.join(directories.thumbnailsAvatar, filename), path.join(directories.thumbnailsAvatarMobile, filename)];
+                files.forEach(file => fs.writeFileSync(file, 'cached'));
+                return files;
+            };
+            const exists = files => files.map(file => fs.existsSync(file));
+
+            test('are removed in both presets when an update writes the card, and only for that card', async () => {
+                editReisen();
+                const reisen = cacheThumbnails(REISEN);
+                const tewi = cacheThumbnails('default_AssistantTewi.png');
+
+                const result = await post('/apply', { filename: REISEN });
+
+                expect(result.status).toBe(200);
+                expect(exists(reisen)).toEqual([false, false]);
+                expect(exists(tewi)).toEqual([true, true]);
+            });
+
+            test('are removed when a restore writes the card', async () => {
+                fs.rmSync(path.join(directories.characters, REISEN));
+                const reisen = cacheThumbnails(REISEN);
+
+                const result = await post('/restore', { filename: REISEN });
+
+                expect(result.status).toBe(200);
+                expect(exists(reisen)).toEqual([false, false]);
+            });
+
+            test('stay when nothing is written', async () => {
+                const reisen = cacheThumbnails(REISEN);
+
+                const result = await post('/apply', { filename: REISEN });
+
+                expect(result.status).toBe(409);
+                expect(exists(reisen)).toEqual([true, true]);
+            });
+
+            test('do not fail an update that cannot remove them', async () => {
+                const warn = quiet();
+                editReisen();
+                fs.mkdirSync(path.join(directories.thumbnailsAvatar, REISEN));
+
+                const result = await post('/apply', { filename: REISEN });
+
+                expect(result.status).toBe(200);
+                expect(fs.readFileSync(path.join(directories.characters, REISEN))).toEqual(fs.readFileSync(path.join(bundled, REISEN)));
+                expect(warn).toHaveBeenCalledWith(expect.stringContaining(REISEN), expect.anything());
+            });
         });
 
         test('refuses a current item', async () => {

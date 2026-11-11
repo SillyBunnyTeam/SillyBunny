@@ -7,6 +7,7 @@ import { retryAfter } from '../express-common.js';
 import { serverDirectory } from '../server-directory.js';
 import { ManagedContentError, createManagedContent } from '../sillybunny-managed-content.js';
 import { setPermissionsSync } from '../util.js';
+import { invalidateThumbnail } from './thumbnails.js';
 
 const MAX_FILENAME_LENGTH = 255;
 const RATE_LIMIT = Object.freeze({ points: 20, durationSeconds: 60 });
@@ -71,7 +72,12 @@ function parseFilename(body) {
  */
 export function createManagedContentRouter({
     bundledDirectory = path.join(serverDirectory, 'default/content'),
-    createService = ({ bundledDirectory, directories }) => createManagedContent({ bundledDirectory, directories, setPermissions: setPermissionsSync }),
+    createService = ({ bundledDirectory, directories }) => createManagedContent({
+        bundledDirectory,
+        directories,
+        setPermissions: setPermissionsSync,
+        invalidateThumbnail: filename => invalidateThumbnail(directories, 'avatar', filename),
+    }),
     rateLimit = RATE_LIMIT,
 } = {}) {
     const limiter = new RateLimiterMemory({ points: rateLimit.points, duration: rateLimit.durationSeconds });

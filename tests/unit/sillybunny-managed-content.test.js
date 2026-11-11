@@ -536,8 +536,15 @@ function publish(...versions) {
 
 function createUser() {
     const root = makeDirectory('user');
-    const user = { root, characters: path.join(root, 'characters'), worlds: path.join(root, 'worlds'), backups: path.join(root, 'backups') };
-    for (const directory of [user.characters, user.worlds, user.backups]) {
+    const user = {
+        root,
+        characters: path.join(root, 'characters'),
+        worlds: path.join(root, 'worlds'),
+        backups: path.join(root, 'backups'),
+        thumbnailsAvatar: path.join(root, 'thumbnails', 'avatar'),
+        thumbnailsAvatarMobile: path.join(root, 'thumbnails', 'avatar', 'mobile'),
+    };
+    for (const directory of [user.characters, user.worlds, user.backups, user.thumbnailsAvatarMobile]) {
         fs.mkdirSync(directory, { recursive: true });
     }
     return user;
@@ -556,7 +563,7 @@ function logContent(user, ...names) {
 
 const FIXED_CLOCK = () => new Date('2026-11-02T10:20:30.456Z');
 
-function setup({ published = [1], installed = null, logged = [], setPermissions = undefined, now = FIXED_CLOCK, readItems = undefined } = {}) {
+function setup({ published = [1], installed = null, logged = [], setPermissions = undefined, now = FIXED_CLOCK, readItems = undefined, invalidateThumbnail = undefined } = {}) {
     const { directory, manifest } = publish(...published);
     const user = createUser();
     if (installed !== null) {
@@ -565,7 +572,7 @@ function setup({ published = [1], installed = null, logged = [], setPermissions 
     if (logged.length > 0) {
         logContent(user, ...logged);
     }
-    const managed = createManagedContent({ bundledDirectory: directory, directories: user, now, setPermissions, readItems });
+    const managed = createManagedContent({ bundledDirectory: directory, directories: user, now, setPermissions, readItems, invalidateThumbnail });
     return { managed, user, directory, manifest };
 }
 
@@ -1233,6 +1240,203 @@ describe('the paths managed content reads and writes', () => {
             const { managed } = arrange(escapedCard);
 
             expect(() => managed.stateSignature()).not.toThrow();
+        });
+    });
+});
+
+describe('the cached thumbnails of a managed card', () => {
+    const DAYS_AGO = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    /** The hook records the card file as it is on disk when it is called, so a call before the write shows. */
+    function arrange({ hook, ...options }) {
+        const calls = [];
+        let user;
+        const invalidateThumbnail = hook ?? jest.fn((filename) => { calls.push({ filename, card: readUserBytes(user, filename) }); });
+        const arranged = setup({ ...options, invalidateThumbnail });
+        user = arranged.user;
+        return { ...arranged, invalidateThumbnail, calls };
+    }
+
+    /** Caches a thumbnail of the card in both presets, as the thumbnail route does for the first request. */
+    function cacheThumbnails(user) {
+        const files = [path.join(user.thumbnailsAvatar, REISEN), path.join(user.thumbnailsAvatarMobile, REISEN)];
+        files.forEach(file => fs.writeFileSync(file, 'cached'));
+        return files;
+    }
+
+    const touchCard = (user, date) => fs.utimesSync(path.join(user.characters, REISEN), date, date);
+
+    describe('are dropped for each card file that is written', () => {
+        test('by an update, once, after the new card is in place', () => {
+            const { managed, calls } = arrange({ published: [1, 2], installed: bundleFiles(1) });
+
+            managed.apply(REISEN);
+
+            expect(calls).toEqual([{ filename: REISEN, card: bundleFiles(2)[REISEN] }]);
+        });
+
+        test('by an update of an edited card', () => {
+            const { managed, calls } = arrange({ published: [1, 2], installed: bundleFiles(1, { card: { description: 'Mine.' } }) });
+
+            managed.apply(REISEN);
+
+            expect(calls.map(call => call.filename)).toEqual([REISEN]);
+        });
+
+        test('by a restore, whether the card is edited or deleted', () => {
+            const edited = arrange({ installed: bundleFiles(1, { card: { description: 'Mine.' } }) });
+            const deleted = arrange({ logged: [REISEN] });
+
+            edited.managed.restore(REISEN);
+            deleted.managed.restore(REISEN);
+
+            expect(edited.calls).toEqual([{ filename: REISEN, card: bundleFiles(1)[REISEN] }]);
+            expect(deleted.calls).toEqual([{ filename: REISEN, card: bundleFiles(1)[REISEN] }]);
+        });
+
+        test('by the start, once for the card and for no world or sprite file', () => {
+            const { managed, calls } = arrange({ published: [1, 2], installed: bundleFiles(1) });
+
+            expect(managed.reconcile()).toEqual([REISEN, SPRITES, LEXICON]);
+
+            expect(calls).toEqual([{ filename: REISEN, card: bundleFiles(2)[REISEN] }]);
+        });
+
+        test('by no apply or restore of a world or of sprites', () => {
+            const updated = arrange({ published: [1, 2], installed: bundleFiles(1) });
+            const edited = arrange({ installed: { ...bundleFiles(1), [`${SPRITES}/sad.webp`]: createSpriteFile(55), [LEXICON]: createWorldFile([{ content: 'Mine.' }]) } });
+
+            updated.managed.apply(LEXICON);
+            updated.managed.apply(SPRITES);
+            edited.managed.restore(LEXICON);
+            edited.managed.restore(SPRITES);
+
+            expect(readUserBytes(updated.user, SPRITES, 'joy.webp')).toEqual(createSpriteFile(2));
+            expect(fs.readFileSync(path.join(edited.user.worlds, LEXICON))).toEqual(bundleFiles(1)[LEXICON]);
+            expect(updated.invalidateThumbnail).not.toHaveBeenCalled();
+            expect(edited.invalidateThumbnail).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('are left alone when nothing is written', () => {
+        test.each([
+            ['a start with every item current', { installed: bundleFiles(1) }],
+            ['a start with an edited card', { published: [1, 2], installed: bundleFiles(1, { card: { description: 'Mine.' } }) }],
+            ['a start with a deleted card', { logged: [REISEN] }],
+        ])('by %s', (_name, options) => {
+            const { managed, invalidateThumbnail } = arrange(options);
+
+            managed.reconcile();
+
+            expect(invalidateThumbnail).not.toHaveBeenCalled();
+        });
+
+        test('by an update that is refused, or whose backup cannot be made', () => {
+            const current = arrange({ installed: bundleFiles(1) });
+            const noBackup = arrange({ published: [1, 2], installed: bundleFiles(1, { card: { description: 'Mine.' } }) });
+            fs.rmSync(noBackup.user.backups, { recursive: true });
+            fs.writeFileSync(noBackup.user.backups, 'not a folder');
+
+            expect(() => current.managed.apply(REISEN)).toThrow(expect.objectContaining({ code: 'already_current' }));
+            expect(() => noBackup.managed.apply(REISEN)).toThrow(expect.objectContaining({ code: 'backup_failed' }));
+
+            expect(current.invalidateThumbnail).not.toHaveBeenCalled();
+            expect(noBackup.invalidateThumbnail).not.toHaveBeenCalled();
+        });
+    });
+
+    test('are dropped on a failing hook without failing or undoing the update, and the failure is logged', () => {
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const hook = jest.fn(() => { throw new Error('thumbnail folder is read-only'); });
+        const applied = arrange({ published: [1, 2], installed: bundleFiles(1), hook });
+        const reconciled = arrange({ published: [1, 2], installed: bundleFiles(1), hook });
+
+        expect(applied.managed.apply(REISEN)).toEqual({ backup: `default_AssistantReisen-${BACKUP_STAMP}.png` });
+        expect(reconciled.managed.reconcile()).toEqual([REISEN, SPRITES, LEXICON]);
+
+        expect(readUserBytes(applied.user, REISEN)).toEqual(bundleFiles(2)[REISEN]);
+        expect(readUserBytes(reconciled.user, REISEN)).toEqual(bundleFiles(2)[REISEN]);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(REISEN), expect.objectContaining({ message: 'thumbnail folder is read-only' }));
+    });
+
+    describe('that are older than the card file are dropped at the start', () => {
+        test('for a current card whose picture was replaced without a call to drop them', () => {
+            const { managed, user, calls } = arrange({ installed: bundleFiles(1) });
+            cacheThumbnails(user);
+            touchCard(user, new Date(Date.now() + 60_000));
+
+            expect(managed.reconcile()).toEqual([]);
+
+            expect(calls).toEqual([{ filename: REISEN, card: bundleFiles(1)[REISEN] }]);
+        });
+
+        test('for a card that has only a mobile thumbnail, which is the one that Home loads', () => {
+            const { managed, user, invalidateThumbnail } = arrange({ installed: bundleFiles(1) });
+            fs.writeFileSync(path.join(user.thumbnailsAvatarMobile, REISEN), 'cached');
+            touchCard(user, new Date(Date.now() + 60_000));
+
+            managed.reconcile();
+
+            expect(invalidateThumbnail).toHaveBeenCalledTimes(1);
+        });
+
+        test('for an edited card too, which is not replaced', () => {
+            const { managed, user, calls } = arrange({ published: [1, 2], installed: bundleFiles(1, { card: { description: 'Mine.' } }) });
+            cacheThumbnails(user);
+            touchCard(user, new Date(Date.now() + 60_000));
+
+            managed.reconcile();
+
+            expect(calls.map(call => call.filename)).toEqual([REISEN]);
+        });
+
+        test.each([
+            ['newer than the card file', user => { cacheThumbnails(user); touchCard(user, DAYS_AGO); }],
+            ['not there', () => {}],
+        ])('not when the thumbnails are %s', (_name, prepare) => {
+            const { managed, user, invalidateThumbnail } = arrange({ installed: bundleFiles(1) });
+            prepare(user);
+
+            managed.reconcile();
+
+            expect(invalidateThumbnail).not.toHaveBeenCalled();
+        });
+
+        test('once for a card that the start has just replaced, not twice', () => {
+            const { managed, user, calls } = arrange({ published: [1, 2], installed: bundleFiles(1) });
+            cacheThumbnails(user);
+            touchCard(user, new Date(Date.now() + 60_000));
+
+            managed.reconcile();
+
+            expect(calls).toHaveLength(1);
+        });
+
+        test('not for a card that is deleted or was never installed', () => {
+            const deleted = arrange({ logged: [REISEN] });
+            const notInstalled = arrange({});
+            cacheThumbnails(deleted.user);
+            cacheThumbnails(notInstalled.user);
+
+            deleted.managed.reconcile();
+            notInstalled.managed.reconcile();
+
+            expect(deleted.invalidateThumbnail).not.toHaveBeenCalled();
+            expect(notInstalled.invalidateThumbnail).not.toHaveBeenCalled();
+        });
+
+        test('not at all when no hook is given, and a failing hook does not stop the start', () => {
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            const plain = setup({ installed: bundleFiles(1) });
+            cacheThumbnails(plain.user);
+            touchCard(plain.user, new Date(Date.now() + 60_000));
+            const failing = arrange({ published: [1, 2], installed: bundleFiles(1), hook: jest.fn(() => { throw new Error('busy'); }) });
+            cacheThumbnails(failing.user);
+
+            expect(plain.managed.reconcile()).toEqual([]);
+            expect(failing.managed.reconcile()).toEqual([REISEN, SPRITES, LEXICON]);
+
+            expect(warn).toHaveBeenCalledWith(expect.stringContaining(REISEN), expect.objectContaining({ message: 'busy' }));
         });
     });
 });

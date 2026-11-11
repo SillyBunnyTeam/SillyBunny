@@ -14,8 +14,9 @@ import { write } from '../character-card-parser.js';
 import { serverDirectory } from '../server-directory.js';
 import { Jimp, JimpMime } from '../jimp.js';
 import { DEFAULT_AVATAR_PATH } from '../constants.js';
-// SillyBunny: bundled assistant cards, sprites and worlds that nobody edited are brought up to date in the per-user pass.
+// SillyBunny: bundled assistant cards, sprites and worlds that nobody edited are brought up to date in the per-user pass, and a replaced card loses its cached thumbnails.
 import { reconcileManagedContent } from '../sillybunny-managed-content.js';
+import { invalidateThumbnail } from './thumbnails.js';
 
 const contentDirectory = path.join(serverDirectory, 'default/content');
 const scaffoldDirectory = path.join(serverDirectory, 'default/scaffold');
@@ -752,8 +753,14 @@ export async function seedContentForUser(contentIndex, directories, forceCategor
     writeFileAtomicSync(contentLogPath, contentLog.join('\n'));
     reconcileManagedBundledQuickReplies(directories);
     reconcileManagedBundledThemes(directories);
-    // SillyBunny: managed content is reconciled per user; a content directory without a manifest manages nothing.
-    reconcileManagedContent({ bundledDirectory: managedDirectory, directories, setPermissions: setPermissionsSync });
+    // SillyBunny: managed content is reconciled per user; a content directory without a manifest manages nothing. A card
+    // it replaces loses its cached thumbnails, which the thumbnail route would otherwise keep serving.
+    reconcileManagedContent({
+        bundledDirectory: managedDirectory,
+        directories,
+        setPermissions: setPermissionsSync,
+        invalidateThumbnail: file => invalidateThumbnail(directories, 'avatar', file),
+    });
     const filteredContentIndex = contentIndex.filter(contentItem => {
         if (!isPresetContentType(contentItem.type)) {
             return true;

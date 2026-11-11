@@ -23,6 +23,9 @@ process.chdir(repoRoot);
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 
 const { router: charactersRouter } = await import('../src/endpoints/characters.js');
+const { publicRouter: thumbnailsRouter } = await import('../src/endpoints/thumbnails.js');
+const { createManagedContentRouter } = await import('../src/endpoints/sillybunny-managed-content.js');
+const { seedContentForUser } = await import('../src/endpoints/content-manager.js');
 
 const REISEN = 'default_AssistantReisen.png';
 const LEXICON = 'SillyBunny Lexicon.json';
@@ -96,6 +99,7 @@ describe('managed cards through the character routes of the app', () => {
     let server;
     let tempRoot;
     let managed;
+    let managedRouter;
 
     beforeAll(async () => {
         const app = express();
@@ -107,6 +111,8 @@ describe('managed cards through the character routes of the app', () => {
             next();
         });
         app.use('/api/characters', charactersRouter);
+        app.use('/thumbnail', thumbnailsRouter);
+        app.use('/api/sillybunny/managed-content', (request, response, next) => (managedRouter ?? next)(request, response, next));
         await new Promise((resolve) => {
             server = app.listen(0, '127.0.0.1', resolve);
         });
@@ -137,6 +143,7 @@ describe('managed cards through the character routes of the app', () => {
 
     afterEach(() => {
         jest.restoreAllMocks();
+        managedRouter = undefined;
         fs.rmSync(tempRoot, { recursive: true, force: true });
     });
 
@@ -285,6 +292,88 @@ describe('managed cards through the character routes of the app', () => {
             expect(readCard().data.extensions.world).toBe('');
             expect(readCard().data.character_book?.name).toBe('SillyBunny Lexicon');
             expect(cardStatus()).toBe('current');
+        });
+    });
+
+    describe('the thumbnail of a card that is replaced', () => {
+        const CARD_V1 = createCardFile({ seed: 1, card: createBundledCard({ character_version: '1' }) });
+        const CARD_V2 = createCardFile({ seed: 2, card: createBundledCard({ character_version: '2', first_mes: 'Hello again.' }) });
+        const cachedMobile = () => path.join(directories.thumbnailsAvatarMobile, REISEN);
+
+        /** Home asks for the small thumbnail of a card, and the route caches it on the first request. */
+        const requestThumbnail = async () => Buffer.from(await (await fetch(`${baseUrl}/thumbnail?type=avatar&file=${REISEN}&preset=mobile`)).arrayBuffer());
+        /** What the route makes from the card that is on disk now, with nothing cached. */
+        const requestFreshThumbnail = async () => {
+            fs.rmSync(cachedMobile(), { force: true });
+            return requestThumbnail();
+        };
+
+        /** The two releases of one card, with a different picture each: the user holds the first, the app ships the second. */
+        beforeEach(() => {
+            const releases = ['bundled-1', 'bundled'].map((name, index) => {
+                const directory = path.join(tempRoot, name);
+                fs.mkdirSync(directory, { recursive: true });
+                fs.writeFileSync(path.join(directory, REISEN), index === 0 ? CARD_V1 : CARD_V2);
+                return directory;
+            });
+            const first = buildManifest({ bundledDirectory: releases[0], entries: [{ filename: REISEN, type: 'character' }] });
+            const second = buildManifest({ bundledDirectory: releases[1], entries: [{ filename: REISEN, type: 'character' }], previous: first });
+            fs.writeFileSync(path.join(releases[1], MANIFEST_FILE_NAME), JSON.stringify(second));
+            fs.writeFileSync(path.join(directories.characters, REISEN), CARD_V1);
+            managedRouter = createManagedContentRouter({ bundledDirectory: releases[1] });
+        });
+
+        const start = () => seedContentForUser([], directories, [], { managedDirectory: path.join(tempRoot, 'bundled') });
+
+        test('is made again from the new picture after Update, and is not the one cached for the earlier card', async () => {
+            const before = await requestThumbnail();
+            expect(fs.existsSync(cachedMobile())).toBe(true);
+
+            const response = await postJson('/api/sillybunny/managed-content/apply', { filename: REISEN });
+
+            expect(response.status).toBe(200);
+            expect(fs.readFileSync(path.join(directories.characters, REISEN))).toEqual(CARD_V2);
+            const after = await requestThumbnail();
+            expect(after.equals(before)).toBe(false);
+            expect(after.equals(await requestFreshThumbnail())).toBe(true);
+        });
+
+        test('is made again from the new picture after the start replaced the card', async () => {
+            const before = await requestThumbnail();
+
+            await start();
+
+            expect(fs.readFileSync(path.join(directories.characters, REISEN))).toEqual(CARD_V2);
+            const after = await requestThumbnail();
+            expect(after.equals(before)).toBe(false);
+            expect(after.equals(await requestFreshThumbnail())).toBe(true);
+        });
+
+        test('is made again at the start for a card that an earlier version replaced without dropping it', async () => {
+            const before = await requestThumbnail();
+            fs.writeFileSync(path.join(directories.characters, REISEN), CARD_V2);
+            const later = new Date(Date.now() + 60_000);
+            fs.utimesSync(path.join(directories.characters, REISEN), later, later);
+            expect((await requestThumbnail()).equals(before)).toBe(true);
+
+            await start();
+
+            expect(fs.existsSync(cachedMobile())).toBe(false);
+            const after = await requestThumbnail();
+            expect(after.equals(before)).toBe(false);
+            expect(after.equals(await requestFreshThumbnail())).toBe(true);
+        });
+
+        test('is kept at the start when it is newer than the card file', async () => {
+            fs.writeFileSync(path.join(directories.characters, REISEN), CARD_V2);
+            const before = await requestThumbnail();
+            const cached = fs.statSync(cachedMobile());
+
+            await start();
+
+            expect(fs.existsSync(cachedMobile())).toBe(true);
+            expect(fs.statSync(cachedMobile()).ino).toBe(cached.ino);
+            expect((await requestThumbnail()).equals(before)).toBe(true);
         });
     });
 
