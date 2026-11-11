@@ -4,7 +4,7 @@ import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
 import { listConnectionProfiles, populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { isAbortLikeError } from './util/abort-error.js';
 import { CARD_FIELDS, createDraft, projectDescription, projectCardFields, getDraftTarget, setDraftTarget, acceptCandidate, reconcileSavedFields } from './sillybunny-character-creator/model.js';
-import { loadDraft, saveDraft, discardDraft } from './sillybunny-character-creator/storage.js';
+import { loadDraft, saveDraft, discardDraft, discardDraftIfSeen } from './sillybunny-character-creator/storage.js';
 import { CREATOR_RECIPES, getCreatorRecipe } from './sillybunny-character-creator/recipes.js';
 import { generateCreatorTarget } from './sillybunny-character-creator/generation.js';
 import { loadCreatorSource, createCreatorCard, saveCreatorChanges } from './sillybunny-character-creator/cards.js';
@@ -144,10 +144,11 @@ async function persistNow() {
     const owner = draft;
     const version = localVersion;
     const removeNewDraft = pendingNewDraftRemoval === owner;
+    if (version === storedVersion && !removeNewDraft) return true;
     try {
         await saveDraft(owner);
         if (removeNewDraft) {
-            await discardDraft(null);
+            await discardDraftIfSeen(null);
             pendingNewDraftRemoval = null;
         }
         if (draft === owner) {

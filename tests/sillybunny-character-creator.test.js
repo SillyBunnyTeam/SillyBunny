@@ -19,7 +19,7 @@ const database = {
 };
 await jest.unstable_mockModule('../public/lib.js', () => ({ localforage: { createInstance: () => database } }));
 await jest.unstable_mockModule('../public/scripts/user.js', () => ({ getCurrentUserHandle: () => userHandle }));
-const { loadDraft, saveDraft, discardDraft, flushDraftSaves } = await import('../public/scripts/sillybunny-character-creator/storage.js');
+const { loadDraft, saveDraft, discardDraft, discardDraftIfSeen, flushDraftSaves } = await import('../public/scripts/sillybunny-character-creator/storage.js');
 
 function stage(draft, target, value) {
     const candidate = { target, value, before: getDraftTarget(draft, target), inputRevision: draft.revision, runId: 1 };
@@ -31,6 +31,13 @@ function deferred() {
     let resolve;
     const promise = new Promise(done => { resolve = done; });
     return { promise, resolve };
+}
+
+async function openSecondTab() {
+    jest.resetModules();
+    await jest.unstable_mockModule('../public/lib.js', () => ({ localforage: { createInstance: () => database } }));
+    await jest.unstable_mockModule('../public/scripts/user.js', () => ({ getCurrentUserHandle: () => userHandle }));
+    return import('../public/scripts/sillybunny-character-creator/storage.js');
 }
 
 describe('Creator draft projections and review', () => {
@@ -333,5 +340,49 @@ describe('Creator account-scoped draft persistence', () => {
         release.resolve();
         await Promise.all([saving, discarding]);
         expect(await loadDraft(null)).toBeNull();
+    });
+
+    test('a second tab cannot overwrite a draft that another tab stored after it', async () => {
+        const key = JSON.stringify(['alice', null]);
+        const otherTab = await openSecondTab();
+        expect(await otherTab.loadDraft(null)).toBeNull();
+        const empty = createDraft();
+        empty.updatedAt = 1000;
+        await otherTab.saveDraft(empty);
+
+        const work = await loadDraft(null);
+        work.brief = 'Written in this tab';
+        work.updatedAt = 2000;
+        await saveDraft(work);
+
+        empty.updatedAt = 3000;
+        await expect(otherTab.saveDraft(empty)).rejects.toMatchObject({ rawDraft: expect.objectContaining({ brief: 'Written in this tab' }) });
+        expect(records.get(key).brief).toBe('Written in this tab');
+
+        const reloaded = await otherTab.loadDraft(null);
+        reloaded.brief = 'Continued in the other tab';
+        reloaded.updatedAt = 4000;
+        await otherTab.saveDraft(reloaded);
+        work.updatedAt = 5000;
+        await expect(saveDraft(work)).rejects.toMatchObject({ rawDraft: expect.objectContaining({ brief: 'Continued in the other tab' }) });
+        expect(records.get(key).brief).toBe('Continued in the other tab');
+    });
+
+    test('a tab removes the new-card slot after a create only while the slot holds its own draft', async () => {
+        const key = JSON.stringify(['alice', null]);
+        const otherTab = await openSecondTab();
+        const own = createDraft();
+        own.updatedAt = 1000;
+        await saveDraft(own);
+        await discardDraftIfSeen(null);
+        expect(records.has(key)).toBe(false);
+
+        await saveDraft(own);
+        const newer = await otherTab.loadDraft(null);
+        newer.brief = 'Started in the other tab';
+        newer.updatedAt = 2000;
+        await otherTab.saveDraft(newer);
+        await discardDraftIfSeen(null);
+        expect(records.get(key).brief).toBe('Started in the other tab');
     });
 });
