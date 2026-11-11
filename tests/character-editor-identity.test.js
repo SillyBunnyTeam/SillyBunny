@@ -44,11 +44,13 @@ const OTHER = 1;
 const MEMBER = 2;
 
 function createCharacters() {
-    return [
-        { name: 'Active', avatar: 'Active.png', chat: 'Active - chat', data: { extensions: {} } },
-        { name: 'Other', avatar: 'Other.png', chat: 'Other - chat', data: { extensions: {} } },
-        { name: 'Member', avatar: 'Member.png', chat: 'Member - chat', data: { extensions: {} } },
-    ];
+    return ['Active', 'Other', 'Member'].map(name => ({
+        name,
+        avatar: `${name}.png`,
+        chat: `${name} - chat`,
+        description: `${name} description`,
+        data: { system_prompt: `${name} system prompt`, extensions: { world: `${name} lore` } },
+    }));
 }
 
 /**
@@ -445,5 +447,89 @@ describe('Replace / Update from the editor', () => {
         expect(context.importFromExternalUrl).toHaveBeenCalledWith('https://example.invalid/card.png', { preserveFileName: 'Other.png' });
         expect(context.clearChat).not.toHaveBeenCalled();
         expect(dom.node('#char-management-dropdown').prop('selectedIndex')).toBe(0);
+    });
+});
+
+/**
+ * Serves the character routes that renameCharacter() and getCharacters() call, from copies of the cards, and loads
+ * the real functions. With lazy, the roster holds shallow cards, as with performance.lazyLoadCharacters.
+ */
+function serveCharacters(context, { lazy = false } = {}) {
+    const cards = structuredClone(context.characters);
+    const json = value => ({ ok: true, json: async () => structuredClone(value) });
+    context.fetch = jest.fn(async (url, { body } = {}) => {
+        const request = JSON.parse(body ?? '{}');
+        switch (url) {
+            case '/api/characters/all':
+                return json(lazy ? cards.map(({ name, avatar, chat }) => ({ name, avatar, chat, shallow: true })) : cards);
+            case '/api/characters/get':
+                return json(cards.find(card => card.avatar === request.avatar_url));
+            case '/api/characters/rename': {
+                const card = cards.find(card => card.avatar === request.avatar_url);
+                Object.assign(card, { name: request.new_name, avatar: `${request.new_name}.png` });
+                return json({ avatar: card.avatar });
+            }
+        }
+        throw new Error(`Unexpected request: ${url}`);
+    });
+    Object.assign(context, {
+        getRequestHeaders: () => ({}),
+        DOMPurify: { sanitize: value => value },
+        getGroups: jest.fn(async () => {}),
+        printCharacters: jest.fn(async () => {}),
+        renameTagKey: jest.fn(),
+        renameGroupMember: jest.fn(async () => {}),
+        reloadCurrentChat: jest.fn(async () => {}),
+        delay: async () => {},
+        location: { reload: jest.fn() },
+        extension_settings: { note: { chara: [] } },
+        active_character: 'Active.png',
+        // Both branches of selectCharacterById() end in select_selected_character() for an unshallowed card.
+        selectCharacterById: jest.fn(async (id, { switchMenu = true } = {}) => {
+            context.setCharacterId(id);
+            await context.unshallowCharacter(context.this_chid);
+            context.select_selected_character(context.this_chid, { switchMenu });
+            return true;
+        }),
+    });
+    load(context, 'script.js', ['getCharacters', 'getOneCharacter', 'renameCharacter']);
+}
+
+describe('rename from the editor', () => {
+    test('renames a card that is not active without opening its chat', async () => {
+        const { context, dom } = createEditor();
+        serveCharacters(context);
+        context.select_selected_character(OTHER);
+
+        await expect(context.renameCharacter('Renamed', { avatar: 'Other.png', renameChats: false })).resolves.toBe(true);
+        expect(context.selectCharacterById).not.toHaveBeenCalled();
+        expect(context.this_chid).toBe(String(ACTIVE));
+        expect(context.active_character).toBe('Active.png');
+        expect(dom.node('#avatar_url_pole').val()).toBe('Renamed.png');
+        expect(dom.node('#character_name_pole').val()).toBe('Renamed');
+    });
+
+    test('loads a shallow card before the editor shows it after the rename', async () => {
+        const { context, dom } = createEditor();
+        serveCharacters(context, { lazy: true });
+        context.select_selected_character(OTHER);
+
+        await expect(context.renameCharacter('Renamed', { avatar: 'Other.png', renameChats: false })).resolves.toBe(true);
+        expect(dom.node('#avatar_url_pole').val()).toBe('Renamed.png');
+        expect(dom.node('#system_prompt_textarea').val()).toBe('Other system prompt');
+        expect(dom.node('#character_world').val()).toBe('Other lore');
+    });
+
+    test('renames the active chat\'s character and selects it again', async () => {
+        const { context, dom } = createEditor();
+        serveCharacters(context, { lazy: true });
+        context.select_selected_character(ACTIVE);
+
+        await expect(context.renameCharacter('Renamed', { renameChats: false })).resolves.toBe(true);
+        expect(context.selectCharacterById).toHaveBeenCalledWith(ACTIVE);
+        expect(context.this_chid).toBe(String(ACTIVE));
+        expect(context.active_character).toBe('Renamed.png');
+        expect(dom.node('#avatar_url_pole').val()).toBe('Renamed.png');
+        expect(dom.node('#system_prompt_textarea').val()).toBe('Active system prompt');
     });
 });

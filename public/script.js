@@ -11265,6 +11265,7 @@ export async function renameCharacter(name = null, { silent = false, renameChats
                     await delay(1);
                     if (this_chid === undefined) throw new Error('New character not selected');
                 } else {
+                    await unshallowCharacter(newChId);
                     select_selected_character(newChId);
                 }
 
