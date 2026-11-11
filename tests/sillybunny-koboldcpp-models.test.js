@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globa
 
 const API = '/api/backends/text-completions/koboldcpp';
 const SERVER_URL = 'http://127.0.0.1:5001';
+const NEW_SERVER_URL = 'http://127.0.0.1:5002';
 const ACTIONS = ['initial_model', 'unload_model'];
+const STOPPED_WAITING = 'Stopped waiting for KoboldCpp. Click Connect when it has finished loading.';
 const OLD_WORKER = { online: true, uptime: 3600 };
 const NEW_WORKER = { online: true, uptime: 1 };
 
@@ -216,6 +218,25 @@ function runCommand(value, args = {}) {
     return command.callback(args, value);
 }
 
+function getDropdown() {
+    const options = dom.select.children.flatMap(child => child instanceof FakeOption ? [child] : child.children);
+    return {
+        labels: options.map(option => option.text),
+        values: options.map(option => option.value),
+        value: dom.select.value,
+        hint: dom.hintShown ? dom.hint : '',
+    };
+}
+
+/**
+ * Lets work that the switcher starts without awaiting it finish.
+ */
+async function settle() {
+    for (let turn = 0; turn < 10; turn++) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+}
+
 beforeEach(() => {
     clock = 1_000_000;
     jest.spyOn(Date, 'now').mockImplementation(() => clock);
@@ -301,5 +322,58 @@ describe('/kcpp-model names', () => {
             '2 KoboldCpp files match "mistral". Use a longer part of the name.',
             'No KoboldCpp file matches "llama".',
         ]);
+    });
+});
+
+describe('end of the restart wait', () => {
+    test('the Cancel button stops the wait and resets the connection status itself', async () => {
+        const server = servers[SERVER_URL];
+        server.onPoll = () => statusCheck.abort();
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(1);
+        expect(script.startStatusLoading).toHaveBeenCalledTimes(1);
+        expect(script.stopStatusLoading).not.toHaveBeenCalled();
+        expect(script.resultCheckStatus).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+        expect(getDropdown().labels).toEqual(['-- Connect to the API --']);
+    });
+
+    test('a change of the main API or the Text Completion type stops the wait and enables Connect again', async () => {
+        const server = servers[SERVER_URL];
+        server.onPoll = () => {
+            statusCheck.abort();
+            settings.type = 'llamacpp';
+        };
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(1);
+        expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
+        expect(script.resultCheckStatus).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+    });
+
+    test('a new KoboldCpp URL stops the wait on the old server, enables Connect and lists the new server', async () => {
+        const server = servers[SERVER_URL];
+        servers[NEW_SERVER_URL] = createServer(modelsAnswer(['gamma.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/gamma', loadedFiles: ['gamma.gguf'] }));
+        let switcher;
+        server.onPoll = () => {
+            settings.server_urls.koboldcpp = NEW_SERVER_URL;
+            // The status check for the new URL can finish before the wait sees the change.
+            void switcher.refreshKoboldCppModels();
+        };
+        switcher = await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+        await settle();
+
+        expect(server.polls).toBe(1);
+        expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+        expect(getDropdown()).toMatchObject({ values: ['gamma.gguf', ...ACTIONS], value: 'gamma.gguf' });
     });
 });

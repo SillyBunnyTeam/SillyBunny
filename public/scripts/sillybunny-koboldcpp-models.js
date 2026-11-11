@@ -9,6 +9,7 @@ import {
     resultCheckStatus,
     setOnlineStatus,
     startStatusLoading,
+    stopStatusLoading,
 } from '../script.js';
 import { t } from './i18n.js';
 import { Popup, POPUP_TYPE } from './popup.js';
@@ -231,14 +232,15 @@ async function requestLoad(serverUrl, name) {
  * @param {string} serverUrl KoboldCpp API URL
  * @param {number} requestedAt Time of the load request, in milliseconds
  * @param {AbortSignal|null} signal Stops the wait when aborted
+ * @param {() => boolean} isStopped Stops the wait when it returns true
  * @returns {Promise<'restarted'|'timeout'|'cancelled'>} How the wait ended
  */
-async function waitForRestart(serverUrl, requestedAt, signal) {
+async function waitForRestart(serverUrl, requestedAt, signal, isStopped) {
     let wentOffline = false;
 
     while (Date.now() - requestedAt < SWITCH_TIMEOUT_MS) {
         await delay(POLL_INTERVAL_MS);
-        if (signal?.aborted) {
+        if (signal?.aborted || isStopped()) {
             return 'cancelled';
         }
 
@@ -309,6 +311,7 @@ function reportLoaded(name, state) {
 async function switchKoboldCppModel(name) {
     const title = t`KoboldCpp`;
     const serverUrl = getTextGenServer(textgen_types.KOBOLDCPP);
+    const isUrlChanged = () => getTextGenServer(textgen_types.KOBOLDCPP) !== serverUrl;
     const isActive = isActiveConnection();
 
     if (!serverUrl) {
@@ -341,7 +344,7 @@ async function switchKoboldCppModel(name) {
             if (isActive) {
                 setOnlineStatus('no_connection');
             }
-            outcome = await waitForRestart(serverUrl, requestedAt, signal);
+            outcome = await waitForRestart(serverUrl, requestedAt, signal, isUrlChanged);
         } else {
             outcome = 'rejected';
         }
@@ -359,9 +362,17 @@ async function switchKoboldCppModel(name) {
             switcherState = null;
         }
         renderModelSelect();
-        // The Cancel button already resets the connection status.
         if (isActive && outcome !== 'cancelled') {
             resultCheckStatus();
+        }
+        // The Cancel button aborts the status check and then resets the connection status itself. A new API, type or
+        // URL also ends the wait, and without this call it can leave the Connect buttons disabled.
+        if (isActive && outcome === 'cancelled' && !(signal?.aborted && isActiveConnection())) {
+            stopStatusLoading();
+        }
+        // A KoboldCpp status check does not update the list while the switch waits, so the list for the new URL loads here.
+        if (isActiveConnection() && isUrlChanged()) {
+            void refreshKoboldCppModels();
         }
         switch (outcome) {
             case 'rejected':
