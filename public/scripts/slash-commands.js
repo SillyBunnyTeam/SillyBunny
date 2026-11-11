@@ -207,7 +207,6 @@ function setupConnectAPIMap() {
             button: '#api_button_openai',
             source: chat_completion_sources.KOBOLDCPP,
         },
-        // KoboldCpp Chat Completion alias
         'kcpp-chat': {
             selected: 'openai',
             button: '#api_button_openai',
