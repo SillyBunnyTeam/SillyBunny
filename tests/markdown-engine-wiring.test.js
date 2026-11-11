@@ -10,6 +10,7 @@ const read = (...segments) => readFileSync(path.join(repoRoot, ...segments), 'ut
 const scriptSource = read('public', 'script.js');
 const powerUserSource = read('public', 'scripts', 'power-user.js');
 const libSource = read('public', 'lib.js');
+const indexHtml = read('public', 'index.html');
 
 function getFunctionSource(source, signature) {
     const start = source.indexOf(signature);
@@ -84,5 +85,23 @@ describe('markdown engine wiring', () => {
             '    });',
         ].join('\n');
         expect(powerUserSource).toContain(handler);
+    });
+
+    test('User Settings has a labelled engine select after Auto-fix Markdown', () => {
+        const row = [
+            '                                <div>',
+            '                                    <label for="markdown_engine">',
+            '                                        <small data-sb-copy-placeholder="true">TODO(copy)</small>',
+            '                                    </label>',
+            '                                    <select id="markdown_engine">',
+            '                                        <option value="showdown">Showdown</option>',
+            '                                        <option value="markdown-it">markdown-it</option>',
+            '                                    </select>',
+            '                                </div>',
+        ].join('\n');
+
+        expect(indexHtml).toContain(row);
+        expect(indexHtml.indexOf('id="auto_fix_generated_markdown"')).toBeLessThan(indexHtml.indexOf(row));
+        expect(indexHtml.indexOf(row)).toBeLessThan(indexHtml.indexOf('id="forbid_external_media"'));
     });
 });
