@@ -8,7 +8,8 @@ const sillyBunny = await getServerConfig();
 
 export default defineConfig({
     testMatch: '*.e2e.js',
-    testIgnore: '**/foundation/**',
+    // SillyBunny: `foundation/` runs under playwright.foundation.config.js and `audit/` holds the opt-in audit specs, which run under playwright.audit.config.js; this suite runs neither.
+    testIgnore: ['**/foundation/**', '**/audit/**'],
     use: {
         baseURL,
         video: 'only-on-failure',

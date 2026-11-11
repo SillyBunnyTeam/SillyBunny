@@ -1,0 +1,325 @@
+/**
+ * The settings family: the twelve pages of the Backend and Customize shells, and the three panes that behave like
+ * settings pages (World Info Global Settings, Persona Global Settings, the Conversation settings panel).
+ *
+ * Backend (Connections, Sampling, Presets) changes these pages, so each of them lists `backends` and its `open` reads
+ * `ctx.backend`. The backend is a parameter of the surface, not a state: states are things that open on top of a page.
+ * Every shell page has one state, `expanded`, which opens every expander of the page at once (a capture per expander
+ * would be dozens of images per page) and fails if one stays closed. Agents and Extensions add the subpages that open over
+ * them. A page's `ready` names an element that exists only once the page has built its content, and for the pages that
+ * differ by backend, the block that belongs to the backend.
+ */
+
+import { viewportById } from '../surface-matrix.js';
+import { FIXTURES } from './fixture-data.js';
+import { BACKENDS, DEFAULT_BACKEND } from './schema.js';
+import { chooseMenuItem, expandAll, openCharactersTab, openSettingsTab, selectBackend, settle } from './steps.js';
+
+const BACKEND_IDS = Object.keys(BACKENDS);
+const SCRIPTS = 'public/scripts';
+
+const backendOf = ctx => BACKENDS[ctx.backend ?? DEFAULT_BACKEND];
+const modePill = (selector, ctx) => `${selector}:has-text("Backend: ${backendOf(ctx).modeLabel}")`;
+
+/**
+ * A page of the Backend or Customize shell.
+ * @param {object} page
+ * @param {string} page.id Last two segments of the id.
+ * @param {'left' | 'right'} page.shell `left` is Backend, `right` is Customize.
+ * @param {string} page.tab The value of `data-sb-settings-tab`.
+ */
+function shellPage({ id, title, shell, tab, sources, upstreamMarkup = false, backends, masks, ready, states = [] }) {
+    const root = `[data-sb-panel="${tab}"]`;
+    return {
+        id: `settings.${id}`,
+        family: 'settings',
+        owner: 'A',
+        ...(upstreamMarkup && { upstreamMarkup }),
+        title,
+        root,
+        ready,
+        async open(page, ctx = {}) {
+            if (backends) {
+                await selectBackend(page, ctx.backend ?? DEFAULT_BACKEND);
+            }
+            await openSettingsTab(page, { shell, tab });
+        },
+        states: [
+            { id: 'expanded', open: page => expandAll(page, `${root} .sb-shell-panel-scroller`) },
+            ...states,
+        ],
+        ...(masks && { masks }),
+        ...(backends && { backends }),
+        needs: [],
+        sources,
+        primaryFlow: true,
+    };
+}
+
+const AGENT_PAGES = '[data-sb-panel="agents"] .ica-agents-editor';
+
+/** Leaves a page that the Agents menu pushed over the list, if one is open. */
+async function backToAgentList(page) {
+    const back = page.locator(`${AGENT_PAGES} [data-agent-page]`).getByRole('button', { name: 'Back', exact: true });
+    if (await back.count()) {
+        await back.click();
+        await page.locator(`${AGENT_PAGES} [data-agent-page]`).waitFor({ state: 'detached' });
+    }
+}
+
+/**
+ * A page of the Agents menu, such as Settings or Agent Groups. From `in-chat-agents-pages.e2e.js` (`destination`).
+ * @param {string} id The `data-agent-page` value.
+ * @param {string} label The menu item.
+ */
+function agentsPage(id, label) {
+    return {
+        id: `${id}-page`,
+        root: `${AGENT_PAGES} [data-agent-page="${id}"]`,
+        ready: `${AGENT_PAGES} [data-agent-page="${id}"] :is(button, input, select, textarea)`,
+        async open(page) {
+            await backToAgentList(page);
+            await page.locator(AGENT_PAGES).getByRole('button', { name: 'Agents Menu', exact: true }).click();
+            await page.locator('.sb-action-menu').last().getByRole('menuitem', { name: label, exact: true }).click();
+            await page.locator(`${AGENT_PAGES} [data-agent-page="${id}"]`).waitFor({ state: 'visible' });
+            await settle(page);
+        },
+    };
+}
+
+const EXTENSIONS_PANEL = '[data-sb-panel="extensions"]';
+
+/**
+ * Pane of the Characters shell that opens from a header menu: World Info Global Settings and Persona Global Settings.
+ */
+function characterShellPane({ id, title, tab, host, trigger, root, back, ready, needs, sources }) {
+    return {
+        id: `settings.${id}`,
+        family: 'settings',
+        owner: 'A',
+        title,
+        root: `${host} ${root}`,
+        ...(ready && { ready }),
+        async open(page) {
+            await openCharactersTab(page, tab);
+            await page.locator(`${host} ${trigger}`).waitFor({ state: 'visible' });
+            await chooseMenuItem(page, `${host} ${trigger}`, 'Global Settings');
+            await page.locator(`${host} ${root}`).waitFor({ state: 'visible' });
+            await settle(page);
+        },
+        async close(page) {
+            await page.locator(`${host} ${back}`).click();
+            await page.locator(`${host} ${root}`).waitFor({ state: 'hidden' });
+        },
+        needs,
+        sources,
+        primaryFlow: true,
+    };
+}
+
+/**
+ * Opens the Conversation workspace for the audit character and shows its settings. From `foundation/conversation-mode.e2e.js`:
+ * a desktop window has a settings button in the header, and a phone has pages, where the settings sit in the Conversation menu.
+ */
+async function openConversationSettings(page) {
+    await page.evaluate(async ({ avatar, messages }) => {
+        const context = window.SillyTavern.getContext();
+        if (!context.characters.length) {
+            await context.getCharacters();
+        }
+        const index = context.characters.findIndex(character => character.avatar === avatar);
+        if (index < 0) {
+            throw new Error(`The audit character ${avatar} is not on the server.`);
+        }
+        await context.selectCharacterById(index, { switchMenu: false });
+        document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+        const { saveConversationThread } = await import('/scripts/sillybunny-conversation/thread-store.js');
+        const day = Date.UTC(2026, 0, 1, 12, 0, 0);
+        saveConversationThread(avatar, messages.map((text, number) => ({
+            id: `audit-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? 'Audit Character' : 'Audit User',
+            mes: text, send_date: new Date(day + number * 60_000).toISOString(), created_at: day + number * 60_000, extra: {},
+        })));
+        const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
+        if (!openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
+            throw new Error(`Could not open the Conversation workspace for ${avatar}.`);
+        }
+    }, { avatar: FIXTURES.character.avatar, messages: FIXTURES.chat.messages });
+    await page.locator('#sheld[data-sb-conversation-mode="on"]').waitFor({ state: 'visible' });
+    await page.locator('#sb_conversation_timeline .sb-conversation-message').first().waitFor({ state: 'visible' });
+    const layout = await page.locator('#sheld').getAttribute('data-sb-conversation-layout');
+    if (layout === 'pages') {
+        await page.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
+        await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();
+    } else {
+        await page.locator('[data-sb-conversation-action="open-settings"]').click();
+    }
+    await page.locator('#sb_conversation_settings_drawer').waitFor({ state: 'visible' });
+    await settle(page);
+}
+
+/** @type {import('./index.js').Surface[]} */
+export const surfaces = [
+    shellPage({
+        id: 'backend.connections',
+        title: 'Backend: Connections',
+        shell: 'left',
+        tab: 'connections',
+        ready: ctx => `[data-sb-panel="connections"] ${backendOf(ctx).connector}`,
+        upstreamMarkup: true,
+        backends: BACKEND_IDS,
+        sources: [`${SCRIPTS}/sillybunny-connections-form.js`, `${SCRIPTS}/sillybunny-connections-panel.js`],
+    }),
+    shellPage({
+        id: 'backend.sampling',
+        title: 'Backend: Sampling',
+        shell: 'left',
+        tab: 'sampling',
+        ready: ctx => modePill('[data-sb-panel="sampling"] .sb-sampling-mode-pill:visible', ctx),
+        upstreamMarkup: true,
+        backends: BACKEND_IDS,
+        sources: [`${SCRIPTS}/sillybunny-tabs.js`],
+    }),
+    shellPage({
+        id: 'backend.presets',
+        title: 'Backend: Presets',
+        shell: 'left',
+        tab: 'prompting',
+        ready: ctx => modePill('[data-sb-panel="prompting"] [data-sb-prompting-mode]', ctx),
+        upstreamMarkup: true,
+        backends: BACKEND_IDS,
+        sources: [`${SCRIPTS}/sillybunny-tabs.js`],
+    }),
+    shellPage({
+        id: 'backend.editor',
+        title: 'Backend: Editor (page chrome)',
+        shell: 'left',
+        tab: 'editor',
+        ready: ['[data-sb-panel="editor"] [data-sb-editor-mode]', '[data-sb-panel="editor"] .sb-prompt-list-titles h2'],
+        sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`],
+    }),
+    shellPage({
+        id: 'backend.formatting',
+        title: 'Backend: Formatting',
+        shell: 'left',
+        tab: 'context',
+        upstreamMarkup: true,
+        sources: [`${SCRIPTS}/sillybunny-tabs.js`],
+    }),
+    shellPage({
+        id: 'backend.agents',
+        title: 'Backend: Agents (page chrome and subpages)',
+        shell: 'left',
+        tab: 'agents',
+        ready: `${AGENT_PAGES} >> role=button[name="Agents Menu"]`,
+        sources: [`${SCRIPTS}/extensions/in-chat-agents/ui/agent-list.js`, `${SCRIPTS}/extensions/in-chat-agents/ui/settings-page.js`, `${SCRIPTS}/extensions/in-chat-agents/ui/groups-page.js`],
+        states: [
+            agentsPage('settings', 'Settings'),
+            agentsPage('groups', 'Agent Groups'),
+            agentsPage('companions', 'Companions Overview'),
+        ],
+    }),
+    shellPage({
+        id: 'customize.appearance',
+        title: 'Customize: Appearance',
+        shell: 'right',
+        tab: 'appearance',
+        upstreamMarkup: true,
+        sources: [`${SCRIPTS}/sillybunny-tabs.js`, `${SCRIPTS}/sillybunny-settings-presentation.js`],
+    }),
+    shellPage({
+        id: 'customize.extensions',
+        title: 'Customize: Extensions (list and detail pages)',
+        shell: 'right',
+        tab: 'extensions',
+        ready: `${EXTENSIONS_PANEL} .sb-subpage-row:visible`,
+        upstreamMarkup: true,
+        masks: [`${EXTENSIONS_PANEL} .sb-subpage-row-value`],
+        sources: [`${SCRIPTS}/sillybunny-settings-subpage.js`, `${SCRIPTS}/sillybunny-settings-subpage-descriptors.js`],
+        states: [{
+            id: 'detail-page',
+            root: `${EXTENSIONS_PANEL} .sb-subpage-detail[aria-hidden="false"]`,
+            async open(page) {
+                await page.locator(`${EXTENSIONS_PANEL} .sb-subpage-row:visible`).first().click();
+                await page.locator(`${EXTENSIONS_PANEL} .sb-subpage-detail[aria-hidden="false"]`).waitFor({ state: 'visible' });
+                await settle(page);
+            },
+        }],
+    }),
+    shellPage({
+        id: 'customize.interface',
+        title: 'Customize: Interface',
+        shell: 'right',
+        tab: 'interface',
+        upstreamMarkup: true,
+        sources: [`${SCRIPTS}/sillybunny-tabs.js`, `${SCRIPTS}/sillybunny-settings-content.js`],
+    }),
+    shellPage({
+        id: 'customize.messages',
+        title: 'Customize: Messages',
+        shell: 'right',
+        tab: 'messages',
+        upstreamMarkup: true,
+        sources: [`${SCRIPTS}/sillybunny-settings-content.js`],
+    }),
+    shellPage({
+        id: 'customize.data-security',
+        title: 'Customize: Data & Security',
+        shell: 'right',
+        tab: 'data-security',
+        ready: '[data-sb-panel="data-security"] button:has-text("Usage Stats")',
+        masks: ['[data-sb-panel="data-security"] .sb-server-stat-value', '[data-sb-panel="data-security"] .sb-server-pill'],
+        sources: [`${SCRIPTS}/sillybunny-server-tools.js`],
+    }),
+    shellPage({
+        id: 'customize.logs',
+        title: 'Customize: Logs',
+        shell: 'right',
+        tab: 'logs',
+        ready: '[data-sb-panel="logs"] .sb-console-log-toolbar button',
+        masks: ['[data-sb-panel="logs"] .sb-console-log-output', '[data-sb-panel="logs"] .sb-server-pill'],
+        sources: [`${SCRIPTS}/sillybunny-server-tools.js`],
+    }),
+    characterShellPane({
+        id: 'worldinfo.global',
+        title: 'World Info Global Settings',
+        tab: 'world-info',
+        host: '#WorldInfo',
+        trigger: '.sb-wi-book-actions',
+        root: '.sb-wi-settings',
+        back: '.sb-wi-settings .sb-wi-detail-back',
+        needs: [],
+        sources: [`${SCRIPTS}/sillybunny-world-info-settings.js`],
+    }),
+    characterShellPane({
+        id: 'persona.global',
+        title: 'Persona Global Settings',
+        tab: 'persona',
+        host: '#PersonaManagement',
+        trigger: '.sb-persona-list-menu',
+        root: '.sb-persona-settings',
+        back: '.sb-persona-settings .sb-persona-detail-back',
+        // A phone or tablet shows the list or the settings pane, not both, so there the pane's own rows stand in for the fixture row.
+        ready: ctx => (ctx.viewport && viewportById(ctx.viewport).pointer === 'coarse'
+            ? '#PersonaManagement .sb-persona-settings .sb-persona-settings-switch'
+            : `#PersonaManagement :text-is("${FIXTURES.persona.name}"):visible`),
+        // The persona avatars on the server include those of `personas-many`, and the list names a persona that has no name `[Unnamed Persona]`
+        // and sorts it first, which would push the fixture row to the second page. So the surface boots with both.
+        needs: ['persona', 'personas-many'],
+        sources: [`${SCRIPTS}/sillybunny-persona-settings.js`],
+    }),
+    {
+        id: 'settings.conversation.panel',
+        family: 'settings',
+        owner: 'A',
+        title: 'Conversation settings panel',
+        root: '#sb_conversation_settings_drawer',
+        open: openConversationSettings,
+        async close(page) {
+            await page.locator('[data-sb-conversation-action="close-settings"]').first().click();
+            await page.locator('#sb_conversation_settings_drawer').waitFor({ state: 'hidden' });
+        },
+        needs: ['character'],
+        sources: [`${SCRIPTS}/sillybunny-conversation/settings-panel.js`, `${SCRIPTS}/sillybunny-conversation/timeline-render.js`],
+        primaryFlow: true,
+    },
+];
