@@ -78,6 +78,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-29 Stop during streamed reasoning fix. |
 | Owner | Generation lifecycle owner. |
 
+### `public/script.js` - temporary response lengths
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` |
+| Area | Generation lifecycle and settings. |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/generation-response-length-overrides.js`. |
+| Adapter shape | `TempResponseLength` keeps its name and holds one `createResponseLengthOverrides()` object that reads and writes `oai_settings.openai_max_tokens` and `amount_gen`. `save()` returns the override of its call. `generateQuietPrompt()` and `generateRawData()` keep it in `responseLengthOverride`, pass it to `restore()` and `setupEventHook()`, and restore it in their `finally` blocks. `restore(null)`, which `saveSettingsInner()` calls, removes every override. `setupEventHook()` marks the override and registers one listener for each of `CHAT_COMPLETION_SETTINGS_READY` and `GENERATE_AFTER_DATA`, and an event removes the newest marked override of its setting. `removeEventHook()` and the `eventHook` variables of the two callers are removed. |
+| Protecting tests | `tests/generation-response-length-overrides.test.js`, `tests/story-mode-request-controls.test.js` (`overlapping temporary response lengths`). |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- story-mode-request-controls.test.js generation-response-length-overrides.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, and a Chromium run of the app with stubbed generation routes: two `generateRaw()` calls with a `responseLength` that start together or nest, on Chat Completion, Text Completion and KoboldAI, leave both settings as they were. With the `script.js` of `4e82939a7` the setting ends at the length of the first call and the next settings save sends that length. |
+| Rollback path | Put back SillyTavern's `TempResponseLength` class and its calls in `generateQuietPrompt()` and `generateRawData()`, remove the import, and delete the module and its test file. Generations that overlap then leave a temporary length in the Response (tokens) preset or in the Chat Completion max tokens again. The overrides write no persistent data, so no cleanup is needed. |
+| Last reviewed | 2026-11-12 overlapping temporary response lengths. |
+| Owner | TODO(copy) |
+
 ### `public/script.js`, `src/endpoints/backends/chat-completions.js`, and `src/prompt-converters.js` - Gemini replies that end early
 | Field | Value |
 | --- | --- |
