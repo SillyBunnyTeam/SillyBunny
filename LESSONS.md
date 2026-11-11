@@ -325,12 +325,11 @@ This is the largest class by a wide margin.
 ### Connection status and Connect buttons
 
 - **Breaks:** Cancel stays visible and every Connect button stays disabled after the work that started the loading state has ended, so the user cannot connect again. `startStatusLoading()` shows `.api_loading` and adds `disabled` to every `.api_button`, and `.menu_button.disabled` has `pointer-events: none` (`public/style.css`). Only `stopStatusLoading()`, which `resultCheckStatus()` calls, undoes it.
-- **Cause:** `cancelStatusCheck()` aborts the status check and sets the status to `no_connection`, but it leaves the loading state. A change of the main API calls `cancelStatusCheck()` alone (`public/script.js`), and only Chat Completion then reconnects (`reconnectOpenAi()` in `public/scripts/openai.js`). A Text Completion type change goes through the same `#main_api` handler and clicks Connect only when the new type needs no URL or has one (`public/scripts/textgen-settings.js`). Work that ends on that abort without `resultCheckStatus()` leaves the buttons disabled.
-- **Files:** `public/script.js` (upstream), `public/scripts/openai.js` (upstream), `public/scripts/textgen-settings.js` (upstream), `public/scripts/sillybunny-koboldcpp-models.js`.
-- **Guards:** the Cancel button calls `resultCheckStatus()` after `cancelStatusCheck()` (#836). The KoboldCpp model switch ends its restart wait when the status check aborts, when the KoboldCpp URL changes and when the script that ran `/kcpp-model` stops. `switchKoboldCppModel()` then calls `stopStatusLoading()` itself, unless the status check was aborted while KoboldCpp stays the selected connection: the Cancel button and a new Chat Completion status check, which `getStatusOpen()` starts with `cancelStatusCheck()`, end with `resultCheckStatus()` themselves (#941). The switch uses the URL and the selected connection of the mode it started in, Text Completion or Chat Completion (#943).
-- **Limit:** that `stopStatusLoading()` also ends the loading state of a status check that started after the switch, for example the Chat Completion reconnect after an API change, so Cancel hides before that check answers.
+- **Cause:** `cancelStatusCheck()` aborts the status check and sets the status to `no_connection`, but it leaves the loading state. A change of the main API calls `cancelStatusCheck()` alone (`public/script.js`), and only Chat Completion then reconnects (`reconnectOpenAi()` in `public/scripts/openai.js`). A Text Completion type change goes through the same `#main_api` handler and clicks Connect only when the new type needs no URL or has one (`public/scripts/textgen-settings.js`), and deleting or rotating an API key triggers that handler too (`public/scripts/secrets.js`). Work that ends on that abort without `resultCheckStatus()` leaves the buttons disabled. The loading state is one state for all work, so work that ends it also ends it for a status check that still waits for its answer.
+- **Files:** `public/script.js` (upstream), `public/scripts/openai.js` (upstream), `public/scripts/textgen-settings.js` (upstream), `public/scripts/secrets.js` (upstream), `public/scripts/sillybunny-koboldcpp-models.js`.
+- **Guards:** the Cancel button calls `resultCheckStatus()` after `cancelStatusCheck()` (#836). The KoboldCpp model switch ends its restart wait when the status check aborts, when the KoboldCpp URL changes and when the script that ran `/kcpp-model` stops. Then `switchKoboldCppModel()` calls `stopStatusLoading()` itself (#941). After a cancel or a timeout it ends the loading state only when no status check started during the wait: `startStatusLoading()` counts each start through `countStatusLoadingStart()`, and a status check that started during the wait, such as the Chat Completion reconnect after an API change, ends the loading state itself when it answers (`6d380a937`). The switch uses the URL and the selected connection of the mode it started in, Text Completion or Chat Completion (#943).
 - **Tests:** `tests/openai-status-reconnect.test.js`, `tests/sillybunny-koboldcpp-models.test.js`, `tests/koboldcpp-model-switcher.e2e.js`.
-- **Fixes:** #836 (manual cancel), #941 (KoboldCpp model switch after a connection change or a stopped script), #943 (the same in Chat Completion mode).
+- **Fixes:** #836 (manual cancel), #941 (KoboldCpp model switch after a connection change or a stopped script), #943 (the same in Chat Completion mode), `6d380a937` (a status check that starts during a model switch, and a deleted API key while KoboldCpp stays selected).
 
 ### Server state after a URL change
 
@@ -341,6 +340,15 @@ This is the largest class by a wide margin.
 - **Limit:** the context cap and media support that a Chat Completion status check applies while a model switch waits can stay until the next status check. A model that KoboldCpp loads without SillyBunny keeps the old name until the next status check.
 - **Tests:** `tests/sillybunny-koboldcpp-models.test.js`, `tests/koboldcpp-model-switcher.e2e.js`.
 - **Fixes:** #941 (restart wait and list after a URL change), #943 (Chat Completion state after a URL change).
+
+### KoboldCpp model list during a model switch
+
+- **Breaks:** after a model switch ends by a cancel or a timeout, the KoboldCpp model dropdown shows its placeholder until the next Connect, although KoboldCpp answered a status check during the switch, for example the one that Connect starts right after Cancel.
+- **Cause:** `refreshKoboldCppModels()` returns without a change while a model switch waits, because KoboldCpp may still be restarting. A timeout or cancel clears the list, because KoboldCpp may still be loading, and the switch loaded the list again only when the URL had changed.
+- **Files:** `public/scripts/sillybunny-koboldcpp-models.js`, `public/scripts/textgen-settings.js` (upstream).
+- **Guards:** `refreshKoboldCppModels()` records a refresh that it skips during a switch. When the switch ends without a restart and KoboldCpp is still the selected connection, `switchKoboldCppModel()` loads the list if a status check asked for it during the switch or the URL changed (`bc32b0baa`).
+- **Tests:** `tests/sillybunny-koboldcpp-models.test.js`, `tests/koboldcpp-model-switcher.e2e.js`.
+- **Fixes:** `83329cf61` (list after a URL change), `bc32b0baa` (list after a status check during the switch).
 
 ## Reverts and release problems
 

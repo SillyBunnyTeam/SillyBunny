@@ -67,6 +67,16 @@ let loadingEntry = '';
 let loadingMode = 'text';
 /** @type {Record<SwitcherMode, number>} */
 const refreshCounters = { text: 0, chat: 0 };
+/** @type {Set<SwitcherMode>} */
+const refreshesAfterSwitch = new Set();
+let statusLoadingStarts = 0;
+
+/**
+ * Called by startStatusLoading() in script.js, so that a model switch can tell whether a status check started after it.
+ */
+export function countStatusLoadingStart() {
+    statusLoadingStarts++;
+}
 
 /**
  * @param {SwitcherMode} mode Connection mode
@@ -251,7 +261,9 @@ async function fetchSwitcherState(serverUrl) {
  * @returns {Promise<SwitcherState|null>} Switcher state after the update
  */
 export async function refreshKoboldCppModels(mode = 'text') {
+    // KoboldCpp may still be restarting, so the switch loads the list when its wait ends.
     if (loadingEntry) {
+        refreshesAfterSwitch.add(mode);
         return switcherStates[mode];
     }
 
@@ -458,10 +470,12 @@ async function switchKoboldCppModel(name, mode, scriptSignal) {
     const signal = isActive ? abortStatusCheck.signal : null;
     loadingEntry = name;
     loadingMode = mode;
+    refreshesAfterSwitch.clear();
     renderModelSelect(mode);
     if (isActive) {
         startStatusLoading();
     }
+    const ownStatusLoadingStart = statusLoadingStarts;
     const progressToast = toastr.info(getProgressText(name), title, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false });
 
     /** @type {'restarted'|'timeout'|'cancelled'|'rejected'|'failed'} */
@@ -483,6 +497,9 @@ async function switchKoboldCppModel(name, mode, scriptSignal) {
 
     toastr.clear(progressToast);
     loadingEntry = '';
+    // A status check that started during the wait, such as the Chat Completion reconnect after an API change, ends the
+    // loading state when it answers. Ending it here would hide Cancel and enable Connect before that answer.
+    const ownsStatusLoading = isActive && statusLoadingStarts === ownStatusLoadingStart;
 
     if (outcome !== 'restarted') {
         // KoboldCpp may still be loading after a timeout or cancel, so the old list no longer describes it.
@@ -490,18 +507,20 @@ async function switchKoboldCppModel(name, mode, scriptSignal) {
             switcherStates[mode] = null;
         }
         renderModelSelect(mode);
-        if (isActive && outcome !== 'cancelled') {
+        if (ownsStatusLoading && outcome !== 'cancelled') {
             resultCheckStatus();
         }
-        // The Cancel button aborts the status check and then resets the connection status itself. A new API, type
-        // or URL, or a stopped script, also ends the wait, and without this call it can leave the Connect buttons
-        // disabled.
-        if (isActive && outcome === 'cancelled' && !(signal?.aborted && isActiveConnection(mode))) {
+        // A new API, type or URL, a deleted or rotated API key, or a stopped script can end the wait without a new
+        // status check. Then nothing else ends the loading state, and without this call the Connect buttons stay disabled.
+        if (ownsStatusLoading && outcome === 'cancelled') {
             stopStatusLoading();
         }
-        // A KoboldCpp status check does not update the list while the switch waits, so the list for the new URL loads here.
-        if (isActiveConnection(mode) && isUrlChanged()) {
-            void refreshKoboldCppModels(mode);
+        // A KoboldCpp status check does not update the list while the switch waits, so the list loads here when a status
+        // check asked for it during the wait or the URL changed.
+        for (const refreshMode of MODES.filter(isActiveConnection)) {
+            if (refreshesAfterSwitch.has(refreshMode) || (refreshMode === mode && isUrlChanged())) {
+                void refreshKoboldCppModels(refreshMode);
+            }
         }
         switch (outcome) {
             case 'rejected':
