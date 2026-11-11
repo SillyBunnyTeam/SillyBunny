@@ -1,7 +1,43 @@
 import { describe, expect, jest, test } from '@jest/globals';
 import vm from 'node:vm';
-import { loadDeclarations as load } from './util/load-declarations.js';
+import { loadDeclarations as load, readClientModule } from './util/load-declarations.js';
 import { event_types } from '../public/scripts/events.js';
+
+function findNode(node, predicate) {
+    if (!node || typeof node !== 'object') return null;
+    if (typeof node.type === 'string' && predicate(node)) return node;
+    for (const value of Object.values(node)) {
+        for (const child of Array.isArray(value) ? value : [value]) {
+            const found = child && typeof child.type === 'string' ? findNode(child, predicate) : null;
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+/**
+ * Runs a callback that a browser module passes to a call inside another function, such as an event handler
+ * that script.js registers in its jQuery ready callback, where loadDeclarations cannot reach it.
+ * @param {vm.Context} context Context made with vm.createContext
+ * @param {string} file Path relative to public/
+ * @param {(call: any) => boolean} matchesCall Picks the call by its callee and first arguments
+ */
+function loadCallback(context, file, matchesCall) {
+    const { source, ast } = readClientModule(file);
+    const call = findNode(ast, node => node.type === 'CallExpression' && matchesCall(node));
+    if (!call) throw new Error(`Missing callback in ${file}`);
+    const callback = call.arguments.at(-1);
+    return vm.runInContext(`(${source.slice(callback.start, callback.end)})`, context);
+}
+
+const isCall = (node, object, method) => node.callee.type === 'MemberExpression'
+    && node.callee.property.name === method
+    && (typeof object === 'string' ? node.callee.object.name === object : object(node.callee.object));
+
+function loadDropdownHandler(context) {
+    return loadCallback(context, 'script.js', node => isCall(node, object => object.arguments?.[0]?.value === '#char-management-dropdown', 'on')
+        && node.arguments[0].value === 'change');
+}
 
 const ACTIVE = 0;
 const OTHER = 1;
@@ -70,6 +106,16 @@ function createDom() {
     return { $, node, document, isShown: selector => node(selector).state.shown !== false };
 }
 
+function createEventSource() {
+    const listeners = {};
+    return {
+        on: (name, listener) => { (listeners[name] ??= []).push(listener); },
+        emit: jest.fn(async (name, ...args) => {
+            for (const listener of listeners[name] ?? []) await listener(...args);
+        }),
+    };
+}
+
 /** @param {{ thisChid?: string|null, selectedGroup?: string|null }} [options] A null thisChid means that no chat is active. */
 function createEditor({ thisChid = String(ACTIVE), selectedGroup = null } = {}) {
     const dom = createDom();
@@ -93,7 +139,7 @@ function createEditor({ thisChid = String(ACTIVE), selectedGroup = null } = {}) 
         world_names: ['Castle', 'Forest'],
         world_info: { charLore: [{ name: 'Active', extraBooks: ['Castle'] }] },
         event_types,
-        eventSource: { emit: jest.fn(async () => {}) },
+        eventSource: createEventSource(),
         saveSettingsDebounced: jest.fn(),
         printCharactersDebounced: jest.fn(),
         printTagList: jest.fn(),
@@ -113,20 +159,37 @@ function createEditor({ thisChid = String(ACTIVE), selectedGroup = null } = {}) 
         charUpdatePrimaryWorld: jest.fn(),
         isMobile: () => true,
         Option: class { constructor(text, value, defaultSelected, selected) { Object.assign(this, { text, value, defaultSelected, selected }); } },
-        POPUP_TYPE: { TEXT: 1 },
+        POPUP_TYPE: { TEXT: 1, INPUT: 3 },
+        POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0, CUSTOM1: 1001, CUSTOM2: 1002 },
         Popup: class {
+            static show = { confirm: jest.fn(async () => 0), input: jest.fn(async () => ''), text: jest.fn(async () => {}) };
             constructor(content, type, inputValue, options) { Object.assign(this, { content, options, dlg: {} }); }
             async show() { this.options.onOpen?.(this); }
         },
         t: (strings, ...values) => String.raw({ raw: strings }, ...values),
         toastr: { error: jest.fn(), warning: jest.fn(), info: jest.fn(), success: jest.fn() },
+        chat_metadata: {},
+        flushPendingChatSavesForNavigation: jest.fn(async () => true),
+        clearChat: jest.fn(async () => {}),
+        getChat: jest.fn(async () => true),
+        updateRemoteChatName: jest.fn(async () => {}),
+        getOneCharacter: jest.fn(async () => {}),
+        processDroppedFiles: jest.fn(async () => {}),
+        importFromExternalUrl: jest.fn(async () => {}),
     });
     context.getContext = () => ({ characters: context.characters, characterId: context.this_chid });
     load(context, 'scripts/utils.js', ['compareIgnoreCaseAndAccents', 'equalsIgnoreCaseAndAccents', 'onlyUnique', 'normalizeArray', 'getCharaFilename']);
     load(context, 'scripts/world-info.js', ['charSetAuxWorlds', 'updateAuxBooks']);
     load(context, 'scripts/tags.js', ['getTag', 'getTagKey', 'getInlineListSelector', 'getTagKeyForEntity', 'addTagToMap', 'removeTagFromMap', 'addTagsToEntity', 'removeTagFromEntity', 'selectTag', 'onTagRemoveClick', 'applyTagsOnCharacterSelect']);
-    load(context, 'script.js', ['setMenuType', 'setCharacterId', 'getCharacterEditorId', 'select_rm_create', 'select_selected_character', 'openCharacterWorldPopup']);
+    load(context, 'script.js', ['setMenuType', 'setCharacterId', 'getCharacterEditorId', 'select_rm_create', 'select_selected_character', 'openCharacterWorldPopup', 'openCharacterChat', 'unshallowCharacter']);
     return { context, dom };
+}
+
+/** Picks an entry of the character management dropdown in the editor. */
+async function chooseDropdownEntry(context, dom, id) {
+    const selectedOptions = {};
+    dom.node(selectedOptions).attr('id', id);
+    await loadDropdownHandler(context)({ target: { selectedOptions } });
 }
 
 /** Types a known tag into the editor's tag input, as the autocomplete select does. */
@@ -267,5 +330,120 @@ describe('create mode after an editor card that is not active', () => {
         await selectAuxiliaryBooks(context, dom, ['Forest']);
         expect(context.create_save.extra_books).toEqual(['Forest']);
         expect(context.world_info.charLore).toEqual([{ name: 'Active', extraBooks: ['Castle'] }]);
+    });
+});
+
+/**
+ * Stands in for processDroppedFiles() and importFromExternalUrl(). After a replace, importCharactersTags() reloads
+ * the roster, where getCharacters() renders this_chid in the editor, and selectImportedChar() opens the chat of the
+ * replaced card. That last step does nothing when a pending chat save fails.
+ * @param {'selected'|'not selected'|'failed'} outcome
+ * @param {{ lazy?: boolean }} [options] With lazy, the reloaded roster holds shallow cards, as with performance.lazyLoadCharacters.
+ */
+function importReplacement(context, replacedId, outcome, { lazy = false } = {}) {
+    return jest.fn(async () => {
+        if (outcome === 'failed') return;
+        const stored = context.characters.map(character => ({ ...character }));
+        stored[replacedId].description = 'Replaced';
+        context.characters = lazy ? stored.map(({ name, avatar, chat }) => ({ name, avatar, chat, shallow: true })) : stored;
+        context.getOneCharacter = jest.fn(async avatar => {
+            const index = context.characters.findIndex(character => character.avatar === avatar);
+            context.characters[index] = { ...stored[index] };
+        });
+        if (context.this_chid !== undefined) context.select_selected_character(context.this_chid, { switchMenu: false });
+        if (outcome === 'selected') {
+            context.setCharacterId(replacedId);
+            context.select_selected_character(replacedId);
+        }
+    });
+}
+
+async function replaceWithFile(context, dom, file) {
+    context.Popup.show.confirm.mockResolvedValueOnce(context.POPUP_RESULT.CUSTOM2);
+    await chooseDropdownEntry(context, dom, 'replace_update');
+    await dom.node('#character_replace_file').state.handlers.change({ target: { files: [file] } });
+}
+
+async function replaceFromUrl(context, dom, url) {
+    context.Popup.show.confirm.mockResolvedValueOnce(context.POPUP_RESULT.CUSTOM1);
+    context.Popup.show.input.mockResolvedValueOnce(url);
+    await chooseDropdownEntry(context, dom, 'replace_update');
+}
+
+describe('Replace / Update from the editor', () => {
+    const file = { name: 'card.png' };
+
+    test('reloads the chat of the active chat\'s character after it is replaced', async () => {
+        const { context, dom } = createEditor();
+        context.select_selected_character(ACTIVE);
+        context.processDroppedFiles = importReplacement(context, ACTIVE, 'selected');
+
+        await replaceWithFile(context, dom, file);
+        expect(context.processDroppedFiles.mock.calls[0][1].get(file)).toBe('Active.png');
+        expect(context.getChat).toHaveBeenCalledTimes(1);
+        expect(context.characters[ACTIVE].chat).toBe('Active - chat');
+        expect(context.updateRemoteChatName).not.toHaveBeenCalled();
+    });
+
+    test('reloads the chat of a card that is not active once the import has opened it', async () => {
+        const { context, dom } = createEditor();
+        context.select_selected_character(OTHER);
+        context.processDroppedFiles = importReplacement(context, OTHER, 'selected');
+
+        await replaceWithFile(context, dom, file);
+        expect(context.processDroppedFiles.mock.calls[0][1].get(file)).toBe('Other.png');
+        expect(context.this_chid).toBe(String(OTHER));
+        expect(context.getChat).toHaveBeenCalledTimes(1);
+        expect(context.characters.map(character => character.chat)).toEqual(['Active - chat', 'Other - chat', 'Member - chat']);
+        expect(context.updateRemoteChatName).not.toHaveBeenCalled();
+    });
+
+    test('keeps the active chat and shows the replaced card when the import did not open it', async () => {
+        const { context, dom } = createEditor();
+        context.select_selected_character(OTHER);
+        context.processDroppedFiles = importReplacement(context, OTHER, 'not selected');
+
+        await replaceWithFile(context, dom, file);
+        expect(context.this_chid).toBe(String(ACTIVE));
+        expect(context.getChat).not.toHaveBeenCalled();
+        expect(context.characters[ACTIVE].chat).toBe('Active - chat');
+        expect(context.updateRemoteChatName).not.toHaveBeenCalled();
+        expect(dom.node('#avatar_url_pole').val()).toBe('Other.png');
+        expect(dom.node('#description_textarea').val()).toBe('Replaced');
+        expect(context.toastr.error).not.toHaveBeenCalled();
+    });
+
+    test('loads a shallow card before the editor shows it again', async () => {
+        const { context, dom } = createEditor();
+        context.select_selected_character(OTHER);
+        context.processDroppedFiles = importReplacement(context, OTHER, 'not selected', { lazy: true });
+
+        await replaceWithFile(context, dom, file);
+        expect(context.getOneCharacter).toHaveBeenCalledWith('Other.png');
+        expect(dom.node('#avatar_url_pole').val()).toBe('Other.png');
+        expect(dom.node('#description_textarea').val()).toBe('Replaced');
+    });
+
+    test('reports no failure of its own for a file when no chat is active', async () => {
+        const { context, dom } = createEditor({ thisChid: null });
+        context.select_selected_character(OTHER);
+        context.processDroppedFiles = importReplacement(context, OTHER, 'failed');
+
+        await replaceWithFile(context, dom, file);
+        expect(context.toastr.error).not.toHaveBeenCalled();
+        expect(context.clearChat).not.toHaveBeenCalled();
+        expect(dom.node('#avatar_url_pole').val()).toBe('Other.png');
+    });
+
+    test('finishes a URL replace and resets the dropdown when no chat is active', async () => {
+        const { context, dom } = createEditor({ thisChid: null });
+        context.select_selected_character(OTHER);
+        context.importFromExternalUrl = importReplacement(context, OTHER, 'failed');
+        dom.node('#char-management-dropdown').prop('selectedIndex', 5);
+
+        await expect(replaceFromUrl(context, dom, 'https://example.invalid/card.png')).resolves.toBeUndefined();
+        expect(context.importFromExternalUrl).toHaveBeenCalledWith('https://example.invalid/card.png', { preserveFileName: 'Other.png' });
+        expect(context.clearChat).not.toHaveBeenCalled();
+        expect(dom.node('#char-management-dropdown').prop('selectedIndex')).toBe(0);
     });
 });

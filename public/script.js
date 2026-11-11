@@ -18944,6 +18944,15 @@ jQuery(async function () {
                 // Remember the chat currently selected, so we can reload it after the replacement
                 const currentChatFile = editorCharacter.chat;
                 const postReplace = async () => {
+                    // SillyBunny: openCharacterChat() reloads this_chid. The editor card is not this_chid when the
+                    // import failed or did not open its chat, so the editor shows the stored card again instead.
+                    if (characters[this_chid]?.avatar !== editorCharacter.avatar) {
+                        const replacedId = characters.findIndex(character => character.avatar === editorCharacter.avatar);
+                        if (replacedId === -1) return;
+                        await unshallowCharacter(replacedId);
+                        select_selected_character(replacedId, { switchMenu: false });
+                        return;
+                    }
                     await openCharacterChat(currentChatFile);
                 };
 
