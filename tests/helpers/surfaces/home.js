@@ -614,7 +614,7 @@ const home = {
 const welcomeSources = [`${SCRIPTS}/sillybunny-welcome.js`, `${SCRIPTS}/sillybunny-welcome-startup.js`, `${HOME_SCRIPTS}/welcome-boot.js`];
 
 /** The pages of Welcome, opened on top of its first page the way the buttons open them. */
-function welcomePageStates({ firstRun }) {
+function welcomePageStates({ isFirstRun }) {
     const next = page => shownPage(page).getByRole('button', { name: 'Next', exact: true }).click();
     const personaPage = async (page) => {
         await next(page);
@@ -636,7 +636,7 @@ function welcomePageStates({ firstRun }) {
             ready: onPage('Your Persona', '[data-sb-editor-field^="welcome-persona-"]'),
             open: personaPage,
         },
-        ...(firstRun ? [{
+        ...(isFirstRun ? [{
             id: 'persona-named',
             // Next stays off until the persona has a name.
             ready: onPage('Your Persona', '[data-sb-editor-field="welcome-persona-name"]', 'button:not([disabled]):has-text("Next")'),
@@ -663,7 +663,7 @@ function welcomePageStates({ firstRun }) {
                 // keys. Both are in the page only (the saves are answered by the guard), and `restoreHomeState` puts them back.
                 await rememberHomeState(page, { persona: true, welcome: true });
                 await personaPage(page);
-                if (firstRun) {
+                if (isFirstRun) {
                     await shownPage(page).getByRole('textbox', { name: 'Your Name' }).fill('Ada Lovelace');
                 }
                 await next(page);
@@ -675,7 +675,7 @@ function welcomePageStates({ firstRun }) {
             ready: onPage('Import From SillyTavern', '[data-sb-editor-field="welcome-import-folder"]', '.sbWindowActions button'),
             open: importPage,
         },
-        ...(firstRun ? [] : [{
+        ...(isFirstRun ? [] : [{
             // An account that is not an admin cannot import a folder, so the page offers the backup ZIP alone.
             id: 'import-page-non-admin',
             ready: [`${SHOWN_PAGE}:not(:has([data-sb-editor-field="welcome-import-folder"])) .sbWindowActions button`, ...onPage('Import From SillyTavern')],
@@ -693,7 +693,7 @@ const welcomeReopened = windowEntry({
     title: 'Welcome, reopened from the main menu',
     open: page => openFromHomeMenu(page, 'Show Welcome'),
     ready: onPage('Welcome', '.sbWelcomeIntro'),
-    states: welcomePageStates({ firstRun: false }),
+    states: welcomePageStates({ isFirstRun: false }),
     sources: welcomeSources,
 });
 
@@ -709,7 +709,7 @@ const welcomeFirstRun = windowEntry({
         await windowSettled(page);
     },
     ready: onPage('Welcome', '.sbWelcomeIntro'),
-    states: welcomePageStates({ firstRun: true }),
+    states: welcomePageStates({ isFirstRun: true }),
     sources: welcomeSources,
 });
 
