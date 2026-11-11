@@ -1,5 +1,7 @@
 /* global globalThis */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import vm from 'node:vm';
+import { loadDeclarations } from './util/load-declarations.js';
 
 const API = '/api/backends/text-completions/koboldcpp';
 const SERVER_URL = 'http://127.0.0.1:5001';
@@ -106,7 +108,7 @@ async function fakeFetch(url, options) {
         }
     } else if (route === 'uptime') {
         server.polls++;
-        server.onPoll?.(server.polls);
+        await server.onPoll?.(server.polls);
         reply = { json: server.uptimes.length > 1 ? server.uptimes.shift() : server.uptimes[0] };
     } else {
         throw new Error(`Unexpected request to ${url}`);
@@ -329,6 +331,47 @@ describe('/kcpp-model names', () => {
     });
 });
 
+describe('restart check', () => {
+    test('takes only a worker that started after the load request as the restart', async () => {
+        const server = servers[SERVER_URL];
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
+        server.uptimes = [OLD_WORKER, OLD_WORKER, NEW_WORKER];
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('beta.gguf');
+
+        expect(server.polls).toBe(3);
+        expect(script.setOnlineStatus).toHaveBeenCalledWith('no_connection');
+        expect(script.getStatusTextgen).toHaveBeenCalledTimes(1);
+        expect(getDropdown().value).toBe('beta.gguf');
+    });
+
+    test('without an uptime, takes a return after an offline poll as the restart', async () => {
+        const server = servers[SERVER_URL];
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
+        server.uptimes = [{ online: true, uptime: null }, { online: false, uptime: null }, { online: true, uptime: null }];
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('beta.gguf');
+
+        expect(server.polls).toBe(3);
+    });
+
+    test('gives up after the switch timeout when KoboldCpp never shows a restart', async () => {
+        const server = servers[SERVER_URL];
+        server.uptimes = [{ online: true, uptime: null }];
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(15 * 60 * 1000 / 2000);
+        expect(toasts.warning).toHaveBeenCalledWith('KoboldCpp did not come back within 15 minutes. Check the KoboldCpp console, then click Connect.', 'KoboldCpp');
+        expect(script.resultCheckStatus).toHaveBeenCalledTimes(1);
+        expect(script.getStatusTextgen).not.toHaveBeenCalled();
+        expect(getDropdown().labels).toEqual(['-- Connect to the API --']);
+    });
+});
+
 describe('end of the restart wait', () => {
     test('the Cancel button stops the wait and resets the connection status itself', async () => {
         const server = servers[SERVER_URL];
@@ -416,6 +459,24 @@ describe('end of the restart wait', () => {
 });
 
 describe('report after the restart', () => {
+    test.each([
+        ['a model that loaded', 'beta.gguf', { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] }, 'success', 'Loaded beta.gguf.', 'beta.gguf'],
+        ['a model when KoboldCpp came back with another model', 'beta.gguf', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'warning', 'KoboldCpp restarted with alpha.gguf instead of beta.gguf. Check the KoboldCpp console for load errors.', ''],
+        ['a model when KoboldCpp came back without a model', 'beta.gguf', { loadedModel: 'inactive' }, 'warning', 'KoboldCpp restarted without a model instead of loading beta.gguf. Check the KoboldCpp console for load errors.', ''],
+        ['an unload that worked', 'unload_model', { loadedModel: 'inactive' }, 'success', 'Model unloaded.', 'unload_model'],
+        ['an unload when the model stayed loaded', 'unload_model', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'warning', 'KoboldCpp restarted with alpha.gguf still loaded.', ''],
+        ['a reload of the launch model', 'initial_model', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'success', 'Launch model reloaded.', 'initial_model'],
+    ])('reports %s', async (_case, name, loaded, type, message, result) => {
+        const server = servers[SERVER_URL];
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], loaded);
+        server.uptimes = [NEW_WORKER];
+        await loadSwitcher();
+
+        await expect(runCommand(name)).resolves.toBe(result);
+
+        expect(toasts[type].mock.calls.map(([text]) => text)).toEqual([message]);
+    });
+
     test('accepts the loaded file when another file gives KoboldCpp the same model name', async () => {
         const server = servers[SERVER_URL];
         server.state = modelsAnswer(['a/model.gguf', 'b/model.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/model', loadedFiles: ['a/model.gguf', 'b/model.gguf'] });
@@ -429,5 +490,179 @@ describe('report after the restart', () => {
         expect(toasts.warning).not.toHaveBeenCalled();
         expect(toasts.success).toHaveBeenCalledWith('Loaded b/model.gguf.', 'KoboldCpp');
         expect(getDropdown()).toMatchObject({ labels: ['model (loaded)', 'a/model.gguf', 'b/model.gguf', 'Reload launch model', 'Unload model'], value: '' });
+    });
+});
+
+describe('load requests that fail', () => {
+    test('reports a load that KoboldCpp turned down and keeps the list', async () => {
+        const server = servers[SERVER_URL];
+        server.loadResult = { success: false };
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(0);
+        expect(toasts.error).toHaveBeenCalledWith('KoboldCpp did not accept "beta.gguf". Click Connect to refresh the list.', 'KoboldCpp');
+        expect(script.setOnlineStatus).not.toHaveBeenCalled();
+        expect(script.resultCheckStatus).toHaveBeenCalledTimes(1);
+        expect(getDropdown()).toMatchObject({ values: ['alpha.gguf', 'beta.gguf', ...ACTIONS], value: 'alpha.gguf' });
+    });
+
+    test('reports a load request that did not reach KoboldCpp and keeps the list', async () => {
+        const server = servers[SERVER_URL];
+        server.loadResult = 502;
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(0);
+        expect(toasts.error).toHaveBeenCalledWith('Could not reach KoboldCpp.', 'KoboldCpp');
+        expect(script.resultCheckStatus).toHaveBeenCalledTimes(1);
+        expect(getDropdown()).toMatchObject({ values: ['alpha.gguf', 'beta.gguf', ...ACTIONS], value: 'alpha.gguf' });
+    });
+});
+
+describe('/kcpp-model results', () => {
+    test('returns an empty string when no KoboldCpp URL is set', async () => {
+        settings.server_urls.koboldcpp = '';
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(fetch).not.toHaveBeenCalled();
+        expect(toasts.warning).toHaveBeenCalledWith('Set the KoboldCpp API URL in API Connections first.', 'KoboldCpp');
+    });
+
+    test('returns an empty string when KoboldCpp cannot be reached', async () => {
+        servers[SERVER_URL].state = null;
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(toasts.error).toHaveBeenCalledWith('Could not reach KoboldCpp.', 'KoboldCpp');
+    });
+
+    test('returns an empty string and shows why when admin mode is off', async () => {
+        servers[SERVER_URL].state = modelsAnswer([], { admin: 0, loadedModel: 'koboldcpp/alpha' });
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(toasts.warning).toHaveBeenCalledWith('Start KoboldCpp with --admin and --admindir to switch models here.', 'KoboldCpp');
+        expect(getDropdown()).toMatchObject({ labels: ['Admin mode is off'], hint: 'Start KoboldCpp with --admin and --admindir to switch models here.' });
+    });
+
+    test('returns the name of an entry that is already loaded without a restart', async () => {
+        const server = servers[SERVER_URL];
+        await loadSwitcher();
+
+        await expect(runCommand('alpha.gguf')).resolves.toBe('alpha.gguf');
+        server.state = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'inactive' });
+        await expect(runCommand('unload_model')).resolves.toBe('unload_model');
+
+        expect(server.loads).toEqual([]);
+    });
+
+    test('loads the entry chosen in the picker, and returns an empty string when the picker closes', async () => {
+        const server = servers[SERVER_URL];
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
+        server.uptimes = [NEW_WORKER];
+        await loadSwitcher();
+
+        popupResult = 'beta.gguf';
+        await expect(runCommand('')).resolves.toBe('beta.gguf');
+        popupResult = null;
+        await expect(runCommand('')).resolves.toBe('');
+
+        expect(server.loads).toEqual(['beta.gguf']);
+    });
+
+    test('answers that KoboldCpp is still restarting while a switch waits', async () => {
+        const server = servers[SERVER_URL];
+        let restart;
+        server.onPoll = () => new Promise(resolve => {
+            restart = resolve;
+        });
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
+        server.uptimes = [NEW_WORKER];
+        await loadSwitcher();
+
+        const switching = runCommand('beta.gguf');
+        await settle();
+        await expect(runCommand('alpha.gguf')).resolves.toBe('');
+        expect(getDropdown()).toMatchObject({ labels: ['beta.gguf'], hint: 'KoboldCpp restarts to switch models. Generation is unavailable until it is back.' });
+        restart();
+
+        await expect(switching).resolves.toBe('beta.gguf');
+        expect(toasts.info).toHaveBeenCalledWith('KoboldCpp is still restarting.', 'KoboldCpp');
+        expect(server.loads).toEqual(['beta.gguf']);
+    });
+});
+
+describe('dropdown', () => {
+    test('loads the entry chosen in the dropdown and then selects it', async () => {
+        const server = servers[SERVER_URL];
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
+        server.uptimes = [NEW_WORKER];
+        const switcher = await loadSwitcher();
+        await switcher.refreshKoboldCppModels();
+
+        dom.select.value = 'beta.gguf';
+        dom.onChange();
+        await settle();
+
+        expect(server.loads).toEqual(['beta.gguf']);
+        expect(toasts.success).toHaveBeenCalledWith('Loaded beta.gguf.', 'KoboldCpp');
+        expect(getDropdown()).toMatchObject({ values: ['alpha.gguf', 'beta.gguf', ...ACTIONS], value: 'beta.gguf' });
+    });
+});
+
+describe('getStatusTextgen() hook', () => {
+    /**
+     * Runs getStatusTextgen() from textgen-settings.js against a server that reports a loaded model.
+     * @param {string} type Text Completion type
+     * @param {number} [checks] Number of status checks to run
+     * @returns {Promise<string[]>} Online status at each refresh of the switcher
+     */
+    async function runStatusChecks(type, checks = 1) {
+        const refreshes = [];
+        const context = vm.createContext({
+            console,
+            textgenerationwebui_settings: { type },
+            textgen_types: { KOBOLDCPP: 'koboldcpp', LLAMACPP: 'llamacpp', GENERIC: 'generic', OOBA: 'ooba' },
+            getTextGenServer: () => SERVER_URL,
+            BIAS_CACHE: new Map(),
+            BIAS_KEY: 'bias',
+            fetch: async () => new Response(JSON.stringify({ result: 'koboldcpp/alpha' })),
+            getRequestHeaders: () => ({}),
+            abortStatusCheck: new AbortController(),
+            online_status: 'no_connection',
+            power_user: { instruct: { enabled: false } },
+            autoSelectInstructPreset: () => false,
+            sessionStorage: { setItem: () => {}, removeItem: () => {} },
+            TOKENIZER_SUPPORTED_KEY: 'tokenization',
+            resultCheckStatus: () => {},
+            refreshKoboldCppModels: async () => {
+                refreshes.push(context.online_status);
+            },
+        });
+        context.setOnlineStatus = value => {
+            context.online_status = value;
+        };
+        loadDeclarations(context, 'scripts/textgen-settings.js', ['getStatusTextgen']);
+
+        for (let check = 0; check < checks; check++) {
+            await context.getStatusTextgen();
+        }
+        return refreshes;
+    }
+
+    test('refreshes the switcher after every KoboldCpp status check, once the new status is set', async () => {
+        await expect(runStatusChecks('koboldcpp', 2)).resolves.toEqual(['koboldcpp/alpha', 'koboldcpp/alpha']);
+    });
+
+    test('leaves the switcher alone for other Text Completion types', async () => {
+        await expect(runStatusChecks('ooba')).resolves.toEqual([]);
     });
 });
