@@ -500,7 +500,9 @@ describe('server admin Android branch-switch gate', () => {
         const response = await invoke('/switch-branch', { branch: 'release', autoStash: true });
 
         expect(response.statusCode).toBe(409);
-        expect(response.body).toEqual({ error: 'TODO(copy)', code: 'android_app_update_required', required, installed: 1, reason, branch: 'release' });
+        expect(response.body).toEqual({
+            error: 'TODO(copy)', code: 'android_app_update_required', required, installed: 1, reason, branch: 'release', stashed: true, stashPopWarning: null,
+        });
         const { resolutionOrder, minimumReadOrder } = expectPinnedMinimumRead('origin/release', RELEASE_UPSTREAM);
         expect(resolutionOrder).toBeGreaterThan(fixture.git.branch.mock.invocationCallOrder[0]);
         expectNoCheckoutOrMerge();
@@ -515,19 +517,26 @@ describe('server admin Android branch-switch gate', () => {
         const response = await invoke('/switch-branch', { branch: 'release', autoStash: true });
 
         expect(response.statusCode).toBe(409);
-        expect(response.body.code).toBe('android_app_update_required');
+        expect(response.body).toMatchObject({ code: 'android_app_update_required', stashed: false, stashPopWarning: null });
         expect(fixture.git.stash).not.toHaveBeenCalled();
         expectNoCheckoutOrMerge();
     });
 
-    test('/switch-branch still returns the gate response when stash pop fails', async () => {
+    test('/switch-branch keeps the gate response and warning when stash pop fails', async () => {
         fixture.state.dirty = true;
         fixture.state.stashPopError = new Error('stash conflict');
 
         const response = await invoke('/switch-branch', { branch: 'release', autoStash: true });
 
         expect(response.statusCode).toBe(409);
-        expect(response.body).toMatchObject({ error: 'TODO(copy)', code: 'android_app_update_required', reason: 'newer', branch: 'release' });
+        expect(response.body).toMatchObject({
+            error: 'TODO(copy)',
+            code: 'android_app_update_required',
+            reason: 'newer',
+            branch: 'release',
+            stashed: true,
+            stashPopWarning: expect.stringContaining('stash conflict'),
+        });
         expectStashRoundTrip();
         expect(fixture.state.stashed).toBe(true);
         expectNoCheckoutOrMerge();
@@ -657,7 +666,7 @@ describe('server admin Android branch-switch gate', () => {
 
         expect(response.statusCode).toBe(409);
         expect(response.body).toEqual({
-            error: 'TODO(copy)', code: 'android_app_update_required', required: 2, installed: 1, reason: 'newer', branch: 'release',
+            error: 'TODO(copy)', code: 'android_app_update_required', required: 2, installed: 1, reason: 'newer', branch: 'release', stashed: false, stashPopWarning: null,
         });
         expectPinnedMinimumRead('origin/release', RELEASE_UPSTREAM);
         expect(fixture.git.revparse.mock.calls).toEqual([[['--abbrev-ref', 'HEAD']], [['origin/release']]]);
@@ -677,7 +686,7 @@ describe('server admin Android branch-switch gate', () => {
 
         expect(response.statusCode).toBe(409);
         expect(response.body).toEqual({
-            error: 'TODO(copy)', code: 'android_app_update_required', required: null, installed: 1, reason: 'missing', branch: 'release',
+            error: 'TODO(copy)', code: 'android_app_update_required', required: null, installed: 1, reason: 'missing', branch: 'release', stashed: true, stashPopWarning: null,
         });
         expect(fixture.git.revparse.mock.calls).toEqual([[['--abbrev-ref', 'HEAD']], [['origin/release']]]);
         expect(fixture.git.revparse.mock.invocationCallOrder[1]).toBeGreaterThan(fixture.git.branch.mock.invocationCallOrder[0]);

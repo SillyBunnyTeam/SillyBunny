@@ -1250,8 +1250,10 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
         // SillyBunny: gate the resolved APK branch before either checkout path.
         const androidAppGate = await checkAndroidAppGate(git, { ref: remoteBranch || branch, branch: currentBranch });
         if (androidAppGate.blocked) {
-            if (hasLocalChanges && autoStash) {
-                await restoreAutoStash(git);
+            const stashed = hasLocalChanges && autoStash;
+            let stashPopWarning = null;
+            if (stashed) {
+                stashPopWarning = await restoreAutoStash(git);
             }
             return response.status(409).json({
                 error: 'TODO(copy)',
@@ -1260,6 +1262,8 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
                 installed: androidAppGate.installed,
                 reason: androidAppGate.reason,
                 branch,
+                stashed,
+                stashPopWarning,
             });
         }
 
