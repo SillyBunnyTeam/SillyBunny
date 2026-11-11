@@ -395,23 +395,24 @@ async function switchKoboldCppModel(name) {
 /**
  * @param {SwitcherEntry[]} entries Switcher entries
  * @param {string} query Entry name, file name, label, or part of one
- * @returns {{ name: string|null, matches: number }} Matching entry, and how many entries contain the query
+ * @returns {{ name: string|null, matches: number }} The one matching entry, or null when no entry or several entries match, and how many entries match
  */
 function findEntry(entries, query) {
+    const named = entries.find(entry => entry.name === query);
+    if (named) {
+        return { name: named.name, matches: 1 };
+    }
+
     const needle = query.toLowerCase();
     const getNames = (/** @type {SwitcherEntry} */ entry) => {
         const fileName = entry.name.split(/[\\/]/).pop() ?? entry.name;
         return [entry.name, fileName, fileName.replace(/\.[^.]+$/, ''), getEntryLabel(entry.name)].map(name => name.toLowerCase());
     };
 
-    const exact = entries.find(entry => getNames(entry).includes(needle));
-    if (exact) {
-        return { name: exact.name, matches: 1 };
-    }
-
-    // A wrong guess costs a full model reload, so a partial name has to match exactly one entry.
-    const partial = entries.filter(entry => getNames(entry).some(name => name.includes(needle)));
-    return { name: partial.length === 1 ? partial[0].name : null, matches: partial.length };
+    // A wrong guess costs a full model reload, so a name or a part of one has to match exactly one entry.
+    const exact = entries.filter(entry => getNames(entry).includes(needle));
+    const matches = exact.length ? exact : entries.filter(entry => getNames(entry).some(name => name.includes(needle)));
+    return { name: matches.length === 1 ? matches[0].name : null, matches: matches.length };
 }
 
 /**
