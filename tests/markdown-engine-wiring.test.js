@@ -91,7 +91,7 @@ describe('markdown engine wiring', () => {
         const row = [
             '                                <div>',
             '                                    <label for="markdown_engine">',
-            '                                        <small data-sb-copy-placeholder="true">TODO(copy)</small>',
+            '                                        <small data-i18n="Markdown Engine">Markdown Engine</small>',
             '                                    </label>',
             '                                    <select id="markdown_engine">',
             '                                        <option value="showdown">Showdown</option>',
