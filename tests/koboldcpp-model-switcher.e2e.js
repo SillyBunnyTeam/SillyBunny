@@ -136,6 +136,32 @@ test.describe('KoboldCpp model switch', () => {
         await expectNoMorePolls(page, polls);
     });
 
+    test('the Chat Completion reconnect after a change of the main API keeps Cancel until it answers', async ({ page, baseURL }) => {
+        const polls = await connectKoboldCpp(page, baseURL);
+        let answerStatus;
+        const statusAnswer = new Promise(resolve => {
+            answerStatus = resolve;
+        });
+        await page.route('**/api/backends/chat-completions/status', async route => {
+            await statusAnswer;
+            await route.fulfill({ json: { data: [] } });
+        });
+        await page.evaluate(() => Object.assign(window.SillyTavern.getContext().chatCompletionSettings, {
+            chat_completion_source: 'custom',
+            custom_url: 'http://127.0.0.1:5003/v1',
+        }));
+        await startSwitch(page, polls);
+
+        await page.locator('#main_api').selectOption('openai');
+
+        await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
+        await expect(page.locator('#api_button_openai')).toHaveClass(/\bdisabled\b/);
+        await expect(page.locator('#api_button_openai ~ .api_loading')).toBeVisible();
+        answerStatus();
+        await expectConnectEnabled(page);
+        await expectNoMorePolls(page, polls);
+    });
+
     test('a Text Completion type without a URL stops the wait and enables Connect again', async ({ page, baseURL }) => {
         const polls = await connectKoboldCpp(page, baseURL);
         await startSwitch(page, polls);
@@ -178,6 +204,20 @@ test.describe('KoboldCpp model switch', () => {
 
         await expectConnectEnabled(page);
         await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
+        await expectNoMorePolls(page, polls);
+    });
+
+    test('a deleted API key stops the wait and enables Connect again while KoboldCpp stays selected', async ({ page, baseURL }) => {
+        const polls = await connectKoboldCpp(page, baseURL);
+        await startSwitch(page, polls);
+
+        await page.evaluate(async () => {
+            const { deleteSecret } = await import('/scripts/secrets.js');
+            await deleteSecret('api_key_koboldcpp');
+        });
+
+        await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
+        await expectConnectEnabled(page);
         await expectNoMorePolls(page, polls);
     });
 

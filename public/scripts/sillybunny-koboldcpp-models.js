@@ -45,6 +45,14 @@ const SWITCH_TIMEOUT_MS = 15 * 60 * 1000;
 let switcherState = null;
 let loadingEntry = '';
 let refreshCounter = 0;
+let statusLoadingStarts = 0;
+
+/**
+ * Called by startStatusLoading() in script.js, so that a model switch can tell whether a status check started after it.
+ */
+export function countStatusLoadingStart() {
+    statusLoadingStarts++;
+}
 
 function isActiveConnection() {
     return main_api === 'textgenerationwebui' && textgen_settings.type === textgen_types.KOBOLDCPP;
@@ -359,6 +367,7 @@ async function switchKoboldCppModel(name, scriptSignal) {
     if (isActive) {
         startStatusLoading();
     }
+    const ownStatusLoadingStart = statusLoadingStarts;
     const progressToast = toastr.info(getProgressText(name), title, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false });
 
     /** @type {'restarted'|'timeout'|'cancelled'|'rejected'|'failed'} */
@@ -380,6 +389,9 @@ async function switchKoboldCppModel(name, scriptSignal) {
 
     toastr.clear(progressToast);
     loadingEntry = '';
+    // A status check that started during the wait, such as the Chat Completion reconnect after an API change, ends the
+    // loading state when it answers. Ending it here would hide Cancel and enable Connect before that answer.
+    const ownsStatusLoading = isActive && statusLoadingStarts === ownStatusLoadingStart;
 
     if (outcome !== 'restarted') {
         // KoboldCpp may still be loading after a timeout or cancel, so the old list no longer describes it.
@@ -387,13 +399,12 @@ async function switchKoboldCppModel(name, scriptSignal) {
             switcherState = null;
         }
         renderModelSelect();
-        if (isActive && outcome !== 'cancelled') {
+        if (ownsStatusLoading && outcome !== 'cancelled') {
             resultCheckStatus();
         }
-        // The Cancel button aborts the status check and then resets the connection status itself. A new API, type
-        // or URL, or a stopped script, also ends the wait, and without this call it can leave the Connect buttons
-        // disabled.
-        if (isActive && outcome === 'cancelled' && !(signal?.aborted && isActiveConnection())) {
+        // A new API, type or URL, a deleted or rotated API key, or a stopped script can end the wait without a new
+        // status check. Then nothing else ends the loading state, and without this call the Connect buttons stay disabled.
+        if (ownsStatusLoading && outcome === 'cancelled') {
             stopStatusLoading();
         }
         // A KoboldCpp status check does not update the list while the switch waits, so the list for the new URL loads here.

@@ -225,6 +225,8 @@ async function loadSwitcher({ mainApi = 'textgenerationwebui', onlineStatus = 'k
     }));
 
     const switcher = await import('../public/scripts/sillybunny-koboldcpp-models.js');
+    // The real startStatusLoading() in script.js calls this hook.
+    script.startStatusLoading.mockImplementation(switcher.countStatusLoadingStart);
     switcher.initKoboldCppModels();
     return { ...switcher, onOnlineStatusChanged: eventHandlers.online_status_changed };
 }
@@ -388,7 +390,7 @@ describe('restart check', () => {
 });
 
 describe('end of the restart wait', () => {
-    test('the Cancel button stops the wait and resets the connection status itself', async () => {
+    test('an abort while KoboldCpp stays selected, from the Cancel button or a deleted API key, stops the wait and enables Connect again', async () => {
         const server = servers[SERVER_URL];
         server.onPoll = () => statusCheck.abort();
         await loadSwitcher();
@@ -397,7 +399,7 @@ describe('end of the restart wait', () => {
 
         expect(server.polls).toBe(1);
         expect(script.startStatusLoading).toHaveBeenCalledTimes(1);
-        expect(script.stopStatusLoading).not.toHaveBeenCalled();
+        expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
         expect(script.resultCheckStatus).not.toHaveBeenCalled();
         expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
         expect(getDropdown().labels).toEqual(['-- Connect to the API --']);
@@ -417,6 +419,41 @@ describe('end of the restart wait', () => {
         expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
         expect(script.resultCheckStatus).not.toHaveBeenCalled();
         expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+    });
+
+    test('a status check that starts during the wait, such as the Connect click of a type change, ends the loading state itself', async () => {
+        const server = servers[SERVER_URL];
+        server.onPoll = () => {
+            statusCheck.abort();
+            settings.type = 'llamacpp';
+            script.startStatusLoading();
+        };
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(1);
+        expect(script.startStatusLoading).toHaveBeenCalledTimes(2);
+        expect(script.stopStatusLoading).not.toHaveBeenCalled();
+        expect(script.resultCheckStatus).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+    });
+
+    test('a status check that starts during the wait keeps the loading state when the wait times out', async () => {
+        const server = servers[SERVER_URL];
+        server.uptimes = [{ online: true, uptime: null }];
+        server.onPoll = poll => {
+            if (poll === 1) {
+                script.startStatusLoading();
+            }
+        };
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(15 * 60 * 1000 / 2000);
+        expect(script.stopStatusLoading).not.toHaveBeenCalled();
+        expect(script.resultCheckStatus).not.toHaveBeenCalled();
     });
 
     test('a new KoboldCpp URL stops the wait on the old server, enables Connect and lists the new server', async () => {
