@@ -70,6 +70,7 @@ function createDom() {
     return { $, node, document, isShown: selector => node(selector).state.shown !== false };
 }
 
+/** @param {{ thisChid?: string|null, selectedGroup?: string|null }} [options] A null thisChid means that no chat is active. */
 function createEditor({ thisChid = String(ACTIVE), selectedGroup = null } = {}) {
     const dom = createDom();
     const context = vm.createContext({
@@ -78,7 +79,7 @@ function createEditor({ thisChid = String(ACTIVE), selectedGroup = null } = {}) 
         document: dom.document,
         HTMLElement: class {},
         characters: createCharacters(),
-        this_chid: thisChid,
+        this_chid: thisChid ?? undefined,
         selected_group: selectedGroup,
         menu_type: 'characters',
         selected_button: '',
@@ -170,7 +171,7 @@ describe('classic editor opened for a card that is not the active chat\'s', () =
     });
 
     test('adds a tag to the card in the editor when no chat is active', () => {
-        const { context } = createEditor({ thisChid: undefined });
+        const { context } = createEditor({ thisChid: null });
         context.select_selected_character(OTHER);
 
         addTagInEditor(context, 'Knight');
@@ -230,7 +231,7 @@ describe('classic editor opened for the active chat\'s character', () => {
 
 describe('group member peek', () => {
     test('keeps the member as the editor card and the group chat controls as before', async () => {
-        const { context, dom } = createEditor({ thisChid: undefined, selectedGroup: 'group-1' });
+        const { context, dom } = createEditor({ thisChid: null, selectedGroup: 'group-1' });
         // The calls of openCharacterDefinition() in public/scripts/group-chats.js, in its order.
         context.setCharacterId(String(MEMBER));
         context.select_selected_character(String(MEMBER));
