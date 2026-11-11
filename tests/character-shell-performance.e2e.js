@@ -25,17 +25,25 @@ async function settleNavigation(page) {
     });
 }
 
+// A toggle's fill eases in over 200 ms when it becomes current, so a read that follows at once sees a mid-transition colour.
+async function waitForFillAtRest(toggle) {
+    await expect.poll(() => toggle.evaluate(button => button.getAnimations()
+        .filter(animation => animation.transitionProperty === 'background-color' && animation.playState === 'running').length)).toBe(0);
+}
+
 for (const width of [1440, 390]) {
     test(`Characters uses the Home selected-pill fill at ${width}`, async ({ page }) => {
         await prepare(page, width);
         const home = page.locator('#sb-home-toggle');
         await expect(home).toHaveClass(/is-current/);
+        await waitForFillAtRest(home);
         const homeBackground = await home.evaluate(button => getComputedStyle(button).backgroundColor);
 
         await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
         await expect(page.locator('#sb-settings-page')).toBeVisible();
         await expect(page.locator('#sb-character-toggle')).toHaveClass(/sb-settings-active/);
         await page.mouse.move(0, 0);
+        await waitForFillAtRest(page.locator('#sb-character-toggle'));
         const charactersBackground = await page.locator('#sb-character-toggle').evaluate(button => getComputedStyle(button).backgroundColor);
 
         expect(charactersBackground).toBe(homeBackground);

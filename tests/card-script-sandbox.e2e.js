@@ -71,7 +71,15 @@ test.describe('card script sandbox runtime', () => {
     test('shows the opt-in run button and creates a locked iframe sandbox', async ({ page }) => {
         await installMarkedCardScriptMessage(page, '<script>window.triggerSlash("/echo sandbox e2e")</script>');
 
-        const runButton = page.locator(`.mes[mesid="${MESSAGE_ID}"] .mes_run_card_scripts`);
+        // The message actions hide the extra buttons until Shift is pressed over the message.
+        const message = page.locator(`.mes[mesid="${MESSAGE_ID}"]`);
+        const runButton = message.locator('.mes_run_card_scripts');
+        await expect(runButton).toBeHidden();
+        await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement)?.blur());
+        await message.hover();
+        await page.keyboard.down('Shift');
+        await page.keyboard.up('Shift');
+        await expect(message).toHaveAttribute('data-sb-actions-expanded', '');
         await expect(runButton).toBeVisible();
 
         await runButton.click();

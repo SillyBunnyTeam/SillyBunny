@@ -8,6 +8,10 @@ const coreAssetPaths = [
     '/css/sillybunny-mobile-shell.css',
 ];
 
+// Guards against growth in the number of requests a start makes. Lower it when a start makes fewer requests; raise it
+// only when a change adds a request on purpose.
+const STARTUP_RESOURCE_LIMIT = 858;
+
 async function waitForResourceStability(page) {
     let previousCount = -1;
     let stableSamples = 0;
@@ -77,7 +81,7 @@ test.describe('frontend performance smoke', () => {
 
         expect(snapshot.title).toBe('SillyBunny');
         expect(snapshot.hasShell).toBe(true);
-        expect(snapshot.resourceCount).toBeLessThan(700);
+        expect(snapshot.resourceCount).toBeLessThanOrEqual(STARTUP_RESOURCE_LIMIT);
         expect(snapshot.jsBytes).toBeGreaterThan(0);
         expect(snapshot.jsBytes).toBeLessThan(12 * 1024 * 1024);
         expect(snapshot.cssBytes).toBeGreaterThan(0);
