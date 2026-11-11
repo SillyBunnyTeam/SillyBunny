@@ -14,6 +14,10 @@ import DiffMatchPatch from 'diff-match-patch';
 import { isProbablyReaderable, Readability } from '@mozilla/readability';
 import SVGInject from '@iconfu/svg-inject';
 import showdown from 'showdown';
+// SillyBunny: markdown-it and its plugins back the opt-in Markdown engine in scripts/markdown-engine.js.
+import markdownit from 'markdown-it';
+import { full as markdownItEmoji } from 'markdown-it-emoji';
+import markdownItCjkFriendly from 'markdown-it-cjk-friendly';
 import moment from 'moment';
 import seedrandom from 'seedrandom';
 import * as Popper from '@popperjs/core';
@@ -95,6 +99,10 @@ export default {
     isProbablyReaderable,
     SVGInject,
     showdown,
+    // SillyBunny: markdown-it libraries for the opt-in Markdown engine.
+    markdownit,
+    markdownItEmoji,
+    markdownItCjkFriendly,
     moment,
     seedrandom,
     Popper,
@@ -123,6 +131,10 @@ export {
     isProbablyReaderable,
     SVGInject,
     showdown,
+    // SillyBunny: markdown-it libraries for the opt-in Markdown engine.
+    markdownit,
+    markdownItEmoji,
+    markdownItCjkFriendly,
     moment,
     seedrandom,
     Popper,
