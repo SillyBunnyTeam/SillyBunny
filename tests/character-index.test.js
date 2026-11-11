@@ -8,6 +8,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import '../src/fetch-patch.js';
+import { isBunRuntime } from '../src/runtime.js';
 import { setConfigFilePath } from '../src/util.js';
 import { createCardPng, createV1Card, createV2Card } from './util/card-corpus.js';
 
@@ -26,6 +27,7 @@ setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 
 const { CharacterIndex } = await import('../src/character-index.js');
 const { characterIndex, router: charactersRouter } = await import('../src/endpoints/characters.js');
+const describeOnBun = isBunRuntime() ? describe : describe.skip;
 
 afterAll(() => {
     globalThis.DATA_ROOT = originalDataRoot;
@@ -168,6 +170,23 @@ describe('character index', () => {
 
         expect(disabledIndex.get(cardPath, stat)).toBeUndefined();
         expect(fs.existsSync(disabledIndex.filePath)).toBe(false);
+    });
+
+    describeOnBun('under Bun', () => {
+        test('runs its SQL without the exec method that bun:sqlite deprecates', async () => {
+            const { Database } = await import('bun:sqlite');
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            jest.spyOn(Database.prototype, 'exec').mockImplementation(() => {
+                throw new Error('exec is not available');
+            });
+            const cardPath = writeFile(path.join(tempRoot, 'characters', 'Alice.png'), 'alice');
+            const stat = fs.statSync(cardPath);
+
+            index.set(cardPath, stat, 'alice data');
+
+            expect(index.get(cardPath, stat)).toBe('alice data');
+            expect(warn).not.toHaveBeenCalled();
+        });
     });
 });
 
