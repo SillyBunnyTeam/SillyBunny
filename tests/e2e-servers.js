@@ -105,7 +105,12 @@ export function getServerRuntime(env) {
  * @returns {{ command: string, args: string[] }}
  */
 export function getServerCommand(env, { port, dataRoot }) {
-    const args = ['server.js', '--browserLaunchEnabled=false', '--port', String(port), '--dataRoot', dataRoot];
+    const args = [
+        'server.js', '--browserLaunchEnabled=false', '--port', String(port), '--dataRoot', dataRoot,
+        // The default config file is in the repository root. It holds the settings of the developer's own server,
+        // and a server writes it there when it is absent.
+        '--configPath', path.join(dataRoot, 'config.yaml'),
+    ];
     return getServerRuntime(env) === 'node'
         ? { command: process.execPath, args: ['--no-warnings', ...args] }
         : { command: 'bun', args };

@@ -69,7 +69,10 @@ describe('e2e servers', () => {
 
     test('starts a server with Bun, or with Node.js when asked, without a shell', () => {
         const server = { port: 5001, dataRoot: '/tmp/sillybunny test $data' };
-        const args = ['server.js', '--browserLaunchEnabled=false', '--port', '5001', '--dataRoot', '/tmp/sillybunny test $data'];
+        const args = [
+            'server.js', '--browserLaunchEnabled=false', '--port', '5001', '--dataRoot', '/tmp/sillybunny test $data',
+            '--configPath', path.join('/tmp/sillybunny test $data', 'config.yaml'),
+        ];
         expect(getServerCommand({}, server)).toEqual({ command: 'bun', args });
         expect(getServerCommand({ SILLYBUNNY_TEST_SERVER_RUNTIME: 'node' }, server)).toEqual({ command: process.execPath, args: ['--no-warnings', ...args] });
         expect(() => getServerCommand({ SILLYBUNNY_TEST_SERVER_RUNTIME: 'deno' }, server)).toThrow('SILLYBUNNY_TEST_SERVER_RUNTIME');
