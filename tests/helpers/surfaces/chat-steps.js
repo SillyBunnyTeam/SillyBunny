@@ -401,21 +401,25 @@ export async function waitForStill(page, selector, { quiet = 400, cap = 8000 } =
  */
 export async function scrollToMessage(page, id, block = 'start') {
     const selector = message(id);
-    await waitForStill(page, selector);
-    await page.evaluate(({ selector, block }) => {
-        const row = document.querySelector(selector);
-        if (!row) {
-            throw new Error(`${selector} is not in the chat.`);
-        }
-        row.scrollIntoView({ block });
-    }, { selector, block });
-    await waitForStill(page, selector);
-    await settle(page);
-    const inView = await page.evaluate((selector) => {
-        const rect = document.querySelector(selector).getBoundingClientRect();
-        const view = document.getElementById('chat').getBoundingClientRect();
-        return rect.bottom > view.top + 40 && rect.top < view.bottom - 40;
-    }, selector);
+    let inView = false;
+    // Messages above the one that is scrolled to are measured as they render, which moves it; the scroll is repeated up to three times.
+    for (let attempt = 0; attempt < 3 && !inView; attempt++) {
+        await waitForStill(page, selector);
+        await page.evaluate(({ selector, block }) => {
+            const row = document.querySelector(selector);
+            if (!row) {
+                throw new Error(`${selector} is not in the chat.`);
+            }
+            row.scrollIntoView({ block });
+        }, { selector, block });
+        await waitForStill(page, selector);
+        await settle(page);
+        inView = await page.evaluate((selector) => {
+            const rect = document.querySelector(selector).getBoundingClientRect();
+            const view = document.getElementById('chat').getBoundingClientRect();
+            return rect.bottom > view.top + 40 && rect.top < view.bottom - 40;
+        }, selector);
+    }
     if (!inView) {
         throw new Error(`${selector} is not in the chat column after it was scrolled to.`);
     }

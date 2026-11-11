@@ -132,6 +132,8 @@ async function openCharacterEditor(page, character = FIXTURES.character) {
     }, character.avatar);
     await shown(page, '#sb_character_editor_header');
     await page.waitForFunction(name => document.getElementById('character_name_pole')?.value === name, character.name);
+    // The token count arrives after a debounce, and the readout in the header is hidden until it has: it moves the header.
+    await page.locator('#sb_character_editor_tokens:not([hidden])').waitFor({ state: 'attached', timeout: 10_000 });
     await leaveQuickEdit(page);
     await scrollToTop(page, CHARACTER.scroller);
 }
@@ -548,7 +550,7 @@ export const surfaces = [
                 open: page => openCharacterEditor(page, LONG_NAMED_CHARACTER),
             },
         ],
-        masks: ['#sb_character_editor_tokens', '#form_create .extension_token_counter'],
+        masks: ['#sb_character_editor_tokens', '#form_create .extension_token_counter', '#sb-topbar-title'],
         needs: ['character', 'characters-many'],
         sources: [`${SCRIPTS}/sillybunny-character-editor.js`, `${SCRIPTS}/sillybunny-editor/chrome.js`, `${CSS}/sillybunny-character-editor.css`],
         primaryFlow: true,

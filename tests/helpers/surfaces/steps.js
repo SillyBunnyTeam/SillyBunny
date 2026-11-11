@@ -5,6 +5,7 @@
  */
 
 import { BACKENDS, DEFAULT_BACKEND } from './schema.js';
+import { fixture as LOGIT_BIAS } from './needs/logit-bias.js';
 
 const surfaceLabels = new WeakMap();
 
@@ -221,4 +222,39 @@ async function waitForStableExpanders(page, scroller) {
         };
         requestAnimationFrame(frame);
     }), scroller);
+}
+
+/**
+ * Shows the preset of the `logit-bias` need in the Chat Completions logit bias list and waits for its rows.
+ * The app fills the preset select after the page is shown, and applying the active Chat Completion preset sets the bias selection
+ * again, to the one that the preset holds. Whichever happens last wins, so the selection is made here, checked again once the page
+ * has settled, and made again when a late preset application has undone it (three times at most).
+ * @param {import('@playwright/test').Page} page
+ */
+export async function selectLogitBiasPreset(page) {
+    const { preset, entries } = LOGIT_BIAS;
+    const rows = '[data-sb-panel="sampling"] .openai_logit_bias_list > *';
+    const shown = () => page.evaluate(({ rows, preset }) => ({
+        selected: document.getElementById('openai_logit_bias_preset')?.value === preset,
+        count: document.querySelectorAll(rows).length,
+    }), { rows, preset });
+    await page.waitForFunction(name => [...document.getElementById('openai_logit_bias_preset')?.options ?? []].some(option => option.value === name), preset, { timeout: 15_000 })
+        .catch(() => { throw new Error(`The logit bias preset "${preset}" is not among the options of #openai_logit_bias_preset after 15 s.`); });
+    let state = await shown();
+    for (let attempt = 0; attempt < 3; attempt++) {
+        await page.evaluate((name) => {
+            const select = document.getElementById('openai_logit_bias_preset');
+            if (select.value !== name) {
+                select.value = name;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }, preset);
+        await page.waitForFunction(({ rows, count }) => document.querySelectorAll(rows).length === count, { rows, count: entries }, { timeout: 10_000 }).catch(() => {});
+        await settle(page);
+        state = await shown();
+        if (state.selected && state.count === entries) {
+            return;
+        }
+    }
+    throw new Error(`The logit bias list does not show the ${entries} rows of the preset "${preset}" (selected: ${state.selected}, rows: ${state.count}).`);
 }

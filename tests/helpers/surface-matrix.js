@@ -50,6 +50,14 @@ export const EXTRA_AXIS_VIEWPORT_IDS = Object.freeze([size(DESKTOP).id, size(PHO
 const OVERLAY_FAMILIES = new Set(['dialog', 'menu', 'panel']);
 
 /**
+ * Whether a surface is an overlay: its family is an overlay family, or it sets `overlay`.
+ * @param {{ family: string, overlay?: boolean }} surface
+ */
+export function isOverlaySurface(surface) {
+    return OVERLAY_FAMILIES.has(surface.family) || surface.overlay === true;
+}
+
+/**
  * A viewport on its own by id.
  * @param {string} id
  * @returns {MatrixViewport}
@@ -71,7 +79,7 @@ export function viewportById(id) {
  * @returns {string[]}
  */
 export function viewportsFor(surface) {
-    const isOverlay = OVERLAY_FAMILIES.has(surface.family) || surface.overlay === true;
+    const isOverlay = isOverlaySurface(surface);
     const isTopBar = surface.family === 'header';
     const isPrimaryFlow = surface.primaryFlow === true;
     const applies = {
@@ -102,7 +110,10 @@ export const THEMES = Object.freeze([
  * light non-Libadwaita theme. A tool that needs them skips an empty list.
  * @type {readonly { id: string, name: string, tone: 'dark' | 'light' }[]}
  */
-export const LEGACY_THEMES = Object.freeze([]);
+export const LEGACY_THEMES = Object.freeze([
+    { id: 'azure', name: 'Azure', tone: 'dark' },
+    { id: 'solarized-light', name: 'Solarized Light', tone: 'light' },
+]);
 
 /**
  * Axes that run at `EXTRA_AXIS_VIEWPORT_IDS` only. Each is a switch on top of the default variant.

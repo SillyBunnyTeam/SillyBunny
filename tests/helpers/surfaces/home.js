@@ -19,7 +19,7 @@
  * splash screen and the login page set neither.
  *
  * Regions that differ between runs are masked: the version and commit rows, the debug text, the dates of chats, and the
- * art panels, whose figures blink at random times. The splash screen is held still (see `holdSplash`) and its line is masked.
+ * art panels, whose figures blink at random times. The splash screen is held still (see `holdSplash`) and its line is replaced by a fixed one.
  *
  * The splash screen and the login page leave the booted app: the splash holds the settings request of a reload so that
  * the preloader stays up, and the login page is the static `/login.html`, whose requests for users and logins are
@@ -851,6 +851,13 @@ const troubleshooting = windowEntry({
         await openAbout(page);
         await page.locator(WINDOW).getByRole('button', { name: 'Troubleshooting', exact: true }).click();
         await waitForPageTitle(page, 'Troubleshooting');
+        // The text lists the boot marks of this page load and the server's branch and commit once they arrive, and the block grows with
+        // its lines, which moves the buttons below it. It is masked, so a fixed text of a fixed height stands in for it.
+        await page.waitForFunction(() => document.querySelector('.sbDebugInfo')?.value.includes('Branch: ') && !document.querySelector('.sbDebugInfo').value.includes('Branch: …'));
+        await page.locator('.sbDebugInfo').evaluate((block) => {
+            block.value = Array.from({ length: 8 }, (_, line) => `Audit line ${line + 1}`).join('\n');
+            block.style.blockSize = '10rem';
+        });
     },
     ready: onPage('Troubleshooting', '.sbDebugInfo'),
     masks: ['.sbDebugInfo'],
@@ -990,6 +997,13 @@ async function holdSplash(page, variant) {
         const letters = [...document.querySelectorAll('#preloader .sb-boot-letter')];
         return (!mascot || mascot.complete) && letters.length > 0 && letters.every(letter => getComputedStyle(letter).opacity === '1');
     });
+    // The splash picks its line at random, and the line sets the width of the box that it sits in.
+    await page.evaluate(() => {
+        const line = document.querySelector('#preloader .sb-boot-line-text');
+        if (line) {
+            line.textContent = 'Audit splash line';
+        }
+    });
     await settle(page);
 }
 
@@ -1027,7 +1041,6 @@ const splash = {
         { id: 'reisen', ready: splashOf('reisen'), open: page => holdSplash(page, 'reisen') },
         { id: 'tewi', ready: splashOf('tewi'), open: page => holdSplash(page, 'tewi') },
     ],
-    masks: ['#preloader .sb-boot-line'],
     needs: [],
     sources: [`${SCRIPTS}/sillybunny-splash.js`, `${SCRIPTS}/sillybunny-splash-loop.js`, 'public/css/loader.css'],
 };

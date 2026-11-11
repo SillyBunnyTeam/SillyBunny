@@ -11,7 +11,7 @@
 import { FIXTURES } from './fixture-data.js';
 import { openGroupEditor } from './header-steps.js';
 import { MOBILE_LAYOUT_VIEWPORTS } from './panel-steps.js';
-import { chooseMenuItem, openSettingsTab, settle } from './steps.js';
+import { chooseMenuItem, openSettingsTab, selectLogitBiasPreset, settle } from './steps.js';
 import {
     AGENTS, ARCHIVE, CHAT_HISTORY, EXTENSIONS_MANAGER, FOLDER_MANAGER, MENU_ROOT, PERSONAS, TAG_MANAGER, WORLD_INFO,
     agentSearch, characterSearch, closeArchive, closeChatHistory, closeDataBank, closeExtensionsManager, closeManager, closeSwipePicker,
@@ -534,7 +534,10 @@ const logitBiasList = {
     title: 'Logit bias list (Chat Completion sampling)',
     root: `${SAMPLING} .openai_logit_bias_list`,
     ready: `${SAMPLING} .openai_logit_bias_list > *`,
-    open: page => openSamplingList(page, { backend: 'chat-completion', list: `${SAMPLING} .openai_logit_bias_list`, rows: `${SAMPLING} .openai_logit_bias_list > *` }),
+    async open(page) {
+        await openSamplingList(page, { backend: 'chat-completion', list: `${SAMPLING} .openai_logit_bias_list`, rows: `${SAMPLING} .openai_logit_bias_list > *` });
+        await selectLogitBiasPreset(page);
+    },
     needs: ['logit-bias'],
     sources: [`${SCRIPTS}/logit-bias.js`, `${SCRIPTS}/openai.js`],
 };

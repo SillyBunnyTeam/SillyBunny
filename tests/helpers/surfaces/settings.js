@@ -13,7 +13,7 @@
 import { viewportById } from '../surface-matrix.js';
 import { FIXTURES } from './fixture-data.js';
 import { BACKENDS, DEFAULT_BACKEND } from './schema.js';
-import { chooseMenuItem, expandAll, openCharactersTab, openSettingsTab, selectBackend, settle } from './steps.js';
+import { chooseMenuItem, expandAll, openCharactersTab, openSettingsTab, selectBackend, selectLogitBiasPreset, settle } from './steps.js';
 
 const BACKEND_IDS = Object.keys(BACKENDS);
 /** The Presets page differs between sources only by a toggle, so it keeps the four backends and not the extra Text Completion sources. */
@@ -22,6 +22,40 @@ const SCRIPTS = 'public/scripts';
 
 const backendOf = ctx => BACKENDS[ctx.backend ?? DEFAULT_BACKEND];
 const modePill = (selector, ctx) => `${selector}:has-text("Backend: ${backendOf(ctx).modeLabel}")`;
+
+/** Runs a wait after the open step of an entry, for content that the page fills in after it shows. */
+function afterOpen(entry, wait) {
+    const open = entry.open;
+    return {
+        ...entry,
+        async open(page, ctx) {
+            await open(page, ctx);
+            await wait(page, ctx ?? {});
+        },
+    };
+}
+
+/** The console lines that the Logs page shows: the server's log grows with every request, so its length and the page count of the capture would not repeat. */
+const FIXED_LOG = {
+    entries: Array.from({ length: 24 }, (_, index) => ({ id: index + 1, timestamp: 1_769_990_400_000 + index * 1000, stream: 'stdout', message: `Audit console line ${index + 1}` })),
+    latestId: 24,
+    totalBuffered: 24,
+    captureStartedAt: 1_769_990_400_000,
+    truncated: false,
+};
+const LOG_ROUTE = '**/api/server-admin/logs';
+
+/** Answers the log requests of the page with `FIXED_LOG` from the moment the entry is opened. The page is not given back before the test ends, so the route stays. */
+function withFixedConsoleLog(entry) {
+    const open = entry.open;
+    return {
+        ...entry,
+        async open(page, ctx) {
+            await page.route(LOG_ROUTE, route => route.fulfill({ json: FIXED_LOG }));
+            await open(page, ctx);
+        },
+    };
+}
 
 /**
  * A page of the Backend or Customize shell.
@@ -169,9 +203,10 @@ export const surfaces = [
         ready: ctx => `[data-sb-panel="connections"] ${backendOf(ctx).connector}`,
         upstreamMarkup: true,
         backends: BACKEND_IDS,
+        masks: ['[data-sb-panel="connections"] .ds-row:has(select[id*="model"])', '[data-sb-panel="connections"] .online_status'],
         sources: [`${SCRIPTS}/sillybunny-connections-form.js`, `${SCRIPTS}/sillybunny-connections-panel.js`],
     }),
-    shellPage({
+    afterOpen(shellPage({
         id: 'backend.sampling',
         title: 'Backend: Sampling',
         shell: 'left',
@@ -180,6 +215,11 @@ export const surfaces = [
         upstreamMarkup: true,
         backends: BACKEND_IDS,
         sources: [`${SCRIPTS}/sillybunny-tabs.js`],
+    }), async (page, ctx) => {
+        // Chat Completions is the backend that has the logit bias list.
+        if ((ctx.backend ?? DEFAULT_BACKEND) === 'chat-completion') {
+            await selectLogitBiasPreset(page);
+        }
     }),
     shellPage({
         id: 'backend.presets',
@@ -263,24 +303,27 @@ export const surfaces = [
         upstreamMarkup: true,
         sources: [`${SCRIPTS}/sillybunny-settings-content.js`],
     }),
-    shellPage({
+    afterOpen(shellPage({
         id: 'customize.data-security',
         title: 'Customize: Data & Security',
         shell: 'right',
         tab: 'data-security',
         ready: '[data-sb-panel="data-security"] button:has-text("Usage Stats")',
-        masks: ['[data-sb-panel="data-security"] .sb-server-stat-value', '[data-sb-panel="data-security"] .sb-server-pill'],
+        masks: ['[data-sb-panel="data-security"] .sb-server-stat-value', '[data-sb-panel="data-security"] .sb-server-pill', '[data-sb-panel="data-security"] .sb-server-note', '[data-sb-panel="data-security"] .ds-row:has(select)', '[data-sb-panel="data-security"] #version_display'],
         sources: [`${SCRIPTS}/sillybunny-server-tools.js`],
+    }), async (page) => {
+        // The version line is written when the server has answered, and its width moves the rows around it.
+        await page.waitForFunction(() => Boolean(document.querySelector('[data-sb-panel="data-security"] #version_display')?.textContent.trim()), null, { timeout: 10_000 });
     }),
-    shellPage({
+    withFixedConsoleLog(shellPage({
         id: 'customize.logs',
         title: 'Customize: Logs',
         shell: 'right',
         tab: 'logs',
         ready: '[data-sb-panel="logs"] .sb-console-log-toolbar button',
-        masks: ['[data-sb-panel="logs"] .sb-console-log-output', '[data-sb-panel="logs"] .sb-server-pill'],
+        masks: ['[data-sb-panel="logs"] .sb-console-log-output', '[data-sb-panel="logs"] .sb-server-pill', '[data-sb-panel="logs"] .sb-server-note'],
         sources: [`${SCRIPTS}/sillybunny-server-tools.js`],
-    }),
+    })),
     characterShellPane({
         id: 'worldinfo.global',
         title: 'World Info Global Settings',
@@ -315,6 +358,8 @@ export const surfaces = [
         owner: 'A',
         title: 'Conversation settings panel',
         root: '#sb_conversation_settings_drawer',
+        // The edge of a switch changes by a few pixels between two screenshots of the same page, so that the capture never settles.
+        masks: ['#sb_conversation_settings_drawer input.sb-conversation-switch'],
         open: openConversationSettings,
         async close(page) {
             await page.locator('[data-sb-conversation-action="close-settings"]').first().click();

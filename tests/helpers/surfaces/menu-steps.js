@@ -57,8 +57,37 @@ export async function openLegacyToggle(page, button, root) {
  * @param {string} [root] Defaults to the action menu.
  */
 export async function openFrom(page, trigger, root = MENU_ROOT) {
-    await page.locator(trigger).filter({ visible: true }).first().click();
-    await settleOverlay(page, root);
+    const target = page.locator(trigger).filter({ visible: true }).first();
+    const scrolledAncestors = () => target.evaluate((node) => {
+        // A trigger inside another overlay is no reason to close it: that would close the way to the trigger.
+        if (node.closest('.sb-action-popover, .sb-action-sheet, .sb-picker, .sb-picker-sheet, .sb-custom-popover, dialog')) {
+            return 0;
+        }
+        let moved = 0;
+        for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {
+            if (ancestor.scrollTop !== 0) {
+                moved++;
+            }
+        }
+        return moved;
+    });
+    // The overlay hangs on the trigger, so where the page behind is scrolled to is where the overlay opens. A click that Playwright
+    // had to retry (the page was still moving, something covered the trigger) scrolls the trigger to another place each time, so the
+    // page is let settle first, and an open that left the page scrolled is closed and done again from the top (twice at most).
+    for (let attempt = 0; ; attempt++) {
+        await settle(page);
+        await target.evaluate((node) => {
+            for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {
+                ancestor.scrollTop = 0;
+            }
+        });
+        await target.click();
+        await settleOverlay(page, root);
+        if (attempt >= 2 || await scrolledAncestors() === 0) {
+            return;
+        }
+        await closeAndWait(page, root);
+    }
 }
 
 /** Clicks an item of the open menu by its accessible name, then waits for the overlay that it opens. */

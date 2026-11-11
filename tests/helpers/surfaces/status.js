@@ -13,7 +13,7 @@
 
 import { FIXTURES } from './fixture-data.js';
 import { closeChatToolsSheet, closeSidePanelById, MOBILE_LAYOUT_VIEWPORTS, openAuditChat } from './panel-steps.js';
-import { chooseMenuItem, openCharactersTab, openSettingsTab, selectBackend, settle } from './steps.js';
+import { chooseMenuItem, openCharactersTab, openSettingsTab, selectBackend, selectLogitBiasPreset, settle } from './steps.js';
 
 const SCRIPTS = 'public/scripts';
 const NO_MATCH = 'zz no such entry';
@@ -1071,6 +1071,7 @@ const samplingUnavailable = status({
     async open(page, ctx = {}) {
         await selectBackend(page, ctx.backend ?? 'chat-completion');
         await openSettingsTab(page, { shell: 'left', tab: 'sampling' });
+        await selectLogitBiasPreset(page);
         const row = page.locator('#sb-sampling-openai [data-sb-sampling-placeholder]').first();
         await row.scrollIntoViewIfNeeded();
         await settle(page);
@@ -1427,6 +1428,7 @@ const logsEmpty = status({
     title: 'Logs: no console output captured',
     component: 'own',
     root: LOGS_EMPTY,
+    masks: ['[data-sb-panel="logs"] .sb-server-note'],
     async open(page) {
         await page.route('**/api/server-admin/logs', route => route.fulfill({ json: { entries: [], latestId: 0, totalBuffered: 0, captureStartedAt: 0 } }));
         await openSettingsTab(page, { shell: 'right', tab: 'logs' });
