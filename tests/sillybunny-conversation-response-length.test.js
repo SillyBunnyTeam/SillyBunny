@@ -69,6 +69,13 @@ describe('Conversation Mode response length for the active API', () => {
         test('gives a request without a length the preset response length', async () => {
             await expect(getActiveApiResponseLength(undefined)).resolves.toBe(PRESET_RESPONSE_LENGTH);
         });
+
+        test('rejects when the worker limits cannot be read', async () => {
+            horde_settings.auto_adjust_response_length = true;
+            adjustHordeGenerationParams.mockRejectedValue(new Error('No Horde model available'));
+
+            await expect(getActiveApiResponseLength(16000)).rejects.toThrow('No Horde model available');
+        });
     });
 
     test.each(['openai', 'textgenerationwebui', 'kobold', 'novel'])('keeps the length on %s', async (mainApi) => {
