@@ -322,6 +322,16 @@ This is the largest class by a wide margin.
 - **Limit:** the Jest suites run `checkWorldInfo()` and its helpers cut out of `world-info.js` by `tests/util/world-info-harness.js`, with one token per word and settings that each test sets. `tests/frontend/WorldInfoActivation.e2e.js` runs seven rows of the table through the real module, tokenizer and macro engine.
 - **Fixes:** #393 (legacy string positions activated but never reached the prompt), `c11467f9b` and `612ea61d6` (scanning and serialization of lorebook entries).
 
+### Connection status and Connect buttons
+
+- **Breaks:** Cancel stays visible and every Connect button stays disabled after the work that started the loading state has ended, so the user cannot connect again. `startStatusLoading()` shows `.api_loading` and adds `disabled` to every `.api_button`, and `.menu_button.disabled` has `pointer-events: none` (`public/style.css`). Only `stopStatusLoading()`, which `resultCheckStatus()` calls, undoes it.
+- **Cause:** `cancelStatusCheck()` aborts the status check and sets the status to `no_connection`, but it leaves the loading state. A change of the main API calls `cancelStatusCheck()` alone (`public/script.js`), and only Chat Completion then reconnects (`reconnectOpenAi()` in `public/scripts/openai.js`). A Text Completion type change goes through the same `#main_api` handler and clicks Connect only when the new type needs no URL or has one (`public/scripts/textgen-settings.js`). Work that ends on that abort without `resultCheckStatus()` leaves the buttons disabled.
+- **Files:** `public/script.js` (upstream), `public/scripts/openai.js` (upstream), `public/scripts/textgen-settings.js` (upstream), `public/scripts/sillybunny-koboldcpp-models.js`.
+- **Guards:** the Cancel button calls `resultCheckStatus()` after `cancelStatusCheck()` (#836). The KoboldCpp model switch ends its restart wait when the status check aborts, when the KoboldCpp URL changes and when the script that ran `/kcpp-model` stops. Unless the Cancel button ended the wait, `switchKoboldCppModel()` then calls `stopStatusLoading()` itself (#941).
+- **Limit:** that `stopStatusLoading()` also ends the loading state of a status check that started after the switch, for example the Chat Completion reconnect after an API change, so Cancel hides before that check answers.
+- **Tests:** `tests/openai-status-reconnect.test.js`, `tests/sillybunny-koboldcpp-models.test.js`, `tests/koboldcpp-model-switcher.e2e.js`.
+- **Fixes:** #836 (manual cancel), #941 (KoboldCpp model switch after a connection change or a stopped script).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

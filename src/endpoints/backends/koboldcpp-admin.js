@@ -15,7 +15,7 @@ const ENTRY_TYPE_ORDER = ['model', 'config', 'action'];
 /**
  * @typedef {object} SwitcherEntry
  * @property {string} name Option string exactly as KoboldCpp listed it; reload_config only accepts that exact string.
- * @property {'model'|'config'|'action'} type Entry kind
+ * @property {'model'|'config'|'action'} type
  */
 
 /**
@@ -32,7 +32,7 @@ export function getKoboldCppBaseUrl(value) {
         if (!['http:', 'https:'].includes(url.protocol)) {
             return '';
         }
-        // Same substitution as the status endpoint: KoboldCpp listens on IPv4 by default, and Node can resolve localhost to ::1 first.
+        // Use 127.0.0.1 for localhost because KoboldCpp listens on IPv4 by default, and Node can resolve localhost to ::1 first.
         if (url.hostname === 'localhost') {
             url.hostname = '127.0.0.1';
         }
@@ -121,23 +121,35 @@ export function getSwitcherEntries(options) {
 }
 
 /**
- * Finds the model file behind the name KoboldCpp reports for the loaded model.
+ * Finds the model files behind the name KoboldCpp reports for the loaded model.
  * KoboldCpp reports "koboldcpp/" plus the file name without its extension, after deleting every character
- * outside Python's \w, "." and "-". The same filter runs on each model entry here.
+ * outside Python's \w, "." and "-". The same filter runs on each model entry here, so files in different
+ * folders, or with names that differ only in deleted characters, give the same name.
  * @param {SwitcherEntry[]} entries Switcher entries
  * @param {unknown} loadedModel Model ID from /v1/models, for example "koboldcpp/Foo-7B.Q4_K_M"
- * @returns {string|null} Matching entry name, or null when no model file matches
+ * @returns {string[]} Names of the matching model entries
  */
-export function findLoadedFile(entries, loadedModel) {
+export function findLoadedFiles(entries, loadedModel) {
     const prefix = 'koboldcpp/';
     if (typeof loadedModel !== 'string' || !loadedModel.startsWith(prefix)) {
-        return null;
+        return [];
     }
 
     const loadedName = loadedModel.slice(prefix.length);
-    const match = entries.find(entry => entry.type === 'model'
-        && getFileName(entry.name).replace(/\.gguf$/i, '').replace(/[^\p{L}\p{N}_.-]/gu, '') === loadedName);
-    return match?.name ?? null;
+    return entries
+        .filter(entry => entry.type === 'model'
+            && getFileName(entry.name).replace(/\.gguf$/i, '').replace(/[^\p{L}\p{N}_.-]/gu, '') === loadedName)
+        .map(entry => entry.name);
+}
+
+/**
+ * @param {SwitcherEntry[]} entries Switcher entries
+ * @param {unknown} loadedModel Model ID from /v1/models
+ * @returns {string|null} Name of the one matching model entry, or null when no entry or several entries match
+ */
+export function findLoadedFile(entries, loadedModel) {
+    const files = findLoadedFiles(entries, loadedModel);
+    return files.length === 1 ? files[0] : null;
 }
 
 router.post('/models', async function (request, response) {
@@ -187,6 +199,7 @@ router.post('/models', async function (request, response) {
         admin,
         entries,
         loadedModel,
+        loadedFiles: findLoadedFiles(entries, loadedModel),
         loadedFile: findLoadedFile(entries, loadedModel),
         contextSize,
         vision: version?.vision === true,
@@ -215,8 +228,6 @@ router.post('/load', async function (request, response) {
     }
 });
 
-// KoboldCpp restarts its worker process to load a model. The old worker keeps answering for a short time
-// after the load request, so the client waits for an uptime shorter than the time since its request.
 router.post('/uptime', async function (request, response) {
     const baseUrl = getKoboldCppBaseUrl(request.body?.api_server);
     if (!baseUrl) {
