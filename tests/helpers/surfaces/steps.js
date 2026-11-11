@@ -26,9 +26,21 @@ export function labelPage(page, label) {
  */
 export async function settle(page, { root = 'body', timeout = 5000 } = {}) {
     await page.evaluate(() => document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
-    const running = await page.evaluate(({ root, timeout }) => new Promise(resolve => {
+    // A registry root may use selector syntax that only Playwright knows (`:visible`, `:has-text()`), which the page cannot
+    // query. Such a root is resolved here once; a CSS root is queried in the page on every frame, so that it follows an
+    // element that the app builds again while it settles.
+    const isCss = await page.evaluate((selector) => {
+        try {
+            document.querySelector(selector);
+            return true;
+        } catch {
+            return false;
+        }
+    }, root);
+    const resolved = isCss ? [] : await page.locator(root).elementHandles();
+    const running = await page.evaluate(({ root, timeout, isCss, resolved }) => new Promise(resolve => {
         const scopes = () => {
-            const found = [...document.querySelectorAll(root)];
+            const found = isCss ? [...document.querySelectorAll(root)] : resolved.filter(node => node.isConnected);
             return found.length ? found : [document.body];
         };
         const pending = () => document.getAnimations().filter(animation => {
@@ -53,7 +65,7 @@ export async function settle(page, { root = 'body', timeout = 5000 } = {}) {
             requestAnimationFrame(check);
         };
         check();
-    }), { root, timeout });
+    }), { root, timeout, isCss, resolved });
     if (running.length) {
         throw new Error(`${surfaceLabels.get(page) ?? 'The page'}: ${running.length} animation(s) still running in ${root} after ${timeout} ms: ${running.slice(0, 5).join(', ')}.`);
     }
