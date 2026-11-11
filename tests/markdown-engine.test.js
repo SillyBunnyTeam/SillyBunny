@@ -10,12 +10,12 @@ const converter = createMarkdownItConverter(libraries);
 const render = text => converter.makeHtml(text);
 
 describe('normalizeMarkdownEngine', () => {
-    test('keeps markdown-it', () => {
-        expect(normalizeMarkdownEngine('markdown-it')).toBe(MARKDOWN_ENGINES.MARKDOWN_IT);
+    test('keeps Showdown only for the exact showdown id', () => {
+        expect(normalizeMarkdownEngine('showdown')).toBe(MARKDOWN_ENGINES.SHOWDOWN);
     });
 
-    test.each([['showdown'], [undefined], [null], [''], ['Markdown-It'], ['marked'], [1]])('maps %p to Showdown', (value) => {
-        expect(normalizeMarkdownEngine(value)).toBe(MARKDOWN_ENGINES.SHOWDOWN);
+    test.each([['markdown-it'], [undefined], [null], [''], ['Showdown'], ['marked'], [1]])('maps %p to markdown-it', (value) => {
+        expect(normalizeMarkdownEngine(value)).toBe(MARKDOWN_ENGINES.MARKDOWN_IT);
     });
 });
 

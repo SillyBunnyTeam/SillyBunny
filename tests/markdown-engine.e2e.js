@@ -11,6 +11,19 @@ let savedEngines = [];
 
 test.beforeEach(async ({ page }) => {
     savedEngines = [];
+    // The profile loads without a saved engine choice, as a profile from before the setting existed does. Auto-fix
+    // Markdown is off, because it removes the spaces inside nested emphasis before either engine sees the text.
+    await page.route('**/api/settings/get', async (route) => {
+        const response = await route.fetch();
+        const data = await response.json();
+        if (typeof data.settings === 'string') {
+            const settings = JSON.parse(data.settings);
+            settings.power_user = { ...settings.power_user, auto_fix_generated_markdown: false };
+            delete settings.power_user.markdown_engine;
+            data.settings = JSON.stringify(settings);
+        }
+        await route.fulfill({ response, json: data });
+    });
     let settingsVersion = Date.now();
     // Answered here, so the run leaves the server's settings as they were.
     await page.route('**/api/settings/save', async (route) => {
@@ -59,42 +72,48 @@ async function formatNestedEmphasis(page) {
     }, NESTED_EMPHASIS);
 }
 
+/**
+ * Marks the last chat message, so that a test can tell when the chat has rendered it again.
+ * @param {import('@playwright/test').Page} page
+ */
+async function markLastMessage(page) {
+    await page.locator('#chat .mes').last().evaluate((message) => {
+        message.dataset.markdownEngineTest = 'rendered before the switch';
+    });
+}
+
 test.describe('markdown engine setting', () => {
-    test('switching the engine changes messageFormatting output and re-renders the open chat', async ({ page }) => {
+    test('a profile without a saved choice starts on markdown-it, and switching engines re-renders the open chat', async ({ page }) => {
         await openReadyChat(page);
-        // Auto-fix Markdown removes the spaces inside nested emphasis before either engine sees the text.
-        await page.evaluate(() => {
-            window.SillyTavern.getContext().powerUserSettings.auto_fix_generated_markdown = false;
-        });
 
         const engineSelect = page.locator('#markdown_engine');
         const testMessageText = page.locator('#chat .mes').last().locator('.mes_text');
+        const markedMessages = page.locator('#chat .mes[data-markdown-engine-test]');
 
-        await selectEngine(page, 'showdown');
-        await expect(engineSelect).toHaveValue('showdown');
-        await expect(testMessageText).toHaveText('*one two *three* two one*');
-        await expect(testMessageText.locator('em')).toHaveCount(0);
-        await expect(testMessageText.locator('strong')).toHaveText('two *three* two');
-        expect(await formatNestedEmphasis(page)).toContain(SHOWDOWN_HTML);
-
-        await page.locator('#chat .mes').last().evaluate((message) => {
-            message.dataset.markdownEngineTest = 'showdown';
-        });
-        await selectEngine(page, 'markdown-it');
         await expect(engineSelect).toHaveValue('markdown-it');
-        await expect(page.locator('#chat .mes[data-markdown-engine-test]')).toHaveCount(0);
         await expect(testMessageText).toHaveText('one two three two one');
         await expect(testMessageText.locator('em strong em')).toHaveText('three');
         expect(await formatNestedEmphasis(page)).toContain(MARKDOWN_IT_HTML);
-        await expect.poll(() => page.evaluate(() => window.SillyTavern.getContext().powerUserSettings.markdown_engine)).toBe('markdown-it');
-        await expect.poll(() => savedEngines.at(-1)).toBe('markdown-it');
+        expect(await page.evaluate(() => window.SillyTavern.getContext().powerUserSettings.markdown_engine)).toBe('markdown-it');
 
+        await markLastMessage(page);
         await selectEngine(page, 'showdown');
         await expect(engineSelect).toHaveValue('showdown');
+        await expect(markedMessages).toHaveCount(0);
         await expect(testMessageText).toHaveText('*one two *three* two one*');
         await expect(testMessageText.locator('em')).toHaveCount(0);
         await expect(testMessageText.locator('strong')).toHaveText('two *three* two');
         expect(await formatNestedEmphasis(page)).toContain(SHOWDOWN_HTML);
+        await expect.poll(() => page.evaluate(() => window.SillyTavern.getContext().powerUserSettings.markdown_engine)).toBe('showdown');
         await expect.poll(() => savedEngines.at(-1)).toBe('showdown');
+
+        await markLastMessage(page);
+        await selectEngine(page, 'markdown-it');
+        await expect(engineSelect).toHaveValue('markdown-it');
+        await expect(markedMessages).toHaveCount(0);
+        await expect(testMessageText).toHaveText('one two three two one');
+        await expect(testMessageText.locator('em strong em')).toHaveText('three');
+        expect(await formatNestedEmphasis(page)).toContain(MARKDOWN_IT_HTML);
+        await expect.poll(() => savedEngines.at(-1)).toBe('markdown-it');
     });
 });

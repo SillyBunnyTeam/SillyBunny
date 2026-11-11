@@ -5,10 +5,10 @@ export const MARKDOWN_ENGINES = Object.freeze({
 
 /**
  * @param {unknown} value Stored engine setting
- * @returns {string} The engine id, or Showdown for a missing or unknown value
+ * @returns {string} Showdown only for the exact `showdown` id; markdown-it for any other, missing or unknown value
  */
 export function normalizeMarkdownEngine(value) {
-    return value === MARKDOWN_ENGINES.MARKDOWN_IT ? MARKDOWN_ENGINES.MARKDOWN_IT : MARKDOWN_ENGINES.SHOWDOWN;
+    return value === MARKDOWN_ENGINES.SHOWDOWN ? MARKDOWN_ENGINES.SHOWDOWN : MARKDOWN_ENGINES.MARKDOWN_IT;
 }
 
 // The tag list of Showdown's hashHTMLBlocks, so that both engines keep the same HTML blocks raw.

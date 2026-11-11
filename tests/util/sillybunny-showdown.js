@@ -17,8 +17,9 @@ export const SILLYBUNNY_SHOWDOWN_OPTIONS = Object.freeze({
 });
 
 /**
- * Builds the Showdown converter that SillyBunny renders chat messages with. The "Non-markdown strings" extension
- * is left out, because it reads the user settings and adds nothing while they are empty.
+ * Builds the Showdown converter that SillyBunny renders chat messages with when the user picks Showdown. The
+ * "Non-markdown strings" extension is left out, because it reads the user settings and adds nothing while they
+ * are empty.
  * @returns {import('showdown').Converter}
  */
 export function createSillyBunnyShowdownConverter() {

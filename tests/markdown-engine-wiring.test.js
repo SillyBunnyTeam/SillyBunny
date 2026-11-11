@@ -34,7 +34,7 @@ function getFunctionSource(source, signature) {
 describe('markdown engine wiring', () => {
     const reloadSource = getFunctionSource(scriptSource, 'export function reloadMarkdownProcessor() {');
 
-    test('reloadMarkdownProcessor builds markdown-it only for the markdown-it setting, before the Showdown block', () => {
+    test('reloadMarkdownProcessor builds markdown-it unless the setting is showdown, before the Showdown block', () => {
         const adapter = [
             '    if (normalizeMarkdownEngine(power_user.markdown_engine) === MARKDOWN_ENGINES.MARKDOWN_IT) {',
             '        converter = createMarkdownItConverter({ markdownit, markdownItEmoji, markdownItCjkFriendly }, {',
@@ -72,8 +72,8 @@ describe('markdown engine wiring', () => {
         }
     });
 
-    test('the setting defaults to Showdown, loads into the select and re-renders the chat on change', () => {
-        expect(powerUserSource).toContain('    markdown_engine: MARKDOWN_ENGINES.SHOWDOWN,');
+    test('the setting defaults to markdown-it, loads into the select and re-renders the chat on change', () => {
+        expect(powerUserSource).toContain('    markdown_engine: MARKDOWN_ENGINES.MARKDOWN_IT,');
         expect(powerUserSource).toContain('    $(\'#markdown_engine\').val(normalizeMarkdownEngine(power_user.markdown_engine));');
 
         const handler = [
@@ -87,15 +87,15 @@ describe('markdown engine wiring', () => {
         expect(powerUserSource).toContain(handler);
     });
 
-    test('User Settings has a labelled engine select after Auto-fix Markdown', () => {
+    test('User Settings has a labelled engine select after Auto-fix Markdown, with markdown-it first', () => {
         const row = [
             '                                <div>',
             '                                    <label for="markdown_engine">',
             '                                        <small data-i18n="Markdown Engine">Markdown Engine</small>',
             '                                    </label>',
             '                                    <select id="markdown_engine">',
-            '                                        <option value="showdown">Showdown</option>',
             '                                        <option value="markdown-it">markdown-it</option>',
+            '                                        <option value="showdown">Showdown</option>',
             '                                    </select>',
             '                                </div>',
         ].join('\n');

@@ -39,7 +39,7 @@ import {
 } from '../script.js';
 import { isMobile, initMovingUI, favsToHotswap } from './RossAscends-mods.js';
 import { normalizeContextRetentionDepth } from './ooc-blocks.js';
-// SillyBunny: the user picks the Markdown engine; Showdown stays the default.
+// SillyBunny: the user picks the Markdown engine; markdown-it is the default and Showdown the alternative.
 import { MARKDOWN_ENGINES, normalizeMarkdownEngine } from './markdown-engine.js';
 import {
     groups,
@@ -308,8 +308,8 @@ export const power_user = {
         target_length: 400,
     },
     markdown_escape_strings: '',
-    // SillyBunny: chat Markdown engine; a missing or unknown value means Showdown.
-    markdown_engine: MARKDOWN_ENGINES.SHOWDOWN,
+    // SillyBunny: chat Markdown engine; only 'showdown' selects Showdown, and a missing or unknown value means markdown-it.
+    markdown_engine: MARKDOWN_ENGINES.MARKDOWN_IT,
     chat_truncation: 100,
     ooc_context_depth: -1,
     html_context_depth: -1,
@@ -2559,7 +2559,7 @@ export async function loadPowerUserSettings(settings, data) {
     $('#trim_sentences_checkbox').prop('checked', power_user.trim_sentences);
     $('#disable_group_trimming').prop('checked', power_user.disable_group_trimming);
     $('#markdown_escape_strings').val(power_user.markdown_escape_strings);
-    // SillyBunny: show Showdown for a missing or unknown engine without changing the stored value.
+    // SillyBunny: show markdown-it for a missing or unknown engine without changing the stored value.
     $('#markdown_engine').val(normalizeMarkdownEngine(power_user.markdown_engine));
     $('#fast_ui_mode').prop('checked', power_user.fast_ui_mode);
     $('#waifuMode').prop('checked', power_user.waifuMode);
