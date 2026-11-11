@@ -231,6 +231,7 @@ export function autoFixMarkdown(text, forDisplay) {
         }
 
         const spaced = fixEmphasisSpacing(line);
+        // Stored text keeps its unpaired marks, because Continue appends to the stored message.
         lines[index] = forDisplay ? closeUnpairedMarks(spaced) : spaced;
     }
 
