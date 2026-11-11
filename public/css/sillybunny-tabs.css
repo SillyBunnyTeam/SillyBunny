@@ -4686,6 +4686,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 
 .sb-chat-history-cleanup-page input.ds-spin {
     appearance: textfield;
+    -webkit-appearance: textfield;
     -moz-appearance: textfield;
 }
 
