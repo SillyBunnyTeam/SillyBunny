@@ -30,6 +30,15 @@ export function assertIsolatedServer(baseURL, area) {
     }
 }
 
+const protectedPages = new WeakSet();
+
+/**
+ * Whether `protectMaintainerServer()` guards this page. Its settings saves then cannot get the settings conflict prompt,
+ * and Welcome stays closed.
+ * @param {import('@playwright/test').Page} page
+ */
+export const isMaintainerServerProtected = page => protectedPages.has(page);
+
 /** Installs browser-QA safety defaults; a test may override a route with its in-memory fixture. */
 export async function protectMaintainerServer(page) {
     const titlePath = test.info().titlePath;
@@ -95,4 +104,5 @@ export async function protectMaintainerServer(page) {
             document.head.append(style);
         }, { once: true });
     });
+    protectedPages.add(page);
 }

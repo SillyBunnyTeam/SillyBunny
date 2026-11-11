@@ -3,6 +3,7 @@ import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { buildCustomEndpointPresetForSave, normalizeCustomEndpointPreset } from '../public/scripts/openai-preset-utils.js';
+import { createSettingsSync } from '../public/scripts/sillybunny-settings-sync.js';
 
 const source = readFileSync(new URL('../public/scripts/openai.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const pollinationsEndpointSource = source.match(/export const POLLINATIONS_ENDPOINT = \{[\s\S]*?\n\};/)[0].replace('export ', '');
@@ -31,7 +32,10 @@ const saveFailures = [
     ['temporary length', context => context.TempResponseLength.isCustomized.mockReturnValue(true)],
 ];
 
-function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved endpoint', secretId: 'saved-id' }), input = '', writeResult = 'replacement-id' } = {}) {
+// A settings sync that never skips a save, so that every save in these tests reaches fetch.
+const sendEverySave = () => ({ getFingerprint: json => json, remember() {}, isSynced: () => false });
+
+function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved endpoint', secretId: 'saved-id' }), input = '', writeResult = 'replacement-id', settingsSync = sendEverySave() } = {}) {
     const values = new Map([['#api_key_custom', input], ['#custom_endpoint_preset_name', profile.name], ['#custom_endpoint_preset', profile.name]]);
     const attributes = new Map();
     const secretState = { [keys.CUSTOM]: [{ id: 'unrelated-active-id', active: true }] };
@@ -48,6 +52,7 @@ function createHarness({ profile = normalizeCustomEndpointPreset({ name: 'Saved 
         settingsReady: true,
         settingsConflictReloadRequired: false,
         settingsConflictPromptDismissed: false,
+        settingsSync,
         lastServerSettingsVersion: 1,
         settings: {},
         accountStorage: { getState: () => ({}) },
@@ -368,6 +373,67 @@ describe('Queued settings save acknowledgement', () => {
         expect(context.fetch.mock.calls.map(([, request]) => JSON.parse(request.body)._version)).toEqual([1, 1, 2]);
         expect(context.lastServerSettingsVersion).toBe(3);
         expect(context.toastr.error).toHaveBeenCalledTimes(1);
+    });
+
+    test('accepts a save without a change, which keeps the version that the page sent', async () => {
+        const { context } = createHarness();
+        context.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ version: 1, unchanged: true }) });
+        expect(await context.saveSettings(0, { returnResult: true })).toBe(true);
+        expect(context.lastServerSettingsVersion).toBe(1);
+        expect(context.eventSource.emit).toHaveBeenCalledWith('settings_updated');
+    });
+
+    test('takes the newer stored version from a save without a change', async () => {
+        const { context } = createHarness();
+        context.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ version: 4, unchanged: true }) });
+        expect(await context.saveSettings(0, { returnResult: true })).toBe(true);
+        expect(context.lastServerSettingsVersion).toBe(4);
+    });
+
+    test('refuses an older version from a save without a change', async () => {
+        const { context } = createHarness();
+        context.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ version: 0, unchanged: true }) });
+        expect(await context.saveSettings(0, { returnResult: true })).toBe(false);
+        expect(context.eventSource.emit).not.toHaveBeenCalled();
+    });
+
+    test('sends no request when nothing changed since the last save, and still reports a saved update', async () => {
+        const { context } = createHarness({ settingsSync: createSettingsSync() });
+        expect(await context.saveSettings(0, { returnResult: true })).toBe(true);
+        expect(await context.saveSettings(0, { returnResult: true })).toBe(true);
+        expect(context.fetch).toHaveBeenCalledTimes(1);
+        expect(context.eventSource.emit).toHaveBeenCalledTimes(2);
+        expect(context.lastServerSettingsVersion).toBe(2);
+    });
+
+    test('sends a save after each change, and none for a repeat of the last saved settings', async () => {
+        const { context } = createHarness({ settingsSync: createSettingsSync() });
+        await context.saveSettings();
+        context.name1 = 'Another User';
+        await context.saveSettings();
+        expect(context.fetch).toHaveBeenCalledTimes(2);
+        context.name1 = null;
+        await context.saveSettings();
+        expect(context.fetch).toHaveBeenCalledTimes(3);
+        context.name1 = null;
+        await context.saveSettings();
+        expect(context.fetch).toHaveBeenCalledTimes(3);
+    });
+
+    test('remembers no settings from a failed save', async () => {
+        const { context } = createHarness({ settingsSync: createSettingsSync() });
+        context.fetch.mockRejectedValueOnce(new Error('Network failure'));
+        expect(await context.saveSettings(0, { returnResult: true })).toBe(false);
+        expect(await context.saveSettings(0, { returnResult: true })).toBe(true);
+        expect(context.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('remembers no settings from a refused save', async () => {
+        const sync = createSettingsSync();
+        const { context } = createHarness({ settingsSync: sync });
+        context.fetch.mockResolvedValueOnce({ status: 409, json: async () => ({ version: 5 }) });
+        expect(await context.saveSettings(0, { returnResult: true })).toBe(false);
+        expect(sync.isSynced(sync.getFingerprint(JSON.stringify(JSON.parse(context.fetch.mock.calls[0][1].body))))).toBe(false);
     });
 
     test('preserves conflict state and blocks subsequent writes with the existing prompt', async () => {

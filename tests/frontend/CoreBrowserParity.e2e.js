@@ -2,7 +2,13 @@ import { test, expect } from '@playwright/test';
 import { testSetup } from './frontent-test-utils.js';
 
 test.describe('Core browser parity', () => {
-    test.beforeEach(testSetup.awaitST);
+    // Applying a preset awaits a settings save. When another test on the same server saved a change after this page
+    // loaded its settings, the server refuses that save, and the chain waits for the conflict prompt to be answered.
+    test.beforeEach(async ({ page }) => {
+        let settingsVersion = Date.now();
+        await page.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
+        await testSetup.awaitST({ page });
+    });
 
     test('formats through all extension stages before sanitizing the result', async ({ page }) => {
         const result = await page.evaluate(async () => {

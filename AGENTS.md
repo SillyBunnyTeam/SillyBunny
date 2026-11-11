@@ -42,7 +42,8 @@ Read the docs below in full before you start; they change more often than this f
 - Start: `bun run start`; force Node.js with `npm run start:node`. Launchers: `./start.sh`, `./start-bun.sh`, `./start-node.sh`.
 - Lint: `npm run lint` (autofix: `npm run lint:fix`). `tests/` has its own `npm run lint`.
 - Unit tests, from `tests/`: `npm run test:unit -- <file>` for one file, `npm run test:unit` for all.
-- E2E tests need a running server; Playwright does not start one. Run `npm run init`, start the server (`bun server.js --browserLaunchEnabled=false`), then from `tests/` run `npm run test:e2e -- <spec>`. The base URL is `SILLYBUNNY_TEST_BASE_URL`, default `http://127.0.0.1:4444`.
+- E2E tests need a running server; Playwright starts one only with `SILLYBUNNY_TEST_SERVERS`. Run `npm run init`, start the server (`bun server.js --browserLaunchEnabled=false`), then from `tests/` run `npm run test:e2e -- <spec>`. The base URL is `SILLYBUNNY_TEST_BASE_URL`, default `http://127.0.0.1:4444`.
+  - Without a base URL variable, `SILLYBUNNY_TEST_SERVERS=N` starts N servers with throwaway data roots and spreads the workers over them; `SILLYBUNNY_TEST_SERVER_RUNTIME=node` starts them with Node.js instead of Bun. `SILLYBUNNY_TEST_COMPRESSION=1` or `0` turns response compression on or off for any run; by default it is off only for the servers that Playwright starts.
 - Frontend: `npm run check:frontend-budgets`; `npm run build:frontend` writes the gitignored `dist/frontend/`.
 - Versions: `npm run version:bump -- X.Y.Z`; check with `npm run version:check`.
 - After editing an existing in-chat agent template: `npm run agents:bump-template-versions`.

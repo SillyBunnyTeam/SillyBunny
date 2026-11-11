@@ -1,4 +1,5 @@
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { isMaintainerServerProtected } from './helpers/maintainer-server.js';
 
 export const APP_URL = process.env.SILLYBUNNY_TEST_BASE_URL || '/';
 
@@ -13,18 +14,43 @@ async function loadReadyApp(page) {
     await testSetup.waitForAppReady({ page });
 }
 
-export async function dismissOpenDialogIfPresent(page) {
+/**
+ * Closes every open dialog.
+ *
+ * A page that saves a settings change soon after its boot gets the settings conflict prompt when another page on
+ * the same server saved a change after this page loaded its settings. So the first call after a boot waits for a
+ * dialog, unless `protectMaintainerServer()` guards the page (see `bootDialogWaitMs()`). Later calls can pass
+ * `waitMs: 0`.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ waitMs?: number }} [options] How long to wait for a dialog to open
+ */
+export async function dismissOpenDialogIfPresent(page, { waitMs = 1000 } = {}) {
     const openDialog = page.locator('dialog[open]').first();
 
-    await openDialog.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {});
-    await page.evaluate(() => {
-        document.querySelectorAll('dialog[open]').forEach(dialog => {
+    if (waitMs > 0) {
+        await openDialog.waitFor({ state: 'visible', timeout: waitMs }).catch(() => {});
+    }
+    await page.evaluate(async () => {
+        // A popup settles its promise only when it completes, and the settings save queue waits for the promise of
+        // the settings conflict prompt. So popups complete, and only other dialogs are removed.
+        const { Popup } = await import('/scripts/popup.js');
+        for (const popup of [...Popup.util.popups]) {
+            popup.completeCancelled().catch(() => {});
+        }
+        document.querySelectorAll('dialog[open]:not([closing])').forEach(dialog => {
             dialog.close();
             dialog.remove();
         });
     });
     await page.waitForFunction(() => document.querySelectorAll('dialog[open]').length === 0, { timeout: 5000 }).catch(() => {});
 }
+
+/**
+ * How long the first dialog check after a boot waits. Neither the settings conflict prompt nor Welcome opens on a page
+ * that `protectMaintainerServer()` guards.
+ * @param {import('@playwright/test').Page} page
+ */
+const bootDialogWaitMs = page => (isMaintainerServerProtected(page) ? 0 : 1000);
 
 export async function selectSampleCharacter(page) {
     const didSelectCharacter = await page.evaluate(async () => {
@@ -147,11 +173,11 @@ export async function openReadyChat(page, { chatSaveDelayMs = 0, selectCharacter
     });
 
     await loadReadyApp(page);
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: bootDialogWaitMs(page) });
     if (selectCharacter) {
         await selectSampleCharacter(page);
     }
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: 0 });
     await waitForChatRenderIdle(page);
 }
 
@@ -190,11 +216,11 @@ export async function openQuietChatForSmoke(page, options = {}) {
 
     await loadReadyApp(page);
     await quietChatForSmoke(page);
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: bootDialogWaitMs(page) });
     if (selectCharacter) {
         await selectSampleCharacter(page);
     }
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: 0 });
     await quietChatForSmoke(page);
     await waitForChatRenderIdle(page, { idleMs: 500, timeoutMs: 10000, waitForImages: false });
 }

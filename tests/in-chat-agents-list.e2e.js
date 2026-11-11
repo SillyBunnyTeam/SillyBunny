@@ -525,7 +525,7 @@ for (const width of [1440, 390]) {
         expect(appearance.centeredByGrid).toBe(true);
         if (process.env.CAPTURE_SELECTION_SHOTS) {
             await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-            await page.screenshot({ path: `/tmp/opencode/4b7c-shots-4/agents-${width}.png` });
+            await page.screenshot({ path: test.info().outputPath(`agents-${width}.png`) });
         }
         await selectionCheck.locator('xpath=..').click();
         await expect(selectionCheck).not.toBeChecked();

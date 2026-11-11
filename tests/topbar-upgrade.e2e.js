@@ -72,10 +72,16 @@ async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly, mobi
         await expect(page.locator('html')).not.toHaveAttribute(attribute);
     }
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
-    await page.getByRole('dialog', { name: 'Set up Quick Image Gen' })
-        .getByRole('button', { name: 'Close dialog' })
-        .click({ timeout: 1000 })
-        .catch(() => {});
+    // Quick Image Gen opens its setup wizard, a div and not a <dialog>, at the end of its startup, and only for saved
+    // settings that never saw it.
+    await page.evaluate(async () => {
+        const { getExtensionCapability } = await import('/scripts/sillybunny-conversation/extension-capabilities.js');
+        await getExtensionCapability('quick-image-gen')?.ensureReady().catch(() => {});
+    });
+    const imageGenWizard = page.getByRole('dialog', { name: 'Set up Quick Image Gen' });
+    if (await imageGenWizard.isVisible()) {
+        await imageGenWizard.getByRole('button', { name: 'Close dialog' }).click();
+    }
     await page.evaluate(() => {
         for (const dialog of document.querySelectorAll('dialog[open]')) {
             dialog.close();

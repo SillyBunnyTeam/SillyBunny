@@ -484,7 +484,7 @@ test.describe('World Info selection mode', () => {
             expect(appearance.glyphHeight).toBeCloseTo(13.44, 1);
             expect(appearance.glyphFitsInnerCircle).toBe(true);
             expect(appearance.centeredByGrid).toBe(true);
-            if (process.env.CAPTURE_SELECTION_SHOTS) await page.screenshot({ path: `/tmp/opencode/4b7c-shots-4/world-info-${viewport.width}.png` });
+            if (process.env.CAPTURE_SELECTION_SHOTS) await page.screenshot({ path: test.info().outputPath(`world-info-${viewport.width}.png`) });
         });
     }
 

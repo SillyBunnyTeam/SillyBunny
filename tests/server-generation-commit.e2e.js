@@ -4,7 +4,6 @@ import { APP_URL, dismissOpenDialogIfPresent, selectSampleCharacter } from './ch
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
-test.describe.configure({ mode: 'serial' });
 test.use({ serviceWorkers: 'block' });
 
 const MODEL = 'fake-stream-model';
@@ -48,7 +47,7 @@ function startFakeModel(intervalMs, deltaField = 'content') {
 }
 
 /**
- * Loads the app with real chat saves, unlike openReadyChat(), and opens the sample character's chat.
+ * Loads the app with real chat saves, unlike openReadyChat(), and opens a new chat of the sample character.
  * Settings, cards and statistics are still stubbed, so connecting the fake model stays in the page and never reaches
  * the saved settings of the test server.
  * @param {import('@playwright/test').Page} page
@@ -62,7 +61,9 @@ async function openChat(page) {
     await testSetup.waitForAppReady({ page });
     await dismissOpenDialogIfPresent(page);
     await selectSampleCharacter(page);
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: 0 });
+    // Pages that write one chat file at the same time fail each other's chat integrity check.
+    await page.evaluate(async () => (await import('/script.js')).doNewChat());
 }
 
 /**
@@ -238,7 +239,7 @@ for (const { name, options } of [
             try {
                 await openChat(page);
                 await connectFakeModel(page, `http://127.0.0.1:${model.address().port}/v1`);
-                await page.locator('#left-nav-panel .sb-shell-close').click();
+                await page.locator('#sb-settings-close').click();
                 // Enter adds a new line on touch layouts, so send with the button.
                 await page.locator('#send_textarea').fill(`stop during reasoning ${Date.now()}`);
                 await page.locator('#send_but').click();

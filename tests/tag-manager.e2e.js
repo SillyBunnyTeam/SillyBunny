@@ -94,7 +94,7 @@ for (const width of [1440, 390]) {
                 .map(node => ({ className: node.className, right: node.getBoundingClientRect().right })));
             const closeRight = endControlRights.find(control => control.className.includes('sb-dialog__close'))?.right;
             expect(closeRight).toBe(Math.max(...endControlRights.map(control => control.right)));
-            await page.screenshot({ path: `/tmp/opencode/tag-manager-${width}.png` });
+            await page.screenshot({ path: test.info().outputPath(`tag-manager-${width}.png`) });
             await expect(page.locator('.sb-dialog-host:has(> #tag_view_list)')).toHaveAttribute('data-presentation', width <= 450 ? 'sheet' : 'floating');
             if (width === 1440) {
                 await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -484,7 +484,7 @@ for (const width of [1440, 768, 390]) {
             expect(styles.header).not.toBe('rgba(0, 0, 0, 0)');
             expect(styles.nameX).toBe(styles.subtitleX);
             expect(styles.weight).toBe('600');
-            await page.screenshot({ path: `/tmp/opencode/tag-manager-${width}-${theme.replaceAll(' ', '-')}.png` });
+            await page.screenshot({ path: test.info().outputPath(`tag-manager-${width}-${theme.replaceAll(' ', '-')}.png`) });
             await manager(page).locator('.sb-dialog__close').click();
             await expect(manager(page)).toHaveCount(0);
             await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'persona'));

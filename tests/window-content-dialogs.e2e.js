@@ -61,7 +61,8 @@ async function expectFrameFollowsContent(popup) {
             empty: rect.bottom - Number.parseFloat(style.borderBottomWidth) - Number.parseFloat(style.paddingBottom) - body.getBoundingClientRect().bottom,
             hidden: body.scrollHeight - body.clientHeight,
             room: Number.parseFloat(style.maxHeight) - node.offsetHeight,
-            inViewport: rect.top >= 0 && rect.bottom <= window.innerHeight,
+            // Gecko lays out in sixtieths of a pixel, so a frame anchored at the bottom can read a fraction past it.
+            inViewport: rect.top >= -1 && rect.bottom <= window.innerHeight + 1,
         };
     });
     expect(Math.abs(fit.empty), `empty space in ${JSON.stringify(fit)}`).toBeLessThanOrEqual(1);

@@ -324,7 +324,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(page.locator('#tts_settings')).toBeVisible();
             const provider = page.locator('#tts_provider');
             await expect(provider.locator('option[value="SpeechT5"]')).toHaveCount(1);
-            await provider.selectOption('SpeechT5');
+            // WebKit can keep a computed `visibility: hidden` on this group after the Extensions root leaves
+            // `content-visibility: hidden`, while the select is painted and hit-tested. The visibility check would wait
+            // for that stale value until the test times out.
+            // eslint-disable-next-line playwright/no-force-option -- The select is visible; only WebKit's computed style is stale.
+            await provider.selectOption('SpeechT5', { force: true });
             const deleteSpeaker = page.locator('#speecht5_tts_delete_speaker_button');
             await expect(deleteSpeaker).toBeVisible();
             await expect(page.locator('#speecht5_tts_speaker option')).toHaveCount(2);

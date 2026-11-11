@@ -399,7 +399,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                 expect(a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1 || a.y + a.height <= b.y + 1 || b.y + b.height <= a.y + 1).toBe(true);
             }
         }
-        await page.screenshot({ path: `/tmp/opencode/4b7a-shots-2/selection-${viewport.width}.png` });
+        await page.screenshot({ path: test.info().outputPath(`selection-${viewport.width}.png`) });
         await cancel.click();
         await expect(header.locator('.sb-dialog__search-toggle')).toBeVisible();
         await expect(header.locator('.sb-dialog__menu')).toBeVisible();
@@ -441,7 +441,7 @@ test('narrow selection actions stay on one row with accessible names', async ({ 
     expect(distribution).toBe('space-evenly');
     const sizes = await buttons.evaluateAll(nodes => nodes.map(node => ({ width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height })));
     expect(sizes.every(size => size.width >= 44 && size.height >= 44)).toBe(true);
-    await page.screenshot({ path: '/tmp/opencode/4b7a-shots-2/icon-action-bar-390.png' });
+    await page.screenshot({ path: test.info().outputPath('icon-action-bar-390.png') });
     await page.evaluate(() => { window.qaSelection.destroy(); window.qaDialog.forceClose(); });
 });
 
@@ -462,7 +462,7 @@ test('popover sheet swipe closes and content scrolling does not', async ({ page 
     await expect(sheet).toBeVisible();
     await expect(sheet.locator('.sb-action-sheet-title')).not.toBeFocused();
     expect(await sheet.evaluate(node => getComputedStyle(node.querySelector('.sb-action-sheet-title')).boxShadow)).toBe('none');
-    await page.screenshot({ path: '/tmp/opencode/4b7a-shots-2/popover-sheet-390.png' });
+    await page.screenshot({ path: test.info().outputPath('popover-sheet-390.png') });
     await sheet.locator('.sb-action-sheet-body').evaluate(node => { node.scrollTop = 0; });
     await sheet.locator('.sb-action-sheet-body').hover();
     await page.mouse.wheel(0, 150);
@@ -516,13 +516,13 @@ test('adopted search entry shares styling with a built-in entry', async ({ page 
     const adoptedRest = await metrics(adopted);
     const builtinRest = await metrics(builtin);
     expect(adoptedRest).toEqual(builtinRest);
-    await page.screenshot({ path: '/tmp/opencode/4b7a-shots-2/adopted-search-1440.png' });
+    await page.screenshot({ path: test.info().outputPath('adopted-search-1440.png') });
     await adopted.focus();
     const adoptedFocused = await metrics(adopted);
     await builtin.focus();
     const builtinFocused = await metrics(builtin);
     expect(adoptedFocused).toEqual(builtinFocused);
-    await page.screenshot({ path: '/tmp/opencode/4b7a-shots-2/adopted-search-focused-1440.png' });
+    await page.screenshot({ path: test.info().outputPath('adopted-search-focused-1440.png') });
     await page.evaluate(() => window.qaDialog.forceClose());
 });
 
