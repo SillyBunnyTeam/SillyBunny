@@ -4012,7 +4012,7 @@ async function generateDrawthingsImage(prompt, negativePrompt, signal) {
  */
 async function generateNovelImage(prompt, negativePrompt, signal) {
     const referenceState = extension_settings.sd.novel_precise_reference;
-    const preciseReference = referenceState.enabled ? referenceState.references : [];
+    const preciseReference = referenceState?.enabled === true && Array.isArray(referenceState.references) ? referenceState.references : [];
     buildNovelAIPreciseReferenceParameters(extension_settings.sd.model, preciseReference, {
         anlasGuard: extension_settings.sd.novel_anlas_guard,
     });

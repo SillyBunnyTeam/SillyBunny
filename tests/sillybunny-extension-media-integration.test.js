@@ -244,6 +244,30 @@ describe('Conversation extension media integration', () => {
         expect(qig.generateScopedImage).not.toHaveBeenCalled();
     });
 
+    test('Image Generation sends no Precise References for a missing or malformed saved state', async () => {
+        const settings = { sd: { model: 'nai-diffusion-4-5-full', steps: 23, width: 832, height: 1216, novel_anlas_guard: false } };
+        const requests = [];
+        const context = createQigContext({
+            buildNovelAIPreciseReferenceParameters,
+            extension_settings: settings,
+            getRequestHeaders: () => ({}),
+            loadNovelSchedulers: () => ['karras'],
+            fetch: async (_url, options) => {
+                requests.push(JSON.parse(options.body));
+                return { ok: true, text: async () => 'image-data' };
+            },
+        });
+        for (const name of ['getNovelParams', 'generateNovelImage']) {
+            context[name] = vm.runInContext(`(${getFunctionSource(name, sdSource)})`, context);
+        }
+
+        for (const state of [undefined, null, { enabled: true, references: {} }]) {
+            settings.sd.novel_precise_reference = state;
+            await expect(context.generateNovelImage('prompt', 'negative')).resolves.toEqual({ format: 'png', data: 'image-data' });
+        }
+        expect(requests.map(body => body.precise_reference)).toEqual([[], [], []]);
+    });
+
     test('uses the activated QIG capability with the explicit Conversation speaker only', async () => {
         const characters = [
             { name: 'Roleplay', avatar: 'roleplay.png', description: 'roleplay description' },
