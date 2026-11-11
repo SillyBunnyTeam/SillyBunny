@@ -627,3 +627,77 @@ describe('dropdown entries of the persona, welcome screen and gallery modules', 
         await expect(chooseModuleEntries(context, dom)).resolves.toEqual({ persona: [MEMBER], assistant: [MEMBER], galleryFolders: ['Member'] });
     });
 });
+
+/**
+ * Loads openCharacterEditorTab() of public/scripts/sillybunny-tabs.js, which the Creator calls with the avatar of a
+ * saved card. The server keeps the full cards, and the roster holds shallow copies, as with performance.lazyLoadCharacters.
+ */
+function openLazyEditorTab() {
+    const { context, dom } = createEditor();
+    serveCharacters(context);
+    context.characters = context.characters.map(({ name, avatar, chat }) => ({ name, avatar, chat, shallow: true }));
+    Object.assign(context, {
+        sbState: { characterDrawer: {} },
+        setCharacterEditorEmptyState: jest.fn(),
+        setCharacterPersonaPanelVisible: jest.fn(),
+        setCharacterImportPanelVisible: jest.fn(),
+        setCharacterWorldInfoPanelVisible: jest.fn(),
+        showCharacterEditorEmptyState: jest.fn(),
+        syncCharacterShellTabs: jest.fn(),
+        showActiveCharacterEditor: jest.fn(async () => false),
+    });
+    load(context, 'scripts/sillybunny-tabs.js', ['openCharacterEditorTab']);
+    return { context, dom };
+}
+
+describe('editor tab opened for the avatar of a saved card', () => {
+    test('loads a shallow card in full before the editor shows it', async () => {
+        const { context, dom } = openLazyEditorTab();
+
+        await expect(context.openCharacterEditorTab('Other.png')).resolves.toBe(true);
+        expect(dom.node('#avatar_url_pole').val()).toBe('Other.png');
+        expect(dom.node('#system_prompt_textarea').val()).toBe('Other system prompt');
+        expect(dom.node('#character_world').val()).toBe('Other lore');
+        expect(context.this_chid).toBe(String(ACTIVE));
+    });
+
+    test('shows the loaded card when the roster changes during the load', async () => {
+        const { context, dom } = openLazyEditorTab();
+        const serve = context.fetch;
+        context.fetch = jest.fn(async (url, init) => {
+            context.characters.unshift({ name: 'Newcomer', avatar: 'Newcomer.png', chat: 'Newcomer - chat', shallow: true });
+            return serve(url, init);
+        });
+
+        await expect(context.openCharacterEditorTab('Other.png')).resolves.toBe(true);
+        expect(dom.node('#avatar_url_pole').val()).toBe('Other.png');
+        expect(dom.node('#system_prompt_textarea').val()).toBe('Other system prompt');
+    });
+
+    test.each([
+        ['the server answers with an error', async () => ({ ok: false, status: 500 })],
+        ['the request fails', async () => { throw new TypeError('Failed to fetch'); }],
+    ])('shows the empty editor state instead of a shallow card when %s', async (_, respond) => {
+        const { context, dom } = openLazyEditorTab();
+        context.fetch = jest.fn(respond);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        try {
+            await expect(context.openCharacterEditorTab('Other.png')).resolves.toBe(false);
+        } finally {
+            warn.mockRestore();
+        }
+        expect(context.fetch).toHaveBeenCalled();
+        expect(context.showCharacterEditorEmptyState).toHaveBeenCalled();
+        expect(dom.node('#avatar_url_pole').val()).toBeUndefined();
+    });
+
+    test('shows the empty editor state for a card that is gone', async () => {
+        const { context, dom } = openLazyEditorTab();
+
+        await expect(context.openCharacterEditorTab('Gone.png')).resolves.toBe(false);
+        expect(context.fetch).not.toHaveBeenCalled();
+        expect(context.showCharacterEditorEmptyState).toHaveBeenCalled();
+        expect(dom.node('#avatar_url_pole').val()).toBeUndefined();
+    });
+});
