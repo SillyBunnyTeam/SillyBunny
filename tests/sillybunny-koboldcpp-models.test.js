@@ -142,15 +142,15 @@ function fakeJquery(target) {
         trigger: () => wrapper,
         val: () => dom.select.value,
         text: value => {
-            if (target === '#koboldcpp_model_hint') {
-                dom.hint = value;
+            if (dom.hints[target]) {
+                dom.hints[target].text = value;
             }
             return wrapper;
         },
         parent: () => wrapper,
         toggleClass: (className, isHidden) => {
-            if (target === '#koboldcpp_model_hint') {
-                dom.hintShown = !isHidden;
+            if (dom.hints[target]) {
+                dom.hints[target].shown = !isHidden;
             }
             return wrapper;
         },
@@ -262,11 +262,12 @@ function runCommand(value, args = {}) {
  */
 function getDropdown(select = dom.select) {
     const options = select.children.flatMap(child => child instanceof FakeOption ? [child] : child.children);
+    const hint = dom.hints[select === dom.chatSelect ? '#koboldcpp_chat_model_hint' : '#koboldcpp_model_hint'];
     return {
         labels: options.map(option => option.text),
         values: options.map(option => option.value),
         value: select.value,
-        hint: dom.hintShown ? dom.hint : '',
+        hint: hint.shown ? hint.text : '',
     };
 }
 
@@ -299,7 +300,12 @@ beforeEach(() => {
     servers = {
         [SERVER_URL]: createServer(modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] })),
     };
-    dom = { select: new FakeSelect('select'), chatSelect: new FakeSelect('select'), hint: '', hintShown: false, onChange: null };
+    dom = {
+        select: new FakeSelect('select'),
+        chatSelect: new FakeSelect('select'),
+        hints: { '#koboldcpp_model_hint': { text: '', shown: false }, '#koboldcpp_chat_model_hint': { text: '', shown: false } },
+        onChange: null,
+    };
     globalThis.HTMLSelectElement = FakeSelect;
     globalThis.Option = FakeOption;
     globalThis.document = {
@@ -652,6 +658,41 @@ describe('report after the restart', () => {
         expect(toasts.warning.mock.calls.map(([text]) => text)).toEqual([MODEL_UNKNOWN]);
     });
 
+    test.each([
+        ['a config with the model KoboldCpp reports', 'gamma.kcpps', { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] }, 'success', 'KoboldCpp restarted with beta.', 'gamma.kcpps'],
+        ['a reload of the launch model with the model KoboldCpp reports', 'initial_model', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'success', 'KoboldCpp restarted with alpha.', 'initial_model'],
+        ['a config when KoboldCpp came back without a model', 'delta.kcppt', { loadedModel: 'inactive' }, 'warning', NO_MODEL, ''],
+        ['a reload of the launch model when KoboldCpp came back without a model', 'initial_model', { loadedModel: 'inactive' }, 'warning', NO_MODEL, ''],
+        ['a config when KoboldCpp did not report a model', 'gamma.kcpps', { loadedModel: null }, 'warning', MODEL_UNKNOWN, 'gamma.kcpps'],
+    ])('reports %s in Chat Completion', async (_case, name, loaded, type, message, result) => {
+        const server = servers[SERVER_URL];
+        server.state = modelsAnswer(NAMES, { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] });
+        server.nextState = modelsAnswer(NAMES, loaded);
+        server.uptimes = [NEW_WORKER];
+        await loadChatSwitcher();
+
+        await expect(runCommand(name)).resolves.toBe(result);
+
+        expect(script.getStatusOpen).toHaveBeenCalledTimes(1);
+        expect(toasts[type].mock.calls.map(([text]) => text)).toEqual([message]);
+    });
+
+    test('reports that the model is unknown when KoboldCpp cannot be read after a restart in Chat Completion', async () => {
+        const server = servers[SERVER_URL];
+        server.state = modelsAnswer(NAMES, { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] });
+        server.uptimes = [NEW_WORKER];
+        server.onPoll = () => {
+            server.state = null;
+        };
+        await loadChatSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('beta.gguf');
+
+        expect(script.getStatusOpen).toHaveBeenCalledTimes(1);
+        expect(toasts.success).not.toHaveBeenCalled();
+        expect(toasts.warning.mock.calls.map(([text]) => text)).toEqual([MODEL_UNKNOWN]);
+    });
+
     test('accepts the loaded file when another file gives KoboldCpp the same model name', async () => {
         const server = servers[SERVER_URL];
         server.state = modelsAnswer(['a/model.gguf', 'b/model.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/model', loadedFiles: ['a/model.gguf', 'b/model.gguf'] });
@@ -826,6 +867,21 @@ describe('dropdown', () => {
         await switcher.refreshKoboldCppModels();
 
         expect(getDropdown()).toMatchObject({ labels: ['No files to load'], hint: 'KoboldCpp needs its admin password. Enter it as the API key above, then click Connect.' });
+    });
+
+    test('says in Chat Completion which settings models and configs load with', async () => {
+        const switcher = await loadChatSwitcher();
+        await switcher.refreshKoboldCppModels('chat');
+
+        expect(getDropdown(dom.chatSelect).hint).toBe('Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.');
+    });
+
+    test('says in Chat Completion that KoboldCpp listed no files when it lists only its actions, and keeps the actions', async () => {
+        servers[SERVER_URL].state = modelsAnswer(ACTIONS, { loadedModel: 'inactive' });
+        const switcher = await loadChatSwitcher();
+        await switcher.refreshKoboldCppModels('chat');
+
+        expect(getDropdown(dom.chatSelect)).toMatchObject({ values: ['', ...ACTIONS], hint: 'KoboldCpp listed no files. Check the folder set with --admindir.' });
     });
 });
 
