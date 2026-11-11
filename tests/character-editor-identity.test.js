@@ -194,6 +194,13 @@ async function chooseDropdownEntry(context, dom, id) {
     await loadDropdownHandler(context)({ target: { selectedOptions } });
 }
 
+/** Clicks the card name in the header of the character panel. */
+async function clickHeaderName(context) {
+    const handler = loadCallback(context, 'script.js', node => isCall(node, object => object.arguments?.[0]?.value === '#rm_button_selected_ch h2', 'on')
+        && node.arguments[0].value === 'click');
+    await handler({ preventDefault() {}, stopPropagation() {} });
+}
+
 /** Types a known tag into the editor's tag input, as the autocomplete select does. */
 function addTagInEditor(context, tagName) {
     const event = { target: { closest: () => null } };
@@ -581,6 +588,37 @@ describe('rename from the editor', () => {
             body: JSON.stringify({ avatar_url: 'Other.png', new_name: 'Renamed' }),
         }));
         expect(context.this_chid).toBe(String(ACTIVE));
+        expect(dom.node('#avatar_url_pole').val()).toBe('Renamed.png');
+    });
+
+    test.each([
+        ['while a chat is active', String(ACTIVE)],
+        ['while no chat is active', null],
+    ])('renames the card in the editor from a click on its name in the header %s', async (_, thisChid) => {
+        const { context, dom } = createEditor({ thisChid });
+        serveCharacters(context);
+        context.callGenericPopup = jest.fn(async () => 'Renamed');
+        context.select_selected_character(OTHER);
+
+        await clickHeaderName(context);
+        expect(context.callGenericPopup).toHaveBeenCalledWith(expect.any(String), context.POPUP_TYPE.INPUT, 'Other');
+        expect(context.fetch).toHaveBeenCalledWith('/api/characters/rename', expect.objectContaining({
+            body: JSON.stringify({ avatar_url: 'Other.png', new_name: 'Renamed' }),
+        }));
+        expect(context.this_chid).toBe(thisChid ?? undefined);
+        expect(dom.node('#avatar_url_pole').val()).toBe('Renamed.png');
+    });
+
+    test('renames the active chat\'s character from a click on its name in the header', async () => {
+        const { context, dom } = createEditor();
+        serveCharacters(context);
+        context.callGenericPopup = jest.fn(async () => 'Renamed');
+        context.select_selected_character(ACTIVE);
+
+        await clickHeaderName(context);
+        expect(context.callGenericPopup).toHaveBeenCalledWith(expect.any(String), context.POPUP_TYPE.INPUT, 'Active');
+        expect(context.selectCharacterById).toHaveBeenCalledWith(ACTIVE);
+        expect(context.active_character).toBe('Renamed.png');
         expect(dom.node('#avatar_url_pole').val()).toBe('Renamed.png');
     });
 });

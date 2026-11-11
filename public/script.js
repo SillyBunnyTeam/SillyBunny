@@ -17601,7 +17601,9 @@ jQuery(async function () {
 
         event.preventDefault();
         event.stopPropagation();
-        await renameCharacter();
+        // SillyBunny: the header shows the name of the editor card, which is not always this_chid.
+        const editorCharacter = characters[getCharacterEditorId()];
+        if (editorCharacter) await renameCharacter(null, { avatar: editorCharacter.avatar });
     });
 
     $(document).on('click', '.character_select', async function () {
