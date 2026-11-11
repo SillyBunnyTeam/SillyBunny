@@ -9,7 +9,7 @@ import { sync as commandExistsSync } from 'command-exists';
 import { simpleGit } from 'simple-git';
 
 // SillyBunny: share the APK runtime gate between Server Tools update paths.
-import { ANDROID_APP_UPDATE_REQUIRED, checkAndroidAppGate } from '../android-app-gate.js';
+import { ANDROID_APP_UPDATE_REQUIRED, checkAndroidAppGate, getAndroidAppGitOptions } from '../android-app-gate.js';
 import { APP_NAME, formatRuntimeLabel, isBunRuntime, isNativeTermuxEnvironment } from '../runtime.js';
 import {
     getBranchDisplayNames,
@@ -56,6 +56,7 @@ const GIT_OPTIONS = Object.freeze({
     // socket handle and keeps the port bound across the restart (#710,
     // oven-sh/bun#36936).
     config: ['gc.auto=0', 'maintenance.auto=false'],
+    ...getAndroidAppGitOptions(),
 });
 const RESTART_RESPONSE_DELAY_MS = 200;
 const CHAT_COMPLETION_CONFIG_DEFAULTS = Object.freeze({

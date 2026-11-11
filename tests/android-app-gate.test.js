@@ -4,12 +4,19 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { checkAndroidAppGate, isAndroidApp } from '../src/android-app-gate.js';
+import { simpleGit } from 'simple-git';
+
+import { checkAndroidAppGate, getAndroidAppGitOptions, isAndroidApp } from '../src/android-app-gate.js';
 
 const ENV_KEYS = [
     'SILLYBUNNY_ANDROID_APP',
     'SILLYBUNNY_ANDROID_APP_VERSION_CODE',
     'SILLYBUNNY_ANDROID_STATUS_DIR',
+    'GIT_EXEC_PATH',
+    'GIT_AUTHOR_NAME',
+    'GIT_AUTHOR_EMAIL',
+    'GIT_COMMITTER_NAME',
+    'GIT_COMMITTER_EMAIL',
 ];
 const originalEnv = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key]]));
 const tempDirectories = [];
@@ -28,6 +35,27 @@ async function createTempDirectory() {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-android-gate-'));
     tempDirectories.push(directory);
     return directory;
+}
+
+async function readInheritedGitEnvironment() {
+    const directory = await createTempDirectory();
+    const execPath = path.join(directory, 'git-core');
+    process.env.GIT_EXEC_PATH = execPath;
+    process.env.GIT_AUTHOR_NAME = 'Android App Author';
+    process.env.GIT_AUTHOR_EMAIL = 'author@example.invalid';
+    process.env.GIT_COMMITTER_NAME = 'Android App Committer';
+    process.env.GIT_COMMITTER_EMAIL = 'committer@example.invalid';
+    const git = simpleGit({ baseDir: directory, ...getAndroidAppGitOptions() });
+    // Outside the app, git var fails on a machine that has no git identity of its own.
+    const read = args => git.raw(args).then(output => output.trim(), error => error.message);
+    return {
+        execPath,
+        output: {
+            execPath: await read(['--exec-path']),
+            author: await read(['var', 'GIT_AUTHOR_IDENT']),
+            committer: await read(['var', 'GIT_COMMITTER_IDENT']),
+        },
+    };
 }
 
 beforeEach(() => {
@@ -356,5 +384,53 @@ describe('Android app update gate', () => {
         expect((await fs.readdir(directory)).sort()).toEqual(cleanupFails
             ? [path.basename(temporaryPath), 'update-blocked.json'].sort()
             : ['update-blocked.json']);
+    });
+});
+
+describe('Android app git environment', () => {
+    test('names every git variable that the app sets', () => {
+        process.env.SILLYBUNNY_ANDROID_APP = '1';
+
+        expect(getAndroidAppGitOptions()).toEqual({
+            allowEnvironment: [
+                'GIT_EXEC_PATH',
+                'GIT_TEMPLATE_DIR',
+                'GIT_CONFIG_NOSYSTEM',
+                'GIT_ATTR_NOSYSTEM',
+                'GIT_SSL_CAINFO',
+                'GIT_AUTHOR_NAME',
+                'GIT_AUTHOR_EMAIL',
+                'GIT_COMMITTER_NAME',
+                'GIT_COMMITTER_EMAIL',
+            ],
+        });
+    });
+
+    test.each([undefined, '', '0', 'true', '2'])('adds no git options when APK mode is %s', mode => {
+        if (mode !== undefined) {
+            process.env.SILLYBUNNY_ANDROID_APP = mode;
+        }
+
+        expect(getAndroidAppGitOptions()).toEqual({});
+    });
+
+    test('lets the inherited git paths and identity through simple-git to git in the app', async () => {
+        process.env.SILLYBUNNY_ANDROID_APP = '1';
+
+        const { execPath, output } = await readInheritedGitEnvironment();
+
+        expect(output).toEqual({
+            execPath,
+            author: expect.stringMatching(/^Android App Author <author@example\.invalid> /),
+            committer: expect.stringMatching(/^Android App Committer <committer@example\.invalid> /),
+        });
+    });
+
+    test('keeps simple-git from passing the inherited git paths and identity outside the app', async () => {
+        const { execPath, output } = await readInheritedGitEnvironment();
+
+        expect(output.execPath).not.toBe(execPath);
+        expect(output.author).not.toContain('Android App Author');
+        expect(output.committer).not.toContain('Android App Committer');
     });
 });

@@ -4,8 +4,26 @@ import { randomUUID } from 'node:crypto';
 
 export const ANDROID_APP_UPDATE_REQUIRED = 'android_app_update_required';
 
+// The app configures git only through these variables, and simple-git 4 removes each inherited
+// GIT_* variable that the allowEnvironment option does not name.
+const ANDROID_APP_GIT_ENVIRONMENT = Object.freeze([
+    'GIT_EXEC_PATH',
+    'GIT_TEMPLATE_DIR',
+    'GIT_CONFIG_NOSYSTEM',
+    'GIT_ATTR_NOSYSTEM',
+    'GIT_SSL_CAINFO',
+    'GIT_AUTHOR_NAME',
+    'GIT_AUTHOR_EMAIL',
+    'GIT_COMMITTER_NAME',
+    'GIT_COMMITTER_EMAIL',
+]);
+
 export function isAndroidApp() {
     return process.env.SILLYBUNNY_ANDROID_APP === '1';
+}
+
+export function getAndroidAppGitOptions() {
+    return isAndroidApp() ? { allowEnvironment: ANDROID_APP_GIT_ENVIRONMENT } : {};
 }
 
 async function updateBlockedStatus(status) {
