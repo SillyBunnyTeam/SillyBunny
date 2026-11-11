@@ -331,6 +331,15 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/openai-status-reconnect.test.js`, `tests/sillybunny-koboldcpp-models.test.js`, `tests/koboldcpp-model-switcher.e2e.js`.
 - **Fixes:** #836 (manual cancel), #941 (KoboldCpp model switch after a connection change or a stopped script), `6d380a937` (a status check that starts during a model switch, and a deleted API key while KoboldCpp stays selected).
 
+### KoboldCpp model list during a model switch
+
+- **Breaks:** after a model switch ends by a cancel or a timeout, the KoboldCpp model dropdown shows its placeholder until the next Connect, although KoboldCpp answered a status check during the switch, for example the one that Connect starts right after Cancel.
+- **Cause:** `refreshKoboldCppModels()` returns without a change while a model switch waits, because KoboldCpp may still be restarting. A timeout or cancel clears the list, because KoboldCpp may still be loading, and the switch loaded the list again only when the URL had changed.
+- **Files:** `public/scripts/sillybunny-koboldcpp-models.js`, `public/scripts/textgen-settings.js` (upstream).
+- **Guards:** `refreshKoboldCppModels()` records a refresh that it skips during a switch. When the switch ends without a restart and KoboldCpp is still the selected connection, `switchKoboldCppModel()` loads the list if a status check asked for it during the switch or the URL changed (`bc32b0baa`).
+- **Tests:** `tests/sillybunny-koboldcpp-models.test.js`, `tests/koboldcpp-model-switcher.e2e.js`.
+- **Fixes:** `83329cf61` (list after a URL change), `bc32b0baa` (list after a status check during the switch).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
