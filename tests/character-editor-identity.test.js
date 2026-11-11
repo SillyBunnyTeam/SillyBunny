@@ -532,4 +532,98 @@ describe('rename from the editor', () => {
         expect(dom.node('#avatar_url_pole').val()).toBe('Renamed.png');
         expect(dom.node('#system_prompt_textarea').val()).toBe('Active system prompt');
     });
+
+    test('renames the card in the editor from the dropdown', async () => {
+        const { context, dom } = createEditor();
+        serveCharacters(context);
+        context.callGenericPopup = jest.fn(async () => 'Renamed');
+        context.select_selected_character(OTHER);
+
+        await chooseDropdownEntry(context, dom, 'renameCharButton');
+        expect(context.callGenericPopup).toHaveBeenCalledWith(expect.any(String), context.POPUP_TYPE.INPUT, 'Other');
+        expect(context.fetch).toHaveBeenCalledWith('/api/characters/rename', expect.objectContaining({
+            body: JSON.stringify({ avatar_url: 'Other.png', new_name: 'Renamed' }),
+        }));
+        expect(context.this_chid).toBe(String(ACTIVE));
+        expect(dom.node('#avatar_url_pole').val()).toBe('Renamed.png');
+    });
+});
+
+function loadDropdownListener(context, file) {
+    return loadCallback(context, file, node => isCall(node, 'eventSource', 'on')
+        && node.arguments[0].property?.name === 'CHARACTER_MANAGEMENT_DROPDOWN');
+}
+
+/**
+ * Registers the dropdown listeners of personas.js, welcome-screen.js and the gallery. The persona conversion and the
+ * assistant choice are stubs. The gallery runs its own showCharGallery() up to the folder that it lists.
+ */
+function addDropdownListeners(context) {
+    Object.assign(context, {
+        convertCharacterToPersona: jest.fn(async () => true),
+        assignCharacterAsAssistant: jest.fn(),
+        SillyTavern: { getContext: () => ({ extensionSettings: { gallery: { folders: {} } } }) },
+        loadFileToDocument: jest.fn(async () => {}),
+        getGalleryItems: jest.fn(async () => []),
+        makeMovable: jest.fn(async () => {}),
+        initGallery: jest.fn(async () => {}),
+        delay: async () => {},
+    });
+    load(context, 'scripts/extensions/gallery/index.js', ['extensionName', 'extensionFolderPath', 'firstTime', 'deleteModeActive', 'getGalleryFolder', 'showCharGallery']);
+    // The gallery listener does not wait for showCharGallery(), so the test waits for the promises it returns.
+    const showCharGallery = context.showCharGallery;
+    context.showCharGallery = jest.fn((...args) => showCharGallery(...args));
+    for (const file of ['scripts/personas.js', 'scripts/welcome-screen.js', 'scripts/extensions/gallery/index.js']) {
+        context.eventSource.on(event_types.CHARACTER_MANAGEMENT_DROPDOWN, loadDropdownListener(context, file));
+    }
+}
+
+/** Picks the dropdown entries of the three modules and returns the cards that they acted on. */
+async function chooseModuleEntries(context, dom) {
+    for (const id of ['convert_to_persona', 'set_as_assistant', 'show_char_gallery']) {
+        await chooseDropdownEntry(context, dom, id);
+    }
+    await Promise.all(context.showCharGallery.mock.results.map(result => result.value));
+    return {
+        persona: context.convertCharacterToPersona.mock.calls.map(([id]) => id),
+        assistant: context.assignCharacterAsAssistant.mock.calls.map(([id]) => id),
+        galleryFolders: context.getGalleryItems.mock.calls.map(([folder]) => folder),
+    };
+}
+
+describe('dropdown entries of the persona, welcome screen and gallery modules', () => {
+    test('act on the active chat\'s character in its editor', async () => {
+        const { context, dom } = createEditor();
+        addDropdownListeners(context);
+        context.select_selected_character(ACTIVE);
+
+        await expect(chooseModuleEntries(context, dom)).resolves.toEqual({ persona: [ACTIVE], assistant: [ACTIVE], galleryFolders: ['Active'] });
+    });
+
+    test('act on the card in the editor when it is not the active chat\'s', async () => {
+        const { context, dom } = createEditor();
+        addDropdownListeners(context);
+        context.select_selected_character(OTHER);
+
+        await expect(chooseModuleEntries(context, dom)).resolves.toEqual({ persona: [OTHER], assistant: [OTHER], galleryFolders: ['Other'] });
+    });
+
+    test('do nothing in the create form', async () => {
+        const { context, dom } = createEditor();
+        addDropdownListeners(context);
+        context.select_selected_character(OTHER);
+        context.select_rm_create();
+
+        await expect(chooseModuleEntries(context, dom)).resolves.toEqual({ persona: [], assistant: [], galleryFolders: [] });
+    });
+
+    test('act on the member in group peek, and show its gallery instead of the group\'s', async () => {
+        const { context, dom } = createEditor({ thisChid: null, selectedGroup: 'group-1' });
+        addDropdownListeners(context);
+        // The calls of openCharacterDefinition() in public/scripts/group-chats.js, in its order.
+        context.setCharacterId(String(MEMBER));
+        context.select_selected_character(String(MEMBER));
+
+        await expect(chooseModuleEntries(context, dom)).resolves.toEqual({ persona: [MEMBER], assistant: [MEMBER], galleryFolders: ['Member'] });
+    });
 });
