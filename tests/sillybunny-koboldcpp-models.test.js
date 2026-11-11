@@ -48,6 +48,7 @@ class FakeOption {
 
 let clock;
 let settings;
+let oaiSettings;
 let statusCheck;
 let script;
 let servers;
@@ -170,6 +171,14 @@ async function loadSwitcher({ mainApi = 'textgenerationwebui', onlineStatus = 'k
     await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
         t: (strings, ...values) => String.raw({ raw: strings }, ...values),
     }));
+    await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
+        chat_completion_sources: { KOBOLDCPP: 'koboldcpp' },
+        getStatusOpen: script.getStatusOpen,
+        oai_settings: oaiSettings,
+    }));
+    await jest.unstable_mockModule('../public/scripts/server-history.js', () => ({
+        onServerConnectClick: () => {},
+    }));
     await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
         POPUP_TYPE: { TEXT: 1 },
         Popup: class {
@@ -247,10 +256,12 @@ beforeEach(() => {
     clock = 1_000_000;
     jest.spyOn(Date, 'now').mockImplementation(() => clock);
     settings = { type: 'koboldcpp', server_urls: { koboldcpp: SERVER_URL } };
+    oaiSettings = { chat_completion_source: 'openai', koboldcpp_url: '' };
     statusCheck = new AbortController();
     popupResult = null;
     command = null;
     script = {
+        getStatusOpen: jest.fn(async () => {}),
         getStatusTextgen: jest.fn(async () => {}),
         resultCheckStatus: jest.fn(),
         setOnlineStatus: jest.fn(),
