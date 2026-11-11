@@ -91,6 +91,9 @@ function countEditorAnimations(page) {
     });
 }
 
+// A closed popover keeps its node, with `hidden` set at once, until its fade ends, so a menu opened right after another closes would otherwise match twice.
+const OPEN_ACTION_POPOVER = '.sb-action-popover:not([hidden])';
+
 async function openExportMenu(page) {
     const trigger = page.locator('#export_button');
     if (await trigger.isVisible()) {
@@ -136,11 +139,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         for (const format of ['json', 'png']) {
             const trigger = page.locator('#export_button');
             await openExportMenu(page);
-            await expect(page.locator(viewport.width < 769 ? OPEN_ACTION_SHEET : '.sb-action-popover')).toBeVisible();
+            const menu = page.locator(viewport.width < 769 ? OPEN_ACTION_SHEET : OPEN_ACTION_POPOVER);
+            await expect(menu).toBeVisible();
             const save = page.waitForRequest(request => request.url().includes('/api/characters/edit'));
             const response = page.waitForResponse(response => response.url().endsWith('/api/characters/export'));
             const download = page.waitForEvent('download');
-            await page.getByRole('menuitem', { name: format.toUpperCase(), exact: true }).click();
+            await menu.getByRole('menuitem', { name: format.toUpperCase(), exact: true }).click();
             await save;
             expect((await response).ok()).toBe(true);
             expect((await download).suggestedFilename()).toMatch(new RegExp(`\\.${format}$`));
@@ -158,7 +162,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await openEditor(page);
 
         await openExportMenu(page);
-        await expect(page.locator(viewport.width < 451 ? OPEN_ACTION_SHEET : '.sb-action-popover')).toBeVisible();
+        await expect(page.locator(viewport.width < 451 ? OPEN_ACTION_SHEET : OPEN_ACTION_POPOVER)).toBeVisible();
         await page.keyboard.press('Escape');
 
         await page.evaluate(() => { void import('/script.js').then(app => app.duplicateCharacter()); });
