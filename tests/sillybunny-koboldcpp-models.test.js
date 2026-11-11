@@ -225,6 +225,16 @@ async function loadSwitcher({ mainApi = 'textgenerationwebui', onlineStatus = 'k
 }
 
 /**
+ * Imports the switcher with KoboldCpp selected as the Chat Completion source.
+ * @param {{ onlineStatus?: string }} [options] Values that script.js exports
+ */
+function loadChatSwitcher(options = {}) {
+    oaiSettings.chat_completion_source = 'koboldcpp';
+    oaiSettings.koboldcpp_url = SERVER_URL;
+    return loadSwitcher({ mainApi: 'openai', ...options });
+}
+
+/**
  * @param {string} value Unnamed argument of /kcpp-model
  * @param {object} [args] Named arguments
  * @returns {Promise<string>} What the command returns
@@ -473,16 +483,6 @@ describe('end of the restart wait', () => {
 });
 
 describe('model switch in Chat Completion', () => {
-    /**
-     * Imports the switcher with KoboldCpp selected as the Chat Completion source.
-     * @param {{ onlineStatus?: string }} [options] Values that script.js exports
-     */
-    function loadChatSwitcher(options = {}) {
-        oaiSettings.chat_completion_source = 'koboldcpp';
-        oaiSettings.koboldcpp_url = SERVER_URL;
-        return loadSwitcher({ mainApi: 'openai', ...options });
-    }
-
     test('reconnects with the Chat Completion status check after the restart', async () => {
         const server = servers[SERVER_URL];
         server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
@@ -576,6 +576,21 @@ describe('model switch in Chat Completion', () => {
         expect(server.polls).toBe(1);
         expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
         expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+    });
+});
+
+describe('Chat Completion state', () => {
+    test('is unknown once the KoboldCpp URL changes, until the new server is checked', async () => {
+        servers[NEW_SERVER_URL] = createServer(modelsAnswer(['gamma.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/gamma', loadedFiles: ['gamma.gguf'] }));
+        const switcher = await loadChatSwitcher();
+        await switcher.refreshKoboldCppModels('chat');
+        expect(switcher.getKoboldCppChatState()).toMatchObject({ loadedModel: 'koboldcpp/alpha' });
+
+        oaiSettings.koboldcpp_url = NEW_SERVER_URL;
+        expect(switcher.getKoboldCppChatState()).toBeNull();
+
+        await switcher.refreshKoboldCppModels('chat');
+        expect(switcher.getKoboldCppChatState()).toMatchObject({ loadedModel: 'koboldcpp/gamma' });
     });
 });
 

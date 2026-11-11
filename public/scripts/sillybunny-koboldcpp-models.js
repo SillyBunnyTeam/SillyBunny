@@ -57,6 +57,7 @@ const MODE_ELEMENTS = {
  * @property {number|null} contextSize Context size of the loaded model
  * @property {boolean} vision Whether the loaded model accepts images
  * @property {boolean} audio Whether the loaded model accepts audio
+ * @property {string} serverUrl KoboldCpp API URL that reported this state
  */
 
 /** @type {Record<SwitcherMode, SwitcherState|null>} */
@@ -230,7 +231,7 @@ async function fetchSwitcherState(serverUrl) {
             headers: getRequestHeaders(),
             body: JSON.stringify({ api_server: serverUrl }),
         });
-        return response.ok ? await response.json() : null;
+        return response.ok ? { ...await response.json(), serverUrl } : null;
     } catch (error) {
         console.error('Could not get the KoboldCpp model list', error);
         return null;
@@ -260,10 +261,13 @@ export async function refreshKoboldCppModels(mode = 'text') {
 }
 
 /**
- * @returns {SwitcherState|null} What KoboldCpp reported at the last Chat Completion status check
+ * @returns {SwitcherState|null} What KoboldCpp reported at the last Chat Completion status check, or null when that was for another URL
  */
 export function getKoboldCppChatState() {
-    return switcherStates.chat;
+    const state = switcherStates.chat;
+    // A new URL takes effect before the next status check, and a status check during a model switch does not replace
+    // the state. Without this check, the old server's model name would key the new server's counts in the token cache.
+    return state?.serverUrl === getServerUrl('chat') ? state : null;
 }
 
 /**
