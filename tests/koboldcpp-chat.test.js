@@ -287,4 +287,19 @@ describe('KoboldCpp Chat Completion source', () => {
 
         expect(getRequests('/api/extra/abort')).toHaveLength(0);
     });
+
+    test.each([
+        ['a non-streamed generation', false],
+        ['a streamed generation', true],
+    ])('turns off the fetch idle timeout for %s so a slow prompt pass can stay silent', async (_label, stream) => {
+        fetchMock.mockImplementation(async () => stream
+            ? new FetchResponse('data: [DONE]\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+            : jsonResponse({ choices: [{ message: { role: 'assistant', content: 'ok' } }] }));
+
+        const response = await generate({ stream });
+        await response.text();
+
+        const [request] = getRequests('/v1/chat/completions');
+        expect(request.options.timeout).toBe(0);
+    });
 });

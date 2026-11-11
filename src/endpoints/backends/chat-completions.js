@@ -4126,6 +4126,8 @@ export async function handleChatCompletionsGenerate(request, response) {
             },
             body: JSON.stringify(requestBody),
             signal: controller.signal,
+            // SillyBunny: KoboldCpp sends no bytes while it processes a long prompt or writes a non-streamed reply. That can outlast Bun's default fetch idle timeout, and 0 turns that timeout off.
+            ...(koboldCppRequest ? { timeout: 0 } : {}),
         };
 
         logVerboseGenerationRequest('Chat Completion', request, requestBody);
