@@ -424,6 +424,11 @@ export async function scrollToMessage(page, id, block = 'start') {
 /** Brings the control that loads older messages (above the first rendered message of a chat longer than the render window) to the top of the chat column. */
 export async function scrollToOlderMessagesControl(page) {
     await waitForStill(page, '#show_more_messages');
+    // For a few seconds after a chat loads, the app scrolls it back to the bottom on timers until the user scrolls. A wheel
+    // turn over the chat is that user scroll. Without it, a later timer undoes the scripted scroll.
+    const chat = await page.locator('#chat').boundingBox();
+    await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
+    await page.mouse.wheel(0, -200);
     await page.evaluate(() => document.getElementById('show_more_messages').scrollIntoView({ block: 'start' }));
     await waitForStill(page, '#show_more_messages');
     await settle(page);

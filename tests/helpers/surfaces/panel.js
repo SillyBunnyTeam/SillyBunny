@@ -484,8 +484,9 @@ export const surfaces = [
                 toggle.dispatchEvent(new Event('change', { bubbles: true }));
             });
             // The extension shows the wrapper, and empties it, on its next poll after the switch; a sprite that is set before that is wiped.
-            await page.waitForFunction(() => document.body.classList.contains('waifuMode') && getComputedStyle(document.getElementById('visual-novel-wrapper')).display !== 'none');
-            await page.evaluate(async () => {
+            await page.waitForFunction(() => document.body.classList.contains('waifuMode') && getComputedStyle(document.getElementById('visual-novel-wrapper')).display !== 'none', null, { timeout: 30_000 })
+                .catch(() => { throw new Error('Visual Novel mode did not show its wrapper within 30 s of the switch.'); });
+            const setSprites = () => page.evaluate(async () => {
                 const context = window.SillyTavern.getContext();
                 const expressions = await import('/scripts/extensions/expressions/index.js');
                 const group = context.groups.find(candidate => candidate.id === context.groupId);
@@ -494,7 +495,7 @@ export const surfaces = [
                     await expressions.sendExpressionCall(character.name, 'caring');
                 }
             });
-            await page.waitForFunction(() => {
+            const spritesShown = timeout => page.waitForFunction(() => {
                 const context = window.SillyTavern.getContext();
                 const group = context.groups.find(candidate => candidate.id === context.groupId);
                 const holders = [...document.querySelectorAll('#visual-novel-wrapper .expression-holder:not(.hidden)')];
@@ -502,7 +503,19 @@ export const surfaces = [
                     const image = holder.querySelector('img');
                     return Boolean(image?.complete && image.naturalWidth > 0) && getComputedStyle(holder).opacity === '1';
                 });
-            });
+            }, null, { timeout }).then(() => true, () => false);
+            // A later poll of the extension can build the holders again and drop the sprites, so they are set again until every
+            // member shows one. The wait is bounded and fails with its own message.
+            const deadline = Date.now() + 40_000;
+            for (;;) {
+                await setSprites();
+                if (await spritesShown(5000)) {
+                    break;
+                }
+                if (Date.now() > deadline) {
+                    throw new Error('Visual Novel mode did not show a sprite for every group member within 40 s.');
+                }
+            }
             await settle(page);
         },
         async close(page) {
