@@ -122,6 +122,8 @@ export function mountNovelAIPreciseReferenceEditor(container, { getState, onChan
                 if (container.isConnected && state().references === originalReferences) {
                     const latest = state();
                     save({ ...latest, references: [...latest.references, ...prepared] });
+                } else {
+                    error = 'The images were not added because the references changed while they were prepared. Add them again.';
                 }
             } catch (cause) {
                 error = cause.message;

@@ -66,4 +66,41 @@ test.describe('NovelAI Precise Reference editor', () => {
         expect(result.themeRadius).toBe('16px');
         expect(result.radius).toBe(result.themeRadius);
     });
+
+    test('drops an image prepared for references that the host replaced and says why', async ({ page }) => {
+        const result = await page.evaluate(async () => {
+            const { mountNovelAIPreciseReferenceEditor } = await import('/scripts/novelai-precise-reference-ui.js');
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 48;
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            let state = { enabled: true, references: [{ image: 'RVhJU1RJTkc=', type: 'style', strength: 0.5, fidelity: 0.5 }] };
+            const container = document.createElement('div');
+            document.body.append(container);
+            mountNovelAIPreciseReferenceEditor(container, {
+                getState: () => state,
+                onChange: next => { state = structuredClone(next); },
+                getModel: () => 'nai-diffusion-4-5-full',
+            });
+
+            const upload = container.querySelector('input[type="file"]');
+            const files = new DataTransfer();
+            files.items.add(new File([blob], 'reference.png', { type: 'image/png' }));
+            upload.files = files.files;
+            upload.dispatchEvent(new Event('change'));
+            state = { enabled: true, references: [{ image: 'UkVQTEFDRUQ=', type: 'character', strength: 1, fidelity: 1 }] };
+
+            const addButton = () => container.querySelector('button.menu_button');
+            const deadline = Date.now() + 10_000;
+            while (addButton().disabled && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            const alert = container.querySelector('[role="alert"]')?.textContent ?? null;
+            container.remove();
+            return { references: state.references.map(reference => reference.image), alert };
+        });
+
+        expect(result.references).toEqual(['UkVQTEFDRUQ=']);
+        expect(result.alert).toBe('The images were not added because the references changed while they were prepared. Add them again.');
+    });
 });
