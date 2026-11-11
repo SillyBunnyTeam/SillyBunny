@@ -30,7 +30,7 @@ function decodeEntities(text) {
 /**
  * Lists the tags, comments and text of an HTML string, so that two serializations of the same elements compare
  * equal: tag names are lowercased, `/>` becomes `>`, entities are decoded, and whitespace is collapsed and trimmed
- * in each text node.
+ * in each text node. The text of a comment is normalized the same way.
  * @param {string} html HTML string
  * @returns {string[]} Tags, comments and non-empty text nodes in document order
  */
@@ -47,7 +47,7 @@ function elementStructure(html) {
         pushText(match.index);
         textStart = match.index + match[0].length;
         if (match[0].startsWith('<!--')) {
-            nodes.push(match[0]);
+            nodes.push(`<!--${elementStructure(match[0].slice(4, -3)).join('')}-->`);
             continue;
         }
         const [, slash, name, attributes] = /^<(\/?)([A-Za-z][\w-]*)([\s\S]*?)\/?>$/.exec(match[0]);
@@ -96,6 +96,16 @@ const htmlBlockCases = [
     ['block then indented code', '<div>a</div>\n\n    code'],
     ['div after a blockquote', '> quote\n<div>x</div>'],
     ['div holding a quote', '<div>\n<q>"Hi,"</q> she said.\n</div>'],
+    ['fence inside a div', '<div class="status">\n```\nHP: 10\n```\n</div>'],
+    ['fence with a language inside a div', '<div class="status">\n```js\nconst a = \'<b>\' && 1;\n```\n</div>'],
+    ['two fences in one block', '<div>\n```\none\n```\ntext *x*\n~~~\ntwo\n~~~\n</div>\n*after*'],
+    ['tilde fence inside a div', '<div>\n~~~\nHP: 10\n~~~\n</div>'],
+    ['fence inside a nested block tag', '<div class="o">\n<section>\n```\ninner\n```\n</section>\n</div>\n*after*'],
+    ['fence that holds the closing tag', '<div>\n```\n</div>\n```\n</div>\n*after*'],
+    ['unclosed fence inside a div', '<div>\n```\nnot closed\n</div>\n*after*'],
+    ['fence with text after its closing delimiter', '<div>\n```\ncode\n```</div>\n*after*'],
+    ['fence inside a block that starts with pre and code', '<pre><code>\n```\nx\n```\n</code></pre>'],
+    ['fence inside a comment that holds -->', '<!--\n```\na --> b\n```\n-->\n*after*'],
     ['comment', '<!-- note -->\n*after*'],
     ['multi-line comment', '<!--\n*hidden*\n\nstill hidden\n-->\n\n*shown*'],
     ['comment then text on the same line', '<!-- c --> *after*'],
@@ -288,6 +298,12 @@ const intendedDifferences = [
         '```\ncode *x*\n\nmore',
         '<p>```<br>code <em>x</em></p><p>more</p>',
         '<pre><code>code *x* more</code></pre>',
+    ],
+    [
+        'markdown-it does not put a fence inside a markdown block in a paragraph',
+        '<div markdown="1">\n```\nx\n```\n</div>',
+        '<div markdown="1"><p><pre><code>x</code></pre></p></div>',
+        '<div markdown="1"><pre><code>x</code></pre></div>',
     ],
     [
         'markdown-it keeps HTML inside a <pre><code> block as HTML',

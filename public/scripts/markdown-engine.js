@@ -18,6 +18,9 @@ const SHOWDOWN_BLOCK_TAGS = [
     'audio', 'canvas', 'figure', 'hgroup', 'output', 'video', 'p',
 ];
 const BLOCK_OPEN_TAG_RE = new RegExp(`<(${SHOWDOWN_BLOCK_TAGS.join('|')})\\b[^>]*>`, 'iy');
+// Showdown's githubCodeBlocks pattern. Showdown applies it before it looks for HTML blocks.
+const SHOWDOWN_FENCE_SOURCE = '(?:^|\\n) {0,3}(```+|~~~+) *([^\\s`~]*)\\n([\\s\\S]*?)\\n {0,3}\\1';
+const PRE_CODE_START_RE = /^<pre\b[^>]*>\s*<code\b[^>]*>/;
 const HR_LINE_RE = /^<hr\b[^<>]*?\/?>[ \t]*$/;
 const MARKDOWN_ATTRIBUTE_RE = /\bmarkdown\b/;
 const IMAGE_DIMENSIONS_RE = /[ \t]+=([*\d]+[A-Za-z%]{0,4})x([*\d]+[A-Za-z%]{0,4})/y;
@@ -36,39 +39,62 @@ function escapeText(value) {
     return value.replace(TEXT_ESCAPE_RE, char => TEXT_ESCAPES[char]);
 }
 
+const fenceRangesByState = new WeakMap();
+
 /**
- * @param {string} src Source text
- * @param {number} from Index after the opening tag
- * @param {string} tag Lowercase tag name
- * @param {number} limit Index where the search stops
- * @returns {number} Index after the matching closing tag, or -1
+ * Lists the fences that Showdown turns into code blocks, once for each parse, so that every HTML block search
+ * in that parse reads the same list.
+ * @param {any} state Block state
+ * @returns {number[][]} [start, end] pairs in source order, from the start of the opening line to the end of
+ * the closing delimiter
  */
-function findClosingTag(src, from, tag, limit) {
-    const tagRe = new RegExp(`<${tag}\\b[^>]*>|</${tag}>`, 'gi');
-    tagRe.lastIndex = from;
-    let depth = 1;
-    for (let match = tagRe.exec(src); match && tagRe.lastIndex <= limit; match = tagRe.exec(src)) {
-        depth += match[0][1] === '/' ? -1 : 1;
-        if (depth === 0) {
-            return tagRe.lastIndex;
+function getShowdownFenceRanges(state) {
+    let ranges = fenceRangesByState.get(state);
+    if (!ranges) {
+        ranges = [];
+        const fenceRe = new RegExp(SHOWDOWN_FENCE_SOURCE, 'g');
+        for (let match = fenceRe.exec(state.src); match; match = fenceRe.exec(state.src)) {
+            ranges.push([match[0].startsWith('\n') ? match.index + 1 : match.index, fenceRe.lastIndex]);
         }
+        fenceRangesByState.set(state, ranges);
     }
-    return -1;
+    return ranges;
 }
 
 /**
- * Finds the end of an HTML comment. As in Showdown, a comment nests only where `<!--` starts a line.
+ * Finds where the markers that open and close an HTML block balance out. Markers inside a fence do not count,
+ * because Showdown replaces fences before it looks for HTML blocks.
  * @param {string} src Source text
- * @param {number} from Index after the opening `<!--`
+ * @param {RegExp} markerRe Global pattern that matches opening and closing markers
+ * @param {(marker: string) => boolean} isClosing Tells a closing marker from an opening one
+ * @param {number} from Index after the opening marker
  * @param {number} limit Index where the search stops
- * @returns {number} Index after the matching `-->`, or -1
+ * @param {number[][]} fences Fence ranges in source order
+ * @returns {number} Index after the matching closing marker, or -1
  */
-function findCommentEnd(src, from, limit) {
-    const markerRe = /\n {0,3}<!--|-->/g;
+function findMatchingEnd(src, markerRe, isClosing, from, limit, fences) {
+    let fence = 0;
+    let high = fences.length;
+    while (fence < high) {
+        const middle = (fence + high) >> 1;
+        if (fences[middle][1] <= from) {
+            fence = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+
     markerRe.lastIndex = from;
     let depth = 1;
     for (let match = markerRe.exec(src); match && markerRe.lastIndex <= limit; match = markerRe.exec(src)) {
-        depth += match[0] === '-->' ? -1 : 1;
+        while (fence < fences.length && fences[fence][1] <= match.index) {
+            fence++;
+        }
+        if (fence < fences.length && fences[fence][0] <= match.index) {
+            markerRe.lastIndex = fences[fence][1];
+            continue;
+        }
+        depth += isClosing(match[0]) ? -1 : 1;
         if (depth === 0) {
             return markerRe.lastIndex;
         }
@@ -87,8 +113,9 @@ function matchShowdownHtmlBlock(state, startLine, endLine) {
     const start = state.bMarks[startLine] + state.tShift[startLine];
     const limit = state.eMarks[endLine - 1];
 
+    // As in Showdown, a comment nests only where `<!--` starts a line.
     if (src.startsWith('<!--', start)) {
-        const end = findCommentEnd(src, start + 4, limit);
+        const end = findMatchingEnd(src, /\n {0,3}<!--|-->/g, marker => marker === '-->', start + 4, limit, getShowdownFenceRanges(state));
         return end < 0 ? null : { end };
     }
 
@@ -104,8 +131,54 @@ function matchShowdownHtmlBlock(state, startLine, endLine) {
     }
 
     const tag = openTag[1].toLowerCase();
-    const end = findClosingTag(src, BLOCK_OPEN_TAG_RE.lastIndex, tag, limit);
+    const tagRe = new RegExp(`<${tag}\\b[^>]*>|</${tag}>`, 'gi');
+    const end = findMatchingEnd(src, tagRe, marker => marker[1] === '/', BLOCK_OPEN_TAG_RE.lastIndex, limit, getShowdownFenceRanges(state));
     return end < 0 ? null : { end, tag, markdown: MARKDOWN_ATTRIBUTE_RE.test(openTag[0]) };
+}
+
+/**
+ * @param {any} state Block state
+ * @param {string} html Raw HTML
+ * @param {number[]} map Source lines of the block
+ */
+function pushHtmlToken(state, html, map) {
+    const token = state.push('html_block', '', 0);
+    token.map = map;
+    token.content = `${html}\n`;
+}
+
+/**
+ * Pushes the raw content of an HTML block. Each fence in it that Showdown would convert becomes a fence token,
+ * so that it renders as code, as in Showdown; an unclosed fence stays raw text.
+ * @param {any} state Block state
+ * @param {string} content Raw block content
+ * @param {number[]} map Source lines of the block
+ */
+function pushHtmlBlockContent(state, content, map) {
+    // Showdown shows a fence inside a block that starts with <pre><code> as text.
+    if (PRE_CODE_START_RE.test(content.trimStart())) {
+        pushHtmlToken(state, content, map);
+        return;
+    }
+
+    const fenceRe = new RegExp(SHOWDOWN_FENCE_SOURCE, 'g');
+    let htmlStart = 0;
+    const pushHtmlUntil = (end) => {
+        const html = content.slice(htmlStart, end);
+        if (html.trim() !== '') {
+            pushHtmlToken(state, html, map);
+        }
+    };
+    for (let match = fenceRe.exec(content); match; match = fenceRe.exec(content)) {
+        pushHtmlUntil(match.index);
+        const token = state.push('fence', 'code', 0);
+        token.map = map;
+        token.markup = match[1];
+        token.info = match[2];
+        token.content = `${match[3].replace(/^\n+|\n+$/g, '')}\n`;
+        htmlStart = content[fenceRe.lastIndex] === '\n' ? fenceRe.lastIndex + 1 : fenceRe.lastIndex;
+    }
+    pushHtmlUntil(content.length);
 }
 
 /**
@@ -136,7 +209,8 @@ function startLineAt(state, line, pos) {
 /**
  * Builds a block rule that keeps HTML blocks raw the way Showdown's hashHTMLBlocks does. A tag from Showdown's
  * list that starts a line is kept through its matching closing tag, across blank lines, and text after that
- * tag on the same line starts a new block. Other tags stay inline, so Markdown inside them is parsed.
+ * tag on the same line starts a new block. A closed fence inside the block still renders as code. Other tags
+ * stay inline, so Markdown inside them is parsed.
  * @param {(text: string) => string} renderMarkdown Renders the content of a block whose opening tag has a
  * `markdown` attribute
  * @returns {(state: any, startLine: number, endLine: number, silent: boolean) => boolean} Block rule
@@ -166,19 +240,18 @@ function createShowdownHtmlBlockRule(renderMarkdown) {
         const hasTextAfter = state.src.slice(block.end, lineEnd).trim() !== '';
 
         state.eMarks[lastLine] = block.end;
-        let content = state.getLines(startLine, lastLine + 1, state.blkIndent, false).trimEnd();
+        const content = state.getLines(startLine, lastLine + 1, state.blkIndent, false).trimEnd();
         state.eMarks[lastLine] = lineEnd;
 
+        const map = [startLine, lastLine + 1];
         BLOCK_OPEN_TAG_RE.lastIndex = content.length - content.trimStart().length;
         if (block.markdown && BLOCK_OPEN_TAG_RE.exec(content)) {
             const innerStart = BLOCK_OPEN_TAG_RE.lastIndex;
             const innerEnd = content.length - block.tag.length - 3;
-            content = content.slice(0, innerStart) + renderMarkdown(content.slice(innerStart, innerEnd)) + content.slice(innerEnd);
+            pushHtmlToken(state, content.slice(0, innerStart) + renderMarkdown(content.slice(innerStart, innerEnd)) + content.slice(innerEnd), map);
+        } else {
+            pushHtmlBlockContent(state, content, map);
         }
-
-        const token = state.push('html_block', '', 0);
-        token.map = [startLine, lastLine + 1];
-        token.content = `${content}\n`;
 
         if (hasTextAfter) {
             startLineAt(state, lastLine, block.end);

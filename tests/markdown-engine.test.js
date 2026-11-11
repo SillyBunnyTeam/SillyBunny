@@ -115,6 +115,17 @@ describe('markdown-it HTML blocks', () => {
         expect(render('<details><summary>S</summary>\n\n*inner*\n\n</details>')).toBe('<p><details><summary>S</summary></p>\n<p><em>inner</em></p>\n<p></details></p>\n');
     });
 
+    test('renders a closed fence inside a raw block as code and ignores the tags and comment ends in it', () => {
+        expect(render('<div class="status">\n```js\n</div>\n```\n</div>\n*after*')).toBe(
+            '<div class="status">\n<pre><code class="js language-js">&lt;/div&gt;\n</code></pre>\n</div>\n<p><em>after</em></p>\n',
+        );
+        expect(render('<!--\n```\na --> b\n```\n-->\n*after*')).toBe('<!--\n<pre><code>a --&gt; b\n</code></pre>\n-->\n<p><em>after</em></p>\n');
+    });
+
+    test('keeps an unclosed fence inside a raw block as raw text', () => {
+        expect(render('<div>\n```\nnot closed\n</div>')).toBe('<div>\n```\nnot closed\n</div>\n');
+    });
+
     test('starts a new block after the closing tag', () => {
         expect(render('<div>A</div> *B*')).toBe('<div>A</div>\n<p><em>B</em></p>\n');
     });
