@@ -135,7 +135,7 @@ describe('Creator invalid output remains reviewable', () => {
 
     test('provider errors are not retried or turned into fallback proposals', async () => {
         const providerError = new Error('Provider rejects the requested output ceiling');
-        const sendRequest = jest.fn(async () => { throw providerError; });
+        const sendRequest = jest.fn(async () => { throw new Error('API request failed', { cause: providerError }); });
         const { draft, generateCreatorTarget } = await setup({ sendRequest });
         const before = structuredClone(draft);
         await expect(generateCreatorTarget({ draft, target: 'profile' })).rejects.toBe(providerError);

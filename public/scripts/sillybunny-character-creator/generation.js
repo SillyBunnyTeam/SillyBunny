@@ -98,7 +98,8 @@ export async function generateCreatorTarget({ draft, target, instruction = '', r
         });
     } catch (error) {
         if (isAbortLikeError(error, signal)) throw abortError();
-        throw error;
+        // Connection Manager wraps every provider failure as "API request failed", so the provider's own message is in the cause.
+        throw error?.cause instanceof Error ? error.cause : error;
     }
     // A provider may resolve despite cancellation; never turn its late output into a proposal.
     checkAbort(signal);
