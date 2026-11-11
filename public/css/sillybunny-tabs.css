@@ -6106,6 +6106,17 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
+@media (pointer: coarse) {
+    .sb-settings-header-spacer,
+    .sb-settings-close-button {
+        width: var(--sb-mobile-touch-target, 44px);
+    }
+
+    .sb-settings-close-button {
+        height: var(--sb-mobile-touch-target, 44px);
+    }
+}
+
 @media (hover: hover) {
     .sb-settings-close-button:hover {
         background: var(--sb-flat-hover-bg);
@@ -9429,6 +9440,13 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     color: var(--sb-shell-text-secondary);
     cursor: pointer;
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+@media (pointer: coarse) {
+    .sb-settings-back-button {
+        width: var(--sb-mobile-touch-target, 44px);
+        height: var(--sb-mobile-touch-target, 44px);
+    }
 }
 
 @media (hover: hover) {

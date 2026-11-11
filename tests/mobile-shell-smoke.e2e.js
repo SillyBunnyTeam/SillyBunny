@@ -348,6 +348,26 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expectNoDocumentOverflow(page);
     });
 
+    test('settings Back and Close are at least 44px touch targets at 390 and 360 wide', async ({ page }) => {
+        expect(await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches)).toBe(true);
+        await openLeftShell(page);
+        await expect(page.locator('#sb-settings-page')).toHaveClass(/sb-settings-page--content/);
+
+        for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 780 }]) {
+            await page.setViewportSize(viewport);
+
+            for (const selector of ['#sb-settings-back', '#sb-settings-close']) {
+                const button = page.locator(selector);
+                await expect(button).toBeInViewport({ ratio: 1 });
+                const box = await button.boundingBox();
+                expect.soft(box.width, `${selector} width at ${viewport.width}px`).toBeGreaterThanOrEqual(44);
+                expect.soft(box.height, `${selector} height at ${viewport.width}px`).toBeGreaterThanOrEqual(44);
+            }
+        }
+
+        await closeSettingsPageThroughUi(page);
+    });
+
     test('chat chip sheet opens, closes on Escape, and stays inside the viewport', async ({ page }, testInfo) => {
         await selectSampleCharacter(page);
         const chip = page.locator('#sb-bottom-chat-bar .sb-bottom-chat-chip');
