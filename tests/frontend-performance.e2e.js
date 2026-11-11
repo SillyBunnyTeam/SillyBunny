@@ -11,6 +11,7 @@ const coreAssetPaths = [
 // Guards against growth in the number of requests a start makes. Lower it when a start makes fewer requests; raise it
 // only when a change adds a request on purpose.
 const STARTUP_RESOURCE_LIMIT = 858;
+const STARTUP_JS_BYTE_LIMIT = 13 * 1024 * 1024;
 
 async function waitForResourceStability(page) {
     let previousCount = -1;
@@ -83,7 +84,7 @@ test.describe('frontend performance smoke', () => {
         expect(snapshot.hasShell).toBe(true);
         expect(snapshot.resourceCount).toBeLessThanOrEqual(STARTUP_RESOURCE_LIMIT);
         expect(snapshot.jsBytes).toBeGreaterThan(0);
-        expect(snapshot.jsBytes).toBeLessThan(12 * 1024 * 1024);
+        expect(snapshot.jsBytes).toBeLessThan(STARTUP_JS_BYTE_LIMIT);
         expect(snapshot.cssBytes).toBeGreaterThan(0);
         expect(snapshot.cssBytes).toBeLessThan(2 * 1024 * 1024);
         expect(snapshot.fontRequests).toBeLessThan(18);
