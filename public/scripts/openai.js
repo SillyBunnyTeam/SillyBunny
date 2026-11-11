@@ -9619,8 +9619,10 @@ function toggleChatCompletionForms() {
         $('#linkapi_model_id').val(oai_settings.linkapi_model);
         $('#model_linkapi_select').val(oai_settings.linkapi_model).trigger('change');
     } else if (oai_settings.chat_completion_source == chat_completion_sources.KOBOLDCPP) {
-        // SillyBunny: KoboldCpp has no model setting whose change handler would reset the temperature limit.
+        // SillyBunny: KoboldCpp has no model setting whose change handler would reset the temperature and penalty limits.
         $('#temp_openai').attr('max', oai_max_temp).val(oai_settings.temp_openai).trigger('input');
+        $('#pres_pen_openai').attr('max', 2).attr('min', -2).val(oai_settings.pres_pen_openai).trigger('input');
+        $('#freq_pen_openai').attr('max', 2).attr('min', -2).val(oai_settings.freq_pen_openai).trigger('input');
     }
 
     $('[data-source]').each(function () {
