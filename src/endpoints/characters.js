@@ -1094,6 +1094,8 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
  */
 async function importFromPng(uploadPath, { request }, preservedFileName) {
     const imgData = await readCharacterData(uploadPath);
+    // SillyBunny: the import deletes the upload, so drop the index entry that reading it stored, because only the startup prune would remove it.
+    characterIndex.delete(uploadPath);
     if (imgData === undefined) throw new Error('Failed to read character data');
 
     let jsonData = JSON.parse(imgData);

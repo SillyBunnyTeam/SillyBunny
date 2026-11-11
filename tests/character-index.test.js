@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import '../src/fetch-patch.js';
 import { setConfigFilePath } from '../src/util.js';
+import { createCardPng, createV1Card, createV2Card } from './util/card-corpus.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const originalWorkingDirectory = process.cwd();
@@ -166,10 +167,14 @@ describe('character routes with the index', () => {
     let directories;
     let server;
     let tempRoot;
+    let uploadsDirectory;
+    let upload;
 
     beforeAll(async () => {
         tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-character-index-routes-'));
         globalThis.DATA_ROOT = tempRoot;
+        uploadsDirectory = path.join(tempRoot, '_uploads');
+        fs.mkdirSync(uploadsDirectory);
         const userRoot = path.join(tempRoot, 'index-test-user');
         directories = {
             root: userRoot,
@@ -193,6 +198,11 @@ describe('character routes with the index', () => {
                 profile: { handle: 'index-test-user' },
                 directories,
             };
+            next();
+        });
+        // The server's upload middleware sets request.file, so this sets the file that the test wrote.
+        app.use('/api/characters/import', (request, _response, next) => {
+            request.file = upload;
             next();
         });
         app.use('/api/characters', charactersRouter);
@@ -248,6 +258,23 @@ describe('character routes with the index', () => {
         expect(await listCharacters()).toEqual([]);
         expect(characterIndex.get(cardPath, editedStat)).toBeUndefined();
         expect(warn).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['V1', createV1Card],
+        ['V2', createV2Card],
+    ])('forgets the entry of an uploaded card that imports as %s', async (_version, createCard) => {
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const uploadPath = writeFile(path.join(uploadsDirectory, 'upload'), createCardPng(createCard()));
+        const uploadStat = fs.statSync(uploadPath);
+        upload = { destination: uploadsDirectory, filename: 'upload' };
+
+        const response = await postJson('/api/characters/import', { file_type: 'png' });
+
+        expect(await response.json()).toEqual({ file_name: expect.any(String) });
+        expect(fs.existsSync(uploadPath)).toBe(false);
+        expect(characterIndex.get(uploadPath, uploadStat)).toBeUndefined();
     });
 
     async function listCharacters() {
