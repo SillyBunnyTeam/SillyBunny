@@ -25,6 +25,7 @@ let pane = 'sections';
 let launchFocus = null;
 let opening = false;
 let saving = false;
+let openAtChatChange = false;
 let navigationId = 0;
 let activeRun = null;
 let runId = 0;
@@ -896,7 +897,8 @@ function init() {
     eventSource.on(event_types.CHARACTER_EDITOR_OPENED, syncPolishButton);
     eventSource.on(event_types.CHARACTER_EDITED, syncPolishButton);
     eventSource.on(event_types.CHAT_CHANGED, () => {
-        if (isOpen() || opening) void closeWorkspace({ restoreFocus: false }).catch(reportError);
+        openAtChatChange = isOpen() || opening;
+        if (openAtChatChange) void closeWorkspace({ restoreFocus: false }).catch(reportError);
     });
     eventSource.on(event_types.CHARACTER_RENAMED, (oldAvatar, newAvatar) => {
         // Queue the move first, so that a save under the new identity runs after it.
@@ -912,8 +914,9 @@ function init() {
         const avatar = event?.character?.avatar;
         if (!avatar) return;
         const current = draft?.sourceAvatar === avatar || pending?.avatar === avatar;
-        // A draft that is on screen stays, so that the user can still download it.
-        if (current && (isOpen() || opening || saving)) return;
+        // A draft that is on screen stays, so that the user can still download it. A card delete changes the chat
+        // before this event, and that chat change can close the workspace first.
+        if (current && (isOpen() || opening || saving || openAtChatChange)) return;
         if (current) {
             clearTimeout(saveTimer);
             draft = pending = pendingNewDraftRemoval = storageError = null;

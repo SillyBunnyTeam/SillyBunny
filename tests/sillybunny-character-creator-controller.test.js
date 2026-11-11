@@ -24,10 +24,15 @@ const eventSource = {
         for (const listener of listeners.get(type) ?? []) await listener(...args);
     },
 };
-const element = () => ({ dataset: {}, setAttribute() {}, addEventListener() {}, append() {} });
+const element = () => ({
+    dataset: {}, setAttribute() {}, addEventListener() {}, append() {},
+    replaceChildren() {}, contains: () => false, querySelector: () => null, querySelectorAll: () => [],
+});
 const sheld = element();
+const windowListeners = new Map();
 globalThis.document = { createElement: element, getElementById: id => id === 'sheld' ? sheld : null };
-globalThis.window = { addEventListener() {} };
+globalThis.window = { addEventListener: (type, listener) => windowListeners.set(type, listener), dispatchEvent() {} };
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ name: 'Mara' }) });
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     characters: [],
@@ -58,6 +63,16 @@ function storeDraft(avatar) {
     records.set(keyFor(avatar), createDraft({ sourceAvatar: avatar, fields: { name: 'Mara' } }));
 }
 
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+/** Opens the workspace for a card with a stored draft, as Polish in the editor does, and waits until it shows the draft. */
+async function showStoredDraft(avatar) {
+    storeDraft(avatar);
+    windowListeners.get('sb:open-creator-workspace')({ detail: { avatar } });
+    await settle();
+    expect(sheld.dataset.sbCreatorMode).toBe('on');
+}
+
 describe('Creator controller card events', () => {
     beforeAll(() => eventSource.emit(event_types.APP_READY));
     beforeEach(() => records.clear());
@@ -80,5 +95,35 @@ describe('Creator controller card events', () => {
         storeDraft('kept.png');
         await eventSource.emit(event_types.CHARACTER_DELETED, { id: 0 });
         expect([...records.keys()]).toEqual([keyFor('kept.png')]);
+    });
+
+    test('a delete keeps the stored draft that the workspace shows', async () => {
+        await showStoredDraft('shown.png');
+        await eventSource.emit(event_types.CHARACTER_DELETED, { id: 0, character: { avatar: 'shown.png' } });
+        expect([...records.keys()]).toEqual([keyFor('shown.png')]);
+    });
+
+    test('a delete keeps the stored draft that the workspace showed when the delete changed the chat', async () => {
+        await showStoredDraft('shown.png');
+        storeDraft('other.png');
+        // A card delete closes the current chat first, and that chat change closes the workspace.
+        await eventSource.emit(event_types.CHAT_CHANGED);
+        await settle();
+        expect(sheld.dataset.sbCreatorMode).toBeUndefined();
+
+        await eventSource.emit(event_types.CHARACTER_DELETED, { id: 0, character: { avatar: 'shown.png' } });
+        await eventSource.emit(event_types.CHARACTER_DELETED, { id: 1, character: { avatar: 'other.png' } });
+        expect([...records.keys()]).toEqual([keyFor('shown.png')]);
+    });
+
+    test('a delete removes the stored draft that the workspace stopped showing at an earlier chat change', async () => {
+        await showStoredDraft('shown.png');
+        await eventSource.emit(event_types.CHAT_CHANGED);
+        await settle();
+        expect(sheld.dataset.sbCreatorMode).toBeUndefined();
+
+        await eventSource.emit(event_types.CHAT_CHANGED);
+        await eventSource.emit(event_types.CHARACTER_DELETED, { id: 0, character: { avatar: 'shown.png' } });
+        expect(records.has(keyFor('shown.png'))).toBe(false);
     });
 });
