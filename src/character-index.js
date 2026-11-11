@@ -332,7 +332,12 @@ export class CharacterIndex {
      * @param {any} error Error from the SQLite driver or the file system
      */
     #handleError(error) {
-        console.warn('Character index error. Cards are read from their files until the server restarts:', error);
+        // Node.js older than 22.13 throws this code when openDatabase() loads node:sqlite.
+        if (error?.code === 'ERR_UNKNOWN_BUILTIN_MODULE') {
+            console.warn('The character cache needs Node.js 22.13 or newer, so cards are read from their files.');
+        } else {
+            console.warn('Character index error. Cards are read from their files until the server restarts:', error);
+        }
         this.close();
         this.#enabled = false;
         if (isCorruptionError(error)) {

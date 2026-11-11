@@ -28,6 +28,8 @@ setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 const { CharacterIndex } = await import('../src/character-index.js');
 const { characterIndex, router: charactersRouter } = await import('../src/endpoints/characters.js');
 const describeOnBun = isBunRuntime() ? describe : describe.skip;
+// Bun loads bun:sqlite, so the node:sqlite load that fails on Node.js older than 22.13 never runs there.
+const describeOnNode = isBunRuntime() ? describe.skip : describe;
 
 afterAll(() => {
     globalThis.DATA_ROOT = originalDataRoot;
@@ -159,6 +161,10 @@ describe('character index', () => {
 
         expect(index.get(cardPath, stat)).toBeUndefined();
         expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(
+            'Character index error. Cards are read from their files until the server restarts:',
+            expect.objectContaining({ stack: expect.any(String) }),
+        );
     });
 
     test('does not create a database file when it is disabled', () => {
@@ -186,6 +192,33 @@ describe('character index', () => {
 
             expect(index.get(cardPath, stat)).toBe('alice data');
             expect(warn).not.toHaveBeenCalled();
+        });
+    });
+
+    describeOnNode('on Node.js', () => {
+        test('names the Node.js minimum without a stack when node:sqlite cannot be loaded', () => {
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            const loadSqlite = jest.fn(() => {
+                throw Object.assign(new Error('No such built-in module: node:sqlite'), { code: 'ERR_UNKNOWN_BUILTIN_MODULE' });
+            });
+            jest.mock('node:sqlite', loadSqlite);
+            try {
+                const cardPath = writeFile(path.join(tempRoot, 'characters', 'Alice.png'), 'alice');
+                const stat = fs.statSync(cardPath);
+
+                index.set(cardPath, stat, 'alice data');
+
+                expect(warn.mock.calls).toEqual([['The character cache needs Node.js 22.13 or newer, so cards are read from their files.']]);
+
+                index.set(cardPath, stat, 'alice data');
+
+                expect(index.get(cardPath, stat)).toBeUndefined();
+                expect(warn).toHaveBeenCalledTimes(1);
+                expect(loadSqlite).toHaveBeenCalledTimes(1);
+                expect(fs.existsSync(index.filePath)).toBe(false);
+            } finally {
+                jest.unmock('node:sqlite');
+            }
         });
     });
 });
