@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import vm from 'node:vm';
 import { loadDeclarations as load, readClientModule } from './util/load-declarations.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, requestUsesReasoning, warnsOnGenerationLengthFinish } from '../public/scripts/generation-request-controls.js';
+import { createResponseLengthOverrides } from '../public/scripts/generation-response-length-overrides.js';
 import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../public/scripts/openai-model-capabilities.js';
 import { resolveGenerationOutputBufferState, resolveGenerationUnblockState, resolveStopGenerationState } from '../public/scripts/generation-lifecycle/index.js';
 import { event_types } from '../public/scripts/events.js';
@@ -79,6 +80,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
         eventSource, event_types,
         resolveGenerationOutputBufferState, resolveGenerationUnblockState, resolveStopGenerationState,
         applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, warnsOnGenerationLengthFinish,
+        createResponseLengthOverrides,
         applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model,
         getLinkApiRequestFormat: () => 'openai',
         getRequestHeaders: () => ({}),
@@ -1047,5 +1049,149 @@ describe('hide request in the owned generation flow', () => {
         });
         await context.Generate('swipe', options);
         expect(seen).toEqual([{ type: 'swipe', lines: ['Existing prose. '] }]);
+    });
+});
+
+describe('overlapping temporary response lengths', () => {
+    const APIS = ['openai', 'textgenerationwebui', 'kobold', 'koboldhorde', 'novel'];
+    const PRESET = { amount_gen: 8192, openai_max_tokens: 4096, customized: false };
+    const lengthField = api => ['kobold', 'koboldhorde', 'novel'].includes(api) ? 'max_length' : 'max_tokens';
+    const presetLength = api => api === 'openai' ? PRESET.openai_max_tokens : PRESET.amount_gen;
+    const rawPromptEvent = api => api === 'openai' ? event_types.CHAT_COMPLETION_PROMPT_READY : event_types.GENERATE_AFTER_COMBINE_PROMPTS;
+    const rawPromptText = data => data.prompt ?? data.chat[0].content;
+
+    function makeOverlapRuntime(api) {
+        const runtime = makeRuntime({ api });
+        const { context, requests } = runtime;
+        context.oai_settings.openai_max_tokens = PRESET.openai_max_tokens;
+        const preset = () => ({
+            amount_gen: context.amount_gen,
+            openai_max_tokens: context.oai_settings.openai_max_tokens,
+            customized: vm.runInContext('TempResponseLength.isCustomized()', context),
+        });
+        const lengths = () => requests.map(request => request.body[lengthField(api)]);
+        return { ...runtime, preset, lengths, state: () => ({ lengths: lengths(), ...preset() }) };
+    }
+
+    // Keeps a generation inside an event, as an async listener of an extension does.
+    function holdEvent(eventSource, name, matches) {
+        let reach, release;
+        const reached = new Promise(resolve => { reach = resolve; });
+        const gate = new Promise(resolve => { release = resolve; });
+        eventSource.on(name, async (...args) => {
+            if (!matches(...args)) return;
+            reach();
+            await gate;
+        });
+        return { reached, release };
+    }
+
+    async function holdTwoRawCalls(runtime, api) {
+        const { context, eventSource } = runtime;
+        const first = holdEvent(eventSource, rawPromptEvent(api), data => rawPromptText(data) === 'first');
+        const second = holdEvent(eventSource, rawPromptEvent(api), data => rawPromptText(data) === 'second');
+        const firstCall = context.generateRaw({ prompt: 'first', responseLength: 100 });
+        await first.reached;
+        const secondCall = context.generateRaw({ prompt: 'second', responseLength: 200 });
+        await second.reached;
+        return { first, second, firstCall, secondCall };
+    }
+
+    test.each(APIS)('%s: a raw call inside another raw call leaves the preset in place', async api => {
+        const { context, eventSource, state } = makeOverlapRuntime(api);
+        eventSource.on(rawPromptEvent(api), async data => {
+            if (rawPromptText(data) === 'outer') await context.generateRaw({ prompt: 'inner', responseLength: 200 });
+        });
+        await context.generateRaw({ prompt: 'outer', responseLength: 100 });
+        expect(state()).toEqual({ lengths: [200, 100], ...PRESET });
+    });
+
+    test.each(APIS)('%s: the raw call that restores last keeps its length and the preset returns', async api => {
+        const runtime = makeOverlapRuntime(api);
+        const { first, second, firstCall, secondCall } = await holdTwoRawCalls(runtime, api);
+        first.release();
+        await firstCall;
+        second.release();
+        await secondCall;
+        expect(runtime.lengths()[1]).toBe(200);
+        expect(runtime.preset()).toEqual(PRESET);
+    });
+
+    test.each(APIS)('%s: two raw calls that start together leave the preset in place', async api => {
+        const { context, requests, preset } = makeOverlapRuntime(api);
+        await Promise.all([
+            context.generateRaw({ prompt: 'first', responseLength: 100 }),
+            context.generateRaw({ prompt: 'second', responseLength: 200 }),
+        ]);
+        expect(requests).toHaveLength(2);
+        expect(preset()).toEqual(PRESET);
+    });
+
+    test.each(APIS)('%s: a raw call inside a quiet prompt leaves the preset in place', async api => {
+        const { context, eventSource, state } = makeOverlapRuntime(api);
+        eventSource.on(event_types.GENERATION_STARTED, async () => {
+            await context.generateRaw({ prompt: 'raw', responseLength: 200 });
+        });
+        await context.generateQuietPrompt({ quietPrompt: 'quiet', responseLength: 100 });
+        expect(state()).toEqual({ lengths: [200, 100], ...PRESET });
+    });
+
+    test.each(APIS)('%s: a quiet prompt inside a raw call leaves the preset in place', async api => {
+        const { context, eventSource, state } = makeOverlapRuntime(api);
+        eventSource.on(rawPromptEvent(api), async data => {
+            if (rawPromptText(data) === 'raw') await context.generateQuietPrompt({ quietPrompt: 'quiet', responseLength: 200 });
+        });
+        await context.generateRaw({ prompt: 'raw', responseLength: 100 });
+        expect(state()).toEqual({ lengths: [200, 100], ...PRESET });
+    });
+
+    test.each(APIS)('%s: a quiet prompt inside another quiet prompt leaves the preset in place', async api => {
+        const { context, eventSource, state } = makeOverlapRuntime(api);
+        let nested = false;
+        eventSource.on(event_types.GENERATION_STARTED, async () => {
+            if (nested) return;
+            nested = true;
+            await context.generateQuietPrompt({ quietPrompt: 'inner', responseLength: 200 });
+        });
+        await context.generateQuietPrompt({ quietPrompt: 'outer', responseLength: 100 });
+        expect(state()).toEqual({ lengths: [200, 100], ...PRESET });
+    });
+
+    test('a Chat Completion call and a Text Completion call that overlap keep their own presets', async () => {
+        const { context, requests, eventSource, preset } = makeOverlapRuntime('openai');
+        const chat = holdEvent(eventSource, event_types.CHAT_COMPLETION_PROMPT_READY, data => rawPromptText(data) === 'chat');
+        const text = holdEvent(eventSource, event_types.GENERATE_AFTER_COMBINE_PROMPTS, data => rawPromptText(data) === 'text');
+        const chatCall = context.generateRawData({ prompt: 'chat', responseLength: 100 });
+        await chat.reached;
+        const textCall = context.generateRawData({ prompt: 'text', api: 'textgenerationwebui', responseLength: 200 });
+        await text.reached;
+        chat.release();
+        await chatCall;
+        text.release();
+        await textCall;
+        expect(requests.map(request => request.body.max_tokens)).toEqual([100, 200]);
+        expect(preset()).toEqual(PRESET);
+    });
+
+    test.each(APIS)('%s: the forced restore of a settings save puts the preset back while two calls overlap', async api => {
+        const runtime = makeOverlapRuntime(api);
+        const { first, second, firstCall, secondCall } = await holdTwoRawCalls(runtime, api);
+        vm.runInContext('TempResponseLength.restore(null)', runtime.context);
+        expect(runtime.preset()).toEqual(PRESET);
+        first.release();
+        second.release();
+        await Promise.all([firstCall, secondCall]);
+        expect(runtime.state()).toEqual({ lengths: [presetLength(api), presetLength(api)], ...PRESET });
+    });
+
+    test.each(APIS)('%s: Stop puts the preset back while two calls overlap', async api => {
+        const runtime = makeOverlapRuntime(api);
+        const { first, second, firstCall, secondCall } = await holdTwoRawCalls(runtime, api);
+        await runtime.eventSource.emit(event_types.GENERATION_STOPPED);
+        first.release();
+        second.release();
+        await expect(firstCall).rejects.toThrow('Cancelled by extension');
+        await expect(secondCall).rejects.toThrow('Cancelled by extension');
+        expect(runtime.state()).toEqual({ lengths: [], ...PRESET });
     });
 });

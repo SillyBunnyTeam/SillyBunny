@@ -345,6 +345,8 @@ import { fetchResumable, registerGenerationCommitPlan, settleGenerationCommit } 
 import { GENERATION_PLACEHOLDER_KEY, getMessageIdentity } from './scripts/generation-commit-plan.js';
 import { createGenerationCommitPlan, initServerGenerations, reloadServerCommittedReply } from './scripts/server-generations.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, warnsOnGenerationLengthFinish } from './scripts/generation-request-controls.js';
+// SillyBunny: generations with a temporary response length overlap, so each one keeps its own override.
+import { createResponseLengthOverrides } from './scripts/generation-response-length-overrides.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     CHAT_RENDER_LIFECYCLE_ROUTE,
@@ -5827,7 +5829,8 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
     const abortFromExternalSignal = quietAbortController
         ? () => quietAbortController.abort(externalSignal.reason ?? new Error('Cancelled by external signal'))
         : null;
-    let eventHook = () => { };
+    // SillyBunny: this generation restores only its own override, because another generation can hold one too.
+    let responseLengthOverride = null;
 
     if (externalSignal) {
         if (externalSignal.aborted) {
@@ -5854,8 +5857,8 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
             preserveReasoningBudget,
         };
         if (responseLengthCustomized) {
-            TempResponseLength.save(main_api, responseLength);
-            eventHook = TempResponseLength.setupEventHook(main_api);
+            responseLengthOverride = TempResponseLength.save(main_api, responseLength);
+            TempResponseLength.setupEventHook(responseLengthOverride);
         }
         if (quietAbortController) {
             abortController = quietAbortController;
@@ -5868,9 +5871,8 @@ export async function generateQuietPrompt({ quietPrompt = '', quietToLoud = fals
         if (externalSignal && abortFromExternalSignal) {
             externalSignal.removeEventListener('abort', abortFromExternalSignal);
         }
-        if (responseLengthCustomized && TempResponseLength.isCustomized()) {
-            TempResponseLength.restore(main_api);
-            TempResponseLength.removeEventHook(main_api, eventHook);
+        if (responseLengthOverride) {
+            TempResponseLength.restore(responseLengthOverride);
         }
         // SillyBunny: guarantee the send buttons are reactivated after quiet
         // generation, regardless of whether Generate succeeded, failed, threw,
@@ -7215,7 +7217,8 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
     // SillyBunny: route preserved budgets before TempResponseLength can overwrite the preset.
     const responseLengthCustomized = !preserveReasoningBudget && typeof responseLength === 'number' && responseLength > 0;
     const requestControls = preserveReasoningBudget ? { responseLength, preserveReasoningBudget } : {};
-    let eventHook = () => { };
+    // SillyBunny: this generation restores only its own override, because another generation can hold one too.
+    let responseLengthOverride = null;
 
     // construct final prompt from the input. Can either be a string or an array of chat-style messages.
     prompt = createRawPrompt(prompt, api, instructOverride, quietToLoud, systemPrompt, prefill);
@@ -7230,7 +7233,7 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
 
     try {
         if (responseLengthCustomized) {
-            TempResponseLength.save(api, responseLength);
+            responseLengthOverride = TempResponseLength.save(api, responseLength);
         }
         /** @type {object|any[]} */
         let generateData = {};
@@ -7262,24 +7265,24 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
                     const koboldSettings = koboldai_settings[koboldai_setting_names[kai_settings.preset_settings]];
                     generateData = getKoboldGenerationData(prompt.toString(), koboldSettings, amount_gen, max_context, isHorde, 'quiet');
                 }
-                responseLengthCustomized && TempResponseLength.restore(api);
+                responseLengthCustomized && TempResponseLength.restore(responseLengthOverride);
                 break;
             case 'novel': {
                 const novelSettings = novelai_settings[novelai_setting_names[nai_settings.preset_settings_novel]];
                 const maxLength = applyGenerationRequestControls({ max_length: amount_gen, model: nai_settings.model_novel }, requestControls).max_length;
                 generateData = getNovelGenerationData(prompt, novelSettings, maxLength, false, false, null, 'quiet');
                 requestControls.responseLength = null;
-                responseLengthCustomized && TempResponseLength.restore(api);
+                responseLengthCustomized && TempResponseLength.restore(responseLengthOverride);
                 break;
             }
             case 'textgenerationwebui':
                 generateData = await getTextGenGenerationData(prompt, amount_gen, false, false, null, 'quiet', { cacheScope });
-                responseLengthCustomized && TempResponseLength.restore(api);
+                responseLengthCustomized && TempResponseLength.restore(responseLengthOverride);
                 break;
             case 'openai': {
                 generateData = prompt;  // generateData is just the chat message object
                 if (responseLengthCustomized) {
-                    eventHook = TempResponseLength.setupEventHook(api);
+                    TempResponseLength.setupEventHook(responseLengthOverride);
                 }
             } break;
         }
@@ -7327,9 +7330,8 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
         if (externalSignal) {
             externalSignal.removeEventListener('abort', abortFromExternalSignal);
         }
-        if (responseLengthCustomized && TempResponseLength.isCustomized()) {
-            TempResponseLength.restore(api);
-            TempResponseLength.removeEventHook(api, eventHook);
+        if (responseLengthOverride) {
+            TempResponseLength.restore(responseLengthOverride);
         }
     }
 }
@@ -7372,92 +7374,67 @@ export async function generateRaw({ prompt = '', api = null, instructOverride = 
 }
 
 class TempResponseLength {
-    static #originalResponseLength = -1;
-    static #lastApi = null;
+    // SillyBunny: SillyTavern keeps one saved value here. When generations overlap, that value is the temporary
+    // length of an earlier generation, and the preset keeps it after both generations end.
+    static #overrides = createResponseLengthOverrides({
+        read: setting => setting === 'openai_max_tokens' ? oai_settings.openai_max_tokens : amount_gen,
+        write: (setting, responseLength) => {
+            if (setting === 'openai_max_tokens') {
+                oai_settings.openai_max_tokens = responseLength;
+            } else {
+                amount_gen = responseLength;
+            }
+        },
+    });
+    static #hookedEvents = new Set();
 
     static isCustomized() {
-        return this.#originalResponseLength > -1;
+        return this.#overrides.isActive();
     }
 
     /**
      * Save the current response length for the specified API.
      * @param {string} api API identifier
      * @param {number} responseLength New response length
+     * @returns {import('./scripts/generation-response-length-overrides.js').ResponseLengthOverride} Override of the caller
      */
     static save(api, responseLength) {
-        if (api === 'openai') {
-            this.#originalResponseLength = oai_settings.openai_max_tokens;
-            oai_settings.openai_max_tokens = responseLength;
-        } else {
-            this.#originalResponseLength = amount_gen;
-            amount_gen = responseLength;
-        }
-
-        this.#lastApi = api;
-        console.log('[TempResponseLength] Saved original response length:', TempResponseLength.#originalResponseLength);
+        const override = this.#overrides.add(api === 'openai' ? 'openai_max_tokens' : 'amount_gen', responseLength);
+        console.log('[TempResponseLength] Saved original response length:', override.replacedLength);
+        return override;
     }
 
     /**
-     * Restore the original response length for the specified API.
-     * @param {string|null} api API identifier
+     * Restore the response length that an override replaced.
+     * @param {import('./scripts/generation-response-length-overrides.js').ResponseLengthOverride|null} override Override from save(). Null restores every override.
      * @returns {void}
      */
-    static restore(api) {
-        if (this.#originalResponseLength === -1) {
+    static restore(override) {
+        if (!override) {
+            this.#overrides.removeAll();
             return;
         }
-        if (!api && this.#lastApi) {
-            api = this.#lastApi;
+        if (this.#overrides.remove(override)) {
+            console.log('[TempResponseLength] Restored original response length:', override.replacedLength);
         }
-        if (api === 'openai') {
-            oai_settings.openai_max_tokens = this.#originalResponseLength;
-        } else {
-            amount_gen = this.#originalResponseLength;
-        }
-
-        console.log('[TempResponseLength] Restored original response length:', this.#originalResponseLength);
-        this.#originalResponseLength = -1;
-        this.#lastApi = null;
     }
 
     /**
      * Sets up an event hook to restore the original response length when the event is emitted.
-     * @param {string} api API identifier
-     * @returns {function(): void} Event hook function
+     * @param {import('./scripts/generation-response-length-overrides.js').ResponseLengthOverride} override Override from save()
      */
-    static setupEventHook(api) {
-        const eventHook = () => {
-            if (this.isCustomized()) {
-                this.restore(api);
-            }
-        };
-
-        switch (api) {
-            case 'openai':
-                eventSource.once(event_types.CHAT_COMPLETION_SETTINGS_READY, eventHook);
-                break;
-            default:
-                eventSource.once(event_types.GENERATE_AFTER_DATA, eventHook);
-                break;
+    static setupEventHook(override) {
+        const { setting } = override;
+        const eventType = setting === 'openai_max_tokens' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
+        this.#overrides.hook(override);
+        if (this.#hookedEvents.has(eventType)) {
+            return;
         }
-
-        return eventHook;
-    }
-
-    /**
-     * Removes the event hook for the specified API.
-     * @param {string} api API identifier
-     * @param {function(): void} eventHook Previously set up event hook
-     */
-    static removeEventHook(api, eventHook) {
-        switch (api) {
-            case 'openai':
-                eventSource.removeListener(event_types.CHAT_COMPLETION_SETTINGS_READY, eventHook);
-                break;
-            default:
-                eventSource.removeListener(event_types.GENERATE_AFTER_DATA, eventHook);
-                break;
-        }
+        // One listener for each event type, so that one event restores one override.
+        this.#hookedEvents.add(eventType);
+        eventSource.on(eventType, () => {
+            this.#overrides.removeNewestHooked(setting);
+        });
     }
 }
 
