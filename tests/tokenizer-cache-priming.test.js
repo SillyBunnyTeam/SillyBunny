@@ -82,6 +82,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-koboldcpp-models.js
 }));
 
 const {
+    countTokensOpenAI,
     countTokensOpenAIAsync,
     getTokenizerModel,
     guesstimate,
@@ -248,5 +249,41 @@ describe('KoboldCpp token counting', () => {
 
         expect(await countTokensOpenAIAsync(message, true)).toBe(guesstimate(JSON.stringify(message)));
         expect(await countTokensOpenAIAsync(message, true)).toBe(9);
+    });
+
+    test('keeps a count out of the cache while no loaded model is known', async () => {
+        const [message] = makeMessages(1, 'koboldcpp-no-model');
+        mockKoboldCpp.loadedModel = '';
+        mockKoboldCpp.count.mockResolvedValueOnce(12).mockResolvedValueOnce(15);
+
+        expect(await countTokensOpenAIAsync(message, true)).toBe(12);
+        expect(await countTokensOpenAIAsync(message, true)).toBe(15);
+    });
+
+    test('estimates a synchronous count without asking the server', () => {
+        const [message] = makeMessages(1, 'koboldcpp-sync-estimate');
+
+        expect(countTokensOpenAI(message, true)).toBe(guesstimate(JSON.stringify(message)));
+        expect(globalThis.jQuery.ajax).not.toHaveBeenCalled();
+    });
+
+    test('keeps a synchronous count out of the cache that holds the KoboldCpp counts', async () => {
+        const [message] = makeMessages(1, 'koboldcpp-sync-cache');
+        globalThis.jQuery.ajax.mockImplementation(({ success }) => success({ token_count: 5 }));
+        mockKoboldCpp.count.mockResolvedValue(12);
+
+        countTokensOpenAI(message, true);
+
+        expect(await countTokensOpenAIAsync(message, true)).toBe(12);
+    });
+
+    test('reuses a count that KoboldCpp made in a synchronous count', async () => {
+        const [message] = makeMessages(1, 'koboldcpp-sync-reuse');
+        mockKoboldCpp.count.mockResolvedValue(12);
+
+        await countTokensOpenAIAsync(message, true);
+
+        expect(countTokensOpenAI(message, true)).toBe(12);
+        expect(globalThis.jQuery.ajax).not.toHaveBeenCalled();
     });
 });
