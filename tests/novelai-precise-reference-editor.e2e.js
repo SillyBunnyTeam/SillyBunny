@@ -63,7 +63,9 @@ test.describe('NovelAI Precise Reference editor', () => {
             return { radius, themeRadius };
         });
 
-        expect(result.themeRadius).toBe('16px');
+        // Themes set their own radius, so the test pins no value and checks that the row follows the token.
+        expect(result.themeRadius).toMatch(/^\d+(\.\d+)?px$/);
+        expect(Number.parseFloat(result.themeRadius)).toBeGreaterThan(0);
         expect(result.radius).toBe(result.themeRadius);
     });
 
