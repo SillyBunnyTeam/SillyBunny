@@ -322,6 +322,24 @@ This is the largest class by a wide margin.
 - **Limit:** the Jest suites run `checkWorldInfo()` and its helpers cut out of `world-info.js` by `tests/util/world-info-harness.js`, with one token per word and settings that each test sets. `tests/frontend/WorldInfoActivation.e2e.js` runs seven rows of the table through the real module, tokenizer and macro engine.
 - **Fixes:** #393 (legacy string positions activated but never reached the prompt), `c11467f9b` and `612ea61d6` (scanning and serialization of lorebook entries).
 
+### Character editor and the active chat
+
+- **Breaks:** an action in the character editor changes the active chat's character instead of the card that the editor shows, or does nothing when no chat is active.
+- **Cause:** upstream sets `this_chid` before the editor shows a card, also for a group member (`openCharacterDefinition()` in `public/scripts/group-chats.js`), so its editor actions read `this_chid`. The Creator (#873) opens the editor for a saved card without opening its chat, so the form and `this_chid` can name different cards.
+- **Files:** `public/script.js` (upstream), `public/scripts/tags.js` (upstream), `public/scripts/personas.js` (upstream), `public/scripts/welcome-screen.js` (upstream), `public/scripts/extensions/gallery/index.js` (upstream), `public/scripts/sillybunny-character-creator.js`, `public/scripts/sillybunny-tabs.js`.
+- **Guards:**
+  - `getCharacterEditorId()` in `public/script.js` returns the index of the card in `#avatar_url_pole` while the form edits a character. The editor actions and the tag functions in `tags.js` use it instead of `this_chid`.
+  - The character management dropdown passes the editor card to `CHARACTER_MANAGEMENT_DROPDOWN` listeners as the second argument. A listener acts on that argument, not on `this_chid`.
+  - `select_selected_character()` hides the controls that act on the current chat while the editor shows another card.
+  - With `performance.lazyLoadCharacters` on, the roster holds shallow cards (`toShallow()` in `src/endpoints/characters.js`). After a rename or a Replace / Update, `unshallowCharacter()` loads the full card before the editor shows it.
+- **Tests:** `tests/character-editor-identity.test.js` (runs the editor functions of `public/script.js` and `public/scripts/tags.js` and the three dropdown listeners in a VM context, through `tests/util/load-declarations.js`), `tests/character-editor-non-active-card.e2e.js`.
+- **Limit:** an editor that shows a shallow card shows the fields that the card lacks as empty, and a save sends them empty. The edit route refuses a save that empties every stored definition field of a card with two or more, or three or more of them (`getSuspiciousEmptyCharacterDefinitionFields()` in `src/character-save-guard.js`: description, personality, scenario, first message, example messages). A card with one stored definition field passes. The save then writes its system prompt, post-history instructions, alternate greetings and depth prompt empty, and `charaFormatData()` gets an empty `json_data`, so the card loses the fields that only `json_data` carries.
+- **Open:**
+  - The controls in the gallery popup reopen it with `showCharGallery()` without a `characterId`, and the folder controls change the folder of `context.characterId`. After the dropdown opens the gallery of a card that is not `this_chid`, they act on the active chat's character.
+  - Delete in the editor closes the active chat also for a card that is not active, because `deleteCharacter()` calls `closeCurrentChat()` first.
+  - A `getCharacters()` call with the default `refreshEditor` shows the active chat's character in the editor, also while the editor shows another card.
+- **Fixes:** #873 (editor actions follow the editor card), `1f8e592d4` (tags, auxiliary lorebooks and current-chat controls), `c87798d6e` (Replace / Update reopens a chat only for the active chat's character), `a71ebf0e7` (shallow card after a rename).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
