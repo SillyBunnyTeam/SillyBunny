@@ -45,6 +45,7 @@ const SWITCH_TIMEOUT_MS = 15 * 60 * 1000;
 let switcherState = null;
 let loadingEntry = '';
 let refreshCounter = 0;
+let refreshAfterSwitch = false;
 let statusLoadingStarts = 0;
 
 /**
@@ -211,7 +212,9 @@ async function fetchSwitcherState(serverUrl) {
  * Updates the model switcher after a KoboldCpp status check.
  */
 export async function refreshKoboldCppModels() {
+    // KoboldCpp may still be restarting, so the switch loads the list when its wait ends.
     if (loadingEntry) {
+        refreshAfterSwitch = true;
         return;
     }
 
@@ -363,6 +366,7 @@ async function switchKoboldCppModel(name, scriptSignal) {
 
     const signal = isActive ? abortStatusCheck.signal : null;
     loadingEntry = name;
+    refreshAfterSwitch = false;
     renderModelSelect();
     if (isActive) {
         startStatusLoading();
@@ -407,8 +411,9 @@ async function switchKoboldCppModel(name, scriptSignal) {
         if (ownsStatusLoading && outcome === 'cancelled') {
             stopStatusLoading();
         }
-        // A KoboldCpp status check does not update the list while the switch waits, so the list for the new URL loads here.
-        if (isActiveConnection() && isUrlChanged()) {
+        // A KoboldCpp status check does not update the list while the switch waits, so the list loads here when a status
+        // check asked for it during the wait or the URL changed.
+        if (isActiveConnection() && (refreshAfterSwitch || isUrlChanged())) {
             void refreshKoboldCppModels();
         }
         switch (outcome) {

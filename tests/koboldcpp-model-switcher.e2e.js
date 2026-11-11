@@ -207,6 +207,19 @@ test.describe('KoboldCpp model switch', () => {
         await expectNoMorePolls(page, polls);
     });
 
+    test('Connect right after Cancel lists the loaded model once the wait ends', async ({ page, baseURL }) => {
+        const polls = await connectKoboldCpp(page, baseURL);
+        await startSwitch(page, polls);
+
+        await page.locator('#api_button_textgenerationwebui ~ .api_loading').click();
+        await page.locator('#api_button_textgenerationwebui').click();
+
+        await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
+        await expect(page.locator('#koboldcpp_model')).toHaveValue('alpha.gguf');
+        await expectConnectEnabled(page);
+        await expectNoMorePolls(page, polls);
+    });
+
     test('a deleted API key stops the wait and enables Connect again while KoboldCpp stays selected', async ({ page, baseURL }) => {
         const polls = await connectKoboldCpp(page, baseURL);
         await startSwitch(page, polls);

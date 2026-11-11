@@ -476,6 +476,44 @@ describe('end of the restart wait', () => {
         expect(getDropdown()).toMatchObject({ values: ['gamma.gguf', ...ACTIONS], value: 'gamma.gguf' });
     });
 
+    test('Connect right after Cancel lists the loaded model once the wait ends', async () => {
+        const server = servers[SERVER_URL];
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
+        let switcher;
+        server.onPoll = () => {
+            // The status check of the Connect click can answer before the wait sees the abort.
+            statusCheck.abort();
+            script.startStatusLoading();
+            void switcher.refreshKoboldCppModels();
+        };
+        switcher = await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+        await settle();
+
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+        expect(getDropdown()).toMatchObject({ values: ['alpha.gguf', 'beta.gguf', ...ACTIONS], value: 'beta.gguf' });
+    });
+
+    test('a status check that answers during the wait lists the loaded model when the wait times out', async () => {
+        const server = servers[SERVER_URL];
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
+        server.uptimes = [{ online: true, uptime: null }];
+        let switcher;
+        server.onPoll = poll => {
+            if (poll === 1) {
+                script.startStatusLoading();
+                void switcher.refreshKoboldCppModels();
+            }
+        };
+        switcher = await loadSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+        await settle();
+
+        expect(getDropdown()).toMatchObject({ values: ['alpha.gguf', 'beta.gguf', ...ACTIONS], value: 'beta.gguf' });
+    });
+
     test('stopping the script stops the wait while another API is active', async () => {
         const server = servers[SERVER_URL];
         const scriptAbort = { signal: { aborted: false } };
