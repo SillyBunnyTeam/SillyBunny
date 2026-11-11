@@ -41,7 +41,8 @@ function invalid(rawDraft) {
 }
 
 function newerElsewhere(rawDraft) {
-    const error = new Error('TODO(copy)');
+    // The storage notice appends the full stop.
+    const error = new Error('Another tab saved a newer copy of this draft, so this tab did not overwrite it. Download this draft to keep it, or reload to continue with the newer copy');
     error.rawDraft = rawDraft;
     return error;
 }
