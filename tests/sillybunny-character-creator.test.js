@@ -19,7 +19,7 @@ const database = {
 };
 await jest.unstable_mockModule('../public/lib.js', () => ({ localforage: { createInstance: () => database } }));
 await jest.unstable_mockModule('../public/scripts/user.js', () => ({ getCurrentUserHandle: () => userHandle }));
-const { loadDraft, saveDraft, discardDraft, discardDraftIfSeen, flushDraftSaves } = await import('../public/scripts/sillybunny-character-creator/storage.js');
+const { loadDraft, saveDraft, discardDraft, discardDraftIfSeen, moveDraft, flushDraftSaves } = await import('../public/scripts/sillybunny-character-creator/storage.js');
 
 function stage(draft, target, value) {
     const candidate = { target, value, before: getDraftTarget(draft, target), inputRevision: draft.revision, runId: 1 };
@@ -384,5 +384,38 @@ describe('Creator account-scoped draft persistence', () => {
         await otherTab.saveDraft(newer);
         await discardDraftIfSeen(null);
         expect(records.get(key).brief).toBe('Started in the other tab');
+    });
+
+    test('a rename moves the stored draft to the new card identity and later saves follow it', async () => {
+        const draft = createDraft({ sourceAvatar: 'mara.png', fields: { name: 'Mara' } });
+        draft.brief = 'Polish notes';
+        await saveDraft(draft);
+        await moveDraft('mara.png', 'mara_renamed.png');
+        expect(records.has(JSON.stringify(['alice', 'mara.png']))).toBe(false);
+        expect(await loadDraft('mara.png')).toBeNull();
+        expect(await loadDraft('mara_renamed.png')).toMatchObject({ sourceAvatar: 'mara_renamed.png', brief: 'Polish notes' });
+
+        const moved = createDraft({ sourceAvatar: 'mara.png', fields: { name: 'Mara' } });
+        moved.brief = 'Kept in memory';
+        await saveDraft(moved);
+        await moveDraft('mara.png', 'mara_second.png');
+        moved.sourceAvatar = 'mara_second.png';
+        moved.updatedAt += 1;
+        await saveDraft(moved);
+        expect(await loadDraft('mara_second.png')).toMatchObject({ sourceAvatar: 'mara_second.png', brief: 'Kept in memory' });
+    });
+
+    test('a rename never replaces a draft that is already stored under the new identity', async () => {
+        const renamed = createDraft({ sourceAvatar: 'mara.png', fields: { name: 'Mara' } });
+        renamed.brief = 'Old identity';
+        await saveDraft(renamed);
+        const occupant = createDraft({ sourceAvatar: 'nova.png', fields: { name: 'Nova' } });
+        occupant.brief = 'New identity';
+        await saveDraft(occupant);
+        await moveDraft('mara.png', 'nova.png');
+        expect((await loadDraft('mara.png')).brief).toBe('Old identity');
+        expect((await loadDraft('nova.png')).brief).toBe('New identity');
+        await expect(moveDraft('missing.png', 'other.png')).resolves.toBeUndefined();
+        expect(records.has(JSON.stringify(['alice', 'other.png']))).toBe(false);
     });
 });

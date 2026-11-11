@@ -4,7 +4,7 @@ import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
 import { listConnectionProfiles, populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
 import { isAbortLikeError } from './util/abort-error.js';
 import { CARD_FIELDS, createDraft, projectDescription, projectCardFields, getDraftTarget, setDraftTarget, acceptCandidate, reconcileSavedFields } from './sillybunny-character-creator/model.js';
-import { loadDraft, saveDraft, discardDraft, discardDraftIfSeen } from './sillybunny-character-creator/storage.js';
+import { loadDraft, saveDraft, discardDraft, discardDraftIfSeen, moveDraft } from './sillybunny-character-creator/storage.js';
 import { CREATOR_RECIPES, getCreatorRecipe } from './sillybunny-character-creator/recipes.js';
 import { generateCreatorTarget } from './sillybunny-character-creator/generation.js';
 import { loadCreatorSource, createCreatorCard, saveCreatorChanges } from './sillybunny-character-creator/cards.js';
@@ -897,6 +897,29 @@ function init() {
     eventSource.on(event_types.CHARACTER_EDITED, syncPolishButton);
     eventSource.on(event_types.CHAT_CHANGED, () => {
         if (isOpen() || opening) void closeWorkspace({ restoreFocus: false }).catch(reportError);
+    });
+    eventSource.on(event_types.CHARACTER_RENAMED, (oldAvatar, newAvatar) => {
+        // Queue the move first, so that a save under the new identity runs after it.
+        const moving = moveDraft(oldAvatar, newAvatar);
+        if (draft?.sourceAvatar === oldAvatar) draft.sourceAvatar = newAvatar;
+        if (pending?.avatar === oldAvatar) {
+            pending.avatar = newAvatar;
+            if (!pending.stored.corrupt) pending.stored.sourceAvatar = newAvatar;
+        }
+        return moving;
+    });
+    eventSource.on(event_types.CHARACTER_DELETED, event => {
+        const avatar = event?.character?.avatar;
+        if (!avatar) return;
+        const current = draft?.sourceAvatar === avatar || pending?.avatar === avatar;
+        // A draft that is on screen stays, so that the user can still download it.
+        if (current && (isOpen() || opening || saving)) return;
+        if (current) {
+            clearTimeout(saveTimer);
+            draft = pending = pendingNewDraftRemoval = storageError = null;
+            localVersion = storedVersion = 0;
+        }
+        return discardDraft(avatar);
     });
     const form = document.getElementById('form_create');
     if (form) new MutationObserver(syncPolishButton).observe(form, { attributes: true, attributeFilter: ['actiontype'] });

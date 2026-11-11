@@ -171,6 +171,23 @@ export function discardDraft(sourceAvatar) {
     });
 }
 
+/** Re-keys the stored draft of a renamed card. A draft that is already stored under the new identity stays as it is. */
+export function moveDraft(oldAvatar, newAvatar) {
+    const from = keyFor(oldAvatar);
+    const to = keyFor(newAvatar);
+    return enqueue(async () => {
+        const raw = await database().getItem(from);
+        if (raw === null || raw === undefined) return;
+        validateRecord(raw, oldAvatar);
+        const occupant = await database().getItem(to);
+        if (occupant !== null && occupant !== undefined) return;
+        await database().setItem(to, { ...snapshotRecord(raw), sourceAvatar: newAvatar });
+        await database().removeItem(from);
+        if (seenStamps.has(from)) seenStamps.set(to, seenStamps.get(from));
+        seenStamps.delete(from);
+    });
+}
+
 /** Unlike discardDraft, keeps a record that another tab wrote after this tab last loaded or wrote it. */
 export function discardDraftIfSeen(sourceAvatar) {
     const key = keyFor(sourceAvatar);
