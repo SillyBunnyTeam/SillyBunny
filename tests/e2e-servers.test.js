@@ -157,4 +157,23 @@ describe('e2e servers', () => {
         expect(config.use.baseURL).toBeUndefined();
         expect(config.workers).toBe(getDefaultWorkers(SERVERS.length, os.cpus().length));
     });
+
+    test('starts the servers in a main process that inherits an empty parallel index', async () => {
+        const env = { SILLYBUNNY_TEST_SERVERS: '1', TEST_PARALLEL_INDEX: '' };
+        let servers = [];
+        try {
+            const config = await getServerConfig(env);
+            servers = JSON.parse(env[SERVER_LIST_VARIABLE] ?? '[]');
+
+            expect(servers).toHaveLength(1);
+            expect(config.config.webServer.command).toContain('e2e-servers-launch.js');
+            expect(Object.hasOwn(config.use, 'baseURL')).toBe(true);
+            expect(config.use.baseURL).toBeUndefined();
+            expect(env.SILLYBUNNY_TEST_BASE_URL).toBeUndefined();
+        } finally {
+            for (const { dataRoot } of servers) {
+                fs.rmSync(dataRoot, { recursive: true, force: true });
+            }
+        }
+    });
 });

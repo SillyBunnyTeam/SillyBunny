@@ -214,7 +214,9 @@ async function createServerList(count) {
  */
 export async function getServerConfig(env = process.env) {
     const cpuCount = os.cpus().length;
-    const parallelIndex = env.TEST_PARALLEL_INDEX;
+    // Only Playwright gives a worker its index. An empty value comes from the shell that started the run, and a
+    // main process that took it for an index would start no server.
+    const parallelIndex = env.TEST_PARALLEL_INDEX || undefined;
     const getUse = startsServers => {
         const headers = getRequestHeaders(env, startsServers);
         return Object.keys(headers).length ? { extraHTTPHeaders: headers } : {};
