@@ -850,6 +850,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### `start.sh` - Android app runtime
 | Field | Value |
 | --- | --- |
+| File | `start.sh` |
 | Area | Android app runtime. |
 | Divergence reason | The Android app bundles Node.js, git and npm but not Bun. SillyBunny must make `start.sh` skip Termux detection and the prerequisite installer and default to Node.js when `SILLYBUNNY_ANDROID_APP=1`, because the app ships its own tools and the installer relies on download tools that may not exist on Android. |
 | Target seam | `scripts/install-prerequisites.sh`, `scripts/self-update.sh`, and `scripts/dependency-state.js` own setup, updates, and dependencies; no separate seam yet for APK runtime selection. |
