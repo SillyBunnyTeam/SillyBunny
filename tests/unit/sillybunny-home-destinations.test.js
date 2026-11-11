@@ -53,6 +53,25 @@ describe('Home destinations', () => {
         }
     });
 
+    test('give only Getting Started a finished icon and a finished line, which its finished tile shows', () => {
+        const started = getHomeDestination('getting-started');
+        const panel = document.createElement('div');
+        panel.innerHTML = '<section data-sb-home-region="tiles"></section>';
+        document.body.append(panel);
+        mountTiles(panel, {
+            state: createGettingStartedState(['a'], { snapshot: { hidden: false, hiddenBy: null, steps: { a: 'done' }, characterVariant: null } }),
+            onRowChanged: jest.fn(),
+            openGettingStarted: jest.fn(),
+            openBundledExtras: jest.fn(),
+            openHelp: jest.fn(),
+        });
+        const tile = panel.querySelector('[data-sb-home-key="getting-started"]');
+
+        expect(HOME_DESTINATIONS.filter(destination => destination.getDoneLine || destination.doneIcon).map(destination => destination.key)).toEqual(['getting-started']);
+        expect(tile.querySelector('.sbHomeTileIcon i').className).toBe(`${started.doneIcon} fa-fw`);
+        expect(tile.querySelector('.sbHomeTileLine').textContent).toBe(started.getDoneLine());
+    });
+
     test('give the Home menu the icon of Getting Started and the icon and title of Help', () => {
         const items = menuItems();
 

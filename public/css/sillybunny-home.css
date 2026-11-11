@@ -531,6 +531,11 @@
     font-size: 20px;
 }
 
+/* The check of a finished checklist is Success Green, as the check of a done step in its window. */
+.sbHomeTile[data-sb-getting-started-finished] .sbHomeTileIcon {
+    color: var(--sb-color-success);
+}
+
 .sbHomeTileTitle {
     min-width: 0;
     font-size: var(--sb-type-title);

@@ -15,7 +15,7 @@ const openAssistantPickerWindow = jest.fn();
 jest.unstable_mockModule('../../public/scripts/sillybunny-home/getting-started-window.js', () => ({ openGettingStartedWindow }));
 jest.unstable_mockModule('../../public/scripts/sillybunny-home/bundled-extras-window.js', () => ({ openBundledExtrasWindow }));
 jest.unstable_mockModule('../../public/scripts/sillybunny-home/assistant-picker.js', () => ({ openAssistantPickerWindow }));
-const { openAssistantPicker, openBundledExtras, openGettingStarted } = await import('../../public/scripts/sillybunny-home/windows.js');
+const { focusFirstHomeTile, openAssistantPicker, openBundledExtras, openGettingStarted } = await import('../../public/scripts/sillybunny-home/windows.js');
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -134,6 +134,35 @@ describe('Home window openers', () => {
         await flush();
     });
 
+    describe('the first tile of Home', () => {
+        test('takes focus, and a window that closes after it leaves it there', async () => {
+            document.body.innerHTML = `<div id="chat"><div class="welcomePanel">
+                <button class="sbHomeMenuButton">Menu</button>
+                <button class="sbHomeTile" data-sb-home-key="help">Help</button>
+                <button class="sbHomeTile" data-sb-home-key="extras">Extras</button>
+            </div></div><button id="opener">Opener</button>`;
+            const opener = document.getElementById('opener');
+            const open = openWindow();
+            openGettingStartedWindow.mockResolvedValueOnce(open.handle);
+            opener.focus();
+            openGettingStarted();
+            await flush();
+            opener.remove();
+
+            expect(focusFirstHomeTile()).toBe(true);
+            open.close();
+            await flush();
+
+            expect(document.activeElement).toBe(document.querySelector('[data-sb-home-key="help"]'));
+        });
+
+        test('is nothing when Home has no tile', () => {
+            document.body.innerHTML = '<div id="chat"></div>';
+
+            expect(focusFirstHomeTile()).toBe(false);
+        });
+    });
+
     describe('focus after a Home render replaced the opener', () => {
         function renderPanel() {
             document.body.innerHTML = `<div id="chat"><div class="welcomePanel">
@@ -195,6 +224,19 @@ describe('Home window openers', () => {
             await openAndRender(tile, () => other.focus());
 
             expect(document.activeElement).toBe(other);
+        });
+
+        test('leaves focus alone when the opener is gone but focus is already on a control of Home', async () => {
+            const panel = renderPanel();
+            const tile = panel.querySelector('.sbHomeTile');
+            const help = document.createElement('button');
+            panel.append(help);
+            await openAndRender(tile, () => {
+                tile.remove();
+                help.focus();
+            });
+
+            expect(document.activeElement).toBe(help);
         });
 
         test('does nothing when there is no Home panel', async () => {

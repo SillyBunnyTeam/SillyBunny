@@ -28,12 +28,13 @@ function findHomeControl(key) {
 /**
  * The window returns focus to the control that opened it. When Home rendered again meanwhile, that control is
  * gone, so focus goes to the same tile or card in the current panel, or to the main menu button when the key
- * is gone too, or the window was opened from the menu.
+ * is gone too, or the window was opened from the menu. Focus that is already on a control of Home stays, as a
+ * window that hid its own opener has put it there.
  * @param {{ opener: Element | null, key: string | null }} remembered
  */
 function focusCurrentOpener({ opener, key }) {
     const panel = document.querySelector(PANEL_SELECTOR);
-    if (!panel || opener?.isConnected) {
+    if (!panel || opener?.isConnected || panel.contains(document.activeElement)) {
         return;
     }
     (findHomeControl(key) ?? panel.querySelector('.sbHomeMenuButton'))?.focus({ preventScroll: true });
@@ -74,6 +75,19 @@ function openOnce(name, load) {
 
 function reportLoadFailure() {
     globalThis.toastr?.error(t`This window couldn't open. Try again, or reload SillyBunny.`);
+}
+
+/**
+ * Puts focus on the first tile of the row, for a window that has just hidden the tile that opened it.
+ * @returns {boolean} Whether a tile took focus.
+ */
+export function focusFirstHomeTile() {
+    const first = document.querySelector(`${PANEL_SELECTOR} .sbHomeTile`);
+    if (!(first instanceof HTMLElement)) {
+        return false;
+    }
+    first.focus({ preventScroll: true });
+    return true;
 }
 
 /**

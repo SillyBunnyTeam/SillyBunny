@@ -889,7 +889,21 @@ SURFACES.push(
         structure: { name: 'Getting Started' },
         open: page => openFromTile(page, 'getting-started'),
         escapes: [{ closes: true, async check() {} }],
-        states: [{ name: 'steps', title: 'Getting Started', async enter() {} }],
+        states: [
+            { name: 'steps', title: 'Getting Started', async enter() {} },
+            {
+                // Every step skipped puts Hide Getting Started under Reisen's line.
+                name: 'finished',
+                title: 'Getting Started',
+                async enter(page) {
+                    await page.evaluate(async () => {
+                        const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                        ['connect', 'preset', 'character', 'chat'].forEach(id => getSharedGettingStartedState().setSkipped(id, true));
+                    });
+                    await page.locator('.sbGettingStartedHide').waitFor({ state: 'visible' });
+                },
+            },
+        ],
     },
     {
         ...HOME_WINDOW,

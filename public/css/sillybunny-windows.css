@@ -318,6 +318,11 @@ kbd.sbKeys > kbd {
     color: var(--sb-accent);
 }
 
+/* The Getting Started row of What's Next shows the Success Green check once every step is resolved. */
+.sbWelcomeRowIcon.sbWelcomeRowIconDone {
+    color: var(--sb-color-success);
+}
+
 .sbHelpPage {
     display: flex;
     flex-direction: column;
@@ -563,6 +568,36 @@ body.reduced-motion .sbHomeFlatButton {
    button, lines up with the start of the title. */
 .sbHomeStepLearnMore {
     margin-inline-start: calc(-1 * var(--sb-flat-button-inline));
+}
+
+/* Hide Getting Started is the suggested action of the window, so it keeps the primary size (DESIGN.md Buttons) and its
+   caption sits under it. A button has `width: min-content` from upstream, which would stack the label one word to a
+   line, so it takes the width of its label, and wraps only when the line is full. */
+.sbGettingStartedFinish {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.sbGettingStartedHide {
+    inline-size: fit-content;
+    min-height: 38px;
+    margin: 0;
+    padding: 10px 14px;
+}
+
+@media (pointer: coarse) {
+    .sbGettingStartedHide {
+        min-height: 44px;
+    }
+}
+
+.sbGettingStartedHideCaption {
+    margin: 0;
+    padding-inline: 4px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-meta);
 }
 
 /* A Bundled Extras row ends with its state and the buttons that the state offers, in one line that never wraps. */

@@ -111,9 +111,10 @@ export function getStepLine(step, state) {
  * through this interface. Without `save` it lives in memory only; with it every change is written once.
  *
  * Each step is open, skipped or done, and done is never overwritten: a skipped step that gets its signal becomes
- * done, and Skip does nothing to a done step. The state hides itself once every step is resolved, and remembers
- * that it was the auto-hide, so un-skipping a step brings the tile back. A tile that an existing account starts
- * without stays hidden until `setHidden(false)`, which is what Show Getting Started does.
+ * done, and Skip does nothing to a done step. Once every step is resolved the state is finished, and it stays shown
+ * until the user chooses `hideFinished`. That hide is remembered as `'auto'`, so a step that becomes open again (a
+ * step that a later version adds, or one that is un-skipped) brings the tile back. A tile that an existing account
+ * starts without stays hidden until `setHidden(false)`, which is what Show Getting Started does.
  * @param {readonly string[]} stepIds
  * @param {object} [options]
  * @param {import('./getting-started-storage.js').GettingStartedSnapshot} [options.snapshot] The stored value to start from.
@@ -154,13 +155,11 @@ export function createGettingStartedState(stepIds, { snapshot, save } = {}) {
         };
     }
 
-    /** Hides the tile when the last step is resolved, and shows it again when the auto-hide no longer holds. */
+    const isFinished = () => known.size > 0 && getResolvedCount() === known.size;
+
+    /** Shows the tile again when a step is open and the tile was hidden by Hide Getting Started. */
     function followResolvedCount() {
-        const finished = getResolvedCount() === known.size;
-        if (finished && !hidden) {
-            hidden = true;
-            hiddenBy = 'auto';
-        } else if (!finished && hidden && hiddenBy === 'auto') {
+        if (!isFinished() && hidden && hiddenBy === 'auto') {
             hidden = false;
             hiddenBy = null;
         }
@@ -171,6 +170,9 @@ export function createGettingStartedState(stepIds, { snapshot, save } = {}) {
         save?.(getSnapshot());
         listeners.forEach(listener => listener());
     }
+
+    // A value that was stored as finished and hidden has an open step when a later version adds a step.
+    followResolvedCount();
 
     return {
         getTotal: () => known.size,
@@ -209,8 +211,24 @@ export function createGettingStartedState(stepIds, { snapshot, save } = {}) {
             commit();
         },
         getResolvedCount,
+        /** Whether every step is done or skipped. */
+        isFinished,
         getCharacterVariant: () => characterVariant,
         isHidden: () => hidden,
+        /**
+         * Hides the finished tile, which is what Hide Getting Started does. Nothing happens while a step is open, or
+         * when the tile is hidden already.
+         * @returns {boolean} Whether the tile was hidden by this call.
+         */
+        hideFinished() {
+            if (!isFinished() || hidden) {
+                return false;
+            }
+            hidden = true;
+            hiddenBy = 'auto';
+            commit();
+            return true;
+        },
         setHidden(isHidden) {
             if (hidden === Boolean(isHidden)) {
                 return;

@@ -4,7 +4,7 @@ import { t } from './i18n.js';
 import { getUserAvatar, persona_description_positions, user_avatar } from './personas.js';
 import { power_user } from './power-user.js';
 import { eventSource, event_types } from './events.js';
-import { HOME_DESTINATIONS } from './sillybunny-home/destinations.js';
+import { HOME_DESTINATIONS, getDestinationLook } from './sillybunny-home/destinations.js';
 import { formatProgress, getSharedGettingStartedState } from './sillybunny-home/getting-started.js';
 import { openShellTarget } from './sillybunny-home/shell-targets.js';
 import { getWelcomeStartup } from './sillybunny-home/welcome-boot.js';
@@ -275,7 +275,8 @@ function createDestinationRow({ destination, status, onActivate }) {
 
 /**
  * Fills What's Next: the places Home has tiles for, and the Show at Startup switch. Like the Getting Started
- * tile, its row follows the shared state: it shows the progress, and it is gone while the state hides it.
+ * tile, its row follows the shared state: it shows the progress, the check and the finished line once every step is
+ * resolved, and it is gone while the state hides it.
  * @returns {() => void} Stops following the Getting Started state.
  */
 function fillWhatsNext(body, { openDestination, startup }) {
@@ -292,6 +293,12 @@ function fillWhatsNext(body, { openDestination, startup }) {
     const gettingStartedRow = group.group.querySelector(`[data-sb-welcome-destination="${GETTING_STARTED_KEY}"]`);
     const sync = () => {
         progress.textContent = formatProgress(state.getResolvedCount(), state.getTotal());
+        const finished = state.isFinished();
+        const { icon, line } = getDestinationLook(GETTING_STARTED_KEY, { finished });
+        const rowIcon = gettingStartedRow.querySelector('.sbWelcomeRowIcon');
+        rowIcon.className = `${icon} fa-fw sbWelcomeRowIcon`;
+        rowIcon.classList.toggle('sbWelcomeRowIconDone', finished);
+        gettingStartedRow.querySelector('.ds-row-subtitle').textContent = line;
         if (state.isHidden()) {
             gettingStartedRow.remove();
         } else if (!gettingStartedRow.isConnected) {

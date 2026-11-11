@@ -17,9 +17,9 @@ const { planCompletionToast, showCompletionToast } = await import('../../public/
 const IDS = ['connect', 'preset', 'character', 'chat'];
 
 /** A state that records what it would have written, the way the account storage would receive it. */
-function createStoredState(snapshot) {
+function createStoredState(snapshot, ids = IDS) {
     const writes = [];
-    const state = createGettingStartedState(IDS, { snapshot, save: written => writes.push(JSON.parse(JSON.stringify(written))) });
+    const state = createGettingStartedState(ids, { snapshot, save: written => writes.push(JSON.parse(JSON.stringify(written))) });
     return { state, writes };
 }
 
@@ -125,7 +125,7 @@ describe('the state, with a stored value behind it', () => {
         expect(writes).toHaveLength(3);
     });
 
-    test('the change that resolves the last step and hides the tile is still one write', () => {
+    test('the change that resolves the last step is one write, and leaves the tile shown', () => {
         const { state, writes } = createStoredState(fresh());
         ['connect', 'preset', 'character'].forEach(id => state.markDone(id));
         writes.length = 0;
@@ -133,7 +133,8 @@ describe('the state, with a stored value behind it', () => {
         state.markDone('chat');
 
         expect(writes).toHaveLength(1);
-        expect(writes[0].hidden).toBe(true);
+        expect(writes[0].hidden).toBe(false);
+        expect(writes[0].hiddenBy).toBeNull();
     });
 
     test('never overwrites done: Skip does nothing to a finished step', () => {
@@ -159,28 +160,159 @@ describe('the state, with a stored value behind it', () => {
         expect(state.getResolvedCount()).toBe(1);
     });
 
-    test('hides itself when every step is done or skipped, and says it was the auto-hide', () => {
+    test('stays shown when every step is done or skipped, and is finished', () => {
         const { state } = createStoredState(fresh());
         state.setSkipped('preset', true);
         state.markDone('connect');
         state.markDone('character');
-        expect(state.isHidden()).toBe(false);
+        expect(state.isFinished()).toBe(false);
 
         state.markDone('chat');
 
-        expect(state.isHidden()).toBe(true);
-        expect(state.getSnapshot().hiddenBy).toBe('auto');
+        expect(state.isFinished()).toBe(true);
+        expect(state.isHidden()).toBe(false);
+        expect(state.getSnapshot().hiddenBy).toBeNull();
     });
 
-    test('un-skipping a step after the auto-hide brings the tile back', () => {
+    test('is finished only while every step is resolved, and not finished again once one is un-skipped', () => {
         const { state } = createStoredState(fresh());
+        expect(state.isFinished()).toBe(false);
         IDS.forEach(id => state.setSkipped(id, true));
-        expect(state.isHidden()).toBe(true);
+        expect(state.isFinished()).toBe(true);
 
         state.setSkipped('chat', false);
 
-        expect(state.isHidden()).toBe(false);
-        expect(state.getSnapshot().hiddenBy).toBeNull();
+        expect(state.isFinished()).toBe(false);
+    });
+
+    test('a state with no steps is never finished', () => {
+        expect(createGettingStartedState([]).isFinished()).toBe(false);
+    });
+
+    describe('Hide Getting Started', () => {
+        const finish = (state) => IDS.forEach(id => state.markDone(id));
+
+        test('hides a finished state as an auto-hide, with one write and one notification', () => {
+            const { state, writes } = createStoredState(fresh());
+            finish(state);
+            writes.length = 0;
+            const listener = jest.fn();
+            state.subscribe(listener);
+
+            expect(state.hideFinished()).toBe(true);
+
+            expect(state.isHidden()).toBe(true);
+            expect(state.getSnapshot().hiddenBy).toBe('auto');
+            expect(writes).toHaveLength(1);
+            expect(writes[0]).toMatchObject({ hidden: true, hiddenBy: 'auto' });
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        test('does nothing while a step is still open', () => {
+            const { state, writes } = createStoredState(fresh());
+            ['connect', 'preset', 'character'].forEach(id => state.markDone(id));
+            writes.length = 0;
+            const listener = jest.fn();
+            state.subscribe(listener);
+
+            expect(state.hideFinished()).toBe(false);
+
+            expect(state.isHidden()).toBe(false);
+            expect(writes).toHaveLength(0);
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        test('does nothing the second time, and nothing for a tile that is hidden already', () => {
+            const { state, writes } = createStoredState(fresh());
+            finish(state);
+            state.hideFinished();
+            writes.length = 0;
+
+            expect(state.hideFinished()).toBe(false);
+            state.setHidden(false);
+            state.setHidden(true);
+            writes.length = 0;
+            expect(state.hideFinished()).toBe(false);
+
+            expect(writes).toHaveLength(0);
+            expect(state.getSnapshot().hiddenBy).toBe('account');
+        });
+
+        test('Show Getting Started brings the finished tile back and clears the reason', () => {
+            const { state } = createStoredState(fresh());
+            finish(state);
+            state.hideFinished();
+
+            state.setHidden(false);
+
+            expect(state.isHidden()).toBe(false);
+            expect(state.isFinished()).toBe(true);
+            expect(state.getSnapshot().hiddenBy).toBeNull();
+        });
+
+        test('a step that is un-skipped after it brings the tile back', () => {
+            const { state } = createStoredState(fresh());
+            IDS.forEach(id => state.setSkipped(id, true));
+            state.hideFinished();
+            expect(state.isHidden()).toBe(true);
+
+            state.setSkipped('chat', false);
+
+            expect(state.isHidden()).toBe(false);
+            expect(state.getSnapshot().hiddenBy).toBeNull();
+        });
+
+        test('a step that a later version adds brings the tile back at the next start', () => {
+            const { snapshot } = loadGettingStartedSnapshot({
+                raw: JSON.stringify({ hidden: true, hiddenBy: 'auto', steps: { connect: 'done', preset: 'done', character: 'done', chat: 'done' } }),
+                stepIds: [...IDS, 'extra'],
+                firstRun: false,
+            });
+
+            const { state } = createStoredState(snapshot, [...IDS, 'extra']);
+
+            expect(state.isFinished()).toBe(false);
+            expect(state.isHidden()).toBe(false);
+        });
+
+        test('a step that a later version adds does not bring back a tile that the account hid', () => {
+            const { snapshot } = loadGettingStartedSnapshot({
+                raw: JSON.stringify({ hidden: true, hiddenBy: 'account', steps: { connect: 'done', preset: 'done', character: 'done', chat: 'done' } }),
+                stepIds: [...IDS, 'extra'],
+                firstRun: false,
+            });
+
+            expect(createStoredState(snapshot, [...IDS, 'extra']).state.isHidden()).toBe(true);
+        });
+    });
+
+    describe('a value that the earlier auto-hide stored', () => {
+        const resolved = { connect: 'done', preset: 'skipped', character: 'done', chat: 'done' };
+        const stateOf = value => createStoredState(loadGettingStartedSnapshot({ raw: JSON.stringify(value), stepIds: IDS, firstRun: false }).snapshot);
+
+        test('stays hidden, and is finished', () => {
+            const { state, writes } = stateOf({ hidden: true, hiddenBy: 'auto', steps: resolved });
+
+            expect(state.isHidden()).toBe(true);
+            expect(state.isFinished()).toBe(true);
+            expect(writes).toHaveLength(0);
+        });
+
+        test('shows the finished tile once Show Getting Started has run', () => {
+            const { state } = stateOf({ hidden: true, hiddenBy: 'auto', steps: resolved });
+
+            state.setHidden(false);
+
+            expect(state.isHidden()).toBe(false);
+            expect(state.isFinished()).toBe(true);
+        });
+
+        test('a finished value that is shown starts with the finished tile', () => {
+            const { state } = stateOf({ hidden: false, steps: resolved });
+
+            expect(state.isHidden()).toBe(false);
+            expect(state.isFinished()).toBe(true);
+        });
     });
 
     test('un-skipping a step of an existing account does not show the tile: that waits for Show Getting Started', () => {
@@ -207,16 +339,6 @@ describe('the state, with a stored value behind it', () => {
         expect(state.getResolvedCount()).toBe(1);
         state.setHidden(false);
         expect(state.getResolvedCount()).toBe(1);
-    });
-
-    test('Show Getting Started after the auto-hide shows the tile again and clears the reason', () => {
-        const { state } = createStoredState(fresh());
-        IDS.forEach(id => state.markDone(id));
-
-        state.setHidden(false);
-
-        expect(state.isHidden()).toBe(false);
-        expect(state.getSnapshot().hiddenBy).toBeNull();
     });
 
     test('tells subscribers once for each change', () => {
@@ -619,6 +741,30 @@ describe('the signals', () => {
         expect(completed).toEqual(['chat']);
     });
 
+    test('the signal that finishes the last open step is announced, and the tile is still shown', () => {
+        const { state, signals } = setup();
+        signals.appReady();
+        ['connect', 'character'].forEach(id => state.markDone(id));
+        state.setSkipped('preset', true);
+
+        signals.messageSent();
+
+        expect(completed).toEqual(['chat']);
+        expect(state.isFinished()).toBe(true);
+        expect(state.isHidden()).toBe(false);
+    });
+
+    test('Skip on the last open step is no signal: it announces nothing', () => {
+        const { state, signals } = setup();
+        signals.appReady();
+        ['connect', 'character', 'chat'].forEach(id => state.markDone(id));
+
+        state.setSkipped('preset', true);
+
+        expect(state.isFinished()).toBe(true);
+        expect(completed).toEqual([]);
+    });
+
     test('a skipped step that gets its signal becomes done without an announcement', () => {
         const { state, signals } = setup();
         signals.appReady();
@@ -682,12 +828,33 @@ describe('the completion toast', () => {
         expect(last.next.id).toBe('character');
     });
 
-    test('shows nothing when no step is left open, or while Getting Started is hidden', () => {
-        const everything = stateWith({ done: ['connect', 'character', 'chat'], skipped: ['preset'] });
-        everything.setHidden(false);
+    test('is a toast for the next step while a step is still open', () => {
+        const plan = planCompletionToast({ steps, state: stateWith({ done: ['connect'] }), finishedId: 'connect' });
 
-        expect(planCompletionToast({ steps, state: everything, finishedId: 'chat' })).toBeNull();
+        expect(plan.kind).toBe('next');
+    });
+
+    test('is the final toast when the last open step is finished, with a step skipped or not', () => {
+        const everything = stateWith({ done: ['connect', 'character', 'chat'], skipped: ['preset'] });
+        const done = stateWith({ done: IDS });
+
+        expect(planCompletionToast({ steps, state: everything, finishedId: 'chat' })).toEqual({ kind: 'finished' });
+        expect(planCompletionToast({ steps, state: done, finishedId: 'connect' })).toEqual({ kind: 'finished' });
+    });
+
+    test('shows nothing while Getting Started is hidden, also for the last step', () => {
+        const hiddenLast = stateWith({ done: ['connect', 'character', 'chat'], skipped: ['preset'], hidden: true });
+
         expect(planCompletionToast({ steps, state: stateWith({ done: ['connect'], hidden: true }), finishedId: 'connect' })).toBeNull();
+        expect(planCompletionToast({ steps, state: hiddenLast, finishedId: 'chat' })).toBeNull();
+    });
+
+    test('shows the final toast again for a finished tile that Show Getting Started brought back', () => {
+        const state = stateWith({ done: IDS });
+        state.hideFinished();
+        state.setHidden(false);
+
+        expect(planCompletionToast({ steps, state, finishedId: 'chat' })).toEqual({ kind: 'finished' });
     });
 
     function showWith(plan, deps = {}) {
@@ -786,5 +953,56 @@ describe('the completion toast', () => {
         showCompletionToast(plan, { toast, openTarget: jest.fn() });
 
         expect(toast.clear).toHaveBeenCalledWith('toast', { force: true });
+    });
+
+    describe('the final toast', () => {
+        const finishedPlan = () => planCompletionToast({ steps, state: stateWith({ done: IDS }), finishedId: 'chat' });
+
+        test('is one success toast: the Getting Started title, the one finished line and one Show Me button', () => {
+            const { toast } = showWith(finishedPlan());
+
+            expect(toast.success).toHaveBeenCalledTimes(1);
+            const [message, title, options] = toast.success.mock.calls[0];
+            expect(title.textContent).toBe('Getting Started');
+            expect(message.textContent.replace(/Show Me$/, '')).toBe(HOME_COPY.toastFinished);
+            expect(message.querySelector('[data-sb-home-toast="finished"]').textContent).toBe(HOME_COPY.toastFinished);
+            expect([...message.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Show Me']);
+            expect(options.escapeHtml).toBe(false);
+            expect(message.querySelector('[data-sb-copy-placeholder]')).toBeNull();
+        });
+
+        test('Show Me opens the Getting Started window and closes the toast, once', async () => {
+            const openWindow = jest.fn();
+            const closeWindow = jest.fn();
+            const { toast, openTarget } = showWith(finishedPlan(), { openWindow, closeWindow });
+            const button = toast.success.mock.calls[0][0].querySelector('button');
+
+            button.click();
+            button.click();
+            await new Promise(resolve => setTimeout(resolve, 0));
+
+            expect(openWindow).toHaveBeenCalledTimes(1);
+            expect(toast.clear).toHaveBeenCalledWith('toast', { force: true });
+            expect(openTarget).not.toHaveBeenCalled();
+            expect(closeWindow).not.toHaveBeenCalled();
+        });
+
+        test('keeps the time out, the close button and the container of the toast of a step', () => {
+            const stepToast = showWith(planCompletionToast({ steps, state: stateWith({ done: ['connect'] }), finishedId: 'connect' })).toast.success.mock.calls[0][2];
+            const finishedToast = showWith(finishedPlan()).toast.success.mock.calls[0][2];
+
+            expect(finishedToast).toEqual({ ...stepToast, onHidden: expect.any(Function) });
+        });
+
+        test('moves into the top dialog like the toast of a step, and replaces the toast that is on screen', () => {
+            const toast = { success: jest.fn(() => 'toast'), clear: jest.fn() };
+            const moveIntoDialog = jest.fn();
+
+            showCompletionToast(planCompletionToast({ steps, state: stateWith({ done: ['connect'] }), finishedId: 'connect' }), { toast, moveIntoDialog });
+            showCompletionToast(finishedPlan(), { toast, moveIntoDialog });
+
+            expect(moveIntoDialog).toHaveBeenCalledTimes(2);
+            expect(toast.clear).toHaveBeenCalledWith('toast', { force: true });
+        });
     });
 });

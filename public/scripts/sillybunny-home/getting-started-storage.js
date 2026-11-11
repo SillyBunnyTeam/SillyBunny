@@ -10,8 +10,8 @@ export const CHARACTER_VARIANTS = Object.freeze(['reisen', 'tewi', 'other']);
  * @typedef {'reisen' | 'tewi' | 'other'} CharacterVariant
  * @typedef {object} GettingStartedSnapshot
  * @property {boolean} hidden
- * @property {'auto' | 'account' | null} hiddenBy Why the tile is hidden: the auto-hide after the last step, or the
- *   default of an account that existed before Getting Started. Only the first one ends when a step is un-skipped.
+ * @property {'auto' | 'account' | null} hiddenBy Why the tile is hidden: Hide Getting Started on a finished list, or
+ *   the default of an account that existed before Getting Started. Only the first one ends when a step is open again.
  * @property {Record<string, StepStatus>} steps
  * @property {CharacterVariant | null} characterVariant The kind of card that finished the character step, which
  *   picks the line of its done row.

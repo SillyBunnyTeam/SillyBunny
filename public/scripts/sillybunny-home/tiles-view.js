@@ -1,4 +1,4 @@
-import { getHomeDestination } from './destinations.js';
+import { getDestinationLook, getHomeDestination } from './destinations.js';
 import { formatProgress } from './getting-started.js';
 
 const GETTING_STARTED_KEY = 'getting-started';
@@ -12,7 +12,7 @@ const TILE_LINES_REGION = 'tile-lines';
  * @param {string} options.title
  * @param {string} options.line What the tile says in the voice of an assistant.
  * @param {(tile: HTMLButtonElement) => void} options.onActivate
- * @returns {{ tile: HTMLButtonElement, line: HTMLElement }}
+ * @returns {{ tile: HTMLButtonElement, line: HTMLElement, glyph: HTMLElement }}
  */
 function createTile({ key, icon, title, line: lineText, onActivate }) {
     const tile = document.createElement('button');
@@ -42,7 +42,7 @@ function createTile({ key, icon, title, line: lineText, onActivate }) {
     tile.append(iconBox, titleNode, line);
     describeTile(tile);
     tile.addEventListener('click', () => onActivate(tile));
-    return { tile, line };
+    return { tile, line, glyph };
 }
 
 /**
@@ -85,8 +85,9 @@ function openFromTile(tile, open) {
 }
 
 /**
- * The Getting Started tile shows the progress of the state it is given. A tile that the state hides is
- * removed from the row, so the tiles that are left share the row between them.
+ * The Getting Started tile shows the progress of the state it is given. Once every step is resolved it shows a check
+ * and the finished line instead of the checklist icon and line, and stays until the state hides it. A tile that the
+ * state hides is removed from the row, so the tiles that are left share the row between them.
  * @param {HTMLElement} row
  * @param {ReturnType<typeof import('./getting-started.js').createGettingStartedState>} state
  * @param {() => void} openGettingStarted
@@ -94,13 +95,25 @@ function openFromTile(tile, open) {
  * @returns {() => void} Stops following the state.
  */
 function mountGettingStartedTile(row, state, openGettingStarted, onRowChanged) {
-    /** @type {{ tile: HTMLButtonElement, progress: HTMLElement } | null} */
+    /** @type {{ tile: HTMLButtonElement, progress: HTMLElement, line: HTMLElement, glyph: HTMLElement } | null} */
     let current = null;
 
     function showProgress() {
         if (current) {
             current.progress.textContent = formatProgress(state.getResolvedCount(), state.getTotal());
         }
+    }
+
+    // Only the text and the icon change: Compact hides the line by its own attribute, which must survive.
+    function showFinished() {
+        if (!current) {
+            return;
+        }
+        const finished = state.isFinished();
+        const { icon, line } = getDestinationLook(GETTING_STARTED_KEY, { finished });
+        current.glyph.className = `${icon} fa-fw`;
+        current.line.textContent = line;
+        current.tile.toggleAttribute('data-sb-getting-started-finished', finished);
     }
 
     function sync({ announce }) {
@@ -111,18 +124,20 @@ function mountGettingStartedTile(row, state, openGettingStarted, onRowChanged) {
         }
         if (current) {
             showProgress();
+            showFinished();
             return;
         }
-        const { tile } = createDestinationTile(GETTING_STARTED_KEY, opened => openFromTile(opened, openGettingStarted));
+        const { tile, line, glyph } = createDestinationTile(GETTING_STARTED_KEY, opened => openFromTile(opened, openGettingStarted));
         // The progress is the tile's own status, below the voiced line that the other tiles have as well.
         const progress = document.createElement('span');
         progress.className = 'sbHomeTileSub';
         progress.id = `sb-home-tile-${GETTING_STARTED_KEY}-progress`;
         tile.append(progress);
         describeTile(tile);
-        current = { tile, progress };
+        current = { tile, progress, line, glyph };
         current.tile.dataset.sbHomeRegion = GETTING_STARTED_KEY;
         showProgress();
+        showFinished();
         row.prepend(current.tile);
         if (announce) {
             onRowChanged();

@@ -89,20 +89,26 @@ describe('Getting Started state', () => {
         expect(() => state.isSkipped('nope')).toThrow(/unknown/i);
     });
 
-    test('starts shown, and hides itself once every step is skipped', () => {
+    test('starts shown, and stays shown once every step is skipped: it is finished, and hidden only by Hide Getting Started', () => {
         const state = createGettingStartedState(ids);
         expect(state.isHidden()).toBe(false);
+        expect(state.isFinished()).toBe(false);
 
         ids.slice(0, 3).forEach(id => state.setSkipped(id, true));
-        expect(state.isHidden()).toBe(false);
+        expect(state.isFinished()).toBe(false);
 
         state.setSkipped(ids[3], true);
+        expect(state.isFinished()).toBe(true);
+        expect(state.isHidden()).toBe(false);
+
+        state.hideFinished();
         expect(state.isHidden()).toBe(true);
     });
 
-    test('Show Getting Started brings it back even while every step is skipped', () => {
+    test('Show Getting Started brings it back while every step is skipped', () => {
         const state = createGettingStartedState(ids);
         ids.forEach(id => state.setSkipped(id, true));
+        state.hideFinished();
 
         state.setHidden(false);
 

@@ -7,6 +7,7 @@ import { createGettingStartedState, getGettingStartedSteps, setSharedGettingStar
 import { createGettingStartedSignals, isGeneratedReply, isUserMessage } from './getting-started-signals.js';
 import { GETTING_STARTED_STORAGE_KEY, loadGettingStartedSnapshot, serializeGettingStartedSnapshot } from './getting-started-storage.js';
 import { planCompletionToast, showCompletionToast } from './getting-started-toast.js';
+import { openFromHomeTile, openGettingStarted } from './windows.js';
 
 /**
  * Conversation mode sends no `MESSAGE_SENT` and opens no chat of the app, so it announces itself on `window`
@@ -57,7 +58,11 @@ function createStoredState(firstRun) {
         onStepCompleted(stepId) {
             const plan = planCompletionToast({ steps, state: /** @type {NonNullable<typeof state>} */ (state), finishedId: stepId });
             if (plan) {
-                showCompletionToast(plan, { closeWindow: closeGettingStartedWindow, moveIntoDialog: fixToastrForDialogs });
+                showCompletionToast(plan, {
+                    closeWindow: closeGettingStartedWindow,
+                    openWindow: () => openFromHomeTile('getting-started', openGettingStarted),
+                    moveIntoDialog: fixToastrForDialogs,
+                });
             }
         },
     });

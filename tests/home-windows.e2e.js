@@ -684,7 +684,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(menuButton(page)).toBeFocused();
             });
 
-            sizeFreeTest('the Getting Started row goes while every step is done or skipped, as its tile does, and comes back with it', async ({ page }) => {
+            sizeFreeTest('the Getting Started row stays while every step is done or skipped, goes with Hide Getting Started as its tile does, and comes back with it', async ({ page }) => {
                 const host = await openWhatsNext(page);
                 const current = shownPage(host);
                 const rows = current.locator('[data-sb-welcome-destination]');
@@ -692,29 +692,40 @@ for (const { name, sheet, options } of VIEWPORTS) {
                     const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
                     const state = getSharedGettingStartedState();
                     if (name === 'skip-all') ['connect', 'preset', 'character', 'chat'].forEach(id => state.setSkipped(id, true));
+                    if (name === 'hide') state.hideFinished();
                     if (name === 'unskip-one') state.setSkipped('chat', false);
                     if (name === 'show') state.setHidden(false);
                 }, action);
 
                 await expect(rows.locator('.ds-row-label')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
                 await withState('skip-all');
+                await expect(homeTile(page, 'getting-started')).toHaveCount(1);
+                await expect(rows.locator('.ds-row-label')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
+                await withState('hide');
                 await expect(homeTile(page, 'getting-started')).toHaveCount(0);
                 await expect(rows.locator('.ds-row-label')).toHaveText(['Help', 'Bundled Extras']);
 
-                await withState('unskip-one');
                 await withState('show');
                 await expect(homeTile(page, 'getting-started')).toHaveCount(1);
                 await expect(rows.locator('.ds-row-label')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
+                await expect(rows.first().locator('.sbWelcomeRowProgress')).toHaveText('4 of 4');
+                await withState('unskip-one');
                 await expect(rows.first().locator('.sbWelcomeRowProgress')).toHaveText('3 of 4');
             });
 
-            sizeFreeTest('What’s Next opened while every step is resolved lists Help and Bundled Extras only', async ({ page }) => {
+            sizeFreeTest('What’s Next opened while every step is resolved lists Getting Started with its finished line, and without it once Getting Started is hidden', async ({ page }) => {
                 await page.evaluate(async () => {
                     const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
                     ['connect', 'preset', 'character', 'chat'].forEach(id => getSharedGettingStartedState().setSkipped(id, true));
                 });
 
                 const host = await openWhatsNext(page);
+                await expect(shownPage(host).locator('[data-sb-welcome-destination] .ds-row-label')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
+                await expect(shownPage(host).locator('[data-sb-welcome-destination="getting-started"] .ds-row-subtitle')).toHaveText(HOME_COPY.tileGettingStartedDone);
+                await page.evaluate(async () => {
+                    const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                    getSharedGettingStartedState().hideFinished();
+                });
 
                 await expect(shownPage(host).locator('[data-sb-welcome-destination] .ds-row-label')).toHaveText(['Help', 'Bundled Extras']);
             });
@@ -2089,7 +2100,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(homeTile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('1 of 4');
             });
 
-            test('when every step is resolved the tile goes, the other two fill the row, and the window stays open until it is closed', async ({ page }) => {
+            test('when every step is resolved the tile stays as the finished tile, and the window stays open until it is closed', async ({ page }) => {
                 const host = await openFromTile(page, 'getting-started');
 
                 for (const title of STEP_TITLES) {
@@ -2098,6 +2109,24 @@ for (const { name, sheet, options } of VIEWPORTS) {
 
                 await expect(host.locator('.sb-dialog__subtitle')).toHaveText('4 of 4');
                 await expect(host).toBeVisible();
+                await expect(homeTile(page, 'getting-started')).toHaveCount(1);
+                await expect(page.locator('#chat > .welcomePanel .sbHomeTile .sbHomeTileTitle')).toHaveText(['Getting Started', 'Help', 'Bundled Extras']);
+
+                await (await visiblePageClose(host)).click();
+
+                await expectClosed(page);
+                await expect(homeTile(page, 'getting-started')).toBeFocused();
+                await expect(page.locator('#chat > .welcomePanel .sbHomeTile')).toHaveCount(3);
+            });
+
+            test('when Hide Getting Started removes the tile, the other two fill the row', async ({ page }) => {
+                await page.evaluate(async () => {
+                    const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                    const state = getSharedGettingStartedState();
+                    ['connect', 'preset', 'character', 'chat'].forEach(id => state.setSkipped(id, true));
+                    state.hideFinished();
+                });
+
                 await expect(homeTile(page, 'getting-started')).toHaveCount(0);
                 await expect(page.locator('#chat > .welcomePanel .sbHomeTile .sbHomeTileTitle')).toHaveText(['Help', 'Bundled Extras']);
                 const widths = await page.locator('#chat > .welcomePanel .sbHomeTile').evaluateAll((tiles) => {
@@ -2106,12 +2135,6 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 });
                 expect(Math.abs(widths.tiles[0] - widths.tiles[1])).toBeLessThanOrEqual(1);
                 expect(widths.tiles[0] + widths.tiles[1]).toBeGreaterThan(widths.row * 0.9);
-
-                await (await visiblePageClose(host)).click();
-
-                await expectClosed(page);
-                await expect(page.locator('#chat > .welcomePanel :focus'), 'focus lands in Home, not on the page body').toHaveCount(1);
-                await expect(page.locator('#chat > .welcomePanel .sbHomeTile')).toHaveCount(2);
             });
 
             sizeFreeTest('Escape closes the window and gives focus back to the tile', async ({ page }) => {

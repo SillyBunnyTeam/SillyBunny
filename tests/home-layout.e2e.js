@@ -1011,13 +1011,20 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await expect(tiles(page).first()).toHaveAttribute('data-sb-home-key', 'getting-started');
         });
 
-        sizeFreeTest('the tile row never holds a Getting Started tile that every step has resolved', async ({ page }) => {
+        sizeFreeTest('a Getting Started tile that every step has resolved stays in the row until Hide Getting Started removes it', async ({ page }) => {
             await chooseMode(page, 'full');
 
             await page.evaluate(async () => {
                 const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
                 const state = getSharedGettingStartedState();
                 ['connect', 'preset', 'character', 'chat'].forEach(id => state.setSkipped(id, true));
+            });
+
+            await expect(tiles(page)).toHaveCount(3);
+            await expect(tile(page, 'getting-started').locator('.sbHomeTileSub')).toHaveText('4 of 4');
+            await page.evaluate(async () => {
+                const { getSharedGettingStartedState } = await import('/scripts/sillybunny-home/getting-started.js');
+                getSharedGettingStartedState().hideFinished();
             });
 
             await expect(tiles(page)).toHaveCount(2);

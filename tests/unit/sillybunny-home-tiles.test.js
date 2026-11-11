@@ -142,6 +142,117 @@ describe('the voiced line of a tile', () => {
     });
 });
 
+describe('the Getting Started tile once every step is resolved', () => {
+    const IDS = ['a', 'b'];
+    const tileOf = panel => panel.querySelector('[data-sb-home-key="getting-started"]');
+    const glyphOf = panel => tileOf(panel).querySelector('.sbHomeTileIcon > i');
+    const lineOf = panel => tileOf(panel).querySelector('.sbHomeTileLine');
+    const finish = state => IDS.forEach(id => state.markDone(id));
+
+    test('stays on Home with the check, the finished line and its progress', () => {
+        const state = createGettingStartedState(IDS);
+        const panel = renderPanel();
+        mount(panel, state);
+        expect(glyphOf(panel).classList.contains('fa-list-check')).toBe(true);
+
+        finish(state);
+
+        expect(tileOf(panel)).not.toBeNull();
+        expect(glyphOf(panel).classList.contains('fa-circle-check')).toBe(true);
+        expect(glyphOf(panel).classList.contains('fa-list-check')).toBe(false);
+        expect(glyphOf(panel).getAttribute('aria-hidden')).toBe('true');
+        expect(tileOf(panel).hasAttribute('data-sb-getting-started-finished')).toBe(true);
+        expect(lineOf(panel).textContent).toBe(HOME_COPY.tileGettingStartedDone);
+        expect(lineOf(panel).hasAttribute('data-sb-copy-placeholder')).toBe(false);
+        expect(tileOf(panel).querySelector('.sbHomeTileSub').textContent).toBe('2 of 2');
+    });
+
+    test('is the one that opens Getting Started, and the other tiles keep their icons and lines', () => {
+        const state = createGettingStartedState(IDS);
+        const open = jest.fn();
+        const panel = renderPanel();
+        mount(panel, state, { openGettingStarted: open });
+
+        finish(state);
+        tileOf(panel).click();
+
+        expect(open).toHaveBeenCalledTimes(1);
+        expect(panel.querySelector('[data-sb-home-key="help"] .sbHomeTileLine').textContent).toBe(HOME_COPY.tileHelp);
+        expect(panel.querySelector('[data-sb-home-key="help"] .sbHomeTileIcon > i').classList.contains('fa-circle-question')).toBe(true);
+        expect(panel.querySelector('[data-sb-home-key="help"]').hasAttribute('data-sb-getting-started-finished')).toBe(false);
+    });
+
+    test('starts finished when the stored value is finished and shown', () => {
+        const state = createGettingStartedState(IDS, { snapshot: { hidden: false, hiddenBy: null, steps: { a: 'done', b: 'skipped' }, characterVariant: null } });
+        const panel = renderPanel();
+
+        mount(panel, state);
+
+        expect(glyphOf(panel).classList.contains('fa-circle-check')).toBe(true);
+        expect(lineOf(panel).textContent).toBe(HOME_COPY.tileGettingStartedDone);
+    });
+
+    test('goes back to the checklist look when a step is un-skipped', () => {
+        const state = createGettingStartedState(IDS);
+        const panel = renderPanel();
+        mount(panel, state);
+        state.markDone('a');
+        state.setSkipped('b', true);
+        expect(lineOf(panel).textContent).toBe(HOME_COPY.tileGettingStartedDone);
+
+        state.setSkipped('b', false);
+
+        expect(glyphOf(panel).classList.contains('fa-list-check')).toBe(true);
+        expect(lineOf(panel).textContent).toBe(HOME_COPY.tileGettingStarted);
+        expect(tileOf(panel).hasAttribute('data-sb-getting-started-finished')).toBe(false);
+        expect(tileOf(panel).querySelector('.sbHomeTileSub').textContent).toBe('1 of 2');
+    });
+
+    test('Hide Getting Started removes the tile, and Show Getting Started brings the finished tile back', () => {
+        const state = createGettingStartedState(IDS);
+        const panel = renderPanel();
+        mount(panel, state);
+        finish(state);
+
+        state.hideFinished();
+        expect(tileOf(panel)).toBeNull();
+        expect(panel.querySelectorAll('.sbHomeTile')).toHaveLength(2);
+        state.setHidden(false);
+
+        expect(glyphOf(panel).classList.contains('fa-circle-check')).toBe(true);
+        expect(lineOf(panel).textContent).toBe(HOME_COPY.tileGettingStartedDone);
+        expect(panel.querySelector('[data-sb-home-region="tiles"]').firstElementChild).toBe(tileOf(panel));
+    });
+
+    test('the description follows the finished line while it shows, and the progress alone when Compact hides it', () => {
+        const state = createGettingStartedState(IDS);
+        const panel = renderPanel();
+        mount(panel, state);
+        finish(state);
+        const textOf = ids => ids.split(' ').map(id => panel.querySelector(`[id="${id}"]`).textContent).join(' ');
+
+        expect(textOf(tileOf(panel).getAttribute('aria-describedby'))).toBe(`${HOME_COPY.tileGettingStartedDone} 2 of 2`);
+        panel.querySelectorAll('.sbHomeTileLine').forEach((line) => { line.hidden = true; });
+        describeTiles(panel);
+
+        expect(tileOf(panel).getAttribute('aria-describedby')).toBe('sb-home-tile-getting-started-progress');
+        expect(textOf(tileOf(panel).getAttribute('aria-labelledby'))).toBe('Getting Started');
+    });
+
+    test('a finished change keeps the hidden line of Compact hidden, and out of the description', () => {
+        const state = createGettingStartedState(IDS);
+        const panel = renderPanel();
+        mount(panel, state);
+        panel.querySelectorAll('.sbHomeTileLine').forEach((line) => { line.hidden = true; });
+        describeTiles(panel);
+
+        finish(state);
+
+        expect(lineOf(panel).hidden).toBe(true);
+        expect(tileOf(panel).getAttribute('aria-describedby')).toBe('sb-home-tile-getting-started-progress');
+    });
+});
+
 describe('the name and the description of a tile', () => {
     const textOf = (panel, ids) => ids.split(' ').map(id => panel.querySelector(`[id="${id}"]`).textContent).join(' ');
 
