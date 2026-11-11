@@ -194,18 +194,23 @@ describe('the SillyBunny Lexicon through a scan target', () => {
     const entries = Object.values(lexicon.entries);
     const overview = entries.find(candidate => candidate.constant);
     const ASSISTANT_ID = 2;
-    const target = Object.freeze({ characterId: ASSISTANT_ID, chatWorld: '', personaWorld: '', userName: 'Conversation User' });
+    const OTHER_ASSISTANT_ID = 3;
+    const targetOf = characterId => Object.freeze({ characterId, chatWorld: '', personaWorld: '', userName: 'Conversation User' });
+    const target = targetOf(ASSISTANT_ID);
 
-    /** A speaker whose card links the lexicon, scanned with no other book in play. */
+    /** Two speakers whose cards link the lexicon, scanned with no other book in play. */
     function createLexiconHarness({ linked = true } = {}) {
         const context = createHarness({ books: { 'SillyBunny Lexicon': lexicon } });
-        context.characters.push({ name: 'Assistant Reisen', avatar: 'default_AssistantReisen.png', data: { extensions: linked ? { world: 'SillyBunny Lexicon' } : {} } });
+        const extensions = linked ? { world: 'SillyBunny Lexicon' } : {};
+        context.characters.push({ name: 'Assistant Reisen', avatar: 'default_AssistantReisen.png', data: { extensions } });
+        context.characters.push({ name: 'Assistant Tewi', avatar: 'default_AssistantTewi.png', data: { extensions } });
         context.selected_world_info = [];
         context.world_info = { charLore: [] };
         return context;
     }
 
-    const scan = (context, message) => context.checkWorldInfo([`Conversation User: ${message}`], 100000, true, context.defaultGlobalScanData, target);
+    const scan = (context, message, speaker = target) => context.checkWorldInfo([`Conversation User: ${message}`], 100000, true, context.defaultGlobalScanData, speaker);
+    const linesOf = result => result.worldInfoBefore.split('\n');
 
     test('always gives the overview and nothing else to a message that no entry is keyed on', async () => {
         const context = createLexiconHarness();
@@ -231,7 +236,9 @@ describe('the SillyBunny Lexicon through a scan target', () => {
         const missed = [];
 
         for (const candidate of entries.filter(entry => !entry.constant)) {
-            const result = await scan(context, `Tell me about ${candidate.key[0]}`);
+            // An entry that leaves the first speaker's card out is asked by the other one.
+            const excludesFirst = candidate.characterFilter?.isExclude && candidate.characterFilter.names?.includes('default_AssistantReisen');
+            const result = await scan(context, `Tell me about ${candidate.key[0]}`, excludesFirst ? targetOf(OTHER_ASSISTANT_ID) : target);
             const reachable = result.worldInfoBefore.split('\n').includes(candidate.content);
             const elsewhere = [result.worldInfoAfter, ...result.EMEntries.map(slot => slot.content), ...result.ANBeforeEntries, ...result.ANAfterEntries, ...result.WIDepthEntries.flatMap(slot => slot.entries)];
             if (!reachable || elsewhere.some(text => text !== '')) {
@@ -240,6 +247,18 @@ describe('the SillyBunny Lexicon through a scan target', () => {
         }
 
         expect(missed).toEqual([]);
+    });
+
+    test('gives each assistant the entry about the other one when she is named, and leaves out the entry about herself', async () => {
+        const context = createLexiconHarness();
+        const reisen = entries.find(candidate => candidate.comment.startsWith('A78 ')).content;
+        const tewi = entries.find(candidate => candidate.comment.startsWith('A79 ')).content;
+
+        const askedReisen = linesOf(await scan(context, 'Reisen, is Tewi helping you today?', targetOf(ASSISTANT_ID)));
+        const askedTewi = linesOf(await scan(context, 'Tewi, is Reisen helping you today?', targetOf(OTHER_ASSISTANT_ID)));
+
+        expect([askedReisen.includes(tewi), askedReisen.includes(reisen)]).toEqual([true, false]);
+        expect([askedTewi.includes(reisen), askedTewi.includes(tewi)]).toEqual([true, false]);
     });
 
     test('gives a speaker whose card does not link the lexicon nothing from it', async () => {
@@ -341,6 +360,25 @@ describe('the SillyBunny Lexicon under the shipped World Info settings', () => {
             const context = createShippedHarness();
 
             expect(await activated(context, ['Roleplay User: What is SillyBunny vs SillyTavern?'], PROMPT_ROOM)).toContain('A76');
+        });
+    });
+
+    describe('the entries about the assistants', () => {
+        test('add only the entry asked about to the budget of a new chat, and none of the entries that their own text names', async () => {
+            const baseline = await activated(createShippedHarness(), ['Roleplay User: Good morning!'], PROMPT_ROOM);
+
+            const ids = await activated(createShippedHarness(), ['Roleplay User: Where is Tewi today?'], PROMPT_ROOM);
+
+            expect(ids.filter(id => !baseline.includes(id))).toEqual(['A79']);
+        });
+
+        test('are not brought in by the text of another entry that names both assistants', async () => {
+            const context = createShippedHarness();
+
+            const ids = await activated(context, ['Roleplay User: How do I choose a third assistant?'], UNLIMITED);
+
+            expect(ids).toContain('A77');
+            expect(ids.filter(id => ['A78', 'A79'].includes(id))).toEqual([]);
         });
     });
 });

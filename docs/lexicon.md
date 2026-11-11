@@ -14,7 +14,7 @@ Pure refactors, styling and bug fixes that restore documented behaviour need no 
 
 ## How it is built
 
-- **Entries.** There are 78 entries, `A0` to `A77`. An entry's `comment` starts with its id (`A13 Temperature`), and its `uid` is the same number.
+- **Entries.** There are 80 entries, `A0` to `A79`. An entry's `comment` starts with its id (`A13 Temperature`), and its `uid` is the same number.
 - **The overview.** `A0` is the only constant entry. It describes SillyBunny as a whole: what it is, the shell, and the two chat modes. Every other entry is triggered by its keys.
 - **Keys.** Keys are specific phrases a user would type ("temperature setting", "reply randomness"), never a common word of their own ("chat", "model", "preset"), which would pull the entry into most prompts. The test keeps a list of words that are not allowed as keys.
 - **Help topics.** `extensions.sb_topic` lists the ids of the Help topics an entry covers (`public/scripts/sillybunny-help/topics.js`). Every Help topic must be covered by at least one entry, and an entry may only name topics that exist.

@@ -7,13 +7,14 @@ jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
 }));
 const { getHelpSections } = await import('../../public/scripts/sillybunny-help/topics.js');
+const { getHomeAssistants } = await import('../../public/scripts/sillybunny-home/assistant-registry.js');
 
 const LEXICON_URL = new URL('../../default/content/SillyBunny Lexicon.json', import.meta.url);
 const raw = readFileSync(LEXICON_URL, 'utf8');
 const entries = Object.values(JSON.parse(raw).entries);
 
-/** The inventory ids of the lexicon: A0 is the overview, and the last one is A77. */
-const INVENTORY_SIZE = 78;
+/** The inventory ids of the lexicon: A0 is the overview, and the last one is A79. */
+const INVENTORY_SIZE = 80;
 /** `world_info_position` before and after the character definitions, the only places that Conversation reads. */
 const ALLOWED_POSITIONS = [0, 1];
 const REMOVED_NAMES = ['Pura', 'Bunny Guide', 'Nahida', 'Launchpad', 'Platberlitz'];
@@ -27,11 +28,19 @@ const COMMON_WORD_KEYS = [
 ];
 
 const label = entry => entry.comment;
+
+/**
+ * An assistant's name may be a key of its own only on an entry that leaves her own card out, because her name is in
+ * every prompt of her own chats.
+ */
+const isOwnAssistantName = (entry, word) => getHomeAssistants().some(assistant => assistant.name.toLowerCase() === word
+    && entry.characterFilter?.isExclude === true
+    && Boolean(entry.characterFilter.names?.includes(assistant.fileName)));
 const topicsOf = entry => entry.extensions?.sb_topic ?? [];
 const helpTopicIds = () => getHelpSections().flatMap(section => section.topics.map(topic => topic.id));
 
 describe('the SillyBunny Lexicon', () => {
-    test('has an entry for every inventory id from A0 to A77, once each, numbered by its uid', () => {
+    test(`has an entry for every inventory id from A0 to A${INVENTORY_SIZE - 1}, once each, numbered by its uid`, () => {
         const inventoryIds = entries.map(entry => /^A(\d+)(?: |$)/.exec(entry.comment)?.[1]);
 
         expect(entries).toHaveLength(INVENTORY_SIZE);
@@ -81,12 +90,22 @@ describe('the SillyBunny Lexicon', () => {
     });
 
     test('has no key that is a common word of its own, because that entry would join most prompts', () => {
-        const bare = entries.flatMap(entry => entry.key.map(key => [label(entry), key]))
-            .filter(([, key]) => {
+        const bare = entries.flatMap(entry => entry.key.map(key => [entry, key]))
+            .filter(([entry, key]) => {
                 const word = key.trim().toLowerCase();
-                return COMMON_WORD_KEYS.includes(word) || COMMON_WORD_KEYS.includes(word.replace(/s$/, ''));
-            });
+                return !isOwnAssistantName(entry, word) && (COMMON_WORD_KEYS.includes(word) || COMMON_WORD_KEYS.includes(word.replace(/s$/, '')));
+            })
+            .map(([entry, key]) => [label(entry), key]);
 
         expect(bare).toEqual([]);
+    });
+
+    test('keys the entry about each assistant on her name and leaves her own card out, so the other assistant learns about her and her own chats do not carry it on every reply', () => {
+        for (const assistant of getHomeAssistants()) {
+            const about = entries.filter(entry => entry.key.includes(assistant.name.toLowerCase()));
+
+            expect([assistant.name, about.map(label)]).toEqual([assistant.name, [expect.stringMatching(new RegExp(`^A\\d+ ${assistant.name} `))]]);
+            expect([assistant.name, about[0].characterFilter]).toEqual([assistant.name, { isExclude: true, names: [assistant.fileName], tags: [] }]);
+        }
     });
 });

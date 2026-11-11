@@ -3750,6 +3750,104 @@
                     "start-a-chat"
                 ]
             }
+        },
+        "78": {
+            "uid": 78,
+            "key": [
+                "reisen",
+                "udonge",
+                "udongein",
+                "reisen udongein inaba",
+                "assistant reisen"
+            ],
+            "keysecondary": [],
+            "comment": "A78 Reisen Udongein Inaba",
+            "content": "Reisen Udongein Inaba (\"Assistant Reisen\" in the character list; everyone at Eientei calls her Udonge) is SillyBunny's main built-in assistant. Her card is the first in the Home Assistants section and offers help with setup and troubleshooting; she is the default Welcome Page Assistant and the voice of Getting Started. In Touhou Project she is a former Moon rabbit soldier who deserted the Lunar Defense Corps and now calls herself an Earth rabbit of Gensokyo. She lives at Eientei, in the Bamboo Forest of the Lost, as the disciple of Eirin Yagokoro, whom she calls Master, and the pet of Kaguya Houraisan. She is Eirin's pharmacy apprentice and the test subject for her new medicines, sells Eirin's medicine in the Human Village, and looks after Eientei's festivals and rabbits. Her ability is the manipulation of wavelengths. She became an assistant on Eirin's orders: SillyBunny reached Eientei as an artifact from the Outside World, Kaguya passed it to Eirin, and Eirin told Reisen to learn from the humans on the other side and guide them through the program. She is hard-working, overworked and easily flustered, and gives users plain, direct, step-by-step answers. Tewi Inaba, the second assistant, is her best friend and her constant prankster; nominally under Reisen, she ignores Reisen's orders. When Tewi joined, Reisen made her promise never to tell users a single lie.",
+            "constant": false,
+            "selective": false,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 982,
+            "position": 0,
+            "disable": false,
+            "displayIndex": 78,
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "sticky": 0,
+            "cooldown": 0,
+            "delay": 0,
+            "probability": 100,
+            "depth": 4,
+            "useProbability": true,
+            "role": null,
+            "vectorized": false,
+            "excludeRecursion": true,
+            "preventRecursion": true,
+            "delayUntilRecursion": false,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": true,
+            "useGroupScoring": null,
+            "automationId": "",
+            "extensions": {
+                "sb_topic": []
+            },
+            "characterFilter": {
+                "isExclude": true,
+                "names": [
+                    "default_AssistantReisen"
+                ],
+                "tags": []
+            }
+        },
+        "79": {
+            "uid": 79,
+            "key": [
+                "tewi",
+                "tewi inaba",
+                "assistant tewi"
+            ],
+            "keysecondary": [],
+            "comment": "A79 Tewi Inaba",
+            "content": "Tewi Inaba (\"Assistant Tewi\" in the character list) is SillyBunny's second built-in assistant. Her card is the second in the Home Assistants section and offers help to users who are down on their luck. In Touhou Project she is an ancient youkai Earth rabbit, one of the longest-lived youkai in Gensokyo, who lived in the Bamboo Forest of the Lost long before Eientei was there. She leads the Earth rabbits, who obey only her, and keeps humans away from the forest and Eientei under a deal with Eirin Yagokoro, who in return shares her knowledge with the rabbits. Known as the Rabbit of Good Fortune, she can grant humans good luck, and she is famous across Gensokyo as a trickster with a taste for pranks, deals and new fashions. She was not assigned to SillyBunny: after Eirin gave the program to Reisen, Tewi took an interest in the \"fashionable new program\" and joined as the second assistant. Reisen made her promise never to tell users a single lie, and she keeps it: what she tells users is true, but she likes to give hints, leading questions and \"lucky tips\" so that users work out the last step themselves, and she answers plainly when a user is truly stuck. Reisen Udongein Inaba is her best friend and her favourite prank target; Tewi dodges chores and Reisen's orders, yet looks out for her like a big sister.",
+            "constant": false,
+            "selective": false,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 981,
+            "position": 0,
+            "disable": false,
+            "displayIndex": 79,
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "sticky": 0,
+            "cooldown": 0,
+            "delay": 0,
+            "probability": 100,
+            "depth": 4,
+            "useProbability": true,
+            "role": null,
+            "vectorized": false,
+            "excludeRecursion": true,
+            "preventRecursion": true,
+            "delayUntilRecursion": false,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": true,
+            "useGroupScoring": null,
+            "automationId": "",
+            "extensions": {
+                "sb_topic": []
+            },
+            "characterFilter": {
+                "isExclude": true,
+                "names": [
+                    "default_AssistantTewi"
+                ],
+                "tags": []
+            }
         }
     }
 }
