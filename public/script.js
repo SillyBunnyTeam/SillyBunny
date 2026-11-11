@@ -11170,6 +11170,7 @@ export function setSendButtonState(value) {
     is_send_press = value;
 }
 
+// SillyBunny: options.avatar lets the editor rename a card outside the active chat, and such a rename keeps the active chat.
 /**
  * Renames the card given by `options.avatar`, or the currently selected character if no avatar is given,
  * updating relevant references and optionally renaming past chats.
@@ -11309,6 +11310,7 @@ export async function renameCharacter(name = null, { silent = false, renameChats
 }
 
 async function renamePastChats(oldAvatar, newAvatar, newName) {
+    // SillyBunny: the renamed card is not always this_chid, so the chat list comes from the renamed card.
     const pastChats = await getPastCharacterChats(characters.findIndex(character => character.avatar === newAvatar));
 
     for (const { file_name } of pastChats) {
@@ -15163,7 +15165,7 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     $('#form_create').attr('actiontype', 'createcharacter');
     $('.form_create_bottom_buttons_block .chat_lorebook_button').hide();
     $('#character_open_media_overrides').hide();
-    // SillyBunny: select_selected_character hides these for a card other than this_chid; the create form shows them.
+    // SillyBunny: select_selected_character hides these for a card other than this_chid, so the create form shows them again.
     $('#creators_note_styles_button').show();
     $('.rm_stats_button').show();
 }
@@ -16134,6 +16136,8 @@ export async function createOrEditCharacter(e) {
             );
             $('#create_button').attr('value', 'Save');
             crop_data = undefined;
+            // SillyBunny: the form can show a card other than this_chid. The event names the saved card, and only a save
+            // of the active chat's character can recreate the first message of the current chat.
             const editedId = characters.findIndex(character => character.avatar === editedAvatar);
             await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: editedId, character: characters[editedId] } });
 
@@ -17839,6 +17843,7 @@ jQuery(async function () {
     $('#form_create').on('submit', (e) => createOrEditCharacter(e.originalEvent));
 
     $('#delete_button').on('click', async function () {
+        // SillyBunny: the editor can show a card other than this_chid, and the delete acts on that card.
         const avatar = characters[getCharacterEditorId()]?.avatar;
         if (!avatar) {
             toastr.warning('No character selected.');
@@ -17895,6 +17900,7 @@ jQuery(async function () {
 
     $('#creator_notes_textarea').on('input', function () {
         const notes = String($('#creator_notes_textarea').val());
+        // SillyBunny: the preview belongs to the editor card, which is not always this_chid.
         const avatar = menu_type === 'create' ? '' : characters[getCharacterEditorId()]?.avatar;
         $('#creator_notes_spoiler').html(formatCreatorNotes(notes, avatar));
     });
@@ -18544,6 +18550,7 @@ jQuery(async function () {
         isExportPopupOpen = false;
         exportPopper.update();
 
+        // SillyBunny: the export takes the editor card, which is not always this_chid.
         const avatar = characters[getCharacterEditorId()]?.avatar;
         if (!avatar) return;
 
@@ -18627,6 +18634,7 @@ jQuery(async function () {
     });
 
     $('#dupe_button').on('click', async function () {
+        // SillyBunny: the copy is made from the editor card, which is not always this_chid.
         const avatar = characters[getCharacterEditorId()]?.avatar;
         if (avatar) await duplicateCharacter({ avatar });
     });
@@ -18865,6 +18873,8 @@ jQuery(async function () {
     $('#char-management-dropdown').on('change', async (e) => {
         const targetElement = /** @type {HTMLSelectElement} */ (e.target);
         const target = $(targetElement.selectedOptions).attr('id');
+        // SillyBunny: the entries act on the editor card, which is not always this_chid. The listeners of
+        // CHARACTER_MANAGEMENT_DROPDOWN get its index as the second argument.
         const editorId = getCharacterEditorId();
         const editorCharacter = characters[editorId];
         switch (target) {

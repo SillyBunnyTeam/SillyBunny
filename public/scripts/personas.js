@@ -3846,6 +3846,7 @@ export async function initPersonas() {
 
     $('#char_connections_button').on('click', showCharConnections);
 
+    // SillyBunny: the dropdown passes the editor card, which is not always this_chid.
     eventSource.on(event_types.CHARACTER_MANAGEMENT_DROPDOWN, (target, characterId) => {
         if (target === 'convert_to_persona' && characterId !== undefined) {
             convertCharacterToPersona(characterId);

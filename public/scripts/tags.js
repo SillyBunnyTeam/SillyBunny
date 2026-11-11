@@ -661,7 +661,7 @@ function getInlineListSelector() {
         return `.group_select[grid="${selected_group}"] .tags`;
     }
 
-    // SillyBunny: the list row of the editor card, which the Creator can open for a card other than this_chid.
+    // SillyBunny: the inline tags go to the list row of the editor card, which is not always this_chid.
     const editorId = getCharacterEditorId();
     if (editorId !== undefined && menu_type === 'character_edit') {
         return `.character_select[chid="${editorId}"] .tags`;

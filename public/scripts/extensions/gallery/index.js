@@ -293,6 +293,7 @@ async function initGallery(items, url) {
     gallery.nanogallery2('resize');
 }
 
+// SillyBunny: the editor dropdown opens the gallery of its card through characterId, because that card is not always this_chid.
 /**
  * Displays a character gallery using the nanogallery2 library.
  *
@@ -838,6 +839,7 @@ export async function init() {
         delete context.extensionSettings.gallery.folders[avatar];
         context.saveSettingsDebounced();
     });
+    // SillyBunny: the dropdown passes the editor card, which is not always this_chid.
     eventSource.on(event_types.CHARACTER_MANAGEMENT_DROPDOWN, (selectedOptionId, characterId) => {
         if (selectedOptionId === 'show_char_gallery' && characterId !== undefined) {
             showCharGallery(false, characterId);

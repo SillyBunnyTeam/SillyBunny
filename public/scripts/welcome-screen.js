@@ -1,3 +1,4 @@
+// SillyBunny: the CHARACTER_MANAGEMENT_DROPDOWN listener gets the editor card as an argument, so this file does not import this_chid.
 import {
     characters,
     chat,
@@ -2605,6 +2606,7 @@ export async function openPermanentAssistantCard() {
     await openBundledAssistantCard(DEFAULT_BUNDLED_ASSISTANT_ID);
 }
 
+// SillyBunny: the dropdown listener passes the index of the editor card as a number.
 /**
  * Assigns a character as the assistant.
  * @param {number|string} characterId Character ID
@@ -2652,6 +2654,7 @@ export function initWelcomeScreen() {
 
     eventSource.makeFirst(event_types.CHAT_CHANGED, openWelcomeScreen);
 
+    // SillyBunny: the dropdown passes the editor card, which is not always this_chid.
     eventSource.on(event_types.CHARACTER_MANAGEMENT_DROPDOWN, (target, characterId) => {
         if (target !== 'set_as_assistant' || characterId === undefined) {
             return;
