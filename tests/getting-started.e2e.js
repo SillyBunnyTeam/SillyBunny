@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke, selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
-import { CHARACTER_DONE_LINES, HOME_COPY } from './helpers/copy-home.js';
+import { CHARACTER_DONE_LINES, HOME_COPY, STEP_BODIES, STEP_DONE_LINES } from './helpers/copy-home.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { captureAccountStorageSaves, gettingStartedValue, savedGettingStarted, stubGettingStarted } from './helpers/getting-started-state.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
@@ -170,6 +170,27 @@ for (const { name, options, checksColours } of VIEWPORTS) {
                 expect(check).toEqual(success);
                 expect([tint.g > tint.r, quiet.g > quiet.r || quiet.a > 0], 'the Done tint is green, the Skipped tint is a neutral wash').toEqual([true, true]);
                 expect(tint.a).toBeGreaterThan(quiet.a);
+            });
+
+            sizeFreeTest('shows the done line of steps 1, 2 and 4, and keeps the description of a skipped step', async ({ page }) => {
+                await bootHome(page, { value: gettingStartedValue({ steps: { connect: 'done', preset: 'done', character: 'skipped', chat: 'done' } }) });
+                const host = await openWindow(page);
+
+                await expect(rowOf(host, 'Connect a Model').locator('.ds-row-subtitle')).toHaveText(STEP_DONE_LINES.connect);
+                await expect(rowOf(host, 'Set Up a Preset').locator('.ds-row-subtitle')).toHaveText(STEP_DONE_LINES.preset);
+                await expect(rowOf(host, 'Start Chatting').locator('.ds-row-subtitle')).toHaveText(STEP_DONE_LINES.chat);
+                await expect(rowOf(host, 'Get a Character Card').locator('.ds-row-subtitle')).toHaveText(STEP_BODIES.character);
+            });
+
+            sizeFreeTest('swaps the line of a step for its done line when the step is finished while the window is open', async ({ page }) => {
+                await bootHome(page);
+                const host = await openWindow(page);
+                const line = rowOf(host, 'Connect a Model').locator('.ds-row-subtitle');
+                await expect(line).toHaveText(STEP_BODIES.connect);
+
+                await emit(page, 'ONLINE_STATUS_CHANGED', 'valid');
+
+                await expect(line).toHaveText(STEP_DONE_LINES.connect);
             });
 
             test('follows a step that is finished while the window is open, and the check keeps its place in the row', async ({ page }) => {

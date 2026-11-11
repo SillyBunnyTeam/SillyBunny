@@ -6,7 +6,9 @@ import { CHARACTER_VARIANTS } from './getting-started-storage.js';
  * @property {'connect' | 'preset' | 'character' | 'chat'} id
  * @property {string} title
  * @property {boolean} optional
- * @property {() => string} getBody The description of the step while it is open.
+ * @property {() => string} getBody The description of the step while it is open or skipped.
+ * @property {() => string} [getDoneLine] The line of the step once it is done. Step 3 has none: its line follows the
+ *   kind of card that finished it, which `getStepLine` picks.
  * @property {import('./shell-targets.js').SHELL_TARGETS[number]} target What Show Me opens.
  * @property {string} helpTopic Id of the Help topic that Learn More opens.
  */
@@ -19,6 +21,7 @@ export function getGettingStartedSteps() {
             title: t`Connect a Model`,
             optional: false,
             getBody: () => t`A model is the AI that writes the replies. You'll need a key from a provider, or a model running on your own computer. I'll mark this off once you've established a connection.`,
+            getDoneLine: () => t`We're connected! Your model is ready to write replies whenever you are.`,
             target: 'connections',
             helpTopic: 'connect-to-a-model',
         },
@@ -27,6 +30,7 @@ export function getGettingStartedSteps() {
             title: t`Set Up a Preset`,
             optional: true,
             getBody: () => t`A preset shapes how replies are written: their length, writing style, and rules. Of course, you can skip this and stick to the defaults if you'd like - we've provided a few to get you started!`,
+            getDoneLine: () => t`Good choice! Your replies follow this preset now, and you can switch any time.`,
             target: 'presets',
             helpTopic: 'choose-a-preset',
         },
@@ -43,6 +47,7 @@ export function getGettingStartedSteps() {
             title: t`Start Chatting`,
             optional: false,
             getBody: () => t`Well done! Now you can send your first message! Roleplay is the traditional way to interact with your character, following their greeting and scenario. Conversation is a direct, messenger-style chat.`,
+            getDoneLine: () => t`Your first message is sent! I can't wait to see where your chats go.`,
             target: 'mode-menu',
             helpTopic: 'start-a-chat',
         },
@@ -81,15 +86,18 @@ export function getIntroLine(resolved, total) {
 }
 
 /**
- * The line under a step in the Getting Started window. A finished step 3 has a line of its own, which follows the
- * kind of card that finished it; every other row keeps the body of its step.
+ * The line under a step in the Getting Started window: the done line once the step is done, and its description
+ * while it is open or skipped. A finished step 3 has three done lines, which follow the kind of card that finished it.
  * @param {GettingStartedStep} step
  * @param {Pick<ReturnType<typeof createGettingStartedState>, 'isDone' | 'getCharacterVariant'>} state
  * @returns {string}
  */
 export function getStepLine(step, state) {
-    if (step.id !== 'character' || !state.isDone('character')) {
+    if (!state.isDone(step.id)) {
         return step.getBody();
+    }
+    if (step.id !== 'character') {
+        return step.getDoneLine?.() ?? step.getBody();
     }
     switch (state.getCharacterVariant()) {
         case 'reisen': return t`You picked me? I'll do my very best to help you!`;

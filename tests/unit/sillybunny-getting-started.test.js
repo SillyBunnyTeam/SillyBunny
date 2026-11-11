@@ -3,7 +3,7 @@
  */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for Getting Started persistence, signals and the toast. */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { CHARACTER_DONE_LINES, HOME_COPY, STEP_BODIES } from '../helpers/copy-home.js';
+import { CHARACTER_DONE_LINES, HOME_COPY, STEP_BODIES, STEP_DONE_LINES } from '../helpers/copy-home.js';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
@@ -279,11 +279,34 @@ describe('the line of a step in the Getting Started window', () => {
         expect(getStepLine(character, state)).toBe(line);
     });
 
-    test('keeps the body of the other steps once they are done', () => {
+    test.each([
+        ['connect', 0],
+        ['preset', 1],
+        ['chat', 3],
+    ])('is the done line of step %s once it is done', (id, index) => {
+        const { state } = createStoredState(fresh());
+        state.markDone(id);
+
+        expect(getStepLine(getGettingStartedSteps()[index], state)).toBe(STEP_DONE_LINES[id]);
+    });
+
+    test('a skipped step keeps its description, and an un-skipped one goes back to it', () => {
+        const { state } = createStoredState(fresh());
+        const [, preset] = getGettingStartedSteps();
+        state.setSkipped('preset', true);
+        expect(getStepLine(preset, state)).toBe(STEP_BODIES.preset);
+
+        state.markDone('preset');
+        expect(getStepLine(preset, state)).toBe(STEP_DONE_LINES.preset);
+    });
+
+    test('step 3 keeps its three lines, and no done line of the other steps leaks into it', () => {
         const { state } = createStoredState(fresh());
         state.markDone('connect');
+        state.markDone('character', { variant: 'tewi' });
 
-        expect(getStepLine(connect, state)).toBe(STEP_BODIES.connect);
+        expect(getStepLine(character, state)).toBe(CHARACTER_DONE_LINES.tewi);
+        expect(Object.values(STEP_DONE_LINES)).not.toContain(getStepLine(character, state));
     });
 });
 

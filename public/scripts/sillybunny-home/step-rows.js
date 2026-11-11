@@ -53,8 +53,8 @@ function createStatusTag(status) {
  * fit is cut short and never wraps the title. On an optional step the status joins Optional on its line, so that row
  * keeps its height when it is skipped or done. Another row grows by that one line, which answers the state it follows.
  * A finished step has nothing to skip, so its Skip button goes, and it starts with a check in Success Green and carries
- * a Done chip. A skipped step carries a neutral Skipped chip. A finished step 3 shows the line of the kind of card that
- * finished it.
+ * a Done chip, and its text becomes the done line of the step (step 3's follows the kind of card that finished it). A
+ * skipped step carries a neutral Skipped chip and keeps its description.
  * @param {object} options
  * @param {import('./getting-started.js').GettingStartedStep} options.step
  * @param {string} options.field Marks the row for tests and for the editor row styles.

@@ -3,7 +3,7 @@
  */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for DOM helpers. */
 import { describe, expect, jest, test } from '@jest/globals';
-import { CHARACTER_DONE_LINES, STEP_BODIES } from '../helpers/copy-home.js';
+import { CHARACTER_DONE_LINES, STEP_BODIES, STEP_DONE_LINES } from '../helpers/copy-home.js';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
@@ -193,6 +193,27 @@ describe('the shared step row, once the app has seen the step done', () => {
         state.markDone('character', { variant });
 
         expect(subtitle.textContent).toBe(line);
+    });
+
+    test.each([
+        ['connect', connect],
+        ['preset', preset],
+        ['chat', getGettingStartedSteps()[3]],
+    ])('the row of step %s shows its done line, and its description again while it is skipped', (id, step) => {
+        const state = newState();
+        const { row, sync } = build(step, { state });
+        state.subscribe(sync);
+        const subtitle = row.querySelector('.ds-row-subtitle');
+        expect(subtitle.textContent).toBe(STEP_BODIES[id]);
+
+        state.markDone(id);
+        expect(subtitle.textContent).toBe(STEP_DONE_LINES[id]);
+
+        const skipped = newState();
+        const skippedBuilt = build(step, { state: skipped });
+        skipped.setSkipped(id, true);
+        skippedBuilt.sync();
+        expect(skippedBuilt.row.querySelector('.ds-row-subtitle').textContent).toBe(STEP_BODIES[id]);
     });
 
     test('starts in the done state when the stored value says so', () => {

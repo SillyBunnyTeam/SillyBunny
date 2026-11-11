@@ -31,6 +31,13 @@ export const STEP_BODIES = Object.freeze({
     chat: 'Well done! Now you can send your first message! Roleplay is the traditional way to interact with your character, following their greeting and scenario. Conversation is a direct, messenger-style chat.',
 });
 
+/** The line of a finished step, by step id. Step 3 has three, by the kind of card (`CHARACTER_DONE_LINES`). */
+export const STEP_DONE_LINES = Object.freeze({
+    connect: 'We\'re connected! Your model is ready to write replies whenever you are.',
+    preset: 'Good choice! Your replies follow this preset now, and you can switch any time.',
+    chat: 'Your first message is sent! I can\'t wait to see where your chats go.',
+});
+
 /** The line of a finished step 3, by the kind of card that finished it. */
 export const CHARACTER_DONE_LINES = Object.freeze({
     reisen: 'You picked me? I\'ll do my very best to help you!',
