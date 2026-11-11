@@ -60,7 +60,9 @@ async function refreshSavedCharacter(avatar) {
     if (index < 0 || characters[index] === previous) {
         throw new Error('The character was saved, but its roster entry could not be refreshed.');
     }
-    if (document.getElementById('avatar_url_pole')?.value === avatar) {
+    // The create form does not clear #avatar_url_pole, so a matching avatar alone does not mean that the editor shows this card.
+    if (document.getElementById('form_create')?.getAttribute('actiontype') === 'editcharacter'
+        && document.getElementById('avatar_url_pole')?.value === avatar) {
         select_selected_character(index, { switchMenu: false });
     }
     await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: index, character: characters[index] } });
