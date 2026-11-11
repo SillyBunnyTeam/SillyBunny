@@ -89,6 +89,9 @@ describe('conversation mode scoped connection profile', () => {
         expect(helperSource).not.toContain('applyConnectionProfileByName');
         // Falls back to generateRaw (the active profile) when scoped path is unavailable.
         expect(helperSource).toContain('generateRaw(options)');
+        // The scoped request keeps its own length. Only the request to the active API is limited.
+        expect(helperSource).toContain('CMRS.sendRequest(profile.id, messages, options.responseLength, {');
+        expect(helperSource.indexOf('CMRS.sendRequest')).toBeLessThan(helperSource.indexOf('getActiveApiResponseLength(options.responseLength)'));
     });
 
     test('replaces every generation call site with the scoped helper', () => {

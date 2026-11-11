@@ -12,11 +12,13 @@ const buildConversationPromptMessages = jest.fn(async () => [{ role: 'user', con
 const buildConversationSystemPrompt = jest.fn(() => 'system prompt');
 const worldInfo = { before: 'Lore before.', after: '', authorsNoteBefore: '', authorsNoteAfter: '', depth: [] };
 const getConversationWorldInfo = jest.fn(async () => worldInfo);
+const getActiveApiResponseLength = jest.fn(async responseLength => responseLength);
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     characters: [{ avatar: 'char.png', name: 'Aster' }],
     generateRaw,
 }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/response-length.js', () => ({ getActiveApiResponseLength }));
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({
     extractProfileResponseText: value => String(value || ''),
 }));
@@ -91,6 +93,7 @@ describe('Conversation core generated reply regressions', () => {
         updateConversationThreadMessage.mockClear();
         runtimeStatusOverrides.clear();
         generateRaw.mockReset();
+        getActiveApiResponseLength.mockClear();
         buildConversationPromptMessages.mockClear();
         buildConversationSystemPrompt.mockClear();
         getConversationWorldInfo.mockClear();
@@ -116,6 +119,17 @@ describe('Conversation core generated reply regressions', () => {
         expect(buildConversationPromptMessages).toHaveBeenCalledWith(threadMessages, 'Reply now.', 'Partner', { groupId: '', personaId: 'persona-a.png', worldInfo });
         expect(buildConversationSystemPrompt).toHaveBeenCalledWith(settings, 'partner.png', { threadAvatar: 'char.png', branchId: 'branch-a', groupId: '', personaId: 'persona-a.png', worldInfo });
         expect(generateRaw).toHaveBeenCalledWith(expect.objectContaining({ systemPrompt: 'system prompt', responseLength: 100 }));
+    });
+
+    test('asks the active API for the response length that it can serve', async () => {
+        globalThis.window = {};
+        generateRaw.mockResolvedValueOnce('reply');
+        getActiveApiResponseLength.mockResolvedValueOnce(64);
+
+        await expect(generateConversationReply('Reply now.', settings, { avatar: 'char.png', groupId: '', personaId: 'persona-a.png' })).resolves.toBe('reply');
+
+        expect(getActiveApiResponseLength).toHaveBeenCalledWith(100);
+        expect(generateRaw).toHaveBeenCalledWith(expect.objectContaining({ systemPrompt: 'system prompt', responseLength: 64 }));
     });
 
     test('keeps native selfie command metadata when image generation is disabled', async () => {
