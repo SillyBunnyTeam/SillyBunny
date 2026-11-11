@@ -31,7 +31,7 @@ export function requestUsesReasoning(data) {
     if (isKimiK3Model(model) || /(?:^|[/:])o[134](?:[-/:]|$)|gpt-6-astra|gpt-oss|grok-(?:3-mini|4|code)|deepseek[-_](?:r1|reasoner|v4)|qwq|qvq|magistral|(?:^|[-_/:])(?:reasoner|reasoning|thinking)(?:[-_/:]|$)/.test(model)) {
         return true;
     }
-    if (/gemini-(?:2\.5|3)/.test(model)) {
+    if (/gemini-(?:2\.5|3|4)/.test(model)) {
         return !(effort === 'min' && /gemini-2\.5-flash/.test(model));
     }
     if (data.chat_completion_source === 'moonshot' && /kimi-k2\.5/.test(model)) {
@@ -93,7 +93,18 @@ export function isGenerationLengthFinish(data) {
     const reason = choice?.finish_reason
         ?? data?.delta?.stop_reason ?? data?.stop_reason
         ?? data?.candidates?.[0]?.finishReason ?? data?.done_reason;
-    return ['length', 'max_tokens', 'MAX_TOKENS'].includes(reason) || data?.stopped_limit === true;
+    return ['length', 'max_tokens', 'MAX_TOKENS', 'CONTINUATION'].includes(reason) || data?.stopped_limit === true;
+}
+
+/**
+ * Gemini counts thinking against the output limit, so a length finish can leave a blank or
+ * partial reply that looks finished.
+ * @param {string} api Main API of the generation
+ * @param {string} source Chat completion source of the generation
+ * @returns {boolean} Whether a length finish on this route needs a warning
+ */
+export function warnsOnGenerationLengthFinish(api, source) {
+    return api === 'openai' && ['makersuite', 'vertexai', 'gemini_interactions'].includes(source);
 }
 
 export function limitGenerationProse(text, maxOutputTokens, template, reasoningPrefix = '', isStreaming = false) {

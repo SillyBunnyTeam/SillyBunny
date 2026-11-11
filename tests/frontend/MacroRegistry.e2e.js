@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { testSetup } from './frontent-test-utils.js';
+// SillyBunny: the tests share one booted page per worker, which gets back its boot state before each test. testSetup does not load the app again.
+import { test, expect, testSetup } from './shared-page.js';
 
 test.describe('MacroRegistry', () => {
     // Currently this test suits runs without ST context. Enable, if ever needed

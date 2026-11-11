@@ -416,7 +416,7 @@ export function convertCohereMessages(messages, names) {
     }
 
     messages.forEach((msg, index) => {
-        // Tool calls require an assistent primer
+        // Tool calls require an assistant primer
         if (Array.isArray(msg.tool_calls)) {
             if (index > 0 && messages[index - 1].role === 'assistant') {
                 msg.content = messages[index - 1].content;
@@ -487,7 +487,7 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
     const toolNameMap = {};
 
     // https://ai.google.dev/gemini-api/docs/latest-model#prefilled-model-turn-validation
-    const noPrefillModel = /gemini-3\.[67]-flash|gemini-3\.5-flash-lite/.test(model);
+    const noPrefillModel = /gemini-3\.[678]-flash|gemini-3\.5-flash-lite|gemini-4|gemini-nano-banana/.test(model); // SillyBunny: Gemini 4 and Nano Banana reject a trailing model turn
 
     const contents = [];
     messages.forEach((message, index) => {
@@ -607,7 +607,7 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
 
         // https://ai.google.dev/gemini-api/docs/gemini-3#migrating_from_other_models
         // Inject stored thought signatures, or fall back to bypass magic for Gemini 3
-        if (/gemini-3/.test(model) || /gemini-2\.5/.test(model)) {
+        if (/gemini-(?:3|4|nano-banana)/.test(model) || /gemini-2\.5/.test(model)) { // SillyBunny: Gemini 4 and Nano Banana validate thought signatures like Gemini 3
             const skipSignatureMagic = 'skip_thought_signature_validator';
             // Signatures are only valid on model turns; stamping one on a user-role part
             // gets the request rejected with a 400 "Corrupted thought signature".
@@ -619,12 +619,12 @@ export function convertGooglePrompt(messages, model, useSysPrompt, names) {
             parts.forEach((part) => {
                 if (isThoughtSignaturesEnabled() && textSignature && part === lastTextPart) {
                     part.thoughtSignature = textSignature;
-                } else if (/gemini-3/.test(model)) {
+                } else if (/gemini-(?:3|4|nano-banana)/.test(model)) { // SillyBunny: Gemini 4 and Nano Banana need the Gemini 3 bypass
                     // Gemini 3: Fall back to bypass magic for function calls (mandatory) and images
                     if (part.functionCall && !part.thoughtSignature) {
                         part.thoughtSignature = skipSignatureMagic;
                     }
-                    if (/-image/.test(model) && message.role === 'model') {
+                    if (/-image|nano-banana/.test(model) && message.role === 'model') { // SillyBunny: Nano Banana IDs have no -image suffix
                         if (typeof part.text === 'string' || part.inlineData) {
                             part.thoughtSignature = skipSignatureMagic;
                         }
@@ -1313,13 +1313,18 @@ export function calculateGoogleBudgetTokens(maxTokens, reasoningEffort, model) {
         if (!reasoningEffort || [REASONING_EFFORT.auto, REASONING_EFFORT.none].includes(reasoningEffort)) {
             return null;
         }
-        if (reasoningEffort === REASONING_EFFORT.min && /gemini-3\.7-flash/.test(model)) {
+        // These models have no minimal thinking level, so min falls back to their lowest level.
+        if (reasoningEffort === REASONING_EFFORT.min && /gemini-3\.[78]-flash|gemini-4/.test(model)) {
             return REASONING_EFFORT.low;
+        }
+        // SillyBunny: Gemini 4 documents no thinking level above high, so the rungs above it send high.
+        if ([REASONING_EFFORT.xhigh, REASONING_EFFORT.max].includes(reasoningEffort) && /gemini-4/.test(model)) {
+            return REASONING_EFFORT.high;
         }
         return toWireReasoningEffort(reasoningEffort);
     }
 
-    if (/gemini-3[.\d]*-(?:pro|flash)/.test(model)) {
+    if (/gemini-3[.\d]*-(?:pro|flash)|gemini-4|gemini-nano-banana/.test(model)) { // SillyBunny: Gemini 4 and Nano Banana take thinking levels
         return getGemini3ThinkingLevel();
     }
 

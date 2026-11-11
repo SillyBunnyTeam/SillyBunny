@@ -41,7 +41,8 @@ Read the docs below in full before you start; they change more often than this f
 - Start: `bun run start`; force Node.js with `npm run start:node`. Launchers: `./start.sh`, `./start-bun.sh`, `./start-node.sh`.
 - Lint: `npm run lint` (autofix: `npm run lint:fix`). `tests/` has its own `npm run lint`.
 - Unit tests, from `tests/`: `npm run test:unit -- <file>` for one file, `npm run test:unit` for all.
-- E2E tests need a running server; Playwright does not start one. Run `npm run init`, start the server (`bun server.js --browserLaunchEnabled=false`), then from `tests/` run `npm run test:e2e -- <spec>`. The base URL is `SILLYBUNNY_TEST_BASE_URL`, default `http://127.0.0.1:4444`.
+- E2E tests need a running server; Playwright starts one only with `SILLYBUNNY_TEST_SERVERS`. Run `npm run init`, start the server (`bun server.js --browserLaunchEnabled=false`), then from `tests/` run `npm run test:e2e -- <spec>`. The base URL is `SILLYBUNNY_TEST_BASE_URL`, default `http://127.0.0.1:4444`.
+  - Without a base URL variable, `SILLYBUNNY_TEST_SERVERS=N` starts N servers with throwaway data roots and spreads the workers over them; `SILLYBUNNY_TEST_SERVER_RUNTIME=node` starts them with Node.js instead of Bun. `SILLYBUNNY_TEST_COMPRESSION=1` or `0` turns response compression on or off for any run; by default it is off only for the servers that Playwright starts.
 - Frontend: `npm run check:frontend-budgets`; `npm run build:frontend` writes the gitignored `dist/frontend/`.
 - Versions: `npm run version:bump -- X.Y.Z`; check with `npm run version:check`.
 - After editing an existing in-chat agent template: `npm run agents:bump-template-versions`.
@@ -52,7 +53,6 @@ Read the docs below in full before you start; they change more often than this f
 - `server.js` supervises restarts, then imports `src/server-main.js`; keep its startup-order-sensitive imports intact.
 - `public/` is browser code, `src/` is server code, `scripts/` holds maintenance scripts; launchers live in the root. JavaScript is ESM (`"type": "module"`).
 - `tests/` is a separate npm package: Jest unit tests and Playwright e2e specs.
-- `src/electron/` has its own package and is not covered by root scripts.
 - `android/` is a separate Gradle project with a committed wrapper; root npm scripts and ESLint do not cover it.
 - `scripts/bootstrap/` installers run before the repository exists, so they must stay self-contained; they ship as release assets.
 - Root lint ignores vendored and generated code, including `public/lib/**`, `public/scripts/extensions/quick-image-gen/**`, `public/scripts/extensions/third-party/**`, `data/**`, `cache/**` and `backups/**`; do not reformat them unless the task targets them.

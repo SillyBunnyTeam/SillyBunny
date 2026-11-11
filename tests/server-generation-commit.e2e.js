@@ -3,8 +3,14 @@ import { expect, test } from '@playwright/test';
 import { APP_URL, dismissOpenDialogIfPresent, selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 
-test.describe.configure({ mode: 'serial' });
 test.use({ serviceWorkers: 'block' });
+
+// The tests that connect the fake model save different settings, a custom URL with its own port, at the same time on
+// one server. Saved for real, a page that loaded before another test's save would get the settings conflict prompt.
+test.beforeEach(async ({ context }) => {
+    let settingsVersion = Date.now();
+    await context.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
+});
 
 const MODEL = 'fake-stream-model';
 const CHUNKS = Array.from({ length: 20 }, (_, index) => `word${index} `);
@@ -13,9 +19,10 @@ const FULL_REPLY = CHUNKS.join('').trim();
 /**
  * An OpenAI-compatible server that streams CHUNKS slowly, so a test can act while a reply is written.
  * @param {number} intervalMs Delay between chunks
+ * @param {string} [deltaField] Delta field that carries CHUNKS: content for reply text, reasoning_content for reasoning
  * @returns {Promise<http.Server>}
  */
-function startFakeModel(intervalMs) {
+function startFakeModel(intervalMs, deltaField = 'content') {
     const server = http.createServer((request, response) => {
         if (request.method === 'GET' && request.url.endsWith('/models')) {
             response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -33,7 +40,7 @@ function startFakeModel(intervalMs) {
         let index = 0;
         const timer = setInterval(() => {
             if (index < CHUNKS.length) {
-                response.write(chunk({ content: CHUNKS[index++] }));
+                response.write(chunk({ [deltaField]: CHUNKS[index++] }));
                 return;
             }
             clearInterval(timer);
@@ -46,7 +53,7 @@ function startFakeModel(intervalMs) {
 }
 
 /**
- * Loads the app with real chat saves, unlike openReadyChat(), and opens the sample character's chat.
+ * Loads the app with real chat saves, unlike openReadyChat(), and opens a new chat of the sample character.
  * @param {import('@playwright/test').Page} page
  */
 async function openChat(page) {
@@ -55,7 +62,9 @@ async function openChat(page) {
     await testSetup.waitForAppReady({ page });
     await dismissOpenDialogIfPresent(page);
     await selectSampleCharacter(page);
-    await dismissOpenDialogIfPresent(page);
+    await dismissOpenDialogIfPresent(page, { waitMs: 0 });
+    // Pages that write one chat file at the same time fail each other's chat integrity check.
+    await page.evaluate(async () => (await import('/script.js')).doNewChat());
 }
 
 /**
@@ -209,3 +218,70 @@ test.describe('server-owned chat generations', () => {
         await expect.poll(() => background[2].evaluate(() => window.__openEventSources())).toBe(1);
     });
 });
+
+for (const { name, options } of [
+    { name: 'desktop', options: { viewport: { width: 1440, height: 900 } } },
+    {
+        name: 'mobile',
+        options: {
+            viewport: { width: 390, height: 844 },
+            isMobile: true,
+            hasTouch: true,
+            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        },
+    },
+]) {
+    test.describe(`Stop during streamed reasoning on ${name}`, () => {
+        test.use(options);
+
+        test('keeps the reasoning that arrived as finished reasoning and saves the reply', async ({ page }) => {
+            test.setTimeout(120_000);
+            const model = await startFakeModel(1000, 'reasoning_content');
+            try {
+                await openChat(page);
+                await connectFakeModel(page, `http://127.0.0.1:${model.address().port}/v1`);
+                await page.locator('#left-nav-panel .sb-shell-close').click();
+                // Enter adds a new line on touch layouts, so send with the button.
+                await page.locator('#send_textarea').fill(`stop during reasoning ${Date.now()}`);
+                await page.locator('#send_but').click();
+                await page.waitForFunction(() => (window.SillyTavern.getContext().streamingProcessor?.pendingReasoning ?? '').includes('word2'), null, { timeout: 30_000 });
+
+                const saved = page.waitForResponse(response => response.url().endsWith('/api/chats/save') && response.request().method() === 'POST', { timeout: 15_000 });
+                // Read the reasoning and press Stop in one task, so no chunk can arrive between them.
+                const arrived = await page.evaluate(() => {
+                    const reasoning = window.SillyTavern.getContext().streamingProcessor.pendingReasoning;
+                    document.getElementById('mes_stop').click();
+                    return reasoning.trim();
+                });
+                expect((await saved).ok()).toBe(true);
+
+                const details = page.locator('#chat .last_mes .mes_reasoning_details');
+                await expect(details).toHaveAttribute('data-state', 'done');
+                await expect(details.locator('.mes_reasoning_header_title')).toHaveText(/^Thought for /);
+                await expect(details.locator('.mes_reasoning')).toHaveText(arrived);
+
+                const readLastReply = () => page.evaluate(() => {
+                    const message = window.SillyTavern.getContext().chat.at(-1);
+                    return {
+                        reasoning: message.extra.reasoning,
+                        duration: message.extra.reasoning_duration,
+                        swipeDuration: message.swipe_info?.[message.swipe_id]?.extra?.reasoning_duration,
+                        placeholder: message.extra.server_generation_placeholder ?? null,
+                    };
+                });
+                const stopped = await readLastReply();
+                expect(stopped.reasoning).toBe(arrived);
+                expect(stopped.duration).toBeGreaterThan(0);
+                expect(stopped.swipeDuration).toBe(stopped.duration);
+                expect(stopped.placeholder).toBeNull();
+
+                await page.evaluate(() => window.SillyTavern.getContext().reloadCurrentChat());
+                expect(await readLastReply()).toEqual(stopped);
+                await expect(details).toHaveAttribute('data-state', 'done');
+            } finally {
+                model.closeAllConnections?.();
+                model.close();
+            }
+        });
+    });
+}

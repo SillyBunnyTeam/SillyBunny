@@ -6,10 +6,11 @@ import { runInNewContext } from 'node:vm';
 import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
 
 const gpt56Models = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
+const gpt6Models = ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'];
 const currentGemmaModels = ['gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
 const currentClaudeModels = ['claude-opus-5', 'claude-sonnet-5'];
-const currentGoogleStudioModels = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
-const currentVertexModels = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+const currentGoogleStudioModels = ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite-image', 'gemini-nano-banana-2.1'];
+const currentVertexModels = ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite-image', 'gemini-nano-banana-2.1'];
 const retiredMainModels = [
     'chatgpt-4o-latest',
     'gpt-4.5-preview',
@@ -51,6 +52,8 @@ const retiredClaudeModels = [
 // Note: some of these (e.g. gemini-3.1-flash-lite-preview, gemini-3-pro-preview) are legitimately
 // retained in the Vertex sections, so tests must scope checks to the AI Studio selects only.
 const retiredGoogleStudioModels = [
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
     'gemini-3.1-flash-lite-preview',
     'gemini-3.1-flash-image-preview',
     'gemini-3-pro-preview',
@@ -86,13 +89,16 @@ const retiredGoogleStudioModels = [
     'gemma-3-1b-it',
 ];
 
-// IDs removed from Vertex AI selects (the Gemini 2.0 batch; 3.x previews are Vertex-only retained)
+// IDs removed from Vertex AI selects (the retired Gemini 2.0 and 2.5 models; 3.x previews are Vertex-only retained)
 const retiredVertexModels = [
     'gemini-2.0-flash-exp',
     'gemini-2.0-flash-preview-image-generation',
     'gemini-2.0-flash',
     'gemini-2.0-flash-001',
     'gemini-2.0-flash-lite-001',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
 ];
 
 function readSource(relativePath) {
@@ -108,12 +114,12 @@ function getDataTypeOptionIds(source, dataType) {
     return [...source.matchAll(new RegExp(`<option[^>]*data-type="${dataType}"[^>]*value="([^"]+)"`, 'g'))].map(m => m[1]);
 }
 
-test('OpenAI pickers include GPT-5.6 and GPT-6 Astra and omit retired native OpenAI models', () => {
+test('OpenAI pickers include GPT-5.6 and GPT-6 and omit retired native OpenAI models', () => {
     const mainPicker = getSelectOptionIds(readSource('../public/index.html'), 'model_openai_select');
     const captionPicker = getSelectOptionIds(readSource('../public/scripts/extensions/caption/settings.html'), 'caption_multimodal_model');
 
-    expect(mainPicker).toEqual(expect.arrayContaining([...gpt56Models, 'gpt-6-astra']));
-    expect(captionPicker).toEqual(expect.arrayContaining([...gpt56Models, 'gpt-6-astra']));
+    expect(mainPicker).toEqual(expect.arrayContaining([...gpt56Models, ...gpt6Models]));
+    expect(captionPicker).toEqual(expect.arrayContaining([...gpt56Models, ...gpt6Models]));
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredMainModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredCaptionModels));
     expect(readSource('../public/index.html')).toContain('<option value="gpt-5.3-chat-latest">gpt-5.3-chat-latest (deprecated)</option>');
@@ -151,11 +157,19 @@ for (const model of ['gpt-6-astra', 'gpt-6-astra-2026-09-14']) {
 }
 
 
-test('GPT-5.6 and GPT-6 Astra support distinct max reasoning effort and 1.05-million-token context', () => {
+test('GPT-6 models are listed once in the image-capable model list', () => {
+    const openAiScript = readSource('../public/scripts/openai.js');
+    const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
+    const occurrences = Object.fromEntries(gpt6Models.map(model => [model, visionModels.split(`'${model}'`).length - 1]));
+
+    expect(occurrences).toEqual({ 'gpt-6-astra': 1, 'gpt-6-sol': 1, 'gpt-6-luna': 1 });
+});
+
+test('GPT-5.6 and GPT-6 support distinct max reasoning effort and 1.05-million-token context', () => {
     const constants = readSource('../src/constants.js');
     const openAiScript = readSource('../public/scripts/openai.js');
 
-    const models = [...gpt56Models, 'gpt-6-astra'];
+    const models = [...gpt56Models, ...gpt6Models];
     for (const model of models) {
         expect(constants).toContain(`'${model}'`);
     }
@@ -180,6 +194,8 @@ test('GPT-5.6 and GPT-6 Astra support distinct max reasoning effort and 1.05-mil
 
 for (const [model, expected] of [
     ['gpt-6-astra-2026-09-14', 1050000],
+    ['gpt-6-sol', 1050000],
+    ['gpt-6-luna', 1050000],
     ['gpt-5.4', 1000000],
     ['gpt-5-mini', 400000],
     ['gpt-4o', 128000],
@@ -214,8 +230,10 @@ test('Claude pickers include current Claude 5 models and omit all retired Claude
 
     expect(mainPicker).toEqual(expect.arrayContaining(currentClaudeModels));
     expect(mainPicker).toContain('claude-fable-5-1');
+    expect(mainPicker).toContain('claude-opus-5-5');
     expect(captionPicker).toEqual(expect.arrayContaining(currentClaudeModels));
     expect(captionPicker).toContain('claude-fable-5-1');
+    expect(captionPicker).toContain('claude-opus-5-5');
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
     expect(openAiScript).toContain('claude_model: \'claude-opus-5\'');
@@ -282,7 +300,7 @@ test('Google AI Studio pickers include current models and omit all retired Gemin
     expect(captionAiStudio).toEqual(expect.arrayContaining(currentGemmaModels));
 });
 
-test('Vertex AI pickers include current models and omit retired Gemini 2.0 entries', () => {
+test('Vertex AI pickers include current models and omit retired Gemini 2.0 and 2.5 entries', () => {
     const mainSource = readSource('../public/index.html');
     const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
 
@@ -295,17 +313,72 @@ test('Vertex AI pickers include current models and omit retired Gemini 2.0 entri
     expect(captionVertex).toEqual(expect.arrayContaining(currentVertexModels));
 });
 
+test('saved AI Studio models follow the IDs that AI Studio routes to newer models', () => {
+    const openAiScript = readSource('../public/scripts/openai.js');
+    const migrate = openAiScript.match(/function migrateChatCompletionSettings\(settings\) \{[\s\S]*?\n\}/)[0];
+    const migrateSettings = settings => runInNewContext(`(${migrate})(settings); settings`, {
+        settings,
+        migrateNanoGptProviderSettings: () => {},
+        legacy_group_nudge_prompt: 'legacy',
+        default_group_nudge_prompt: 'default',
+        character_names_behavior: {},
+        chat_completion_sources: CHAT_COMPLETION_SOURCES,
+        custom_prompt_post_processing_types: {},
+        reasoning_effort_types: {},
+    });
+
+    expect(migrateSettings({ google_model: 'gemini-3.7-flash', vertexai_model: 'gemini-3.7-flash' }))
+        .toEqual({ google_model: 'gemini-3.8-flash', vertexai_model: 'gemini-3.7-flash' });
+    expect(migrateSettings({ google_model: 'gemini-3.5-flash', vertexai_model: 'gemini-3.5-flash' }))
+        .toEqual({ google_model: 'gemini-3.6-flash', vertexai_model: 'gemini-3.5-flash' });
+});
+
+for (const [model, expected] of [
+    ['gemini-4-argon', 1000000],
+    ['gemini-3.8-flash', 1000000],
+    ['gemini-3.1-flash-lite-image', 65535],
+    ['gemini-nano-banana-2.1', 128000],
+]) {
+    test(`sets the Google context limit for ${model}`, () => {
+        const openAiScript = readSource('../public/scripts/openai.js');
+        const contextBranches = openAiScript.match(/chat_completion_sources\.VERTEXAI\]\.includes\(oai_settings\.chat_completion_source\)\) \{\n\s+(if \(maxContextUnlocked\) \{[\s\S]*?\n {8}\}\n)/)[1];
+        const contextConstants = openAiScript.match(/^const (?:max_[a-z0-9]+|unlocked_max) = .+;$/gm).join('\n');
+        let maxContext;
+        runInNewContext(`${contextConstants}\n${contextBranches}`, {
+            value: model,
+            maxContextUnlocked: false,
+            $: () => ({ attr: (_name, limit) => { maxContext = limit; } }),
+        });
+
+        expect(maxContext).toBe(expected);
+    });
+}
+
+test('Gemini 4 and Nano Banana accept inline media', () => {
+    const openAiScript = readSource('../public/scripts/openai.js');
+    const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
+    const videoModels = openAiScript.match(/const videoSupportedModels = \[([\s\S]*?)\];/)[1];
+    const audioModels = openAiScript.match(/const audioSupportedModels = \[([\s\S]*?)\];/)[1];
+
+    for (const model of ['gemini-4', 'gemini-nano-banana']) {
+        expect(visionModels).toContain(`'${model}'`);
+        expect(videoModels).toContain(`'${model}'`);
+    }
+    expect(audioModels).toContain('\'gemini-4\'');
+});
+
 test('new provider models are the defaults where requested', () => {
     const openAiScript = readSource('../public/scripts/openai.js');
     const defaultPreset = JSON.parse(readSource('../default/content/presets/openai/Default.json'));
 
-    expect(openAiScript).toContain('google_model: \'gemini-3.7-flash\'');
-    expect(openAiScript).toContain('vertexai_model: \'gemini-3.7-flash\'');
+    expect(openAiScript).toContain('openai_model: \'gpt-6-sol\'');
+    expect(openAiScript).toContain('google_model: \'gemini-3.8-flash\'');
+    expect(openAiScript).toContain('vertexai_model: \'gemini-3.8-flash\'');
     expect(openAiScript).toContain('minimax_model: \'MiniMax-M3\'');
     expect(openAiScript).toContain('zai_model: \'glm-5.3\'');
     expect(defaultPreset).toMatchObject({
-        google_model: 'gemini-3.7-flash',
-        vertexai_model: 'gemini-3.7-flash',
+        google_model: 'gemini-3.8-flash',
+        vertexai_model: 'gemini-3.8-flash',
         minimax_model: 'MiniMax-M3',
     });
 });

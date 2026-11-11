@@ -67,6 +67,17 @@ import {
 } from '../../prompt-converters.js';
 import { applyReasoningEffortNormalization, toWireReasoningEffort } from '../../reasoning-effort.js';
 import { isBunRuntime } from '../../runtime.js';
+import {
+    capFirstGenerateContentBody,
+    collectGenerateContentHops,
+    collectInteractionHops,
+    continueGenerateContentStream,
+    continueInteractionStream,
+    getGenerateContentText,
+    getVertexApiVersion,
+    mergeGenerateContentHops,
+    mergeInteractionHops,
+} from '../../gemini-long-decode.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
 import {
@@ -385,7 +396,7 @@ async function sendClaudeRequest(request, response) {
         const convertedPrompt = convertClaudeMessages(request.body.messages, request.body.assistant_prefill, useSystemPrompt, useTools, getPromptNames(request));
         // SillyBunny: claude-fable-5 support (substring match also catches router ids like 'anthropic/claude-fable-5')
         const isFableModel = /claude-fable/.test(request.body.model);
-        const isFable51Model = /claude-fable-5-1/.test(request.body.model);
+        const useNativeJsonOutput = /claude-(fable-5-1|opus-5-5)/.test(request.body.model);
         // SillyBunny: Claude Sonnet 5 and Opus 5 require adaptive thinking and reject sampling params and assistant prefill.
         const isSonnetOrOpus5 = /claude-(?:sonnet|opus)-5/.test(request.body.model);
         const isOpus55Model = /claude-opus-5-5(?:[-/:]|$)/.test(request.body.model);
@@ -436,9 +447,9 @@ async function sendClaudeRequest(request, response) {
             }
         }
 
-        // Fable 5.1 rejects forced tools, but supports native JSON outputs.
+        // Fable 5.1 and Opus 5.5 reject forced tools, but support native JSON outputs.
         if (request.body.json_schema) {
-            if (isFable51Model) {
+            if (useNativeJsonOutput) {
                 requestBody.output_config = {
                     format: {
                         type: 'json_schema',
@@ -686,18 +697,21 @@ async function sendMakerSuiteRequest(request, response) {
             'gemini-2.5-flash-image',
             'gemini-3-pro-image',
             'gemini-3.1-flash-image',
+            'gemini-3.1-flash-lite-image', // SillyBunny: Nano Banana 2 Lite image output
+            'gemini-nano-banana-2.1', // SillyBunny: Nano Banana 2.1 image output
         ];
 
-        const isThinkingConfigModel = m => (/^gemini-2.5-(flash|pro)/.test(m) && !/-image(-preview)?$/.test(m)) || (/^gemini-3[.\d]*-(flash|pro)/.test(m));
-        const isImageSizeModel = m => /^gemini-3/.test(m);
+        const isThinkingConfigModel = m => (/^gemini-2.5-(flash|pro)/.test(m) && !/-image(-preview)?$/.test(m)) || (/^gemini-3[.\d]*-(flash|pro)/.test(m)) || /^gemini-(?:4|nano-banana)/.test(m); // SillyBunny: Gemini 4 and Nano Banana take thinkingLevel
+        const isImageSizeModel = m => /^gemini-(?:3|nano-banana)/.test(m) && !/flash-lite-image/.test(m); // SillyBunny: Nano Banana takes imageSize, and gemini-3.1-flash-lite-image renders only at 1K, so it gets none
         // https://ai.google.dev/gemini-api/docs/latest-model#api-changes-and-parameter-updates
-        const noSamplingModel = /gemini-3\.[67]-flash|gemini-3\.5-flash-lite/.test(model);
+        const noSamplingModel = /gemini-3\.[678]-flash|gemini-3\.5-flash-lite|gemini-4|gemini-nano-banana/.test(model); // SillyBunny: Gemini 4 and Nano Banana ignore sampling parameters
 
         const noSearchModels = [
             'gemini-2.0-flash-lite',
             'gemini-2.0-flash-lite-001',
             'gemini-2.0-flash-lite-preview-02-05',
             'gemini-robotics-er-1.5-preview',
+            'gemini-3.1-flash-lite-image', // SillyBunny: gemini-3.1-flash-lite-image has no Google Search grounding
         ];
         // #endregion
 
@@ -851,6 +865,8 @@ async function sendMakerSuiteRequest(request, response) {
         };
 
         if (useVertexAi) {
+            // SillyBunny: Vertex keeps v1 unless the request can need long decode.
+            const vertexApiVersion = getVertexApiVersion(model, body.generationConfig?.maxOutputTokens);
             if (authType === 'express') {
                 // For Express mode (API key authentication), use the key parameter
                 const keyParam = authHeader.replace('Bearer ', '');
@@ -860,8 +876,8 @@ async function sendMakerSuiteRequest(request, response) {
                     ? 'https://aiplatform.googleapis.com'
                     : `https://${region}-aiplatform.googleapis.com`;
                 url = projectId
-                    ? `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`
-                    : `${baseUrl}/v1/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`;
+                    ? `https://aiplatform.googleapis.com/${vertexApiVersion}/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`
+                    : `${baseUrl}/${vertexApiVersion}/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`;
             } else if (authType === 'full') {
                 // For Full mode (service account authentication), use project-specific URL
                 // Get project ID from Service Account JSON
@@ -882,14 +898,14 @@ async function sendMakerSuiteRequest(request, response) {
                 const region = request.body.vertexai_region || 'us-central1';
                 // Handle global region differently - no region prefix in hostname
                 if (region === 'global') {
-                    url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
+                    url = `https://aiplatform.googleapis.com/${vertexApiVersion}/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
                 } else {
-                    url = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
+                    url = `https://${region}-aiplatform.googleapis.com/${vertexApiVersion}/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
                 }
                 headers['Authorization'] = authHeader;
             } else {
                 // For proxy mode, use the original URL with Authorization header
-                const baseUrl = getGoogleApiBaseUrl(apiUrl.toString(), 'v1');
+                const baseUrl = getGoogleApiBaseUrl(apiUrl.toString(), vertexApiVersion);
                 url = `${baseUrl}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
                 headers['Authorization'] = authHeader;
             }
@@ -898,17 +914,27 @@ async function sendMakerSuiteRequest(request, response) {
             url = `${baseUrl}/models/${model}:${responseType}?key=${apiKey}${stream ? '&alt=sse' : ''}`;
         }
 
-        const generateResponse = await fetch(url, {
-            body: JSON.stringify(body),
+        const sendRequest = requestBody => fetch(url, {
+            body: JSON.stringify(requestBody),
             method: 'POST',
             headers: headers,
             signal: controller.signal,
+            // SillyBunny: long thinking can send no bytes for longer than Bun's default fetch idle timeout, and 0 turns that timeout off.
+            timeout: 0,
         });
+
+        // SillyBunny: Gemini 4 can split one reply across requests, so gemini-long-decode.js asks for the rest and joins it.
+        const firstBody = capFirstGenerateContentBody(body, model, stream);
+        const generateResponse = await sendRequest(firstBody);
+        const sendHop = (continuationToken) => {
+            getResumableGeneration(request)?.extendLifetime();
+            return sendRequest({ ...body, continuationToken });
+        };
 
         if (stream) {
             try {
                 // Pipe remote SSE stream to Express response
-                forwardFetchResponse(generateResponse, response, request, () => controller.abort());
+                forwardFetchResponse(continueGenerateContentStream(generateResponse, sendHop, controller.signal), response, request, () => controller.abort());
             } catch (error) {
                 console.error('Error forwarding streaming response:', error);
                 if (!response.headersSent) {
@@ -923,8 +949,9 @@ async function sendMakerSuiteRequest(request, response) {
                 return response.status(500).send(errorJson);
             }
 
+            const hops = await collectGenerateContentHops(await generateResponse.json(), sendHop, controller.signal, firstBody !== body);
             /** @type {any} */
-            const generateResponseJson = await generateResponse.json();
+            const generateResponseJson = mergeGenerateContentHops(hops);
 
             const candidates = generateResponseJson?.candidates;
             if (!candidates || candidates.length === 0) {
@@ -941,15 +968,17 @@ async function sendMakerSuiteRequest(request, response) {
             const inlineData = (candidates?.[0]?.content?.parts ?? []).some(part => part.inlineData);
             console.debug(`${apiName} response:`, summarizeLlmPayloadForLog(generateResponseJson));
 
-            const responseText = typeof responseContent === 'string' ? responseContent : responseContent?.parts?.filter(part => !part.thought)?.map(part => part.text)?.join('\n\n');
+            const responseText = getGenerateContentText(hops);
+            // SillyBunny: these finishes mean the model stopped before it finished the reply, and the client must know that.
+            const isCutOff = ['MAX_TOKENS', 'CONTINUATION'].includes(candidates[0].finishReason);
             if (!responseText && !functionCall && !inlineData) {
-                let message = `${apiName} Candidate text empty`;
+                let message = isCutOff ? 'Gemini spent its output limit on thinking and wrote no reply. Try a lower Reasoning Effort or a higher Max Response Length.' : `${apiName} Candidate text empty`;
                 console.warn(message, generateResponseJson);
                 return response.send({ error: { message } });
             }
 
             // Wrap it back to OAI format (responseContent includes thought signatures in parts array)
-            const reply = { choices: [{ 'message': { 'content': responseText } }], responseContent };
+            const reply = { choices: [{ 'message': { 'content': responseText }, 'finish_reason': isCutOff ? 'length' : undefined }], responseContent };
             return response.send(reply);
         }
     } catch (error) {
@@ -3020,6 +3049,9 @@ function convertMessagesToInteractionSteps(messages, useSystemPrompt, names) {
     };
 }
 
+// SillyBunny: these statuses mean the model stopped before it finished the reply, so the client receives them as a length finish.
+const INTERACTION_CUT_OFF_STATUSES = ['requires_continuation', 'incomplete'];
+
 /**
  * Transforms an Interactions API resource into a Chat Completions response.
  * @param {object} data Interactions API resource
@@ -3074,10 +3106,11 @@ function transformInteractionToChatCompletion(data) {
         message.tool_calls = toolCalls;
     }
 
+    const statusFinishReason = INTERACTION_CUT_OFF_STATUSES.includes(data?.status) ? 'length' : (data?.status === 'completed' ? 'stop' : (data?.status || 'stop'));
     const choice = {
         index: 0,
         message: message,
-        finish_reason: toolCalls.length > 0 ? 'tool_calls' : (data?.status === 'completed' ? 'stop' : (data?.status || 'stop')),
+        finish_reason: toolCalls.length > 0 ? 'tool_calls' : statusFinishReason,
     };
 
     return {
@@ -3196,6 +3229,7 @@ function forwardInteractionStream(fetchResponse, expressResponse, request, onDis
 
     let buffer = '';
     let done = false;
+    let interactionStatus = null;
     const stopPolling = pollStreamingRequestConnection(request, expressResponse, closeStream);
 
     function closeStream() {
@@ -3223,6 +3257,10 @@ function forwardInteractionStream(fetchResponse, expressResponse, request, onDis
         done = true;
         stopPolling();
         if (!expressResponse.writableEnded) {
+            // SillyBunny: a cut-off interaction ends like a finished one, so this chunk is the only signal the client gets.
+            if (INTERACTION_CUT_OFF_STATUSES.includes(interactionStatus)) {
+                expressResponse.write(`data: ${JSON.stringify({ object: 'chat.completion.chunk', choices: [{ index: 0, delta: {}, finish_reason: 'length' }] })}\n\n`);
+            }
             expressResponse.write('data: [DONE]\n\n');
             expressResponse.end();
         }
@@ -3249,6 +3287,8 @@ function forwardInteractionStream(fetchResponse, expressResponse, request, onDis
             try {
                 const event = JSON.parse(dataStr);
                 const eventType = event?.event_type ?? event?.type;
+                // SillyBunny: the status can arrive on a status update or inside the completed event, and the last one wins.
+                interactionStatus = event?.interaction?.status ?? (eventType === 'interaction.status_update' ? event.status : null) ?? interactionStatus;
                 if (eventType === 'interaction.completed') {
                     finishStream();
                     break;
@@ -3415,15 +3455,22 @@ async function sendGeminiInteractionsRequest(request, response) {
             },
             body: JSON.stringify(requestBody),
             signal: controller.signal,
+            // SillyBunny: long thinking can send no bytes for longer than Bun's default fetch idle timeout, and 0 turns that timeout off.
+            timeout: 0,
         };
 
         logVerboseGenerationRequest('Google Interactions API', request, requestBody);
 
         const generateResponse = await fetch(endpointUrl, config);
+        // SillyBunny: Gemini 4 can split one reply across requests, so gemini-long-decode.js asks for the rest and joins it.
+        const sendHop = (continuation_token) => {
+            getResumableGeneration(request)?.extendLifetime();
+            return fetch(endpointUrl, { ...config, body: JSON.stringify({ ...requestBody, continuation_token }) });
+        };
 
         if (request.body.stream) {
             console.info('Streaming Interactions API request in progress');
-            return forwardInteractionStream(generateResponse, response, request, () => controller.abort());
+            return forwardInteractionStream(continueInteractionStream(generateResponse, sendHop, controller.signal), response, request, () => controller.abort());
         }
 
         if (!generateResponse.ok) {
@@ -3434,7 +3481,7 @@ async function sendGeminiInteractionsRequest(request, response) {
         }
 
         /** @type {any} */
-        const generateResponseJson = await generateResponse.json();
+        const generateResponseJson = mergeInteractionHops(await collectInteractionHops(await generateResponse.json(), sendHop, controller.signal));
         console.debug('Google Interactions API response:', summarizeLlmPayloadForLog(generateResponseJson));
         return response.send(transformInteractionToChatCompletion(generateResponseJson));
     } catch (error) {

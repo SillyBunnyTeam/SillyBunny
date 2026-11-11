@@ -27,6 +27,7 @@ import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
 import { createEntityDateAdded, ensureEntityDateAdded, prepareEntityDateAddedMove, reconcileEntityDateAdded, removeEntityDateAdded } from '../entity-date-added.js';
 import { getEntityLastChat, prepareEntityLastChatMove, readEntityLastChats, removeEntityLastChat, setEntityLastChat } from '../entity-last-chat.js';
+import { isImageFile } from '../image-file-type.js';
 import {
     clearChatRecoveryState,
     createCharacterChatTarget,
@@ -71,6 +72,21 @@ const getEntityDateAddedRoot = directories => directories.root || path.dirname(d
 const getCharacterDateAddedFallback = stat => [stat.ctimeMs, stat.birthtimeMs, stat.mtimeMs]
     .find(timestamp => Number.isFinite(timestamp) && timestamp > 0) ?? Date.now();
 const isPngBuffer = buffer => buffer.length >= PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+// SillyBunny: archive imports store a file under the extension it has in the archive, and the server serves it by that extension.
+/**
+ * Checks that a file from an archive is an image of the type that its extension names, and logs a file that is not.
+ * @param {string} extension File extension with its dot
+ * @param {Buffer|undefined} buffer File content
+ * @param {string} name File name to log
+ * @returns {boolean} True if the file is an image of that type
+ */
+function isArchiveImage(extension, buffer, name) {
+    if (isImageFile(extension, buffer)) {
+        return true;
+    }
+    console.warn(`Skipped ${name} from the archive, because it is not an image of the type that its extension names.`);
+    return false;
+}
 const isSameFile = (firstPath, secondPath) => {
     if (path.resolve(firstPath) === path.resolve(secondPath)) {
         return true;
@@ -274,6 +290,10 @@ async function readCharacterData(inputFile, inputFormat = 'png') {
 async function writeCharacterData(inputFile, data, outputFile, request, crop = undefined, { preserveDateAdded = false, preserveFileIdentity = false } = {}) {
     try {
         const outputImageName = getPngFileName(outputFile);
+        // SillyBunny: callers can pass names that come from imported card data, so write only a PNG file directly inside the characters folder.
+        if (!resolveCharacterAvatarPath(request.user.directories.characters, outputImageName)) {
+            throw new Error(`Invalid character file name: ${outputImageName}`);
+        }
         const outputImagePath = path.join(request.user.directories.characters, outputImageName);
         const fileExists = fs.existsSync(outputImagePath);
         let expectedFileIdentity;
@@ -981,6 +1001,20 @@ async function importFromYaml(uploadPath, context, preservedFileName) {
     return result ? fileName : '';
 }
 
+// SillyBunny: a card name that sanitizes to nothing would make the characters folder itself the asset folder of an archive card.
+/**
+ * Gets the name of the folder that keeps the assets of an archive card.
+ * @param {string} name Card name
+ * @param {string} fileName Card file name without its extension
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @returns {string|null} The sanitized card name, else the file name, or null if that does not name a folder directly inside the characters and user images folders
+ */
+function getCardAssetFolder(name, fileName, directories) {
+    const folder = sanitize(name) || fileName;
+    const isChildFolder = directory => path.dirname(path.resolve(directory, folder)) === path.resolve(directory);
+    return isChildFolder(directories.characters) && isChildFolder(directories.userImages) ? folder : null;
+}
+
 /**
  * Imports a character card from CharX (ZIP) file.
  * @param {string} uploadPath
@@ -1007,17 +1041,23 @@ async function importFromCharX(uploadPath, { request }, preservedFileName) {
     const fileName = preservedFileName || getPngName(processedCard.name, request.user.directories);
     // Use the actual character name for asset folders, not the unique filename
     // ST's sprite system looks up by character name, not PNG filename
-    const characterFolder = processedCard.name;
+    // SillyBunny: a name that sanitizes to nothing would make the characters folder itself the asset folder, so the file name names the folder then.
+    const characterFolder = getCardAssetFolder(processedCard.name, fileName, request.user.directories);
+    // SillyBunny: assets keep their archive extension, which decides how the server serves them, so store only images of that type.
+    const imageAssets = auxiliaryAssets.filter(asset => isArchiveImage(`.${asset.ext}`, extractedBuffers.get(asset.zipPath), asset.zipPath));
 
-    if (auxiliaryAssets.length > 0) {
+    if (imageAssets.length > 0 && characterFolder) {
         try {
-            const summary = persistCharXAssets(auxiliaryAssets, extractedBuffers, request.user.directories, characterFolder);
+            const summary = persistCharXAssets(imageAssets, extractedBuffers, request.user.directories, characterFolder);
             if (summary.sprites || summary.backgrounds || summary.misc) {
                 console.log(`CharX: Imported ${summary.sprites} sprite(s), ${summary.backgrounds} background(s), ${summary.misc} misc asset(s) for ${characterFolder}`);
             }
         } catch (error) {
             console.warn(`CharX: Failed to persist auxiliary assets for ${characterFolder}`, error);
         }
+    } else if (imageAssets.length > 0) {
+        // SillyBunny: neither the card name nor the file name names a folder of its own, so the assets have nowhere to go.
+        console.warn('CharX: Skipped the auxiliary assets, because neither the card name nor its file name can name an asset folder');
     }
 
     const result = await writeCharacterData(avatar, JSON.stringify(processedCard), fileName, request);
@@ -1049,6 +1089,8 @@ async function importFromByaf(uploadPath, { request }, preservedFileName) {
         };
 
         // Upload backgrounds
+        // SillyBunny: backgrounds keep their archive extension, which decides how the server serves them, so drop those that are not images of that type before the chats refer to them.
+        byafData.chatBackgrounds = byafData.chatBackgrounds.filter(bg => isArchiveImage(path.extname(bg.paths?.[0]) || '.png', bg.data, bg.paths?.[0]));
         for (const bg of byafData.chatBackgrounds) {
             const extension = path.extname(bg.paths?.[0]) || '.png';
             const baseName = `${path.basename(fileName)}_bg`;
@@ -1077,11 +1119,13 @@ async function importFromByaf(uploadPath, { request }, preservedFileName) {
         }
 
         // Save alternate icons for the character.
-        for (const icon of byafData.images.slice(1)) {
+        // SillyBunny: icons keep their archive extension, which decides how the server serves them, so skip those that are not images of that type.
+        for (const icon of byafData.images.slice(1).filter(icon => isArchiveImage(path.extname(icon.filename) || '.png', icon.image, icon.filename))) {
             // BYAF does not support character expressions, so using the same structure will not result in conflicts,
             // even if the expression system did not tolerate additional icons that are not mapped to expressions.
             // This will not yet allow changing icons within the UI but at least the icons will be available for manual selection, rather than being lost.
-            const altImagesFolder = path.join(request.user.directories.characters, sanitize(card.name));
+            // SillyBunny: a card name that sanitizes to nothing would put the icons directly in the characters folder, so the file name names the folder then.
+            const altImagesFolder = path.join(request.user.directories.characters, getCardAssetFolder(card.name, fileName, request.user.directories));
             if (!fs.existsSync(altImagesFolder)) fs.mkdirSync(altImagesFolder, { recursive: true });
             const extension = path.extname(icon.filename) || '.png';
             const file = getUniqueName(`${sanitize(icon.label, { replacement: sanitizeSafeCharacterReplacements }) || 'alt'}`, (name) => fs.existsSync(path.join(altImagesFolder, `${name}${extension}`)));
@@ -1114,9 +1158,13 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
         console.info(`Importing from ${jsonData.spec} json`);
         importRisuSprites(request.user.directories, jsonData);
         unsetPrivateFields(jsonData);
+        if (jsonData.data?.name) {
+            jsonData.data.name = sanitize(jsonData.data.name);
+        }
+        jsonData.name = sanitize(jsonData.data?.name || jsonData.name);
         jsonData = readFromV2(jsonData);
         jsonData.create_date = new Date().toISOString();
-        const pngName = preservedFileName || getPngName(jsonData.data?.name || jsonData.name, request.user.directories);
+        const pngName = preservedFileName || getPngName(jsonData.name, request.user.directories);
         const char = JSON.stringify(jsonData);
         const result = await writeCharacterData(DEFAULT_AVATAR_PATH, char, pngName, request);
         return result ? pngName : '';
@@ -1242,6 +1290,11 @@ router.post('/create', getFileNameValidationFunction('file_name'), async functio
     try {
         if (!request.body) return response.sendStatus(400);
 
+        // SillyBunny: the file name also names the card's chats folder, so a name that sanitizes to nothing, such as `.` or `..`, would make that folder the chats folder or a folder above it.
+        if (request.body.file_name && !sanitize(String(request.body.file_name))) {
+            return response.sendStatus(400);
+        }
+
         request.body.ch_name = sanitize(request.body.ch_name);
 
         const char = JSON.stringify(charaFormatData(request.body, request.user.directories));
@@ -1275,6 +1328,11 @@ router.post('/create', getFileNameValidationFunction('file_name'), async functio
 
 router.post('/rename', validateAvatarUrlMiddleware, async function (request, response) {
     if (!request.body.avatar_url || !request.body.new_name) {
+        return response.sendStatus(400);
+    }
+
+    // SillyBunny: sanitize() and path.parse() throw on a value that is not a string, and they run outside the try, so the error would leave the route.
+    if (typeof request.body.avatar_url !== 'string' || typeof request.body.new_name !== 'string') {
         return response.sendStatus(400);
     }
 
@@ -1384,6 +1442,11 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
         return;
     }
 
+    // SillyBunny: path.join() throws on a value that is not a string, and it runs outside the try, so the error would leave the route.
+    if (typeof request.body.avatar_url !== 'string' || !request.body.avatar_url) {
+        return response.sendStatus(400);
+    }
+
     const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
 
     if (request.body[CHARACTER_EMPTY_DEFINITION_SAVE_OVERRIDE] !== 'true') {
@@ -1408,10 +1471,18 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
         }
     }
 
-    let char = charaFormatData(request.body, request.user.directories);
-    char.chat = request.body.chat;
-    char.create_date = request.body.create_date;
-    char = JSON.stringify(char);
+    // SillyBunny: formatting throws for a json_data that parses to a primitive and for a field that cannot become a string,
+    // so a body that cannot be formatted gets 400 instead of an error that leaves the route.
+    let char;
+    try {
+        char = charaFormatData(request.body, request.user.directories);
+        char.chat = request.body.chat;
+        char.create_date = request.body.create_date;
+        char = JSON.stringify(char);
+    } catch (error) {
+        console.warn('Error: the character data could not be formatted.', error);
+        return response.sendStatus(400);
+    }
     const targetFile = request.body.avatar_url;
 
     try {
@@ -1641,6 +1712,11 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         return response.sendStatus(400);
     }
 
+    // SillyBunny: `delete_chats == true` converts an object to a primitive, which throws for some objects, and it runs outside a try, so the error would leave the route.
+    if (typeof request.body.delete_chats === 'object' && request.body.delete_chats !== null) {
+        return response.sendStatus(400);
+    }
+
     const avatarPath = resolveCharacterAvatarPath(request.user.directories.characters, avatar);
     if (!avatarPath) {
         console.error('Malicious filename prevented');
@@ -1724,7 +1800,12 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
     } catch (metadataError) {
         console.error('Could not remove last-chat metadata after character deletion.', metadataError);
     }
-    invalidateThumbnail(request.user.directories, 'avatar', avatar);
+    // SillyBunny: the card is already deleted, so a thumbnail that cannot be removed is logged like the metadata above, and the request still succeeds.
+    try {
+        invalidateThumbnail(request.user.directories, 'avatar', avatar);
+    } catch (thumbnailError) {
+        console.error('Could not remove the thumbnail after character deletion.', thumbnailError);
+    }
 
     return response.sendStatus(200);
 });
@@ -1933,8 +2014,12 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
  * @returns {string} - The name for the uploaded PNG file
  */
 function getPngName(file, directories) {
-    // SillyBunny: Windows forbids <>:"/\|?* in file names, so sanitise imports there. POSIX keeps pipes.
-    file = sanitiseFilenameForWindows(file);
+    // SillyBunny: sanitise on every platform, so that a caller that skips sanitising still gets a single file name.
+    file = sanitize(file, { replacement: sanitizeSafeCharacterReplacements }) || 'character';
+    // SillyBunny: a name that ends in .png is written without a second extension, so drop it before the existence check.
+    while (path.extname(file).toLowerCase() === '.png') {
+        file = file.slice(0, -'.png'.length);
+    }
     let i = 1;
     const baseName = file;
     while (fs.existsSync(path.join(directories.characters, `${file}.png`))) {
@@ -1965,7 +2050,13 @@ router.post('/import', async function (request, response) {
     const preservedFileName = getPreservedName(request);
 
     if (preservedFileName) {
-        recoverFileWriteSync(path.join(request.user.directories.characters, `${preservedFileName}.png`));
+        // SillyBunny: recovery throws when the card's write-recovery record is damaged, and it runs before the import's try, so the error would leave the route.
+        try {
+            recoverFileWriteSync(path.join(request.user.directories.characters, `${preservedFileName}.png`));
+        } catch (error) {
+            console.error('Could not recover character before import.', error);
+            return response.sendStatus(500);
+        }
     }
 
     const formatImportFunctions = {
@@ -1978,7 +2069,8 @@ router.post('/import', async function (request, response) {
     };
 
     try {
-        const importFunction = formatImportFunctions[format];
+        // SillyBunny: look the format up among the listed formats only, never among the members that every object inherits.
+        const importFunction = Object.hasOwn(formatImportFunctions, format) ? formatImportFunctions[format] : undefined;
 
         if (!importFunction) {
             throw new Error(`Unsupported format: ${format}`);

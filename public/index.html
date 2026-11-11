@@ -3071,6 +3071,8 @@
                                         <!-- SillyBunny: static provider catalogs track current IDs; API-discovered models remain available through dynamic groups. -->
                                         <optgroup label="GPT-6">
                                             <option value="gpt-6-astra">gpt-6-astra</option>
+                                            <option value="gpt-6-sol">gpt-6-sol</option>
+                                            <option value="gpt-6-luna">gpt-6-luna</option>
                                         </optgroup>
                                         <optgroup label="GPT-5.6">
                                             <option value="gpt-5.6">gpt-5.6</option>
@@ -3102,12 +3104,12 @@
                                         <optgroup label="GPT-5.1">
                                             <option value="gpt-5.1">gpt-5.1</option>
                                             <option value="gpt-5.1-2025-11-13">gpt-5.1-2025-11-13</option>
-                                            <option value="gpt-5.1-chat-latest">gpt-5.1-chat-latest</option>
+                                            <option value="gpt-5.1-chat-latest">gpt-5.1-chat-latest (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="GPT-5">
                                             <option value="gpt-5">gpt-5</option>
                                             <option value="gpt-5-2025-08-07">gpt-5-2025-08-07 (deprecated)</option>
-                                            <option value="gpt-5-chat-latest">gpt-5-chat-latest</option>
+                                            <option value="gpt-5-chat-latest">gpt-5-chat-latest (deprecated)</option>
                                             <option value="gpt-5-mini">gpt-5-mini</option>
                                             <option value="gpt-5-mini-2025-08-07">gpt-5-mini-2025-08-07 (deprecated)</option>
                                             <option value="gpt-5-nano">gpt-5-nano</option>
@@ -3158,8 +3160,8 @@
                                             <option value="gpt-3.5-turbo-instruct">gpt-3.5-turbo-instruct (deprecated)</option>
                                         </optgroup>
                                         <optgroup label="Other">
-                                            <option value="babbage-002">babbage-002</option>
-                                            <option value="davinci-002">davinci-002</option>
+                                            <option value="babbage-002">babbage-002 (deprecated)</option>
+                                            <option value="davinci-002">davinci-002 (deprecated)</option>
                                         </optgroup>
                                         <optgroup id="openai_external_category" label="External">
                                         </optgroup>
@@ -3201,6 +3203,7 @@
                                 <h4 data-i18n="Available Models">Available Models</h4>
                                 <select id="model_claude_select">
                                     <optgroup label="Versions">
+                                        <option value="claude-opus-5-5">claude-opus-5-5</option>
                                         <option value="claude-opus-5">claude-opus-5</option>
                                         <option value="claude-sonnet-5">claude-sonnet-5</option>
                                         <option value="claude-fable-5-1">claude-fable-5-1</option><!-- SillyBunny: claude-fable-5.1 support -->
@@ -3354,20 +3357,24 @@
                                 </div>
                                 <h4 data-i18n="Available Models">Available Models</h4>
                                 <select id="model_google_select">
-                                    <optgroup label="Gemini 3.7">
-                                        <option value="gemini-3.7-flash">gemini-3.7-flash</option>
+                                    <!-- SillyBunny: track the current AI Studio catalog, which routes gemini-3.7-flash and gemini-3.5-flash to gemini-3.8-flash and gemini-3.6-flash. -->
+                                    <optgroup label="Gemini 4">
+                                        <option value="gemini-4-argon">gemini-4-argon</option>
+                                    </optgroup>
+                                    <optgroup label="Gemini 3.8">
+                                        <option value="gemini-3.8-flash">gemini-3.8-flash</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.6">
                                         <option value="gemini-3.6-flash">gemini-3.6-flash</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.5">
-                                        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
                                         <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.1">
                                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
-                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
-                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
+                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (deprecated)</option>
+                                        <option value="gemini-3.1-flash-lite-image">gemini-3.1-flash-lite-image</option>
+                                        <option value="gemini-3.1-flash-image">gemini-3.1-flash-image (deprecated)</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.0">
                                         <option value="gemini-3-pro-image">gemini-3-pro-image</option>
@@ -3377,7 +3384,10 @@
                                         <option value="gemini-2.5-pro">gemini-2.5-pro</option>
                                         <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                                         <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image (deprecated)</option>
+                                    </optgroup>
+                                    <optgroup label="Nano Banana">
+                                        <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                                     </optgroup>
                                     <!-- SillyBunny: Gemma 4 remains available after the older Gemini API Gemma catalog retired. -->
                                     <optgroup label="Gemma 4">
@@ -3511,11 +3521,18 @@
                                 <h4 data-i18n="Available Models">Available Models</h4>
                                 <select id="model_vertexai_select">
                                     <!-- data-mode="full" is for models that require a service account -->
+                                    <!-- SillyBunny: track the current Vertex AI catalog. "(deprecated)" marks a model with an announced retirement date. -->
+                                    <optgroup label="Gemini 4">
+                                        <option value="gemini-4-argon">gemini-4-argon</option>
+                                    </optgroup>
+                                    <optgroup label="Gemini 3.8">
+                                        <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                                    </optgroup>
                                     <optgroup label="Gemini 3.7">
-                                        <option value="gemini-3.7-flash">gemini-3.7-flash</option>
+                                        <option value="gemini-3.7-flash">gemini-3.7-flash (deprecated)</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.6">
-                                        <option value="gemini-3.6-flash">gemini-3.6-flash</option>
+                                        <option value="gemini-3.6-flash">gemini-3.6-flash (deprecated)</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.5">
                                         <option value="gemini-3.5-flash">gemini-3.5-flash</option>
@@ -3524,6 +3541,7 @@
                                     <optgroup label="Gemini 3.1">
                                         <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                                         <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+                                        <option value="gemini-3.1-flash-lite-image">gemini-3.1-flash-lite-image</option>
                                         <option value="gemini-3.1-flash-image">gemini-3.1-flash-image</option>
                                     </optgroup>
                                     <optgroup label="Gemini 3.0">
@@ -3531,10 +3549,10 @@
                                         <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
                                     </optgroup>
                                     <optgroup label="Gemini 2.5">
-                                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                                        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+                                        <option value="gemini-2.5-flash-image">gemini-2.5-flash-image (deprecated)</option>
+                                    </optgroup>
+                                    <optgroup label="Nano Banana">
+                                        <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                                     </optgroup>
                                     <optgroup id="vertexai_other_models" label="From API"></optgroup>
                                 </select>
@@ -4217,7 +4235,7 @@
                             <div class="api_loading menu_button menu_button_icon" data-i18n="Cancel">Cancel</div>
                             <div data-source="custom,koboldcpp" id="customize_additional_parameters" class="menu_button menu_button_icon" data-i18n="Additional Parameters">Additional Parameters</div>
                             <div data-source="openrouter" class="menu_button menu_button_icon openrouter_authorize" title="Get your OpenRouter API token using OAuth flow. You will be redirected to openrouter.ai" data-i18n="Authorize;[title]Get your OpenRouter API token using OAuth flow. You will be redirected to openrouter.ai">Authorize</div>
-                            <div id="test_api_button" class="menu_button menu_button_icon" title="Verifies your API connection by sending a short test message. Be aware that you'll be credited for it!" data-i18n="Test Message;[title]Verifies your API connection by sending a short test message. Be aware that you'll be credited for it!">Test Message</div>
+                            <div id="test_api_button" class="menu_button menu_button_icon" title="Verifies your API connection by sending a short test message. This may incur usage charges." data-i18n="Test Message;[title]Verifies your API connection by sending a short test message. This may incur usage charges.">Test Message</div>
                         </div>
                         <div class="online_status">
                             <div class="online_status_indicator"></div>

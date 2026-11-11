@@ -113,6 +113,21 @@ describe('OpenAI token cache priming', () => {
         expect(globalThis.jQuery.ajax.mock.calls[0][0].url).toContain('model=gpt-6-astra');
     });
 
+    test.each([
+        ['gpt-6-sol', 'openai'],
+        ['gpt-6-sol', 'openai_responses'],
+        ['gpt-6-luna', 'openai'],
+        ['gpt-6-luna', 'openai_responses'],
+    ])('uses the selected %s model for %s token counts', async (model, source) => {
+        mockOaiSettings.chat_completion_source = source;
+        mockOaiSettings.openai_model = model;
+        globalThis.jQuery.ajax.mockResolvedValue({ token_counts: [7] });
+
+        expect(getTokenizerModel()).toBe(model);
+        await primeOpenAITokenCache(makeMessages(1, `${model} ${source}`));
+        expect(globalThis.jQuery.ajax.mock.calls[0][0].url).toContain(`model=${model}`);
+    });
+
     test('counts a whole batch of messages in a single request', async () => {
         const messages = makeMessages(25, 'batch');
         globalThis.jQuery.ajax.mockResolvedValue({ token_counts: messages.map(() => 7) });

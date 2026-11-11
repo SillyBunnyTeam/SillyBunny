@@ -1013,11 +1013,13 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
                 if (isMessageLine) {
                     jsonData = tryParse(line);
                     if (jsonData) {
-                        messageCharacters += String(jsonData.mes ?? '').length;
+                        // SillyBunny: nothing catches a throw in this event, and converting some objects to a string throws, so only string text counts.
+                        const messageText = typeof jsonData.mes === 'string' ? jsonData.mes : '';
+                        messageCharacters += messageText.length;
 
                         // Skip matching if any match was already found
                         if (hasMatcher && !hasAnyMatch) {
-                            matchBuffer.push(jsonData.mes || '');
+                            matchBuffer.push(messageText);
                             if (matcher(matchBuffer)) {
                                 hasAnyMatch = true;
                                 matchBuffer = [];
@@ -1095,6 +1097,22 @@ export async function getListableGroupChatInfo(chatFilePath, id) {
         file_id: String(normalizedChatInfo.file_id ?? '').trim() || fallbackFileId,
         file_name: fallbackFileName,
     };
+}
+
+// SillyBunny: group files keep chat IDs as clients send them, so a joined chat path must stay inside the group chats folder.
+/**
+ * Joins a chat ID from a group's chat list into the path of its chat file.
+ * @param {string} groupChatsDirectory Group chats folder
+ * @param {unknown} chatId Chat ID from a group's chat list
+ * @returns {string|null} Path of the chat file, or null when the ID names no file inside the group chats folder
+ */
+export function getGroupChatPath(groupChatsDirectory, chatId) {
+    if (typeof chatId !== 'string' && typeof chatId !== 'number') {
+        return null;
+    }
+
+    const chatFilePath = path.join(groupChatsDirectory, `${chatId}.jsonl`);
+    return isPathUnderParent(groupChatsDirectory, chatFilePath) ? chatFilePath : null;
 }
 
 export const router = express.Router();
@@ -1703,25 +1721,31 @@ router.post('/delete', validateAvatarUrlMiddleware, function (request, response)
 });
 
 router.post('/export', validateAvatarUrlMiddleware, async function (request, response) {
-    if (!request.body.file || (!request.body.avatar_url && request.body.is_group === false)) {
-        return response.sendStatus(400);
-    }
-    const pathToFolder = request.body.is_group
-        ? request.user.directories.groupChats
-        : path.join(request.user.directories.chats, String(request.body.avatar_url).replace('.png', ''));
-    const filename = path.join(pathToFolder, sanitize(request.body.file));
-    if (!request.body.is_group && !isPathUnderParent(request.user.directories.chats, filename)) {
-        return response.sendStatus(400);
-    }
-    let exportfilename = request.body.exportfilename;
-    if (!fs.existsSync(filename)) {
-        const errorMessage = {
-            message: `Could not find JSONL file to export. Source chat file: ${filename}.`,
-        };
-        console.error(errorMessage.message);
-        return response.status(404).json(errorMessage);
-    }
+    // SillyBunny: Express does not catch an error that leaves an async route, so the whole handler runs inside this try block.
     try {
+        if (typeof request.body.file !== 'string' || (!request.body.avatar_url && request.body.is_group === false)) {
+            return response.sendStatus(400);
+        }
+        // SillyBunny: a name that sanitizes to an empty string names the chat folder itself.
+        const chatFileName = sanitize(request.body.file);
+        if (!chatFileName) {
+            return response.sendStatus(400);
+        }
+        const pathToFolder = request.body.is_group
+            ? request.user.directories.groupChats
+            : path.join(request.user.directories.chats, String(request.body.avatar_url).replace('.png', ''));
+        const filename = path.join(pathToFolder, chatFileName);
+        if (!request.body.is_group && !isPathUnderParent(request.user.directories.chats, filename)) {
+            return response.sendStatus(400);
+        }
+        let exportfilename = request.body.exportfilename;
+        if (!fs.existsSync(filename)) {
+            const errorMessage = {
+                message: `Could not find JSONL file to export. Source chat file: ${filename}.`,
+            };
+            console.error(errorMessage.message);
+            return response.status(404).json(errorMessage);
+        }
         // Short path for JSONL files
         if (request.body.format === 'jsonl') {
             try {
@@ -1747,27 +1771,42 @@ router.post('/export', validateAvatarUrlMiddleware, async function (request, res
         const rl = readline.createInterface({
             input: readStream,
         });
-        let buffer = '';
-        rl.on('line', (line) => {
-            const data = JSON.parse(line);
-            // Skip non-printable/prompt-hidden messages
-            if (data.is_system) {
-                return;
-            }
-            if (data.mes) {
-                const name = data.name;
-                const message = (data?.extra?.display_text || data?.mes || '').replace(/\r?\n/g, '\n');
-                buffer += (`${name}: ${message}\n\n`);
-            }
+        // SillyBunny: a throw in a stream event escapes this try block, so the stream settles a promise and a line that is not a chat message is skipped.
+        const buffer = await new Promise((resolve, reject) => {
+            let text = '';
+            let skippedLines = 0;
+            // readline re-emits input stream errors; without a listener the emit throws
+            readStream.once('error', reject);
+            rl.once('error', reject);
+            rl.on('line', (line) => {
+                try {
+                    const data = JSON.parse(line);
+                    // Skip non-printable/prompt-hidden messages
+                    if (data.is_system) {
+                        return;
+                    }
+                    if (data.mes) {
+                        const name = data.name;
+                        const message = (data?.extra?.display_text || data?.mes || '').replace(/\r?\n/g, '\n');
+                        text += (`${name}: ${message}\n\n`);
+                    }
+                } catch {
+                    skippedLines++;
+                }
+            });
+            rl.on('close', () => {
+                if (skippedLines > 0) {
+                    console.warn(`Skipped ${skippedLines} lines that are not chat messages while exporting ${filename}.`);
+                }
+                resolve(text);
+            });
         });
-        rl.on('close', () => {
-            const successMessage = {
-                message: `Chat saved to ${exportfilename}`,
-                result: buffer,
-            };
-            console.info(`Chat exported as ${exportfilename}`);
-            return response.status(200).json(successMessage);
-        });
+        const successMessage = {
+            message: `Chat saved to ${exportfilename}`,
+            result: buffer,
+        };
+        console.info(`Chat exported as ${exportfilename}`);
+        return response.status(200).json(successMessage);
     } catch (err) {
         console.error('chat export failed.', err);
         return response.sendStatus(400);
@@ -2061,9 +2100,10 @@ router.post('/search', validateAvatarUrlMiddleware, async function (request, res
 
             // Find group chat files for given group ID
             const groupChatsDir = path.join(request.user.directories.groupChats);
+            // SillyBunny: skip a chat ID that names no file inside the group chats folder, so that one stored ID cannot fail the search.
             chatFiles = targetGroup.chats
-                .map(chatId => path.join(groupChatsDir, `${chatId}.jsonl`))
-                .filter(fileName => fs.existsSync(fileName));
+                .map(chatId => getGroupChatPath(groupChatsDir, chatId))
+                .filter(fileName => fileName && fs.existsSync(fileName));
         } else {
             // Regular character chat directory
             const character_name = avatar_url.replace('.png', '');
@@ -2180,8 +2220,9 @@ router.post('/recent', async function (request, response) {
 
                     if (Array.isArray(groupData.chats)) {
                         for (const chat of groupData.chats) {
-                            const filePath = path.join(request.user.directories.groupChats, `${chat}.jsonl`);
-                            if (!fs.existsSync(filePath)) {
+                            // SillyBunny: group files keep chat IDs as clients send them, so skip an ID that names no file inside the group chats folder.
+                            const filePath = getGroupChatPath(request.user.directories.groupChats, chat);
+                            if (!filePath || !fs.existsSync(filePath)) {
                                 continue;
                             }
                             const stats = await fs.promises.stat(filePath);
