@@ -640,12 +640,12 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Extension maintainer. |
 
-### `public/scripts/extensions/quick-image-gen/index.js` - Conversation selfie readiness guard (fork seam reference)
+### `public/scripts/extensions/quick-image-gen/index.js` - Conversation selfie readiness guard (fork seam reference) and unconfirmed sync id claim
 | Field | Value |
 | --- | --- |
 | File | `public/scripts/extensions/quick-image-gen/index.js`. |
 | Area | Extension boot, image-generation integration, and the settings sync cache id. |
-| Divergence reason | SillyBunny Conversation selfie actions can fire before Quick Image Gen finishes booting, so the fork needs a small readiness gate rather than duplicating QIG init state in Conversation modules. |
+| Divergence reason | SillyBunny Conversation selfie actions can fire before Quick Image Gen finishes booting, so the fork needs a small readiness gate rather than duplicating QIG init state in Conversation modules. It also keeps an unconfirmed claim on a new sync id for the server user who wrote it, so that its own browser caches do not look like legacy data, and ask to be imported, on every boot while the host skips settings saves, for example until the user answers the Welcome prompt. |
 | Target seam | `public/scripts/sillybunny-conversation/media.js` for the readiness guard; none yet for the unconfirmed sync id claim. |
 | Adapter shape | Keep the readiness guard limited to exporting `ensureQuickImageGenReady()`; keep Conversation modules responsible for when to await it. The unconfirmed sync id claim stays inside QIG. `UNCONFIRMED_SYNC_CACHE_ID_KEY` (`qig_sync_cache_id_unconfirmed` in `localStorage`) holds `{ id, user }`. `initializeQuickImageGen()` imports `getCurrentUserHandle()` from `public/scripts/user.js` before `loadSettings()`. `loadSettings()` reuses the claimed id as `_syncCacheId` only when the server has no `_syncCacheId`, `qig_sync_cache_id` is empty and the claim's user is the current user; it then skips the legacy-import question and may seed from this browser's caches. Otherwise it removes the claim. When the server has no `_syncCacheId`, it writes the claim before its cache writes, unless the legacy import was declined or local cache writes are blocked. `removeUnconfirmedClaimWhenSaved()` removes the claim after a host `SETTINGS_UPDATED` event once `confirmSyncCacheIdSaved()` confirms that the server stored the id. Each block carries a `SillyBunny divergence:` marker. |
 | Protecting tests | `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-image-safety.test.js`, `tests/quick-image-gen-legacy-import.test.js`. |
@@ -993,14 +993,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `src/util.js`, `src/plugin-loader.js`, `src/endpoints/extensions.js`, `src/git/client.js`. |
 | Area | Git integration for version info, server plugin updates, extensions and the git backend client in the Android app. |
-| Divergence reason | TODO(copy) |
+| Divergence reason | The Android app gives git its paths, CA bundle and identity only through `GIT_*` environment variables, and simple-git 4 removes every inherited `GIT_*` variable that `allowEnvironment` does not name. Without them, git in the app cannot find its helpers or verify https, and commits and stashes have no identity, so Server Tools, extension and server plugin updates fail. |
 | Target seam | `getAndroidAppGitOptions()` in `src/android-app-gate.js`. |
 | Adapter shape | Each file imports `getAndroidAppGitOptions()` and passes its result to simple-git: spread into the options of `simpleGit()` in `getVersion()` in `src/util.js` and into `OPTIONS` in `src/endpoints/extensions.js`, as the second argument of `git()` in `updatePlugins()` in `src/plugin-loader.js`, and as the argument of `simpleGit()` in the `SimpleGitClient` constructor in `src/git/client.js`. Outside the Android app it returns an empty object, so these calls keep simple-git's environment guard as upstream does. |
 | Protecting tests | `tests/android-app-git-environment.test.js` checks the `allowEnvironment` option at each simple-git call site in these files and in `src/endpoints/server-admin.js`, in and outside app mode. `tests/android-app-gate.test.js` checks with the real simple-git and git that the inherited git variables reach git only in app mode. |
 | Validation | `npm run test:unit --prefix tests -- android-app-gate.test.js android-app-git-environment.test.js plugin-loader.test.js extensions-discover.test.js extensions-bundled-third-party.test.js server-admin-android-gate.test.js util.test.js`, `npx eslint` on the changed files. Not run in the Android app. |
 | Rollback path | Remove the `getAndroidAppGitOptions` import and its use in each file: `simpleGit({ baseDir: serverDirectory })` in `src/util.js`, `git(pluginPath)` in `src/plugin-loader.js`, `Object.freeze({ timeout: { block: 5 * 60 * 1000 } })` in `src/endpoints/extensions.js` and `simpleGit()` in `src/git/client.js`. In the Android app, git then loses its exec path, CA bundle and identity again, so its fetches, clones and pulls over https fail there. No saved data changes. |
 | Last reviewed | 2026-11-11 PR #918 Android APK. |
-| Owner | TODO(copy) |
+| Owner | Runtime and release integrator. |
 
 ### Upstream test harness and dependency metadata
 | Field | Value |
