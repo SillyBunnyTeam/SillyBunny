@@ -622,10 +622,10 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Divergence reason | SillyBunny must keep parsed character cards in a SQLite index in place of upstream's node-persist disk cache. An entry counts only while its card file keeps the stored size and modification time, so card files stay the source of truth and the index can be deleted at any time. |
 | Target seam | `src/character-index.js`. |
 | Adapter shape | `characters.js` exports `characterIndex` in place of upstream's `DiskCache` class and `diskCache` export. `readCharacterData()` reads the card's stat once, checks the memory cache and then `characterIndex.get()`, and stores a parsed card with `characterIndex.set()`. `writeCharacterData()` calls `characterIndex.delete()` for the output card where upstream queued a disk cache sync. `POST /all` calls `characterIndex.pruneDirectory()` with its directory listing. `server-main.js` calls `characterIndex.prune()` in the deferred startup tasks and `characterIndex.close()` on exit, where upstream calls `diskCache.verify()` and `diskCache.dispose()`. |
-| Protecting tests | `tests/character-index.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- character-index.test.js`, `bun test ./tests/character-index.test.js`, `npm run lint`, boot with `bun run start` and `npm run start:node`. |
+| Protecting tests | `tests/character-index.test.js`, which also runs under `bun test`. `tests/pr-checks-workflow.test.js` checks that the Bun job in `.github/workflows/pr-checks.yml` runs it. |
+| Validation | `npm run test:unit --prefix tests -- character-index.test.js pr-checks-workflow.test.js`, `bun test ./tests/character-index.test.js`, `npm run lint`, boot with `bun run start` and `npm run start:node`. |
 | Rollback path | Set `performance.useDiskCache: false` to turn the index off, so cards are parsed from their files after each restart. For a full rollback, restore the node-persist `DiskCache` with the stale-entry cleanup from PR #937, its calls in both files, and `tests/character-disk-cache.test.js`. The index never writes card files, so no data migration is needed: `_cache/characters.sqlite` and its `-wal` and `-shm` files can be deleted, and the restored cache fills `_cache/characters` again as it reads cards. After a full rollback, the Node.js minimum can go back to 20, because only `node:sqlite` needs 22.13. |
-| Last reviewed | 2026-10-28 SQLite character index replaces the node-persist disk cache. |
+| Last reviewed | 2026-11-11 PR #938 SQLite character index replaces the node-persist disk cache. |
 | Owner | Server and data compatibility integrator. |
 
 ### `src/endpoints/backends/chat-completions.js` and `src/endpoints/backends/text-completions.js` - Conversation REST generation adapters

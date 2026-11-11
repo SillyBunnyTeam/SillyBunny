@@ -179,6 +179,19 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/character-route-inputs.test.js`. Its harness option `requestTimeoutMs` makes a request that a route never answers fail at a deadline, and Jest fails the running test with the unhandled rejection. `tests/hostile-file-names-characters.test.js` requires 400 from `/api/characters/edit` for an empty `avatar_url`.
 - **Fixes:** `5e6923c81` (request fields), `62068ea31` (file steps).
 
+### Character index
+
+- **Breaks:** the SQLite character index returns text that differs from what `parse()` returned for the card file, or keeps an entry for a file that no longer exists.
+- **Cause:** in the source of Node.js 22.13.0, 22.22.0 and 22.23.4 (`src/node_sqlite.cc`), `node:sqlite` builds a TEXT value without its byte length, so the value ends at the first NUL character. Node.js 24.22.1 and Bun 1.4.4 return the whole text (checked by running them). `readCharacterData()` stores an entry for every file that it reads, including the uploaded PNG that an import deletes right after.
+- **Files:** `src/character-index.js`, `src/endpoints/characters.js`, `src/server-main.js`.
+- **Guards:**
+  - `CharacterIndex.set()` does not store a card whose text has a NUL character, so every runtime reads that card from its file.
+  - `importFromPng()` calls `characterIndex.delete()` for the upload right after `readCharacterData()` reads it. `POST /all` prunes only the user's characters folder, so only the startup `prune()` would remove that entry.
+  - `runSql()` calls `run` on Bun and `exec` on Node.js. The Bun 1.4.4 type file (`packages/bun-types/sqlite.d.ts`) marks `Database.exec` as a deprecated alias of `Database.run`, and the two are the same function in 1.4.4. If a release removed the alias, every call would throw and `#handleError()` would turn the index off with one warning.
+  - The Bun job (`run-bun-checks` in `.github/workflows/pr-checks.yml`) runs `bun test ./tests/character-index.test.js` after its `bun install`.
+- **Tests:** `tests/character-index.test.js` runs under Jest and under `bun test`. Its `under Bun` block runs only under Bun, where it removes `Database.exec` and checks that the index still works. `tests/pr-checks-workflow.test.js` checks the Bun job step.
+- **Fixes:** #938.
+
 ### Security and credentials
 
 - **Breaks:** untrusted card scripts reach remote resources; secrets cross scopes.
@@ -226,6 +239,7 @@ This is the largest class by a wide margin.
   - `pull_request_target` workflows (`pr-auto-manager.yml`, which reads `pr-auto-comments.yml` and `pr-auto-labels-by-branch.yml`) and scheduled workflows (`nightly.yml`) run from `release`, the default branch. Their changes also need an `actions/*` PR into `release`; `pr-metadata.yml` limits those branches to `.github/`, `tests/`, `scripts/bump-version.js` and `scripts/update-changelog-merged-prs.js`.
   - `pull_request` workflows (`pr-checks.yml`, `pr-metadata.yml`) run from the PR's merge ref, so a PR into `release` uses the `release` copy unless the PR changes it.
   - Required check names come from rulesets; renaming a job such as `✅ Check Bun Runtime` blocks every PR.
+  - A step in the Bun job (`run-bun-checks` in `pr-checks.yml`) has only what the root `bun install` provides, because the job installs nothing in `tests/`. `bun test` maps `@jest/globals` to its own test API, so a test file that also runs under Jest works there (`tests/character-index.test.js`).
 - **Tests:** `tests/pr-auto-manager-workflow.test.js`, `tests/pr-checks-workflow.test.js`, `tests/nightly-workflow.test.js`, `tests/release-workflows.test.js`, `tests/sillybunny-launcher-smol.test.js`.
 - **Fixes:** #888, #892, #895 and #903 carried workflow and test changes to `release` through `actions/*` branches. `label-by-branches` in `pr-auto-manager.yml` waited for a `synchronize` event with `changes.base`, which never arrives; a base-branch change is an `edited` event. On 2026-10-23 the `release` copy of `pr-metadata.yml` still rejected `hotfix:` titles.
 - **Runner images:** GitHub moves `ubuntu-latest` to Ubuntu 26.04 between 2026-10-19 and 2026-11-19 (actions/runner-images#14748), so a job can land on either image. `@playwright/test` 1.60.0 refuses to install Chromium on Ubuntu 26.04, which broke `Install Chromium` in nightly (issue #920) and in `Run Chromium E2E suite` on #925. Playwright 1.61.0 added Ubuntu 26.04 support; `tests/package.json` pins 1.64.1. A Playwright bump needs `npx playwright install chromium` in `tests/` locally, because each version expects its own browser build.
