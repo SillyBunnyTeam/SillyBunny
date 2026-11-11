@@ -791,6 +791,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
 | Owner | Server and data compatibility integrator. |
 
+### `public/scripts/extensions/stable-diffusion/index.js`, `public/scripts/extensions/stable-diffusion/settings.html`, and `src/endpoints/novelai.js` - NovelAI Precise Reference
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/stable-diffusion/index.js`, `public/scripts/extensions/stable-diffusion/settings.html`, `src/endpoints/novelai.js`. |
+| Area | Image Generation with the NovelAI source, and the NovelAI image route (`POST /api/novelai/generate-image`). |
+| Divergence reason | TODO(copy) |
+| Target seam | `public/scripts/novelai-precise-reference.js` (request checks and the `director_reference_*` fields, also used by the server and Quick Image Gen) and `public/scripts/novelai-precise-reference-ui.js` (editor and image preparation, also used by Quick Image Gen). |
+| Adapter shape | In `index.js`: the two imports, `novel_precise_reference: { enabled: false, references: [] }` in `defaultSettings`, and `let novelPreciseReferenceEditor`. `loadSettings()` mounts the editor once on `#sd_novel_precise_reference`, with `getState` and `onChange` on `extension_settings.sd.novel_precise_reference` (each change replaces the object and calls `saveSettingsDebounced()`) and `getModel` on `extension_settings.sd.model`, then refreshes it; `switchModelSpecificControls()` also refreshes it. `generateNovelImage()` takes the references only when the state has `enabled === true` and a `references` array, calls `buildNovelAIPreciseReferenceParameters()` with the model and the Anlas guard so that a refused set throws before the request, and sends the references as `precise_reference`. In `settings.html`: the empty `#sd_novel_precise_reference` container in the NovelAI source block. In `src/endpoints/novelai.js`: `/generate-image` calls `buildNovelAIPreciseReferenceParameters(request.body.model, request.body.precise_reference ?? [], { anlasGuard })` after the V5 guard and before it reads the API key, answers 400 `{ error }` when that throws, spreads the result into `parameters` after `reference_strength_multiple`, and logs `precise_reference_count` in place of the images. |
+| Protecting tests | `tests/novelai-image-generation.test.js` (the route: the provider fields for each reference type, and a 400 with no provider request for an unsupported model, the Anlas guard, data that is not a PNG, malformed base64, a wrong canvas size, a total above the cap, a bad type or control value, and more than 16 references), `tests/sillybunny-extension-media-integration.test.js` (Image Generation sends `precise_reference: []` when the references are off, missing or malformed). `tests/novelai-precise-reference-editor.e2e.js` covers the shared editor. No test mounts the editor through the Image Generation settings. |
+| Validation | `npm run test:unit -- novelai-image-generation.test.js sillybunny-extension-media-integration.test.js` in `tests/`; each image data rejection test fails when its check is removed from `public/scripts/novelai-precise-reference.js`. `npx eslint public/scripts/extensions/stable-diffusion/index.js src/endpoints/novelai.js`. |
+| Rollback path | Revert the `SillyBunny:` hunks in the three files together. Image Generation then sends NovelAI requests without references, as upstream does. A server without its hunks ignores a `precise_reference` field and generates without the references, so do not revert the server alone. Saved `novel_precise_reference` values stay unused in settings.json until the key is deleted. Quick Image Gen imports both seam modules, so keep them. |
+| Last reviewed | 2026-11-11 PR #872 NovelAI Precise Reference. |
+| Owner | TODO(copy) |
+
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |

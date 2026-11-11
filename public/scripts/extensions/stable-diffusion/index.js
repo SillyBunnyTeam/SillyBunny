@@ -66,6 +66,7 @@ import { ActionLoaderHandle, loader } from '/scripts/action-loader.js';
 // SillyBunny: expose the configured provider without borrowing the active roleplay chat.
 import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
 import { isNovelAIV5Model, normalizeNovelAIImageParameters, NOVELAI_IMAGE_MODELS } from '../../novelai-image-models.js';
+// SillyBunny: NovelAI Precise Reference shares its request checks and editor with Quick Image Gen.
 import { buildNovelAIPreciseReferenceParameters } from '../../novelai-precise-reference.js';
 import { mountNovelAIPreciseReferenceEditor } from '../../novelai-precise-reference-ui.js';
 
@@ -107,6 +108,7 @@ const comfyTypes = {
 };
 
 let modelLoadRequest = 0;
+// SillyBunny: the Precise Reference editor is mounted once and refreshed when the model changes.
 let novelPreciseReferenceEditor;
 
 const initiators = {
@@ -331,6 +333,7 @@ const defaultSettings = {
     novel_sm_dyn: false,
     novel_decrisper: false,
     novel_variety_boost: false,
+    // SillyBunny: NovelAI Precise Reference starts off, with no reference images.
     novel_precise_reference: { enabled: false, references: [] },
 
     // OpenAI settings
@@ -2079,6 +2082,7 @@ async function fetchImageModels(provider, body = {}) {
  * @param {string} modelId Model ID
  */
 function switchModelSpecificControls(modelId) {
+    // SillyBunny: the Precise Reference editor shows whether the selected model accepts references.
     novelPreciseReferenceEditor?.refresh();
     const modelControls = $('.sd_settings [data-sd-model]');
     modelControls.hide();
@@ -4011,6 +4015,7 @@ async function generateDrawthingsImage(prompt, negativePrompt, signal) {
  * @returns {Promise<{format: string, data: string}>} - A promise that resolves when the image generation and processing are complete.
  */
 async function generateNovelImage(prompt, negativePrompt, signal) {
+    // SillyBunny: send the Precise References with the request, and check them first so that a set the server refuses is not uploaded.
     const referenceState = extension_settings.sd.novel_precise_reference;
     const preciseReference = referenceState?.enabled === true && Array.isArray(referenceState.references) ? referenceState.references : [];
     buildNovelAIPreciseReferenceParameters(extension_settings.sd.model, preciseReference, {
