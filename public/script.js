@@ -11171,7 +11171,8 @@ export function setSendButtonState(value) {
 }
 
 /**
- * Renames the currently selected character, updating relevant references and optionally renaming past chats.
+ * Renames the card given by `options.avatar`, or the currently selected character if no avatar is given,
+ * updating relevant references and optionally renaming past chats.
  *
  * If no name is provided, a popup prompts for a new name. If the new name matches the current name,
  * the renaming process is aborted. The function sends a request to the server to rename the character
