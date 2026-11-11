@@ -207,6 +207,8 @@ for (const profile of PROFILES) {
                 await worldPopup.locator('.popup-button-ok').click();
                 expect(await readAuxiliaryBooks(page, fixtures)).toEqual({ other: [fixtures.bookName], active: [] });
 
+                // The editor opens on the Information tab, and the description field belongs to the Definitions tab.
+                await page.locator('#sb_character_editor_tab_definitions').click();
                 await page.locator('#description_textarea').fill(`Edited ${suffix}`);
                 await page.evaluate(async () => (await import('/script.js')).flushCharacterSaveDebounced());
                 expect(await readDescriptions(page, fixtures)).toEqual({ other: `Edited ${suffix}`, active: `Editor Active ${suffix} description` });
