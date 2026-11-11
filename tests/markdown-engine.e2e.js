@@ -20,7 +20,8 @@ test.beforeEach(async ({ page }) => {
     // Every load of the chat, including the reload after an engine change, ends with a message that has nested emphasis.
     await page.route('**/api/chats/get', async (route) => {
         const response = await route.fetch();
-        const chat = await response.json();
+        // openReadyChat() answers the chat save itself, so a new sample chat has no file and its reload gets a 404.
+        const chat = response.ok() ? await response.json() : [];
         const messages = Array.isArray(chat) && chat.length > 0 ? chat : [{ chat_metadata: {} }];
         messages.push({
             name: 'Markdown Engine Test',
@@ -30,7 +31,7 @@ test.beforeEach(async ({ page }) => {
             mes: NESTED_EMPHASIS,
             extra: {},
         });
-        await route.fulfill({ response, json: messages });
+        await route.fulfill({ json: messages });
     });
 });
 
