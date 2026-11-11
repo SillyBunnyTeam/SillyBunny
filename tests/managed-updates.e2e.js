@@ -67,8 +67,9 @@ const menuLabels = page => page.getByRole('menuitem').allTextContents();
  * @param {boolean} [options.statusFails] Whether the status route refuses every read.
  * @param {boolean} [options.statusEmpty] Whether the status lists no file, which is what a server with no managed content sends.
  * @param {string} [options.theme] The name of a bundled theme to copy into the settings, as if the user had picked it.
+ * @param {object[]} [options.recent] What the server lists as Recent Chats, one entry per row.
  */
-async function boot(page, { library, status = {}, accountStorage = {}, statusDelay = 0, statusFails = false, statusEmpty = false, theme = null }) {
+async function boot(page, { library, status = {}, accountStorage = {}, statusDelay = 0, statusFails = false, statusEmpty = false, theme = null, recent = null }) {
     const world = {
         library: new Set(library),
         status: new Map(Object.entries(status)),
@@ -107,6 +108,9 @@ async function boot(page, { library, status = {}, accountStorage = {}, statusDel
         world.thumbnails.push({ search: new URL(request.url()).search, fetched: request.resourceType() === 'fetch' });
         return route.fulfill({ contentType: 'image/png', body: THUMBNAIL });
     });
+    if (recent) {
+        await page.route('**/api/chats/recent', route => route.fulfill({ json: recent }));
+    }
     await page.route('**/api/characters/all', async (route) => {
         const real = await fetchJsonOrSkip(route);
         if (!real) return;
@@ -164,6 +168,25 @@ const recordCardSources = page => page.addInitScript(() => {
     const record = (node) => {
         for (const image of node instanceof HTMLImageElement ? [node] : (node instanceof Element ? node.querySelectorAll('img') : [])) {
             if (image.closest('.sbHomeArt')) window.qaCardSources.push(image.getAttribute('src'));
+        }
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+        new MutationObserver((records) => {
+            for (const entry of records) {
+                record(entry.type === 'attributes' ? entry.target : null);
+                entry.addedNodes.forEach(record);
+            }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
+    }, { once: true });
+});
+
+/** Records every source that a picture of a Recent Chats row is given, with the avatar of the row, from the page's first script. Read it from `window.qaRowSources`. */
+const recordRowSources = page => page.addInitScript(() => {
+    window.qaRowSources = [];
+    const record = (node) => {
+        for (const image of node instanceof HTMLImageElement ? [node] : (node instanceof Element ? node.querySelectorAll('img') : [])) {
+            const row = image.closest('.recentChat');
+            if (row && image.closest('.avatar')) window.qaRowSources.push({ avatar: row.dataset.avatar, src: image.getAttribute('src') });
         }
     };
     document.addEventListener('DOMContentLoaded', () => {
@@ -378,6 +401,27 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
                 const sources = await sourcesOfCards();
                 expect(sources.filter(source => !source.includes('preset=mobile'))).toEqual([]);
                 expect(sources.some(source => source.includes(`file=${REISEN}&preset=mobile&t=`))).toBe(true);
+            });
+
+            test('Update gives the picture of a Recent Chats row of that card a new source on the mobile preset, never the full-size file', async ({ page }) => {
+                await recordRowSources(page);
+                await boot(page, {
+                    library: [REISEN, TEWI],
+                    status: { [REISEN]: EDITED },
+                    recent: [{ file_name: 'qa-reisen-row.jsonl', avatar: REISEN, last_mes: Date.now(), mes: 'Preview', chat_items: 3, file_size: '1kb' }],
+                });
+                await expect(page.locator(`${HOME} .recentChat[data-avatar="${REISEN}"] .avatar img`)).toHaveCount(1);
+                await openMenu(page, 'assistant-reisen');
+                await page.getByRole('menuitem', { name: 'Update Available' }).click();
+
+                await alertOf(page).getByRole('button', { name: 'Update' }).click();
+
+                const sourcesOfRows = () => page.evaluate(() => window.qaRowSources);
+                // The picture is given its new source after the toast, once the cached files are refreshed.
+                await expect.poll(async () => (await sourcesOfRows()).some(entry => /&t=\d+/.test(entry.src))).toBe(true);
+                const sources = await sourcesOfRows();
+                expect(sources.filter(entry => !entry.src.includes('preset=mobile'))).toEqual([]);
+                expect(sources.some(entry => entry.src.includes(`file=${REISEN}&preset=mobile&t=`))).toBe(true);
             });
 
             test('Update shows the card as current at once, before the server answers the status again', async ({ page }) => {

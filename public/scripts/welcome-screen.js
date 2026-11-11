@@ -1489,7 +1489,8 @@ async function getRecentChats() {
         chat.date_short = chatTimestamp.format('l');
         chat.date_long = chatTimestamp.format('LL LT');
         chat.chat_name = chat.file_name.replace('.jsonl', '');
-        chat.char_thumbnail = character ? getThumbnailUrl('avatar', character.avatar) : system_avatar;
+        // SillyBunny: the row shows the picture in a 44px box, so it uses the small mobile preset at every viewport instead of the full-size file.
+        chat.char_thumbnail = character ? getMobileThumbnailUrl('avatar', character.avatar) : system_avatar;
         chat.is_group = !!group;
         chat.hidden = false;
         chat.avatar = chat.avatar || '';

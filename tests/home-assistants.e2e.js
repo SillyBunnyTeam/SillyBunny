@@ -52,8 +52,9 @@ const card = avatar => makeCharacterCard(avatar, NAMES[avatar] ?? avatar);
  * @param {import('@playwright/test').Page} page
  * @param {{ library: string[], accountStorage?: Record<string, string>, lastMode?: 'roleplay' | 'conversation', exact?: boolean }} options
  *   `exact` drops the characters that the data root holds, so the picker lists the library of the test and nothing else.
+ *   `recent` is what the server lists as Recent Chats, one entry per row: `{ file_name, avatar, last_mes, mes, chat_items, file_size }`.
  */
-async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay', exact = false, missingThumbnails = [] }) {
+async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay', exact = false, missingThumbnails = [], recent = null }) {
     const world = { library: new Set(library), chatSaves: [], lastChats: [], thumbnailRequests: [] };
     const bundled = [REISEN, TEWI, NAHIDA];
 
@@ -79,6 +80,9 @@ async function boot(page, { library, accountStorage = {}, lastMode = 'roleplay',
         }
         return route.fulfill({ contentType: 'image/png', body: THUMBNAIL });
     });
+    if (recent) {
+        await page.route('**/api/chats/recent', route => route.fulfill({ json: recent }));
+    }
     await page.route('**/api/characters/all', async (route) => {
         if (exact) return route.fulfill({ json: [...world.library].map(card) });
         const real = await fetchJsonOrSkip(route);
@@ -107,6 +111,25 @@ const recordCardSources = page => page.addInitScript(() => {
         for (const image of node instanceof HTMLImageElement ? [node] : (node instanceof Element ? node.querySelectorAll('img') : [])) {
             const card = image.closest('.sbHomeCard');
             if (card && image.closest('.sbHomeArt')) window.qaCardSources.push({ card: card.dataset.sbHomeKey, src: image.getAttribute('src') });
+        }
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+        new MutationObserver((records) => {
+            for (const entry of records) {
+                record(entry.type === 'attributes' ? entry.target : null);
+                entry.addedNodes.forEach(record);
+            }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
+    }, { once: true });
+});
+
+/** Records every source that a picture of a Recent Chats row is given, with the avatar of the row, from the page's first script. Read it from `window.qaRowSources`. */
+const recordRowSources = page => page.addInitScript(() => {
+    window.qaRowSources = [];
+    const record = (node) => {
+        for (const image of node instanceof HTMLImageElement ? [node] : (node instanceof Element ? node.querySelectorAll('img') : [])) {
+            const row = image.closest('.recentChat');
+            if (row && image.closest('.avatar')) window.qaRowSources.push({ avatar: row.dataset.avatar, src: image.getAttribute('src') });
         }
     };
     document.addEventListener('DOMContentLoaded', () => {
@@ -273,6 +296,23 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 for (const [key, avatar] of cards) {
                     expect([...new Set(sources.filter(entry => entry.card === key).map(entry => entry.src))], key).toEqual([thumbnailUrl(avatar)]);
                     expect(world.thumbnailRequests, key).toContain(`?type=avatar&file=${encodeURIComponent(avatar)}&preset=mobile`);
+                }
+            });
+
+            test('of the Recent Chats rows are the small mobile preset too: a bundled assistant, a character of the library, and no row is ever given the full-size file', async ({ page }) => {
+                await recordRowSources(page);
+                const rows = [[REISEN, 'Assistant Reisen'], [TEWI, 'Assistant Tewi'], ['Alice.png', 'Alice']];
+                await boot(page, {
+                    library: [...BOTH, 'Alice.png'],
+                    recent: rows.map(([avatar], index) => ({ file_name: `qa-${avatar}.jsonl`, avatar, last_mes: Date.now() - index * 60_000, mes: `Preview ${index}`, chat_items: 3, file_size: '1kb' })),
+                });
+
+                for (const [avatar, name] of rows) {
+                    await expect(page.locator(`${HOME} .recentChat[data-avatar="${avatar}"] .avatar img`), name).toHaveAttribute('src', thumbnailUrl(avatar));
+                }
+                const sources = await page.evaluate(() => window.qaRowSources);
+                for (const [avatar, name] of rows) {
+                    expect([...new Set(sources.filter(entry => entry.avatar === avatar).map(entry => entry.src))], name).toEqual([thumbnailUrl(avatar)]);
                 }
             });
 
