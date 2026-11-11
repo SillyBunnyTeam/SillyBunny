@@ -180,4 +180,25 @@ test.describe('KoboldCpp model switch', () => {
         await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
         await expectNoMorePolls(page, polls);
     });
+
+    test('stopping the script that runs /kcpp-model stops the wait and enables Connect again', async ({ page, baseURL }) => {
+        const polls = await connectKoboldCpp(page, baseURL);
+        const abortController = await page.evaluateHandle(async () => {
+            const { SlashCommandAbortController } = await import('/scripts/slash-commands/SlashCommandAbortController.js');
+            return new SlashCommandAbortController();
+        });
+        const isAborted = page.evaluate(async controller => {
+            const result = await window.SillyTavern.getContext().executeSlashCommandsWithOptions('/kcpp-model beta.gguf', { abortController: controller });
+            return result.isAborted;
+        }, abortController);
+        await expect.poll(() => polls[OLD_URL]).toBeGreaterThan(0);
+        await expect(page.locator('#api_button_textgenerationwebui')).toHaveClass(/\bdisabled\b/);
+
+        await abortController.evaluate(controller => controller.abort('Stopped by the test', true));
+
+        expect(await isAborted).toBe(true);
+        await expectConnectEnabled(page);
+        await expect(page.locator('.toast', { hasText: STOPPED_WAITING })).toBeVisible();
+        await expectNoMorePolls(page, polls);
+    });
 });
