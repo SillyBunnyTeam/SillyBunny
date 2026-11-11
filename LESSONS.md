@@ -188,8 +188,9 @@ This is the largest class by a wide margin.
   - `CharacterIndex.set()` does not store a card whose text has a NUL character, so every runtime reads that card from its file.
   - `importFromPng()` calls `characterIndex.delete()` for the upload right after `readCharacterData()` reads it. `POST /all` prunes only the user's characters folder, so only the startup `prune()` would remove that entry.
   - `runSql()` calls `run` on Bun and `exec` on Node.js. The Bun 1.4.4 type file (`packages/bun-types/sqlite.d.ts`) marks `Database.exec` as a deprecated alias of `Database.run`, and the two are the same function in 1.4.4. If a release removed the alias, every call would throw and `#handleError()` would turn the index off with one warning.
+  - `#handleError()` logs one line, without the error or its stack, when the error code is `ERR_UNKNOWN_BUILTIN_MODULE`, which `require('node:sqlite')` throws on Node.js older than 22.13. The index stays off, and every other error keeps the generic warning with its stack.
   - The Bun job (`run-bun-checks` in `.github/workflows/pr-checks.yml`) runs `bun test ./tests/character-index.test.js` after its `bun install`.
-- **Tests:** `tests/character-index.test.js` runs under Jest and under `bun test`. Its `under Bun` block runs only under Bun, where it removes `Database.exec` and checks that the index still works. `tests/pr-checks-workflow.test.js` checks the Bun job step.
+- **Tests:** `tests/character-index.test.js` runs under Jest and under `bun test`. Its `under Bun` block runs only under Bun, where it removes `Database.exec` and checks that the index still works. Its `on Node.js` block runs only on Node.js, where it makes `require('node:sqlite')` throw `ERR_UNKNOWN_BUILTIN_MODULE` and checks the one-line warning. `tests/pr-checks-workflow.test.js` checks the Bun job step.
 - **Fixes:** #938.
 
 ### Security and credentials
