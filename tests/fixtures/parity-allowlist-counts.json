@@ -1,0 +1,14 @@
+{
+    "version": 1,
+    "temporary": {
+        "settings": 160,
+        "list": 299,
+        "editor": 115,
+        "dialog": 3,
+        "menu": 503,
+        "header": 245,
+        "panel": 5,
+        "status": 110,
+        "home": 1
+    }
+}
