@@ -30,6 +30,11 @@ const SERVERS = new Map([
     [NEW_URL, modelList(['gamma.gguf'])],
 ]);
 
+const MODE_CONTROLS = {
+    text: { connect: '#api_button_textgenerationwebui', select: '#koboldcpp_model' },
+    chat: { connect: '#api_button_openai', select: '#koboldcpp_chat_model' },
+};
+
 /**
  * @param {import('@playwright/test').Request} request Request for one KoboldCpp server
  * @returns {string} URL of the mocked server the request names
@@ -42,9 +47,10 @@ function getServerUrl(request) {
 /**
  * Opens the API panel connected to a mocked KoboldCpp in admin mode. The mock accepts every load request, and its old
  * worker keeps answering afterwards, so a model switch waits until something stops it.
+ * @param {'text'|'chat'} [mode] KoboldCpp as the Text Completion API or as the Chat Completion source
  * @returns {Promise<Record<string, number>>} Restart polls by server URL, updated as the page polls
  */
-async function connectKoboldCpp(page, baseURL) {
+async function connectKoboldCpp(page, baseURL, mode = 'text') {
     const origin = new URL(baseURL).origin;
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(baseURL).hostname);
     const polls = { [OLD_URL]: 0, [NEW_URL]: 0 };
@@ -59,13 +65,16 @@ async function connectKoboldCpp(page, baseURL) {
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             settings._version = version;
-            settings.main_api = 'textgenerationwebui';
+            settings.main_api = mode === 'chat' ? 'openai' : 'textgenerationwebui';
             settings.power_user = { ...settings.power_user, auto_connect: false };
             settings.textgenerationwebui_settings = {
                 ...settings.textgenerationwebui_settings,
                 type: 'koboldcpp',
                 server_urls: { ...settings.textgenerationwebui_settings?.server_urls, koboldcpp: OLD_URL, llamacpp: '' },
             };
+            if (mode === 'chat') {
+                settings.oai_settings = { ...settings.oai_settings, chat_completion_source: 'koboldcpp', koboldcpp_url: OLD_URL };
+            }
             settings.extension_settings ??= {};
             settings.extension_settings['quick-image-gen'] = { setupWizardSeen: true };
             data.request_compression = { ...data.request_compression, enabled: false };
@@ -81,6 +90,7 @@ async function connectKoboldCpp(page, baseURL) {
         if (url.pathname === '/api/backends/text-completions/status') {
             return route.fulfill({ json: { result: SERVERS.get(getServerUrl(request))?.loadedModel ?? '' } });
         }
+        if (url.pathname === '/api/backends/chat-completions/status') return route.fulfill({ json: { data: [] } });
         if (url.pathname === '/api/backends/text-completions/koboldcpp/models') {
             return route.fulfill({ json: SERVERS.get(getServerUrl(request)) });
         }
@@ -98,18 +108,20 @@ async function connectKoboldCpp(page, baseURL) {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'api'));
-    await page.locator('#api_button_textgenerationwebui').click();
-    await expect(page.locator('#koboldcpp_model')).toHaveValue('alpha.gguf');
+    await page.locator(MODE_CONTROLS[mode].connect).click();
+    await expect(page.locator(MODE_CONTROLS[mode].select)).toHaveValue('alpha.gguf');
     return polls;
 }
 
 /**
  * Chooses beta.gguf in the switcher, as Select2 does, and waits until the switch polls for the restart.
+ * @param {'text'|'chat'} [mode] Connection mode whose switcher to use
  */
-async function startSwitch(page, polls) {
-    await page.evaluate(() => window.$('#koboldcpp_model').val('beta.gguf').trigger('change'));
+async function startSwitch(page, polls, mode = 'text') {
+    const { connect, select } = MODE_CONTROLS[mode];
+    await page.evaluate(selector => window.$(selector).val('beta.gguf').trigger('change'), select);
     await expect.poll(() => polls[OLD_URL]).toBeGreaterThan(0);
-    await expect(page.locator('#api_button_textgenerationwebui')).toHaveClass(/\bdisabled\b/);
+    await expect(page.locator(connect)).toHaveClass(/\bdisabled\b/);
 }
 
 async function expectConnectEnabled(page) {
@@ -156,6 +168,18 @@ test.describe('KoboldCpp model switch', () => {
         await page.locator('#api_button_textgenerationwebui').click();
 
         await expect(page.locator('#koboldcpp_model')).toHaveValue('gamma.gguf');
+        await expectNoMorePolls(page, polls);
+    });
+
+    test('a KoboldCpp URL typed during a Chat Completion switch enables Connect, which lists the new server', async ({ page, baseURL }) => {
+        const polls = await connectKoboldCpp(page, baseURL, 'chat');
+        await startSwitch(page, polls, 'chat');
+
+        await page.locator('#koboldcpp_chat_url_text').fill(NEW_URL);
+        await expectConnectEnabled(page);
+        await page.locator('#api_button_openai').click();
+
+        await expect(page.locator('#koboldcpp_chat_model')).toHaveValue('gamma.gguf');
         await expectNoMorePolls(page, polls);
     });
 
