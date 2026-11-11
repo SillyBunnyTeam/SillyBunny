@@ -277,7 +277,7 @@ describe('KoboldCpp token counting', () => {
         expect(await countTokensOpenAIAsync(message, true)).toBe(12);
     });
 
-    test('reuses a count that KoboldCpp made in a synchronous count', async () => {
+    test('reuses a cached KoboldCpp count in a synchronous count', async () => {
         const [message] = makeMessages(1, 'koboldcpp-sync-reuse');
         mockKoboldCpp.count.mockResolvedValue(12);
 
