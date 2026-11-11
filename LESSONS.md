@@ -332,6 +332,16 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/openai-status-reconnect.test.js`, `tests/sillybunny-koboldcpp-models.test.js`, `tests/koboldcpp-model-switcher.e2e.js`.
 - **Fixes:** #836 (manual cancel), #941 (KoboldCpp model switch after a connection change or a stopped script), #943 (the same in Chat Completion mode).
 
+### Server state after a URL change
+
+- **Breaks:** after the server URL changes, SillyBunny keeps using what the old server reported. For KoboldCpp this was the restart wait and model list of a model switch, and in Chat Completion mode the loaded model name, which keys token counts in the cache, with its context size and media support.
+- **Cause:** the URL fields and `/api-url` change the URL at once, and the state stays until a status check, `/kcpp-model` or a finished switch fetches it again. A URL typed without Connect runs no status check, and `refreshKoboldCppModels()` returns without a change while a model switch waits.
+- **Files:** `public/scripts/sillybunny-koboldcpp-models.js`, `public/scripts/openai.js` (upstream), `public/scripts/tokenizers.js` (upstream).
+- **Guards:** the restart wait stops when the URL of its connection mode changes, and the list for the new URL loads when the wait ends (#941). Each switcher state records the URL that reported it, and `getKoboldCppChatState()` returns null for another URL, so a token count from the new server is not cached under the old model's name (#943).
+- **Limit:** the context cap and media support that a Chat Completion status check applies while a model switch waits can stay until the next status check. A model that KoboldCpp loads without SillyBunny keeps the old name until the next status check.
+- **Tests:** `tests/sillybunny-koboldcpp-models.test.js`, `tests/koboldcpp-model-switcher.e2e.js`.
+- **Fixes:** #941 (restart wait and list after a URL change), #943 (Chat Completion state after a URL change).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
