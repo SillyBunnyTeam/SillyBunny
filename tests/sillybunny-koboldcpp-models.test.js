@@ -18,6 +18,15 @@ class FakeElement {
         this.dataset = {};
         this.style = {};
         this.classList = { add: () => {}, toggle: () => {}, contains: () => false };
+        this.attributes = {};
+    }
+
+    setAttribute(name, value) {
+        this.attributes[name] = String(value);
+    }
+
+    getAttribute(name) {
+        return this.attributes[name] ?? null;
     }
 
     append(...children) {
@@ -56,6 +65,7 @@ let dom;
 let toasts;
 let command;
 let popupResult;
+let popupContent;
 
 /**
  * @param {string[]} names Option strings in the order the server sorts them
@@ -182,6 +192,10 @@ async function loadSwitcher({ mainApi = 'textgenerationwebui', onlineStatus = 'k
     await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
         POPUP_TYPE: { TEXT: 1 },
         Popup: class {
+            constructor(content) {
+                popupContent = content;
+            }
+
             async show() {
                 return popupResult;
             }
@@ -272,6 +286,7 @@ beforeEach(() => {
     oaiSettings = { chat_completion_source: 'openai', koboldcpp_url: '' };
     statusCheck = new AbortController();
     popupResult = null;
+    popupContent = null;
     command = null;
     script = {
         getStatusOpen: jest.fn(async () => {}),
@@ -339,7 +354,7 @@ describe('/kcpp-model names', () => {
 
     test('accepts a part of a name only when one entry contains it', async () => {
         const server = servers[SERVER_URL];
-        server.state = modelsAnswer(['Mistral-Small.gguf', 'Mistral-Small.kcpps', ...ACTIONS]);
+        server.state = modelsAnswer(['Mistral-Small.gguf', 'Mistral-Small.kcpps', ...ACTIONS], { loadedModel: 'koboldcpp/Mistral-Small', loadedFiles: ['Mistral-Small.gguf'] });
         server.uptimes = [NEW_WORKER];
         await loadSwitcher();
 
@@ -595,22 +610,46 @@ describe('Chat Completion state', () => {
 });
 
 describe('report after the restart', () => {
+    const NAMES = ['alpha.gguf', 'beta.gguf', 'gamma.kcpps', 'delta.kcppt', ...ACTIONS];
+    const NO_MODEL = 'KoboldCpp restarted without a model. Check the KoboldCpp console for load errors.';
+    const MODEL_UNKNOWN = 'KoboldCpp restarted, but SillyBunny could not read which model it loaded. Click Connect to check.';
+
     test.each([
         ['a model that loaded', 'beta.gguf', { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] }, 'success', 'Loaded beta.gguf.', 'beta.gguf'],
         ['a model when KoboldCpp came back with another model', 'beta.gguf', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'warning', 'KoboldCpp restarted with alpha.gguf instead of beta.gguf. Check the KoboldCpp console for load errors.', ''],
         ['a model when KoboldCpp came back without a model', 'beta.gguf', { loadedModel: 'inactive' }, 'warning', 'KoboldCpp restarted without a model instead of loading beta.gguf. Check the KoboldCpp console for load errors.', ''],
         ['an unload that worked', 'unload_model', { loadedModel: 'inactive' }, 'success', 'Model unloaded.', 'unload_model'],
         ['an unload when the model stayed loaded', 'unload_model', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'warning', 'KoboldCpp restarted with alpha.gguf still loaded.', ''],
-        ['a reload of the launch model', 'initial_model', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'success', 'Launch model reloaded.', 'initial_model'],
+        ['a reload of the launch model with the model KoboldCpp reports', 'initial_model', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'success', 'KoboldCpp restarted with alpha.', 'initial_model'],
+        ['a reload of the launch model when KoboldCpp came back without a model', 'initial_model', { loadedModel: 'inactive' }, 'warning', NO_MODEL, ''],
+        ['a config with the model KoboldCpp reports', 'gamma.kcpps', { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] }, 'success', 'KoboldCpp restarted with beta.', 'gamma.kcpps'],
+        ['a config when KoboldCpp came back without a model', 'delta.kcppt', { loadedModel: 'inactive' }, 'warning', NO_MODEL, ''],
+        ['a config when KoboldCpp did not report a model', 'gamma.kcpps', { loadedModel: null }, 'warning', MODEL_UNKNOWN, 'gamma.kcpps'],
     ])('reports %s', async (_case, name, loaded, type, message, result) => {
         const server = servers[SERVER_URL];
-        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], loaded);
+        server.state = modelsAnswer(NAMES, { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] });
+        server.nextState = modelsAnswer(NAMES, loaded);
         server.uptimes = [NEW_WORKER];
         await loadSwitcher();
 
         await expect(runCommand(name)).resolves.toBe(result);
 
         expect(toasts[type].mock.calls.map(([text]) => text)).toEqual([message]);
+    });
+
+    test.each(['beta.gguf', 'unload_model', 'gamma.kcpps', 'initial_model'])('reports that the model is unknown when KoboldCpp cannot be read after a restart for %s', async name => {
+        const server = servers[SERVER_URL];
+        server.state = modelsAnswer(NAMES, { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] });
+        server.uptimes = [NEW_WORKER];
+        server.onPoll = () => {
+            server.state = null;
+        };
+        await loadSwitcher();
+
+        await expect(runCommand(name)).resolves.toBe(name);
+
+        expect(toasts.success).not.toHaveBeenCalled();
+        expect(toasts.warning.mock.calls.map(([text]) => text)).toEqual([MODEL_UNKNOWN]);
     });
 
     test('accepts the loaded file when another file gives KoboldCpp the same model name', async () => {
@@ -714,6 +753,19 @@ describe('/kcpp-model results', () => {
         expect(server.loads).toEqual(['beta.gguf']);
     });
 
+    test('gives the picker search box, entries and loaded mark their accessible roles and names', async () => {
+        await loadSwitcher();
+
+        await runCommand('');
+
+        const search = popupContent.children.find(child => child.type === 'search');
+        const items = popupContent.children.filter(child => child.dataset.entry);
+        const [mark] = items.find(item => item.dataset.entry === 'alpha.gguf').children;
+        expect(search.getAttribute('aria-label')).toBe('Search...');
+        expect(items.map(item => item.getAttribute('role'))).toEqual(['button', 'button', 'button', 'button']);
+        expect(mark).toMatchObject({ tagName: 'i', title: 'Loaded', attributes: { role: 'img', 'aria-label': 'Loaded' } });
+    });
+
     test('answers that KoboldCpp is still restarting while a switch waits', async () => {
         const server = servers[SERVER_URL];
         let restart;
@@ -751,6 +803,29 @@ describe('dropdown', () => {
         expect(server.loads).toEqual(['beta.gguf']);
         expect(toasts.success).toHaveBeenCalledWith('Loaded beta.gguf.', 'KoboldCpp');
         expect(getDropdown()).toMatchObject({ values: ['alpha.gguf', 'beta.gguf', ...ACTIONS], value: 'beta.gguf' });
+    });
+
+    test('says which settings models and configs load with', async () => {
+        const switcher = await loadSwitcher();
+        await switcher.refreshKoboldCppModels();
+
+        expect(getDropdown().hint).toBe('Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.');
+    });
+
+    test('says that KoboldCpp listed no files when it lists only its actions, and keeps the actions', async () => {
+        servers[SERVER_URL].state = modelsAnswer(ACTIONS, { loadedModel: 'inactive' });
+        const switcher = await loadSwitcher();
+        await switcher.refreshKoboldCppModels();
+
+        expect(getDropdown()).toMatchObject({ values: ['', ...ACTIONS], hint: 'KoboldCpp listed no files. Check the folder set with --admindir.' });
+    });
+
+    test('asks for the admin password when KoboldCpp needs one and lists nothing', async () => {
+        servers[SERVER_URL].state = modelsAnswer([], { admin: 2 });
+        const switcher = await loadSwitcher();
+        await switcher.refreshKoboldCppModels();
+
+        expect(getDropdown()).toMatchObject({ labels: ['No files to load'], hint: 'KoboldCpp needs its admin password. Enter it as the API key above, then click Connect.' });
     });
 });
 

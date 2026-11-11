@@ -143,6 +143,10 @@ function isAlreadyLoaded(state, name) {
     return name === state?.loadedFile || (name === 'unload_model' && state?.loadedModel === 'inactive');
 }
 
+function getNoFilesHint() {
+    return t`KoboldCpp listed no files. Check the folder set with --admindir.`;
+}
+
 /**
  * @param {SwitcherState|null} state Switcher state
  * @returns {string} Why KoboldCpp offers nothing to load, or an empty string when it offers entries
@@ -157,7 +161,7 @@ function getUnavailableReason(state) {
     if (!state.entries.length) {
         return state.admin === 2
             ? t`KoboldCpp needs its admin password. Enter it as the API key above, then click Connect.`
-            : t`KoboldCpp listed no files. Check the folder set with --admindir.`;
+            : getNoFilesHint();
     }
     return '';
 }
@@ -213,7 +217,10 @@ function renderModelSelect(mode) {
             select.append(group);
         }
         select.value = state.loadedFile ?? '';
-        hint = t`Models load with KoboldCpp's default settings. Configs (.kcpps) load their saved settings.`;
+        // KoboldCpp always lists its two actions, so an --admindir folder without model or config files lists only them.
+        hint = state.entries.some(entry => entry.type !== 'action')
+            ? t`Models load with KoboldCpp's default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.`
+            : getNoFilesHint();
     }
 
     $(select).trigger('change.select2');
@@ -377,28 +384,44 @@ async function waitForRestart(serverUrl, requestedAt, signal, isStopped) {
 /**
  * @param {string} name Entry that was loaded
  * @param {SwitcherState|null} state Switcher state after the restart
- * @returns {boolean} False when KoboldCpp reports a different model than the entry asked for
+ * @returns {boolean} False when KoboldCpp reports a different model than the entry asked for, or no model after a config or the launch model
  */
 function reportLoaded(name, state) {
     const title = t`KoboldCpp`;
-    const loadedModel = state?.loadedModel;
-    const loadedName = state?.loadedFile ?? loadedModel?.replace(/^koboldcpp\//, '');
+    // A config that crashes the worker makes KoboldCpp relaunch its launch arguments, so the model that KoboldCpp
+    // reports is the only sign of what a config or the launch model loaded.
+    const isConfigOrLaunch = name === 'initial_model' || /\.kcpp[st]$/i.test(name);
+
+    if (!state || (isConfigOrLaunch && !state.loadedModel)) {
+        toastr.warning(t`KoboldCpp restarted, but SillyBunny could not read which model it loaded. Click Connect to check.`, title, { timeOut: 10000 });
+        return true;
+    }
+
+    const loadedModel = state.loadedModel;
+    const reportedName = loadedModel?.replace(/^koboldcpp\//, '');
+    const loadedName = state.loadedFile ?? reportedName;
 
     if (name === 'unload_model' && loadedModel && loadedModel !== 'inactive') {
         toastr.warning(t`KoboldCpp restarted with ${loadedName} still loaded.`, title, { timeOut: 10000 });
         return false;
     }
-    if (/\.gguf$/i.test(name) && loadedModel && !state?.loadedFiles.includes(name)) {
+    if (/\.gguf$/i.test(name) && loadedModel && !state.loadedFiles.includes(name)) {
         toastr.warning(loadedModel === 'inactive'
             ? t`KoboldCpp restarted without a model instead of loading ${name}. Check the KoboldCpp console for load errors.`
             : t`KoboldCpp restarted with ${loadedName} instead of ${name}. Check the KoboldCpp console for load errors.`, title, { timeOut: 10000 });
         return false;
     }
+    if (isConfigOrLaunch) {
+        if (loadedModel === 'inactive') {
+            toastr.warning(t`KoboldCpp restarted without a model. Check the KoboldCpp console for load errors.`, title, { timeOut: 10000 });
+            return false;
+        }
+        toastr.success(t`KoboldCpp restarted with ${reportedName}.`, title);
+        return true;
+    }
 
     if (name === 'unload_model') {
         toastr.success(t`Model unloaded.`, title);
-    } else if (name === 'initial_model') {
-        toastr.success(t`Launch model reloaded.`, title);
     } else {
         toastr.success(t`Loaded ${name}.`, title);
     }
@@ -546,6 +569,7 @@ async function pickEntry(state) {
     search.type = 'search';
     search.classList.add('text_pole');
     search.placeholder = t`Search...`;
+    search.setAttribute('aria-label', search.placeholder);
     content.append(heading, search);
 
     for (const [type, label] of getEntryGroups()) {
@@ -562,6 +586,7 @@ async function pickEntry(state) {
         for (const entry of entries) {
             const item = document.createElement('div');
             item.classList.add('menu_button', 'menu_button_icon', 'wide100p', 'justifyLeft');
+            item.setAttribute('role', 'button');
             item.tabIndex = 0;
             item.dataset.entry = entry.name;
             item.dataset.group = type;
@@ -569,6 +594,8 @@ async function pickEntry(state) {
                 const icon = document.createElement('i');
                 icon.classList.add('fa-solid', 'fa-circle-check', 'toggleEnabled');
                 icon.title = t`Loaded`;
+                icon.setAttribute('role', 'img');
+                icon.setAttribute('aria-label', icon.title);
                 item.append(icon);
             }
             const text = document.createElement('span');

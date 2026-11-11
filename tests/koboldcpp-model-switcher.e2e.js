@@ -226,3 +226,27 @@ test.describe('KoboldCpp model switch', () => {
         await expectNoMorePolls(page, polls);
     });
 });
+
+test.describe('KoboldCpp model switcher on a narrow screen', () => {
+    // Narrow screens keep the native select, because Select2 replaces it only on wider screens.
+    test.use({ viewport: { width: 390, height: 844 } });
+
+    test('the model select and the picker have accessible names', async ({ page, baseURL }) => {
+        await connectKoboldCpp(page, baseURL);
+
+        const select = page.locator('#koboldcpp_model');
+        await expect(select).toHaveAccessibleName('KoboldCpp Model');
+        await expect(select).toHaveAccessibleDescription('Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.');
+
+        const result = page.evaluate(() => window.SillyTavern.getContext().executeSlashCommandsWithOptions('/kcpp-model'));
+        const picker = page.getByRole('dialog').filter({ hasText: 'Load a KoboldCpp model' });
+        await expect(picker.getByRole('searchbox')).toHaveAttribute('aria-label', 'Search...');
+        await expect(picker.getByRole('button', { name: 'Loaded alpha.gguf', exact: true })).toBeVisible();
+        await expect(picker.getByRole('img', { name: 'Loaded', exact: true })).toBeVisible();
+        await expect(picker.getByRole('button', { name: 'beta.gguf', exact: true })).toBeVisible();
+
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+        expect((await result).pipe).toBe('');
+    });
+});
