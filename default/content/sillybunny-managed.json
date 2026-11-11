@@ -6,14 +6,20 @@
             "type": "character",
             "version": 1,
             "fingerprint": "d7135ead7018d562655f60dedc29c0156d5cac6efa31b7bd380fe78ad44157a3",
-            "previousFingerprints": []
+            "previousFingerprints": [
+                "fb75a20e467163fc02412c187be5e5ee9fbce03fd28a257fc2d9c6e0aafeca3f",
+                "926f62bc3a1c6a4ec33da49b8903957db5ebc9ef41de04cf7ff7ccb649f52820"
+            ]
         },
         {
             "filename": "default_AssistantTewi.png",
             "type": "character",
             "version": 1,
             "fingerprint": "ddfd7a3a5292fca7e24ef4bf7c0ed57cf2b14049ee7b896776a9eb9a68ced56c",
-            "previousFingerprints": []
+            "previousFingerprints": [
+                "c6fae718bf7b840656ce13a80a74a8bb30e2150944a0f6fb57616e2024028f9f",
+                "cfa541cabd82301e9a87b35a54bea4b0773ce77c547a741d73d54ee3c8a6f241"
+            ]
         },
         {
             "filename": "Assistant Reisen",
@@ -314,7 +320,15 @@
             "type": "world",
             "version": 1,
             "fingerprint": "ce8a45e5385ff7b477fa8f0a76c6eddd12344291b49c80a082b34a31e3493041",
-            "previousFingerprints": []
+            "previousFingerprints": [
+                "8fc16bdbf7ad190744c53b5a0f5f8f80895872747506d72e30e1de93cef53d42",
+                "92324dece7df4e01b161efea80e2af0bd163ccecf272f7c44f6c6ed2b8b2eac9",
+                "41ac10a6a3ecd125c4dec9209d2bbb55768d02ca4b83402171125631dbf096d1",
+                "8e9a96bfdc2c25f90dde17c93ecf259078f0914009ea76b51b94de964ffadca8",
+                "897d27373696defb9156830e066d37e713c83a5a0d4155524d28c62b90d94fea",
+                "e3080d2951a589f59b57eb29256ab51cc0ecad5c28925891544f36c0c6a796fd",
+                "10ef1c6dc724b2bf9b3bf62ac2970737994fdb0769722695e9185b590e21e2b8"
+            ]
         }
     ]
 }

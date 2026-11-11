@@ -108,4 +108,50 @@ describe('the managed content that ships in default/content', () => {
             expect(manifest.items.some(item => item.type === 'world' && path.parse(item.filename).name === LEXICON_NAME)).toBe(true);
         });
     });
+
+    describe.each([
+        {
+            avatar: 'default_AssistantReisen.png',
+            earlier: [
+                { commit: '48b7ea7c7', fingerprint: 'fb75a20e467163fc02412c187be5e5ee9fbce03fd28a257fc2d9c6e0aafeca3f' },
+                { commit: '77fe236fd', fingerprint: '926f62bc3a1c6a4ec33da49b8903957db5ebc9ef41de04cf7ff7ccb649f52820' },
+            ],
+        },
+        {
+            avatar: 'default_AssistantTewi.png',
+            earlier: [
+                { commit: '48b7ea7c7', fingerprint: 'c6fae718bf7b840656ce13a80a74a8bb30e2150944a0f6fb57616e2024028f9f' },
+                { commit: '77fe236fd', fingerprint: 'cfa541cabd82301e9a87b35a54bea4b0773ce77c547a741d73d54ee3c8a6f241' },
+            ],
+        },
+    ])('the pre-release versions of $avatar', ({ avatar, earlier }) => {
+        const item = manifest.items.find(entry => entry.filename === avatar);
+
+        test('stay at the end of the earlier fingerprints, newest first, so an unedited copy of a pre-release card is updated at start', () => {
+            // A later version of the card adds its fingerprint in front of these.
+            expect(item.previousFingerprints.slice(-earlier.length).map(fingerprint => earlier.find(version => version.fingerprint === fingerprint)?.commit ?? fingerprint))
+                .toEqual(earlier.map(version => version.commit));
+            expect(item.previousFingerprints).not.toContain(item.fingerprint);
+        });
+    });
+
+    describe('the pre-release versions of the SillyBunny Lexicon', () => {
+        const earlier = [
+            { commit: '6c7e09798', fingerprint: '8fc16bdbf7ad190744c53b5a0f5f8f80895872747506d72e30e1de93cef53d42' },
+            { commit: '34e1b7fa9', fingerprint: '92324dece7df4e01b161efea80e2af0bd163ccecf272f7c44f6c6ed2b8b2eac9' },
+            { commit: '01ce1da42', fingerprint: '41ac10a6a3ecd125c4dec9209d2bbb55768d02ca4b83402171125631dbf096d1' },
+            { commit: '904867673', fingerprint: '8e9a96bfdc2c25f90dde17c93ecf259078f0914009ea76b51b94de964ffadca8' },
+            { commit: '98589ae32', fingerprint: '897d27373696defb9156830e066d37e713c83a5a0d4155524d28c62b90d94fea' },
+            { commit: '2e44363de', fingerprint: 'e3080d2951a589f59b57eb29256ab51cc0ecad5c28925891544f36c0c6a796fd' },
+            { commit: 'b207a8101', fingerprint: '10ef1c6dc724b2bf9b3bf62ac2970737994fdb0769722695e9185b590e21e2b8' },
+        ];
+        const item = manifest.items.find(entry => entry.filename === LEXICON);
+
+        test('stay at the end of the earlier fingerprints, newest first, so an unedited copy of a pre-release Lexicon is updated at start', () => {
+            // A later version of the Lexicon adds its fingerprint in front of these.
+            expect(item.previousFingerprints.slice(-earlier.length).map(fingerprint => earlier.find(version => version.fingerprint === fingerprint)?.commit ?? fingerprint))
+                .toEqual(earlier.map(version => version.commit));
+            expect(item.previousFingerprints).not.toContain(item.fingerprint);
+        });
+    });
 });
