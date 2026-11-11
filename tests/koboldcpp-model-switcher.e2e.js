@@ -249,4 +249,12 @@ test.describe('KoboldCpp model switcher on a narrow screen', () => {
         await expect(picker).toBeHidden();
         expect((await result).pipe).toBe('');
     });
+
+    test('the Chat Completion model select has the same accessible name and description', async ({ page, baseURL }) => {
+        await connectKoboldCpp(page, baseURL, 'chat');
+
+        const select = page.locator('#koboldcpp_chat_model');
+        await expect(select).toHaveAccessibleName('KoboldCpp Model');
+        await expect(select).toHaveAccessibleDescription('Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.');
+    });
 });
