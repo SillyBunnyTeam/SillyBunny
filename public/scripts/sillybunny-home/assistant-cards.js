@@ -23,7 +23,8 @@ export const OWN_CARD_KEY = 'assistant-own';
  * @property {string} id
  * @property {'bundled' | 'pointer'} kind
  * @property {string} name
- * @property {{ name: string, avatar: string | null }} art `name` is the size key; an `avatar` is shown as the thumbnail of that card.
+ * @property {{ name: string, avatar: string | null, framing?: import('./assistant-registry.js').CardFraming }} art
+ *   `name` is the size key; an `avatar` is shown as the thumbnail of that card, zoomed by its `framing`.
  * @property {string | null} avatar The avatar the card has in the library, or null while it has none.
  * @property {AssistantCardState} state
  * @property {import('./managed-content.js').ManagedOffers} offers What the card may offer for its bundled file.
@@ -77,7 +78,7 @@ function describeAssistant(assistant, library, managed) {
         id: assistant.id,
         kind: 'bundled',
         name: assistant.name,
-        art: { name: assistant.art, avatar: found?.avatar ?? null },
+        art: { name: assistant.art, avatar: found?.avatar ?? null, ...(assistant.cardFraming && { framing: assistant.cardFraming }) },
         avatar: found?.avatar ?? null,
         state,
         offers: findOffers({ filename: assistant.defaultAvatar, cardState: state, items: managed.items, dismissed: managed.dismissed }),

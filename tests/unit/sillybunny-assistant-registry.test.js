@@ -84,6 +84,20 @@ describe('how an assistant is brought into the library', () => {
     });
 });
 
+describe('how the card art of an assistant is framed on Home', () => {
+    test('zooms Tewi in on her face, because her card draws her smaller than Reisen, and leaves Reisen as the box crops her', () => {
+        expect(getAssistant('tewi').cardFraming).toEqual({ zoom: 1.22, origin: '50% 22%' });
+        expect(getAssistant('reisen')).not.toHaveProperty('cardFraming');
+    });
+
+    test('freezes the framing with the entry', () => {
+        const { cardFraming } = getAssistant('tewi');
+
+        expect(cardFraming).toBeDefined();
+        expect(Object.isFrozen(cardFraming)).toBe(true);
+    });
+});
+
 describe('what Home and Getting Started read', () => {
     test('Home lists Reisen and Tewi with the names and art they had as placeholders', () => {
         expect(getHomeAssistants().map(({ id, name, art }) => ({ id, name, art }))).toEqual([

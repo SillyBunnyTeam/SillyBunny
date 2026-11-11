@@ -207,7 +207,8 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 const boxes = await page.locator(`${HOME} .sbHomeCard:not(.sbHomeCard--choose) .sbHomeArt`).evaluateAll(nodes => nodes.map((node) => {
                     const box = node.getBoundingClientRect();
                     const image = node.querySelector('img');
-                    const imageBox = image.getBoundingClientRect();
+                    // The layout size, which the zoom of Tewi's picture does not change; the next test reads the zoomed rectangle.
+                    const imageBox = { width: image.offsetWidth, height: image.offsetHeight };
                     return {
                         art: node.dataset.sbArtPlaceholder,
                         size: [Math.round(box.width), Math.round(box.height)],
@@ -226,6 +227,60 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     expect(box.rendering, `${box.art} is not drawn as pixel art`).toEqual(['auto', 'auto']);
                     expect(box.image, `${box.art} picture`).toEqual({ size: pointer.size, fit: 'cover', position: pointer.image.position });
                 }
+            });
+
+            test('zoom the picture of Tewi in on her face inside the box that clips it, and leave Reisen and the pointer character as the box crops them', async ({ page }) => {
+                await boot(page, { library: [...BOTH, 'Alice.png'], accountStorage: { assistant: 'Alice.png' } });
+                const read = key => cardOf(page, key).locator('.sbHomeArt').evaluate((box) => {
+                    const image = box.querySelector('img');
+                    const rect = (node) => {
+                        const { left, top, width, height } = node.getBoundingClientRect();
+                        return { left, top, width, height };
+                    };
+                    return {
+                        inline: { transform: image.style.transform, origin: image.style.transformOrigin },
+                        computed: { transform: getComputedStyle(image).transform, origin: getComputedStyle(image).transformOrigin },
+                        box: rect(box),
+                        image: rect(image),
+                        overflow: getComputedStyle(box).overflow,
+                        radius: getComputedStyle(box).borderTopLeftRadius,
+                    };
+                });
+                for (const key of ['assistant-reisen', 'assistant-tewi', 'assistant-own']) {
+                    await expect.poll(() => cardOf(page, key).locator('.sbHomeArt img').evaluate(node => node.complete && node.naturalWidth), key).toBeGreaterThan(0);
+                }
+
+                const reisen = await read('assistant-reisen');
+                const tewi = await read('assistant-tewi');
+                const pointer = await read('assistant-own');
+
+                expect(tewi.inline).toEqual({ transform: 'scale(1.22)', origin: '50% 22%' });
+                expect(tewi.computed.transform).toBe('matrix(1.22, 0, 0, 1.22, 0, 0)');
+                const [originX, originY] = tewi.computed.origin.split(' ').map(Number.parseFloat);
+                expect(originX).toBeCloseTo(portrait * 0.5, 0);
+                expect(originY).toBeCloseTo(portrait * 0.22, 0);
+                for (const [key, other] of [['Reisen', reisen], ['the pointer character', pointer]]) {
+                    expect(other.inline, key).toEqual({ transform: '', origin: '' });
+                    expect(other.computed.transform, key).toBe('none');
+                    expect(other.image.width, key).toBeCloseTo(portrait, 0);
+                }
+
+                // The box keeps its size and corners and still clips: the zoomed picture is larger than the box, covers it on every side, and never changes the box.
+                for (const [key, entry] of [['Reisen', reisen], ['Tewi', tewi], ['the pointer character', pointer]]) {
+                    expect(entry.box.width, `${key} box`).toBeCloseTo(portrait, 0);
+                    expect(entry.box.height, `${key} box`).toBeCloseTo(portrait, 0);
+                    expect(entry.radius, `${key} corners`).toBe(pointer.radius);
+                    expect(entry.overflow, `${key} clips`).toBe('hidden');
+                }
+                expect(tewi.image.width).toBeCloseTo(portrait * 1.22, 0);
+                expect(tewi.image.height).toBeCloseTo(portrait * 1.22, 0);
+                expect(tewi.image.left).toBeLessThanOrEqual(tewi.box.left);
+                expect(tewi.image.top).toBeLessThanOrEqual(tewi.box.top);
+                expect(tewi.image.left + tewi.image.width).toBeGreaterThanOrEqual(tewi.box.left + tewi.box.width);
+                expect(tewi.image.top + tewi.image.height).toBeGreaterThanOrEqual(tewi.box.top + tewi.box.height);
+                // Scaled about 50% 22%: the zoom grows the picture 11% to each side and 4.84% above, so her eyes stay put in the box relative to the crop.
+                expect(tewi.image.left - tewi.box.left).toBeCloseTo(-0.11 * portrait, 0);
+                expect(tewi.image.top - tewi.box.top).toBeCloseTo(-0.0484 * portrait, 0);
             });
 
             test('show no art name as text: a box that has no picture is empty, and so is every other', async ({ page }) => {

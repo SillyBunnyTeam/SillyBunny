@@ -199,8 +199,26 @@ describe('what a card shows', () => {
 
         expect(cards.slice(0, 2).map(({ name, art }) => ({ name, art }))).toEqual([
             { name: 'Reisen', art: { name: 'row-reisen', avatar: REISEN } },
-            { name: 'Tewi', art: { name: 'row-tewi', avatar: TEWI } },
+            { name: 'Tewi', art: { name: 'row-tewi', avatar: TEWI, framing: { zoom: 1.22, origin: '50% 22%' } } },
         ]);
+    });
+
+    test('gives only Tewi a framing, and the pointer character and Reisen none', () => {
+        const library = createLibrary({ characters: { ...BOTH, 'Alice.png': 'Alice' } });
+
+        const [reisen, tewi, pointer] = getAssistantCards({ library, pointerAvatar: 'Alice.png' });
+
+        expect(tewi.art.framing).toEqual({ zoom: 1.22, origin: '50% 22%' });
+        expect(reisen.art).not.toHaveProperty('framing');
+        expect(pointer.art).not.toHaveProperty('framing');
+    });
+
+    test('keeps the framing of Tewi when her card has been renamed, and on a card with no file', () => {
+        const renamed = createLibrary({ characters: { [REISEN]: 'Reisen', 'My Tewi.png': 'My Tewi' }, renamed: { tewi: 'My Tewi.png' } });
+        const missing = createLibrary({ characters: { [REISEN]: 'Reisen' } });
+
+        expect(getAssistantCards({ library: renamed, pointerAvatar: null })[1].art).toEqual({ name: 'row-tewi', avatar: 'My Tewi.png', framing: { zoom: 1.22, origin: '50% 22%' } });
+        expect(getAssistantCards({ library: missing, pointerAvatar: null })[1].art.framing).toEqual({ zoom: 1.22, origin: '50% 22%' });
     });
 
     test('shows the art of the card that a renamed Reisen has now', () => {
@@ -216,7 +234,7 @@ describe('what a card shows', () => {
 
         const tewi = getAssistantCards({ library, pointerAvatar: null })[1];
 
-        expect(tewi.art).toEqual({ name: 'row-tewi', avatar: null });
+        expect(tewi.art).toEqual({ name: 'row-tewi', avatar: null, framing: { zoom: 1.22, origin: '50% 22%' } });
     });
 
     test('shows the pointer character with its card as the art', () => {

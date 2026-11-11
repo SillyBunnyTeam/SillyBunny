@@ -143,6 +143,10 @@ function createCardArt({ art }, getThumbnailUrl) {
         image.src = getThumbnailUrl(art.avatar);
         image.alt = '';
         image.decoding = 'async';
+        if (art.framing) {
+            image.style.transform = `scale(${art.framing.zoom})`;
+            image.style.transformOrigin = art.framing.origin;
+        }
         // The server answers 404 when it cannot make a thumbnail, and a broken picture would draw its own frame in the box.
         image.addEventListener('error', () => image.remove(), { once: true });
         picture.replaceChildren(image);

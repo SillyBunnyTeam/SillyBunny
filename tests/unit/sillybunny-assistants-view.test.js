@@ -374,6 +374,18 @@ describe('the art of a card', () => {
         expect(art.textContent).toBe('');
     });
 
+    test('is zoomed by the framing of the card, on the picture alone, and a card with no framing has no inline transform', () => {
+        const framed = { ...AVAILABLE_REISEN, id: 'tewi', key: 'assistant-tewi', art: { name: 'row-tewi', avatar: 'default_AssistantTewi.png', framing: { zoom: 1.22, origin: '50% 22%' } } };
+        const { panel } = render([framed, { ...AVAILABLE_REISEN, art: { name: 'row-reisen', avatar: 'default_AssistantReisen.png' } }, POINTER]);
+
+        const imageOf = key => cardOf(panel, key).querySelector('.sbHomeArt img');
+        expect(imageOf('assistant-tewi').style.transform).toBe('scale(1.22)');
+        expect(imageOf('assistant-tewi').style.transformOrigin).toBe('50% 22%');
+        expect(cardOf(panel, 'assistant-tewi').querySelector('.sbHomeArt').getAttribute('style')).toBeNull();
+        expect(imageOf('assistant-reisen').getAttribute('style')).toBeNull();
+        expect(imageOf('assistant-own').getAttribute('style')).toBeNull();
+    });
+
     test('is the empty box again when the thumbnail fails to load, as the server answers 404 for a card it cannot make one of', () => {
         const { panel } = render([POINTER]);
         const art = cardOf(panel, 'assistant-own').querySelector('.sbHomeCardArt .sbHomeArt');

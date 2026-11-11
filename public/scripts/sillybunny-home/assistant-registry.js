@@ -16,6 +16,13 @@
  * @property {string} defaultAvatar The avatar file of the card as it is first named.
  * @property {string} fileName The name of the card file, without the extension.
  * @property {GreetingArt} [greetingArt] The picture that Roleplay chats show above the main greeting of the card.
+ * @property {CardFraming} [cardFraming] How Home zooms the card's picture, for a card whose art draws the character smaller than the others.
+ */
+
+/**
+ * @typedef {object} CardFraming
+ * @property {number} zoom The scale of the picture inside the art box, which clips it.
+ * @property {string} origin The `transform-origin` of the zoom, which keeps the face in the box.
  */
 
 /**
@@ -60,6 +67,7 @@ export const ASSISTANTS = Object.freeze([
         deletedStorageKey: 'bundledAssistantTewiDeleted',
         defaultAvatar: 'default_AssistantTewi.png',
         fileName: 'default_AssistantTewi',
+        cardFraming: Object.freeze({ zoom: 1.22, origin: '50% 22%' }),
         greetingArt: {
             src: '/img/sillybunny/greeting-tewi.webp',
             src2x: '/img/sillybunny/greeting-tewi@2x.webp',
