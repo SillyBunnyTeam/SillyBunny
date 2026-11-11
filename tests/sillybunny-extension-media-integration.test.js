@@ -9,6 +9,8 @@ import { materializeAndValidateProviderOutput } from '../public/scripts/extensio
 import { normalizeProviderResult } from '../public/scripts/extensions/quick-image-gen/lib/provider-contract.js';
 import { buildTextAIRequestMessages } from '../public/scripts/extensions/quick-image-gen/lib/prompt-pipeline.js';
 import { MAX_IMAGE_BYTES } from '../public/scripts/extensions/quick-image-gen/lib/security.js';
+import { cloneNovelAIPreciseReferenceState } from '../public/scripts/extensions/quick-image-gen/lib/generation-semantics.js';
+import { cloneSynchronizedValue } from '../public/scripts/extensions/quick-image-gen/lib/settings-persistence.js';
 import { buildNovelAIPreciseReferenceParameters } from '../public/scripts/novelai-precise-reference.js';
 
 const capabilityRegistryKey = Symbol.for('sillybunny.extensionCapabilities');
@@ -429,6 +431,77 @@ describe('Conversation extension media integration', () => {
         delete charRefImages.target;
         const withoutTargetReference = buildSettings(roleplaySettings, { __qigScopedCharacter: true });
         expect(withoutTargetReference.proxyRefImages).toEqual([]);
+    });
+
+    function createConfigurationContext(settings, values) {
+        const context = createQigContext({
+            _automationRevision: 0,
+            charSettingsBaseState: null,
+            cloneNovelAIPreciseReferenceState,
+            cloneSynchronizedValue,
+            closePalettePresetMenu() {},
+            defaultSettings: { naiPreciseReference: { enabled: false, references: [] }, pollinationsModel: 'flux' },
+            document: { getElementById: () => null },
+            ensureFilterPoolsState() {},
+            getConfigurationKeys: record => ['provider', 'prompt', ...(record?.provider === 'novelai' ? ['naiPreciseReference'] : ['pollinationsModel'])],
+            getSettings: () => settings,
+            hideStatus() {},
+            loadCharSettings: jest.fn(async () => {}),
+            normalizeGenerationPresetStore() {},
+            normalizeInjectInsertMode: value => value,
+            normalizePaletteMode: value => value,
+            refreshAllUI() {},
+            renderConfigurationSelect() {},
+            renderContextualFilters() {},
+            resetAutoGenerateCadence() {},
+            saveSettingsDebounced() {},
+            setTimeout: jest.fn(),
+            showStatus() {},
+            updateQigStatusLine() {},
+            ...values,
+        });
+        for (const name of ['cloneCharScopedState', 'rememberCharSettingsBaseState', 'getGlobalConfigurationSettings', 'snapshotConfiguration', 'loadConfiguration']) {
+            evaluateInContext(name, context);
+        }
+        return context;
+    }
+
+    const preciseReferences = image => ({ enabled: true, references: [{ image, type: 'character', strength: 1, fidelity: 1 }] });
+
+    function createCharacterOverrideContext() {
+        const settings = { provider: 'novelai', prompt: 'character prompt', naiPreciseReference: preciseReferences('CHARACTER') };
+        const context = createConfigurationContext(settings, {
+            charSettingsOverrideApplied: true,
+            configurations: [{ id: 'pollinations', name: 'Pollinations', provider: 'pollinations', pollinationsModel: 'turbo' }],
+        });
+        context.charSettingsBaseState = context.cloneCharScopedState({ prompt: 'global prompt', naiPreciseReference: preciseReferences('GLOBAL') });
+        return { context, settings };
+    }
+
+    test('QIG saves the global Precise References in a configuration while a character override is active', () => {
+        const { context, settings } = createCharacterOverrideContext();
+
+        expect(context.snapshotConfiguration(settings)).toMatchObject({ prompt: 'global prompt', naiPreciseReference: preciseReferences('GLOBAL') });
+    });
+
+    test('QIG keeps the global Precise References as the base when it loads a configuration during a character override', async () => {
+        const { context, settings } = createCharacterOverrideContext();
+
+        await context.loadConfiguration('pollinations');
+        expect(context.loadCharSettings).toHaveBeenCalledTimes(1);
+        expect(context.charSettingsBaseState).toMatchObject({ prompt: 'global prompt', naiPreciseReference: preciseReferences('GLOBAL') });
+        expect(settings._charSettingsBaseState.naiPreciseReference).toEqual(preciseReferences('GLOBAL'));
+    });
+
+    test('QIG configurations take the live Precise References outside a character override', () => {
+        const settings = {
+            provider: 'novelai',
+            naiPreciseReference: preciseReferences('EDITED'),
+            _charSettingsBaseState: { naiPreciseReference: preciseReferences('SAVED_BEFORE_EDIT') },
+        };
+        const context = createConfigurationContext(settings, { charSettingsOverrideApplied: false });
+
+        expect(context.snapshotConfiguration(settings).naiPreciseReference).toEqual(preciseReferences('EDITED'));
     });
 
     test('QIG readiness follows complete initialization and propagates failure', async () => {

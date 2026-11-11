@@ -15987,6 +15987,11 @@ function getGlobalConfigurationSettings(s = getSettings()) {
         nanobananaRefImages: Array.isArray(base.nanobananaRefImages) ? [...base.nanobananaRefImages] : [...(s.nanobananaRefImages || [])],
         nanogptRefImages: Array.isArray(base.nanogptRefImages) ? [...base.nanogptRefImages] : [...(s.nanogptRefImages || [])],
         localRefImage: typeof base.localRefImage === "string" ? base.localRefImage : (s.localRefImage || ""),
+        // SillyBunny divergence: Precise References come from the in-memory base only during an override,
+        // because the saved base copy does not change on edits and can be older than the live value.
+        naiPreciseReference: cloneNovelAIPreciseReferenceState(charSettingsOverrideApplied && charSettingsBaseState
+            ? charSettingsBaseState.naiPreciseReference
+            : s.naiPreciseReference),
     };
 }
 
