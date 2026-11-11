@@ -4,6 +4,7 @@ import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { animateIn, animateOut, stopMotion, MOTION_FAST, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from '../sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from '../sillybunny-sheet.js';
 import { hostOverlayLayer } from './overlay-host.js';
+import { detailsToText, renderDetails } from './option-details.js';
 import { bindSheetSwipeClose, createSheetHandle } from './sheet-gestures.js';
 
 let activePicker = null;
@@ -107,22 +108,36 @@ function createSeparator() {
     return separator;
 }
 
-function createOption(item, selected, id, onClick, { multiple = false, state = null } = {}) {
+function isLinkTarget(event, option) {
+    const link = event.target instanceof Element ? event.target.closest('a') : null;
+    return Boolean(link && option.contains(link));
+}
+
+/** A disabled item stays out of reach unless it is a selected item of a multiple picker, which can still be removed. */
+function isItemDisabled(state, item, itemState = null) {
+    return Boolean(item.disabled) && !(state.multiple && itemState === 'selected');
+}
+
+function createOption(item, selected, id, onClick, { multiple = false, state = null, disabled = Boolean(item.disabled) } = {}) {
     const option = document.createElement('li');
     option.id = id;
     option.className = 'sb-picker__option';
     option.setAttribute('role', 'option');
     option.setAttribute('aria-selected', String(selected));
     option.tabIndex = -1;
-    if (item.disabled) {
+    if (disabled) {
         option.setAttribute('aria-disabled', 'true');
         option.classList.add('is-disabled');
     }
     if (multiple) {
-        option.classList.toggle('is-muted', Boolean(item.muted));
-        // Keep pointer activation from moving the combobox's virtual focus onto a replaced option.
-        option.addEventListener('mousedown', event => event.preventDefault());
+        // A removable item that does not apply is dimmed like a muted one, without being announced as unavailable.
+        option.classList.toggle('is-muted', Boolean(item.muted) || (Boolean(item.disabled) && !disabled));
     }
+    // Keep pointer activation from moving the combobox's virtual focus onto a replaced option or a link inside one.
+    // A link still opens: this only stops the press from taking focus.
+    option.addEventListener('mousedown', event => {
+        if (multiple || isLinkTarget(event, option)) event.preventDefault();
+    });
     if (item.icon) {
         option.append(createIcon(item.icon));
     }
@@ -133,10 +148,19 @@ function createOption(item, selected, id, onClick, { multiple = false, state = n
     label.className = 'sb-picker__label';
     label.textContent = item.label;
     text.append(label);
-    if (item.subtitle) {
+    const subtitleText = item.subtitle ?? (item.details ? detailsToText(item.details) : '');
+    if (subtitleText || item.details?.length) {
         const subtitle = document.createElement('span');
         subtitle.className = 'sb-picker__subtitle';
-        subtitle.textContent = item.subtitle;
+        if (item.details?.length) {
+            // The plain text above is what search matches; the elements keep icons, links and tooltips.
+            subtitle.classList.add('sb-picker__subtitle--details');
+            subtitle.append(renderDetails(item.details));
+            // A link needs room around it for a touch target, which a clamped subtitle would cut off.
+            if (subtitle.querySelector('a')) subtitle.classList.add('sb-picker__subtitle--linked');
+        } else {
+            subtitle.textContent = subtitleText;
+        }
         text.append(subtitle);
     }
     option.append(text);
@@ -153,7 +177,10 @@ function createOption(item, selected, id, onClick, { multiple = false, state = n
         label.textContent = t`Not selected.`;
         option.append(minus, label);
     }
-    option.addEventListener('click', onClick);
+    // A press on a link in the option's details follows the link and does not choose the option.
+    option.addEventListener('click', event => {
+        if (!isLinkTarget(event, option)) onClick(event);
+    });
     return option;
 }
 
@@ -241,7 +268,7 @@ function renderOptions(state) {
     const surfaceScrollTop = state.surface?.scrollTop ?? 0;
     const query = state.input.value.toLocaleLowerCase();
     const matches = state.items.filter(item => {
-        const haystack = `${item.label} ${item.subtitle ?? ''} ${item.group ?? ''}`.toLocaleLowerCase();
+        const haystack = `${item.label} ${item.subtitle ?? (item.details ? detailsToText(item.details) : '')} ${item.group ?? ''}`.toLocaleLowerCase();
         return !query || haystack.includes(query);
     });
     const grouped = state.items.some(item => item.group);
@@ -270,7 +297,7 @@ function renderOptions(state) {
             const selected = state.multiple ? itemState === 'selected' : Object.is(item.value, state.selected);
             const option = createOption(item, selected, createId('sb-picker-option'), () => {
                 selectPickerItem(state, item.value);
-            }, { multiple: state.multiple, state: itemState });
+            }, { multiple: state.multiple, state: itemState, disabled: isItemDisabled(state, item, itemState) });
             option.classList.toggle('is-active', index === state.activeIndex);
             index += 1;
             return option;
@@ -292,7 +319,8 @@ function selectPickerItem(state, value) {
     if (activePicker !== state) {
         return;
     }
-    if (state.items.find(item => Object.is(item.value, value))?.disabled) {
+    const item = state.items.find(entry => Object.is(entry.value, value));
+    if (item && isItemDisabled(state, item, state.multiple ? state.getItemState?.(value) : null)) {
         return;
     }
     try {
@@ -455,8 +483,10 @@ function finishClose() {
  * @param {object} options
  * @param {HTMLElement} options.trigger
  * @param {string} options.title
- * @param {{ value: unknown, label: string, subtitle?: string, group?: string, disabled?: boolean, icon?: string|Element, muted?: boolean }[]} options.items
+ * @param {{ value: unknown, label: string, subtitle?: string, details?: import('./option-details.js').Details, group?: string, disabled?: boolean, icon?: string|Element, muted?: boolean }[]} options.items
  *     Items with a `group` render under that heading, groups in first-appearance order; search also matches it.
+ *     `details` (see option-details.js) replace the subtitle's text with elements such as icons; `subtitle` stays their plain text.
+ *     A disabled item cannot be chosen, except that a selected one in a `multiple` picker can be removed.
  * @param {unknown} [options.selected=null]
  * @param {boolean} [options.multiple=false] Toggle values without closing or changing search focus.
  * @param {(value: unknown) => 'selected'|'excluded'|null} [options.getItemState=null]

@@ -9,6 +9,9 @@ import { accountStorage } from './util/AccountStorage.js';
 import { localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
 import { isMobile } from './RossAscends-mods.js';
 import { updateServiceTierOptions } from './service-tiers.js';
+// SillyBunny: model details for the shared picker rows of the Connections select rows.
+import { registerOptionDetails } from './sillybunny-editor/option-details.js';
+import { describeMancerModel, describeOpenRouterModel, describeTogetherModel } from './sillybunny-model-details.js';
 
 let mancerModels = [];
 let togetherModels = [];
@@ -891,6 +894,15 @@ function onAphroditeModelSelect() {
     textgen_settings.aphrodite_model = modelId;
     $('#api_button_textgenerationwebui').trigger('click');
 }
+
+// SillyBunny: the Connections select rows show each model's details (what the select2 templates show)
+// as a picker subtitle at every width. The templates for Infermatic, DreamGen, vLLM and Aphrodite show only
+// the id, which is the row's label, so they have nothing to register.
+registerOptionDetails({
+    mancer_model: option => describeMancerModel(mancerModels.find(x => x.id === option.value)),
+    model_togetherai_select: option => describeTogetherModel(togetherModels.find(x => x.id === option.value), option.textContent),
+    openrouter_model: option => describeOpenRouterModel(openRouterModels.find(x => x.id === option.value)),
+});
 
 function getMancerModelTemplate(option) {
     const model = mancerModels.find(x => x.id === option?.element?.value);

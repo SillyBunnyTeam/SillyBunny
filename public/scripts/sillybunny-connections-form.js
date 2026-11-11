@@ -1,4 +1,5 @@
 import { createEntryRow, prepareFloatingPlaceholder } from './sillybunny-editor/rows.js';
+import { createDetailsMapper } from './sillybunny-editor/option-details.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 
 const GATES = '[data-source], [data-tg-type], [data-tg-type-mode], [data-source-mode], [data-mode], [data-cc-type], #openai_external_category, #pollinations_key_section, #oai_max_context_unlocked_block, .reverse_proxy_warning, .displayNone';
@@ -30,11 +31,33 @@ function titleText(node) {
     return (read(node).trim() || node.textContent).replace(/\s+/g, ' ').trim().replace(/\s*[:：]\s*$/, '');
 }
 
-function pickerNoneLabel(select) {
+/**
+ * The select2 placeholders of the selects adopted here. Select2 is not initialised at 768px and below,
+ * so the words an empty select shows there come from this list: the same strings as the select2 calls in
+ * openai.js, textgen-models.js and horde.js.
+ */
+const SELECT2_PLACEHOLDERS = [
+    ['#horde_model', t => t`Select Horde models`],
+    ['.openrouter_quantizations', t => t`Select quantizations. No selection = all quantizations.`],
+    ['.openrouter_providers', t => t`Select providers. No selection = all providers.`],
+    ['#nanogpt_allowed_providers, #nanogpt_ignored_providers', t => t`Select providers`],
+    ['#tabby_model, #llamacpp_model', t => t`[Currently loaded]`],
+    [[
+        'model_openai_select', 'model_openrouter_select', 'model_aimlapi_select', 'model_electronhub_select', 'model_chutes_select',
+        'model_nanogpt_select', 'model_workers_ai_select', 'mancer_model', 'model_togetherai_select', 'ollama_model',
+        'generic_model_select', 'model_infermaticai_select', 'model_dreamgen_select', 'openrouter_model', 'vllm_model', 'aphrodite_model',
+    ].map(id => `#${id}`).join(', '), t => t`Select a model`],
+];
+
+/** Upstream placeholders in precedence order: the select's own, select2's, an empty option's text, then the list above. */
+export function pickerNoneLabel(select, t) {
     if (select.dataset.placeholder) return select.dataset.placeholder;
     const placeholder = globalThis.jQuery?.(select).data('select2')?.options?.get('placeholder');
     const text = typeof placeholder === 'string' ? placeholder : placeholder?.text;
-    return text || [...select.options].find(option => option.value === '')?.textContent.trim() || '';
+    if (text) return text;
+    const emptyOption = [...select.options].find(option => option.value === '')?.textContent.trim();
+    if (emptyOption) return emptyOption;
+    return SELECT2_PLACEHOLDERS.find(([selector]) => select.matches(selector))?.[1](t) ?? '';
 }
 
 function isHelp(node) {
@@ -173,7 +196,7 @@ export function applyConnectionsFormPass(block, ctx) {
         rowParent.insertBefore(holding, anchor);
         generated.push(holding);
         const container = isSelect && input.nextElementSibling?.matches('.select2-container') ? input.nextElementSibling : null;
-        const noneLabel = isSelect ? pickerNoneLabel(input) : '';
+        const noneLabel = isSelect ? pickerNoneLabel(input, t) : '';
         move(input, holding);
         if (container) move(container, holding);
         const manager = anchor.querySelector?.('.manage-api-keys');
@@ -202,6 +225,7 @@ export function applyConnectionsFormPass(block, ctx) {
             field: input.id,
             noneLabel,
             ordered: input.classList.contains('openrouter_providers'),
+            mapItem: createDetailsMapper(input.id),
             suffix: safeSuffix,
         }) : createEntryRow({
             input,

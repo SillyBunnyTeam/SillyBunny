@@ -315,6 +315,51 @@ describe('createSelectRow', () => {
         expect(trigger.textContent).toContain('GPT-4o, Claude Sonnet');
     });
 
+    test('mapItem adds details per option, follows late loads, and the select stays the source of truth', async () => {
+        const { createDetailsMapper, registerOptionDetails, icon } = await import('../../public/scripts/sillybunny-editor/option-details.js');
+        registerOptionDetails({ model_fixture_select: option => (option.value ? [`${option.value} ctx`, [icon('fa-solid fa-eye', 'Vision')]] : null) });
+        const select = makeSelect();
+        const { trigger } = mount({ select, mapItem: createDetailsMapper('model_fixture_select') });
+        trigger.click();
+        const [empty, gpt] = pickerOptions();
+        expect(empty.querySelector('.sb-picker__subtitle')).toBeNull();
+        expect(gpt.querySelector('.sb-picker__subtitle').textContent).toBe('gpt ctx · ');
+        expect(gpt.querySelector('i[aria-label="Vision"]')).not.toBeNull();
+        expect(pickerOptions().map(option => option.querySelector('.sb-picker__label').textContent)).toEqual(['Select a model', 'GPT-4o', 'GPT-4o mini', 'Claude Sonnet']);
+        select.append(new Option('Late model', 'late'));
+        await flush();
+        const late = pickerOptions().find(option => option.querySelector('.sb-picker__label').textContent === 'Late model');
+        expect(late.querySelector('.sb-picker__subtitle').textContent).toBe('late ctx · ');
+        late.click();
+        expect(select.value).toBe('late');
+        expect(trigger.textContent).toContain('Late model');
+    });
+
+    test('mapItem may return nothing or throw-free partial items; the plain item is kept', () => {
+        const select = makeSelect();
+        const { trigger } = mount({ select, mapItem: (item, option) => (option.value === 'gpt' ? { ...item, subtitle: 'Mapped' } : undefined) });
+        trigger.click();
+        expect(pickerOptions().map(option => option.querySelector('.sb-picker__subtitle')?.textContent ?? null)).toEqual([null, 'Mapped', null, null]);
+    });
+
+    test('a disabled option that is selected in a multiple select can be removed from the picker; others cannot be added', () => {
+        const select = makeSelect({ multiple: true });
+        for (const option of select.options) option.selected = option.value === 'gpt';
+        for (const option of select.options) option.disabled = ['gpt', 'claude'].includes(option.value);
+        const { trigger } = mount({ select });
+        trigger.click();
+        const byLabel = label => pickerOptions().find(option => option.querySelector('.sb-picker__label').textContent === label);
+        expect(byLabel('GPT-4o').hasAttribute('aria-disabled')).toBe(false);
+        expect(byLabel('Claude Sonnet').getAttribute('aria-disabled')).toBe('true');
+        byLabel('Claude Sonnet').click();
+        expect([...select.selectedOptions].map(option => option.value)).toEqual(['gpt']);
+        byLabel('GPT-4o').click();
+        expect([...select.selectedOptions].map(option => option.value)).toEqual([]);
+        expect(byLabel('GPT-4o').getAttribute('aria-disabled')).toBe('true');
+        byLabel('GPT-4o').click();
+        expect([...select.selectedOptions].map(option => option.value)).toEqual([]);
+    });
+
     test('destroy stops observing and closes its own picker', async () => {
         const select = makeSelect();
         const result = mount({ select });

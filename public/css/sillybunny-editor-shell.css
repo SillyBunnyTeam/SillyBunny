@@ -899,6 +899,50 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     font-size: 0.9em;
 }
 
+/* Option details end in icons and a badge, so they wrap (up to three lines) instead of being cut off at the row's edge. */
+.sb-picker__subtitle--details {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.sb-picker__subtitle--details small {
+    font-size: inherit;
+    white-space: nowrap;
+}
+
+/* A link in the details (a model's page) is an icon in the link colour. Its subtitle is not clamped, so the
+   touch target below is not cut off; the target does not grow the row. */
+.sb-picker__subtitle--linked {
+    display: block;
+    overflow: visible;
+}
+
+.sb-picker__subtitle--details a {
+    position: relative;
+    color: var(--SmartThemeQuoteColor);
+    border-radius: var(--sb-radius-control);
+}
+
+.sb-picker__subtitle--details a:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (pointer: coarse) {
+    .sb-picker__subtitle--details a::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        inline-size: 40px;
+        block-size: 40px;
+        transform: translate(-50%, -50%);
+    }
+}
+
 .sb-picker__option.is-active {
     background: var(--sb-flat-hover-bg);
 }

@@ -589,6 +589,142 @@ describe('picker disabled items', () => {
     });
 });
 
+describe('picker disabled items in a multiple picker', () => {
+    const items = [
+        { value: 'a', label: 'Applicable' },
+        { value: 'b', label: 'Chosen but unavailable', disabled: true },
+        { value: 'c', label: 'Unavailable', disabled: true },
+    ];
+
+    function makeMultiple(selected) {
+        const onSelect = jest.fn(value => {
+            if (selected.has(value)) selected.delete(value);
+            else selected.add(value);
+        });
+        return { ...makePicker({ items, multiple: true, onSelect, getItemState: value => (selected.has(value) ? 'selected' : null) }), onSelect, selected };
+    }
+
+    test('a selected disabled item is removable by pointer and keyboard and is not announced as unavailable', () => {
+        const { picker, input, list, onSelect, selected } = makeMultiple(new Set(['b']));
+        const [, chosen, unavailable] = [...list.querySelectorAll('[role="option"]')];
+        expect(chosen.hasAttribute('aria-disabled')).toBe(false);
+        expect(chosen.classList.contains('is-disabled')).toBe(false);
+        expect(chosen.getAttribute('aria-selected')).toBe('true');
+        expect(unavailable.getAttribute('aria-disabled')).toBe('true');
+
+        keydown(input, 'ArrowDown');
+        keydown(input, 'Enter');
+        expect(onSelect).toHaveBeenLastCalledWith('b');
+        expect(selected.has('b')).toBe(false);
+        expect(picker.isOpen).toBe(true);
+    });
+
+    test('once removed, the item is disabled again and cannot be added back', () => {
+        const { list, onSelect, selected } = makeMultiple(new Set(['b']));
+        list.querySelectorAll('[role="option"]')[1].click();
+        expect(selected.has('b')).toBe(false);
+        const removed = list.querySelectorAll('[role="option"]')[1];
+        expect(removed.getAttribute('aria-disabled')).toBe('true');
+        expect(removed.getAttribute('aria-selected')).toBe('false');
+        onSelect.mockClear();
+        removed.click();
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(selected.has('b')).toBe(false);
+    });
+
+    test('a disabled item that is not selected still cannot be added, by pointer or keyboard', () => {
+        const { input, list, onSelect } = makeMultiple(new Set());
+        list.querySelectorAll('[role="option"]')[2].click();
+        keydown(input, 'End');
+        keydown(input, 'Enter');
+        expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    test('a single picker keeps a disabled selected item out of reach', () => {
+        const onSelect = jest.fn();
+        const { list } = makePicker({ items, selected: 'b', onSelect });
+        const chosen = list.querySelectorAll('[role="option"]')[1];
+        expect(chosen.getAttribute('aria-disabled')).toBe('true');
+        chosen.click();
+        expect(onSelect).not.toHaveBeenCalled();
+    });
+});
+
+describe('picker item details', () => {
+    const details = [['128000 ctx'], [{ tag: 'i', attrs: { class: 'fa-solid fa-eye', title: 'Vision', 'aria-label': 'Vision' } }]];
+
+    test('renders details as the subtitle and keeps their plain text for search', () => {
+        const { list, input } = makePicker({ items: [
+            { value: 'a', label: 'Alpha', subtitle: '128000 ctx · Vision', details },
+            { value: 'b', label: 'Beta' },
+        ] });
+        const subtitle = list.querySelector('.sb-picker__subtitle');
+        expect(subtitle.classList.contains('sb-picker__subtitle--details')).toBe(true);
+        expect(subtitle.textContent).toBe('128000 ctx · ');
+        expect(subtitle.querySelector('i[role="img"][aria-label="Vision"]')).not.toBeNull();
+        filter(input, 'vision');
+        expect([...list.querySelectorAll('[role="option"]')].map(option => option.querySelector('.sb-picker__label').textContent)).toEqual(['Alpha']);
+    });
+
+    test('derives the plain text itself when an item carries only details', () => {
+        const { list, input } = makePicker({ items: [{ value: 'a', label: 'Alpha', details }, { value: 'b', label: 'Beta' }] });
+        filter(input, 'ctx');
+        expect(list.querySelectorAll('[role="option"]')).toHaveLength(1);
+    });
+
+    describe('a link in the details', () => {
+        const withLink = [['Story'], ['Name', ' ', { tag: 'a', attrs: { href: 'https://example.com/m', class: 'fa-solid fa-circle-question', title: 'Details', 'aria-label': 'Details' }, children: [] }]];
+        const items = [{ value: 'a', label: 'Alpha', subtitle: 'Story · Name', details: withLink }, { value: 'b', label: 'Beta' }];
+        const noNavigation = event => event.preventDefault();
+
+        beforeEach(() => document.addEventListener('click', noNavigation));
+        afterEach(() => document.removeEventListener('click', noNavigation));
+
+        test.each([
+            ['popover', false],
+            ['sheet', true],
+        ])('a press on the link in the %s opens it without choosing, moving or closing', (_name, sheet) => {
+            window.matchMedia.mockImplementation(() => ({ matches: sheet }));
+            const { picker, input, list, onSelect } = makePicker({ items });
+            const anchor = list.querySelector('a');
+            expect(anchor.getAttribute('target')).toBe('_blank');
+            expect(list.querySelector('.sb-picker__subtitle').classList.contains('sb-picker__subtitle--linked')).toBe(true);
+            const active = input.getAttribute('aria-activedescendant');
+            const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+            anchor.dispatchEvent(down);
+            expect(down.defaultPrevented).toBe(true);
+            const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+            anchor.dispatchEvent(click);
+            expect(onSelect).not.toHaveBeenCalled();
+            expect(picker.isOpen).toBe(true);
+            expect(input.getAttribute('aria-activedescendant')).toBe(active);
+            expect(list.querySelector('[aria-selected="true"]')).toBeNull();
+        });
+
+        test('a click beside the link on the same option still chooses it', () => {
+            const { list, onSelect } = makePicker({ items, multiple: true });
+            list.querySelector('.sb-picker__label').click();
+            expect(onSelect).toHaveBeenCalledWith('a');
+            onSelect.mockClear();
+            list.querySelector('.sb-picker__subtitle').click();
+            expect(onSelect).toHaveBeenCalledWith('a');
+        });
+
+        test('keyboard choosing is unchanged', () => {
+            const { input, onSelect } = makePicker({ items });
+            keydown(input, 'Enter');
+            expect(onSelect).toHaveBeenCalledWith('a');
+        });
+    });
+
+    test('an item with only a subtitle still renders it as text', () => {
+        const { list } = makePicker({ items: [{ value: 'a', label: 'Alpha', subtitle: '<b>plain</b>' }] });
+        const subtitle = list.querySelector('.sb-picker__subtitle');
+        expect(subtitle.textContent).toBe('<b>plain</b>');
+        expect(subtitle.classList.contains('sb-picker__subtitle--details')).toBe(false);
+    });
+});
+
 describe('picker group headings', () => {
     const groupedItems = [
         { value: 'gpt', label: 'GPT-4o', group: 'OpenAI' },

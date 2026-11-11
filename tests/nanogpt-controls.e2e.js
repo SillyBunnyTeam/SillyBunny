@@ -113,39 +113,60 @@ async function setupNanoGpt(page, baseURL) {
     return routes;
 }
 
-async function openPicker(page, mobile, id, source) {
-    const menu = mobile
-        ? page.locator(`.sb-inline-select-picker-menu[data-sb-model-id-picker-menu-source="${source}"]`)
-        : page.locator(`#select2-${id}-results`);
+/** The select row Connections builds around a native select, and the trigger a user presses. */
+function selectRow(page, id) {
+    return page.locator(`.ds-select-row[data-sb-editor-field="${id}"]`);
+}
+
+function rowTrigger(page, id) {
+    return selectRow(page, id).locator('.ds-select-row__trigger');
+}
+
+/** The shared picker: a popover on desktop, a bottom sheet on phones. */
+function pickerSurface(page, mobile) {
+    return page.locator(mobile ? '.sb-picker-sheet' : '.sb-picker');
+}
+
+async function openPicker(page, mobile, id) {
+    const menu = pickerSurface(page, mobile);
     if (!await menu.isVisible()) {
-        await page.locator(mobile ? `#${id}_picker:visible, #${id}:visible` : `#${id} + .select2 .select2-selection`).click();
+        await rowTrigger(page, id).click();
     }
     await expect(menu).toBeVisible();
+    await expect(rowTrigger(page, id)).toHaveAttribute('aria-expanded', 'true');
     return menu;
 }
 
-function pickerRow(menu, mobile, label) {
-    return menu.locator(mobile ? 'button[role="option"]' : '.select2-results__option').filter({ hasText: label });
+async function closePicker(page, mobile, id) {
+    const menu = pickerSurface(page, mobile);
+    await expect(menu.locator('.sb-picker__search')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(rowTrigger(page, id)).toHaveAttribute('aria-expanded', 'false');
+}
+
+function pickerRow(menu, label) {
+    return menu.getByRole('option').filter({ hasText: label });
 }
 
 async function chooseModel(page, mobile, model) {
-    const menu = await openPicker(page, mobile, 'model_nanogpt_select', 'nanogpt-model');
-    await pickerRow(menu, mobile, model.name).click();
+    const menu = await openPicker(page, mobile, 'model_nanogpt_select');
+    await pickerRow(menu, model.name).click();
+    await expect(pickerSurface(page, mobile)).toBeHidden();
     await expect(page.locator('#model_nanogpt_select')).toHaveValue(model.id);
+    await expect(rowTrigger(page, 'model_nanogpt_select').locator('.ds-select-row__value')).toHaveText(model.name);
 }
 
 async function toggleProvider(page, mobile, kind, label, remove = false) {
     const id = `nanogpt_${kind}_providers`;
-    if (remove && !mobile) {
-        await page.locator(`#${id} + .select2 .select2-selection__choice`).filter({ hasText: label }).locator('.select2-selection__choice__remove').click();
-    } else {
-        const menu = await openPicker(page, mobile, id, `nanogpt-${kind}-providers`);
-        const option = pickerRow(menu, mobile, label);
-        await expect(option, `${kind} provider '${label}' must be ${remove ? 'removable' : 'selectable'}`).toBeVisible();
-        await expect(option).toBeEnabled();
-        await option.click();
-    }
-    await page.getByRole('heading', { name: 'API', exact: true, level: 2 }).locator('..').click({ position: { x: 8, y: 8 } });
+    const menu = await openPicker(page, mobile, id);
+    const option = pickerRow(menu, label);
+    await expect(option, `${kind} provider '${label}' must be ${remove ? 'removable' : 'selectable'}`).toBeVisible();
+    await expect(option).toBeEnabled();
+    await expect(option).toHaveAttribute('aria-selected', String(remove));
+    await option.click();
+    await expect(option).toHaveAttribute('aria-selected', String(!remove));
+    await closePicker(page, mobile, id);
 }
 
 async function expectRouting(page, allowed, ignored, payg) {
@@ -181,9 +202,9 @@ for (const mobile of [false, true]) {
         if (mobile) {
             test('provider picker supports keyboard opening and closing without closing the API panel', async ({ page, baseURL }) => {
                 await setupNanoGpt(page, baseURL);
-                const picker = page.locator('#nanogpt_allowed_providers_picker');
-                const menu = page.locator('#nanogpt_allowed_providers_menu');
-                await expect(picker).toHaveText('Select providers');
+                const picker = rowTrigger(page, 'nanogpt_allowed_providers');
+                const menu = pickerSurface(page, mobile);
+                await expect(picker.locator('.ds-select-row__value')).toHaveText('Select providers');
                 await picker.focus();
                 await page.keyboard.press('Enter');
                 await expect(picker).toHaveAttribute('aria-expanded', 'true');
@@ -192,27 +213,39 @@ for (const mobile of [false, true]) {
                 await expect(menu).toBeHidden();
                 await expect(picker).toHaveAttribute('aria-expanded', 'false');
                 await expect(picker).toBeVisible();
+                await expect(page.locator('#main_api')).toBeVisible();
             });
         }
 
         test('model picker renders subscription metadata safely and keeps original IDs', async ({ page, baseURL }, testInfo) => {
             await setupNanoGpt(page, baseURL);
-            const menu = await openPicker(page, mobile, 'model_nanogpt_select', 'nanogpt-model');
+            const menu = await openPicker(page, mobile, 'model_nanogpt_select');
             await screenshot(page, testInfo, `${layout}-model-picker`);
+            // The shared picker shows the model name as the row label and its details as the subtitle.
             for (const model of MODEL_CASES) {
-                const row = pickerRow(menu, mobile, model.name);
-                await expect(row.locator('strong')).toHaveText(model.name);
-                await expect(row.locator('small[title]')).toHaveText(model.badge);
+                const row = pickerRow(menu, model.name);
+                await expect(row.locator('.sb-picker__label')).toHaveText(model.name);
+                await expect(row.locator('.sb-picker__subtitle small[title]')).toHaveText(model.badge);
             }
-            const first = pickerRow(menu, mobile, MODELS[0].name);
-            await expect(first).toContainText('128000 ctx');
-            await expect(first).toContainText('$0.15/$0.6 in/out Mtoken');
+            const first = pickerRow(menu, MODELS[0].name);
+            await expect(first.locator('.sb-picker__subtitle')).toContainText('128000 ctx');
+            await expect(first.locator('.sb-picker__subtitle')).toContainText('$0.15/$0.6 in/out Mtoken');
             for (const capability of ['vision', 'reasoning', 'tool calling']) {
-                await expect(first.locator(`[aria-label="This model supports ${capability}"]`)).toHaveCount(1);
+                await expect(first.getByRole('img', { name: `This model supports ${capability}` })).toHaveCount(1);
+                await expect(first.getByRole('img', { name: `This model supports ${capability}` })).toHaveAttribute('title', `This model supports ${capability}`);
             }
-            await expect(pickerRow(menu, mobile, MODELS[2].name).locator('small[title]')).toHaveAttribute('title', 'Not included in subscription');
-            await expect(pickerRow(menu, mobile, MODELS[4].name)).toContainText(`${HTML_PAYLOAD} ctx`);
-            await expect(pickerRow(menu, mobile, MODELS[6].name).locator('small[title]')).toHaveAttribute('title', HTML_PAYLOAD);
+            await expect(first.locator('small[title]')).toHaveAttribute('title', 'Included in subscription');
+            await expect(pickerRow(menu, MODELS[1].name).locator('small[title]')).toHaveAttribute('title', 'Included in subscription - Input Multiplier: 2x');
+            await expect(pickerRow(menu, MODELS[2].name).locator('small[title]')).toHaveAttribute('title', 'Not included in subscription');
+            await expect(pickerRow(menu, MODELS[3].name).locator('.sb-picker__subtitle')).not.toContainText('Sub');
+            await expect(pickerRow(menu, MODELS[4].name).locator('.sb-picker__subtitle')).toContainText(`${HTML_PAYLOAD} ctx`);
+            await expect(pickerRow(menu, MODELS[6].name).locator('small[title]')).toHaveAttribute('title', HTML_PAYLOAD);
+            await expect(pickerRow(menu, MODELS[7].name).locator('small[title]')).toHaveAttribute('title', 'Not in Sub');
+            // Details are part of what search matches.
+            await menu.locator('.sb-picker__search').fill('Not in Sub');
+            await expect(menu.getByRole('option')).toHaveCount(MODEL_CASES.filter(model => model.badge.includes('Not in Sub')).length);
+            await menu.locator('.sb-picker__search').fill('');
+            await expect(menu.getByRole('option')).toHaveCount(MODELS.length);
             await expect(page.locator('[data-nanogpt-injected]')).toHaveCount(0);
             expect(await page.evaluate(() => window.__nanogptInjected)).toBeUndefined();
             await chooseModel(page, mobile, MODELS[1]);
@@ -222,11 +255,25 @@ for (const mobile of [false, true]) {
         test('live catalogues and service tiers respect saved choices and PAYG eligibility', async ({ page, baseURL }, testInfo) => {
             const routes = await setupNanoGpt(page, baseURL);
             const tier = page.locator('#nanogpt_service_tier');
+            const tierTrigger = rowTrigger(page, 'nanogpt_service_tier');
+            const chooseTier = async (label, value) => {
+                const menu = await openPicker(page, mobile, 'nanogpt_service_tier');
+                await pickerRow(menu, label).click();
+                await expect(pickerSurface(page, mobile)).toBeHidden();
+                await expect(tier).toHaveValue(value);
+                await expect(tierTrigger.locator('.ds-select-row__value')).toHaveText(label);
+            };
             await expect(tier).toBeDisabled();
+            await expect(tierTrigger).toBeDisabled();
             await page.locator('#nanogpt_payg_override').check();
+            await expect(tierTrigger).toBeEnabled();
             await expect(tier.locator('option[value="flex"]')).toBeEnabled();
             await expect(tier.locator('option[value="priority"]')).toBeDisabled();
-            await tier.selectOption('flex');
+            const tierMenu = await openPicker(page, mobile, 'nanogpt_service_tier');
+            await expect(pickerRow(tierMenu, 'Flex')).toBeEnabled();
+            await expect(pickerRow(tierMenu, 'Priority')).toHaveAttribute('aria-disabled', 'true');
+            await closePicker(page, mobile, 'nanogpt_service_tier');
+            await chooseTier('Flex', 'flex');
             const getTier = () => page.evaluate(async () => {
                 const { getNanoGptServiceTier, oai_settings } = await import('/scripts/openai.js');
                 return (await getNanoGptServiceTier(oai_settings, oai_settings.nanogpt_model)) ?? null;
@@ -256,11 +303,15 @@ for (const mobile of [false, true]) {
             await toggleProvider(page, mobile, 'ignored', 'Cerebras', true);
             await chooseModel(page, mobile, MODELS[2]);
             await expect(tier.locator('option[value="priority"]')).toBeEnabled();
-            await tier.selectOption('priority');
+            await chooseTier('Priority', 'priority');
             expect(await getTier()).toBe('priority');
             await expect(page.locator('#nanogpt_payg_override')).not.toBeChecked();
-            await tier.scrollIntoViewIfNeeded();
-            expect((await tier.boundingBox()).height).toBeGreaterThanOrEqual(44);
+            await tierTrigger.scrollIntoViewIfNeeded();
+            // Touch layouts size row triggers to 44px; fine pointers keep the 32px floor and share the model row's trigger height.
+            const modelTriggerHeight = (await rowTrigger(page, 'model_nanogpt_select').boundingBox()).height;
+            const tierHeight = (await tierTrigger.boundingBox()).height;
+            expect(tierHeight).toBeGreaterThanOrEqual(mobile ? 44 : 32);
+            expect(tierHeight).toBeGreaterThanOrEqual(modelTriggerHeight);
             await screenshot(page, testInfo, `${layout}-service-tiers`);
         });
 
@@ -271,17 +322,22 @@ for (const mobile of [false, true]) {
             const warning = page.locator('#nanogpt_provider_warning');
             await expectRouting(page, [], [], false);
             await expect(billing).toBeHidden();
-            const allowedPicker = page.locator('#nanogpt_allowed_providers_picker');
-            await expect(allowedPicker).toBeVisible({ visible: mobile });
-            await expect(allowedPicker).toHaveText('Select providers');
-            const modelField = page.locator(mobile ? '#model_nanogpt_select' : '#model_nanogpt_select + .select2 .select2-selection');
+            const allowedPicker = rowTrigger(page, 'nanogpt_allowed_providers');
+            await expect(allowedPicker).toBeVisible();
+            await expect(allowedPicker.locator('.ds-select-row__value')).toHaveText('Select providers');
+            const modelField = rowTrigger(page, 'model_nanogpt_select');
+            const modelRow = await selectRow(page, 'model_nanogpt_select').boundingBox();
             const modelBox = await modelField.boundingBox();
             const modelRadius = await modelField.evaluate(element => window.getComputedStyle(element).borderRadius);
             for (const kind of ['allowed', 'ignored']) {
-                const field = page.locator(mobile ? `#nanogpt_${kind}_providers_picker` : `#nanogpt_${kind}_providers + .select2 .select2-selection`);
+                const id = `nanogpt_${kind}_providers`;
+                const field = rowTrigger(page, id);
+                const row = await selectRow(page, id).boundingBox();
                 const box = await field.boundingBox();
-                expect(box.x).toBeCloseTo(modelBox.x, 0);
-                expect(box.width).toBeCloseTo(modelBox.width, 0);
+                // Row triggers size to their value and sit at the row's end, so rows share an edge and triggers share an end edge.
+                expect(row.x).toBeCloseTo(modelRow.x, 0);
+                expect(row.width).toBeCloseTo(modelRow.width, 0);
+                expect(box.x + box.width).toBeCloseTo(modelBox.x + modelBox.width, 0);
                 expect(box.height).toBeCloseTo(modelBox.height, 0);
                 await expect(field).toHaveCSS('border-radius', modelRadius);
             }
@@ -306,8 +362,8 @@ for (const mobile of [false, true]) {
             await toggleProvider(page, mobile, 'allowed', NEW_PROVIDER);
             await toggleProvider(page, mobile, 'ignored', 'Cerebras');
             await expectRouting(page, ['chutes', NEW_PROVIDER], ['cerebras'], false);
-            await expect(allowedPicker).toHaveText(`Chutes, ${NEW_PROVIDER}`);
-            await expect(page.locator('#nanogpt_ignored_providers_picker')).toHaveText('Cerebras');
+            await expect(allowedPicker.locator('.ds-select-row__value')).toHaveText(`Chutes, ${NEW_PROVIDER}`);
+            await expect(rowTrigger(page, 'nanogpt_ignored_providers').locator('.ds-select-row__value')).toHaveText('Cerebras');
             expect((await allowedPicker.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(mobile ? 44 : 0);
             await page.locator('#nanogpt_payg_override').scrollIntoViewIfNeeded();
             await screenshot(page, testInfo, `${layout}-provider-controls`);

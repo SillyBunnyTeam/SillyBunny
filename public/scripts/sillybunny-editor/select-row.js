@@ -23,17 +23,23 @@ function optionLabel(option) {
     return option.textContent.replace(/\s+/g, ' ').trim();
 }
 
-/** Reads picker items from the select: optgroups become headings; hidden options are skipped. */
-function readItems(select) {
+/**
+ * Reads picker items from the select: optgroups become headings; hidden options are skipped. The
+ * mapper may return a richer item for an option (a subtitle, say); one that returns nothing keeps the item.
+ */
+function readItems(select, mapItem) {
     const items = [];
+    const add = (item, option) => {
+        items.push((mapItem && mapItem(item, option)) || item);
+    };
     for (const child of select.children) {
         if (child instanceof HTMLOptGroupElement) {
             for (const option of child.querySelectorAll('option')) {
                 if (option.hidden) continue;
-                items.push({ value: option.value, label: optionLabel(option), group: child.label, disabled: option.disabled || child.disabled });
+                add({ value: option.value, label: optionLabel(option), group: child.label, disabled: option.disabled || child.disabled }, option);
             }
         } else if (child instanceof HTMLOptionElement && !child.hidden) {
-            items.push({ value: child.value, label: optionLabel(child), disabled: child.disabled });
+            add({ value: child.value, label: optionLabel(child), disabled: child.disabled }, child);
         }
     }
     return items;
@@ -111,12 +117,14 @@ function rememberPosition(nodes) {
  * @param {string} [options.noneLabel='']  Trigger text when nothing is selected.
  * @param {Node|Node[]} [options.suffix]  Extra trailing nodes after the trigger.
  * @param {boolean} [options.ordered=false]  Newly selected options move last (routing priority).
+ * @param {(item: object, option: HTMLOptionElement) => object|void} [options.mapItem]  Called for each option
+ *     with its picker item; returns the item to show (a subtitle or details, for example). The select stays the source of truth.
  * @param {Element|null} [options.bounds=null]
  * @param {(value: string|string[]) => void} [options.onChange]  Called on every change event of the select.
  * @param {(value: string|string[]) => void} [options.onPick]  Called before write-back, only for a choice made in the picker.
  * @returns {object}
  */
-export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, emptyText, noneLabel = '', suffix, ordered = false, bounds = null, onChange, onPick }) {
+export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, emptyText, noneLabel = '', suffix, ordered = false, mapItem, bounds = null, onChange, onPick }) {
     if (!(select instanceof HTMLSelectElement)) throw new TypeError('Expected a select element.');
     const container = select.nextElementSibling?.matches('.select2-container') ? select.nextElementSibling : null;
     const previous = { tabIndex: select.getAttribute('tabindex'), ariaHidden: select.getAttribute('aria-hidden') };
@@ -175,7 +183,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
         picker = openPicker({
             trigger,
             title,
-            items: readItems(select),
+            items: readItems(select, mapItem),
             selected: select.multiple ? null : select.value,
             multiple: select.multiple,
             getItemState: item => (selectedValues(select).includes(item) ? 'selected' : null),
@@ -196,7 +204,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
     // Upstream fills model lists after connecting and toggles disabled state; follow both.
     const observer = new MutationObserver(() => {
         sync();
-        if (isPickerOpen(trigger)) picker?.refresh(readItems(select));
+        if (isPickerOpen(trigger)) picker?.refresh(readItems(select, mapItem));
     });
     observer.observe(select, { childList: true, subtree: true, attributes: true, characterData: true });
 

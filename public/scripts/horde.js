@@ -18,6 +18,9 @@ import { kai_settings } from './kai-settings.js';
 import { fetchResumable } from './resumable-generation.js';
 // SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
 import { showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
+// SillyBunny: model details for the shared picker row of the Connections select row.
+import { registerOptionDetails } from './sillybunny-editor/option-details.js';
+import { describeHordeModel } from './sillybunny-model-details.js';
 
 export {
     MIN_LENGTH,
@@ -418,6 +421,13 @@ function getHordeModelTemplate(option) {
         </div>
     `));
 }
+
+// SillyBunny: the Connections select row shows each model's details (what the select2 template shows)
+// as a picker subtitle at every width. The queue state is already in the option's text, so it is left out.
+// The link to the model's page is named with the existing string "Details" (sillybunny-tabs.js uses the same key).
+registerOptionDetails({
+    horde_model: option => describeHordeModel(models.find(x => x.name === option.value), t`Details`),
+});
 
 export function initHorde() {
     $('#horde_model').on('mousedown change', async function (e) {

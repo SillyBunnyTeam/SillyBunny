@@ -278,7 +278,16 @@ test('empty picker summaries reuse upstream placeholders in precedence order wit
     await expect(page.locator('[data-sb-editor-field="openrouter_quantizations_chat"] .ds-select-row__value')).toHaveText('Quantization placeholder');
     await page.locator('#openrouter_model').evaluate(select => { select.replaceChildren(); });
     await expect(page.locator('[data-sb-editor-field="openrouter_model"] .ds-select-row__value')).toHaveText('Empty option placeholder');
-    await expect(page.locator('[data-sb-editor-field="openrouter_providers_text"] .ds-select-row__value')).toHaveText('');
+    // Without select2 (768px and below) the same strings that select2 would have shown come from the Connections form.
+    await expect(page.locator('[data-sb-editor-field="openrouter_providers_text"] .ds-select-row__value')).toHaveText('Select providers. No selection = all providers.');
+    await expect(page.locator('[data-sb-editor-field="openrouter_quantizations_text"] .ds-select-row__value')).toHaveText('Select quantizations. No selection = all quantizations.');
+    await expect(page.locator('[data-sb-editor-field="nanogpt_allowed_providers"] .ds-select-row__value')).toHaveText('Select providers');
+    await expect(page.locator('[data-sb-editor-field="nanogpt_ignored_providers"] .ds-select-row__value')).toHaveText('Select providers');
+    await expect(page.locator('[data-sb-editor-field="horde_model"] .ds-select-row__value')).toHaveText('Select Horde models');
+    await page.locator('#model_aimlapi_select').evaluate(select => { select.replaceChildren(); });
+    await expect(page.locator('[data-sb-editor-field="model_aimlapi_select"] .ds-select-row__value')).toHaveText('Select a model');
+    // A select that never had a placeholder stays empty.
+    await expect(page.locator('[data-sb-editor-field="model_pollinations_select"] .ds-select-row__value')).toHaveText('');
 });
 
 test('derived titles omit trailing ASCII and full-width colons without rewriting upstream labels', async ({ page }) => {

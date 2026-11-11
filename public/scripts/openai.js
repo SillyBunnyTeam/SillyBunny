@@ -126,6 +126,9 @@ import { TOOL_CALL_RECURSE_LIMIT_DEFAULT, normalizeToolCallRecurseLimit } from '
 import { LINKAPI_ENDPOINT, getLinkApiRequestFormat } from './linkapi-utils.js';
 // SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
 import { createFailedResponseError, showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
+// SillyBunny: model details for the shared picker rows of the Connections select rows.
+import { registerOptionDetails } from './sillybunny-editor/option-details.js';
+import { describeAimlapiModel, describeChutesModel, describeElectronHubModel, describeOpenRouterModel } from './sillybunny-model-details.js';
 import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, RUNTIME_AGENTS_IDENTIFIER, collectInChatAgentInspectionRecords, getInChatAgentContributionKind, isInChatAgentPromptIdentifier, trimOldestRetainedContribution } from './in-chat-agent-inspection.js';
 
 export {
@@ -4448,6 +4451,17 @@ function scheduleOpenAIUiRefresh() {
         bindInlineSelectPickerControls();
     }, 200);
 }
+
+// SillyBunny: the Connections select rows show each model's details (what the select2 templates show) as a
+// picker subtitle at every width; select2 itself is not initialised at 768px and below. NanoGPT's template
+// builds text nodes only; the others parse catalogue fields as HTML, so they are described in sillybunny-model-details.js.
+registerOptionDetails({
+    model_openrouter_select: option => describeOpenRouterModel(model_list.find(x => x.id === option.value)),
+    model_aimlapi_select: option => describeAimlapiModel(model_list.find(x => x.id === option.value)),
+    model_electronhub_select: option => describeElectronHubModel(model_list.find(x => x.id === option.value)),
+    model_chutes_select: option => describeChutesModel(model_list.find(x => x.id === option.value)),
+    model_nanogpt_select: option => getNanoGptModelTemplate({ id: option.value, text: option.textContent, element: option }),
+});
 
 function getOpenRouterModelTemplate(option) {
     const model = model_list.find(x => x.id === option?.element?.value);

@@ -107,7 +107,7 @@ const personasSource = readFileSync(new URL('../../public/scripts/personas.js', 
 const personaMountSource = tabsSource.split('let personaEditorMountPromise = null;')[1].split('function setCharacterImportPanelVisible')[0];
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261028a', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261111a', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261105a', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261029a', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
