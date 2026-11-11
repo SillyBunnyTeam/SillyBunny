@@ -4,7 +4,7 @@ import archiver from 'archiver';
 import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { normalizeNovelAIImageParameters } from '../public/scripts/novelai-image-models.js';
 import encodePng from '../src/png/encode.js';
-import { buildNovelAIPreciseReferenceParameters, getNovelAIPreciseReferenceSize } from '../public/scripts/novelai-precise-reference.js';
+import { MAX_PRECISE_REFERENCE_BYTES, buildNovelAIPreciseReferenceParameters, getNovelAIPreciseReferenceSize } from '../public/scripts/novelai-precise-reference.js';
 
 const fetchMock = jest.fn();
 jest.unstable_mockModule('node-fetch', () => ({ default: fetchMock }));
@@ -29,6 +29,12 @@ function referenceImage() {
 
 const reference = { image: referenceImage(), type: 'character', strength: 0.7, fidelity: 0.2 };
 
+function overwriteBytes(image, offset, bytes) {
+    const data = Buffer.from(image, 'base64');
+    data.set(bytes, offset);
+    return data.toString('base64');
+}
+
 function imageArchive() {
     return new Promise((resolve, reject) => {
         const archive = archiver('zip');
@@ -51,7 +57,8 @@ describe('NovelAI image request compatibility', () => {
         const { default: express } = await import('express');
         const { router } = await import('../src/endpoints/novelai.js');
         const app = express();
-        app.use(express.json());
+        // Same body limit as the server, so reference sets above the cap reach the route.
+        app.use(express.json({ limit: '500mb' }));
         app.use((request, _response, next) => {
             request.user = { directories: {} };
             next();
@@ -154,6 +161,10 @@ describe('NovelAI image request compatibility', () => {
         { model: 'nai-diffusion-5-full' },
         { novel_anlas_guard: true },
         { precise_reference: [{ ...reference, image: png.toString('base64') }] },
+        { precise_reference: [{ ...reference, image: overwriteBytes(reference.image, 0, [0xff, 0xd8, 0xff, 0xe0]) }] },
+        { precise_reference: [{ ...reference, image: overwriteBytes(reference.image, 12, Buffer.from('IDAT')) }] },
+        { precise_reference: [{ ...reference, image: `${reference.image.slice(0, 60)}-${reference.image.slice(61)}` }] },
+        { precise_reference: [{ ...reference, image: reference.image.slice(0, 60) + reference.image.slice(61) }] },
         { precise_reference: [{ ...reference, type: 'unknown' }] },
         { precise_reference: [{ ...reference, strength: 'invalid' }] },
         { precise_reference: [{ ...reference, fidelity: null }] },
@@ -164,6 +175,20 @@ describe('NovelAI image request compatibility', () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model: 'nai-diffusion-4-5-full', precise_reference: [reference], ...overrides }),
+        });
+        expect(response.status).toBe(400);
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    test('rejects references above the total size cap before any paid request', async () => {
+        const image = reference.image.slice(0, 44).padEnd(4 * Math.ceil((MAX_PRECISE_REFERENCE_BYTES / 2 + 1) / 3), 'A');
+        const overHalfTheCap = { ...reference, image };
+        expect(() => buildNovelAIPreciseReferenceParameters('nai-diffusion-4-5-full', [overHalfTheCap])).not.toThrow();
+
+        const response = await fetch(`${baseUrl}/generate-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'nai-diffusion-4-5-full', precise_reference: [overHalfTheCap, overHalfTheCap] }),
         });
         expect(response.status).toBe(400);
         expect(fetchMock).not.toHaveBeenCalled();
