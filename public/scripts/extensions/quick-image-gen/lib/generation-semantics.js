@@ -12,6 +12,7 @@ function copyStringArray(value) {
     return Array.isArray(value) ? value.filter(item => typeof item === "string") : [];
 }
 
+// SillyBunny divergence: copy NovelAI Precise Reference state deeply, so that copies do not share reference objects.
 export function cloneNovelAIPreciseReferenceState(value) {
     return {
         enabled: value?.enabled === true,
@@ -29,6 +30,7 @@ export function captureRegenerationReferences(settings = {}, runtimeOptions = {}
     if (provider === "proxy") {
         referenceRuntimeOptions.proxyRefImages = copyStringArray(runtimeOptions?.proxyRefImages);
     } else if (provider === "novelai") {
+        // SillyBunny divergence: keep the NovelAI Precise Reference images for regeneration only when they were on.
         referenceSettings.naiPreciseReference = cloneNovelAIPreciseReferenceState(settings.naiPreciseReference);
         if (!referenceSettings.naiPreciseReference.enabled) referenceSettings.naiPreciseReference.references = [];
     } else if (provider === "local") {
@@ -54,6 +56,7 @@ function cloneReferenceSnapshot(snapshot) {
 
 function countReferenceChars(snapshot) {
     let count = 0;
+    // SillyBunny divergence: nested Precise Reference images count toward the retention limit.
     for (const reference of snapshot?.settings?.naiPreciseReference?.references || []) {
         if (typeof reference.image === "string") count += reference.image.length;
     }
