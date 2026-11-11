@@ -18,7 +18,7 @@ Ship a first-party SillyBunny Android APK (GitHub Releases only) that acts as th
 - **Your first task (1.1):** commit this file unchanged to a new branch `feat/android-apk` (branched from `staging`) as `docs/android-apk-plan.md`. Keep its checkboxes updated as you work.
 - **The repo's `AGENTS.md` takes precedence over this file.** The rules most relevant to this work:
   - PRs target `staging`. This work is **one cohesive PR** from `feat/android-apk`.
-  - **Do not write PR titles or bodies, docs, release notes, README/CONTRIBUTING/SECURITY/PRODUCT copy, or any user-facing prose.** Use the exact placeholder `lorum ipsum` and list every location (see §8). §8 gives *guidance on what humans should write*, not the wording itself.
+  - **Do not write PR titles or bodies, docs, release notes, README/CONTRIBUTING/SECURITY/PRODUCT copy, or any user-facing prose.** Use the exact placeholder `TODO(copy)` and list every location (see §8). §8 gives *guidance on what humans should write*, not the wording itself.
   - `AGENTS.md` may only receive brief, terse additions, and **only under maintainer supervision** (ask first, show the diff).
   - Do not remove `.npmrc` settings (`ignore-scripts=true`, `min-release-age=7`, etc.).
   - Prefer self-contained additions. Where a base file must change, add a short inline comment explaining where and why (for future upstream merges).
@@ -205,7 +205,7 @@ Add short inline comments at each APK-mode branch (AGENTS.md rule for diverging 
 - **The file:** add `android/min-app-version`, containing a single integer: the minimum APK versionCode the code at that commit needs. It starts at the first APK's versionCode.
 - **Shell gate** (`scripts/self-update.sh`, APK mode only): after `git fetch` and before fast-forwarding:
   1. Resolve the upstream SHA once and read `git show "<sha>:android/min-app-version"`. Missing or invalid files block instead of defaulting to 0, because those branches predate the launch-token and update gates (**needs maintainer confirmation**, §9).
-  2. If the minimum is newer, missing or invalid: skip the update, log `lorum ipsum`, and write `$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json` = `{"required":N|null,"installed":M,"reason":"newer|missing|invalid","upstream":"<sha>","branch":"<name>"}`.
+  2. If the minimum is newer, missing or invalid: skip the update, log `TODO(copy)`, and write `$SILLYBUNNY_ANDROID_STATUS_DIR/update-blocked.json` = `{"required":N|null,"installed":M,"reason":"newer|missing|invalid","upstream":"<sha>","branch":"<name>"}`.
   3. In optional mode, exit 0, so the server still starts on the current code.
   4. Remove the file when no block applies.
 - **Checked-commit pinning:** the shell and server update paths merge exactly the checked SHA; server runtime-branch switches check out that SHA and retain the resolved remote as upstream (`577a50968`, `fd037cbd7`; P3-B). The ordinary `git.checkout(branch)` fallback remains unchanged after the gate.
@@ -213,7 +213,7 @@ Add short inline comments at each APK-mode branch (AGENTS.md rule for diverging 
   - Add a small self-contained module (e.g. `src/android-app-gate.js`) that is a no-op unless `SILLYBUNNY_ANDROID_APP=1`.
   - **`POST /api/server-admin/update`** (`src/endpoints/server-admin.js:1044-1141`): check the tracking branch's minimum after the final fetch and before merging.
   - **`/switch-branch`** (`src/endpoints/server-admin.js:1177-1260`): check the resolved remote branch (not necessarily `origin/<branch>`) or requested local fallback before either checkout path; restore request-owned auto-stashes on a block.
-  - Return HTTP **409** with `code: android_app_update_required`; Server Tools hides the supplied message of every 403. Any new UI string is `lorum ipsum`.
+  - Return HTTP **409** with `code: android_app_update_required`; Server Tools hides the supplied message of every 403. Any new UI string is `TODO(copy)`.
 - **Not gated:** extensions and server plugins.
 - **Release safety:** a CI check fails the release if `android/min-app-version` is greater than the versionCode of the APK attached to the same release (§6.2).
 - **Tests:** Jest unit tests in `tests/` for the gate module (allowed, blocked, missing/invalid file, checked-commit pinning, non-APK mode no-op).
@@ -295,11 +295,11 @@ Spec:
   - `android:hasFragileUserData="true"`
   - explicit network security config: base cleartext denied; exact `127.0.0.1` domain allowed for API 29–36. Android 17's implicit localhost exemption does not replace this; NSC is host-, not port-scoped and `usesCleartextTraffic` is ignored when NSC is present (R2, §2)
 - **Network scope:** no LAN listener in v1 remains the decision. Outbound Node backends on LAN still need dangerous `ACCESS_LOCAL_NETWORK` on Android 17/target 37, covering native children and WebView; Android 16 protection is opt-in. Request it only for actual LAN use, not same-profile loopback; do not request non-public `USE_LOOPBACK_INTERFACE`. Permission-denied OEM loopback behavior remains **UNVERIFIED**. NSC is not a firewall for native Node/git/curl sockets; keep loopback binding/authentication separate (R2, §2).
-- **`ServerService`:** `foregroundServiceType="specialUse"`, with child property `android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE` (`lorum ipsum`, a free-form explanation). Promote with the API 34 type only on API 34+; no specialUse runtime-permission prerequisite (R2, §2).
+- **`ServerService`:** `foregroundServiceType="specialUse"`, with child property `android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE` (`TODO(copy)`, a free-form explanation). Promote with the API 34 type only on API 34+; no specialUse runtime-permission prerequisite (R2, §2).
 - **`DataDocumentsProvider`** (§4.8): authority `${applicationId}.documents`, exported/grantable, protected by provider `android:permission="android.permission.MANAGE_DOCUMENTS"` and action `android.content.action.DOCUMENTS_PROVIDER`. Do not request `MANAGE_DOCUMENTS` as an app permission (R2, §7).
 - **Receiver** for `ACTION_MY_PACKAGE_REPLACED` (§5.6).
 
-### 4.3 First-run flow (native screens; all copy is `lorum ipsum`)
+### 4.3 First-run flow (native screens; all copy is `TODO(copy)`)
 
 1. **Welcome.** Ask for notification permission (Android 13+); denial must not block installation/server startup. Offer the battery-optimisation exemption (optional, never forced, also available in Settings). An FGS still requires its notification when permission is denied, though only Task Manager may show it (R2, §2).
 2. **Preflight:**
@@ -317,12 +317,12 @@ There is **no branch picker**; branches are switched via Server Tools in the web
 ### 4.4 `ServerService` (foreground service)
 
 - **Starting:** start from a currently visible activity/user action; recheck after async work, then promptly promote with API-aware `ServiceCompat.startForeground` (§4.3). Android 12+ background-start limits otherwise apply unless exempt (R2, §2).
-- **Notification:** ongoing, with a **Stop** action (`lorum ipsum` copy).
+- **Notification:** ongoing, with a **Stop** action (`TODO(copy)` copy).
 - **Running:** `ProcessBuilder` starts bash running `start.sh` with the env from §2.5. stdout/stderr go to `filesDir/logs/` (rotated, size-capped) and to the in-app log view.
 - **Exit handling:**
   - Exit 75 is handled inside `start.sh`'s loop.
   - A user-requested Stop or a clean exit (0) leaves the server stopped.
-  - **An unexpected exit or the process being killed** (out of memory, battery-manager kill) triggers an automatic restart with backoff, **at most 3 times within 5 minutes**. After that, show an error screen with the last N log lines and **Restart** / **Share logs** (Android share sheet, with a `lorum ipsum` warning that logs may contain sensitive details).
+  - **An unexpected exit or the process being killed** (out of memory, battery-manager kill) triggers an automatic restart with backoff, **at most 3 times within 5 minutes**. After that, show an error screen with the last N log lines and **Restart** / **Share logs** (Android share sheet, with a `TODO(copy)` warning that logs may contain sensitive details).
   - Distinguish child exit from whole-host death: an in-memory loop cannot run while the host is dead; `START_STICKY` recreation may have a null intent and no latency guarantee. Preserve the bounded-recovery policy without resurrecting a user-stopped server from jobs/alarms. Android 13 Task Manager Stop has no callback; guard exit-history APIs at API 30, and do not treat ambiguous `REASON_USER_REQUESTED` as a reason to reject a fresh explicit launch (R2, §2).
 - **Data safety:** restarts and recovery **never** touch `data/` or `config.yaml`, never re-clone, and never run Repair on their own.
 - **Stopping:** SIGTERM the supervisor first (the graceful IPC path), then SIGTERM the process group, then SIGKILL after a timeout. Group SIGTERM alone removed every process in ≤151 ms in S2.5 but does not prove graceful IPC delivery (§2.3). This matches the supervisor's 5 s force-kill (`src/server-supervisor.js:31`).
@@ -356,11 +356,11 @@ There is **no branch picker**; branches are switched via Server Tools in the web
 - **Service workers/dialogs:** test `/sw.js` registration/cache and cookie-preserving restart/clear flows without blanket storage purges (TTS model caches and QIG gallery differ). Preserve JS alert/confirm/prompt/beforeunload results; unload is not a reliable Android shutdown signal (S2.7b, §3).
 - **Media:** test asynchronous TTS/audio, speechSynthesis, AudioWorklet/worker/WASM, audio focus/gesture setting and background audio; provide custom-view fullscreen/Back callbacks. Grant only explicitly allowed, requested resources from the trusted origin after Android permission; no shipped camera/microphone requirement was found. Foreground server service alone does not keep suspended WebView reminder timers running. Target-37 background-audio capability must be tested after a qualifying user start (S2.7b, §3; R2, §2).
   - **Measured (P5.6a):** `speechSynthesis` is absent in WebView 74 and 145, so System TTS cannot work in the APK. v1 ships this as a known limitation.
-- **Minimum WebView version:** if the WebView major version is below the minimum, show a **warning, not a block** (`lorum ipsum`), with "Open in browser" and a link to update Android System WebView.
+- **Minimum WebView version:** if the WebView major version is below the minimum, show a **warning, not a block** (`TODO(copy)`), with "Open in browser" and a link to update Android System WebView.
   - **How to set the minimum:** audit the frontend's newest CSS/JS features against the project baseline (AGENTS.md: Safari/WebKit 16.4+).
   - **Starting proposal:** Chromium 111 remains **UNVERIFIED**; the shell ships `MINIMUM_MAJOR = 111`, and P5.6a measured only WebView 74 and 145. Read nullable provider `PackageInfo.versionName` via `getCurrentWebViewPackage`, parse defensively and keep unknown/malformed as unknown; not UA/versionCode or a hardcoded package. Reduced-UA rollout/target gate is **UNVERIFIED**. WebKit `1.18.0` fits minSdk 29, but provider features still need gates; explicitly enforce debug policy even though recent WebViews auto-enable it for debuggable apps (R2, §§2, 4).
 
-### 4.6 Native Settings (minimal; copy is `lorum ipsum`)
+### 4.6 Native Settings (minimal; copy is `TODO(copy)`)
 
 - **Auto-update SillyBunny on launch** (git), maps to `SILLYBUNNY_AUTO_UPDATE`. Default on.
 - **Runtime:** Node only for now; no Bun selector or runtime-switch/reinstall UI while packaging is deferred (§9.10).
@@ -490,20 +490,20 @@ Asset names are **stable across releases**, so `https://github.com/SillyBunnyTea
   - anything else (e.g. `staging`) → prerelease channel: `GET https://api.github.com/repos/SillyBunnyTeam/SillyBunny/releases?per_page=20` (unauthenticated, 60 requests/hour/IP; fine at one check per launch). Fetch the `android-update.json` of each non-draft release and take the highest `versionCode`.
 - **Before offering the update:** only offer it if `versionCode` is greater than the installed one **and** `signingCertSha256` equals the installed app's signing cert. This single-fingerprint schema supports the initial single-key case, not legitimate v3/v3.1 rotation or OS-dependent signers. Before using a successor, design/test cryptographically verified candidate-lineage/API-targeted validation; do not accept any installed historical key or claim every mismatch requires uninstall. PackageInstaller remains the final compatibility check (R2, §6).
   - Hash the encoded X.509 certificate bytes, not the APK/public key; normalize manifest hex to bytes. Query `GET_SIGNING_CERTIFICATES` with the API-appropriate overload; single-signer history and the full simultaneous `apkContentsSigners` set differ. Installed history alone cannot authenticate an unseen successor (R2, §6).
-- **The prompt:** a native dialog with **Update / Later** (`lorum ipsum`). On Update:
+- **The prompt:** a native dialog with **Update / Later** (`TODO(copy)`). On Update:
   1. Download the APK for the device ABI.
   2. Verify sha256.
   3. Stop the server.
   4. Install via a user-approved `PackageInstaller` session. Declare `REQUEST_INSTALL_PACKAGES`; if `canRequestPackageInstalls()` is false, open this package's `Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES`. Source trust is separate from confirming this install. On API 31+ request `USER_ACTION_REQUIRED`; handle `STATUS_PENDING_USER_ACTION` by presenting `Intent.EXTRA_INTENT`, not assuming commit finishes synchronously (R2, §2).
      - Target 35+ requires a **mutable, explicit** installation-status PendingIntent; guard `FLAG_MUTABLE` at API 31. Keep normal notification intents immutable. Handle verification pending/bypass and failure-aborted outcomes, API 36.1+ `EXTRA_DEVELOPER_VERIFICATION_FAILURE_REASON` and optional explanation intent. Leave retrospective update ownership off (it cannot claim an existing install); another installer's enforced ownership can still require user action (R2, §2).
-- **Blocked git updates:** if `status/update-blocked.json` exists, show the APK update prompt with "required" wording (`lorum ipsum`).
+- **Blocked git updates:** if `status/update-blocked.json` exists, show the APK update prompt with "required" wording (`TODO(copy)`).
 - **No web UI banner in v1.**
 - **HTTPS client:** audit target-37 certificate-transparency defaults, custom CAs and library/server-dependent ECH; platform TLS/NSC does not configure Node/git's separate TLS stacks (R2, §2).
 - **Verified (P5.8):** the stable candidate's APK comes from `releases/download/<tag>/<asset>`, where `<tag>` is the release that served the checked manifest (the first redirect of the official `latest` URL) or, without a usable official redirect, the manifest's `releaseTag`, because `latest` can advance between the check and the download. The tracked branch is read from `.git/HEAD` and `.git/config` without running Git; worktree indirection, includes, a detached HEAD or unusual config fall back to `DEFAULT_REF`. On API 29 and base Android 13, `getPackageArchiveInfo` fills `signingInfo` only when `GET_SIGNATURES` is also requested, so the app requests it below API 34; verification still reads only `apkContentsSigners`. Redirects are HTTPS→HTTPS only (debug builds also allow direct loopback HTTP fixtures), JSON is capped at 2 MB, and the APK must match the manifest's size (≤ 300 MB) and SHA-256 before archive verification.
 
 ### 5.6 After an APK self-update
 
-Android kills the process during the install. On `ACTION_MY_PACKAGE_REPLACED`, post a notification ("updated, tap to start", `lorum ipsum`) that opens the app. **Tap-to-start is the chosen product policy:** this broadcast is explicitly an FGS background-start exemption, not an Android prohibition on restart. Keep receiver work bounded and use a direct activity PendingIntent, not an activity trampoline. Notification denial can hide the notification; handle the updated state on the next explicit launch. Background-activity-launch opt-ins are separate from the FGS exemption (R2, §2).
+Android kills the process during the install. On `ACTION_MY_PACKAGE_REPLACED`, post a notification ("updated, tap to start", `TODO(copy)`) that opens the app. **Tap-to-start is the chosen product policy:** this broadcast is explicitly an FGS background-start exemption, not an Android prohibition on restart. Keep receiver work bounded and use a direct activity PendingIntent, not an activity trampoline. Notification denial can hide the notification; handle the updated state on the next explicit launch. Background-activity-launch opt-ins are separate from the FGS exemption (R2, §2).
 
 ---
 
@@ -621,7 +621,7 @@ Restructure the single draft job (it currently has a 15-minute timeout) into sep
 
 ## 8. Documentation and copy: guidance for humans (do NOT write the prose)
 
-AGENTS.md forbids LLM-written user-facing prose. The implementing agent must use `lorum ipsum` placeholders and give the maintainers this list of **what to cover**:
+AGENTS.md forbids LLM-written user-facing prose. The implementing agent must use `TODO(copy)` placeholders and give the maintainers this list of **what to cover**:
 
 - **README.md** (and, via the maintainers' own process, the translated `.github/readme-*.md`; never hand-edit `.github/readme.md`, which is generated by `scripts/sync-readme-mirror.sh`):
   - **The APK as the recommended Android 10+ path**, with the stable download links from §5.4 and which ABI to pick.
@@ -644,7 +644,7 @@ AGENTS.md forbids LLM-written user-facing prose. The implementing agent must use
   - Repo Shape: "`android/` has its own Gradle project, not covered by root scripts"
   - Workflow: "bump `android/app-version.properties` when `android/**` or `runtime.lock` change; never raise `android/min-app-version` above the versionCode shipped in the same release"
 - **Release notes, changelog summary, Discord copy:** written by humans as usual.
-- **In-app copy placeholders** (`lorum ipsum`; list every file and string ID in the PR handoff):
+- **In-app copy placeholders** (`TODO(copy)`; list every file and string ID in the PR handoff):
   - first-run screens: welcome, preflight, metered warning, progress, failure
   - the battery-optimisation explanation
   - the foreground-service notification title/text and Stop and Cancel actions
@@ -777,7 +777,7 @@ P2.6 release APKs (unsigned, `assembleRelease -PincludeX86_64 -PdefaultRef=relea
 - [x] 5.8 Update checker + PackageInstaller flow + `update-blocked.json` handling + post-update notification (§5.4–5.6)
 - [x] 5.9 Repair + leftover-folder management (§4.7)
 - [x] 5.10 `DocumentsProvider` for `data/` + `config.yaml` (§4.8)
-- [x] 5.11 Android lint clean; every user-facing string is `lorum ipsum` in resources
+- [x] 5.11 Android lint clean; every user-facing string is `TODO(copy)` in resources
 
 ## Phase 6: CI smoke tests [DONE]
 - [x] 6.1 Fixtures: git remote builder, mock LLM, fixture extension, fixture plugin, update-manifest server (§7.1)
@@ -793,7 +793,7 @@ P2.6 release APKs (unsigned, `assembleRelease -PincludeX86_64 -PdefaultRef=relea
 - [x] 7.5 Dry run on a fork or with a test tag (never publish; releases stay drafts)
 
 ## Phase 8: Docs guidance and human handoff [DONE]
-- [x] 8.1 List every `lorum ipsum` location (file + string ID) in a PR comment for the maintainers (§8)
+- [x] 8.1 List every `TODO(copy)` location (file + string ID) in a PR comment for the maintainers (§8)
 - [x] 8.2 Hand §8's outline to the maintainers for README/SECURITY/CONTRIBUTING. Propose the brief AGENTS.md additions and apply them **only after approval**
 - [x] 8.3 Ask the maintainers to resolve the open caveats in §9 (key holder; registration timing)
 
