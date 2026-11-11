@@ -141,10 +141,11 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
     caption.id ||= uniqueId('sb-select-row-label');
     trigger.setAttribute('aria-labelledby', `${caption.id} ${value.id}`);
     const description = row.querySelector('.ds-row-subtitle');
-    if (description) {
-        description.id ||= uniqueId('sb-select-row-description');
-        trigger.setAttribute('aria-describedby', description.id);
-    }
+    if (description) description.id ||= uniqueId('sb-select-row-description');
+    // The select is hidden from assistive technology, so the trigger carries the select's descriptions.
+    // sync() reads them on every run because callers such as the Connections form add some after the row is built.
+    const describedBy = () => [...new Set([...(select.getAttribute('aria-describedby') ?? '').split(/\s+/), description?.id])]
+        .filter(Boolean).join(' ');
 
     const currentValue = () => (select.multiple ? selectedValues(select) : select.value);
     const summary = () => {
@@ -156,6 +157,11 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
         // Writing an unchanged value still queues a mutation, and some callers re-sync on every panel update.
         if (value.textContent !== text) value.textContent = text;
         if (trigger.disabled !== select.disabled) trigger.disabled = select.disabled;
+        const ids = describedBy();
+        if ((trigger.getAttribute('aria-describedby') ?? '') !== ids) {
+            if (ids) trigger.setAttribute('aria-describedby', ids);
+            else trigger.removeAttribute('aria-describedby');
+        }
     };
 
     let picker = null;

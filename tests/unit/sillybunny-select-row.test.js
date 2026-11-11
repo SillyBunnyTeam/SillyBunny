@@ -146,6 +146,36 @@ describe('createSelectRow', () => {
         expect(row.querySelector('.ds-row-label').textContent).toBe('Model');
     });
 
+    test('the trigger carries the select\'s own descriptions, then the subtitle', () => {
+        const warning = document.createElement('div');
+        warning.id = 'fixture_warning';
+        warning.textContent = 'Forces pay-as-you-go billing.';
+        document.body.append(warning);
+        const descriptions = trigger => trigger.getAttribute('aria-describedby')?.split(/\s+/).map(id => document.getElementById(id).textContent);
+
+        const plain = makeSelect();
+        plain.setAttribute('aria-describedby', 'fixture_warning');
+        expect(descriptions(mount({ select: plain }).trigger)).toEqual(['Forces pay-as-you-go billing.']);
+
+        const withSubtitle = makeSelect();
+        withSubtitle.setAttribute('aria-describedby', 'fixture_warning');
+        expect(descriptions(mount({ select: withSubtitle, subtitle: 'Routes every request' }).trigger)).toEqual(['Forces pay-as-you-go billing.', 'Routes every request']);
+        expect(withSubtitle.getAttribute('aria-describedby')).toBe('fixture_warning');
+    });
+
+    test('the trigger follows a description added to the select after the row is built', async () => {
+        const help = document.createElement('div');
+        help.id = 'fixture_help';
+        help.textContent = 'Type a custom ID.';
+        document.body.append(help);
+        const select = makeSelect();
+        const { trigger } = mount({ select });
+        expect(trigger.hasAttribute('aria-describedby')).toBe(false);
+        select.setAttribute('aria-describedby', 'fixture_help');
+        await flush();
+        expect(trigger.getAttribute('aria-describedby')).toBe('fixture_help');
+    });
+
     test('opens a picker that mirrors options, optgroups, disabled state and selection', () => {
         const select = makeSelect();
         select.value = 'gpt';
