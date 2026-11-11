@@ -641,6 +641,27 @@ describe('model switch in Chat Completion', () => {
         expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
     });
 
+    test('Connect during the wait lists the loaded model once the wait ends', async () => {
+        const server = servers[SERVER_URL];
+        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] });
+        let switcher;
+        server.onPoll = () => {
+            // Connect starts a Chat Completion status check, which aborts the one before it and can answer before the
+            // wait sees the abort.
+            script.startStatusLoading();
+            statusCheck.abort();
+            void switcher.refreshKoboldCppModels('chat');
+        };
+        switcher = await loadChatSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+        await settle();
+
+        expect(script.stopStatusLoading).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+        expect(getDropdown(dom.chatSelect)).toMatchObject({ values: ['alpha.gguf', 'beta.gguf', ...ACTIONS], value: 'beta.gguf' });
+    });
+
     test('a KoboldCpp URL typed during the wait stops it, enables Connect and clears the list', async () => {
         const server = servers[SERVER_URL];
         server.onPoll = () => {
