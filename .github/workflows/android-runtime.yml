@@ -1,6 +1,6 @@
 name: Android Node Runtime
 
-# Builds Node for the Android APK with android/runtime/build-node.sh (plan §5.2, task 4.2), publishes each ABI to
+# Builds Node for the Android APK with android/runtime/build-node.sh (plan §5.2), publishes each ABI to
 # GHCR with oras plus a build-provenance attestation, then opens a PR that pins the published digests in
 # android/runtime.lock (android/runtime/update-node-digests.py). Pull requests never trigger it: only staging pushes
 # that touch the runtime pins or this pipeline, and manual runs. Publishing happens only from staging, and only the

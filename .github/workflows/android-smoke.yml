@@ -1,6 +1,6 @@
 name: Android Smoke
 
-# The automated Android smoke (plan §7.1, tasks 6.2-6.4), shared by bootstrap-smoke.yml (pull requests that touch
+# The automated Android smoke (plan §7.1), shared by bootstrap-smoke.yml (pull requests that touch
 # Android-relevant files), nightly.yml and release.yml. It builds an x86_64 test APK of the caller's commit with the
 # fixture URL overrides, boots the emulator matrix and runs tests/android-smoke/run-smoke.js on each emulator.
 # Until android-runtime.yml first publishes the Node binaries, android/runtime.lock leaves their digests null and

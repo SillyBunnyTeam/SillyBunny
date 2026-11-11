@@ -261,7 +261,6 @@ jobs:
             gh issue close "$issue" --comment "No longer stale (latest stable: $tag)."
           fi
 
-  # The Android smoke (task 6.4) of the staging SHA the gate resolved; see android-smoke.yml.
   android:
     needs: gate
     if: needs.gate.outputs.run == 'true'
