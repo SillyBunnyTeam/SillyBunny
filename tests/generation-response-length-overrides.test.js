@@ -76,28 +76,49 @@ describe('response length overrides', () => {
         expect(settings).toEqual({ amount_gen: 512, openai_max_tokens: 300 });
     });
 
-    test('one event removes only the newest hooked override of its setting', () => {
+    test('one event removes only the override of its setting that started to wait last', () => {
         const { settings, overrides } = makeSettings();
-        const outer = overrides.add('openai_max_tokens', 100);
-        const inner = overrides.add('openai_max_tokens', 200);
+        const first = overrides.add('openai_max_tokens', 100);
+        const second = overrides.add('openai_max_tokens', 200);
         const unhooked = overrides.add('openai_max_tokens', 400);
         const text = overrides.add('amount_gen', 16000);
-        for (const override of [outer, inner, text]) overrides.hook(override);
+        // The override that was added first starts to wait last.
+        for (const override of [second, text, first]) overrides.hook(override);
 
         expect(overrides.removeNewestHooked('openai_max_tokens')).toBe(true);
-        expect(overrides.remove(inner)).toBe(false);
+        expect(overrides.remove(first)).toBe(false);
         expect(settings).toEqual({ amount_gen: 16000, openai_max_tokens: 400 });
 
         overrides.remove(unhooked);
-        expect(settings.openai_max_tokens).toBe(100);
+        expect(settings.openai_max_tokens).toBe(200);
 
         expect(overrides.removeNewestHooked('openai_max_tokens')).toBe(true);
-        expect(overrides.remove(outer)).toBe(false);
+        expect(overrides.remove(second)).toBe(false);
         expect(settings).toEqual({ amount_gen: 16000, openai_max_tokens: 300 });
 
         expect(overrides.removeNewestHooked('openai_max_tokens')).toBe(false);
         expect(overrides.removeNewestHooked('amount_gen')).toBe(true);
         expect(settings).toEqual({ amount_gen: 512, openai_max_tokens: 300 });
         expect(overrides.isActive()).toBe(false);
+    });
+
+    test('an override that was removed no longer waits for an event', () => {
+        const { settings, overrides } = makeSettings();
+        const first = overrides.add('amount_gen', 100);
+        const second = overrides.add('amount_gen', 200);
+        overrides.hook(first);
+        overrides.hook(second);
+        overrides.remove(second);
+        expect(overrides.removeNewestHooked('amount_gen')).toBe(true);
+        expect(settings.amount_gen).toBe(512);
+        expect(overrides.removeNewestHooked('amount_gen')).toBe(false);
+
+        // An override that is not in force cannot start to wait.
+        overrides.hook(first);
+        const third = overrides.add('amount_gen', 300);
+        expect(overrides.removeNewestHooked('amount_gen')).toBe(false);
+        expect(settings.amount_gen).toBe(300);
+        overrides.remove(third);
+        expect(settings.amount_gen).toBe(512);
     });
 });

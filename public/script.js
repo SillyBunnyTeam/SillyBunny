@@ -345,7 +345,7 @@ import { fetchResumable, registerGenerationCommitPlan, settleGenerationCommit } 
 import { GENERATION_PLACEHOLDER_KEY, getMessageIdentity } from './scripts/generation-commit-plan.js';
 import { createGenerationCommitPlan, initServerGenerations, reloadServerCommittedReply } from './scripts/server-generations.js';
 import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, warnsOnGenerationLengthFinish } from './scripts/generation-request-controls.js';
-// SillyBunny: generations with a temporary response length overlap, so each one keeps its own override.
+// SillyBunny: generations with a temporary response length can overlap, so each one keeps its own override.
 import { createResponseLengthOverrides } from './scripts/generation-response-length-overrides.js';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
@@ -7265,23 +7265,23 @@ export async function generateRawData({ prompt = '', api = null, instructOverrid
                     const koboldSettings = koboldai_settings[koboldai_setting_names[kai_settings.preset_settings]];
                     generateData = getKoboldGenerationData(prompt.toString(), koboldSettings, amount_gen, max_context, isHorde, 'quiet');
                 }
-                responseLengthCustomized && TempResponseLength.restore(responseLengthOverride);
+                responseLengthOverride && TempResponseLength.restore(responseLengthOverride);
                 break;
             case 'novel': {
                 const novelSettings = novelai_settings[novelai_setting_names[nai_settings.preset_settings_novel]];
                 const maxLength = applyGenerationRequestControls({ max_length: amount_gen, model: nai_settings.model_novel }, requestControls).max_length;
                 generateData = getNovelGenerationData(prompt, novelSettings, maxLength, false, false, null, 'quiet');
                 requestControls.responseLength = null;
-                responseLengthCustomized && TempResponseLength.restore(responseLengthOverride);
+                responseLengthOverride && TempResponseLength.restore(responseLengthOverride);
                 break;
             }
             case 'textgenerationwebui':
                 generateData = await getTextGenGenerationData(prompt, amount_gen, false, false, null, 'quiet', { cacheScope });
-                responseLengthCustomized && TempResponseLength.restore(responseLengthOverride);
+                responseLengthOverride && TempResponseLength.restore(responseLengthOverride);
                 break;
             case 'openai': {
                 generateData = prompt;  // generateData is just the chat message object
-                if (responseLengthCustomized) {
+                if (responseLengthOverride) {
                     TempResponseLength.setupEventHook(responseLengthOverride);
                 }
             } break;
@@ -7400,13 +7400,14 @@ class TempResponseLength {
      */
     static save(api, responseLength) {
         const override = this.#overrides.add(api === 'openai' ? 'openai_max_tokens' : 'amount_gen', responseLength);
-        console.log('[TempResponseLength] Saved original response length:', override.replacedLength);
+        console.log('[TempResponseLength] Saved response length:', override.replacedLength);
         return override;
     }
 
     /**
-     * Restore the response length that an override replaced.
-     * @param {import('./scripts/generation-response-length-overrides.js').ResponseLengthOverride|null} override Override from save(). Null restores every override.
+     * Remove an override. Its setting gets back the saved response length, unless a newer override of that setting
+     * is in force.
+     * @param {import('./scripts/generation-response-length-overrides.js').ResponseLengthOverride|null} override Override of the caller. Null removes every override.
      * @returns {void}
      */
     static restore(override) {
@@ -7415,13 +7416,14 @@ class TempResponseLength {
             return;
         }
         if (this.#overrides.remove(override)) {
-            console.log('[TempResponseLength] Restored original response length:', override.replacedLength);
+            console.log('[TempResponseLength] Removed temporary response length:', override.setting);
         }
     }
 
     /**
-     * Sets up an event hook to restore the original response length when the event is emitted.
-     * @param {import('./scripts/generation-response-length-overrides.js').ResponseLengthOverride} override Override from save()
+     * Makes the override wait for the event that follows the request data. That event removes the override that
+     * started to wait last.
+     * @param {import('./scripts/generation-response-length-overrides.js').ResponseLengthOverride} override Override of the caller
      */
     static setupEventHook(override) {
         const { setting } = override;
@@ -7430,7 +7432,7 @@ class TempResponseLength {
         if (this.#hookedEvents.has(eventType)) {
             return;
         }
-        // One listener for each event type, so that one event restores one override.
+        // One listener for each event type, so that one event removes one override.
         this.#hookedEvents.add(eventType);
         eventSource.on(eventType, () => {
             this.#overrides.removeNewestHooked(setting);

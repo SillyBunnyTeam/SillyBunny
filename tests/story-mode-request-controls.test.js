@@ -1157,6 +1157,45 @@ describe('overlapping temporary response lengths', () => {
         expect(state()).toEqual({ lengths: [200, 100], ...PRESET });
     });
 
+    test.each(APIS)('%s: a quiet prompt that starts after a raw call keeps its length and the preset returns', async api => {
+        const { context, eventSource, lengths, preset } = makeOverlapRuntime(api);
+        const raw = holdEvent(eventSource, rawPromptEvent(api), data => rawPromptText(data) === 'raw');
+        const quiet = holdEvent(eventSource, event_types.GENERATION_STARTED, () => true);
+        const rawCall = context.generateRaw({ prompt: 'raw', responseLength: 100 });
+        await raw.reached;
+        const quietCall = context.generateQuietPrompt({ quietPrompt: 'quiet', responseLength: 200 });
+        await quiet.reached;
+        raw.release();
+        await rawCall;
+        quiet.release();
+        await quietCall;
+        expect(lengths()[1]).toBe(200);
+        expect(preset()).toEqual(PRESET);
+    });
+
+    test.each(APIS)('%s: a call without a length inside a quiet prompt leaves the preset in place', async api => {
+        const { context, requests, eventSource, preset } = makeOverlapRuntime(api);
+        eventSource.on(event_types.GENERATION_STARTED, async () => {
+            await context.generateRaw({ prompt: 'raw' });
+        });
+        await context.generateQuietPrompt({ quietPrompt: 'quiet', responseLength: 100 });
+        expect(requests).toHaveLength(2);
+        expect(preset()).toEqual(PRESET);
+    });
+
+    test.each(APIS)('%s: a call without a length leaves the preset in place while two quiet prompts wait', async api => {
+        const { context, requests, eventSource, preset } = makeOverlapRuntime(api);
+        let started = 0;
+        eventSource.on(event_types.GENERATION_STARTED, async () => {
+            const index = ++started;
+            if (index === 1) await context.generateQuietPrompt({ quietPrompt: 'inner', responseLength: 200 });
+            if (index === 2) await context.generateRaw({ prompt: 'raw' });
+        });
+        await context.generateQuietPrompt({ quietPrompt: 'outer', responseLength: 100 });
+        expect(requests).toHaveLength(3);
+        expect(preset()).toEqual(PRESET);
+    });
+
     test('a Chat Completion call and a Text Completion call that overlap keep their own presets', async () => {
         const { context, requests, eventSource, preset } = makeOverlapRuntime('openai');
         const chat = holdEvent(eventSource, event_types.CHAT_COMPLETION_PROMPT_READY, data => rawPromptText(data) === 'chat');
