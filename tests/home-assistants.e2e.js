@@ -619,9 +619,17 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 // Home turns off a moment after the workspace opens, and a layout change closes an open menu.
                 await expect(page.locator('#sheld')).not.toHaveAttribute('data-sb-home', 'on');
 
-                // The workspace covers Home, so the menu button of the card is pressed through the page.
-                await menuOf(cardOf(page, 'assistant-tewi')).dispatchEvent('click');
-                await page.getByRole('menuitem', { name: 'New Chat in Roleplay' }).click();
+                // The workspace focuses its input twice as it opens, the second time about 100 ms later, and the input already
+                // has focus after the first. A popover menu closes when focus leaves it, so one opened in between closes
+                // at once, as on a phone's sheet it would not. Nothing on the page says the second focus is done, so the
+                // test does what a person does when the menu vanishes: it opens the menu again.
+                await expect(async () => {
+                    if (await page.getByRole('menu').count() === 0) {
+                        // The workspace covers Home, so the menu button of the card is pressed through the page.
+                        await menuOf(cardOf(page, 'assistant-tewi')).dispatchEvent('click');
+                    }
+                    await page.getByRole('menuitem', { name: 'New Chat in Roleplay' }).click({ timeout: 1_000 });
+                }, 'the Assistant Menu stays open once the workspace has taken focus').toPass({ timeout: 20_000 });
 
                 await expect.poll(async () => (await conversationOf(page, REISEN)).open).toBe(false);
                 await expect.poll(() => currentAvatar(page)).toBe(TEWI);
