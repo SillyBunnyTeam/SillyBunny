@@ -986,6 +986,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-24 simple-git 4 upgrade. |
 | Owner | Server runtime integrator. |
 
+### simple-git environment in the Android app
+| Field | Value |
+| --- | --- |
+| File | `src/util.js`, `src/plugin-loader.js`, `src/endpoints/extensions.js`, `src/git/client.js`. |
+| Area | Git integration for version info, server plugin updates, extensions and the git backend client in the Android app. |
+| Divergence reason | TODO(copy) |
+| Target seam | `getAndroidAppGitOptions()` in `src/android-app-gate.js`. |
+| Adapter shape | Each file imports `getAndroidAppGitOptions()` and passes its result to simple-git: spread into the options of `simpleGit()` in `getVersion()` in `src/util.js` and into `OPTIONS` in `src/endpoints/extensions.js`, as the second argument of `git()` in `updatePlugins()` in `src/plugin-loader.js`, and as the argument of `simpleGit()` in the `SimpleGitClient` constructor in `src/git/client.js`. Outside the Android app it returns an empty object, so these calls keep simple-git's environment guard as upstream does. |
+| Protecting tests | `tests/android-app-git-environment.test.js` checks the `allowEnvironment` option at each simple-git call site in these files and in `src/endpoints/server-admin.js`, in and outside app mode. `tests/android-app-gate.test.js` checks with the real simple-git and git that the inherited git variables reach git only in app mode. |
+| Validation | `npm run test:unit --prefix tests -- android-app-gate.test.js android-app-git-environment.test.js plugin-loader.test.js extensions-discover.test.js extensions-bundled-third-party.test.js server-admin-android-gate.test.js util.test.js`, `npx eslint` on the changed files. Not run in the Android app. |
+| Rollback path | Remove the `getAndroidAppGitOptions` import and its use in each file: `simpleGit({ baseDir: serverDirectory })` in `src/util.js`, `git(pluginPath)` in `src/plugin-loader.js`, `Object.freeze({ timeout: { block: 5 * 60 * 1000 } })` in `src/endpoints/extensions.js` and `simpleGit()` in `src/git/client.js`. In the Android app, git then loses its exec path, CA bundle and identity again, so its fetches, clones and pulls over https fail there. No saved data changes. |
+| Last reviewed | 2026-11-11 PR #918 Android APK. |
+| Owner | TODO(copy) |
+
 ### Upstream test harness and dependency metadata
 | Field | Value |
 | --- | --- |
