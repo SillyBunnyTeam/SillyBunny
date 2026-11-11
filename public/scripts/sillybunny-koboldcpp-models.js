@@ -283,8 +283,12 @@ export async function countKoboldCppChatTokens(messages) {
     }
 
     // Roles and names count as well, in place of the chat template tokens that KoboldCpp puts around each message.
+    // Media parts stay out, because their base64 data would count as far more tokens than the model spends on them.
     const text = messages
-        .flatMap(message => Object.values(message))
+        .flatMap(message => Object.entries(message))
+        .flatMap(([key, value]) => key === 'content' && Array.isArray(value)
+            ? value.filter(part => part?.type === 'text').map(part => part.text)
+            : [value])
         .map(value => typeof value === 'string' ? value : JSON.stringify(value))
         .join('\n\n');
 
