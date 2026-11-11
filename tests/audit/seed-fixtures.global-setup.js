@@ -1,11 +1,12 @@
 import { SERVER_LIST_VARIABLE } from '../e2e-servers.js';
+import { NEED_MODULES } from '../helpers/surfaces/fixture-data.js';
 import { seedServer } from '../helpers/surfaces/fixtures.js';
-import { selectSurfaces } from '../helpers/surfaces/index.js';
 import { assertSeedableServer, SEED_FAILURES_VARIABLE } from '../helpers/surfaces/seed-guard.js';
 
 /**
- * Seeds the fixtures that the selected surfaces need on every server of the run, once, before any test. The surfaces are
- * all of them unless `SURFACE_FAMILY` or `SURFACE_ID` is set. The servers are the ones that the config started
+ * Seeds every fixture need on every server of the run, once, before any test. A run that `SURFACE_FAMILY` or `SURFACE_ID`
+ * narrows seeds the same data as a full run, because lists, pickers and the page behind a dialog show whatever the server
+ * holds, and a capture must not depend on which surfaces ran. The servers are the ones that the config started
  * (`SILLYBUNNY_TEST_SERVERS`), or the base URL of the shard, which is the server that the test runner started for it.
  * A server that someone started by hand is seeded only with `SILLYBUNNY_AUDIT_SEED=1`.
  * A server that `seed-guard.js` refuses stops the run. A need that cannot be seeded is recorded in
@@ -14,7 +15,7 @@ import { assertSeedableServer, SEED_FAILURES_VARIABLE } from '../helpers/surface
  * @param {import('@playwright/test').FullConfig} config
  */
 export default async function seedFixtures(config) {
-    const needed = [...new Set(selectSurfaces().surfaces.flatMap(surface => surface.needs))];
+    const needed = Object.keys(NEED_MODULES);
     const servers = process.env[SERVER_LIST_VARIABLE]
         ? JSON.parse(process.env[SERVER_LIST_VARIABLE]).map(({ url }) => url)
         : [config.projects[0]?.use.baseURL ?? process.env.SILLYBUNNY_TEST_BASE_URL ?? 'http://127.0.0.1:4444'];

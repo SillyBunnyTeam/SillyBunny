@@ -21,5 +21,8 @@ export default defineConfig({
     use: {
         ...baseConfig.use,
         serviceWorkers: 'block',
+        // Dates on a surface are formatted in the browser's zone and locale, and a capture must not depend on the machine's.
+        timezoneId: 'UTC',
+        locale: 'en-US',
     },
 });
