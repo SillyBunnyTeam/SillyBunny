@@ -88,6 +88,7 @@ import { init as statsInit, onExit as statsOnExit } from './endpoints/stats.js';
 import { checkForNewContent, PRESET_CONTENT_TYPES } from './endpoints/content-manager.js';
 import { init as settingsInit } from './endpoints/settings.js';
 import { ServerStartup, setupPrivateEndpoints } from './server-startup.js';
+// SillyBunny: characters.js exports the SQLite character index in place of upstream's diskCache.
 import { characterIndex } from './endpoints/characters.js';
 import { migrateFlatSecrets } from './endpoints/secrets.js';
 import { migrateGroupChatsMetadataFormat } from './endpoints/groups.js';
@@ -505,6 +506,7 @@ async function preSetupTasks() {
         if (typeof cleanupPlugins === 'function') {
             await cleanupPlugins();
         }
+        // SillyBunny: close the index database file, where upstream stopped the disk cache sync timer.
         characterIndex.close();
         setWindowTitle(consoleTitle);
         process.exit(exitCode);
