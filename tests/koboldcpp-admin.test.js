@@ -228,6 +228,14 @@ describe('KoboldCpp admin endpoints', () => {
         expect(result.body).toMatchObject({ admin: 2, entries: [], loadedModel: 'koboldcpp/alpha', loadedFile: null });
     });
 
+    test('fails the model list when KoboldCpp is unreachable', async () => {
+        mockKoboldCpp({});
+
+        const result = await post('models', { api_server: 'http://127.0.0.1:5001' });
+
+        expect(result.status).toBe(502);
+    });
+
     test('lists every file that gives the loaded model name, and no single loaded file when several do', async () => {
         mockKoboldCpp({
             '/api/extra/version': () => ({ json: { admin: 1 } }),
@@ -240,12 +248,38 @@ describe('KoboldCpp admin endpoints', () => {
         expect(result.body).toMatchObject({ loadedModel: 'koboldcpp/model', loadedFiles: ['a/model.gguf', 'b/model.gguf'], loadedFile: null });
     });
 
-    test('fails the model list when KoboldCpp is unreachable', async () => {
-        mockKoboldCpp({});
+    test('lists the entries without a loaded model when the model request fails', async () => {
+        mockKoboldCpp({
+            '/api/extra/version': () => ({ json: { admin: 1 } }),
+            '/api/admin/list_options': () => ({ json: ['alpha.gguf', 'initial_model', 'unload_model'] }),
+            '/v1/models': () => ({ status: 503, json: {} }),
+        });
 
         const result = await post('models', { api_server: 'http://127.0.0.1:5001' });
 
-        expect(result.status).toBe(502);
+        expect(result.status).toBe(200);
+        expect(result.body).toMatchObject({ admin: 1, loadedModel: null, loadedFiles: [], loadedFile: null });
+        expect(result.body.entries.map(entry => entry.name)).toEqual(['alpha.gguf', 'initial_model', 'unload_model']);
+    });
+
+    test('gives up on a KoboldCpp that does not answer', async () => {
+        const timeout = AbortSignal.timeout;
+        const timeoutSpy = jest.spyOn(AbortSignal, 'timeout').mockImplementation(() => timeout.call(AbortSignal, 1));
+        nodeFetchMock.mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+            if (options.signal.aborted) {
+                reject(options.signal.reason);
+            }
+            options.signal.addEventListener('abort', () => reject(options.signal.reason));
+        }));
+
+        try {
+            expect((await post('models', { api_server: 'http://127.0.0.1:5001' })).status).toBe(502);
+            expect((await post('load', { api_server: 'http://127.0.0.1:5001', filename: 'alpha.gguf' })).status).toBe(502);
+            expect((await post('uptime', { api_server: 'http://127.0.0.1:5001' })).body).toEqual({ online: false, uptime: null });
+            expect(timeoutSpy.mock.calls).toEqual([[10_000], [10_000], [5_000]]);
+        } finally {
+            timeoutSpy.mockRestore();
+        }
     });
 
     test.each([
