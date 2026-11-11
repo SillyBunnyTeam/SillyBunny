@@ -14986,7 +14986,7 @@ export function select_rm_info(type, charId, previousCharId = null) {
 }
 
 // SillyBunny: Creator can open the normal editor independently of the active chat.
-function getCharacterEditorId() {
+export function getCharacterEditorId() {
     if (document.getElementById('form_create')?.getAttribute('actiontype') !== 'editcharacter') return undefined;
     const avatar = document.getElementById('avatar_url_pole')?.value;
     const index = characters.findIndex(character => character.avatar === avatar);
@@ -15013,11 +15013,14 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#create_button').attr('value', 'Save');              // what is the use case for this?
     $('#dupe_button').show();
     $('#create_button_label').css('display', 'none');
-    const editingActiveChat = !selected_group && String(chid) === String(this_chid);
+    // SillyBunny: the Creator opens this editor for cards other than this_chid, so controls that act on this_chid
+    // or on the current chat show only while chid is this_chid. The solo-chat ones also hide in group peek.
+    const editingSelectedCharacter = String(chid) === String(this_chid);
+    const editingActiveChat = !selected_group && editingSelectedCharacter;
     $('#char_connections_button').toggle(editingActiveChat);
-
-    // These controls modify the current chat, not the card being edited.
     $('#set_chat_character_settings').toggle(editingActiveChat);
+    $('#creators_note_styles_button').toggle(editingSelectedCharacter);
+    $('.rm_stats_button').toggle(editingSelectedCharacter);
 
     // Don't update the navbar name if we're peeking the group member defs
     if (!selected_group) {
@@ -15070,7 +15073,9 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#renameCharButton').css('display', '');
 
     $('#form_create').attr('actiontype', 'editcharacter');
-    $('.form_create_bottom_buttons_block .chat_lorebook_button').show();
+    // SillyBunny: Chat Lore and the media overrides act on the current chat, and #tagList shows the editor card.
+    $('.form_create_bottom_buttons_block .chat_lorebook_button').toggle(editingSelectedCharacter);
+    applyTagsOnCharacterSelect(chid);
 
     const externalMediaState = isExternalMediaAllowed();
     $('#character_open_media_overrides').toggle(editingActiveChat);
@@ -15156,6 +15161,9 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     $('#form_create').attr('actiontype', 'createcharacter');
     $('.form_create_bottom_buttons_block .chat_lorebook_button').hide();
     $('#character_open_media_overrides').hide();
+    // SillyBunny: select_selected_character hides these for a card other than this_chid; the create form shows them.
+    $('#creators_note_styles_button').show();
+    $('.rm_stats_button').show();
 }
 
 function select_rm_characters() {
@@ -15876,7 +15884,9 @@ async function openCharacterWorldPopup() {
         const el = evt?.currentTarget ?? this;
         const selectedValues = $(el).val();
         const selected = Array.isArray(selectedValues) ? selectedValues : [];
-        const fileName = getCharaFilename(null, {});
+        // SillyBunny: the list belongs to the editor card, which is not always this_chid. The create form keeps
+        // the active chat's file name, because updateAuxBooks() saves nothing without one.
+        const fileName = getCharaFilename(menu_type == 'create' ? null : chid, {});
         const nextList = selected.map(i => world_names[i]).filter(Boolean);
         charSetAuxWorlds(fileName, nextList);
     }

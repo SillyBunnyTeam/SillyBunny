@@ -13,6 +13,8 @@ import {
     DEFAULT_PRINT_TIMEOUT,
     printCharacters,
 } from '../script.js';
+// SillyBunny: the Creator opens the classic editor for cards that are not the active chat's, so editor tags follow the editor card.
+import { getCharacterEditorId } from '../script.js';
 import { FILTER_TYPES, FILTER_STATES, DEFAULT_FILTER_STATE, isFilterState, FilterHelper } from './filters.js';
 
 import { groupCandidatesFilter, groupMembersFilter, groups, selected_group } from './group-chats.js';
@@ -659,8 +661,10 @@ function getInlineListSelector() {
         return `.group_select[grid="${selected_group}"] .tags`;
     }
 
-    if (this_chid !== undefined && menu_type === 'character_edit') {
-        return `.character_select[chid="${this_chid}"] .tags`;
+    // SillyBunny: the list row of the editor card, which the Creator can open for a card other than this_chid.
+    const editorId = getCharacterEditorId();
+    if (editorId !== undefined && menu_type === 'character_edit') {
+        return `.character_select[chid="${editorId}"] .tags`;
     }
 
     return null;
@@ -674,8 +678,10 @@ function getTagKey() {
         return selected_group;
     }
 
-    if (this_chid !== undefined && menu_type === 'character_edit') {
-        return characters[this_chid].avatar;
+    // SillyBunny: tags added or removed in the editor belong to the editor card, which is not always this_chid.
+    const editorId = getCharacterEditorId();
+    if (editorId !== undefined && menu_type === 'character_edit') {
+        return characters[editorId].avatar;
     }
 
     return null;
@@ -1671,7 +1677,8 @@ export function applyTagsOnCharacterSelect(chid = null) {
         return;
     }
 
-    chid = chid ?? (this_chid !== undefined ? Number(this_chid) : undefined);
+    // SillyBunny: #tagList is part of the editor form, which can show a card other than this_chid.
+    chid = chid ?? getCharacterEditorId() ?? (this_chid !== undefined ? Number(this_chid) : undefined);
     printTagList($('#tagList'), { forEntityOrKey: chid, tagOptions: { removable: true } });
 }
 
