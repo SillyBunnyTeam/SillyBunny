@@ -1107,7 +1107,7 @@ router.post('/update', requireAdminMiddleware, async (_request, response) => {
         const androidAppGate = await checkAndroidAppGate(git, { ref: repository.trackingBranch, branch: repository.branch });
         if (androidAppGate.blocked) {
             if (stashed) {
-                stashPopWarning = await restoreAutoStash(git);
+                stashPopWarning = await restoreAutoStash(git, { reason: 'after the Android app update gate stopped the update' });
             }
             return response.status(409).json({
                 error: 'TODO(copy)',
@@ -1253,7 +1253,7 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
             const stashed = hasLocalChanges && autoStash;
             let stashPopWarning = null;
             if (stashed) {
-                stashPopWarning = await restoreAutoStash(git);
+                stashPopWarning = await restoreAutoStash(git, { reason: 'after the Android app update gate stopped the branch switch' });
             }
             return response.status(409).json({
                 error: 'TODO(copy)',
