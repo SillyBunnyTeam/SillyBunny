@@ -623,6 +623,24 @@ describe('model switch in Chat Completion', () => {
         expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
     });
 
+    test('a status check that starts during the wait, such as the reconnect after a source change, ends the loading state itself', async () => {
+        const server = servers[SERVER_URL];
+        server.onPoll = () => {
+            statusCheck.abort();
+            oaiSettings.chat_completion_source = 'custom';
+            script.startStatusLoading();
+        };
+        await loadChatSwitcher();
+
+        await expect(runCommand('beta.gguf')).resolves.toBe('');
+
+        expect(server.polls).toBe(1);
+        expect(script.startStatusLoading).toHaveBeenCalledTimes(2);
+        expect(script.stopStatusLoading).not.toHaveBeenCalled();
+        expect(script.resultCheckStatus).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+    });
+
     test('a KoboldCpp URL typed during the wait stops it, enables Connect and clears the list', async () => {
         const server = servers[SERVER_URL];
         server.onPoll = () => {
