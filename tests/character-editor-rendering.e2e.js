@@ -189,6 +189,25 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await expect(activePopup(page)).toBeVisible();
         await page.keyboard.press('Escape');
     });
+
+    test(`the action menu offers External Media while editing and leaves it out of the create form at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await openEditor(page);
+        const more = page.locator('#sb_character_editor_more');
+        const externalMedia = page.getByRole('menuitem', { name: 'External Media', exact: true });
+        await more.click();
+        await expect(externalMedia).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(externalMedia).toHaveCount(0);
+
+        // The create form keeps the first character selected, so External Media would change that character, not the draft.
+        await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
+        await page.locator('.sb-character-list [data-action-id="new"]').click();
+        await expect(page.locator('#form_create')).toHaveAttribute('actiontype', 'createcharacter');
+        await more.click();
+        await expect(page.getByRole('menuitem', { name: 'Global Styles', exact: true })).toBeVisible();
+        await expect(externalMedia).toHaveCount(0);
+    });
 }
 
 test.describe('character toolbar resize', () => {

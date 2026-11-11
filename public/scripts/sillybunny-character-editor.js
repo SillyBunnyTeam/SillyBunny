@@ -655,7 +655,14 @@ function _buildActionSections() {
     }
 
     const recovered = RECOVERED_ACTIONS
-        .filter(action => document.querySelector(action.transport))
+        .filter(action => {
+            const transport = document.querySelector(action.transport);
+            // Upstream hides a transport with an inline `display: none` when its
+            // action does not apply to the card in the editor (External Media in
+            // the create form and in group peek). `.sb-editor-transport` hides
+            // every transport, so only the inline style marks those actions.
+            return transport && !(transport instanceof HTMLElement && transport.style.display === 'none');
+        })
         .map(action => ({
             label: translate(action.label),
             icon: `fa-solid fa-${action.glyph}`,

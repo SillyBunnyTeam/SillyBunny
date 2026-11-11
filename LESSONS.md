@@ -167,6 +167,10 @@ This is the largest class by a wide margin.
 - **Preset API/Sampler Linking:** `mountPresetLinkingGroup()` in `public/scripts/sillybunny-tabs.js` moves the three Chat Completions linking blocks out of their drawer into a group after Presets. It removes the emptied drawer, because the flatten pass would turn it into an empty headed section inside Presets.
   - **Pitfall:** `preparePromptingPanel()` runs while the Prompting content is still detached from the document, so `document.getElementById()` returns `null` there. Look nodes up from the container instead.
   - **Tests:** `tests/sillybunny-backend-settings.e2e.js` (the Preset API/Sampler Linking group test).
+- **Character editor action menu:** the More menu (`_buildActionSections()` in `public/scripts/sillybunny-character-editor.js`) offers Global Styles, External Media and Character Stats by clicking hidden transports. Their handlers act on the selected group or on `this_chid`, which is not always the card in the editor. Upstream hides `#character_open_media_overrides` with an inline `display: none` where its dialog would act on another entity: in the create form (`select_rm_create()` in `public/script.js`) and on a group member's card (`select_selected_character()` toggles it with `!selected_group`).
+  - **Breaks:** the menu listed External Media in both states anyway, so in the create form it opened the dialog for the character that was selected when the form opened, and in group peek for the group.
+  - **Guard:** the menu leaves out a recovered action whose transport has an inline `display: none`. `.sb-editor-transport` hides every transport with `display: none !important`, so the resolved style is `none` for all of them and only the inline style carries upstream's signal. Global Styles and Character Stats never get an inline display, so the menu offers them in the create form, where they act on `this_chid`; upstream shows both buttons in the create form too.
+  - **Tests:** `tests/character-editor-rendering.e2e.js` (`the action menu offers External Media while editing and leaves it out of the create form`, 1440 and 390 px). Group peek has no test.
 
 ### Cache, boot and reload
 
