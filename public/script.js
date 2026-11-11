@@ -11267,8 +11267,15 @@ export async function renameCharacter(name = null, { silent = false, renameChats
                     await delay(1);
                     if (this_chid === undefined) throw new Error('New character not selected');
                 } else {
+                    // SillyBunny: the editor shows this card without its chat. The roster can change while the full
+                    // card loads, and a save from a shallow card empties the fields that the card lacks.
                     await unshallowCharacter(newChId);
-                    select_selected_character(newChId);
+                    const renamedId = characters.findIndex(c => c.avatar === newAvatar);
+                    if (renamedId < 0 || characters[renamedId].shallow) {
+                        window.SillyBunnyShell?.showCharacterEditorEmptyState?.();
+                    } else {
+                        select_selected_character(renamedId);
+                    }
                 }
 
                 // Also rename as a group member

@@ -16252,6 +16252,7 @@ function initAll() {
                 flashHighlight($(editorTab), 1000);
             }
         },
+        showCharacterEditorEmptyState,
         openGlobalSearch({ focusInput = true } = {}) {
             closeAllDropdowns({ except: 'search' });
             setUniversalSearchOpenState(true, { focusInput });
