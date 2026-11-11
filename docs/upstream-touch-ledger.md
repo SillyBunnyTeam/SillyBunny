@@ -756,14 +756,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `public/scripts/openai.js`, `public/scripts/textgen-models.js`, `public/scripts/horde.js`. |
 | Area | Connections: the details line of a model row in the shared picker (context size, price, capabilities, subscription, the Horde model page link). |
-| Divergence reason | TODO(copy) |
+| Divergence reason | The select rows that replace select2 on Connections must show the model details that the select2 templates showed, without parsing catalogue fields as HTML. |
 | Target seam | `public/scripts/sillybunny-editor/option-details.js` (`registerOptionDetails`), with the describers in `public/scripts/sillybunny-model-details.js`. |
 | Adapter shape | Per file, one import pair and one `registerOptionDetails({...})` call that maps a select id to a lookup in the module's own model list plus a text-only describer. `openai.js` also passes the output of `getNanoGptModelTemplate`, which builds text nodes, through the allow-list of `option-details.js`. The select2 templates and their call sites are unchanged. |
 | Protecting tests | `tests/unit/sillybunny-option-details.test.js`, `tests/unit/sillybunny-model-details.test.js`, `tests/unit/sillybunny-select-row.test.js`, `tests/unit/sillybunny-picker.test.js`, `tests/nanogpt-controls.e2e.js`, `tests/horde-model-links.e2e.js`. |
 | Validation | `npm run lint` in the root and in `tests/`, `npm run test:unit` in `tests/`, `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and `nanogpt-controls.e2e.js`, `horde-model-links.e2e.js`, `sillybunny-connections-layout.e2e.js` and `frontend-performance.e2e.js` in Chromium against Bun servers that the config started. |
-| Rollback path | TODO(copy) |
+| Rollback path | Remove the import pair and the `registerOptionDetails` block from each file; model rows then show the name only. |
 | Last reviewed | 2026-11-11 UI polish sweep (PR #870). |
-| Owner | TODO(copy) |
+| Owner | UI overhaul integrator. |
 
 ### `public/scripts/openai.js` - impersonate first-person defaults
 | Field | Value |
