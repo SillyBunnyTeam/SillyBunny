@@ -33,6 +33,7 @@ import {
     loadFamilies,
     loadProblemsFor,
     selectSurfaces,
+    statesFor,
     surfaceById,
     surfacesByFamily,
     validateSurfaces,
@@ -340,6 +341,32 @@ describe('the ready of Persona Global Settings', () => {
         expect(ready({ viewport: '768x1024' })).toContain('.sb-persona-settings');
         expect(ready({ viewport: '1440x900' })).toContain('Audit Persona');
         expect(ready({})).toContain('Audit Persona');
+    });
+});
+
+describe('states that exist at some viewports only', () => {
+    const always = { id: 'always', open: noop };
+    const phone = { id: 'sheet', open: noop, viewports: ['390x844'] };
+    const surface = entry({ family: 'dialog', states: [always, phone, { id: 'both', open: noop, viewports: ['1440x900', '390x844'] }] });
+
+    test('a state is listed only where it applies', () => {
+        expect(validateSurfaces([surface])).toEqual([]);
+        expect(statesFor(surface, '1440x900').map(state => state.id)).toEqual(['always', 'both']);
+        expect(statesFor(surface, '390x844').map(state => state.id)).toEqual(['always', 'sheet', 'both']);
+        expect(statesFor(surface, '320x568')).toEqual([always]);
+        expect(statesFor(entry(), '390x844')).toEqual([]);
+    });
+
+    test.each([['an empty list', []], ['an unknown id', ['1x1']], ['a string', '390x844'], ['a list with a number', [390]]])('%s is refused', (_name, viewports) => {
+        expect(validateSurfaces([entry({ states: [{ id: 'more', open: noop, viewports }] })])).toEqual([
+            expect.stringContaining('dialog.example.one: state "more" viewports must be a non-empty list of '),
+        ]);
+    });
+
+    test('a viewport that does not apply to the entry is refused', () => {
+        const problems = validateSurfaces([entry({ viewports: ['1440x900'], states: [{ id: 'more', open: noop, viewports: ['390x844'] }] })]);
+        expect(problems).toEqual([expect.stringContaining('state "more" viewports must be among the viewports that apply to the surface (1440x900)')]);
+        expect(validateSurfaces([entry({ family: 'list', states: [{ id: 'more', open: noop, viewports: ['820x360'] }] })])).toHaveLength(1);
     });
 });
 

@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { variantContextOptions, viewportById, viewportsFor } from '../helpers/surface-matrix.js';
 import { visibleContent } from '../helpers/surfaces/content.js';
 import { bootSurfaceApp, openSurface, readySelectors } from '../helpers/surfaces/boot.js';
-import { backendsOf, loadProblemsFor, selectSurfaces, validateSurfaces } from '../helpers/surfaces/index.js';
+import { backendsOf, loadProblemsFor, selectSurfaces, statesFor, validateSurfaces } from '../helpers/surfaces/index.js';
 /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- A surface lists its own backends and states, and a close step is optional. */
 
 // Proves that every surface of the registry opens, with each of its backends and states, at the desktop and the phone
@@ -111,7 +111,7 @@ for (const viewportId of SMOKE_VIEWPORTS) {
                         });
                     }
                 }
-                for (const state of surface.states ?? []) {
+                for (const state of statesFor(surface, viewportId)) {
                     const label = `${surface.id} state ${state.id}`;
                     await attempt(label, async () => {
                         const options = { stateId: state.id, backend: backendsOf(surface)[0], viewport: viewportId };

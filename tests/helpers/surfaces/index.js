@@ -26,6 +26,8 @@
  * @property {string} id Lowercase words joined by dashes. Unique within the surface.
  * @property {(page: import('@playwright/test').Page, ctx: SurfaceContext) => Promise<void>} open Runs with the surface already open.
  * @property {string} [root] The root of the state when it is not the root of the surface.
+ * @property {string[]} [viewports] Viewport ids where the state exists (a property sheet that only a phone has); a subset of the
+ * viewports that apply to the surface, all of them when absent. Use `statesFor()` to get the states of a viewport.
  * @property {Ready} [ready] What must be shown once the state is open. A state with neither `ready` nor its own `root` is the surface
  * with more shown, so the surface's `ready` applies to it.
  *
@@ -61,14 +63,14 @@
 
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { VIEWPORT_IDS } from '../surface-matrix.js';
+import { VIEWPORT_IDS, viewportsFor } from '../surface-matrix.js';
 import { NEED_LOAD_PROBLEMS, validateNeedModules } from './fixture-data.js';
 import { BACKENDS, DEFAULT_BACKEND, EDITOR_TYPES, FAMILIES, ID_PATTERN, NEEDS, OWNER_CLASSES } from './schema.js';
 
 export { BACKENDS, DEFAULT_BACKEND, EDITOR_TYPES, FAMILIES, NEEDS, OWNER_CLASSES };
 
 const ALLOWED_KEYS = new Set(['id', 'family', 'owner', 'title', 'root', 'open', 'close', 'states', 'masks', 'viewports', 'needs', 'sources', 'editorType', 'backends', 'primaryFlow', 'overlay', 'upstreamMarkup', 'ready']);
-const STATE_KEYS = new Set(['id', 'open', 'root', 'ready']);
+const STATE_KEYS = new Set(['id', 'open', 'root', 'ready', 'viewports']);
 const STATE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
@@ -238,6 +240,13 @@ export function validateSurfaces(surfaces = SURFACES) {
                 if (state?.root !== undefined && !isText(state.root)) {
                     problem(`${label} root must be a selector.`);
                 }
+                if (state?.viewports !== undefined) {
+                    if (!isTextList(state.viewports) || state.viewports.length === 0 || !state.viewports.every(id => VIEWPORT_IDS.includes(id))) {
+                        problem(`${label} viewports must be a non-empty list of ${VIEWPORT_IDS.join(', ')}.`);
+                    } else if (isText(surface.id) && !state.viewports.every(id => viewportsFor(surface).includes(id))) {
+                        problem(`${label} viewports must be among the viewports that apply to the surface (${viewportsFor(surface).join(', ')}).`);
+                    }
+                }
                 if (state?.ready !== undefined && !isReady(state.ready)) {
                     problem(`${label} ready must be a selector, a non-empty list of selectors, or a function of the context.`);
                 }
@@ -312,6 +321,16 @@ export function selectSurfaces(env = process.env, { surfaces: registered = SURFA
         ? `The surfaces to run cannot be chosen (SURFACE_FAMILY=${env.SURFACE_FAMILY ?? ''} SURFACE_ID=${env.SURFACE_ID ?? ''}). ${reasons.join(' ')}`
         : null;
     return { active, surfaces, families, problem };
+}
+
+/**
+ * The states of a surface that exist at a viewport: those without `viewports`, and those that list it.
+ * @param {Surface} surface
+ * @param {string} viewportId
+ * @returns {SurfaceState[]}
+ */
+export function statesFor(surface, viewportId) {
+    return (surface.states ?? []).filter(state => !state.viewports || state.viewports.includes(viewportId));
 }
 
 /**
