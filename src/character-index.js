@@ -134,6 +134,11 @@ export class CharacterIndex {
      * @param {string} data Card data
      */
     set(filePath, fileStat, data) {
+        // Node.js 22 returns a stored TEXT value only up to its first NUL character, so the index would return a cut-off card.
+        if (data.includes('\0')) {
+            return;
+        }
+
         const statements = this.#getStatements();
         if (!statements) {
             return;

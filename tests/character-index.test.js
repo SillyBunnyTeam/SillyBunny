@@ -89,6 +89,15 @@ describe('character index', () => {
         expect(index.get(cardPath, stat)).toBeUndefined();
     });
 
+    test('does not keep a card whose text has a NUL character', () => {
+        const cardPath = writeFile(path.join(tempRoot, 'characters', 'Alice.png'), 'alice');
+        const stat = fs.statSync(cardPath);
+
+        index.set(cardPath, stat, 'alice\0data');
+
+        expect(index.get(cardPath, stat)).toBeUndefined();
+    });
+
     test('pruneDirectory removes the cards that are not in the directory listing', () => {
         const firstDirectory = path.join(tempRoot, 'first-user', 'characters');
         const secondDirectory = path.join(tempRoot, 'second-user', 'characters');
