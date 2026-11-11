@@ -197,35 +197,76 @@ test('q56 real saved long tracker prompt stays useful across phone widths and co
     mounted.set(page, editor);
     const savedAgents = () => page.evaluate(async () => JSON.stringify((await import('/scripts/extensions/in-chat-agents/agent-store.js')).getAgents()));
     await expect.poll(async () => JSON.parse(await savedAgents()).length).toBeGreaterThan(0);
-    const before = await savedAgents();
-    const tracker = JSON.parse(before).filter(agent => agent.category === 'tracker').sort((a, b) => b.prompt.length - a.prompt.length)[0];
-    expect(tracker, '4455 requires a real saved tracker').toBeTruthy();
-    expect(tracker.prompt.length).toBeGreaterThan(500);
-    await editor.root.locator(`[data-sb-list-key="agent:${tracker.id}"]`).first().evaluate(node => node.click());
-    await expect(editor.prompt).toHaveValue(tracker.prompt);
-    const samples = [];
-    for (const width of [360, 390, 430, 768]) {
-        await page.setViewportSize({ width, height: 1000 });
-        await page.locator('[data-sb-settings-tab="agents"]').evaluate(node => node.click());
-        const fields = await editor.detail.locator('textarea:visible').evaluateAll(nodes => nodes.map(node => ({
-            field: node.getAttribute('aria-label'), height: node.getBoundingClientRect().height, minimum: getComputedStyle(node).minHeight,
-        })));
-        samples.push({ width, fields });
-        expect(fields.find(field => field.field === 'Prompt').height).toBeGreaterThanOrEqual(360);
-        for (const field of fields) expect(field.height).toBeGreaterThanOrEqual(180);
-        await editor.prompt.focus();
-        await q56Screenshot(page, `textareas-real-${width}-prompt`);
-        const extra = editor.detail.getByRole('textbox', { name: 'Format Example', exact: true });
-        await extra.focus();
-        await q56Screenshot(page, `textareas-real-${width}-tracker`);
+    const longestTracker = async () => JSON.parse(await savedAgents()).filter(agent => agent.category === 'tracker').sort((a, b) => b.prompt.length - a.prompt.length)[0];
+    const origin = new URL(baseURL).origin;
+    const cleanups = [];
+    let createdId = null;
+    // The helper's context route fakes agent writes and records them. Only the setup save and its cleanup go to the isolated server; every other write falls through to that recorder.
+    let direct = false;
+    await page.route(url => url.origin === origin && ['/api/in-chat-agents/save', '/api/in-chat-agents/delete'].includes(url.pathname), route => (direct ? route.continue() : route.fallback()));
+    const sendDirectly = async action => {
+        direct = true;
+        try {
+            return await action();
+        } finally {
+            direct = false;
+        }
+    };
+    try {
+        // eslint-disable-next-line playwright/no-conditional-in-test -- A server that already holds a long saved tracker needs no setup.
+        if (!((await longestTracker())?.prompt.length > 500)) {
+            const agent = await page.evaluate(async () => {
+                const { buildAgentFromTemplate } = await import('/scripts/extensions/in-chat-agents/catalogue.js');
+                const response = await fetch('/scripts/extensions/in-chat-agents/templates/index.json');
+                const [template] = (await response.json()).filter(entry => entry.category === 'tracker').sort((a, b) => b.prompt.length - a.prompt.length);
+                const built = buildAgentFromTemplate(template);
+                built.name = `Q56 ${built.name}`;
+                return built;
+            });
+            createdId = agent.id;
+            cleanups.push(() => sendDirectly(() => page.evaluate(async id => {
+                await (await import('/scripts/extensions/in-chat-agents/agent-store.js')).deleteAgent(id);
+            }, agent.id)));
+            await sendDirectly(() => page.evaluate(async agent => {
+                await (await import('/scripts/extensions/in-chat-agents/agent-store.js')).saveAgent(agent);
+                (await import('/scripts/extensions/in-chat-agents/ui/agent-list.js')).refreshAgentsPanels();
+            }, agent));
+        }
+        const before = await savedAgents();
+        const tracker = await longestTracker();
+        expect(tracker, '4455 requires a real saved tracker').toBeTruthy();
+        expect(tracker.prompt.length).toBeGreaterThan(500);
+        await editor.root.locator(`[data-sb-list-key="agent:${tracker.id}"]`).first().evaluate(node => node.click());
+        await expect(editor.prompt).toHaveValue(tracker.prompt);
+        const samples = [];
+        for (const width of [360, 390, 430, 768]) {
+            await page.setViewportSize({ width, height: 1000 });
+            await page.locator('[data-sb-settings-tab="agents"]').evaluate(node => node.click());
+            const fields = await editor.detail.locator('textarea:visible').evaluateAll(nodes => nodes.map(node => ({
+                field: node.getAttribute('aria-label'), height: node.getBoundingClientRect().height, minimum: getComputedStyle(node).minHeight,
+            })));
+            samples.push({ width, fields });
+            expect(fields.find(field => field.field === 'Prompt').height).toBeGreaterThanOrEqual(360);
+            for (const field of fields) expect(field.height).toBeGreaterThanOrEqual(180);
+            await editor.prompt.focus();
+            await q56Screenshot(page, `textareas-real-${width}-prompt`);
+            const extra = editor.detail.getByRole('textbox', { name: 'Format Example', exact: true });
+            await extra.focus();
+            await q56Screenshot(page, `textareas-real-${width}-tracker`);
+        }
+        for (const width of [439, 440, 559, 560]) {
+            await editor.detail.locator('..').evaluate((node, width) => { node.style.width = `${width}px`; node.style.minWidth = `${width}px`; node.style.flex = 'none'; }, width);
+            expect(await editor.prompt.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(360);
+        }
+        await testInfo.attach('q56 real tracker textarea heights', { body: JSON.stringify({ savedCount: JSON.parse(before).length, createdTracker: createdId !== null, promptLength: tracker.prompt.length, samples }), contentType: 'application/json' });
+        expect(await savedAgents()).toBe(before);
+        expect(editor.writes.filter(write => write.path.startsWith('/api/in-chat-agents/'))).toEqual([]);
+    } finally {
+        for (const cleanup of cleanups) {
+            // A failed cleanup must not replace the assertion error that is already unwinding.
+            await cleanup().catch(error => testInfo.annotations.push({ type: 'cleanup failed', description: String(error?.message ?? error) }));
+        }
     }
-    for (const width of [439, 440, 559, 560]) {
-        await editor.detail.locator('..').evaluate((node, width) => { node.style.width = `${width}px`; node.style.minWidth = `${width}px`; node.style.flex = 'none'; }, width);
-        expect(await editor.prompt.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(360);
-    }
-    await testInfo.attach('q56 real tracker textarea heights', { body: JSON.stringify({ savedCount: JSON.parse(before).length, promptLength: tracker.prompt.length, samples }), contentType: 'application/json' });
-    expect(await savedAgents()).toBe(before);
-    expect(editor.writes.filter(write => write.path.startsWith('/api/in-chat-agents/'))).toEqual([]);
 });
 
 test.afterEach(async ({ page }) => {

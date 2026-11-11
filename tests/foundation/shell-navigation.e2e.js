@@ -279,11 +279,35 @@ test('mobile settings page and chat tools use WAAPI motion with reduced-motion f
 
     // The chat chip belongs to the composer, which Home does not have.
     await selectSampleCharacter(page);
+    // The sheet animates for about half a second. A trace slows each action past that, so the page watches for the animation itself, from before the click.
+    await page.evaluate(() => {
+        window.__sheetAnimationCount = new Promise(resolve => {
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                observer.disconnect();
+                resolve(document.getElementById('sb-bottom-chat-sheet')?.getAnimations().length ?? 0);
+            };
+            const settle = () => {
+                if ((document.getElementById('sb-bottom-chat-sheet')?.getAnimations().length ?? 0) > 0) finish();
+            };
+            const observer = new MutationObserver(settle);
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['id', 'class', 'style'] });
+            const poll = () => {
+                if (done) return;
+                settle();
+                requestAnimationFrame(poll);
+            };
+            poll();
+            setTimeout(finish, 10_000);
+        });
+    });
     await page.locator('.sb-bottom-chat-chip').click();
     const sheet = page.locator('#sb-bottom-chat-sheet');
+    expect(await page.evaluate(() => window.__sheetAnimationCount), 'The chat sheet ran no WAAPI animation after the chip click').toBeGreaterThan(0);
     const surface = await sheet.elementHandle();
     expect(surface).not.toBeNull();
-    await expect.poll(() => sheet.evaluate(element => element.getAnimations().length)).toBeGreaterThan(0);
     await expect(sheet).toBeVisible();
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
