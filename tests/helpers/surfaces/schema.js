@@ -28,7 +28,7 @@ export const EDITOR_TYPES = Object.freeze(['single', 'list']);
 /**
  * The backends that change a page (Connections, Sampling and Presets differ between them). `api` is the value of
  * `#main_api`; `source` is the value of `#chat_completion_source` or `#textgen_type` that is picked next, where the
- * backend has one. `connector` is the connection block that the app shows for the backend (the `apiConnector` of
+ * backend has one (`text-completion` is ooba). `connector` is the connection block that the app shows for the backend (the `apiConnector` of
  * `script.js`), and `modeLabel` is the name that the Presets and Sampling pages print in their "Backend: ..." pill. A
  * surface that depends on the backend lists the ids in `backends` and reads `ctx.backend` in `open`.
  */
@@ -37,6 +37,12 @@ export const BACKENDS = Object.freeze({
     'text-completion': { api: 'textgenerationwebui', source: 'ooba', label: 'Text Completion', connector: '#textgenerationwebui_api', modeLabel: 'Text Completions' },
     'novelai': { api: 'novel', source: null, label: 'NovelAI', connector: '#novel_api', modeLabel: 'NovelAI' },
     'horde': { api: 'koboldhorde', source: null, label: 'KoboldAI Horde', connector: '#kobold_horde', modeLabel: 'Kobold/Horde' },
+    // Text Completion sources whose Connections and Sampling pages differ in controls: each has its own connection fields and its
+    // own sampler order list (KoboldCpp and llama.cpp a sortable list, Aphrodite a priority list). The Sampling page of
+    // `text-completion` (ooba) has the ooba priority list. The other sources differ by single toggles or connection fields.
+    'koboldcpp': { api: 'textgenerationwebui', source: 'koboldcpp', label: 'Text Completion: KoboldCpp', connector: '#textgenerationwebui_api', modeLabel: 'Text Completions' },
+    'llamacpp': { api: 'textgenerationwebui', source: 'llamacpp', label: 'Text Completion: llama.cpp', connector: '#textgenerationwebui_api', modeLabel: 'Text Completions' },
+    'aphrodite': { api: 'textgenerationwebui', source: 'aphrodite', label: 'Text Completion: Aphrodite', connector: '#textgenerationwebui_api', modeLabel: 'Text Completions' },
 });
 
 export const DEFAULT_BACKEND = 'chat-completion';

@@ -11,7 +11,10 @@ const USER = 'Audit User';
 
 /**
  * `file` is the chat file; `count` the number of messages after the header. The `*Index` values are indexes into the
- * messages (0 is the first). Turns alternate, the character on even indexes, except the one that each shape replaces.
+ * messages (0 is the first). Turns alternate, the user on even indexes and the character on odd ones, so that the shapes
+ * the app renders only on a character turn (reasoning, swipes, the last message's swipe controls) sit on odd indexes, and
+ * the last message (59) is a character turn. The narrator message replaces the turn at its index.
+ * `swipesIndex` is a swiped message in the middle; `lastSwipesIndex` is the last message, which shows the swipe controls.
  */
 export const fixture = Object.freeze({
     file: 'audit-chat-long',
@@ -19,11 +22,12 @@ export const fixture = Object.freeze({
     count: 60,
     reasoningIndex: 11,
     swipesIndex: 21,
+    lastSwipesIndex: 59,
     swipeCount: 3,
     narratorIndex: 30,
     codeIndex: 41,
     longIndex: 51,
-    imageIndex: 58,
+    imageIndex: 57,
     longLength: 6000,
 });
 
@@ -46,7 +50,7 @@ const CODE_MESSAGE = [
 
 function buildMessages() {
     return Array.from({ length: fixture.count }, (_, index) => {
-        const user = index % 2 === 1;
+        const user = index % 2 === 0;
         const name = user ? USER : character.name;
         const base = { name, user, index, start: START, text: `${index + 1}. ${sentences(2 + (index % 3), index)}` };
         switch (index) {
@@ -60,7 +64,8 @@ function buildMessages() {
                         reasoning_type: 'model',
                     },
                 });
-            case fixture.swipesIndex: {
+            case fixture.swipesIndex:
+            case fixture.lastSwipesIndex: {
                 const swipes = [1, 2, 3].map(number => `Swipe ${number}. ${sentences(2, number * 4)}`);
                 return chatMessage({
                     ...base,

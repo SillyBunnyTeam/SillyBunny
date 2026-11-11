@@ -8,7 +8,7 @@ test.use(variantContextOptions());
 
 /** The fixtures that the browser side of this spec reads; the needs of other coders are seeded but not read here. */
 const READ = [
-    'character', 'chat', 'group', 'lorebook', 'persona', 'tags', 'folders', 'characters-many', 'chat-long', 'group-chat', 'lorebook-entries',
+    'character', 'chat', 'group', 'lorebook', 'persona', 'tags', 'folders', 'characters-many', 'chat-long', 'chat-very-long', 'group-chat', 'lorebook-entries',
     'personas-many', 'agents', 'quick-replies', 'regex-scripts', 'archived-chats', 'databank', 'connection-profile',
 ];
 
@@ -74,11 +74,17 @@ test('every need seeds once, reads back through the app, and seeds nothing the s
                     speakers: messages.map(message => message.is_user),
                     reasoning: messages[long.reasoningIndex]?.extra?.reasoning,
                     swipes: messages[long.swipesIndex]?.swipes?.length,
+                    lastSwipes: messages.at(-1)?.swipes?.length,
+                    characterTurns: [long.reasoningIndex, long.swipesIndex, long.lastSwipesIndex, long.codeIndex, long.longIndex, long.imageIndex].map(index => messages[index]?.is_user),
                     narrator: messages[long.narratorIndex]?.extra?.type,
                     code: messages[long.codeIndex]?.mes,
                     longLength: messages[long.longIndex]?.mes.length,
                     image: messages[long.imageIndex]?.extra?.media?.[0]?.url,
                 };
+            })(),
+            veryLong: await (async () => {
+                const records = await send('/api/chats/get', { ch_name: character.name, avatar_url: character.avatar, file_name: fixtures['chat-very-long'].file });
+                return { count: records.length - 1, speakers: records.slice(1).map(message => message.is_user), window: power_user.chat_truncation };
             })(),
             groupChat: (await send('/api/chats/group/get', { id: fixtures['group-chat'].chatId })).slice(1).map(message => message.name),
             entryBook: Object.values((await send('/api/worldinfo/get', { name: fixtures['lorebook-entries'].book })).entries).map(entry => ({
@@ -134,7 +140,10 @@ test('every need seeds once, reads back through the app, and seeds nothing the s
     // chat-long
     const long = FIXTURES['chat-long'];
     expect(seen.long.count).toBe(long.count);
-    expect(seen.long.speakers.every((user, index) => index === long.narratorIndex || user === (index % 2 === 1)), 'user and character turns alternate').toBe(true);
+    expect(seen.long.speakers.every((user, index) => index === long.narratorIndex || user === (index % 2 === 0)), 'user and character turns alternate').toBe(true);
+    expect(seen.long.characterTurns, 'the shapes sit on character turns').toEqual([false, false, false, false, false, false]);
+    expect(long.lastSwipesIndex).toBe(long.count - 1);
+    expect(seen.long.lastSwipes).toBe(long.swipeCount);
     expect(seen.long.reasoning).toContain('The question is where the lamp belongs.');
     expect(seen.long.swipes).toBe(long.swipeCount);
     expect(seen.long.narrator).toBe('narrator');
@@ -142,6 +151,13 @@ test('every need seeds once, reads back through the app, and seeds nothing the s
     expect(seen.long.code).toContain('| Day | Task | Hours |');
     expect(seen.long.longLength).toBe(long.longLength);
     expect(seen.long.image).toBe('/img/ai4.png');
+
+    // chat-very-long
+    const veryLong = FIXTURES['chat-very-long'];
+    expect(seen.veryLong.count).toBe(veryLong.count);
+    expect(seen.veryLong.window, 'the render window of the app').toBe(veryLong.renderWindow);
+    expect(veryLong.count - veryLong.renderWindow).toBe(veryLong.hidden);
+    expect(seen.veryLong.speakers.every((user, index) => user === (index % 2 === 0)), 'turns alternate').toBe(true);
 
     // group-chat
     const groupChat = FIXTURES['group-chat'];

@@ -25,6 +25,7 @@ import {
 } from '../helpers/surfaces/fixture-data.js';
 import {
     BACKENDS,
+    DEFAULT_BACKEND,
     FAMILIES,
     NEEDS,
     SURFACES,
@@ -132,6 +133,8 @@ describe('surface registry lookups', () => {
     test('backends default to a single run without one', () => {
         expect(backendsOf(surfaceById('settings.backend.editor'))).toEqual([undefined]);
         expect(backendsOf(surfaceById('settings.backend.sampling'))).toEqual(Object.keys(BACKENDS));
+        expect(backendsOf(surfaceById('settings.backend.connections'))).toEqual(Object.keys(BACKENDS));
+        expect(backendsOf(surfaceById('settings.backend.presets'))).toEqual(['chat-completion', 'text-completion', 'novelai', 'horde']);
     });
 
     test('the settings family holds the 15 settings surfaces', () => {
@@ -478,6 +481,16 @@ describe('what the other configs run', () => {
         const { default: base } = await import('../playwright.config.js');
         expect(auditSpecs.every(spec => picksUp(audit, spec))).toBe(true);
         expect(picksUp(base, 'sample.e2e.js')).toBe(true);
+    });
+});
+
+describe('backends', () => {
+    test('the first four and the default are kept, and the extra Text Completion sources name their own source', () => {
+        expect(Object.keys(BACKENDS).slice(0, 4)).toEqual(['chat-completion', 'text-completion', 'novelai', 'horde']);
+        expect(DEFAULT_BACKEND).toBe('chat-completion');
+        expect(BACKENDS['text-completion'].source).toBe('ooba');
+        expect(Object.entries(BACKENDS).filter(([, backend]) => backend.api === 'textgenerationwebui').map(([id, backend]) => `${id}:${backend.source}`))
+            .toEqual(['text-completion:ooba', 'koboldcpp:koboldcpp', 'llamacpp:llamacpp', 'aphrodite:aphrodite']);
     });
 });
 

@@ -16,6 +16,8 @@ import { BACKENDS, DEFAULT_BACKEND } from './schema.js';
 import { chooseMenuItem, expandAll, openCharactersTab, openSettingsTab, selectBackend, settle } from './steps.js';
 
 const BACKEND_IDS = Object.keys(BACKENDS);
+/** The Presets page differs between sources only by a toggle, so it keeps the four backends and not the extra Text Completion sources. */
+const PRESET_BACKEND_IDS = ['chat-completion', 'text-completion', 'novelai', 'horde'];
 const SCRIPTS = 'public/scripts';
 
 const backendOf = ctx => BACKENDS[ctx.backend ?? DEFAULT_BACKEND];
@@ -186,7 +188,7 @@ export const surfaces = [
         tab: 'prompting',
         ready: ctx => modePill('[data-sb-panel="prompting"] [data-sb-prompting-mode]', ctx),
         upstreamMarkup: true,
-        backends: BACKEND_IDS,
+        backends: PRESET_BACKEND_IDS,
         sources: [`${SCRIPTS}/sillybunny-tabs.js`],
     }),
     shellPage({
