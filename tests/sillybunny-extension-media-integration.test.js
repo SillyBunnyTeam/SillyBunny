@@ -11,6 +11,9 @@ import { buildTextAIRequestMessages } from '../public/scripts/extensions/quick-i
 import { MAX_IMAGE_BYTES } from '../public/scripts/extensions/quick-image-gen/lib/security.js';
 import { cloneNovelAIPreciseReferenceState } from '../public/scripts/extensions/quick-image-gen/lib/generation-semantics.js';
 import { cloneSynchronizedValue } from '../public/scripts/extensions/quick-image-gen/lib/settings-persistence.js';
+import { isNovelAICompatibleProxyUrl } from '../public/scripts/extensions/quick-image-gen/lib/provider-adapters.js';
+import { buildNovelAIProxyRequestUrl } from '../public/scripts/extensions/quick-image-gen/lib/hosted-provider.js';
+import { isNovelAIV5Model, normalizeNovelAIImageParameters } from '../public/scripts/novelai-image-models.js';
 import { buildNovelAIPreciseReferenceParameters } from '../public/scripts/novelai-precise-reference.js';
 
 const capabilityRegistryKey = Symbol.for('sillybunny.extensionCapabilities');
@@ -526,6 +529,81 @@ describe('Conversation extension media integration', () => {
         const context = createConfigurationContext(settings, { charSettingsOverrideApplied: false });
 
         expect(context.snapshotConfiguration(settings).naiPreciseReference).toEqual(preciseReferences('EDITED'));
+    });
+
+    function createNovelAIGenerationContext() {
+        const requests = [];
+        const context = createQigContext({
+            assertSafeConfigurableEndpoint() {},
+            buildNovelAIPreciseReferenceParameters,
+            buildNovelAIProxyRequestUrl,
+            isNovelAICompatibleProxyUrl,
+            isNovelAIV5Model,
+            normalizeNovelAIImageParameters,
+            normalizeSize() {},
+            resolveRandomSeed: seed => seed,
+            fetch: async (url, options) => {
+                requests.push({ url, body: JSON.parse(options.body) });
+                throw new Error('request captured');
+            },
+        });
+        for (const name of ['getNovelAISampler', 'getNovelAIProxyGenerateUrl', 'genNovelAI']) {
+            evaluateInContext(name, context);
+        }
+        return { context, requests };
+    }
+
+    function preparedReferenceImage() {
+        const png = Buffer.alloc(33);
+        png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+        png.write('IHDR', 12, 'latin1');
+        png.writeUInt32BE(1472, 16);
+        png.writeUInt32BE(1472, 20);
+        return png.toString('base64');
+    }
+
+    function novelAISettings(overrides = {}) {
+        return {
+            naiModel: 'nai-diffusion-4-5-full', naiKey: 'key', naiProxyUrl: '', sampler: 'euler_a', seed: 7,
+            width: 832, height: 1216, steps: 23, cfgScale: 5,
+            naiPreciseReference: { enabled: true, references: [{ image: preparedReferenceImage(), type: 'style', strength: 0.6, fidelity: 0.25 }] },
+            ...overrides,
+        };
+    }
+
+    test('QIG sends the Precise References to the official NovelAI API and to a native proxy', async () => {
+        const { context, requests } = createNovelAIGenerationContext();
+
+        for (const naiProxyUrl of ['', 'https://proxy.example/novelai']) {
+            await expect(context.genNovelAI('prompt', 'negative', novelAISettings({ naiProxyUrl }))).rejects.toThrow('request captured');
+        }
+        expect(requests.map(request => request.url)).toEqual(['https://image.novelai.net/ai/generate-image', 'https://proxy.example/novelai/generate']);
+        for (const { body } of requests) {
+            expect(body.parameters).toMatchObject({
+                director_reference_images: [preparedReferenceImage()],
+                director_reference_descriptions: [{ caption: { base_caption: 'style', char_captions: [] }, legacy_uc: false }],
+                director_reference_strength_values: [0.6],
+                director_reference_secondary_strength_values: [0.75],
+            });
+        }
+    });
+
+    test('QIG rejects Precise References for unsupported models and OpenAI-compatible proxies before any request', async () => {
+        const { context, requests } = createNovelAIGenerationContext();
+
+        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({ naiModel: 'nai-diffusion-4-full' }))).rejects.toThrow('requires NovelAI V4.5');
+        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({ naiProxyUrl: 'https://proxy.example/v1' }))).rejects.toThrow('OpenAI-compatible proxies are not supported');
+        expect(requests).toEqual([]);
+    });
+
+    test('QIG sends no Precise References when they are off, also for earlier models', async () => {
+        const { context, requests } = createNovelAIGenerationContext();
+        const settings = novelAISettings({ naiModel: 'nai-diffusion-3' });
+        settings.naiPreciseReference.enabled = false;
+
+        await expect(context.genNovelAI('prompt', 'negative', settings)).rejects.toThrow('request captured');
+        expect(requests).toHaveLength(1);
+        expect(requests[0].body.parameters).not.toHaveProperty('director_reference_images');
     });
 
     test('QIG readiness follows complete initialization and propagates failure', async () => {
