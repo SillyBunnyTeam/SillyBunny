@@ -37,7 +37,7 @@
     margin: 0;
     padding: 12px;
     border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 10px;
+    border-radius: var(--sb-radius-md);
 }
 
 .nai-precise-reference-row img {

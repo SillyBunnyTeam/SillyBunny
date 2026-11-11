@@ -44,4 +44,26 @@ test.describe('NovelAI Precise Reference editor', () => {
         expect(result.references).toEqual(['style', 'character']);
         expect(result.disabledAfterPreparing).toEqual([]);
     });
+
+    test('rounds each reference row with the theme radius for working containers', async ({ page }) => {
+        const result = await page.evaluate(async () => {
+            const { mountNovelAIPreciseReferenceEditor } = await import('/scripts/novelai-precise-reference-ui.js');
+            const container = document.createElement('div');
+            document.body.append(container);
+            mountNovelAIPreciseReferenceEditor(container, {
+                getState: () => ({ enabled: true, references: [{ image: 'RVhJU1RJTkc=', type: 'style', strength: 0.5, fidelity: 0.5 }] }),
+                onChange: () => {},
+                getModel: () => 'nai-diffusion-4-5-full',
+            });
+            const stylesheet = document.querySelector('link[data-novelai-precise-reference]');
+            if (!stylesheet.sheet) await new Promise(resolve => stylesheet.addEventListener('load', resolve, { once: true }));
+            const radius = getComputedStyle(container.querySelector('.nai-precise-reference-row')).borderTopLeftRadius;
+            const themeRadius = getComputedStyle(document.documentElement).getPropertyValue('--sb-radius-md').trim();
+            container.remove();
+            return { radius, themeRadius };
+        });
+
+        expect(result.themeRadius).toBe('16px');
+        expect(result.radius).toBe(result.themeRadius);
+    });
 });
