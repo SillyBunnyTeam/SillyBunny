@@ -73,12 +73,14 @@ async function windowSettled(page) {
         }
         // A loop that never ends (a spinner, a blink) would hold the wait for ever, so only motion that ends counts.
         const moving = surface.getAnimations({ subtree: true }).some(animation => animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime));
+        // A lazy image starts to load only when it is shown inside the viewport. One that is off screen, hidden or without a box has not started, and would hold the wait for ever.
         const waiting = [...surface.querySelectorAll('img')].some((image) => {
             if (image.complete) {
                 return false;
             }
             const box = image.getBoundingClientRect();
-            return !(image.loading === 'lazy' && (box.bottom < 0 || box.top > innerHeight));
+            const shown = box.width > 0 && box.height > 0 && box.bottom > 0 && box.top < innerHeight && getComputedStyle(image).visibility !== 'hidden';
+            return image.loading !== 'lazy' || shown;
         });
         return !moving && !waiting;
     });
@@ -129,10 +131,12 @@ const hostGoneWithin = (page, timeout) => page.locator(HOST).waitFor({ state: 'd
 async function homeSettled(page) {
     await page.locator('#sheld[data-sb-home="on"]').waitFor({ state: 'attached' });
     await page.locator(HOME).waitFor({ state: 'visible' });
-    // An image that the page loads lazily and that sits off screen has not started, and would hold the wait for ever.
+    // A lazy image starts to load only when it is shown inside the viewport. One that is off screen, hidden or without a box
+    // (a chat row behind "show more") has not started, and would hold the wait for ever.
     await page.waitForFunction(() => [...document.querySelectorAll('#chat > .welcomePanel img')].every((image) => {
         const box = image.getBoundingClientRect();
-        return image.complete || (image.loading === 'lazy' && (box.bottom < 0 || box.top > innerHeight));
+        const shown = box.width > 0 && box.height > 0 && box.bottom > 0 && box.top < innerHeight && getComputedStyle(image).visibility !== 'hidden';
+        return image.complete || (image.loading === 'lazy' && !shown);
     }));
     await settle(page);
     await settle(page);
