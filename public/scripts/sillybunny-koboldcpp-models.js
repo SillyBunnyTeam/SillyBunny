@@ -276,28 +276,44 @@ async function waitForRestart(serverUrl, requestedAt, signal, isStopped) {
 /**
  * @param {string} name Entry that was loaded
  * @param {SwitcherState|null} state Switcher state after the restart
- * @returns {boolean} False when KoboldCpp reports a different model than the entry asked for
+ * @returns {boolean} False when KoboldCpp reports a different model than the entry asked for, or no model after a config or the launch model
  */
 function reportLoaded(name, state) {
     const title = t`KoboldCpp`;
-    const loadedModel = state?.loadedModel;
-    const loadedName = state?.loadedFile ?? loadedModel?.replace(/^koboldcpp\//, '');
+    // A config that crashes the worker makes KoboldCpp relaunch its launch arguments, so the model that KoboldCpp
+    // reports is the only sign of what a config or the launch model loaded.
+    const isConfigOrLaunch = name === 'initial_model' || /\.kcpp[st]$/i.test(name);
+
+    if (!state || (isConfigOrLaunch && !state.loadedModel)) {
+        toastr.warning(t`KoboldCpp restarted, but SillyBunny could not read which model it loaded. Click Connect to check.`, title, { timeOut: 10000 });
+        return true;
+    }
+
+    const loadedModel = state.loadedModel;
+    const reportedName = loadedModel?.replace(/^koboldcpp\//, '');
+    const loadedName = state.loadedFile ?? reportedName;
 
     if (name === 'unload_model' && loadedModel && loadedModel !== 'inactive') {
         toastr.warning(t`KoboldCpp restarted with ${loadedName} still loaded.`, title, { timeOut: 10000 });
         return false;
     }
-    if (/\.gguf$/i.test(name) && loadedModel && !state?.loadedFiles.includes(name)) {
+    if (/\.gguf$/i.test(name) && loadedModel && !state.loadedFiles.includes(name)) {
         toastr.warning(loadedModel === 'inactive'
             ? t`KoboldCpp restarted without a model instead of loading ${name}. Check the KoboldCpp console for load errors.`
             : t`KoboldCpp restarted with ${loadedName} instead of ${name}. Check the KoboldCpp console for load errors.`, title, { timeOut: 10000 });
         return false;
     }
+    if (isConfigOrLaunch) {
+        if (loadedModel === 'inactive') {
+            toastr.warning(t`KoboldCpp restarted without a model. Check the KoboldCpp console for load errors.`, title, { timeOut: 10000 });
+            return false;
+        }
+        toastr.success(t`KoboldCpp restarted with ${reportedName}.`, title);
+        return true;
+    }
 
     if (name === 'unload_model') {
         toastr.success(t`Model unloaded.`, title);
-    } else if (name === 'initial_model') {
-        toastr.success(t`Launch model reloaded.`, title);
     } else {
         toastr.success(t`Loaded ${name}.`, title);
     }

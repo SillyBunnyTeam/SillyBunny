@@ -315,7 +315,7 @@ describe('/kcpp-model names', () => {
 
     test('accepts a part of a name only when one entry contains it', async () => {
         const server = servers[SERVER_URL];
-        server.state = modelsAnswer(['Mistral-Small.gguf', 'Mistral-Small.kcpps', ...ACTIONS]);
+        server.state = modelsAnswer(['Mistral-Small.gguf', 'Mistral-Small.kcpps', ...ACTIONS], { loadedModel: 'koboldcpp/Mistral-Small', loadedFiles: ['Mistral-Small.gguf'] });
         server.uptimes = [NEW_WORKER];
         await loadSwitcher();
 
@@ -459,22 +459,46 @@ describe('end of the restart wait', () => {
 });
 
 describe('report after the restart', () => {
+    const NAMES = ['alpha.gguf', 'beta.gguf', 'gamma.kcpps', 'delta.kcppt', ...ACTIONS];
+    const NO_MODEL = 'KoboldCpp restarted without a model. Check the KoboldCpp console for load errors.';
+    const MODEL_UNKNOWN = 'KoboldCpp restarted, but SillyBunny could not read which model it loaded. Click Connect to check.';
+
     test.each([
         ['a model that loaded', 'beta.gguf', { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] }, 'success', 'Loaded beta.gguf.', 'beta.gguf'],
         ['a model when KoboldCpp came back with another model', 'beta.gguf', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'warning', 'KoboldCpp restarted with alpha.gguf instead of beta.gguf. Check the KoboldCpp console for load errors.', ''],
         ['a model when KoboldCpp came back without a model', 'beta.gguf', { loadedModel: 'inactive' }, 'warning', 'KoboldCpp restarted without a model instead of loading beta.gguf. Check the KoboldCpp console for load errors.', ''],
         ['an unload that worked', 'unload_model', { loadedModel: 'inactive' }, 'success', 'Model unloaded.', 'unload_model'],
         ['an unload when the model stayed loaded', 'unload_model', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'warning', 'KoboldCpp restarted with alpha.gguf still loaded.', ''],
-        ['a reload of the launch model', 'initial_model', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'success', 'Launch model reloaded.', 'initial_model'],
+        ['a reload of the launch model with the model KoboldCpp reports', 'initial_model', { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] }, 'success', 'KoboldCpp restarted with alpha.', 'initial_model'],
+        ['a reload of the launch model when KoboldCpp came back without a model', 'initial_model', { loadedModel: 'inactive' }, 'warning', NO_MODEL, ''],
+        ['a config with the model KoboldCpp reports', 'gamma.kcpps', { loadedModel: 'koboldcpp/beta', loadedFiles: ['beta.gguf'] }, 'success', 'KoboldCpp restarted with beta.', 'gamma.kcpps'],
+        ['a config when KoboldCpp came back without a model', 'delta.kcppt', { loadedModel: 'inactive' }, 'warning', NO_MODEL, ''],
+        ['a config when KoboldCpp did not report a model', 'gamma.kcpps', { loadedModel: null }, 'warning', MODEL_UNKNOWN, 'gamma.kcpps'],
     ])('reports %s', async (_case, name, loaded, type, message, result) => {
         const server = servers[SERVER_URL];
-        server.nextState = modelsAnswer(['alpha.gguf', 'beta.gguf', ...ACTIONS], loaded);
+        server.state = modelsAnswer(NAMES, { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] });
+        server.nextState = modelsAnswer(NAMES, loaded);
         server.uptimes = [NEW_WORKER];
         await loadSwitcher();
 
         await expect(runCommand(name)).resolves.toBe(result);
 
         expect(toasts[type].mock.calls.map(([text]) => text)).toEqual([message]);
+    });
+
+    test.each(['beta.gguf', 'unload_model', 'gamma.kcpps', 'initial_model'])('reports that the model is unknown when KoboldCpp cannot be read after a restart for %s', async name => {
+        const server = servers[SERVER_URL];
+        server.state = modelsAnswer(NAMES, { loadedModel: 'koboldcpp/alpha', loadedFiles: ['alpha.gguf'] });
+        server.uptimes = [NEW_WORKER];
+        server.onPoll = () => {
+            server.state = null;
+        };
+        await loadSwitcher();
+
+        await expect(runCommand(name)).resolves.toBe(name);
+
+        expect(toasts.success).not.toHaveBeenCalled();
+        expect(toasts.warning.mock.calls.map(([text]) => text)).toEqual([MODEL_UNKNOWN]);
     });
 
     test('accepts the loaded file when another file gives KoboldCpp the same model name', async () => {
