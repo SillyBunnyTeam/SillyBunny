@@ -100,6 +100,10 @@ function isAlreadyLoaded(state, name) {
     return name === state?.loadedFile || (name === 'unload_model' && state?.loadedModel === 'inactive');
 }
 
+function getNoFilesHint() {
+    return t`KoboldCpp listed no files. Check the folder set with --admindir.`;
+}
+
 /**
  * @param {SwitcherState|null} state Switcher state
  * @returns {string} Why KoboldCpp offers nothing to load, or an empty string when it offers entries
@@ -114,7 +118,7 @@ function getUnavailableReason(state) {
     if (!state.entries.length) {
         return state.admin === 2
             ? t`KoboldCpp needs its admin password. Enter it as the API key above, then click Connect.`
-            : t`KoboldCpp listed no files. Check the folder set with --admindir.`;
+            : getNoFilesHint();
     }
     return '';
 }
@@ -167,7 +171,10 @@ function renderModelSelect() {
             select.append(group);
         }
         select.value = state.loadedFile ?? '';
-        hint = t`Models load with KoboldCpp's default settings. Configs (.kcpps) load their saved settings.`;
+        // KoboldCpp always lists its two actions, so an --admindir folder without model or config files lists only them.
+        hint = state.entries.some(entry => entry.type !== 'action')
+            ? t`Models load with KoboldCpp's default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.`
+            : getNoFilesHint();
     }
 
     $(select).trigger('change.select2');

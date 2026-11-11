@@ -640,6 +640,29 @@ describe('dropdown', () => {
         expect(toasts.success).toHaveBeenCalledWith('Loaded beta.gguf.', 'KoboldCpp');
         expect(getDropdown()).toMatchObject({ values: ['alpha.gguf', 'beta.gguf', ...ACTIONS], value: 'beta.gguf' });
     });
+
+    test('says which settings models and configs load with', async () => {
+        const switcher = await loadSwitcher();
+        await switcher.refreshKoboldCppModels();
+
+        expect(getDropdown().hint).toBe('Models load with KoboldCpp\'s default settings, or its --baseconfig file when set. Configs (.kcpps, .kcppt) load their own settings.');
+    });
+
+    test('says that KoboldCpp listed no files when it lists only its actions, and keeps the actions', async () => {
+        servers[SERVER_URL].state = modelsAnswer(ACTIONS, { loadedModel: 'inactive' });
+        const switcher = await loadSwitcher();
+        await switcher.refreshKoboldCppModels();
+
+        expect(getDropdown()).toMatchObject({ values: ['', ...ACTIONS], hint: 'KoboldCpp listed no files. Check the folder set with --admindir.' });
+    });
+
+    test('asks for the admin password when KoboldCpp needs one and lists nothing', async () => {
+        servers[SERVER_URL].state = modelsAnswer([], { admin: 2 });
+        const switcher = await loadSwitcher();
+        await switcher.refreshKoboldCppModels();
+
+        expect(getDropdown()).toMatchObject({ labels: ['No files to load'], hint: 'KoboldCpp needs its admin password. Enter it as the API key above, then click Connect.' });
+    });
 });
 
 describe('getStatusTextgen() hook', () => {
