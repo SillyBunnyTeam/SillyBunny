@@ -376,4 +376,37 @@ describe('end of the restart wait', () => {
         expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
         expect(getDropdown()).toMatchObject({ values: ['gamma.gguf', ...ACTIONS], value: 'gamma.gguf' });
     });
+
+    test('stopping the script stops the wait while another API is active', async () => {
+        const server = servers[SERVER_URL];
+        const scriptAbort = { signal: { aborted: false } };
+        server.onPoll = () => {
+            scriptAbort.signal.aborted = true;
+        };
+        await loadSwitcher({ mainApi: 'openai' });
+
+        await expect(runCommand('beta.gguf', { _abortController: scriptAbort })).resolves.toBe('');
+
+        expect(server.polls).toBe(1);
+        expect(script.startStatusLoading).not.toHaveBeenCalled();
+        expect(script.stopStatusLoading).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+        expect(getDropdown().labels).toEqual(['-- Connect to the API --']);
+    });
+
+    test('stopping the script stops the wait and enables Connect again while KoboldCpp is active', async () => {
+        const server = servers[SERVER_URL];
+        const scriptAbort = { signal: { aborted: false } };
+        server.onPoll = () => {
+            scriptAbort.signal.aborted = true;
+        };
+        await loadSwitcher();
+
+        await expect(runCommand('beta.gguf', { _abortController: scriptAbort })).resolves.toBe('');
+
+        expect(server.polls).toBe(1);
+        expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
+        expect(script.resultCheckStatus).not.toHaveBeenCalled();
+        expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+    });
 });

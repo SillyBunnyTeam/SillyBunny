@@ -306,9 +306,10 @@ function reportLoaded(name, state) {
 /**
  * Asks KoboldCpp to load an entry and waits until it has restarted.
  * @param {string} name Entry name as KoboldCpp listed it
+ * @param {import('./slash-commands/SlashCommandAbortController.js').SlashCommandAbortSignal} [scriptSignal] Signal of the script that runs /kcpp-model, which stops the wait when aborted
  * @returns {Promise<boolean>} Whether KoboldCpp restarted with the entry loaded, as far as its reports show
  */
-async function switchKoboldCppModel(name) {
+async function switchKoboldCppModel(name, scriptSignal) {
     const title = t`KoboldCpp`;
     const serverUrl = getTextGenServer(textgen_types.KOBOLDCPP);
     const isUrlChanged = () => getTextGenServer(textgen_types.KOBOLDCPP) !== serverUrl;
@@ -344,7 +345,7 @@ async function switchKoboldCppModel(name) {
             if (isActive) {
                 setOnlineStatus('no_connection');
             }
-            outcome = await waitForRestart(serverUrl, requestedAt, signal, isUrlChanged);
+            outcome = await waitForRestart(serverUrl, requestedAt, signal, () => Boolean(scriptSignal?.aborted) || isUrlChanged());
         } else {
             outcome = 'rejected';
         }
@@ -365,8 +366,9 @@ async function switchKoboldCppModel(name) {
         if (isActive && outcome !== 'cancelled') {
             resultCheckStatus();
         }
-        // The Cancel button aborts the status check and then resets the connection status itself. A new API, type or
-        // URL also ends the wait, and without this call it can leave the Connect buttons disabled.
+        // The Cancel button aborts the status check and then resets the connection status itself. A new API, type
+        // or URL, or a stopped script, also ends the wait, and without this call it can leave the Connect buttons
+        // disabled.
         if (isActive && outcome === 'cancelled' && !(signal?.aborted && isActiveConnection())) {
             stopStatusLoading();
         }
@@ -523,11 +525,11 @@ async function pickEntry(state) {
 }
 
 /**
- * @param {object} _args Named arguments
+ * @param {{ _abortController?: import('./slash-commands/SlashCommandAbortController.js').SlashCommandAbortController }} args Named arguments
  * @param {string} value Entry to load; opens the picker when empty
  * @returns {Promise<string>} Name of the loaded entry, or an empty string
  */
-async function koboldCppModelCallback(_args, value) {
+async function koboldCppModelCallback(args, value) {
     const title = t`KoboldCpp`;
     const serverUrl = getTextGenServer(textgen_types.KOBOLDCPP);
     if (!serverUrl) {
@@ -573,7 +575,7 @@ async function koboldCppModelCallback(_args, value) {
     if (isAlreadyLoaded(state, name)) {
         return name;
     }
-    return await switchKoboldCppModel(name) ? name : '';
+    return await switchKoboldCppModel(name, args._abortController?.signal) ? name : '';
 }
 
 function onModelSelectChange() {
