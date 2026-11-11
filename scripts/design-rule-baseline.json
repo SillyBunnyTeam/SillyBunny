@@ -1,0 +1,228 @@
+{
+    "version": 1,
+    "files": {
+        "public/css/sillybunny-character-editor.css": {
+            "radius-literal": 8,
+            "radius-literal-fallback": 9,
+            "duration-literal-fallback": 1,
+            "italic": 1,
+            "important": 12,
+            "breakpoint-off-set": 2,
+            "breakpoint-1000": 1
+        },
+        "public/css/sillybunny-character-import.css": {
+            "important": 2,
+            "breakpoint-off-set": 1
+        },
+        "public/css/sillybunny-character-list.css": {
+            "radius-literal": 2,
+            "shadow-literal": 1,
+            "important": 15,
+            "breakpoint-off-set": 1
+        },
+        "public/css/sillybunny-chat-styles.css": {
+            "color-literal": 52,
+            "radius-literal": 7,
+            "shadow-literal": 1,
+            "letter-spacing": 1,
+            "important": 225,
+            "breakpoint-off-set": 18,
+            "breakpoint-1000": 18
+        },
+        "public/css/sillybunny-color-picker.css": {
+            "color-literal": 5,
+            "radius-literal": 3,
+            "shadow-literal": 1,
+            "important": 1,
+            "hover-ungated": 4,
+            "breakpoint-off-set": 1,
+            "focus-outline": 1
+        },
+        "public/css/sillybunny-conversation.css": {
+            "color-literal": 6,
+            "color-literal-fallback": 5,
+            "radius-literal": 37,
+            "radius-literal-fallback": 18,
+            "shadow-literal": 4,
+            "duration-literal": 24,
+            "duration-literal-fallback": 7,
+            "italic": 1,
+            "important": 6,
+            "hover-ungated": 8,
+            "breakpoint-off-set": 3,
+            "breakpoint-1000": 1,
+            "vh-without-dvh": 3,
+            "focus-outline": 4
+        },
+        "public/css/sillybunny-editor-shell.css": {
+            "radius-literal": 3,
+            "radius-literal-fallback": 2,
+            "important": 10
+        },
+        "public/css/sillybunny-entity-list.css": {
+            "radius-literal": 15,
+            "radius-literal-fallback": 2,
+            "important": 33
+        },
+        "public/css/sillybunny-folder-manager.css": {
+            "radius-literal": 3,
+            "important": 1
+        },
+        "public/css/sillybunny-home.css": {
+            "color-literal": 2,
+            "radius-literal": 3,
+            "shadow-literal": 2,
+            "important": 1,
+            "focus-outline": 1
+        },
+        "public/css/sillybunny-message-actions.css": {
+            "color-literal": 3,
+            "color-literal-fallback": 1,
+            "radius-literal": 4,
+            "radius-literal-fallback": 1,
+            "shadow-literal": 1,
+            "important": 12,
+            "focus-outline": 1
+        },
+        "public/css/sillybunny-mobile-navigation.css": {
+            "color-literal-fallback": 2,
+            "radius-literal": 7,
+            "duration-literal-fallback": 5,
+            "important": 43
+        },
+        "public/css/sillybunny-mobile-shell.css": {
+            "radius-literal": 11,
+            "shadow-literal": 2,
+            "important": 332,
+            "breakpoint-off-set": 1,
+            "vh-without-dvh": 5
+        },
+        "public/css/sillybunny-paper-theme.css": {
+            "color-literal": 11,
+            "radius-literal": 6,
+            "radius-literal-fallback": 1,
+            "important": 51
+        },
+        "public/css/sillybunny-persona-detail.css": {
+            "radius-literal": 3,
+            "important": 4
+        },
+        "public/css/sillybunny-persona-editor.css": {
+            "important": 11,
+            "breakpoint-off-set": 1
+        },
+        "public/css/sillybunny-prompt-editor.css": {
+            "color-literal": 1,
+            "radius-literal": 1,
+            "shadow-literal": 1,
+            "duration-literal": 1,
+            "important": 21,
+            "hover-ungated": 2
+        },
+        "public/css/sillybunny-side-panel.css": {
+            "color-literal-fallback": 1,
+            "radius-literal": 1,
+            "radius-literal-fallback": 4,
+            "shadow-literal": 1,
+            "duration-literal-fallback": 2,
+            "important": 60,
+            "focus-outline": 1
+        },
+        "public/css/sillybunny-tabs.css": {
+            "color-literal": 6,
+            "color-literal-fallback": 8,
+            "radius-literal": 39,
+            "radius-literal-fallback": 28,
+            "shadow-literal": 11,
+            "duration-literal": 10,
+            "duration-literal-fallback": 1,
+            "letter-spacing": 5,
+            "uppercase": 5,
+            "italic": 1,
+            "important": 296,
+            "hover-ungated": 10,
+            "breakpoint-off-set": 17,
+            "breakpoint-1000": 7,
+            "vh-without-dvh": 4,
+            "focus-outline": 6
+        },
+        "public/css/sillybunny-tag-manager.css": {
+            "radius-literal": 3,
+            "shadow-literal": 1,
+            "important": 2
+        },
+        "public/css/sillybunny-theme.css": {
+            "color-literal": 19,
+            "color-literal-fallback": 3,
+            "radius-literal": 46,
+            "radius-literal-fallback": 1,
+            "shadow-literal": 35,
+            "duration-literal": 11,
+            "letter-spacing": 3,
+            "uppercase": 3,
+            "important": 201,
+            "hover-ungated": 23,
+            "breakpoint-off-set": 7,
+            "breakpoint-1000": 3,
+            "vh-without-dvh": 2,
+            "focus-outline": 2
+        },
+        "public/css/sillybunny-windows.css": {
+            "radius-literal": 2,
+            "important": 1
+        },
+        "public/css/sillybunny-world-info-editor.css": {
+            "important": 15
+        },
+        "public/css/spacing-system.css": {
+            "breakpoint-off-set": 1,
+            "breakpoint-1000": 1
+        },
+        "public/scripts/extensions/guided-generations/style.css": {
+            "radius-literal": 2,
+            "shadow-literal": 1,
+            "important": 11,
+            "breakpoint-off-set": 1
+        },
+        "public/scripts/extensions/in-chat-agents/style.css": {
+            "color-literal-fallback": 23,
+            "radius-literal": 12,
+            "radius-literal-fallback": 2,
+            "duration-literal": 5,
+            "letter-spacing": 1,
+            "uppercase": 1,
+            "important": 7,
+            "hover-ungated": 2,
+            "breakpoint-off-set": 1,
+            "vh-without-dvh": 1
+        },
+        "public/scripts/extensions/in-chat-agents/ui/agent-editor.css": {
+            "important": 3
+        },
+        "public/scripts/extensions/input-history/style.css": {
+            "color-literal": 2,
+            "radius-literal": 2,
+            "duration-literal": 3,
+            "important": 11,
+            "hover-ungated": 3,
+            "breakpoint-off-set": 1
+        },
+        "public/scripts/extensions/prompt-inspector/style.css": {
+            "breakpoint-off-set": 1,
+            "breakpoint-1000": 1
+        },
+        "public/scripts/extensions/sillybunny-chats-archive/style.css": {
+            "color-literal-fallback": 1,
+            "radius-literal": 2,
+            "radius-literal-fallback": 3,
+            "shadow-literal": 1,
+            "italic": 1,
+            "important": 19,
+            "hover-ungated": 1,
+            "focus-outline": 2
+        },
+        "public/scripts/extensions/sillybunny-debugger/style.css": {
+            "vh-without-dvh": 1
+        }
+    }
+}
