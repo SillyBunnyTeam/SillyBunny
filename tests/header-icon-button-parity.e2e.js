@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
-import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 const character = {
     name: 'Header Icon Character', description: '', personality: '', scenario: '', first_mes: 'Hello', mes_example: '',
@@ -123,6 +123,7 @@ test.describe('character list and editor header icon parity', () => {
                 const favorite = document.getElementById('favorite_button');
                 favorite.setAttribute('aria-pressed', 'true');
             }));
+            await waitForAnimations(page);
             const pressedList = await readState(page, listButton);
             const pressedEditor = await readState(page, editorButton);
             expect(pressedList.button.color).toBe(pressedEditor.button.color);
@@ -143,6 +144,7 @@ test.describe('character list and editor header icon parity', () => {
                 document.getElementById('favorite_button').classList.remove('fav_off');
                 document.getElementById('favorite_button').classList.add('fav_on');
             });
+            await waitForAnimations(page);
             const active = await readState(page, globe);
             const activeFavorite = await readState(page, editorButton);
             const accent = await page.locator(globe).evaluate(node => {
@@ -271,4 +273,52 @@ test.describe('character list and editor header icon parity', () => {
             await expect.poll(() => readHeaderHover(button)).toMatchObject({ backgroundColor: hoverFill });
         }
     });
+});
+
+test.describe('hidden spin icons', () => {
+    test.setTimeout(90000);
+
+    test.beforeEach(async ({ page }) => {
+        await protectMaintainerServer(page);
+        // A saved Reduced Motion setting removes every animation, which would hide the defect.
+        await page.route('**/api/settings/get', async route => {
+            const fetched = await fetchBodyOrSkip(route, response => response.json());
+            if (!fetched) return;
+            const { response, body: data } = fetched;
+            const settings = JSON.parse(data.settings);
+            settings.power_user.reduced_motion = false;
+            return route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });
+        });
+        await page.goto('/');
+        await page.waitForFunction(() => !document.getElementById('preloader'), null, { timeout: 60000 });
+    });
+
+    const runningSpins = (page, selector) => page.locator(selector).evaluate(node => node.getAnimations().filter(animation => animation.playState === 'running').length);
+
+    test('the hidden connection profile spinner does not animate and spins again when shown', async ({ page }) => {
+        const selector = '#connection_profile_spinner';
+        await expect(page.locator(selector)).toHaveClass(/\bhidden\b/);
+        await expect.poll(() => runningSpins(page, selector)).toBe(0);
+
+        await page.locator(selector).evaluate(node => node.classList.remove('hidden'));
+        await expect.poll(() => runningSpins(page, selector)).toBe(1);
+
+        await page.locator(selector).evaluate(node => node.classList.add('hidden'));
+        await expect.poll(() => runningSpins(page, selector)).toBe(0);
+    });
+
+    for (const spinClass of ['fa-spin', 'fa-spin-pulse', 'fa-pulse']) {
+        test(`${spinClass} stops while hidden and runs when shown`, async ({ page }) => {
+            await page.evaluate(name => {
+                const icon = document.createElement('i');
+                icon.id = 'spin-probe';
+                icon.className = `fa-solid fa-spinner ${name} hidden`;
+                document.body.append(icon);
+            }, spinClass);
+            await expect.poll(() => runningSpins(page, '#spin-probe')).toBe(0);
+
+            await page.locator('#spin-probe').evaluate(node => node.classList.remove('hidden'));
+            await expect.poll(() => runningSpins(page, '#spin-probe')).toBe(1);
+        });
+    }
 });

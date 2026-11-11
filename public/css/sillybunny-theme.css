@@ -8310,3 +8310,8 @@ input::placeholder {
     color: var(--sb-input-placeholder) !important;
     opacity: 1 !important;
 }
+
+/* .hidden only hides; a spinner under it would otherwise keep running. */
+:is(.fa-spin, .fa-spin-pulse, .fa-pulse).hidden {
+    animation: none;
+}
