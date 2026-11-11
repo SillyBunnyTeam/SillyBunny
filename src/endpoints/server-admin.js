@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import express from 'express';
 import yaml from 'yaml';
 import { sync as commandExistsSync } from 'command-exists';
-import simpleGit from 'simple-git';
+import { simpleGit } from 'simple-git';
 
 // SillyBunny: share the APK runtime gate between Server Tools update paths.
 import { ANDROID_APP_UPDATE_REQUIRED, checkAndroidAppGate } from '../android-app-gate.js';

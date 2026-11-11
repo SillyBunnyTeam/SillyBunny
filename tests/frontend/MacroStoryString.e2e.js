@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { test, expect } from '@playwright/test';
-import { testSetup } from './frontent-test-utils.js';
+// SillyBunny: the tests share one booted page per worker, which gets back its boot state before each test. testSetup does not load the app again.
+import { test, expect, testSetup } from './shared-page.js';
 import { serverDirectory } from '../../src/server-directory.js';
 
 test.describe('MacroStoryString', () => {
