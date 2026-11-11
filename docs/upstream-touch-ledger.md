@@ -643,14 +643,15 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### `public/scripts/extensions/quick-image-gen/index.js` - Conversation selfie readiness guard (fork seam reference)
 | Field | Value |
 | --- | --- |
-| Area | Extension boot and image-generation integration. |
+| File | `public/scripts/extensions/quick-image-gen/index.js`. |
+| Area | Extension boot, image-generation integration, and the settings sync cache id. |
 | Divergence reason | SillyBunny Conversation selfie actions can fire before Quick Image Gen finishes booting, so the fork needs a small readiness gate rather than duplicating QIG init state in Conversation modules. |
-| Target seam | `public/scripts/sillybunny-conversation/media.js`. |
-| Adapter shape | Keep QIG changes limited to exporting `ensureQuickImageGenReady()`; keep Conversation modules responsible for when to await it. |
-| Protecting tests | `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-image-safety.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- conversation-mode-scoped-profile.test.js sillybunny-conversation-image-safety.test.js`, `node --check public/scripts/extensions/quick-image-gen/index.js`. |
-| Rollback path | Remove the readiness helper export and revert Conversation callers to direct QIG access if boot timing changes upstream. |
-| Last reviewed | 2026-07-26 PR #638 review follow-up. |
+| Target seam | `public/scripts/sillybunny-conversation/media.js` for the readiness guard; none yet for the unconfirmed sync id claim. |
+| Adapter shape | Keep the readiness guard limited to exporting `ensureQuickImageGenReady()`; keep Conversation modules responsible for when to await it. The unconfirmed sync id claim stays inside QIG. `UNCONFIRMED_SYNC_CACHE_ID_KEY` (`qig_sync_cache_id_unconfirmed` in `localStorage`) holds `{ id, user }`. `initializeQuickImageGen()` imports `getCurrentUserHandle()` from `public/scripts/user.js` before `loadSettings()`. `loadSettings()` reuses the claimed id as `_syncCacheId` only when the server has no `_syncCacheId`, `qig_sync_cache_id` is empty and the claim's user is the current user; it then skips the legacy-import question and may seed from this browser's caches. Otherwise it removes the claim. When the server has no `_syncCacheId`, it writes the claim before its cache writes, unless the legacy import was declined or local cache writes are blocked. `removeUnconfirmedClaimWhenSaved()` removes the claim after a host `SETTINGS_UPDATED` event once `confirmSyncCacheIdSaved()` confirms that the server stored the id. Each block carries a `SillyBunny divergence:` marker. |
+| Protecting tests | `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-image-safety.test.js`, `tests/quick-image-gen-legacy-import.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- quick-image-gen-legacy-import.test.js conversation-mode-scoped-profile.test.js` (three legacy-import tests fail when `loadSettings()` ignores the claim), `node --check public/scripts/extensions/quick-image-gen/index.js`. Not checked in a browser. |
+| Rollback path | Remove the readiness helper export and revert Conversation callers to direct QIG access if boot timing changes upstream. For the claim, revert the hunks that use `getCurrentUserHandle`, `UNCONFIRMED_SYNC_CACHE_ID_KEY`, `unconfirmedCacheId` or `removeUnconfirmedClaimWhenSaved()`; boots then ask the legacy-import question again while the host skips settings saves. Nothing reads a `qig_sync_cache_id_unconfirmed` key left in `localStorage`, and no server data changes. |
+| Last reviewed | 2026-11-11 PR #918 Android APK. |
 | Owner | Extension maintainer. |
 
 ### `public/scripts/extensions/in-chat-agents/companion/companion-panel.js` and `public/scripts/welcome-screen.js` - Conversation UI coexistence guards
