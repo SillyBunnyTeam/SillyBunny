@@ -21,6 +21,8 @@ const RUNTIMES = ['bun', 'node'];
 const SEQUENTIAL_MODE = /describe\.configure\(\s*\{[^}]*\bmode:\s*['"](?:serial|default)['"]|describe\.serial\(/;
 // Playwright writes and removes its output folders while tests run, so the search must not enter them.
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'test-results', 'playwright-report']);
+// A fresh data root has one account, and the server keeps its settings here.
+const SETTINGS_FILE = path.join('default-user', 'settings.json');
 
 const testsDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(testsDirectory, '..');
@@ -156,6 +158,37 @@ export function getProjects(sequentialSpecs) {
         { name: 'sequential', testMatch: pattern },
         { name: 'parallel', testIgnore: pattern },
     ];
+}
+
+/**
+ * Checks whether the first run of a server is over. The app shows its first-run prompt at every boot until the
+ * stored settings say so.
+ * @param {string} dataRoot Data root of the server
+ * @returns {boolean}
+ */
+export function isFirstRunOver(dataRoot) {
+    try {
+        return !JSON.parse(fs.readFileSync(path.join(dataRoot, SETTINGS_FILE), 'utf8')).firstRun;
+    } catch {
+        // The server can save during this read, so the read can fail or get a part of the file.
+        return false;
+    }
+}
+
+/**
+ * Waits until the first run of a server is over, and fails when the time limit ends first.
+ * @param {string} dataRoot Data root of the server
+ * @param {{ timeoutMs?: number, intervalMs?: number }} [options] Time limit, and time between two checks
+ * @returns {Promise<void>}
+ */
+export async function waitUntilFirstRunIsOver(dataRoot, { timeoutMs = 60_000, intervalMs = 100 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    while (!isFirstRunOver(dataRoot)) {
+        if (Date.now() >= deadline) {
+            throw new Error(`The server did not store the end of its first run in ${path.join(dataRoot, SETTINGS_FILE)} within ${timeoutMs / 1000} s.`);
+        }
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
 }
 
 /**
