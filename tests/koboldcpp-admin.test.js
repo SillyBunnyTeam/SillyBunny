@@ -103,6 +103,25 @@ describe('KoboldCpp switcher entries', () => {
         expect(koboldCppAdmin.findLoadedFile(entries, 'koboldcpp/Missing')).toBeNull();
         expect(koboldCppAdmin.findLoadedFile(entries, null)).toBeNull();
     });
+
+    test('finds every model file that gives the loaded model name, and no single file when several do', () => {
+        const entries = koboldCppAdmin.getSwitcherEntries([
+            'a/model.gguf',
+            'b/model.gguf',
+            'Foo (1).gguf',
+            'Foo1.gguf',
+            'solo.gguf',
+            'solo.kcpps',
+        ]);
+
+        expect(koboldCppAdmin.findLoadedFiles(entries, 'koboldcpp/model')).toEqual(['a/model.gguf', 'b/model.gguf']);
+        expect(koboldCppAdmin.findLoadedFiles(entries, 'koboldcpp/Foo1')).toEqual(['Foo (1).gguf', 'Foo1.gguf']);
+        expect(koboldCppAdmin.findLoadedFiles(entries, 'koboldcpp/solo')).toEqual(['solo.gguf']);
+        expect(koboldCppAdmin.findLoadedFiles(entries, 'inactive')).toEqual([]);
+        expect(koboldCppAdmin.findLoadedFile(entries, 'koboldcpp/model')).toBeNull();
+        expect(koboldCppAdmin.findLoadedFile(entries, 'koboldcpp/Foo1')).toBeNull();
+        expect(koboldCppAdmin.findLoadedFile(entries, 'koboldcpp/solo')).toBe('solo.gguf');
+    });
 });
 
 describe('KoboldCpp admin endpoints', () => {
@@ -174,6 +193,7 @@ describe('KoboldCpp admin endpoints', () => {
                     { name: 'unload_model', type: 'action' },
                 ],
                 loadedModel: 'koboldcpp/beta',
+                loadedFiles: ['beta.gguf'],
                 loadedFile: 'beta.gguf',
             },
         });
@@ -192,7 +212,7 @@ describe('KoboldCpp admin endpoints', () => {
 
         const result = await post('models', { api_server: 'http://127.0.0.1:5001' });
 
-        expect(result.body).toEqual({ admin: 0, entries: [], loadedModel: 'koboldcpp/alpha', loadedFile: null });
+        expect(result.body).toMatchObject({ admin: 0, entries: [], loadedModel: 'koboldcpp/alpha', loadedFile: null });
         expect(getFetchedPaths()).not.toContain('/api/admin/list_options');
     });
 
@@ -205,7 +225,19 @@ describe('KoboldCpp admin endpoints', () => {
 
         const result = await post('models', { api_server: 'http://127.0.0.1:5001' });
 
-        expect(result.body).toEqual({ admin: 2, entries: [], loadedModel: 'koboldcpp/alpha', loadedFile: null });
+        expect(result.body).toMatchObject({ admin: 2, entries: [], loadedModel: 'koboldcpp/alpha', loadedFile: null });
+    });
+
+    test('lists every file that gives the loaded model name, and no single loaded file when several do', async () => {
+        mockKoboldCpp({
+            '/api/extra/version': () => ({ json: { admin: 1 } }),
+            '/api/admin/list_options': () => ({ json: ['a/model.gguf', 'b/model.gguf', 'initial_model', 'unload_model'] }),
+            '/v1/models': () => ({ json: { data: [{ id: 'koboldcpp/model' }] } }),
+        });
+
+        const result = await post('models', { api_server: 'http://127.0.0.1:5001' });
+
+        expect(result.body).toMatchObject({ loadedModel: 'koboldcpp/model', loadedFiles: ['a/model.gguf', 'b/model.gguf'], loadedFile: null });
     });
 
     test('fails the model list when KoboldCpp is unreachable', async () => {

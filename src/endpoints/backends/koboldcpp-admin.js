@@ -122,23 +122,35 @@ export function getSwitcherEntries(options) {
 }
 
 /**
- * Finds the model file behind the name KoboldCpp reports for the loaded model.
+ * Finds the model files behind the name KoboldCpp reports for the loaded model.
  * KoboldCpp reports "koboldcpp/" plus the file name without its extension, after deleting every character
- * outside Python's \w, "." and "-". The same filter runs on each model entry here.
+ * outside Python's \w, "." and "-". The same filter runs on each model entry here, so files in different
+ * folders, or with names that differ only in deleted characters, give the same name.
  * @param {SwitcherEntry[]} entries Switcher entries
  * @param {unknown} loadedModel Model ID from /v1/models, for example "koboldcpp/Foo-7B.Q4_K_M"
- * @returns {string|null} Matching entry name, or null when no model file matches
+ * @returns {string[]} Names of the matching model entries
  */
-export function findLoadedFile(entries, loadedModel) {
+export function findLoadedFiles(entries, loadedModel) {
     const prefix = 'koboldcpp/';
     if (typeof loadedModel !== 'string' || !loadedModel.startsWith(prefix)) {
-        return null;
+        return [];
     }
 
     const loadedName = loadedModel.slice(prefix.length);
-    const match = entries.find(entry => entry.type === 'model'
-        && getFileName(entry.name).replace(/\.gguf$/i, '').replace(/[^\p{L}\p{N}_.-]/gu, '') === loadedName);
-    return match?.name ?? null;
+    return entries
+        .filter(entry => entry.type === 'model'
+            && getFileName(entry.name).replace(/\.gguf$/i, '').replace(/[^\p{L}\p{N}_.-]/gu, '') === loadedName)
+        .map(entry => entry.name);
+}
+
+/**
+ * @param {SwitcherEntry[]} entries Switcher entries
+ * @param {unknown} loadedModel Model ID from /v1/models
+ * @returns {string|null} Name of the one matching model entry, or null when no entry or several entries match
+ */
+export function findLoadedFile(entries, loadedModel) {
+    const files = findLoadedFiles(entries, loadedModel);
+    return files.length === 1 ? files[0] : null;
 }
 
 router.post('/models', async function (request, response) {
@@ -185,6 +197,7 @@ router.post('/models', async function (request, response) {
         admin,
         entries,
         loadedModel,
+        loadedFiles: findLoadedFiles(entries, loadedModel),
         loadedFile: findLoadedFile(entries, loadedModel),
     });
 });

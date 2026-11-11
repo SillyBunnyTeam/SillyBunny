@@ -78,6 +78,7 @@ function modelsAnswer(names, { admin = 1, loadedModel = null, loadedFiles = [] }
 function createServer(state) {
     return {
         state,
+        nextState: null,
         loadResult: { success: true },
         uptimes: [OLD_WORKER],
         onPoll: null,
@@ -100,6 +101,9 @@ async function fakeFetch(url, options) {
     } else if (route === 'load') {
         server.loads.push(body.filename);
         reply = typeof server.loadResult === 'number' ? { status: server.loadResult, json: { error: true } } : { json: server.loadResult };
+        if (server.nextState && server.loadResult?.success) {
+            server.state = server.nextState;
+        }
     } else if (route === 'uptime') {
         server.polls++;
         server.onPoll?.(server.polls);
@@ -408,5 +412,22 @@ describe('end of the restart wait', () => {
         expect(script.stopStatusLoading).toHaveBeenCalledTimes(1);
         expect(script.resultCheckStatus).not.toHaveBeenCalled();
         expect(toasts.info).toHaveBeenLastCalledWith(STOPPED_WAITING, 'KoboldCpp');
+    });
+});
+
+describe('report after the restart', () => {
+    test('accepts the loaded file when another file gives KoboldCpp the same model name', async () => {
+        const server = servers[SERVER_URL];
+        server.state = modelsAnswer(['a/model.gguf', 'b/model.gguf', ...ACTIONS], { loadedModel: 'koboldcpp/model', loadedFiles: ['a/model.gguf', 'b/model.gguf'] });
+        server.nextState = server.state;
+        server.uptimes = [NEW_WORKER];
+        await loadSwitcher();
+
+        await expect(runCommand('b/model.gguf')).resolves.toBe('b/model.gguf');
+
+        expect(server.loads).toEqual(['b/model.gguf']);
+        expect(toasts.warning).not.toHaveBeenCalled();
+        expect(toasts.success).toHaveBeenCalledWith('Loaded b/model.gguf.', 'KoboldCpp');
+        expect(getDropdown()).toMatchObject({ labels: ['model (loaded)', 'a/model.gguf', 'b/model.gguf', 'Reload launch model', 'Unload model'], value: '' });
     });
 });

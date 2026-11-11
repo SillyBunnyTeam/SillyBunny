@@ -37,6 +37,7 @@ const SWITCH_TIMEOUT_MS = 15 * 60 * 1000;
  * @property {number} admin 0 when admin mode is off, 1 when it is on, 2 when it also needs the admin password
  * @property {SwitcherEntry[]} entries Entries KoboldCpp can load
  * @property {string|null} loadedModel Loaded model as KoboldCpp reports it, "inactive" when no model is loaded
+ * @property {string[]} loadedFiles Model entries that match the loaded model name. Several can match, because KoboldCpp drops the folder and some characters from that name.
  * @property {string|null} loadedFile Entry of the loaded model, when one matches
  */
 
@@ -286,7 +287,7 @@ function reportLoaded(name, state) {
         toastr.warning(t`KoboldCpp restarted with ${loadedName} still loaded.`, title, { timeOut: 10000 });
         return false;
     }
-    if (/\.gguf$/i.test(name) && loadedModel && state?.loadedFile !== name) {
+    if (/\.gguf$/i.test(name) && loadedModel && !state?.loadedFiles.includes(name)) {
         toastr.warning(loadedModel === 'inactive'
             ? t`KoboldCpp restarted without a model instead of loading ${name}. Check the KoboldCpp console for load errors.`
             : t`KoboldCpp restarted with ${loadedName} instead of ${name}. Check the KoboldCpp console for load errors.`, title, { timeOut: 10000 });
