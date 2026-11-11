@@ -19,7 +19,13 @@ import {
 } from './chat-scroll-regression-helpers.js';
 
 test.setTimeout(60_000);
-test.describe.configure({ mode: 'serial' });
+
+// The tests change chat settings to different values at the same time on one server. Saved for real, a page that
+// loaded before another test's save would get the settings conflict prompt over the chat.
+test.beforeEach(async ({ page }) => {
+    let settingsVersion = Date.now();
+    await page.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
+});
 
 test.describe('issue 167 chat scroll regressions', () => {
     test.beforeEach(async ({ page }) => {
@@ -199,6 +205,7 @@ test.describe('issue 167 chat scroll regressions', () => {
         await scrollMessageNearTop(page, anchorId, 32);
         const before = await getChatScrollSnapshot(page);
         await waitForAnimationFrames(page, 6);
+        // eslint-disable-next-line playwright/no-wait-for-timeout -- The next chat load settle timer (CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS in public/script.js) runs in this window and must not pull the view down.
         await page.waitForTimeout(500);
         const after = await getChatScrollSnapshot(page);
 
@@ -209,6 +216,7 @@ test.describe('issue 167 chat scroll regressions', () => {
 
     test('message growth right after a tap keeps the bottom-pinned view still', async ({ page }) => {
         await installSyntheticLongChat(page, { messageCount: 48 });
+        // eslint-disable-next-line playwright/no-wait-for-timeout -- Outlasts the chat load bottom lock (the last CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS entry plus CHAT_LOAD_BOTTOM_LOCK_EXTRA_MS in public/script.js), which no test can read.
         await page.waitForTimeout(2800);
         const renderedIds = await getRenderedMessageIds(page);
         const lastId = renderedIds.at(-1);
@@ -223,6 +231,7 @@ test.describe('issue 167 chat scroll regressions', () => {
         expect(after.bottomDelta).toBeGreaterThanOrEqual(250);
 
         await page.evaluate(() => window.SillyTavern.getContext().scrollChatToBottom({ force: true }));
+        // eslint-disable-next-line playwright/no-wait-for-timeout -- Outlasts the tap resize grace of the click above (CHAT_TAP_RESIZE_GRACE_MS in public/script.js), so the next growth counts as content growth.
         await page.waitForTimeout(450);
         await growMessageBlockAboveViewport(page, lastId, { height: 300 });
         await waitForAnimationFrames(page, 4);
@@ -296,6 +305,7 @@ test.describe('issue 167 mobile chat scroll regressions', () => {
 
     test('message growth right after a tap keeps the bottom-pinned mobile view still', async ({ page }) => {
         await installSyntheticLongChat(page, { messageCount: 48 });
+        // eslint-disable-next-line playwright/no-wait-for-timeout -- Outlasts the chat load bottom lock (the last CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS entry plus CHAT_LOAD_BOTTOM_LOCK_EXTRA_MS in public/script.js), which no test can read.
         await page.waitForTimeout(2800);
         const renderedIds = await getRenderedMessageIds(page);
         const lastId = renderedIds.at(-1);
@@ -310,6 +320,7 @@ test.describe('issue 167 mobile chat scroll regressions', () => {
         expect(after.bottomDelta).toBeGreaterThanOrEqual(250);
 
         await page.evaluate(() => window.SillyTavern.getContext().scrollChatToBottom({ force: true }));
+        // eslint-disable-next-line playwright/no-wait-for-timeout -- Outlasts the manual-scroll guard of the tap above (MOBILE_CHAT_MANUAL_SCROLL_SUPPRESS_MS in public/script.js), so the next growth is pinned to the bottom.
         await page.waitForTimeout(1500);
         await growMessageBlockAboveViewport(page, lastId, { height: 300 });
         await waitForAnimationFrames(page, 4);
