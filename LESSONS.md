@@ -343,12 +343,13 @@ This is the largest class by a wide margin.
 
 ### KoboldCpp model list during a model switch
 
-- **Breaks:** after a model switch ends by a cancel or a timeout, the KoboldCpp model dropdown shows its placeholder until the next Connect, although KoboldCpp answered a status check during the switch, for example the one that Connect starts right after Cancel.
+- **Breaks:** after a model switch ends by a cancel or a timeout, the KoboldCpp model dropdown of either connection mode shows its placeholder until the next Connect, although KoboldCpp answered a status check during the switch, for example the one that Connect starts right after Cancel or the Chat Completion reconnect after a change of the main API.
 - **Cause:** `refreshKoboldCppModels()` returns without a change while a model switch waits, because KoboldCpp may still be restarting. A timeout or cancel clears the list, because KoboldCpp may still be loading, and the switch loaded the list again only when the URL had changed.
-- **Files:** `public/scripts/sillybunny-koboldcpp-models.js`, `public/scripts/textgen-settings.js` (upstream).
-- **Guards:** `refreshKoboldCppModels()` records a refresh that it skips during a switch. When the switch ends without a restart and KoboldCpp is still the selected connection, `switchKoboldCppModel()` loads the list if a status check asked for it during the switch or the URL changed (`bc32b0baa`).
+- **Files:** `public/scripts/sillybunny-koboldcpp-models.js`, `public/scripts/textgen-settings.js` (upstream), `public/scripts/openai.js` (upstream).
+- **Guards:** `refreshKoboldCppModels()` records a refresh that it skips during a switch, for each connection mode. When the switch ends without a restart, `switchKoboldCppModel()` loads the list of the selected KoboldCpp connection, Text Completion or Chat Completion, if a status check asked for it during the switch or, in the mode of the switch, the URL changed (`bc32b0baa`, `82e5b7338`).
+- **Limit:** after a restart, the switch loads only the list of its own mode, so it drops a refresh that a status check of the other mode asked for during the switch. That needs a change of the selected connection to the other mode during the switch, for example after `/kcpp-model` started the switch while KoboldCpp was not the selected connection.
 - **Tests:** `tests/sillybunny-koboldcpp-models.test.js`, `tests/koboldcpp-model-switcher.e2e.js`.
-- **Fixes:** `83329cf61` (list after a URL change), `bc32b0baa` (list after a status check during the switch).
+- **Fixes:** `83329cf61` (list after a URL change), `bc32b0baa` (list after a status check during the switch), `82e5b7338` (the same in Chat Completion mode, also after a change of the main API during a Text Completion switch).
 
 ## Reverts and release problems
 
