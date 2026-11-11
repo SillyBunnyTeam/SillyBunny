@@ -388,7 +388,7 @@ export function inputsForRow(row, harness) {
     inputs.push({ label: '..\\..\\outside\\sentinel', value: '..\\..\\outside\\sentinel' });
     inputs.push({ label: ABSOLUTE_FOLDER, value: harness.outsideRoot });
     inputs.push({ label: ABSOLUTE_FILE, value: path.join(harness.outsideRoot, 'sentinel') });
-    return inputs.filter(input => !row.leftOut?.includes(input.label));
+    return inputs;
 }
 
 /**

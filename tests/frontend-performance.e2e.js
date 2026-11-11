@@ -24,6 +24,10 @@ async function waitForResourceStability(page) {
 }
 
 test.describe('frontend performance smoke', () => {
+    // The byte budgets are for compressed transfers, which browsers ask for. A test run can ask for uncompressed
+    // responses to save server time, and then the same assets transfer more bytes.
+    test.use({ extraHTTPHeaders: { 'Accept-Encoding': 'gzip, deflate, br' } });
+
     test('mobile shell exposes core performance marks and bounded assets', async ({ page }) => {
         await page.setViewportSize({ width: 390, height: 844 });
         await page.addInitScript(() => globalThis.performance.setResourceTimingBufferSize(1000));

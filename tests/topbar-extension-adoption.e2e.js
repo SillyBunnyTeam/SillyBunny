@@ -7,8 +7,6 @@ import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFram
 // over the whole SillyBunny bar and swallowed every click meant for it.
 // Run with: SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:<port> npx playwright test topbar-extension-adoption.e2e.js
 
-test.describe.configure({ mode: 'serial' });
-
 const IPHONE_VIEWPORT = { width: 390, height: 844 };
 
 // Extensions raise first-run surfaces after the chat settles, and a full-screen overlay owns

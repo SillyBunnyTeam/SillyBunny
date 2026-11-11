@@ -92,6 +92,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-04 Gemini long decode reporting fix. |
 | Owner | Generation lifecycle owner. |
 
+### `src/endpoints/backends/chat-completions.js` - Gemini long decode
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/backends/chat-completions.js`. |
+| Area | Generation lifecycle (Gemini replies across several requests). |
+| Divergence reason | SillyBunny must continue a Gemini reply across several requests until it finishes, because Gemini 4 can write one reply over several requests and a single request stops at its per-request cap. The client sees one reply, streamed or not. |
+| Target seam | `src/gemini-long-decode.js` owns the continuation loop, the stream stitching and the request rules. |
+| Adapter shape | `sendMakerSuiteRequest()`: `sendRequest()` around the fetch, `capFirstGenerateContentBody()` for the first request, `continueGenerateContentStream()` around the response that `forwardFetchResponse()` receives, `collectGenerateContentHops()`, `mergeGenerateContentHops()` and `getGenerateContentText()` on the non-streaming path, and `getVertexApiVersion()` in the Vertex URLs. `sendGeminiInteractionsRequest()`: `continueInteractionStream()` around the response that `forwardInteractionStream()` receives, and `collectInteractionHops()` with `mergeInteractionHops()` on the non-streaming path. In both handlers, `sendHop()` calls `extendLifetime()` on the resumable generation before each later request. |
+| Protecting tests | `tests/gemini-long-decode.test.js`, `tests/google-model-request.test.js`, `tests/gemini-interactions.test.js`, `tests/resumable-generations.test.js`. |
+| Validation | `npm run lint`, `npm run lint --prefix tests`, `npm run test:unit --prefix tests -- gemini-long-decode.test.js google-model-request.test.js gemini-interactions.test.js resumable-generations.test.js`, full `npm run test:unit --prefix tests`, `npm run check:frontend-budgets`, `npm run test:e2e --prefix tests -- server-generation-commit.e2e.js`, Bun and Node.js boots, a browser replay of multi-request replies against a local stub of the Gemini API at desktop and mobile widths, and live replies of up to 70,000 tokens through a local relay to Vertex AI. |
+| Rollback path | Put the direct `fetch()` calls, `generateResponse.json()` results and the text expression back in the two handlers, put `v1` back in the Vertex URLs, delete `src/gemini-long-decode.js` and remove `extendLifetime()` from `src/resumable-generations.js`. The changes do not write persistent data, so no cleanup is needed. |
+| Last reviewed | 2026-11-05 Gemini long decode. |
+| Owner | Generation lifecycle owner. |
+
 ### `src/endpoints/chats.js`, `public/script.js`, `public/scripts/group-chats.js`, and `public/scripts/extensions.js` - chat save integrity
 | Field | Value |
 | --- | --- |
@@ -721,6 +735,62 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-02 macro whitespace markers. |
 | Owner | Browser runtime integrator. |
 
+### `public/scripts/slash-commands/SlashCommandParser.js` and `public/scripts/slash-commands/SlashCommandParserError.js` - STscript parser fixes
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/slash-commands/SlashCommandParser.js`, `public/scripts/slash-commands/SlashCommandParserError.js`. |
+| Area | STscript parsing, parser errors and autocomplete positions. |
+| Divergence reason | SillyBunny must parse STscript as written and report malformed input as a parser error at the right position. Upstream's parser skips a character after a nested block comment closes, mis-reads quoted values, escaped characters and closures in split-count commands, and throws a TypeError for an empty `/parser-flag` or `/let key=`. |
+| Target seam | none yet: each change is inside a parser method, and the methods share one index through the text. |
+| Adapter shape | `parseBlockComment()` takes a character only when no nested comment starts at it. `parseParserFlag()` throws `Unexpected end of unnamed argument`, with the text and the index, when no flag name follows. `parseCommand()` reports an unknown command at `start`, the first character of its name, and lists the name from a `/let` `key=` only when that argument has a value. `parseUnnamedArgument()` leaves an escaped first character to the split branches when it splits, tests for the end of the argument again after the quoted rest of a split-count command, adds a quote flag for each closure, gives its `Unexpected end of unnamed argument` error the text and the index, and joins a closure in the rest as its source text. `parseQuotedValue()` counts macro positions back from the closing quote and discards the closing character only when it is a quote. `SlashCommandParserError.hint` slices the source up to the newline that ends the error line. |
+| Protecting tests | `tests/frontend/StscriptParserFixes.e2e.js` (one test or more for each change, through `tests/frontend/stscript-parser-harness.js`; every test fails on the upstream parser), `tests/frontend/MacroSlashCommands.e2e.js`. |
+| Validation | `npm run lint` in the root and in `tests/`, `npm run check:frontend-budgets`, `npm run test:unit -- input-history-account-storage.test.js openrouter-oauth-return.test.js pathfinder-search.test.js quick-reply-config.test.js quick-reply-settings-ui.test.js webkit-prefix-companions.test.js` in `tests/`, and `npm run test:e2e -- frontend/StscriptParserFixes.e2e.js frontend/MacroSlashCommands.e2e.js frontend/ReasoningHiddenBlocks.e2e.js frontend/AddSwipeNoReload.e2e.js frontend/DeleteToolCalls.e2e.js card-script-sandbox.e2e.js` against a Bun 1.4.4 server in Chromium. |
+| Rollback path | Revert the `SillyBunny:` hunks in the two files. The hunks are independent, except that a closure in a joined rest reads the quote flag that each closure adds. No stored data, settings or saved scripts change. Scripts then parse as they do upstream, and `tests/frontend/StscriptParserFixes.e2e.js` fails until it is removed. |
+| Last reviewed | 2026-11-05 STscript parser fixes. |
+| Owner | Browser runtime integrator. |
+
+### `tests/playwright.config.js` - test servers, worker count and request headers
+| Field | Value |
+| --- | --- |
+| File | `tests/playwright.config.js`. |
+| Area | Test infrastructure: Playwright worker count, test servers and the `Accept-Encoding` request header. |
+| Divergence reason | Upstream's `workers: '50%'` sends more workers to one server than it can serve on a large machine, and the extra workers only add timeouts. SillyBunny caps the default and can start several isolated servers, so that one Playwright process spreads its workers over them. |
+| Target seam | `tests/e2e-servers.js`, with `tests/e2e-servers-launch.js` (starts the servers at once) and `tests/e2e-servers-prime.js` (boots the app once on each server). |
+| Adapter shape | One `await getServerConfig()` call. Its `use` is spread last into `use`, its `workers` replaces `'50%'`, and its `config` (`webServer`, `globalSetup`, `projects`) is spread last into the config. When the config starts the servers, `use` adds `extraHTTPHeaders` with `Accept-Encoding: identity`. With a base URL variable set, or without `SILLYBUNNY_TEST_SERVERS`, `use` and `config` are empty and only the worker count differs from upstream. `SILLYBUNNY_TEST_COMPRESSION=1` or `0` sets the header for any run. |
+| Protecting tests | `tests/e2e-servers.test.js` (server count, worker count, routing, request headers, server commands, sequential spec files, projects) and `tests/e2e-servers.e2e.js` (each worker uses the server of its parallel index; it runs only with `SILLYBUNNY_TEST_SERVERS`). |
+| Validation | `npm run lint` and `npm run test:unit` in `tests/`. `SILLYBUNNY_TEST_SERVERS=8 npx playwright test` (full suite on 8 Bun servers and 64 workers), `SILLYBUNNY_TEST_SERVERS=3 npx playwright test e2e-servers.e2e.js --repeat-each=12`, and against one Bun server with `SILLYBUNNY_TEST_BASE_URL`: `frontend/MacroLexer.e2e.js` with the default workers (16 on a 128-thread machine) and `frontend/MacroParser.e2e.js --workers=1`. Cleanup checked after a normal end, an interrupt, a server that cannot start (`bun` not on `PATH`), a port that another process holds while another server runs already, and a server that stops after the others are ready. One app boot with the identity header got no compressed response (674 same-origin responses), and 529 Brotli responses without it. Chromium, Playwright 1.64.1. |
+| Rollback path | Revert the `SillyBunny:` hunks in `tests/playwright.config.js`, and delete `tests/e2e-servers.js`, `tests/e2e-servers-launch.js`, `tests/e2e-servers-prime.js`, `tests/e2e-servers.e2e.js` and `tests/e2e-servers.test.js`. Runs then use `'50%'` workers against one running server, as upstream does. No app code, stored data or settings change. |
+| Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
+| Owner | Test and release integrator. |
+
+### `tests/frontend/MacroEngine.e2e.js`, `MacroLexer.e2e.js`, `MacroParser.e2e.js`, `MacroRegistry.e2e.js`, `MacroSlashCommands.e2e.js` and `MacroStoryString.e2e.js` - one booted page per worker
+| Field | Value |
+| --- | --- |
+| File | `tests/frontend/MacroEngine.e2e.js`, `tests/frontend/MacroLexer.e2e.js`, `tests/frontend/MacroParser.e2e.js`, `tests/frontend/MacroRegistry.e2e.js`, `tests/frontend/MacroSlashCommands.e2e.js`, `tests/frontend/MacroStoryString.e2e.js`. |
+| Area | Test infrastructure: app boots in the macro and STscript browser tests. |
+| Divergence reason | These tests run the macro engine, its parser and registry, and slash commands inside the page, and need the booted app only as the place to run. Upstream boots the whole app for each test, so the boot was most of their run time. |
+| Target seam | `tests/frontend/shared-page.js`. Its `test` gives a `page` that boots once per worker, restores the chat metadata (which holds the local variables) and the global variables of the boot before each test, fails a test when the page has navigated since its boot, and answers `/api/settings/save` itself after the boot. Its `testSetup.awaitST` and `testSetup.goST` do nothing, because the page has booted. |
+| Adapter shape | In each file, the `@playwright/test` and `./frontent-test-utils.js` imports become one import of `test`, `expect` and `testSetup` from `./shared-page.js`, under a `SillyBunny:` comment. The test bodies and their `beforeEach(testSetup.awaitST)` or `beforeEach(testSetup.goST)` lines are unchanged. `tests/frontend/sillybunny-macro-whitespace.e2e.js` is a SillyBunny file and uses the same import. A file may join only when it leaves no other state behind; MessageFormatter, MacroEnvBuilder and StscriptParserFixes leave state that breaks other files, and the remaining files write chats, lorebooks or settings. |
+| Protecting tests | The six files and `tests/frontend/sillybunny-macro-whitespace.e2e.js` themselves. Among them, at least 14 MacroEngine tests expect empty variables (for example the scoped `getvar::x` test and the `.myvar ??` tests), so a missing restore fails them. |
+| Validation | `npm run lint` in `tests/`. The seven files with one worker (520 tests, one boot, 507 passed and 13 skipped), with the `e2e` runner's 8 servers × 8 workers and `--repeat-each=3` (1,521 passed, 39 skipped), and `tests/frontend/` with one worker (582 passed, 13 skipped; 252 s, against 1,501 s before). A failed test on the shared page still attaches its screenshot and error context; it has no video. Chromium, Playwright 1.64.1. |
+| Rollback path | Restore the two upstream import lines in each file, and delete `tests/frontend/shared-page.js` when no file imports it. The tests then boot the app for each test, as upstream does. No app code, stored data or settings change. |
+| Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
+| Owner | Test and release integrator. |
+
+### `src/endpoints/settings.js` and `public/script.js` - settings saves without a change
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/settings.js`, `public/script.js`. |
+| Area | Settings: the version check that keeps a stale tab or device from overwriting newer settings. |
+| Divergence reason | SillyBunny refuses a settings save from a page that loaded before another page saved, so that a stale tab or device cannot overwrite newer settings. Upstream has no such check, and every boot saves the settings without a change, so the check refused saves and showed the conflict prompt without a real conflict. |
+| Target seam | `isUnchangedSettingsSave()` in `src/settings-version.js` (server) and `createSettingsSync()` in `public/scripts/sillybunny-settings-sync.js` (page). |
+| Adapter shape | `POST /api/settings/save` answers a save whose content equals the stored settings, apart from `_version`, with `{ result: 'ok', version: <stored>, unchanged: true }` before the version check: no write, no autosave backup, no new version. `saveSettingsInner()` accepts such an answer when its version is not lower than the one it sent; every other answer still needs a higher version. `prepareSettingsSave()`, which the Conversation REST API shares, is unchanged. `public/script.js` also remembers the key-sorted settings text that `getSettings()` loaded and that each confirmed save sent, without `_version`, and `saveSettingsInner()` sends no request when the payload equals it; it still sets `settings` and emits `SETTINGS_UPDATED`. Adapter lines: the import, `const settingsSync = createSettingsSync()`, one `remember()` after the load, the check before the request, and one `remember()` after a confirmed save. |
+| Protecting tests | `tests/settings-version-guard.test.js` (equal and changed content), `tests/settings-save-unchanged.test.js` (route: no write and the same version, a stale page with the stored settings, a stale page with a change still refused), `tests/openai-custom-endpoint-credentials.test.js` (client: same version, newer version, older version refused; no request when nothing changed; a request after each change; nothing remembered from a failed or refused save), `tests/sillybunny-settings-sync.test.js` (key order, nested values, array order, one state per page). |
+| Validation | `npm run lint` in the root and in `tests/`, the protecting tests, `tests/sillybunny-conversation-api.test.js` and `tests/chat-integrity-rotation.test.js`. In Chromium against a Bun server: a second and third boot posted exactly the stored settings (0 differing paths); 8 pages booting at once got 8 `unchanged` answers and no prompt with the server change alone, and sent no save at all with the page change (`staging`: 7 of 8 got 409 and the prompt); a real change in one tab still gave an older tab 409 and the prompt; a page that booted just before another tab saved a real change sent no save and got no prompt. `npm run check:frontend-budgets`; boots with `bun server.js` and `node server.js`. |
+| Rollback path | Revert the `SillyBunny:` hunks in `src/endpoints/settings.js` and `public/script.js`, and delete `public/scripts/sillybunny-settings-sync.js` and `isUnchangedSettingsSave()`. Every boot then saves and raises the settings version again, and other open tabs and devices show the conflict prompt at their next save. No stored data or settings format changes. |
+| Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
+| Owner | Server and data compatibility integrator. |
+
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |
@@ -887,6 +957,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | Full unit suite, root lint, Node syntax checks, Node/Bun initialization and startup smoke. |
 | Rollback path | Revert helpers per subsystem while preserving configuration, plugin, character-card, and vector data compatibility. |
 | Last reviewed | 2026-07-28 pre-release audit. |
+| Owner | Server runtime integrator. |
+
+### simple-git named imports
+| Field | Value |
+| --- | --- |
+| File | `plugins.js`, `src/plugin-loader.js`, `src/util.js`, `src/endpoints/extensions.js`, `src/git/client.js`. |
+| Area | Git integration for server plugins, extensions, the git backend client and version info. |
+| Divergence reason | SillyBunny must import simple-git by its named `simpleGit` export, because simple-git 4 removes the default export. The named export exists since 3.10, so the change also works on 3.x. |
+| Target seam | None; the import statement is the whole divergence. |
+| Adapter shape | Each file imports the named `simpleGit` export instead of the default export and keeps its local name: `git` in `plugins.js` and `src/plugin-loader.js`, `simpleGit` in the others. |
+| Protecting tests | `tests/plugin-loader.test.js` mocks the named export. `tests/extensions-discover.test.js` loads `src/endpoints/extensions.js` and `src/git/client.js` without mocks, and most server suites load `src/util.js`, so these suites fail at import if the export is missing. No test loads `plugins.js`. |
+| Validation | `npm run lint`, `npm run test:unit --prefix tests -- plugin-loader.test.js connection-state-checker.test.js`, the full `npm run test:unit`. Manual checks on Windows with Bun and Node: extension install with and without a branch, per user and global, then version, branches, switch, update and delete; `plugins.js install` and `update`; server plugin auto-update at startup; server update, auto-stash update and branch switch in a disposable checkout; version info with `GIT_DIR` set in the server environment; an extension install with the `builtin` backend. |
+| Rollback path | Restore the default import in each file: `import { default as git, CheckRepoActions } from 'simple-git'` in `plugins.js` and `src/plugin-loader.js`, `import { default as simpleGit } from 'simple-git'` in `src/util.js`, `import { CheckRepoActions, default as simpleGit } from 'simple-git'` in `src/endpoints/extensions.js`, and `import simpleGit from 'simple-git'` in `src/git/client.js`. simple-git 4 removes the default export, so do this only on simple-git 3. No saved data changes. |
+| Last reviewed | 2026-10-24 simple-git 4 upgrade. |
 | Owner | Server runtime integrator. |
 
 ### Upstream test harness and dependency metadata
