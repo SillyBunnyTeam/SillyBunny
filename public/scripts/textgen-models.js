@@ -1191,7 +1191,7 @@ export function initTextGenModels() {
     $('#llamacpp_model').on('change', onLlamaCppModelSelect);
     $('#generic_model_select').on('change', onGenericModelSelect);
     $('#featherless_model').on('change', () => onFeatherlessModelSelect(String($('#featherless_model').val())));
-    // SillyBunny: KoboldCpp admin-mode model switcher.
+    // SillyBunny: the KoboldCpp model switcher lives in its own module to keep this file close to upstream, and starts here with the other model selects.
     initKoboldCppModels();
 
     const providersSelect = $('.openrouter_providers');
@@ -1251,7 +1251,7 @@ export function initTextGenModels() {
         width: '100%',
         allowClear: true,
     });
-    // SillyBunny: KoboldCpp admin-mode model switcher.
+    // SillyBunny: the KoboldCpp model switcher gets the search box of the other model selects, because KoboldCpp can list many files.
     $('#koboldcpp_model').select2({
         ...select2Defaults,
         searchInputPlaceholder: t`Search models...`,

@@ -15,7 +15,7 @@ const ENTRY_TYPE_ORDER = ['model', 'config', 'action'];
 /**
  * @typedef {object} SwitcherEntry
  * @property {string} name Option string exactly as KoboldCpp listed it; reload_config only accepts that exact string.
- * @property {'model'|'config'|'action'} type Entry kind
+ * @property {'model'|'config'|'action'} type
  */
 
 /**
@@ -33,7 +33,7 @@ function getBaseUrl(body) {
         if (!['http:', 'https:'].includes(url.protocol)) {
             return '';
         }
-        // Same substitution as the status endpoint: KoboldCpp listens on IPv4 by default, and Node can resolve localhost to ::1 first.
+        // Use 127.0.0.1 for localhost because KoboldCpp listens on IPv4 by default, and Node can resolve localhost to ::1 first.
         if (url.hostname === 'localhost') {
             url.hostname = '127.0.0.1';
         }
@@ -223,8 +223,6 @@ router.post('/load', async function (request, response) {
     }
 });
 
-// KoboldCpp restarts its worker process to load a model. The old worker keeps answering for a short time
-// after the load request, so the client waits for an uptime shorter than the time since its request.
 router.post('/uptime', async function (request, response) {
     const baseUrl = getBaseUrl(request.body);
     if (!baseUrl) {

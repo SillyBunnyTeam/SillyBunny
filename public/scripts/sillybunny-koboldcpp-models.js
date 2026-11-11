@@ -29,7 +29,7 @@ const SWITCH_TIMEOUT_MS = 15 * 60 * 1000;
 /**
  * @typedef {object} SwitcherEntry
  * @property {string} name Option string exactly as KoboldCpp listed it
- * @property {'model'|'config'|'action'} type Entry kind
+ * @property {'model'|'config'|'action'} type
  */
 
 /**
