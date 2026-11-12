@@ -149,7 +149,8 @@
     --sb-mobile-panel-bg: color-mix(in srgb, var(--sb-shell-surface) 96%, transparent);
     --sb-positive-fg: color-mix(in srgb, var(--SmartThemeQuoteColor) 82%, white);
     --sb-positive-bg: color-mix(in srgb, var(--SmartThemeQuoteColor) 22%, transparent);
-    --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);
+    /* libadwaita's .dimmed strength; the light tone keeps 74%, because 55% gives 3.2:1 on white. */
+    --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent);
     --sb-muted-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
     --sb-state-favorite: color-mix(in srgb, var(--color-warning, var(--sb-color-warning)) 82%, var(--SmartThemeBodyColor) 18%);
     --sb-state-favorite-bg: color-mix(in srgb, var(--sb-state-favorite) 14%, var(--sb-button-bg));
@@ -448,6 +449,14 @@ input[type="submit"] {
     --sb-dialog-backdrop-alpha: 0.14;
     --sb-card-fill: var(--sb-layer-view);
     --sb-shadow-dialog-highlight: 0 0 #0000;
+    --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);
+}
+
+@media (prefers-contrast: more) {
+    :root,
+    :root[data-sb-surface-tone='light'] {
+        --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 90%, transparent);
+    }
 }
 
 /* Base message actions use low-opacity white glyphs with a black shadow for dark themes. */
