@@ -61,9 +61,14 @@
     margin-top: 12px;
 }
 
-@media (max-width: 768px) {
+@media (pointer: coarse) {
     .ica-agent-property-sheet .sb-prompt-dropdown {
         min-height: 44px;
+    }
+}
+
+@media (max-width: 768px) {
+    .ica-agent-property-sheet .sb-prompt-dropdown {
         padding: 6px 16px;
         font-family: var(--mainFontFamily), sans-serif;
     }
