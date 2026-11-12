@@ -22,6 +22,7 @@
       "shadow-ink": {"role": "neutral", "displayName": "Shadow Ink", "canonical": "#000006", "source": "--SmartThemeShadowColor", "note": "Shade and shadow tint only; never a text colour."},
       "success": {"role": "secondary", "displayName": "Success Green", "canonical": "#78e9ab", "source": "--color-success"},
       "danger": {"role": "secondary", "displayName": "Destructive Red", "canonical": "#ff938c", "source": "--color-danger"},
+      "card-fill": {"role": "neutral", "displayName": "Card Fill", "canonical": "#343437", "source": "--sb-card-fill (Body 8% over Window; light: View)", "light": "#ffffff", "libadwaita": "card-bg"},
       "warning": {"role": "secondary", "displayName": "Warning Yellow", "canonical": "#ffc252", "source": "--color-warning"}
     },
     "typographyMeta": {
@@ -37,7 +38,7 @@
     },
     "shadows": [
       {"name": "headerbar-shade", "token": "--sb-headerbar-shade", "value": "1px solid var(--sb-shell-border)", "purpose": "The line at the edge of a bar. No blurred shadow."},
-      {"name": "card", "value": "0 0 0 1px <shade 3%>, 0 1px 3px 1px <shade 7%>, 0 2px 6px 2px <shade 3%>; the ring takes the border colour under prefers-contrast: more", "libadwaita": ".card", "purpose": "Card Shadow: a card or group at rest. No separate border."},
+      {"name": "card", "token": "--sb-shadow-card", "value": "0 0 0 1px <shade 3%>, 0 1px 3px 1px <shade 7%>, 0 2px 6px 2px <shade 3%>; the ring takes the border colour under prefers-contrast: more", "libadwaita": ".card", "purpose": "Card Shadow: a card or group at rest. No separate border."},
       {"name": "popover", "token": "--sb-shadow-popover", "value": "0 0 0 1px <ink 5%>, 0 1px 5px 1px <shade 9%>, 0 2px 14px 3px <shade 5%>", "libadwaita": "popover contents", "purpose": "Menus, drop-downs, pickers, and search results. The edge is a 1px ring inside the shadow, not a border."},
       {"name": "dialog", "token": "--sb-shadow-dialog", "value": "0 0 14px 2px <shade 3%>, 0 0 5px 2px <shade 10%>; dark adds a 1px inner highlight", "libadwaita": "AdwDialog", "purpose": "Dialogs and shell drawers. Paired with one 1px border."},
       {"name": "dialog-backdrop", "token": "--sb-dialog-backdrop", "value": "shade colour at about 50% (dark) or 14% (light); no blur", "libadwaita": "shade-color x2", "purpose": "Dimming behind dialogs."},
@@ -105,6 +106,7 @@
       {"name": "state", "token": "--sb-transition-fast", "value": "200ms cubic-bezier(0.25, 0.46, 0.45, 0.94)", "libadwaita": "$button_transition / $focus_transition (ease-out-quad)", "purpose": "Hover, press, focus, selection, colour and fill changes."},
       {"name": "reveal", "token": "--sb-transition", "value": "250ms cubic-bezier(0.25, 0.1, 0.25, 1)", "libadwaita": "GtkRevealer, AdwExpanderRow", "purpose": "Reveals, expanders, height changes, banners."},
       {"name": "surface", "token": "--sb-transition-slow", "value": "300ms cubic-bezier(0.25, 0.1, 0.25, 1)", "libadwaita": "AdwToast", "purpose": "Toasts and large surface fades."},
+      {"name": "durations", "token": "--sb-duration-fast / --sb-duration-normal / --sb-duration-slow", "value": "200ms / 250ms / 300ms", "purpose": "The durations of the three transitions alone, for a delay or a property whose easing is set elsewhere."},
       {"name": "ease-out-quad", "token": "--sb-ease-out-quad", "value": "cubic-bezier(0.25, 0.46, 0.45, 0.94)", "purpose": "State changes."},
       {"name": "ease", "token": "--sb-ease", "value": "cubic-bezier(0.25, 0.1, 0.25, 1)", "libadwaita": "ADW_EASE", "purpose": "Timed animations."},
       {"name": "ease-out-cubic", "token": "--sb-ease-out-cubic", "value": "cubic-bezier(0.33, 1, 0.68, 1)", "purpose": "Exits and fades."},
@@ -141,7 +143,8 @@
       {"name": "card", "token": "--sb-radius-card", "value": "12px", "libadwaita": "$card_radius", "purpose": "12px boxed groups inside editors, dialogs, alerts, windows, and side panels; fill 8% body colour on the dark tone and View on the light tone, with the Card Shadow."},
       {"name": "overlay", "token": "--sb-radius-overlay", "value": "15px", "libadwaita": "popover contents, $dialog_radius", "purpose": "Popovers, menus, dialogs, shell drawers, and bars that float over content."},
       {"name": "alert", "token": "--sb-radius-alert", "value": "18px", "libadwaita": "$alert_radius", "purpose": "Confirmation dialogs."},
-      {"name": "legacy-content", "token": "--sb-radius-sm / md / lg / xl / button", "value": "10px / 14px / 16px / 20px / 14px", "purpose": "Existing page content until each page is migrated."},
+      {"name": "inner", "token": "--sb-radius-inner", "value": "6px", "libadwaita": "keycap, expander title", "purpose": "A small part inside a control or a row."},
+      {"name": "aliases", "token": "--sb-radius-button / sm / md / lg / xl, --sb-shell-control-radius", "value": "Control (button, sm, shell control) or Card (md, lg, xl)", "purpose": "Older names kept for existing rules and user CSS."},
       {"name": "pill", "token": "--sb-radius-pill", "value": "999px", "libadwaita": ".pill; toast 150px", "purpose": "A primary text button in open space, circles for Close and an icon-only suggested action, and toasts."}
     ],
     "iconSizes": [

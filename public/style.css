@@ -16,7 +16,7 @@
 @import url(css/secrets.css);
 @import url(css/backgrounds.css?v=20260606a);
 @import url(css/chat-backups.css);
-@import url(css/spacing-system.css);
+@import url(css/spacing-system.css?v=20261112b);
 @import url(css/streaming-display.css);
 
 :root {

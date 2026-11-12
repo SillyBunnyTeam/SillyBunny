@@ -14,6 +14,7 @@ colors:
   popover: "#36363a"
   dialog: "#36363a"
   toast: "#505053"
+  card-fill: "#343437"
   panel-raised: "#38383c"
   panel-hover: "#434347"
   foreground: "#ffffff"
@@ -69,10 +70,7 @@ rounded:
   card: "12px"
   overlay: "15px"
   alert: "18px"
-  sm: "10px"
-  md: "14px"
-  lg: "16px"
-  xl: "20px"
+  inner: "6px"
   pill: "999px"
 spacing:
   "2xs": "3px"
@@ -384,7 +382,7 @@ Existing rows and titles move to these roles as each surface is rebuilt.
 - **Touch targets:** Every interactive control is at least `44px` on coarse pointers and at least `32px` on fine pointers. The size and the set of controls shown follow `(pointer: coarse)`, never the viewport width. Where this document quotes a libadwaita size that is under a floor, that is the drawn size of the control, and its target still meets the floor. Deviation: libadwaita controls are `34px`; SillyBunny uses at least `44px` on coarse pointers, because fingers need larger targets. Review when libadwaita changes this value.
 - **Icons (HIG UI Icons):** Interface icons are symbolic: simple, monochrome, drawn on a `16px` grid and recoloured with the text colour. Use them at `16px`, or at `32px`, `64px` and `128px` where the icon is the focus of attention; avoid other sizes, which render fuzzy. A compact status page's `96px` icon is libadwaita's own exception. A large icon uses a heavier stroke (libadwaita weight `134`, `267` for a spinner). Status icons take the status colours of the icon palette: success, warning, error and Accent. A control shows an icon or a label, not both (Buttons); sidebars and view switchers are the exception. Use only icons users recognise, such as search, menu, back, forward and share. Some icons are recognised only as a set: a stop square needs play and pause beside it, a remove line needs an add. Deviation: GNOME uses symbolic icons drawn on a `16px` grid; SillyBunny uses the Font Awesome glyph set, sized by the text around it, because upstream markup and extensions use that set. Review when the icon set is replaced.
 - **Density:** Compact mode (`--sb-density-scale`) reduces row heights, padding, and targets without changing hierarchy, and never goes under the target floors above. Containers pad `12px` or `18px` according to density.
-- **Spacing:** The spacing scale is `3`, `6`, `9`, `12`, `18`, `24`, and `36px` (front matter `spacing`), libadwaita's rhythm. New and rebuilt surfaces use the scale. A measure in these documents that is off the scale is an existing one, and moves to the scale when its component is rebuilt.
+- **Spacing:** The spacing scale is `3`, `6`, `9`, `12`, `18`, `24`, and `36px` (front matter `spacing`; `--spacing-2xs` to `--spacing-2xl`), libadwaita's rhythm. New and rebuilt surfaces use the scale. A measure in these documents that is off the scale is an existing one, and moves to the scale when its component is rebuilt.
 - **Mobile:** Preserve the same destinations, ordering, action names, and control shapes as desktop. Use safe-area-aware sheets, comfortable touch targets, and no hover-only discovery. Controls stay usable with the software keyboard open.
 - **Pointer (HIG Pointer & Touch):** The primary action activates, opens or selects. The secondary action (right-click, long press) opens a context menu (see Menus and Popovers, Secondary and context menus). Esc cancels a pointer operation in progress, such as a drag. Avoid double-click and chording. Text never names a device ("move the mouse"). Controls that exist only for some pointing devices are never the only way to do something.
 
@@ -400,7 +398,7 @@ SillyBunny uses tonal layering first and restrained shadows second. The main con
 ### Shadow Vocabulary
 All shadows mix `--SmartThemeShadowColor`, so themes control the ink.
 - **Header bar shade** (`--sb-headerbar-shade`): a `1px` line at the edge of a bar. No blurred shadow.
-- **Card Shadow:** libadwaita's card style for a card or group at rest: a `1px` ring at 3% and two soft shadows, `0 1px 3px 1px` at 7% and `0 2px 6px 2px` at 3%, all in the shade colour. Under `prefers-contrast: more` the ring takes the border colour. A card has no separate border. Existing cards and groups move to it as each surface is rebuilt.
+- **Card Shadow** (`--sb-shadow-card`, with the card fill `--sb-card-fill`):** libadwaita's card style for a card or group at rest: a `1px` ring at 3% and two soft shadows, `0 1px 3px 1px` at 7% and `0 2px 6px 2px` at 3%, all in the shade colour. Under `prefers-contrast: more` the ring takes the border colour. A card has no separate border. Existing cards and groups move to it as each surface is rebuilt.
 - **Popover Shadow** (`--sb-shadow-popover`): `0 1px 5px 1px` and `0 2px 14px 3px` at low shade alpha, inside a `1px` ring (`0 0 0 1px` at 5%), not a border. Menus, dropdowns, pickers, and search results. Existing popovers move to the ring as each surface is rebuilt.
 - **Dialog Shadow** (`--sb-shadow-dialog`): `0 0 14px 2px` and `0 0 5px 2px` at low shade alpha, plus the `1px` border and, in dark mode, a `1px` inner highlight. Dialogs and shell drawers.
 - **Dialog Backdrop** (`--sb-dialog-backdrop`): shade colour at about 50% (dark) or 14% (light). No backdrop blur.
@@ -428,7 +426,7 @@ Flat and raised controls use fills mixed from `--SmartThemeBodyColor`, so they f
 
 ## 6. Shapes
 
-Nothing is larger than `20px`, except pills and circles.
+Nothing is larger than `18px`, except pills and circles.
 
 - **Control** (`--sb-radius-control`, `9px`, libadwaita `$button_radius`): controls in bars (destinations, section triggers, Back, actions, and fields in a bar), as libadwaita's header bar buttons, plus menu and search result rows, tooltips, and segments. Back and section buttons are flat. Existing bar controls move to this radius as each surface is rebuilt.
 - **Card** (`--sb-radius-card`, `12px`, libadwaita's card radius): groups inside editors, dialogs, windows, and side panels, and the boxed rows of list sidebars.
@@ -436,7 +434,8 @@ Nothing is larger than `20px`, except pills and circles.
 - **Alert** (`--sb-radius-alert`, `18px`): alert dialogs.
 - **Pill** (`999px`): a primary text button in open space (HIG Buttons). A circle is for Close, which has a tonal fill, and for an icon-only suggested action.
 - **Toast** (`999px`): a pill, as libadwaita's toast (`150px`).
-- **Content (until each page is migrated):** content buttons keep `--sb-radius-button` (`14px`), icon-only content controls `10px`, content cards `14px`, and preference groups on settings pages `--sb-radius-lg` (`16px`). A welcome or first-run surface may use `20px`.
+- **Content:** content buttons, fields, and icon-only content controls take the Control radius; content cards and preference groups take the Card radius. The older names `--sb-radius-button`, `--sb-radius-sm`, `--sb-radius-md`, `--sb-radius-lg`, `--sb-radius-xl`, and `--sb-shell-control-radius` remain as aliases of these two for existing rules and user CSS.
+- **Inner** (`--sb-radius-inner`, `6px`): a small part inside a control or a row, such as a keycap or the title of an expander, as libadwaita's.
 - **Small controls:** checkboxes are rounded squares (radius `30%` of their size); radios, switches, and selection-mode checks are round.
 
 ## 7. Motion
@@ -449,6 +448,7 @@ Motion shows where something came from and where it went. It never delays a task
 | `--sb-transition-fast` | `200ms` `--sb-ease-out-quad` | Hover, press, focus, selection, colour and fill changes | `$button_transition`, `$focus_transition` |
 | `--sb-transition` | `250ms` `--sb-ease` | Reveals, expanders, height changes, banners | GtkRevealer, AdwExpanderRow |
 | `--sb-transition-slow` | `300ms` `--sb-ease` | Toasts and large surface fades | AdwToast |
+| `--sb-duration-fast`, `--sb-duration-normal`, `--sb-duration-slow` | `200ms`, `250ms`, `300ms` | The durations of the three transitions alone, for a delay or a property whose easing is set elsewhere | |
 | `--sb-ease-out-quad` | `cubic-bezier(0.25, 0.46, 0.45, 0.94)` | State changes | `$ease-out-quad` |
 | `--sb-ease` | `cubic-bezier(0.25, 0.1, 0.25, 1)` | Timed animations | `ADW_EASE` |
 | `--sb-ease-out-cubic` | `cubic-bezier(0.33, 1, 0.68, 1)` | Exits and fades | ease-out-cubic |

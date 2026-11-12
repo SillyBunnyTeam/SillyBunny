@@ -63,7 +63,7 @@ dialog.sb-color-picker-sheet:not([open]) { display: none !important; }
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: var(--sb-shell-control-radius);
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     box-shadow: none;
     color: inherit;
@@ -144,14 +144,14 @@ dialog.sb-color-picker-sheet:not([open]) { display: none !important; }
 .sb-color-picker-menu input[type='range']::-webkit-slider-runnable-track {
     height: 12px;
     border: 0;
-    border-radius: var(--sb-shell-control-radius);
+    border-radius: var(--sb-radius-pill);
     background: var(--sb-picker-track);
     background-size: 100% 100%, 12px 12px;
 }
 .sb-color-picker-menu input[type='range']::-moz-range-track {
     height: 12px;
     border: 0;
-    border-radius: var(--sb-shell-control-radius);
+    border-radius: var(--sb-radius-pill);
     background: var(--sb-picker-track);
     background-size: 100% 100%, 12px 12px;
 }

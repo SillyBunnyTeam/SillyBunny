@@ -325,7 +325,8 @@ function auditCssAst(ast, sharedGuards = []) {
 
             if (declaration.property.toLowerCase().startsWith('--sb-radius-')) {
                 const radiusMatch = declaration.value.match(/^(\d+(?:\.\d+)?)px$/i);
-                if (radiusMatch && Number(radiusMatch[1]) > 20) {
+                // 99px and more is a pill or a circle on any control, which DESIGN.md Shapes allows above the 20px limit.
+                if (radiusMatch && Number(radiusMatch[1]) > 20 && Number(radiusMatch[1]) < 99) {
                     largeRadiusTokens.push(`${declaration.property}: ${declaration.value}`);
                 }
             }

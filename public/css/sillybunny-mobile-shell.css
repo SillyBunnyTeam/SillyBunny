@@ -1254,7 +1254,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         width: var(--sb-mobile-touch-target, 44px);
         height: var(--sb-mobile-touch-target, 44px);
         border: 0;
-        border-radius: var(--sb-shell-control-radius);
+        border-radius: var(--sb-radius-pill);
         background: var(--sb-raised-bg);
         color: var(--SmartThemeBodyColor);
         display: inline-grid;

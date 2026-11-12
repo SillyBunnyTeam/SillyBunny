@@ -50,6 +50,11 @@ describe('frontend contract audit', () => {
         expect(motion.unguardedMotion).toContain('transition: .panel');
     });
 
+    test('flags a radius token above 20px unless it is a pill', () => {
+        const audit = auditCssSource(':root { --sb-radius-xl: 24px; --sb-radius-card: 12px; --sb-radius-pill: 999px; }', 'fixture.css');
+        expect(audit.largeRadiusTokens).toEqual(['--sb-radius-xl: 24px']);
+    });
+
     test('does not treat transition configuration properties as timed motion', () => {
         const audit = auditCssSource('.panel { transition: none !important; transition-property: none !important; transition-behavior: normal !important; }', 'fixture.css');
         expect(audit.unguardedMotion).toEqual([]);

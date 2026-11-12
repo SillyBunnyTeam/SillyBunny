@@ -1484,14 +1484,6 @@ body:not(.movingUI) .drawer-content.maximized {
     isolation: isolate;
 }
 
-:root[data-sb-compact-mode='true'] .sb-shell-root {
-    --sb-radius-sm: 8px;
-    --sb-radius-md: 12px;
-    --sb-radius-lg: 16px;
-    --sb-radius-xl: 20px;
-    --sb-radius-button: 10px;
-}
-
 .sb-shell-root {
     isolation: isolate;
     padding: 0;
@@ -8504,7 +8496,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 @media screen and (max-width: 768px) {
-    /* The mobile paper baseline forces 14px on inputs and buttons; these keep the shell pill shape. */
+    /* The mobile paper baseline forces 14px on inputs and buttons; these keep the shell control shape. */
     #sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main, #bpt-animated-bg-url, #bg-filter, #bg-sort, #background_fitting) {
         border-radius: var(--sb-shell-control-radius) !important;
     }

@@ -3,23 +3,27 @@
    ============================================================================= */
 
 :root {
-    /* Radii: libadwaita 1.7+ values */
+    /* Radii: libadwaita values (DESIGN.md Shapes) */
     --sb-radius-control: 9px;
     --sb-radius-card: 12px;
     --sb-radius-overlay: 15px;
     --sb-radius-alert: 18px;
-    /* Legacy content radii until pages are migrated */
-    --sb-radius-sm: 10px;
-    --sb-radius-md: 14px;
-    --sb-radius-lg: 16px;
-    --sb-radius-xl: 20px;
-    --sb-radius-button: 14px;
-    --sb-shell-control-radius: 999px;
+    --sb-radius-inner: 6px;
+    --sb-radius-pill: 999px;
+    /* Older names, kept for existing rules and user CSS */
+    --sb-radius-sm: var(--sb-radius-control);
+    --sb-radius-md: var(--sb-radius-card);
+    --sb-radius-lg: var(--sb-radius-card);
+    --sb-radius-xl: var(--sb-radius-card);
+    --sb-radius-button: var(--sb-radius-control);
+    --sb-shell-control-radius: var(--sb-radius-control);
     /* Motion: libadwaita-aligned timing and easing */
     --sb-duration-fast: 200ms;
+    --sb-duration-normal: 250ms;
+    --sb-duration-slow: 300ms;
     --sb-transition-fast: var(--sb-duration-fast) cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    --sb-transition: 250ms cubic-bezier(0.25, 0.1, 0.25, 1);
-    --sb-transition-slow: 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+    --sb-transition: var(--sb-duration-normal) cubic-bezier(0.25, 0.1, 0.25, 1);
+    --sb-transition-slow: var(--sb-duration-slow) cubic-bezier(0.25, 0.1, 0.25, 1);
     --sb-ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     --sb-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
     --sb-ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
@@ -59,7 +63,7 @@
     --sb-color-success: var(--color-success, #78e9ab);
     --sb-color-info: var(--color-primary, var(--SmartThemeQuoteColor));
     --sb-icon-control-size: 2rem;
-    --sb-icon-control-radius: 10px;
+    --sb-icon-control-radius: var(--sb-radius-control);
     --sb-inline-drawer-icon-size: 2rem;
     --sb-control-min-height: 38px;
     --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
@@ -123,6 +127,11 @@
     --sb-shell-shadow: 0 8px 24px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
     --sb-shadow-panel: var(--sb-shell-shadow);
     --sb-shadow-control: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 24%, transparent);
+    --sb-card-fill: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    --sb-shadow-card:
+        0 0 0 1px color-mix(in srgb, var(--SmartThemeShadowColor) 8%, transparent),
+        0 1px 3px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent),
+        0 2px 6px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 8%, transparent);
     --sb-chat-surface-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeChatTintColor) 8%);
     --sb-chat-surface-base: var(--sb-chat-surface-source);
     --sb-fixed-surface-base: var(--sb-chat-surface-source);
@@ -370,6 +379,20 @@ input[type="submit"] {
         --sb-layer-dialog: rgb(from var(--sb-layer-dialog-source) r g b / 1);
         --sb-layer-toast: rgb(from var(--sb-layer-toast-source) r g b / 1);
         --sb-dialog-backdrop: rgb(from var(--SmartThemeShadowColor) r g b / var(--sb-dialog-backdrop-alpha));
+        /* libadwaita's card shadow takes fixed strengths, whatever the alpha of the theme's shadow colour. */
+        --sb-shadow-card:
+            0 0 0 1px rgb(from var(--SmartThemeShadowColor) r g b / 3%),
+            0 1px 3px 1px rgb(from var(--SmartThemeShadowColor) r g b / 7%),
+            0 2px 6px 2px rgb(from var(--SmartThemeShadowColor) r g b / 3%);
+    }
+}
+
+@media (prefers-contrast: more) {
+    :root {
+        --sb-shadow-card:
+            0 0 0 1px var(--SmartThemeBorderColor),
+            0 1px 3px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent),
+            0 2px 6px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 8%, transparent);
     }
 }
 

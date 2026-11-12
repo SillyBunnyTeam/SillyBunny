@@ -635,7 +635,7 @@ dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
 .ica--tpanel:not(.is-open) {
     visibility: hidden;
     pointer-events: none;
-    transition: -webkit-clip-path var(--sb-transition), clip-path var(--sb-transition), visibility var(--sb-transition);
+    transition: -webkit-clip-path var(--sb-transition), clip-path var(--sb-transition), visibility 0s linear var(--sb-duration-normal);
 }
 
 .ica--tpanel[data-edge="right"].is-open,
