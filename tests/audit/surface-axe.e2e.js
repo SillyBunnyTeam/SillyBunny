@@ -41,8 +41,8 @@ const SUMMARY_LOCK = path.join(OUTPUT, 'summary');
 /** Surfaces that this scan does not run, with what is true of each. The registry owns their open steps. */
 const SKIPPED_SURFACES = Object.freeze({
     'status.chat-tools.no-chats-mobile': 'the sheet closes itself shortly after it opens, because no character is open, so it is gone before a scan finishes',
-    'status.persona-picker.empty': 'the app dismisses the persona menu shortly after it opens, and opening it again stalls',
-    'status.persona-picker.no-notes': 'the app dismisses the persona menu shortly after it opens, and opening it again stalls',
+    'status.persona-picker.empty': 'the menu opens, and the scan of it then does not return within the 90 s that a step may take; the cause is not known',
+    'status.persona-picker.no-notes': 'the menu opens, and the scan of it then does not return within the 90 s that a step may take; the cause is not known',
     'panel.moving.visual-novel': 'its open step waits for a sprite of every group member, which can fail while the app is still loading',
     'list.logit-bias': 'the rows of the bias list are built after the surface reports ready, so which cells show a violation on them varies',
     'status.sampling.unavailable': 'its open step waits for the rows of the bias list, which are not always built',
