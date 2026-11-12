@@ -81,7 +81,7 @@
             "shadow-literal": 2,
             "important": 1,
             "focus-outline": 1,
-            "spacing-off-scale": 46,
+            "spacing-off-scale": 48,
             "spacing-off-scale-fallback": 1
         },
         "public/css/sillybunny-message-actions.css": {

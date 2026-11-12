@@ -1529,7 +1529,7 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
     display: block;
     box-sizing: border-box;
     margin: 0;
-    padding: var(--spacing-xs) 0 var(--spacing-sm);
+    padding: 4px 0 8px;
 }
 
 .sbGreetingArtOpen {

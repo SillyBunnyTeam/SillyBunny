@@ -51,9 +51,9 @@
 }
 
 .sbca-dialog {
-    --sbca-space-xs: var(--spacing-xs, 4px);
-    --sbca-space-sm: var(--spacing-sm, 8px);
-    --sbca-space-lg: var(--spacing-lg, 16px);
+    --sbca-space-xs: 4px;
+    --sbca-space-sm: 8px;
+    --sbca-space-lg: 16px;
     --sbca-inset: 17px;
     --sbca-border: var(--color-border, var(--SmartThemeBorderColor, currentColor));
     --sbca-hairline: color-mix(in srgb, var(--SmartThemeBorderColor) 75%, transparent);

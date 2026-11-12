@@ -81,8 +81,8 @@
     --sb-composer-send-width: var(--sb-composer-action-size);
     --sb-composer-action-icon-size: clamp(14px, calc(var(--bottomFormIconSize, 20px) * 0.72), 17px);
     --sb-message-meta-line-height: 1.18;
-    --sb-chat-composer-gap: var(--spacing-sm);
-    --sb-chat-composer-edge-gap: var(--spacing-sm);
+    --sb-chat-composer-gap: 8px;
+    --sb-chat-composer-edge-gap: 8px;
     --sb-safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --sb-mobile-safe-area-bottom: max(34px, env(safe-area-inset-bottom, 0px));
     --sb-mobile-touch-target: 44px;
