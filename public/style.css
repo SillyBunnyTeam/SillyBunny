@@ -139,12 +139,12 @@
     --mainFontSize: calc(var(--fontScale) * 15px);
     --mainFontFamily: 'Adwaita Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif;
     --monoFontFamily: 'Adwaita Mono', 'Noto Sans Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-    --sb-type-caption: calc(var(--mainFontSize) * 0.72);
+    --sb-type-caption: calc(var(--mainFontSize) * 0.82);
     --sb-type-meta: calc(var(--mainFontSize) * 0.78);
     --sb-type-control: calc(var(--mainFontSize) * 0.86);
     --sb-type-body: var(--mainFontSize);
-    --sb-type-title: calc(var(--mainFontSize) * 1.08);
-    --sb-type-headline: calc(var(--mainFontSize) * 1.35);
+    --sb-type-title: var(--mainFontSize);
+    --sb-type-headline: calc(var(--mainFontSize) * 1.36);
     --sb-type-display: calc(var(--mainFontSize) * 1.81);
     --sb-line-compact: 1.2;
     --sb-line-title: 1.18;

@@ -103,8 +103,8 @@
 
 .ds-entity-row__title {
     overflow: hidden;
-    font-size: calc(var(--sb-type-body) * 0.9);
-    font-weight: 600;
+    font-size: var(--sb-type-body);
+    font-weight: 400;
     line-height: 1.6;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -113,7 +113,7 @@
 .ds-entity-row__subtitle {
     display: block;
     overflow: hidden;
-    font-size: calc(var(--sb-type-body) * 0.75);
+    font-size: var(--sb-type-caption);
     line-height: 1.6;
     color: var(--sb-muted-fg);
     text-overflow: ellipsis;
