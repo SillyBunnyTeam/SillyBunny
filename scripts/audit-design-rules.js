@@ -40,6 +40,13 @@ export const RULES = Object.freeze([
     { id: 'breakpoint-1000', parent: 'breakpoint-off-set', description: 'breakpoint-off-set values of 1000 or 1001px' },
     { id: 'vh-without-dvh', description: 'vh declarations with no later dvh declaration of the same property in the same rule' },
     { id: 'focus-outline', description: 'Visible outline on :focus or :focus-visible that can stack with the inset ring' },
+    {
+        id: 'spacing-off-scale',
+        description: 'Each px literal in padding, margin and gap properties (longhands, logical forms and legacy aliases) that is not 0 and not on the scale 3, 6, 9, 12, 18, 24, 36. '
+            + 'A negative margin counts by its absolute value; 1px, 2px and fractions count. Not counted: auto, percentages, em, rem and every other unit, '
+            + 'anything inside a function other than var() (calc, min, max, clamp, env), var() references and custom-property definitions',
+    },
+    { id: 'spacing-off-scale-fallback', description: 'Off-scale px literals inside the fallback of a var() in those properties, counted by the same rules, once per literal' },
 ]);
 
 export const RULE_IDS = Object.freeze(RULES.map(rule => rule.id));
@@ -65,6 +72,8 @@ const NAMED_COLORS = new Set(('aliceblue antiquewhite aqua aquamarine azure beig
 const COLOR_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color']);
 const COLOR_PROPERTY = /(?:^|-)(?:color|background|border|outline|shadow|fill|stroke|filter|decoration|rule|mask|emphasis)(?:-|$)/;
 const RADIUS_PROPERTY = /^border(?:-(?:top|bottom)-(?:left|right)|-(?:start|end)-(?:start|end))?-radius$/;
+const SPACING_PROPERTY = /^(?:(?:padding|margin)(?:-(?:top|right|bottom|left|inline|block|start|end|before|after)(?:-(?:start|end))?)?|(?:grid-)?(?:(?:row|column)-)?gap)$/;
+const SPACING_SCALE_PIXELS = new Set([3, 6, 9, 12, 18, 24, 36]);
 const MOTION_PROPERTY = /^(?:transition|animation)(?:-(?:duration|delay))?$/;
 const CSS_WIDE_KEYWORD = /^(?:inherit|initial|unset|revert|revert-layer)$/i;
 const PLACEHOLDER = '\u0001';
@@ -313,6 +322,17 @@ function radiusLiterals(value) {
     return literals;
 }
 
+// Every function call is blanked first, var() included: a var() fallback is read on its own by
+// varFallbacks(), and the arguments of calc(), min(), max(), clamp() and env() are computed, not chosen steps.
+function spacingLiterals(value) {
+    const literals = [];
+    for (const match of replaceCalls(value, () => ' ').matchAll(/(?<![\w.#])-?(\d*\.?\d+)px(?![\w-])/gi)) {
+        const pixels = Number(match[1]);
+        if (pixels !== 0 && !SPACING_SCALE_PIXELS.has(pixels)) literals.push(match[0]);
+    }
+    return literals;
+}
+
 function timeLiterals(value) {
     const cleaned = replaceCalls(stripTokenReferences(value), name => (/^(?:cubic-bezier|steps|linear)$/.test(name) ? ' ' : null));
     const times = [];
@@ -443,6 +463,13 @@ export function scanCss(source) {
                     }
                 }
                 if (varFallbacks(value).some(fallback => radiusLiterals(fallback).length > 0)) add('radius-literal-fallback', line, declaration.display);
+            }
+
+            if (SPACING_PROPERTY.test(base) && !CSS_WIDE_KEYWORD.test(value)) {
+                spacingLiterals(value).forEach(() => add('spacing-off-scale', line, declaration.display));
+                for (const fallback of varFallbacks(value)) {
+                    spacingLiterals(fallback).forEach(() => add('spacing-off-scale-fallback', line, declaration.display));
+                }
             }
 
             if (base === 'box-shadow' && !splitTopLevel(value, ',').every(layer => isTokenShadowLayer(layer.text))) {

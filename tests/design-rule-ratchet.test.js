@@ -120,6 +120,20 @@ describe('design-rule ratchet failure cases', () => {
         expect(rules).toEqual(RULE_IDS.filter(id => ['radius-literal', 'radius-over-20', 'breakpoint-off-set', 'breakpoint-1000'].includes(id)));
     });
 
+    test('a new off-scale spacing value fails, and one moved onto the scale lowers the count', () => {
+        const css = '.a { padding: 5px 6px; margin: var(--x, 7px); }';
+        const spacing = buildBaseline(fixtureReport({ 'public/css/sillybunny-s.css': css }));
+        expect(spacing.files['public/css/sillybunny-s.css']).toEqual({ 'spacing-off-scale': 1, 'spacing-off-scale-fallback': 1 });
+
+        const raised = fixtureReport({ 'public/css/sillybunny-s.css': '.a { padding: 5px 7px; margin: var(--x, 7px); }' });
+        expect(compareToBaseline(raised, spacing).above).toEqual([{ file: 'public/css/sillybunny-s.css', rule: 'spacing-off-scale', current: 2, baseline: 1 }]);
+
+        const lowered = fixtureReport({ 'public/css/sillybunny-s.css': '.a { padding: 6px; margin: var(--x, 7px); }' });
+        const comparison = compareToBaseline(lowered, spacing);
+        expect(comparison.above).toEqual([]);
+        expect(comparison.below).toEqual([{ file: 'public/css/sillybunny-s.css', rule: 'spacing-off-scale', current: 0, baseline: 1 }]);
+    });
+
     test('rejects a baseline with an unknown rule, a zero count or the wrong version', () => {
         expect(() => validateBaseline({ version: 1, files: { 'a.css': { nonsense: 1 } } })).toThrow('Invalid design-rule baseline');
         expect(() => validateBaseline({ version: 1, files: { 'a.css': { important: 0 } } })).toThrow('Invalid design-rule baseline');

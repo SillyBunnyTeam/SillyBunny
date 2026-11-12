@@ -415,6 +415,106 @@ describe('focus-outline', () => {
     });
 });
 
+describe('spacing-off-scale', () => {
+    test('counts each px literal that is not zero and not on the scale, one finding per literal', () => {
+        expect(counts('.a { padding: 5px; }')).toEqual({ 'spacing-off-scale': 1 });
+        expect(counts('.a { margin: 5px 7px 6px 8px; }')).toEqual({ 'spacing-off-scale': 3 });
+        expect(counts('.a { gap: 10px 14px; }')).toEqual({ 'spacing-off-scale': 2 });
+        expect(counts('.a { padding: 4px; margin: 8px; }')).toEqual({ 'spacing-off-scale': 2 });
+        expect(counts('@media (max-width: 768px) { .a { .b { padding: 10px; } } }')).toEqual({ 'spacing-off-scale': 1 });
+    });
+
+    test('accepts the scale, zero and auto', () => {
+        expect(counts('.a { padding: 3px 6px 9px 12px; margin: 18px 24px 36px 0; }')).toEqual({});
+        expect(counts('.a { gap: 0 0px; padding: 0.0px; margin: 0 auto; margin-inline: auto; }')).toEqual({});
+        expect(counts('.a { padding: 6.0px 12.00px; margin: 9PX; }')).toEqual({});
+        expect(counts('.a { padding: inherit; margin: unset; gap: normal; }')).toEqual({});
+    });
+
+    test('reads longhands, logical forms, legacy aliases and prefixed names', () => {
+        const properties = [
+            'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+            'padding-inline', 'padding-block', 'padding-inline-start', 'padding-inline-end', 'padding-block-start', 'padding-block-end',
+            'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+            'margin-inline', 'margin-block', 'margin-inline-start', 'margin-inline-end', 'margin-block-start', 'margin-block-end',
+            'gap', 'row-gap', 'column-gap', 'grid-gap', 'grid-row-gap', 'grid-column-gap',
+            '-webkit-margin-start', '-webkit-padding-end', '-webkit-margin-before', '-webkit-padding-after',
+        ];
+        expect(counts(`.a { ${properties.map(property => `${property}: 5px;`).join(' ')} }`)).toEqual({ 'spacing-off-scale': properties.length });
+        expect(counts('.a { PADDING: 5PX; Margin-Inline-Start: 7Px; }')).toEqual({ 'spacing-off-scale': 2 });
+    });
+
+    test('leaves other properties alone, including scroll-margin, scroll-padding and border-spacing', () => {
+        expect(counts('.a { width: 5px; top: 5px; inset: 5px; border-width: 5px; border-spacing: 5px; font-size: 13px; }')).toEqual({});
+        expect(counts('.a { scroll-margin: 5px; scroll-padding: 5px; margin-trim: block; text-indent: 5px; }')).toEqual({});
+        expect(counts('.a { padding-box: 5px; gap-x: 5px; }')).toEqual({});
+    });
+
+    test('counts a negative margin by its absolute value', () => {
+        expect(counts('.a { margin: -5px; }')).toEqual({ 'spacing-off-scale': 1 });
+        expect(counts('.a { margin-left: -6px; margin: -12px -3px 0 -36px; }')).toEqual({});
+        expect(counts('.a { margin: -1px -7px; }')).toEqual({ 'spacing-off-scale': 2 });
+        expect(counts('.a { margin-inline-start: -2px; }')).toEqual({ 'spacing-off-scale': 1 });
+    });
+
+    test('counts 1px and 2px, and fractions, because the scale has no such step', () => {
+        expect(counts('.a { padding: 1px 2px; }')).toEqual({ 'spacing-off-scale': 2 });
+        expect(counts('.a { margin: 0.5px; padding: 1.5px; gap: .5px; }')).toEqual({ 'spacing-off-scale': 3 });
+        expect(counts('.a { padding: 4.5px; }')).toEqual({ 'spacing-off-scale': 1 });
+    });
+
+    test('does not count percentages, em, rem or other units, because the scale is in px', () => {
+        expect(counts('.a { padding: 5% 1em 0.3125rem; margin: 5vw 5pt 5ch; gap: 0.5em 1.25rem; }')).toEqual({});
+        expect(counts('.a { padding: 5px 1em 7%; }')).toEqual({ 'spacing-off-scale': 1 });
+    });
+
+    test('does not count a literal inside calc(), min(), max(), clamp() or env()', () => {
+        expect(counts('.a { padding: calc(100% - 5px); margin: calc(var(--x) + 7px); }')).toEqual({});
+        expect(counts('.a { padding: clamp(5px, 2vw, 7px); margin: min(5px, 2vw); gap: max(5px, 1rem); }')).toEqual({});
+        expect(counts('.a { padding-top: env(safe-area-inset-top, 5px); padding-bottom: max(5px, env(safe-area-inset-bottom)); }')).toEqual({});
+        expect(counts('.a { padding: 5px calc(100% - 7px) 9px; }')).toEqual({ 'spacing-off-scale': 1 });
+    });
+
+    test('does not count var() references, custom-property definitions or token arithmetic', () => {
+        expect(counts('.a { padding: var(--sb-space-6) var(--x); margin: calc(var(--x) * 2); }')).toEqual({});
+        expect(counts(':root { --gap: 5px; --pad: 1px 2px; --margin-x: -7px; }')).toEqual({});
+        expect(counts('.a { --pad: 5px; padding: var(--pad); }')).toEqual({});
+        expect(counts('.a { padding: 5px var(--x) 7px; }')).toEqual({ 'spacing-off-scale': 2 });
+    });
+
+    test('counts a literal in a var() fallback as spacing-off-scale-fallback, once per literal', () => {
+        expect(counts('.a { padding: var(--x, 5px); }')).toEqual({ 'spacing-off-scale-fallback': 1 });
+        expect(counts('.a { margin: var(--a, 5px) var(--b, 7px); }')).toEqual({ 'spacing-off-scale-fallback': 2 });
+        expect(counts('.a { padding: var(--a, 5px 7px); }')).toEqual({ 'spacing-off-scale-fallback': 2 });
+        expect(counts('.a { padding: var(--a, var(--b, 5px)); }')).toEqual({ 'spacing-off-scale-fallback': 1 });
+        expect(counts('.a { padding: var(--a, 5px var(--b, 7px)); }')).toEqual({ 'spacing-off-scale-fallback': 2 });
+        expect(counts('.a { padding: 5px var(--a, 7px); }')).toEqual({ 'spacing-off-scale': 1, 'spacing-off-scale-fallback': 1 });
+        expect(counts('.a { margin: var(--a, -5px); }')).toEqual({ 'spacing-off-scale-fallback': 1 });
+        expect(counts('.a { padding: calc(var(--a, 5px) * 2); }')).toEqual({ 'spacing-off-scale-fallback': 1 });
+    });
+
+    test('accepts a fallback that is zero, on the scale, in another unit, computed or another token', () => {
+        expect(counts('.a { padding: var(--x, 0); margin: var(--x, 6px); gap: var(--x, 1rem); }')).toEqual({});
+        expect(counts('.a { padding: var(--x, calc(100% - 5px)); margin: var(--x, var(--y)); gap: var(--x, auto); }')).toEqual({});
+    });
+
+    test('names the declaration in each finding and reports its line', () => {
+        const css = '.a {\n    color: var(--x);\n    margin: 5px 7px;\n    padding: var(--y, 9px 10px) !important;\n}';
+        const { findings } = scanCss(css);
+        expect(findings.map(({ rule, line, detail }) => [rule, line, detail])).toEqual([
+            ['spacing-off-scale', 3, 'margin: 5px 7px'],
+            ['spacing-off-scale', 3, 'margin: 5px 7px'],
+            ['important', 4, 'padding: var(--y, 9px 10px) !important'],
+            ['spacing-off-scale-fallback', 4, 'padding: var(--y, 9px 10px) !important'],
+        ]);
+    });
+
+    test('reads nothing from comments and strings, and keeps the important count apart', () => {
+        expect(counts('/* padding: 5px */ .a::before { content: "margin: 5px"; }')).toEqual({});
+        expect(counts('.a { padding: 5px !important; }')).toEqual({ 'spacing-off-scale': 1, important: 1 });
+    });
+});
+
 describe('scope and report', () => {
     const upstream = ['public/style.css'];
 
@@ -565,6 +665,19 @@ describe('command line', () => {
         const report = JSON.parse(cli(root, '--json').stdout);
         expect(report.sillybunny.files['public/css/sillybunny-x.css'].findings).toEqual([{ rule: 'color-literal', line: 2, detail: 'color: #fff' }]);
         expect(cli(root, '--markdown').stdout).toContain('| `color-literal` | 1 | 0 |');
+    });
+
+    test('lists the spacing rules in the report, the table and the baseline', () => {
+        const root = treeFixture({ 'public/css/sillybunny-x.css': '.a { padding: 5px; margin: var(--x, 7px); }' }, upstream);
+        expect(RULE_IDS.slice(-2)).toEqual(['spacing-off-scale', 'spacing-off-scale-fallback']);
+        const markdown = cli(root, '--markdown').stdout;
+        expect(markdown).toContain('| `spacing-off-scale` | 1 | 0 |');
+        expect(markdown).toContain('| `spacing-off-scale-fallback` | 1 | 0 |');
+        expect(cli(root, '--update').status).toBe(0);
+        expect(JSON.parse(fs.readFileSync(path.join(root, 'scripts/design-rule-baseline.json'), 'utf8')).files).toEqual({
+            'public/css/sillybunny-x.css': { 'spacing-off-scale': 1, 'spacing-off-scale-fallback': 1 },
+        });
+        expect(cli(root, '--check', '--strict').status).toBe(0);
     });
 
     test('rejects an unknown argument', () => {
