@@ -321,7 +321,7 @@ A layer that names a libadwaita role renders that role's colour on the bundled t
 ### Named Rules
 **The Signal Scarcity Rule.** Accent appears for action, selection, focus, or meaningful state. If removing it does not reduce comprehension, remove it.
 
-**The Theme Alias Rule.** New work consumes `SmartTheme*`, `color-*`, `sb-*`, spacing, and radius aliases. Do not hard-code a new color that bypasses saved user themes. Deviation: the HIG asks for style variables rather than fixed colours; SillyBunny lets an illustration's backdrop keep its own colour in every theme, because the backdrop belongs to the artwork. It is dropped under forced colours and is never used for anything but the illustration. Review when the HIG changes this advice.
+**The Theme Alias Rule.** New work consumes `SmartTheme*`, `color-*`, `sb-*`, spacing, and radius aliases. Do not hard-code a new color that bypasses saved user themes. `white` and `black` may be mixed into a theme colour with `color-mix()` to lighten or darken it, as libadwaita's stylesheet does; there they are operands, not colours of their own. Deviation: the HIG asks for style variables rather than fixed colours; SillyBunny lets an illustration's backdrop keep its own colour in every theme, because the backdrop belongs to the artwork. It is dropped under forced colours and is never used for anything but the illustration. Review when the HIG changes this advice.
 
 **The Contrast Rule.** Body and placeholder text target at least 4.5:1 contrast; large text targets at least 3:1. Muted text can be quiet, but never illegible. Colour is never the only carrier of information; pair it with text, an icon, or shape (HIG UI Styling). Surfaces stay usable under `prefers-contrast: more` and `forced-colors: active`.
 

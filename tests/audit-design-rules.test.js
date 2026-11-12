@@ -91,7 +91,7 @@ describe('color-literal', () => {
     });
 
     test('counts a literal in color-mix() and a literal alpha next to var channels as literals', () => {
-        expect(counts('.a { color: color-mix(in srgb, var(--a) 70%, white); }')).toEqual({ 'color-literal': 1 });
+        expect(counts('.a { color: color-mix(in srgb, var(--a) 70%, red); }')).toEqual({ 'color-literal': 1 });
         expect(counts('.a { color: color-mix(in srgb, #fff 10%, transparent); }')).toEqual({ 'color-literal': 1 });
         expect(counts('.a { color: rgba(0, 0, 0, var(--alpha)); }')).toEqual({ 'color-literal': 1 });
     });
@@ -105,6 +105,12 @@ describe('color-literal', () => {
     test('does not count literals in custom-property definitions or at-rule preludes', () => {
         expect(counts(':root { --a: #fff; --b: rgb(1 2 3); --c: color-mix(in srgb, red, blue); }')).toEqual({});
         expect(counts('@media (prefers-color-scheme: dark) { .a { color: var(--x); } }')).toEqual({});
+    });
+
+    test('does not count white and black as operands of color-mix(), but counts other named colours there and white elsewhere', () => {
+        expect(counts('.a { color: color-mix(in srgb, var(--a) 86%, white 14%); background: color-mix(in srgb, black calc(0.85 * 65%), currentColor); }')).toEqual({});
+        expect(counts('.a { color: color-mix(in srgb, color-mix(in srgb, var(--a), white), black); }')).toEqual({});
+        expect(counts('.a { color: color-mix(in srgb, red 50%, white); border-color: white; }')).toEqual({ 'color-literal': 2 });
     });
 
     test('does not count the stops of a mask, which only read alpha', () => {

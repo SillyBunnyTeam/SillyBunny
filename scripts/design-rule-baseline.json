@@ -35,7 +35,6 @@
             "spacing-off-scale": 6
         },
         "public/css/sillybunny-conversation.css": {
-            "color-literal": 2,
             "radius-literal": 11,
             "shadow-literal": 2,
             "duration-literal": 3,
@@ -112,7 +111,6 @@
             "spacing-off-scale": 4
         },
         "public/css/sillybunny-tabs.css": {
-            "color-literal": 6,
             "radius-literal": 10,
             "shadow-literal": 8,
             "duration-literal": 1,
@@ -130,7 +128,6 @@
             "spacing-off-scale": 4
         },
         "public/css/sillybunny-theme.css": {
-            "color-literal": 10,
             "radius-literal": 2,
             "shadow-literal": 25,
             "important": 199,

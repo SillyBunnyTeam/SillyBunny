@@ -23,7 +23,7 @@ export const defaultBaselinePath = path.join(scriptDirectory, 'design-rule-basel
  * fallback of a `var()` and are not part of the rule they are named after.
  */
 export const RULES = Object.freeze([
-    { id: 'color-literal', description: 'Hex, rgb(), hsl() and named colours used as a value, outside custom-property definitions and var() fallbacks' },
+    { id: 'color-literal', description: 'Hex, rgb(), hsl() and named colours used as a value, outside custom-property definitions and var() fallbacks; white and black as an operand of color-mix() do not count' },
     { id: 'color-literal-fallback', description: 'Colour literals inside the fallback of a var()' },
     { id: 'radius-literal', description: 'border-radius (and longhands) with a non-zero length or percentage literal instead of a token' },
     { id: 'radius-literal-fallback', description: 'border-radius declarations with a non-zero length or percentage inside the fallback of a var()' },
@@ -272,6 +272,17 @@ function parseStylesheet(masked, original) {
     return { root, lineAt };
 }
 
+const MIX_OPERAND = /^(?:white|black)(?:\s[^,]*)?$/i;
+
+/** Drops the `white` and `black` operands of color-mix(), which lighten or darken a colour as libadwaita's stylesheet does. */
+function dropMixOperands(text) {
+    return replaceCalls(text, (name, args) => {
+        if (name !== 'color-mix') return null;
+        const parts = splitTopLevel(args, ',').map(part => (MIX_OPERAND.test(part.text) ? ' ' : dropMixOperands(part.text)));
+        return `color-mix(${parts.join(',')})`;
+    });
+}
+
 function literalsInColorValue(text) {
     const direct = [];
     const fallback = [];
@@ -284,7 +295,7 @@ function literalsInColorValue(text) {
         }
         return PLACEHOLDER;
     });
-    const withoutFunctions = replaceCalls(withoutVars, (name, args) => {
+    const withoutFunctions = replaceCalls(dropMixOperands(withoutVars), (name, args) => {
         if (!COLOR_FUNCTIONS.has(name)) return null;
         if (!/^\s*(?:\u0001|from\b)/i.test(args)) direct.push(`${name}(${args.trim()})`);
         return ' ';
