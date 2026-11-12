@@ -81,13 +81,16 @@ body::after {
  * chrome, the top bar, message edit rows, shell close buttons, status-page actions, and the greeting picture are excluded so their own corner contracts survive on phones.
  */
 .drawer-content,
-.popup,
+.popup {
+    border-radius: var(--sb-radius-overlay) !important;
+}
+
 .menu_button:not(.sb-status-page__action):not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *),
 input:not(.sb-dialog__entry),
 textarea:not(.sb-dialog__entry),
 select:not(.sb-dialog__entry),
 button:not(.sb-status-page__action):not(.ica--tpanel-handle):not(.gg-action-button):not(.sb-shell-close):not(.sbGreetingArtOpen):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *) {
-    border-radius: var(--sb-radius-card) !important;
+    border-radius: var(--sb-radius-control) !important;
 }
 
 /* Keep the draggable companion panel handle notched for the edge it snaps to */

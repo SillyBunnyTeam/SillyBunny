@@ -74,10 +74,12 @@ function getMediaQueryPxValues(cssSource) {
 // and focus border-color/box-shadow must beat upstream mobile-styles.css !important rules.
 // sillybunny-tabs.css raised 400 -> 405: settings-page category layout and the mobile Backgrounds
 // controls need five late-stage overrides to beat upstream inline/important presentation rules.
+// sillybunny-paper-theme.css raised 51 -> 52: its one radius rule is split in two, drawers and popups at the overlay
+// radius and controls at the control radius, and both must beat the upstream radius rules.
 // A budget counts the `!important` strings in its sheet, comments included. Lower it when the sheet's count falls.
 const FORK_SHEET_IMPORTANT_BUDGETS = Object.freeze({
     'sillybunny-mobile-shell.css': 333,
-    'sillybunny-paper-theme.css': 51,
+    'sillybunny-paper-theme.css': 52,
     'sillybunny-tabs.css': 301,
     'sillybunny-chat-styles.css': 225,
     'sillybunny-theme.css': 208,
