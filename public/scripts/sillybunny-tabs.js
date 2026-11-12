@@ -14317,7 +14317,8 @@ function buildBottomChatBar() {
     if (!bottomChatBarState.outsideClickBound) {
         document.addEventListener('click', (e) => {
             const picker = document.getElementById('sb-persona-picker');
-            if (picker && !picker.contains(e.target) && e.target !== bottomChatBarState.personaBubble) {
+            // Only a click of the user dismisses the menu: the app clicks the message box itself a moment after a chat loads.
+            if (e.isTrusted && picker && !picker.contains(e.target) && e.target !== bottomChatBarState.personaBubble) {
                 picker.remove();
             }
         });
