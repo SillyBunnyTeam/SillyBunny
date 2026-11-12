@@ -179,7 +179,9 @@
     --sb-input-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
     --sb-input-border: color-mix(in srgb, var(--SmartThemeBorderColor) 92%, transparent);
     --sb-input-placeholder: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, var(--SmartThemeBlurTintColor) 22%);
-    --sb-focus-ring: color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, transparent);
+    /* The ring and the field focus edge draw this at 78%: about 55% of the accent, as libadwaita's ring, and 66% on the
+       light tone, where 55% gives 2.5:1 on white. */
+    --sb-focus-ring: color-mix(in srgb, var(--sb-accent) 70%, transparent);
     --sb-focus-ring-inset: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
     /* libadwaita entry focus: the 1px border plus a 1px inset in the focus-ring colour read as one 2px accent ring. */
     --sb-entry-focus-border: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
@@ -450,6 +452,7 @@ input[type="submit"] {
     --sb-card-fill: var(--sb-layer-view);
     --sb-shadow-dialog-highlight: 0 0 #0000;
     --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 74%, transparent);
+    --sb-focus-ring: color-mix(in srgb, var(--sb-accent) 85%, transparent);
 }
 
 @media (prefers-contrast: more) {
