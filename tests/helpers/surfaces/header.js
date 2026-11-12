@@ -654,7 +654,8 @@ export const surfaces = [
         cancel: '#sb_character_editor_cancel',
         // The header is shared with the form of a new character, so the dirty state also names the menu type of an existing one.
         dirtyState: { rename: '#sb_character_editor_title_button', dirty: '#sb_character_editor_dirty:not([hidden])', title: '#sb_character_editor_title', only: '#right-nav-panel[data-menu-type="character_edit"]' },
-        masks: ['#sb_character_editor_header .sb-editor-tokens'],
+        // The title of the top bar names the open chat once that chat has loaded, which is before the capture in some boots and after it in others.
+        masks: ['#sb_character_editor_header .sb-editor-tokens', '#sb-topbar-title'],
         extraStates: [{
             id: 'create-mode',
             ready: [withText('#sb_character_editor_title', 'Create New Character'), '#right-nav-panel[data-menu-type="create"]'],

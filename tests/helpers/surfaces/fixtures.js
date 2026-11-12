@@ -11,7 +11,7 @@ import { request as playwrightRequest } from '@playwright/test';
 import { NEED_MODULES, needClosure } from './fixture-data.js';
 import { assertSeedableServer } from './seed-guard.js';
 
-export { applySettingsFixtures, FIXTURES } from './fixture-data.js';
+export { applyAnswerFixtures, applySettingsFixtures, FIXTURES } from './fixture-data.js';
 
 /**
  * @param {string} baseURL A loopback server that this run started (see `seed-guard.js`; any loopback server when

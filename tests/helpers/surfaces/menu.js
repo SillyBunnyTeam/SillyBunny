@@ -979,6 +979,9 @@ export const surfaces = [
             await selectBackend(page, 'text-completion');
             await openSettingsTab(page, { shell: 'left', tab: 'connections' });
             await page.locator('#textgenerationwebui_api_url_text').click();
+            // The blocks of the chosen backend are shown after the page, and they move the field. The list is see-through, so the
+            // page behind it is part of what a capture compares, and the field must be raised from a page that has stopped moving.
+            await settle(page);
             // Focusing the field scrolls it to the foot of a phone's screen, where its list opens below the fold. Raising the
             // field and asking for the list again puts the list where a user who had scrolled would see it.
             await page.locator('[data-sb-panel="connections"] .sb-shell-panel-scroller').evaluate((scroller, selector) => {

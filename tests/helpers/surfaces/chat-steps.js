@@ -237,6 +237,32 @@ export async function openBottomBarSearch(page, ctx) {
         await page.locator('#sb-bottom-chat-sheet').waitFor({ state: 'hidden' });
     }
     await page.locator('#sb-bottom-chat-search').fill('lamp');
+    // The status beside the field counts matches while the search goes through the chat, and its width moves the field's edge. The
+    // search has ended when the status has shown the same count for half a second.
+    await page.evaluate(() => new Promise((resolve, reject) => {
+        const read = () => {
+            const status = document.querySelector('#sb-bottom-chat-bar .sb-bottom-chat-search-status');
+            return status && !status.hidden && !status.textContent.includes('Loading') ? status.textContent.trim() : '';
+        };
+        const started = performance.now();
+        let last = read();
+        let since = started;
+        const tick = (now) => {
+            const current = read();
+            if (current !== last) {
+                last = current;
+                since = now;
+            }
+            if (current !== '' && now - since >= 500) {
+                resolve();
+            } else if (now - started > 10_000) {
+                reject(new Error(`The search status of the bottom chat bar did not settle within 10 s (last text: "${current}").`));
+            } else {
+                requestAnimationFrame(tick);
+            }
+        };
+        requestAnimationFrame(tick);
+    }));
     await settle(page);
 }
 
@@ -396,12 +422,25 @@ export async function waitForStill(page, selector, { quiet = 400, cap = 8000 } =
 }
 
 /**
+ * Tells the app that the user has taken over the scroll position of the chat. For a few seconds after a chat loads, the app
+ * scrolls it back to the bottom on timers until the user scrolls, and a wheel turn over the chat is that user scroll. Without
+ * it, a later timer undoes a scripted scroll.
+ */
+async function takeOverChatScroll(page) {
+    const chat = await page.locator('#chat').boundingBox();
+    await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
+    await page.mouse.wheel(0, -200);
+}
+
+/**
  * Scrolls a message of the transcript to the start, the middle or the end of the chat column, and fails when the message
  * is not in the column once the layout has settled.
  */
 export async function scrollToMessage(page, id, block = 'start') {
     const selector = message(id);
     let inView = false;
+    await waitForStill(page, selector);
+    await takeOverChatScroll(page);
     // Messages above the one that is scrolled to are measured as they render, which moves it; the scroll is repeated up to three times.
     for (let attempt = 0; attempt < 3 && !inView; attempt++) {
         await waitForStill(page, selector);
@@ -428,11 +467,7 @@ export async function scrollToMessage(page, id, block = 'start') {
 /** Brings the control that loads older messages (above the first rendered message of a chat longer than the render window) to the top of the chat column. */
 export async function scrollToOlderMessagesControl(page) {
     await waitForStill(page, '#show_more_messages');
-    // For a few seconds after a chat loads, the app scrolls it back to the bottom on timers until the user scrolls. A wheel
-    // turn over the chat is that user scroll. Without it, a later timer undoes the scripted scroll.
-    const chat = await page.locator('#chat').boundingBox();
-    await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
-    await page.mouse.wheel(0, -200);
+    await takeOverChatScroll(page);
     await page.evaluate(() => document.getElementById('show_more_messages').scrollIntoView({ block: 'start' }));
     await waitForStill(page, '#show_more_messages');
     await settle(page);

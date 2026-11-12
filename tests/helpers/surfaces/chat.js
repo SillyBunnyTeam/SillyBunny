@@ -256,8 +256,11 @@ const CONVERSATION_TEXT = '#sb_conversation_input:not(:placeholder-shown)';
 /** The toolbar of the message of the thread that has a reaction, while the pointer is over it. */
 const HOVERED_TOOLBAR = `${conversationMessage(THREAD_INDEX.reacted)}:hover .sb-conversation-message-actions`;
 
+/** The round avatars of the header, the Pals rail and the rail footer are cut from a downscaled picture, and the status dots on them are small circles: their edge pixels differ by a few levels between runs. */
+const CONVERSATION_AVATAR_MASKS = ['.sb-conversation-participant-avatar', '.sb-conversation-status-dot', '#sb_conversation_rail_footer .sb-conversation-persona-button'];
+
 const CONVERSATION_MASKS = [
-    '.sb-conversation-message-time', '.sb-conversation-day-divider', '.sb-conversation-message-receipt', '.sb-conversation-header-status', '.sb-conversation-pal-preview',
+    '.sb-conversation-message-time', '.sb-conversation-day-divider', '.sb-conversation-message-receipt', '.sb-conversation-header-status', '.sb-conversation-pal-preview', ...CONVERSATION_AVATAR_MASKS,
 ];
 
 const CONVERSATION_SOURCES = [
@@ -297,6 +300,9 @@ export const surfaces = [
             await openChatFile(page, CHAT.file);
             await resetChatUi(page);
             await resetComposer(page);
+            // Sending the first message completes a step of Getting Started, whose success toast comes at a moment that differs between
+            // boots, or after the capture. A mask cannot make a capture with the toast equal to one without it, so the toast is not shown.
+            await page.addStyleTag({ content: '#toast-container .toast-success { display: none !important; }' });
             await startGeneration(page, 'hold');
         },
         states: [{
@@ -311,8 +317,7 @@ export const surfaces = [
             },
             ready: ['#toast-container .toast-error'],
         }],
-        // Sending the first message completes a step of Getting Started, whose success toast may come after the stop control.
-        masks: [...TRANSCRIPT_MASKS, '#toast-container .toast-success'],
+        masks: TRANSCRIPT_MASKS,
         needs: ['character', 'chat'],
         sources: ['public/script.js', ...TRANSCRIPT_SOURCES],
         primaryFlow: true,
@@ -428,7 +433,8 @@ export const surfaces = [
             // The field is shown at rest on a desktop window, so what it holds proves the state.
             ready: ['#sb-bottom-chat-search:not(:placeholder-shown)'],
         }],
-        masks: [...TRANSCRIPT_MASKS, '#sb-bottom-chat-bar .sb-bottom-chat-chip-label'],
+        // The search status counts matches as the search goes through the chat, so it is caught at different counts.
+        masks: [...TRANSCRIPT_MASKS, '#sb-bottom-chat-bar .sb-bottom-chat-chip-label', '#sb-bottom-chat-bar .sb-bottom-chat-search-status'],
         needs: ['character', 'chat'],
         sources: [`${SCRIPTS}/sillybunny-mobile-bottom-bar.js`, `${SCRIPTS}/sillybunny-tabs.js`, `${CSS}/sillybunny-tabs.css`],
         primaryFlow: true,

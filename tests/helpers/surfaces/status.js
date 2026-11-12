@@ -1077,6 +1077,7 @@ const samplingUnavailable = status({
         await settle(page);
     },
     backends: ['chat-completion'],
+    needs: ['logit-bias'],
     sources: [`${SCRIPTS}/sillybunny-tabs.js`],
     primaryFlow: true,
 });
@@ -1397,6 +1398,8 @@ const conversationPersonasEmpty = status({
         await settle(page);
     },
     close: leaveConversation,
+    // The round avatars of the Pals rail and the rail footer are cut from a downscaled picture, and the status dots are small circles: their edge pixels differ by a few levels between runs.
+    masks: ['.sb-conversation-participant-avatar', '.sb-conversation-status-dot', '#sb_conversation_rail_footer .sb-conversation-persona-button'],
     needs: ['character'],
     sources: [`${SCRIPTS}/sillybunny-conversation/pickers.js`, ...CONVERSATION_SOURCES],
 });

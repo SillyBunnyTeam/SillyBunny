@@ -64,7 +64,7 @@ function withFixedConsoleLog(entry) {
  * @param {'left' | 'right'} page.shell `left` is Backend, `right` is Customize.
  * @param {string} page.tab The value of `data-sb-settings-tab`.
  */
-function shellPage({ id, title, shell, tab, sources, upstreamMarkup = false, backends, masks, ready, states = [] }) {
+function shellPage({ id, title, shell, tab, sources, upstreamMarkup = false, backends, masks, ready, states = [], needs = [] }) {
     const root = `[data-sb-panel="${tab}"]`;
     return {
         id: `settings.${id}`,
@@ -86,7 +86,7 @@ function shellPage({ id, title, shell, tab, sources, upstreamMarkup = false, bac
         ],
         ...(masks && { masks }),
         ...(backends && { backends }),
-        needs: [],
+        needs,
         sources,
         primaryFlow: true,
     };
@@ -214,6 +214,7 @@ export const surfaces = [
         ready: ctx => modePill('[data-sb-panel="sampling"] .sb-sampling-mode-pill:visible', ctx),
         upstreamMarkup: true,
         backends: BACKEND_IDS,
+        needs: ['logit-bias'],
         sources: [`${SCRIPTS}/sillybunny-tabs.js`],
     }), async (page, ctx) => {
         // Chat Completions is the backend that has the logit bias list.

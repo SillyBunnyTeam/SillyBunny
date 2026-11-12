@@ -10,7 +10,8 @@ import { applyVariant, densityInitScript } from '../surface-matrix.js';
 import { assertIsolatedServer, protectMaintainerServer } from '../maintainer-server.js';
 import { fetchJsonOrSkip } from '../route-fetch.js';
 import { applyWelcomeSettings } from '../welcome-dialog.js';
-import { applySettingsFixtures } from './fixture-data.js';
+import { applyAnswerFixtures, applySettingsFixtures } from './fixture-data.js';
+import { SERVER_ADMIN_FIXED, SERVER_ADMIN_FIXED_ROUTE } from './server-admin-fixed.js';
 import { seedFailuresOf } from './seed-guard.js';
 import { labelPage, settle } from './steps.js';
 
@@ -43,12 +44,14 @@ export async function bootSurfaceApp(page, baseURL, { variant, needs = [] } = {}
             settings.firstRun = false;
             applyWelcomeSettings(settings);
             applySettingsFixtures(settings, needs);
-            await route.fulfill({ json: { ...data, settings: JSON.stringify(settings) } });
+            await route.fulfill({ json: applyAnswerFixtures({ ...data, settings: JSON.stringify(settings) }, needs) });
         } catch (error) {
             failBoot(new Error(`The settings of the boot could not be built for needs [${needs.join(', ')}]: ${error?.message ?? error}`));
             await route.abort().catch(() => {});
         }
     });
+    // The page that shows the server's state reads the git state of the checkout, which differs between checkouts and moments.
+    await page.route(SERVER_ADMIN_FIXED_ROUTE, route => route.fulfill({ json: SERVER_ADMIN_FIXED[new URL(route.request().url()).pathname] }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     // getContext() throws while the app's modules are still initialising, so a throw means not ready yet.
     const ready = page.waitForFunction(() => {

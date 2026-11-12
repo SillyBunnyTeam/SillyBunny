@@ -10,6 +10,7 @@ import { settle, expandAll } from './surfaces/steps.js';
 import { installInventoryApi } from './settings-inventory-collect.js';
 import { diffSettings, driftPaths, getPath, nextNumber, sameValue, textCandidates } from './settings-inventory.js';
 import { isIgnoredPath, readyExtrasFor } from './settings-inventory-rules.js';
+import { SERVER_ADMIN_FIXED as SERVER_ADMIN_STATUS } from './surfaces/server-admin-fixed.js';
 
 export const EXTENSIONS_PANEL = '[data-sb-panel="extensions"]';
 export const EXTENSION_DETAIL = `${EXTENSIONS_PANEL} .sb-subpage-detail[aria-hidden="false"]`;
@@ -39,17 +40,7 @@ const SERVER_ADMIN_WRITES = /\/api\/server-admin\/(?!(?:install-type|status|logs
  * state of the checkout that the server runs from (whether an update is ready, which branches exist) and on its config.yaml.
  */
 const SERVER_ADMIN_FIXED = Object.freeze({
-    '/api/server-admin/status': {
-        runtime: 'Node.js',
-        configPath: 'config.yaml',
-        installType: 'git',
-        version: { pkgVersion: '0.0.0', gitBranch: 'staging', gitRevision: 'aaaaaaa' },
-        repository: {
-            supported: true, isRepo: true, branch: 'staging', displayBranch: 'staging', currentCommit: 'aaaaaaa', trackingBranch: 'origin/staging',
-            ahead: 0, behind: 1, canUpdate: true, hasLocalChanges: false, autoStash: false, changedFilesCount: 0, changedFiles: [], message: 'An update is ready.',
-        },
-    },
-    '/api/server-admin/branches': { branches: ['release', 'staging'] },
+    ...SERVER_ADMIN_STATUS,
     '/api/server-admin/config/get': { path: 'config.yaml', content: 'listen: false\n', lastModifiedMs: 1 },
 });
 

@@ -6,7 +6,7 @@
 
 import { NEED_ID_PATTERN, NEEDS } from './schema.js';
 
-const MODULE_KEYS = new Set(['requires', 'exists', 'seed', 'settings']);
+const MODULE_KEYS = new Set(['requires', 'exists', 'seed', 'settings', 'answer']);
 
 /**
  * Imports the module of each need, one at a time: a module that fails to load is recorded and left out, so one
@@ -68,7 +68,7 @@ export function validateNeedModules(modules = NEED_MODULES, fixtures = FIXTURES)
                 problem(`has an unknown field "${key}".`);
             }
         }
-        for (const key of ['exists', 'seed', 'settings']) {
+        for (const key of ['exists', 'seed', 'settings', 'answer']) {
             if (module[key] !== undefined && typeof module[key] !== 'function') {
                 problem(`${key} must be a function.`);
             }
@@ -132,4 +132,18 @@ export function applySettingsFixtures(settings, needs) {
         NEED_MODULES[id].settings?.(settings);
     }
     return settings;
+}
+
+/**
+ * Lets every need in `needs` (and what it requires) edit the rest of a `/api/settings/get` answer, in place: the preset files
+ * and the other lists that the server sends beside the account settings.
+ * @param {Record<string, any>} answer The whole answer; `answer.settings` is the serialised account settings.
+ * @param {readonly string[]} needs
+ * @returns {Record<string, any>} The same object.
+ */
+export function applyAnswerFixtures(answer, needs) {
+    for (const id of needClosure(needs)) {
+        NEED_MODULES[id].answer?.(answer);
+    }
+    return answer;
 }

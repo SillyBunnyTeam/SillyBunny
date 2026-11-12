@@ -19,6 +19,7 @@
  *             what it made; `post(path, requestOptions, { allow: [status] })` sends a request with the CSRF token and
  *             throws on any other failure
  *   settings  (settings) => void: edits the parsed `/api/settings/get` answer of a boot in place; nothing is saved
+ *   answer    (answer) => void: edits the rest of that answer in place (the preset files that the server sends with it)
  * A module that has `seed` has `exists`, so that seeding twice creates nothing. A need that holds data only in the
  * account settings has `settings` and no `seed`. Seeding writes only to a server that `seed-guard.js` accepts.
  *
