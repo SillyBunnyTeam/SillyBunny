@@ -398,6 +398,15 @@ This is the largest class by a wide margin.
 - **Tests that need a connection or saved data:** a throwaway data root has no API connection and no saved tracker. `tests/frontend/ConversationLorebooks.e2e.js` sets a connected status before it sends, and the long-tracker test in `tests/in-chat-agents-editor.e2e.js` creates and removes its own saved tracker through a pass-through that is open only for those two calls (`638cb6157`). `tests/card-script-sandbox.e2e.js` holds Shift over the message to reveal its actions, because the run button is hidden until the row is expanded (`bc29198c0`).
 - **The startup request count is an exact ratchet:** `STARTUP_RESOURCE_LIMIT` in `tests/frontend-performance.e2e.js` equals the present count, so a new module that loads at startup fails the test until its commit raises the limit on purpose (`bc29198c0`, `55244b488`). The budget for compressed JavaScript there is 13 MiB (`646f13755`).
 
+### Unit tests that run git
+
+- **Breaks:** the unit suite, started from a process that git spawned, writes to the real repository: on 2026-11-12, `git rebase -x 'cd tests && npm run test:unit'` left `core.bare = true` and a `[user]` section in the shared `.git/config`, two tags (`v0.0.1`, `v9.9.9`) and test commits on the rebase head.
+- **Files:** `tests/server-plugin-manager.test.js`, `tests/bootstrap-installer.test.js`, `tests/list-sb-class-changes.test.js`, `tests/bump-agent-template-versions.test.js` and other suites that build temporary repositories with plain `git init`, `git config`, `git commit` and `git tag`.
+- **Guards:**
+  - git exports `GIT_DIR` and related variables to `git rebase --exec` commands and to hooks, and a child `git` follows `GIT_DIR` instead of its working directory, so `git init --bare` in a temporary folder re-initialises the real repository.
+  - Run the suite from a normal shell. To test each commit of a series, `git checkout <sha>` in turn and run it there, or unset `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` first.
+- **Repair:** `git config core.bare false`, remove the `[user]` section, delete the tags, `git rebase --quit`, then `git checkout -f <branch>` and `git clean -fd` in the worktree.
+
 ### Dialog surfaces and layering
 
 - **Breaks:** a broad `.sb-dialog` descendant textarea rule changes the in-chat Agents Regex editor height (159.75px instead of 160px).
