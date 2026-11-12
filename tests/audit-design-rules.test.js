@@ -107,6 +107,10 @@ describe('color-literal', () => {
         expect(counts('@media (prefers-color-scheme: dark) { .a { color: var(--x); } }')).toEqual({});
     });
 
+    test('does not count the stops of a mask, which only read alpha', () => {
+        expect(counts('.a { mask-image: linear-gradient(black, rgba(0, 0, 0, 0.5)); -webkit-mask-image: radial-gradient(#000, transparent); }')).toEqual({});
+    });
+
     test('ignores colour-looking words in properties that take no colour', () => {
         expect(counts('.a { animation: gold var(--d) var(--e); font-family: Tan, serif; transition: background-color var(--t); }')).toEqual({});
         expect(counts('.a { animation-name: red; content: "white"; will-change: color; }')).toEqual({});

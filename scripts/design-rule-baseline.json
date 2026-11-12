@@ -21,7 +21,6 @@
             "spacing-off-scale": 40
         },
         "public/css/sillybunny-chat-styles.css": {
-            "color-literal": 26,
             "shadow-literal": 1,
             "letter-spacing": 1,
             "important": 225,
@@ -65,7 +64,6 @@
             "spacing-off-scale": 4
         },
         "public/css/sillybunny-home.css": {
-            "color-literal": 2,
             "radius-literal": 1,
             "shadow-literal": 2,
             "important": 1,

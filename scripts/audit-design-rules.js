@@ -70,7 +70,8 @@ const NAMED_COLORS = new Set(('aliceblue antiquewhite aqua aquamarine azure beig
     + 'yellowgreen').split(' '));
 
 const COLOR_FUNCTIONS = new Set(['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'color']);
-const COLOR_PROPERTY = /(?:^|-)(?:color|background|border|outline|shadow|fill|stroke|filter|decoration|rule|mask|emphasis)(?:-|$)/;
+// A mask reads only the alpha of its colours, so its gradient stops are not colour choices and are not counted.
+const COLOR_PROPERTY = /(?:^|-)(?:color|background|border|outline|shadow|fill|stroke|filter|decoration|rule|emphasis)(?:-|$)/;
 const RADIUS_PROPERTY = /^border(?:-(?:top|bottom)-(?:left|right)|-(?:start|end)-(?:start|end))?-radius$/;
 const SPACING_PROPERTY = /^(?:(?:padding|margin)(?:-(?:top|right|bottom|left|inline|block|start|end|before|after)(?:-(?:start|end))?)?|(?:grid-)?(?:(?:row|column)-)?gap)$/;
 const SPACING_SCALE_PIXELS = new Set([3, 6, 9, 12, 18, 24, 36]);
