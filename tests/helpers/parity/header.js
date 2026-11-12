@@ -44,10 +44,7 @@ export const rules = {
         {
             id: 'shell-title',
             selectors: [{ id: 'shell', selector: SHELL_TITLE }],
-            properties: [
-                { property: 'fontSize', token: '--sb-type-headline', source: 'DESIGN.md' },
-                { property: 'fontWeight', value: '800', source: 'DESIGN.md' },
-            ],
+            properties: TITLE_TYPE,
         },
         {
             id: 'button',

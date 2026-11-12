@@ -19,25 +19,32 @@ const NOT_SERVER_STAT = ':not(:has(.sb-server-stat-value))';
 export const IF_FLEX = ['flex', 'inline-flex', 'grid', 'inline-grid'];
 
 /**
- * The group heading: body size (a ruling of this tool; DESIGN.md puts setting groups at the Title role), bold, no case change.
+ * The group heading: the Title role, which is body size at weight 700 (DESIGN.md Typography), with no case change. The size is
+ * read from `--sb-type-body`, because `--sb-type-title` holds another value until the stylesheets take the documents' scale.
  */
 export const GROUP_HEADING = [
-    { property: 'fontSize', token: '--sb-type-body', source: 'census' },
-    { property: 'fontWeight', value: '700', source: 'DESIGN.json' },
+    { property: 'fontSize', token: '--sb-type-body', source: 'DESIGN.md' },
+    { property: 'fontWeight', value: '700', source: 'DESIGN.md' },
     { property: 'textTransform', value: 'none', source: 'DESIGN.json' },
 ];
 
-/** The boxed list of a group: `--sb-radius-lg` on a settings page, the card radius inside a list editor, and a 1px border. */
+/**
+ * The boxed list of a group: `--sb-radius-lg` on a settings page, the card radius inside a list editor, and no border, because
+ * the card style draws its edge as a ring in the Card Shadow (DESIGN.md Elevation).
+ */
 export const GROUP_BOX = [
     { property: 'borderTopLeftRadius', token: '--sb-radius-lg', forms: [{ form: 'listEditor', token: '--sb-radius-card' }], source: 'DESIGN.json' },
-    { property: 'borderTopWidth', value: 1, source: 'DESIGN.json' },
+    { property: 'borderTopWidth', value: 0, source: 'DESIGN.md' },
 ];
 
-/** The title of a row in a boxed list: the Title role (DESIGN.md Typography). */
+/** The title of a row in a boxed list: Body at regular weight (DESIGN.md Typography). */
 export const ROW_TITLE = [
-    { property: 'fontSize', token: '--sb-type-title', source: 'DESIGN.md' },
-    { property: 'fontWeight', value: '700', source: 'DESIGN.md' },
+    { property: 'fontSize', token: '--sb-type-body', source: 'DESIGN.md' },
+    { property: 'fontWeight', value: '400', source: 'DESIGN.md' },
 ];
+
+/** The subtitle of a row: the Caption role, which shares the size token of Label (DESIGN.md Typography). */
+export const ROW_SUBTITLE = [{ property: 'fontSize', token: '--sb-type-caption', source: 'DESIGN.md' }];
 
 export const rules = {
     family: 'settings',
@@ -112,7 +119,7 @@ export const rules = {
         {
             id: 'row-subtitle',
             selectors: [{ id: 'ds-row', selector: `.ds-pref-group .ds-row${NOT_SERVER_STAT} .ds-row-subtitle` }],
-            properties: [{ property: 'fontSize', token: '--sb-type-meta', source: 'token' }],
+            properties: ROW_SUBTITLE,
         },
         {
             id: 'libadwaita-audit',

@@ -1,9 +1,9 @@
 /**
- * Menus, pickers and popovers (DESIGN.md Menus and Popovers): an opaque popover surface at the overlay radius with `6px`
- * padding, rows of at least 32px (44px on a coarse pointer and in sheets) with `0 12px` padding and the control radius. The
- * first alternative of the item is the action menu row; pickers, the prompt editor popovers, the side panel menu, upstream
- * menus and the two menus that still use `div` items have their own. The press-label tooltip has its own rule (Tooltips) and
- * is not a menu surface here.
+ * Menus, pickers and popovers (DESIGN.md Menus and Popovers): an opaque popover surface at the overlay radius, with a ring in
+ * its shadow for an edge and no border, `6px` of padding for a menu list and `8px` for any other popover, and rows of at least
+ * 32px (44px on a coarse pointer and in sheets) with `0 12px` padding and the control radius. The first alternative of the item
+ * is the action menu row; pickers, the prompt editor popovers, the side panel menu, upstream menus and the two menus that still
+ * use `div` items have their own. The press-label tooltip has its own rule (Tooltips) and is not a menu surface here.
  */
 
 import { FORMS, SHEET_HANDLE } from './dialog.js';
@@ -22,8 +22,8 @@ export const rules = {
             ],
             properties: [
                 { property: 'borderTopLeftRadius', token: '--sb-radius-overlay', source: 'DESIGN.md' },
-                { property: 'borderTopWidth', value: 1, source: 'DESIGN.md' },
-                { property: 'paddingTop', value: 6, source: 'DESIGN.md' },
+                { property: 'borderTopWidth', value: 0, source: 'DESIGN.md' },
+                { property: 'paddingTop', value: 6, forms: [{ form: 'plainPopover', value: 8 }], source: 'DESIGN.md' },
             ],
         },
         {

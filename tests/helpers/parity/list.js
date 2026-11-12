@@ -6,7 +6,7 @@
  */
 
 import { FORMS, TARGET_SIZE } from './dialog.js';
-import { IF_FLEX, ROW_TITLE } from './settings.js';
+import { IF_FLEX, ROW_SUBTITLE, ROW_TITLE } from './settings.js';
 
 const OWN_ROW = ':is(.sb-prompt-row, .attachmentListItem, .regex-script-label, .qr--set-item, .openai_logit_bias_form, .tag_view_item, .sb-wi-row, .ds-row)';
 const OWN_TITLE = ':is(.ds-row-label, .sb-prompt-row-name, .attachmentListItemName, .regex_script_name, [class*="name" i]:not(input))';
@@ -24,7 +24,7 @@ export const rules = {
             ],
             properties: [
                 { property: 'borderTopLeftRadius', token: '--sb-radius-card', source: 'DESIGN.md' },
-                { property: 'borderTopWidth', value: 1, source: 'DESIGN.json' },
+                { property: 'borderTopWidth', value: 0, source: 'DESIGN.md' },
             ],
         },
         {
@@ -50,7 +50,7 @@ export const rules = {
         {
             id: 'row-subtitle',
             selectors: [{ id: 'entity-row', selector: '.ds-entity-row__subtitle' }, { id: 'own', selector: ':is(.ds-row-subtitle, [class*="subtitle" i])' }],
-            properties: [{ property: 'fontSize', token: '--sb-type-meta', source: 'token' }],
+            properties: ROW_SUBTITLE,
         },
         {
             id: 'row-button',

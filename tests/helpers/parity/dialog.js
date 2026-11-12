@@ -18,10 +18,11 @@ export const FORMS = Object.freeze({
     sheet: { media: '(max-width: 450px), (max-height: 360px)' },
     listEditor: { closest: '.sb-list-editor, .sb-editor-sheet' },
     panelSheet: { closest: '.sb-side-panel--sheet' },
+    plainPopover: { closest: '.sb-custom-popover' },
 });
 
-/** A target size: 44px on a coarse pointer, and 40px on a fine one for shell controls and close buttons (DESIGN.md Layout). */
-export const TARGET_SIZE = Object.freeze({ fine: 40, coarse: 44 });
+/** A target size: at least 44px on a coarse pointer and 32px on a fine one (DESIGN.md Layout). */
+export const TARGET_SIZE = Object.freeze({ fine: 32, coarse: 44 });
 
 /** The header bar of a dialog, window or sheet: at least as tall as the buttons it holds, with 6px of inline padding. */
 export const DIALOG_HEADER = [
