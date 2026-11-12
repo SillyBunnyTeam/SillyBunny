@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { SERVER_LIST_VARIABLE, getServerUrl } from './e2e-servers.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { SERVER_LIST_VARIABLE, getServerUrl, isFirstRunOver } from './e2e-servers.js';
 
 const servers = process.env[SERVER_LIST_VARIABLE] ? JSON.parse(process.env[SERVER_LIST_VARIABLE]) : null;
 const baseUrlAtLoad = process.env.SILLYBUNNY_TEST_BASE_URL;
@@ -16,5 +18,18 @@ test.describe('test servers that the config starts', () => {
 
         const response = await page.goto('/');
         expect(new URL(response.url()).origin).toBe(expected);
+    });
+
+    // During the first run, the app stops its boot at the first-run prompt until a test answers it.
+    test('the first run of a server is over before a worker uses it', async ({ baseURL }) => {
+        const { dataRoot } = servers.find(server => server.url === baseURL);
+        expect(isFirstRunOver(dataRoot)).toBe(true);
+    });
+
+    // A server without its own config file uses the one in the repository root, which holds the settings of the
+    // developer's own server, and it writes one there when the file is absent.
+    test('a server has its config file in its data root', async ({ baseURL }) => {
+        const { dataRoot } = servers.find(server => server.url === baseURL);
+        expect(fs.existsSync(path.join(dataRoot, 'config.yaml'))).toBe(true);
     });
 });
