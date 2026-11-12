@@ -18,7 +18,6 @@ const MOBILE_VIEWPORT_SYNC_STEPS = [
 const DESKTOP_VIEWPORT_SYNC_STEPS = [
     MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_SHELL_VIEWPORT_BOUNDS,
     MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_NAV,
-    MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_CHAT_TOOLS,
     MOBILE_SHELL_VIEWPORT_SYNC_STEP.APPLY_TOPBAR_OFFSET,
     MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_CHATBAR_VISIBILITY_STATE,
     MOBILE_SHELL_VIEWPORT_SYNC_STEP.UPDATE_TOP_BAR_BRAND,
@@ -31,7 +30,6 @@ describe('mobile shell viewport sync lifecycle', () => {
         expect(MOBILE_SHELL_VIEWPORT_SYNC_STEP).toEqual({
             SYNC_SHELL_VIEWPORT_BOUNDS: 'sync-shell-viewport-bounds',
             CLOSE_MOBILE_NAV: 'close-mobile-nav',
-            CLOSE_MOBILE_CHAT_TOOLS: 'close-mobile-chat-tools',
             APPLY_TOPBAR_OFFSET: 'apply-topbar-offset',
             SYNC_CHATBAR_VISIBILITY_STATE: 'sync-chatbar-visibility-state',
             UPDATE_TOP_BAR_BRAND: 'update-top-bar-brand',

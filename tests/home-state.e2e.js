@@ -194,17 +194,6 @@ test.describe('Home state on a phone', () => {
         await expect(page.locator('#sb-bottom-chat-sheet')).toHaveCount(0);
         await expect(page.locator('html')).not.toHaveAttribute('data-sb-mobile-chat-bar-shown', /.*/);
     });
-
-    test('returning to Home closes the mobile chat tools', async ({ page }) => {
-        await selectSampleCharacter(page);
-        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-        await expect(page.locator('#sb-mobile-chat-tools.sb-chat-tools-open')).toBeVisible();
-
-        await page.evaluate(() => window.SillyTavern.getContext().closeCurrentChat());
-
-        await expectHome(page);
-        await expect(page.locator('#sb-mobile-chat-tools.sb-chat-tools-open')).toHaveCount(0);
-    });
 });
 
 const TOP_BAR_VIEWPORTS = [

@@ -12,7 +12,7 @@
  */
 
 import { FIXTURES } from './fixture-data.js';
-import { closeChatToolsSheet, closeSidePanelById, MOBILE_LAYOUT_VIEWPORTS, openAuditChat } from './panel-steps.js';
+import { closeSidePanelById, MOBILE_LAYOUT_VIEWPORTS, openAuditChat } from './panel-steps.js';
 import { chooseMenuItem, openCharactersTab, openSettingsTab, selectBackend, selectLogitBiasPreset, settle } from './steps.js';
 
 const SCRIPTS = 'public/scripts';
@@ -1166,27 +1166,7 @@ const aboutUnknown = status({
     sources: [`${SCRIPTS}/sillybunny-about.js`],
 });
 
-// --- Chat tools, persona picker and the Conversation workspace ---------------------------------------------------------
-
-const MOBILE_CHAT_EMPTY = '.sb-mobile-chat-files .sb-chat-files-empty';
-
-// The Recent Chats side panel draws the same `.sb-chat-files-empty` but is out of reach: with a chat open it lists that
-// chat even when the server has none, and with no character the panel closes itself as soon as it opens.
-const chatToolsMobile = status({
-    id: 'chat-tools.no-chats-mobile',
-    title: 'Mobile chat tools: no saved chats (no character is open)',
-    component: 'own',
-    overlay: true,
-    root: MOBILE_CHAT_EMPTY,
-    async open(page) {
-        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-        await reveal(page, MOBILE_CHAT_EMPTY, { hints: ['.sb-mobile-chat-files', '#sb-mobile-chat-tools-panel', '.sb-chat-file'] });
-        await settle(page);
-    },
-    close: closeChatToolsSheet,
-    viewports: MOBILE_LAYOUT_VIEWPORTS,
-    sources: [`${SCRIPTS}/sillybunny-tabs.js`],
-});
+// --- Persona picker and the Conversation workspace -----------------------------------------------------------------------
 
 const PERSONA_PICKER = '#sb-persona-picker';
 const PERSONA_PICKER_EMPTY = `${PERSONA_PICKER} .sb-persona-option-empty`;
@@ -1796,7 +1776,6 @@ export const surfaces = [
     homeRecentFiltered,
     homeOffline,
     aboutUnknown,
-    chatToolsMobile,
     personaPickerEmpty,
     personaPickerNoNotes,
     conversationChooseDm,

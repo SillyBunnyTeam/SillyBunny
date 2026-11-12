@@ -29,7 +29,7 @@ import { openActionMenu } from './sillybunny-action-menu.js';
 import { isApplePlatform } from './sillybunny-platform.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
-import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
+import { openAlert } from './sillybunny-editor/dialog.js';
 import { createRow } from './sillybunny-editor/rows.js';
 import { createProfileRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
@@ -712,21 +712,21 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261112a', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261112c1', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261112a', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
-        { href: 'css/sillybunny-editor-shell.css?v=20261112a', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-world-info-editor.css?v=20261112a', id: 'deferred-world-info-editor-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261112c1', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-world-info-editor.css?v=20261112c1', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
-        { href: 'css/sillybunny-editor-shell.css?v=20261112a', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261112c1', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112d', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261029a', id: 'deferred-persona-editor-css' },
-        { href: 'css/sillybunny-persona-detail.css?v=20261018a', id: 'deferred-persona-detail-css' },
+        { href: 'css/sillybunny-persona-detail.css?v=20261112c1', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
@@ -739,7 +739,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-character-list.css?v=20261027a', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261112a', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261112c1', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112d', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261018a', id: 'deferred-character-import-css' },
     ],
@@ -1479,7 +1479,6 @@ const sbState = {
     mobileQuickActions: [],
     chatbar: {
         sidebar: null,
-        mobileTools: null,
         visible: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), true),
         searchQuery: '',
         searchTimer: 0,
@@ -1489,12 +1488,7 @@ const sbState = {
         pendingSearchScroll: false,
         isApplyingSearch: false,
         chatObserver: null,
-        sourceObserver: null,
-        sourceSelectObserver: null,
-        sourceObservedElement: null,
-        sourceChangeHandler: null,
         sidebarOpen: false,
-        mobileToolsOpen: false,
         bindingRetryTimer: 0,
         boundEventSource: null,
         windowBindingsAttached: false,
@@ -3950,7 +3944,6 @@ function returnToChatSurface() {
     closeShell('right');
     closeCharacterPanel();
     closeMobileNav();
-    closeMobileChatTools();
 }
 
 function bindTopBarTitle(title) {
@@ -4409,32 +4402,6 @@ function bindSearchShortcutPreFocus(button, targetGetter) {
     button.addEventListener('touchstart', openAndFocusSearch, { passive: true });
 }
 
-function createTopBarIconButton({ id = '', icon, title, className = '', label = '' }, onClick) {
-    const button = createElement('button', {
-        id,
-        className: `sb-chatbar-button ${className}`.trim(),
-        attrs: {
-            type: 'button',
-            title,
-            'aria-label': title,
-        },
-    });
-
-    button.innerHTML = `
-        <i class="fa-solid ${icon}" aria-hidden="true"></i>
-        ${label ? `<span>${label}</span>` : ''}
-    `;
-
-    // Only stop mousedown/pointerdown propagation — stopping touchstart
-    // interferes with mobile click synthesis and causes double-tap issues.
-    const stop = event => event.stopPropagation();
-    button.addEventListener('mousedown', stop);
-    button.addEventListener('pointerdown', stop);
-    button.addEventListener('click', onClick);
-
-    return button;
-}
-
 function getChatbarState() {
     return sbState.chatbar;
 }
@@ -4634,24 +4601,8 @@ function bindTopbarDragEvents() {
     window.addEventListener('touchcancel', endTopbarDrag);
 }
 
-function getChatMobileRefs() {
-    return getChatbarState().mobileTools;
-}
-
 function getChatSidebarRefs() {
     return getChatbarState().sidebar;
-}
-
-function escapeSelectorValue(value) {
-    if (globalThis.CSS?.escape) {
-        return globalThis.CSS.escape(String(value ?? ''));
-    }
-
-    return String(value ?? '').replace(/["\\]/g, '\\$&');
-}
-
-function stripDecoratedOptionText(value) {
-    return String(value ?? '').replace(/[[(].*?[\])]/g, '').trim();
 }
 
 function getRequestHeadersFromContext(context = getSillyTavernContext()) {
@@ -4925,7 +4876,7 @@ async function getChatFilesForContext(chatContext = getChatUiContext()) {
         : fetchCharacterChatFiles(chatContext);
 }
 
-async function openChatById(chatId, { closeMobileTools = false } = {}) {
+async function openChatById(chatId) {
     const nextChatId = normalizeChatFileName(chatId);
     const chatContext = getChatUiContext();
 
@@ -4934,9 +4885,6 @@ async function openChatById(chatId, { closeMobileTools = false } = {}) {
     }
 
     if (nextChatId === chatContext.chatId) {
-        if (closeMobileTools) {
-            closeMobileChatTools();
-        }
         return;
     }
 
@@ -4947,10 +4895,6 @@ async function openChatById(chatId, { closeMobileTools = false } = {}) {
             await chatContext.context.openCharacterChat?.(nextChatId);
         }
     } finally {
-        if (closeMobileTools) {
-            closeMobileChatTools();
-        }
-
         scheduleChatbarRefresh(80);
     }
 }
@@ -5124,18 +5068,6 @@ async function handleMassDeleteChats() {
     }
 }
 
-async function handleCloseChat() {
-    const chatContext = getChatUiContext();
-
-    if (typeof chatContext.context?.closeCurrentChat === 'function') {
-        await chatContext.context.closeCurrentChat();
-    } else {
-        document.getElementById('option_close_chat')?.click();
-    }
-
-    scheduleChatbarRefresh(80);
-}
-
 function handleNewChat() {
     document.getElementById('option_start_new_chat')?.click();
     scheduleChatbarRefresh(100);
@@ -5143,20 +5075,6 @@ function handleNewChat() {
 
 function handleChatManagerClick() {
     document.getElementById('option_select_chat')?.click();
-}
-
-function createChatField({ id = '', icon, title, tagName = 'label', className = '' }) {
-    const field = createElement(tagName, {
-        id,
-        className: `sb-chatbar-field ${className}`.trim(),
-        attrs: {
-            title,
-        },
-    });
-    const fieldIcon = createElement('i', { className: `fa-solid ${icon}` });
-
-    field.appendChild(fieldIcon);
-    return field;
 }
 
 function setButtonDisabled(button, disabled) {
@@ -5180,16 +5098,14 @@ function setButtonPressed(button, pressed) {
 function setSearchStatusText(statusText) {
     const normalizedText = String(statusText ?? '').trim();
 
-    for (const refs of [getChatMobileRefs(), getBottomChatBarState()]) {
-        const status = refs?.searchStatus;
-        if (!(status instanceof HTMLElement)) {
-            continue;
-        }
-
-        status.textContent = normalizedText;
-        status.title = normalizedText;
-        status.hidden = !normalizedText;
+    const status = getBottomChatBarState()?.searchStatus;
+    if (!(status instanceof HTMLElement)) {
+        return;
     }
+
+    status.textContent = normalizedText;
+    status.title = normalizedText;
+    status.hidden = !normalizedText;
 }
 
 function getChatScrollElement() {
@@ -5247,57 +5163,9 @@ function countRegexMatches(value, regex) {
     return Array.from(text.matchAll(regex)).length;
 }
 
-function populateChatSelector(select, chatFiles, chatContext, placeholder) {
-    if (!(select instanceof HTMLSelectElement)) {
-        return;
-    }
-
-    const currentValue = String(chatContext.chatId ?? '').trim();
-    const uniqueChats = Array.from(chatFiles.reduce((map, chatFile) => {
-        const fileName = String(chatFile?.fileName ?? chatFile ?? '').trim();
-        if (fileName && !map.has(fileName)) {
-            map.set(fileName, {
-                fileName,
-                tokenEstimate: Number(chatFile?.tokenEstimate ?? 0) || 0,
-            });
-        }
-
-        return map;
-    }, new Map()).values()).sort((left, right) => left.fileName.localeCompare(right.fileName));
-
-    select.replaceChildren();
-
-    if (!uniqueChats.length) {
-        const option = createElement('option', { text: placeholder });
-        option.value = '';
-        option.selected = true;
-        select.appendChild(option);
-        select.disabled = true;
-        return;
-    }
-
-    for (const chat of uniqueChats) {
-        const chatName = chat.fileName;
-        const option = createElement('option', { text: formatChatSelectorLabel(chatName, chat.tokenEstimate) });
-        option.value = chatName;
-        option.selected = chatName === currentValue;
-        select.appendChild(option);
-    }
-
-    if (currentValue && !uniqueChats.some(chat => chat.fileName === currentValue)) {
-        const option = createElement('option', { text: describeChatName(currentValue) });
-        option.value = currentValue;
-        option.selected = true;
-        select.appendChild(option);
-    }
-
-    select.disabled = false;
-    select.value = currentValue || uniqueChats[0].fileName;
-}
-
-function createChatFileButton(chatFile, currentChatId, onSelect, { compact = false } = {}) {
+function createChatFileButton(chatFile, currentChatId, onSelect) {
     const button = createElement('button', {
-        className: `sb-chat-file ${compact ? 'is-compact' : ''}`.trim(),
+        className: 'sb-chat-file',
         attrs: {
             type: 'button',
         },
@@ -5324,7 +5192,7 @@ function createChatFileButton(chatFile, currentChatId, onSelect, { compact = fal
     return button;
 }
 
-function renderChatFiles(listRoot, files, currentChatId, { compact = false, emptyTitle = 'No chats yet.', emptyBody = 'Start a chat to see it here.', onSelect } = {}) {
+function renderChatFiles(listRoot, files, currentChatId, { emptyTitle = 'No chats yet.', emptyBody = 'Start a chat to see it here.', onSelect } = {}) {
     if (!(listRoot instanceof HTMLElement)) {
         return;
     }
@@ -5332,14 +5200,14 @@ function renderChatFiles(listRoot, files, currentChatId, { compact = false, empt
     listRoot.replaceChildren();
 
     if (!files.length) {
-        const empty = createElement('div', { className: `sb-chat-files-empty ${compact ? 'is-compact' : ''}`.trim() });
+        const empty = createElement('div', { className: 'sb-chat-files-empty' });
         empty.innerHTML = `<strong>${emptyTitle}</strong><p>${emptyBody}</p>`;
         listRoot.appendChild(empty);
         return;
     }
 
     for (const chatFile of files) {
-        listRoot.appendChild(createChatFileButton(chatFile, currentChatId, onSelect, { compact }));
+        listRoot.appendChild(createChatFileButton(chatFile, currentChatId, onSelect));
     }
 }
 
@@ -5427,241 +5295,6 @@ function toggleChatSidebar() {
     setChatSidebarOpenState(!isChatSidebarOpen(), { restoreFocus: true });
 }
 
-function buildMobileChatTools() {
-    const existingMobileTools = getChatMobileRefs();
-    if (existingMobileTools) {
-        return existingMobileTools;
-    }
-
-    const overlay = createElement('div', { className: 'sb-mobile-chat-tools-content' });
-    const panel = createElement('div', { id: 'sb-mobile-chat-tools-panel', attrs: { tabindex: '-1' } });
-    const header = createElement('div', { className: 'sb-mobile-chat-header' });
-    const dismissButton = createTopBarIconButton(
-        {
-            id: 'sb-mobile-chat-close',
-            icon: 'fa-xmark',
-            title: 'Close chat tools',
-            className: 'sb-mobile-chat-close',
-        },
-        () => closeMobileChatTools({ restoreFocus: true }),
-    );
-    const chatSelectField = createChatField({
-        id: 'sb-mobile-chat-select-field',
-        icon: 'fa-comments',
-        title: 'Switch chat',
-        className: 'is-mobile',
-    });
-    const chatSelect = createElement('select', {
-        id: 'sb-mobile-chat-select',
-        className: 'text_pole',
-        attrs: {
-            'aria-label': 'Switch chat',
-        },
-    });
-    const searchField = createChatField({
-        id: 'sb-mobile-chat-search-field',
-        icon: 'fa-magnifying-glass',
-        title: 'Search all messages in this chat, including hidden messages',
-        className: 'is-mobile',
-    });
-    const searchInput = createElement('input', {
-        id: 'sb-mobile-chat-search',
-        className: 'text_pole',
-        attrs: {
-            type: 'search',
-            placeholder: 'Search this chat...',
-            'aria-label': 'Search all messages in this chat',
-        },
-    });
-    const searchStatus = createElement('small', { className: 'sb-chatbar-search-status' });
-    const actions = createElement('div', { className: 'sb-mobile-chat-actions' });
-    const recentSection = createElement('section', { className: 'sb-mobile-chat-section' });
-    const recentTitle = createElement('strong', { className: 'sb-mobile-chat-section-title', text: 'Recent Chats' });
-    const recentList = createElement('div', { className: 'sb-mobile-chat-files' });
-    const connectionSection = createElement('section', { className: 'sb-mobile-chat-section sb-mobile-chat-connection' });
-    const connectionTitle = createElement('strong', { className: 'sb-mobile-chat-section-title', text: 'Connection Profile' });
-    const connectionField = createChatField({
-        id: 'sb-mobile-chat-connection-field',
-        icon: 'fa-plug',
-        title: 'Switch connection profile',
-        className: 'is-mobile',
-    });
-    const connectionSelect = createElement('select', {
-        id: 'sb-mobile-chat-connection-select',
-        className: 'text_pole',
-        attrs: {
-            'aria-label': 'Switch connection profile',
-        },
-    });
-    const connectionStatus = createElement('small', { className: 'sb-mobile-chat-connection-status' });
-
-    searchStatus.hidden = true;
-    connectionSection.hidden = true;
-
-    chatSelectField.appendChild(chatSelect);
-    searchField.append(searchInput, searchStatus);
-    connectionField.appendChild(connectionSelect);
-    connectionSection.append(connectionTitle, connectionField, connectionStatus);
-    header.append(searchField, dismissButton);
-
-    const buttons = {
-        managerButton: createTopBarIconButton({ icon: 'fa-address-book', title: 'View chat files', className: 'is-mobile-compact' }, handleChatManagerClick),
-        newButton: createTopBarIconButton({ icon: 'fa-comments', title: 'Start a new chat', className: 'is-mobile-compact' }, handleNewChat),
-        renameButton: createTopBarIconButton({ icon: 'fa-pen', title: 'Rename this chat', className: 'is-mobile-compact' }, () => { void handleRenameChat(); }),
-        deleteButton: createTopBarIconButton({ icon: 'fa-trash', title: 'Delete this chat', className: 'is-mobile-compact' }, () => { void handleDeleteChat(); }),
-        closeButton: createTopBarIconButton({ icon: 'fa-xmark', title: 'Close this chat', className: 'is-mobile-compact' }, () => { void handleCloseChat(); }),
-    };
-
-    actions.append(
-        buttons.managerButton,
-        buttons.newButton,
-        buttons.renameButton,
-        buttons.deleteButton,
-        buttons.closeButton,
-    );
-
-    recentSection.append(recentTitle, recentList);
-    panel.append(header, chatSelectField, actions, connectionSection, recentSection);
-    overlay.appendChild(panel);
-
-    panel.addEventListener('keydown', event => {
-        if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented || !getChatbarState().mobileToolsOpen) {
-            return;
-        }
-
-        // The chat files list and legacy popups sit above the sheet; their own Escape closes them first.
-        if (['#dialogue_popup', '#select_chat_popup'].some(selector => isVisibleCharacterDrawerEscapeControl(document.querySelector(selector)))) {
-            return;
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
-
-        // A search with text clears first, like the settings search.
-        if (event.target === searchInput && searchInput.value) {
-            setChatSearchQuery('');
-            return;
-        }
-
-        closeMobileChatTools({ restoreFocus: true });
-    });
-
-    chatSelect.addEventListener('change', () => {
-        void openChatById(chatSelect.value, { closeMobileTools: true });
-    });
-    searchInput.addEventListener('input', () => setChatSearchQuery(searchInput.value, { source: searchInput }));
-    connectionSelect.addEventListener('change', () => {
-        syncConnectionProfileSelection(connectionSelect.value);
-    });
-
-    // SillyBunny: keep the detached dialog content out of the page until its modal host owns it.
-    overlay.hidden = true;
-    overlay.setAttribute('aria-hidden', 'true');
-    if ('inert' in overlay) overlay.inert = true;
-    document.body.appendChild(overlay);
-
-    getChatbarState().mobileTools = {
-        overlay: null,
-        content: overlay,
-        panel,
-        chatSelect,
-        searchInput,
-        searchStatus,
-        recentList,
-        connectionSection,
-        connectionSelect,
-        connectionStatus,
-        restoreFocusAfterClose: false,
-        ...buttons,
-    };
-
-    return getChatbarState().mobileTools;
-}
-
-function setMobileChatToolsOpenState(shouldOpen, { restoreFocus = false } = {}) {
-    const refs = buildMobileChatTools();
-    const isOpen = Boolean(shouldOpen) && isMobileViewport();
-
-    if (!refs?.content) {
-        return;
-    }
-
-    const wasOpen = getChatbarState().mobileToolsOpen;
-    getChatbarState().mobileToolsOpen = isOpen;
-    if (isOpen && !wasOpen) {
-        refs.content.hidden = false;
-        refs.content.setAttribute('aria-hidden', 'false');
-        if ('inert' in refs.content) refs.content.inert = false;
-        const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        refs.restoreFocusAfterClose = false;
-        const dialog = openDialog({
-            tier: 'dialog',
-            title: t`Chat actions`,
-            content: refs.content,
-            className: 'sb-mobile-chat-tools-dialog',
-            initialFocus: () => refs.panel,
-        });
-        const sourceHeader = refs.content.querySelector('.sb-mobile-chat-header');
-        const searchField = sourceHeader?.querySelector('#sb-mobile-chat-search-field');
-        const closeButton = sourceHeader?.querySelector('#sb-mobile-chat-close');
-        if (searchField) refs.panel.prepend(searchField);
-        sourceHeader?.remove();
-        dialog.header.querySelector('.sb-dialog__close')?.remove();
-        if (closeButton) dialog.header.querySelector('.sb-dialog__header-end')?.append(closeButton);
-        dialog.root.id = 'sb-mobile-chat-tools';
-        dialog.root.classList.add('sb-chat-tools-open');
-        dialog.root.setAttribute('aria-hidden', 'false');
-        refs.overlay = dialog.root;
-        refs.dialog = dialog;
-        dialog.root.addEventListener('cancel', () => { refs.restoreFocusAfterClose = true; });
-        dialog.closed.then(() => {
-            if (refs.dialog !== dialog) return;
-            const shouldRestoreFocus = refs.restoreFocusAfterClose;
-            refs.restoreFocusAfterClose = false;
-            refs.dialog = null;
-            refs.overlay = null;
-            sourceHeader.append(closeButton);
-            refs.content.prepend(sourceHeader);
-            refs.content.hidden = true;
-            refs.content.setAttribute('aria-hidden', 'true');
-            if ('inert' in refs.content) refs.content.inert = true;
-            getChatbarState().mobileToolsOpen = false;
-            queueMobileModalStateSync();
-            if (shouldRestoreFocus && returnFocus?.isConnected) {
-                window.requestAnimationFrame(() => {
-                    if (!returnFocus.isConnected || returnFocus.closest('[inert]')) return;
-                    returnFocus.focus({ preventScroll: true });
-                });
-            }
-        });
-        scheduleChatbarRefresh(0);
-    } else if (wasOpen) {
-        refs.overlay?.setAttribute('aria-hidden', 'true');
-        refs.overlay?.classList.remove('sb-chat-tools-open');
-        refs.restoreFocusAfterClose = restoreFocus;
-        if (restoreFocus) refs.dialog?.close('close');
-        else refs.dialog?.forceClose();
-    }
-
-    queueMobileModalStateSync();
-}
-
-function openMobileChatTools() {
-    if (!isMobileViewport()) {
-        return;
-    }
-
-    applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-        surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,
-        isMobileViewport: isMobileViewport(),
-    }));
-    setMobileChatToolsOpenState(true);
-}
-
-function closeMobileChatTools({ restoreFocus = false } = {}) {
-    setMobileChatToolsOpenState(false, { restoreFocus });
-}
-
 function getMobileShellSurfaceForShell(shellKey) {
     if (shellKey === 'left') {
         return sbMobileShellLifecycle.overlays.surface.LEFT_SHELL;
@@ -5689,7 +5322,6 @@ function applyMobileSurfaceExclusivity(decision) {
         [surface.LEFT_SHELL]: () => closeShell('left'),
         [surface.RIGHT_SHELL]: () => closeShell('right'),
         [surface.CHARACTER_PANEL]: () => closeCharacterPanel(),
-        [surface.CHAT_TOOLS]: () => closeMobileChatTools(),
     };
 
     for (const closeSurfaceKey of decision.closeSurfaces) {
@@ -5700,38 +5332,6 @@ function applyMobileSurfaceExclusivity(decision) {
 
         close();
     }
-}
-
-function toggleMobileChatTools() {
-    const shouldOpen = !getChatbarState().mobileToolsOpen;
-
-    if (shouldOpen) {
-        applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({
-            surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,
-            isMobileViewport: isMobileViewport(),
-        }));
-    }
-
-    setMobileChatToolsOpenState(shouldOpen);
-}
-
-function syncConnectionProfileSelection(value) {
-    const sourceSelect = document.getElementById('connection_profiles');
-
-    if (!(sourceSelect instanceof HTMLSelectElement)) {
-        return;
-    }
-
-    const syncState = sbPresetApiSyncLifecycle.connectionProfiles.resolveSelectionSync({
-        requestedValue: value,
-        currentValue: sourceSelect.value,
-    });
-    if (!syncState.shouldSync) {
-        return;
-    }
-
-    sourceSelect.value = syncState.nextValue;
-    sourceSelect.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 function getCurrentMainApiValue() {
@@ -6088,11 +5688,8 @@ function setChatSearchQuery(value, { source = null } = {}) {
     chatbarState.searchQuery = nextValue;
     chatbarState.searchApplyToken += 1;
 
-    for (const input of [getChatMobileRefs()?.searchInput, getBottomChatBarState()?.searchInput]) {
-        if (!(input instanceof HTMLInputElement) || input === source) {
-            continue;
-        }
-
+    const input = getBottomChatBarState()?.searchInput;
+    if (input instanceof HTMLInputElement && input !== source) {
         input.value = nextValue;
     }
 
@@ -6282,156 +5879,12 @@ function initChatSearchObserver() {
     getChatbarState().chatObserver = observer;
 }
 
-async function getConnectionStatusText() {
-    const context = getSillyTavernContext();
-
-    if (!context) {
-        return '';
-    }
-
-    if (context.onlineStatus === 'no_connection') {
-        return 'No connection...';
-    }
-
-    let apiValue = String(context.mainApi ?? 'Connected').trim();
-    let modelValue = String(context.onlineStatus ?? '').trim();
-
-    try {
-        const nextApiValue = await context.SlashCommandParser?.commands?.api?.callback?.({ quiet: 'true' }, '');
-        if (nextApiValue) {
-            apiValue = String(nextApiValue).trim();
-        }
-    } catch {
-        // Ignore slash command lookup failures and use the current context values.
-    }
-
-    try {
-        const nextModelValue = await context.SlashCommandParser?.commands?.model?.callback?.({ quiet: 'true' }, '');
-        if (typeof nextModelValue === 'string' && nextModelValue.trim()) {
-            modelValue = nextModelValue.trim();
-        }
-    } catch {
-        // Ignore slash command lookup failures and use the current context values.
-    }
-
-    // SillyBunny: the provider selects live in the Connections panel, so the model options this
-    // reads are not in `#rm_api_block`, which only carries `#main_api`. The panel is searched first and the block is kept as the fallback for the window
-    // before the panel is built.
-    const apiBlock = document.querySelector('.sb-connections-panel') ?? document.getElementById('rm_api_block');
-
-    if (apiBlock instanceof HTMLElement) {
-        const apiOption = apiBlock.querySelector(`select:not(#main_api) option[value="${escapeSelectorValue(apiValue)}"]`)
-            ?? apiBlock.querySelector(`select#main_api option[value="${escapeSelectorValue(apiValue)}"]`);
-        const modelOption = apiBlock.querySelector(`option[value="${escapeSelectorValue(modelValue)}"]`);
-
-        apiValue = stripDecoratedOptionText(apiOption?.textContent ?? apiValue);
-        modelValue = stripDecoratedOptionText(modelOption?.textContent ?? modelValue);
-    }
-
-    return modelValue ? `${apiValue} - ${modelValue}` : apiValue;
-}
-
-function nodeTouchesConnectionProfilesSource(node) {
-    if (!(node instanceof Element)) {
-        return false;
-    }
-
-    return node.id === 'connection_profiles' || Boolean(node.querySelector('#connection_profiles'));
-}
-
-function mutationTouchesConnectionProfilesSource(mutation) {
-    if (nodeTouchesConnectionProfilesSource(mutation.target)) {
-        return true;
-    }
-
-    for (const node of mutation.addedNodes) {
-        if (nodeTouchesConnectionProfilesSource(node)) {
-            return true;
-        }
-    }
-
-    for (const node of mutation.removedNodes) {
-        if (nodeTouchesConnectionProfilesSource(node)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-function bindConnectionProfileSourceElement(sourceElement) {
-    const chatbarState = getChatbarState();
-    const normalizedSource = sourceElement instanceof HTMLSelectElement ? sourceElement : null;
-
-    if (chatbarState.sourceObservedElement === normalizedSource) {
-        return;
-    }
-
-    if (chatbarState.sourceObservedElement instanceof HTMLSelectElement && typeof chatbarState.sourceChangeHandler === 'function') {
-        chatbarState.sourceObservedElement.removeEventListener('change', chatbarState.sourceChangeHandler);
-    }
-
-    chatbarState.sourceSelectObserver?.disconnect();
-    chatbarState.sourceObservedElement = normalizedSource;
-    chatbarState.sourceChangeHandler = null;
-
-    if (!(normalizedSource instanceof HTMLSelectElement)) {
-        return;
-    }
-
-    if (!chatbarState.sourceSelectObserver) {
-        chatbarState.sourceSelectObserver = new MutationObserver(() => {
-            scheduleChatbarRefresh(60);
-        });
-    }
-
-    const handleSourceChange = () => {
-        scheduleChatbarRefresh(0);
-    };
-
-    chatbarState.sourceChangeHandler = handleSourceChange;
-    normalizedSource.addEventListener('change', handleSourceChange);
-    chatbarState.sourceSelectObserver.observe(normalizedSource, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['disabled'],
-    });
-}
-
-function bindConnectionProfileSourceObserver() {
-    const chatbarState = getChatbarState();
-    if (chatbarState.sourceObserver) {
-        bindConnectionProfileSourceElement(document.getElementById('connection_profiles'));
-        return;
-    }
-
-    const observer = new MutationObserver(mutations => {
-        if (!mutations.some(mutationTouchesConnectionProfilesSource)) {
-            return;
-        }
-
-        bindConnectionProfileSourceElement(document.getElementById('connection_profiles'));
-        scheduleChatbarRefresh(60);
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-    chatbarState.sourceObserver = observer;
-    bindConnectionProfileSourceElement(document.getElementById('connection_profiles'));
-}
-
 async function refreshChatbarState() {
     const chatbarState = getChatbarState();
     const refreshToken = ++chatbarState.refreshToken;
-    const mobileRefs = getChatMobileRefs();
-
-    if (!mobileRefs) {
-        return;
-    }
 
     const chatContext = getChatUiContext();
     const files = await getChatFilesForContext(chatContext);
-    const connectionStatusText = await getConnectionStatusText();
 
     if (refreshToken !== chatbarState.refreshToken) {
         return;
@@ -6443,46 +5896,8 @@ async function refreshChatbarState() {
         files.unshift(normalizeChatInfo(chatContext.chatId));
     }
 
-    populateChatSelector(mobileRefs?.chatSelect, files, chatContext, chatContext.canBrowseChats ? 'No saved chats yet' : 'No chat selected');
-
-    if (mobileRefs) {
-        setButtonDisabled(mobileRefs.managerButton, !chatContext.canBrowseChats);
-        setButtonDisabled(mobileRefs.newButton, !chatContext.canStartNewChat);
-        setButtonDisabled(mobileRefs.renameButton, !chatContext.hasChat);
-        setButtonDisabled(mobileRefs.deleteButton, !chatContext.hasChat);
-        setButtonDisabled(mobileRefs.closeButton, !chatContext.hasChat);
-        setButtonDisabled(mobileRefs.chatSelect, !chatContext.canBrowseChats);
-        setButtonDisabled(mobileRefs.searchInput, !chatContext.hasChat);
-    }
-
-    const connectionProfilesSource = document.getElementById('connection_profiles');
-    const hasConnectionProfiles = connectionProfilesSource instanceof HTMLSelectElement;
-    const connectionMirrorState = sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorState({
-        hasConnectionProfiles,
-    });
-
-    if (connectionMirrorState.shouldClearMirrors) {
-        if (mobileRefs?.connectionSection instanceof HTMLElement) {
-            mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
-            mobileRefs.connectionSelect.replaceChildren();
-            mobileRefs.connectionStatus.textContent = '';
-        }
-    } else {
-        const optionsMarkup = connectionProfilesSource.innerHTML;
-        if (mobileRefs?.connectionSection instanceof HTMLElement) {
-            mobileRefs.connectionSection.hidden = !connectionMirrorState.shouldShowMobileSection;
-            mobileRefs.connectionSelect.innerHTML = optionsMarkup;
-            mobileRefs.connectionSelect.value = connectionProfilesSource.value;
-            mobileRefs.connectionStatus.textContent = connectionStatusText;
-        }
-    }
-
     renderChatFiles(getChatSidebarRefs()?.list, files, chatContext.chatId, {
         onSelect: chatId => openChatById(chatId),
-    });
-    renderChatFiles(mobileRefs?.recentList, files, chatContext.chatId, {
-        compact: true,
-        onSelect: chatId => openChatById(chatId, { closeMobileTools: true }),
     });
 
     if (!chatContext.canBrowseChats) {
@@ -6549,7 +5964,6 @@ function bindChatbarEvents() {
 
     bindChatbarWindowEvents();
     initChatSearchObserver();
-    bindConnectionProfileSourceObserver();
 
     if (!eventSource || !eventTypes) {
         scheduleChatbarRefresh(0);
@@ -6688,13 +6102,11 @@ function isMobileOverlayActuallyOpen(overlayRootOrId, openClass) {
 }
 
 function getMobileModalRootCandidates() {
-    const chatTools = getChatbarState().mobileTools?.overlay ?? document.getElementById('sb-mobile-chat-tools');
     return [
         document.getElementById(getShellConfig('left').rootPanelId),
         document.getElementById(getShellConfig('right').rootPanelId),
         getCharacterPanel(),
         document.getElementById('sb-mobile-nav'),
-        chatTools,
     ].filter(element => element instanceof HTMLElement);
 }
 
@@ -6705,10 +6117,6 @@ function isMobileModalRootOpen(root) {
 
     if (root.id === 'sb-mobile-nav') {
         return isMobileOverlayActuallyOpen(root, 'sb-nav-open');
-    }
-
-    if (root.id === 'sb-mobile-chat-tools') {
-        return isMobileOverlayActuallyOpen(root, 'sb-chat-tools-open');
     }
 
     return isDrawerActuallyOpen(root);
@@ -6762,7 +6170,7 @@ function setMobileModalRootA11y(root, isActiveRoot) {
         return;
     }
 
-    const hasManagedAriaState = root.id === 'sb-mobile-nav' || root.id === 'sb-mobile-chat-tools';
+    const hasManagedAriaState = root.id === 'sb-mobile-nav';
 
     if (isActiveRoot) {
         if (hasManagedAriaState) {
@@ -7978,7 +7386,6 @@ function handleHomeStateChanged() {
         return;
     }
 
-    closeMobileChatTools();
     const composer = document.getElementById('form_sheld');
     if (composer?.contains(document.activeElement)) {
         document.activeElement.blur();
@@ -8002,7 +7409,6 @@ async function returnToLandingPage() {
     closeShell('right');
     closeCharacterPanel();
     closeMobileNav();
-    closeMobileChatTools();
 
     if (isLandingPageVisible()) {
         document.getElementById('chat')?.scrollTo({
@@ -14057,7 +13463,6 @@ function syncMobileViewportState() {
     const stepHandlers = {
         [viewportSyncStep.SYNC_SHELL_VIEWPORT_BOUNDS]: () => syncShellViewportBounds(),
         [viewportSyncStep.CLOSE_MOBILE_NAV]: () => closeMobileNav(),
-        [viewportSyncStep.CLOSE_MOBILE_CHAT_TOOLS]: () => closeMobileChatTools(),
         [viewportSyncStep.APPLY_TOPBAR_OFFSET]: () => applyTopbarOffset(),
         [viewportSyncStep.SYNC_CHATBAR_VISIBILITY_STATE]: () => syncChatbarVisibilityState(),
         [viewportSyncStep.UPDATE_TOP_BAR_BRAND]: () => updateTopBarBrand(),
@@ -15058,7 +14463,6 @@ function initAll() {
     buildShell('left');
     buildShell('right');
     buildMobileNav();
-    buildMobileChatTools();
     injectCharacterDrawerControls();
     bindCharacterEditorExitButton();
     bindCharacterDrawerStateObserver();
@@ -15234,18 +14638,9 @@ function initAll() {
         // Kept as a no-op for extensions; panels are no longer resizable drawers.
         setDesktopShellSnapToChatWidth() {},
         setMessageStyle,
-        openChatTools() {
-            if (isMobileViewport()) {
-                openMobileChatTools();
-                return;
-            }
-
-            setChatSidebarOpenState(true);
-        },
         toggleChatSidebar() {
             toggleChatSidebar();
         },
-        toggleMobileChatTools,
         toggleChatbarVisibility() {
             toggleChatbarVisibility();
         },

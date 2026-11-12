@@ -7,8 +7,7 @@ import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 test.beforeEach(async ({ page }) => { await protectMaintainerServer(page); });
 
 // Mobile shell smoke pack: pins the open/close contracts of the SillyBunny
-// mobile shell (settings page, section navigation, chat tools, character
-// panel) so shell refactors have a net.
+// mobile shell (settings page, section navigation, character panel) so shell refactors have a net.
 // Run with: SILLYBUNNY_TEST_BASE_URL=http://127.0.0.1:<port> npx playwright test mobile-shell-smoke.e2e.js
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
@@ -24,7 +23,6 @@ const VIEWPORT_SURFACE_SELECTOR = [
     '#sb-settings-page.sb-settings-page--content:not([hidden]) #sb-settings-content',
     '#sb-settings-page.sb-settings-page--content:not([hidden]) .sb-settings-active-root',
     '#sb-mobile-nav.sb-nav-open',
-    '#sb-mobile-chat-tools.sb-chat-tools-open',
     '#sb-universal-search.is-open .sb-universal-search-panel',
     '#sb-persona-picker',
     '.options-content',
@@ -131,7 +129,6 @@ function getOverlayStateSnapshot(page) {
 
         return {
             navOpen: isOverlayOpen('sb-mobile-nav', 'sb-nav-open'),
-            chatToolsOpen: isOverlayOpen('sb-mobile-chat-tools', 'sb-chat-tools-open'),
             leftShellOpen: isSettingsSectionOpen('left-nav-panel'),
             rightShellOpen: isSettingsSectionOpen('user-settings-block'),
             characterPanelOpen: isSettingsSectionOpen('right-nav-panel'),
@@ -365,29 +362,15 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await expect(chip).toBeFocused();
     });
 
-    test('opening each overlay closes competing mobile surfaces', async ({ page }, testInfo) => {
+    test('opening each overlay closes competing mobile surfaces', async ({ page }) => {
         await openLeftShell(page);
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
             navOpen: false,
-            chatToolsOpen: false,
             leftShellOpen: true,
             rightShellOpen: false,
             characterPanelOpen: false,
         });
-
-        // openMobileChatTools closes the nav and the settings page.
-        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-
-        await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
-            navOpen: false,
-            chatToolsOpen: true,
-            leftShellOpen: false,
-            rightShellOpen: false,
-            characterPanelOpen: false,
-        });
-
-        await captureCheckpoint(page, testInfo, 'chat-tools');
 
         // toggleCharacterPanel opens Characters in the settings page and
         // closes the competing mobile surfaces first.
@@ -395,7 +378,6 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
             navOpen: false,
-            chatToolsOpen: false,
             leftShellOpen: false,
             rightShellOpen: false,
             characterPanelOpen: true,
@@ -406,36 +388,11 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
             navOpen: false,
-            chatToolsOpen: false,
             leftShellOpen: false,
             rightShellOpen: true,
             characterPanelOpen: false,
         });
 
-        await expectNoDocumentOverflow(page);
-    });
-
-    test('chat tools close on Escape and hand focus back', async ({ page }) => {
-        await selectSampleCharacter(page);
-        const composer = page.locator('#send_textarea');
-
-        await composer.focus();
-        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
-        // Opening moves focus into the sheet, so Escape reaches its handler.
-        await expect(page.locator('#sb-mobile-chat-tools-panel')).toBeFocused();
-
-        await page.keyboard.press('Escape');
-
-        await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
-            navOpen: false,
-            chatToolsOpen: false,
-            leftShellOpen: false,
-            rightShellOpen: false,
-            characterPanelOpen: false,
-        });
-        await expect(page.locator('#sb-settings-page')).toHaveAttribute('hidden', '');
-        await expect(composer).toBeFocused();
         await expectNoDocumentOverflow(page);
     });
 
@@ -500,12 +457,6 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
             await new Promise(resolve => setTimeout(resolve, 30));
         });
         expect(detachedAutocompleteErrors).toEqual([]);
-
-        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-        await checkpoint('Chat tools · open');
-        await page.locator('#sb-mobile-chat-close').click();
-        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: false });
-        await checkpoint('Chat tools · closed');
 
         await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
         await checkpoint('Global search · open');
@@ -903,10 +854,11 @@ test.describe('mobile shell smoke at tablet 768x1024', () => {
         await expect(page.locator('#sb-settings-content')).toBeInViewport({ ratio: 1 });
         await expect(page.locator('#sb-settings-sidebar')).not.toBeInViewport();
 
-        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
+        // Opening another surface closes the settings page.
+        await page.evaluate(() => window.SillyBunnyShell.openCharacters());
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({
-            chatToolsOpen: true,
+            characterPanelOpen: true,
             leftShellOpen: false,
         });
 
@@ -937,17 +889,6 @@ test.describe('compact desktop smoke at 820x1180', () => {
         await expect(page.locator('#sb-settings-back')).toBeHidden();
         await expect(page.locator('#sb-settings-sidebar')).toBeInViewport({ ratio: 1 });
         await expect(page.locator('#sb-settings-content')).toBeInViewport({ ratio: 1 });
-
-        // openChatTools routes to the desktop chat sidebar above 768px; the
-        // mobile chat tools overlay must stay closed.
-        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-        await waitForAnimationFrames(page, 2);
-
-        await expect.poll(async () => {
-            const overlayState = await getOverlayStateSnapshot(page);
-
-            return overlayState.chatToolsOpen;
-        }).toBe(false);
 
         await expectNoDocumentOverflow(page);
     });
@@ -1138,50 +1079,5 @@ test.describe('desktop Escape at 1264x800', () => {
         await expect(portrait).toHaveCount(0);
         await expect(chatSidebar).toBeAttached();
         await expect(settingsPage).toHaveAttribute('hidden', '');
-    });
-});
-
-test.describe('mobile chat tools with a chat at iPhone 390x844', () => {
-    test.use({
-        viewport: { width: 390, height: 844 },
-        isMobile: true,
-        hasTouch: true,
-        userAgent: IPHONE_USER_AGENT,
-    });
-
-    test('Escape clears the search, then closes the chat files list, then the sheet', async ({ page }) => {
-        await openQuietChatForSmoke(page);
-        await clearToasts(page);
-        const search = page.locator('#sb-mobile-chat-search');
-        const chatFilesButton = page.locator('#sb-mobile-chat-tools-panel .sb-mobile-chat-actions button[title="View chat files"]');
-        // The shared Window owns Chat History; the legacy shadow id stays attached but hidden for compatibility.
-        const chatFiles = page.locator('.sb-dialog-host .sb-dialog__page.sb-chat-history-dialog');
-        const authorsNote = page.locator('#floatingPrompt');
-
-        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
-
-        // A search with text clears first and keeps the sheet open.
-        await search.fill('Seraphina');
-        await page.keyboard.press('Escape');
-        await expect(search).toHaveValue('');
-        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
-
-        // The chat files list opens above the sheet; its Escape closes only the list.
-        await chatFilesButton.click();
-        await expect(chatFiles).toBeVisible();
-        await chatFilesButton.focus();
-        await page.keyboard.press('Escape');
-        await expect(chatFiles).toHaveCount(0);
-        await expect(page.locator('#shadow_select_chat_popup')).toBeHidden();
-        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: true });
-
-        await page.evaluate(() => window.SillyBunnySidePanels.openSidePanel('floatingPrompt'));
-        await page.locator('#sb-mobile-chat-tools-panel').focus();
-        await page.keyboard.press('Escape');
-        await expect.poll(() => getOverlayStateSnapshot(page)).toMatchObject({ chatToolsOpen: false });
-        await expect(authorsNote).toBeVisible();
-        await expect(page.locator('#sb-settings-page')).toHaveAttribute('hidden', '');
-        await page.evaluate(() => window.SillyBunnySidePanels.closeSidePanel('floatingPrompt', { restoreFocus: false }));
     });
 });

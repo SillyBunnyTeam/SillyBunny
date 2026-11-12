@@ -761,8 +761,6 @@ describe('mobile shell lifecycle wiring', () => {
 
     test('routes mobile overlay exclusivity through the lifecycle seam', () => {
         const applyExclusivitySource = getFunctionSource('applyMobileSurfaceExclusivity');
-        const openMobileChatToolsSource = getFunctionSource('openMobileChatTools');
-        const toggleMobileChatToolsSource = getFunctionSource('toggleMobileChatTools');
         const toggleCharacterPanelSource = getFunctionSource('toggleCharacterPanel');
         const openCharacterWorldInfoTabSource = getFunctionSource('openCharacterWorldInfoTab');
         const closeMobileSurfacesForSettingsPageSource = getFunctionSource('closeMobileSurfacesForSettingsPage');
@@ -773,20 +771,15 @@ describe('mobile shell lifecycle wiring', () => {
         expect(applyExclusivitySource).toContain('[surface.LEFT_SHELL]: () => closeShell(\'left\'),');
         expect(applyExclusivitySource).toContain('[surface.RIGHT_SHELL]: () => closeShell(\'right\'),');
         expect(applyExclusivitySource).toContain('[surface.CHARACTER_PANEL]: () => closeCharacterPanel(),');
-        expect(applyExclusivitySource).toContain('[surface.CHAT_TOOLS]: () => closeMobileChatTools(),');
         expect(applyExclusivitySource).toContain('throw new Error(`Unknown mobile shell surface: ${closeSurfaceKey}`);');
 
         for (const source of [
-            openMobileChatToolsSource,
-            toggleMobileChatToolsSource,
             openCharacterWorldInfoTabSource,
             closeAllDropdownsSource,
         ]) {
             expect(source).toContain('applyMobileSurfaceExclusivity(sbMobileShellLifecycle.overlays.resolveExclusiveOpen({');
         }
 
-        expect(openMobileChatToolsSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,');
-        expect(toggleMobileChatToolsSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHAT_TOOLS,');
         expect(openCharacterWorldInfoTabSource).toContain('surface: sbMobileShellLifecycle.overlays.surface.CHARACTER_PANEL,');
         // Every shell entry point funnels through the settings page, which closes the floating
         // mobile surfaces but never the shell surfaces it is about to host.
@@ -800,7 +793,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(closeAllDropdownsSource).toContain('closeSurfaces: sbMobileShellLifecycle.overlays.closeAllSurfaces,');
         expect(closeAllDropdownsSource).not.toContain('const surfaceByException = {');
 
-        expect(openMobileChatToolsSource).not.toContain('closeMobileNav();\n    closeShell(\'left\');');
         expect(toggleCharacterPanelSource).not.toContain('closeShell(\'left\');\n    closeShell(\'right\');');
         expect(openCharacterWorldInfoTabSource).not.toContain('closeMobileNav();\n    closeShell(\'left\');\n    closeShell(\'right\');');
     });

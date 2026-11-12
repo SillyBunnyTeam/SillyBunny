@@ -73,7 +73,7 @@
         "public/css/sillybunny-folder-manager.css": {
             "radius-literal": 3,
             "important": 1,
-            "spacing-off-scale": 5
+            "spacing-off-scale": 4
         },
         "public/css/sillybunny-home.css": {
             "color-literal": 2,
@@ -97,15 +97,15 @@
         "public/css/sillybunny-mobile-navigation.css": {
             "color-literal-fallback": 2,
             "radius-literal": 7,
-            "important": 43,
-            "spacing-off-scale": 11
+            "important": 33,
+            "spacing-off-scale": 10
         },
         "public/css/sillybunny-mobile-shell.css": {
             "radius-literal": 11,
             "shadow-literal": 2,
-            "important": 332,
+            "important": 330,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 96,
+            "spacing-off-scale": 88,
             "spacing-off-scale-fallback": 3
         },
         "public/css/sillybunny-paper-theme.css": {
@@ -118,7 +118,7 @@
         "public/css/sillybunny-persona-detail.css": {
             "radius-literal": 3,
             "important": 4,
-            "spacing-off-scale": 25
+            "spacing-off-scale": 23
         },
         "public/css/sillybunny-persona-editor.css": {
             "important": 11,
@@ -144,15 +144,15 @@
         "public/css/sillybunny-tabs.css": {
             "color-literal": 6,
             "color-literal-fallback": 8,
-            "radius-literal": 39,
-            "radius-literal-fallback": 27,
-            "shadow-literal": 11,
+            "radius-literal": 34,
+            "radius-literal-fallback": 24,
+            "shadow-literal": 10,
             "duration-literal": 1,
-            "important": 296,
-            "breakpoint-off-set": 17,
-            "breakpoint-1000": 7,
+            "important": 283,
+            "breakpoint-off-set": 16,
+            "breakpoint-1000": 6,
             "focus-outline": 6,
-            "spacing-off-scale": 333,
+            "spacing-off-scale": 309,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-tag-manager.css": {
@@ -167,12 +167,12 @@
             "radius-literal": 46,
             "radius-literal-fallback": 1,
             "shadow-literal": 36,
-            "important": 201,
+            "important": 200,
             "hover-ungated": 6,
             "breakpoint-off-set": 7,
             "breakpoint-1000": 3,
             "focus-outline": 2,
-            "spacing-off-scale": 260,
+            "spacing-off-scale": 254,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-windows.css": {
@@ -182,7 +182,7 @@
         },
         "public/css/sillybunny-world-info-editor.css": {
             "important": 15,
-            "spacing-off-scale": 54
+            "spacing-off-scale": 52
         },
         "public/css/spacing-system.css": {
             "breakpoint-off-set": 1,
@@ -196,7 +196,7 @@
             "spacing-off-scale": 6
         },
         "public/scripts/extensions/in-chat-agents/style.css": {
-            "color-literal-fallback": 23,
+            "color-literal-fallback": 19,
             "radius-literal": 12,
             "radius-literal-fallback": 2,
             "duration-literal": 1,

@@ -90,17 +90,10 @@
   background-color: rgba(255, 255, 255, 0.0625);
 }
 @media (hover: hover) {
-  .stih--history .stih--item:hover,
-  .stih--history .stih--item.stih--chat:not(.stih--current):hover {
+  .stih--history .stih--item:hover {
     opacity: 1;
     background-color: rgba(255, 255, 255, 0.0625);
   }
-}
-.stih--history .stih--item.stih--current {
-  font-weight: bold;
-}
-.stih--history .stih--item.stih--remove {
-  transform: translateX(150%);
 }
 .stih--history .stih--item .stih--icon {
   flex: 0 0 auto;

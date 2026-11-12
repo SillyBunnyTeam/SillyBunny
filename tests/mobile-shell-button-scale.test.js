@@ -21,7 +21,6 @@ describe('mobile shell button scale', () => {
     test('mobile button scale feeds the shared mobile control size tokens', () => {
         expect(cssSource).toContain('--sb-mobile-button-scale: 1;');
         expect(cssSource).toContain('--sb-mobile-toggle-size: clamp(var(--sb-mobile-toggle-min-size), calc(var(--sb-mobile-toggle-size-base) * var(--sb-mobile-button-scale)), 56px);');
-        expect(cssSource).toContain('--sb-mobile-tools-button-size: clamp(var(--sb-mobile-tools-min-size), calc(var(--sb-mobile-tools-button-size-base) * var(--sb-topbar-scale-active) * var(--sb-mobile-button-scale)), 56px);');
     });
 
     test('exposes a per-device scale setter driven by the settings slider', () => {

@@ -204,10 +204,6 @@
     display: none !important;
 }
 
-.sb-list-editor[data-open='true'][data-collapsed='false'] .sb-list-editor__row-subtitle {
-    display: none;
-}
-
 .sb-list-editor__drag-handle {
     cursor: grab;
 }

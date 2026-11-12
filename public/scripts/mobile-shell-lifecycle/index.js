@@ -18,7 +18,6 @@ export const MOBILE_SHELL_SURFACE = Object.freeze({
     LEFT_SHELL: 'left-shell',
     RIGHT_SHELL: 'right-shell',
     CHARACTER_PANEL: 'character-panel',
-    CHAT_TOOLS: 'chat-tools',
 });
 
 export const MOBILE_SHELL_CLOSE_ALL_SURFACES = Object.freeze([
@@ -26,7 +25,6 @@ export const MOBILE_SHELL_CLOSE_ALL_SURFACES = Object.freeze([
     MOBILE_SHELL_SURFACE.RIGHT_SHELL,
     MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
     MOBILE_SHELL_SURFACE.NAV,
-    MOBILE_SHELL_SURFACE.CHAT_TOOLS,
 ]);
 
 export const MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT = 12;
@@ -42,13 +40,11 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
         ]),
     }),
     [MOBILE_SHELL_SURFACE.LEFT_SHELL]: Object.freeze({
@@ -56,13 +52,11 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
         ]),
     }),
     [MOBILE_SHELL_SURFACE.RIGHT_SHELL]: Object.freeze({
@@ -70,13 +64,11 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
             MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
         ]),
     }),
     [MOBILE_SHELL_SURFACE.CHARACTER_PANEL]: Object.freeze({
@@ -84,27 +76,11 @@ const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.CHAT_TOOLS,
-        ]),
-    }),
-    [MOBILE_SHELL_SURFACE.CHAT_TOOLS]: Object.freeze({
-        mobile: Object.freeze([
-            MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.LEFT_SHELL,
-            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-        ]),
-        desktop: Object.freeze([
-            MOBILE_SHELL_SURFACE.NAV,
-            MOBILE_SHELL_SURFACE.LEFT_SHELL,
-            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
         ]),
     }),
 });
@@ -629,7 +605,6 @@ export function resolveMobileModalA11yState({
 export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_SHELL_VIEWPORT_BOUNDS: 'sync-shell-viewport-bounds',
     CLOSE_MOBILE_NAV: 'close-mobile-nav',
-    CLOSE_MOBILE_CHAT_TOOLS: 'close-mobile-chat-tools',
     APPLY_TOPBAR_OFFSET: 'apply-topbar-offset',
     SYNC_CHATBAR_VISIBILITY_STATE: 'sync-chatbar-visibility-state',
     UPDATE_TOP_BAR_BRAND: 'update-top-bar-brand',
@@ -656,8 +631,6 @@ const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
     '#qr--bar',
     '#rightSendForm',
     '#sb-mobile-nav',
-    '#sb-mobile-chat-tools',
-    '#sb-mobile-chat-tools-panel',
     '#sb-bottom-chat-bar',
     '#sb-persona-picker',
     '#select2-sb-bottom-chat-select-container',
@@ -965,7 +938,6 @@ export function resolveMobileViewportSyncPlan({
     if (!isMobileViewport) {
         steps.push(
             MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_NAV,
-            MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_CHAT_TOOLS,
         );
     }
 

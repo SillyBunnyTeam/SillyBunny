@@ -437,16 +437,6 @@ test('Reload shows the summary beside the reloaded toast', async ({ page }) => {
     await expect(summaryOf(page).locator('li')).toHaveText(['Reasoning Effort: Low → High']);
 });
 
-test('the mobile chat-tools picker reports', async ({ page }) => {
-    await page.setViewportSize(MOBILE_VIEWPORT);
-    await loadApp(page);
-    await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-    await expect(page.locator('.sb-mobile-chat-connection')).toBeVisible();
-    await selectProfile(page, 'CC_B', { picker: '#sb-mobile-chat-connection-select' });
-    await expectSummaryFor(page, 'CC_B');
-    await expect(summaryOf(page).locator('li')).toContainText(['Reasoning Effort', 'Verbosity']);
-});
-
 test('/profile is silent and quiet=false reports', async ({ page }) => {
     test.slow(); // Two switches and a 4 s silent window.
     await loadApp(page);

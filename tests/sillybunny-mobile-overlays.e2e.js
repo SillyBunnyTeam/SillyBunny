@@ -295,13 +295,6 @@ for (const layout of layouts.filter(({ width }) => width <= 768)) {
             await expect(page.locator('.sb-dialog-host:has(.sb-bottom-chat-sheet)')).toHaveCount(0);
             await expect(chip).toBeFocused();
 
-            await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-            const toolsSurface = await expectDialogPresentation(page, 'sb-mobile-chat-tools-dialog', layout.width, layout.height);
-            await expect(toolsSurface.locator('#sb-mobile-chat-search')).toBeVisible();
-            await expect(toolsSurface.locator('#sb-mobile-chat-select')).toBeVisible();
-            await page.keyboard.press('Escape');
-            await expect(page.locator('.sb-dialog-host:has(.sb-mobile-chat-tools-dialog)')).toHaveCount(0);
-
             await page.evaluate(() => {
                 const nav = document.getElementById('sb-mobile-nav');
                 nav.hidden = false;

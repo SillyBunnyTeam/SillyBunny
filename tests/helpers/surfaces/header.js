@@ -13,8 +13,8 @@ import {
     openGroupEditor, openPersonaDetail, openPersonaList, openPromptDetail, openPromptList, openWorldInfoBook, openWorldInfoEntry, shown,
 } from './header-steps.js';
 import {
-    MOBILE_LAYOUT_VIEWPORTS, PROPERTY_SHEETS, WIDE_LAYOUT_VIEWPORTS, closeBottomChatSheet, closeChatToolsSheet, closePropertySheet,
-    closeSidePanelById, openBottomChatSheet, openChatToolsSheet, openPropertySheet, openSidePanelById,
+    MOBILE_LAYOUT_VIEWPORTS, PROPERTY_SHEETS, WIDE_LAYOUT_VIEWPORTS, closeBottomChatSheet, closePropertySheet,
+    closeSidePanelById, openBottomChatSheet, openPropertySheet, openSidePanelById,
 } from './panel-steps.js';
 import { chooseMenuItem, openSettingsTab, settle } from './steps.js';
 
@@ -521,20 +521,6 @@ export const surfaces = [
         viewports: WIDE_LAYOUT_VIEWPORTS,
         needs: ['character', 'chat'],
         sources: [`${SCRIPTS}/sillybunny-editor/side-panel.js`, `${SCRIPTS}/sillybunny-tabs.js`, `${CSS}/sillybunny-side-panel.css`],
-    },
-    {
-        id: 'header.dialog.chat-actions',
-        family: 'header',
-        owner: 'A',
-        title: 'Dialog header (Chat actions sheet on a phone)',
-        root: '#sb-mobile-chat-tools .sb-dialog__header',
-        ready: ['#sb-mobile-chat-tools .sb-dialog__title', '#sb-mobile-chat-close'],
-        overlay: true,
-        open: openChatToolsSheet,
-        close: closeChatToolsSheet,
-        viewports: MOBILE_LAYOUT_VIEWPORTS,
-        needs: ['character', 'chat'],
-        sources: [`${SCRIPTS}/sillybunny-tabs.js`, `${SCRIPTS}/sillybunny-editor/dialog.js`, `${CSS}/sillybunny-theme.css`],
     },
     {
         id: 'header.dialog.bottom-chat-sheet',

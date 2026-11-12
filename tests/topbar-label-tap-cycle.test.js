@@ -312,7 +312,7 @@ describe('icons only top bar', () => {
         expect(mobileRule).not.toBeNull();
         expect(mobileRule[0]).toContain('min-width: var(--sb-mobile-toggle-size);');
         expect(mobileRule[0]).toContain('height: var(--sb-mobile-toggle-size);');
-        expect(mobileCss).toContain('.sb-topbar-page-button i,');
+        expect(mobileCss).toContain('.sb-topbar-page-button i {');
     });
 
     test('keeps search as a permanent top bar button in every mode', () => {

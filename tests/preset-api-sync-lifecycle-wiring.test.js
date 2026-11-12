@@ -36,16 +36,6 @@ describe('preset/API sync lifecycle wiring', () => {
         expect(tabsSource).toContain('const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();');
     });
 
-    test('routes connection profile selection sync through the lifecycle seam', () => {
-        const syncSource = getFunctionSource('syncConnectionProfileSelection');
-
-        expect(syncSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveSelectionSync({');
-        expect(syncSource).toContain('requestedValue: value');
-        expect(syncSource).toContain('currentValue: sourceSelect.value');
-        expect(syncSource).toContain('sourceSelect.value = syncState.nextValue;');
-        expect(syncSource).not.toContain('String(value ?? \'\').trim()');
-    });
-
     test('routes active main API resolution through the lifecycle seam', () => {
         const mainApiSource = getFunctionSource('getCurrentMainApiValue');
 
@@ -53,14 +43,5 @@ describe('preset/API sync lifecycle wiring', () => {
         expect(mainApiSource).toContain('selectValue: mainApiSelect instanceof HTMLSelectElement ? mainApiSelect.value : \'\'');
         expect(mainApiSource).toContain('contextMainApi: context?.mainApi');
         expect(mainApiSource).not.toContain('trim().toLowerCase()');
-    });
-
-    test('routes connection profile mirror state through the lifecycle seam', () => {
-        const refreshSource = getFunctionSource('refreshChatbarState');
-
-        expect(refreshSource).toContain('sbPresetApiSyncLifecycle.connectionProfiles.resolveMirrorState({');
-        expect(refreshSource).toContain('hasConnectionProfiles');
-        expect(refreshSource).toContain('connectionMirrorState.shouldClearMirrors');
-        expect(refreshSource).toContain('connectionMirrorState.shouldShowMobileSection');
     });
 });

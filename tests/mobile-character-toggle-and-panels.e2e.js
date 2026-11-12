@@ -96,8 +96,6 @@ test.describe('round 1 character opening measurements', () => {
                 window.__round1CharacterDone = false;
                 requestAnimationFrame(window.__round1CharacterSample);
             });
-            const orphanBefore = await page.locator('#sb-mobile-chat-search').evaluate(element => element.getClientRects().length > 0);
-            expect(orphanBefore).toBe(false);
             await page.locator('#sb-character-toggle').tap();
             await page.waitForFunction(() => window.__round1CharacterDone);
             const result = await page.evaluate(() => ({ frames: window.__round1CharacterFrames, mutations: window.__round1CharacterMutations, resizeCount: window.__round1CharacterResizeCount }));
@@ -130,7 +128,6 @@ test.describe('round 1 character opening measurements', () => {
                     expect(reversals, `${name} oscillates on ${property}`).toBe(0);
                 }
             }
-            expect(await page.locator('#sb-mobile-chat-search').evaluate(element => element.getClientRects().length > 0)).toBe(false);
         });
     }
 
@@ -216,35 +213,6 @@ test.describe('round 1 character opening measurements', () => {
     });
 });
 
-test.describe('mobile chat tools lifecycle', () => {
-    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: 'no-preference' });
-
-    test('restores its close button across button and Escape reopen cycles', async ({ page }) => {
-        await boot(page, { width: 390, height: 844 });
-        const tools = page.locator('#sb-mobile-chat-tools');
-        const close = page.locator('#sb-mobile-chat-close');
-        const openTools = async () => {
-            await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-            await expect(tools).toHaveClass(/sb-chat-tools-open/);
-            await expect(close).toBeVisible();
-        };
-        const expectClosed = async () => {
-            await expect(tools).toBeHidden();
-            await expect(page.locator('#sb-mobile-chat-search')).toBeHidden();
-        };
-
-        await openTools();
-        await close.click();
-        await expectClosed();
-        await openTools();
-        await page.keyboard.press('Escape');
-        await expectClosed();
-        await openTools();
-        await close.click();
-        await expectClosed();
-    });
-});
-
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     test.describe(`${viewport.width}px editor empty state`, () => {
         test.use({ viewport, hasTouch: viewport.width === 390, isMobile: viewport.width === 390 });
@@ -303,28 +271,3 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         });
     });
 }
-
-test('round 1 Toggle Panels measurement', async ({ page }) => {
-    await boot(page, { width: 1440, height: 900 });
-    const state = async () => page.evaluate(() => ({
-        topBar: getComputedStyle(document.getElementById('top-bar')).display,
-        settingsHolder: getComputedStyle(document.getElementById('top-settings-holder')).display,
-        chatRadius: document.getElementById('chat').style.borderRadius,
-        chatSearch: [...document.querySelectorAll('#sb-mobile-chat-search, #sb-mobile-chat-tools-panel input[type="search"], input[placeholder="Search this chat..."]')].map(element => ({ id: element.id, visible: element.getClientRects().length > 0, value: element.value })),
-        chatTools: document.getElementById('sb-mobile-chat-tools')?.className,
-        searchDetails: (() => {
-            const element = document.querySelector('#sb-mobile-chat-search');
-            if (!element) return null;
-            const ancestors = [];
-            for (let ancestor = element.parentElement; ancestor && ancestors.length < 5; ancestor = ancestor.parentElement) ancestors.push({ id: ancestor.id, className: ancestor.className, hidden: ancestor.hidden, display: getComputedStyle(ancestor).display, visibility: getComputedStyle(ancestor).visibility });
-            return { parent: element.parentElement?.outerHTML.slice(0, 500), ancestors };
-        })(),
-    }));
-    await page.locator('#option_settings').evaluate(element => element.click());
-    const on = await state();
-    await page.locator('#option_settings').evaluate(element => element.click());
-    const off = await state();
-    await test.info().attach('toggle-panels', { body: JSON.stringify({ on, off }), contentType: 'application/json' });
-    expect(on.chatSearch.some(item => item.visible), JSON.stringify({ on, off })).toBe(false);
-    expect(off.chatSearch.some(item => item.visible), JSON.stringify({ on, off })).toBe(false);
-});

@@ -291,8 +291,7 @@ input[type="submit"] {
 
 .zoomed_avatar_container,
 .avatar_zoom_container,
-.zoomed_avatar,
-.avatar_zoom {
+.zoomed_avatar {
     z-index: var(--sb-z-zoomed-avatar) !important;
 }
 
@@ -2453,9 +2452,6 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 }
 
 /* Swipe picker header: more breathing room. */
-.swipe_picker_header {
-    padding: 10px 12px;
-}
 
 .swipe_picker_block .select_chat_block_filename {
     font-size: calc(var(--mainFontSize) * 0.88);
@@ -2663,10 +2659,8 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 
     :root:not([data-sb-theme]) #send_form::before,
     :root:not([data-sb-theme]) #sb-chatbar::before,
-    :root:not([data-sb-theme]) #sb-mobile-chat-tools-panel::before,
     :root[data-sb-theme='clean-minimal'] #send_form::before,
-    :root[data-sb-theme='clean-minimal'] #sb-chatbar::before,
-    :root[data-sb-theme='clean-minimal'] #sb-mobile-chat-tools-panel::before {
+    :root[data-sb-theme='clean-minimal'] #sb-chatbar::before {
         opacity: var(--sb-shell-surface-opacity) !important;
     }
 
@@ -4179,14 +4173,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     }
 }
 
-.sb-presets-advanced-formatting {
-    margin-top: 12px;
-}
-
-.sb-presets-advanced-formatting[hidden] {
-    display: none !important;
-}
-
 .sb-openai-settings-subdrawer {
     margin-top: 6px;
 }
@@ -5279,12 +5265,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     flex: 0 0 auto;
 }
 
-.sb-theme-message-style-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-    gap: 10px;
-}
-
 .sb-message-style-button {
     min-height: 44px;
     padding: 10px 12px;
@@ -5442,17 +5422,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 #user-settings-utility-actions {
     padding: 0;
-}
-
-#user-settings-utility-actions .sb-settings-utility-note {
-    flex: 1 1 260px;
-    min-width: 0;
-    color: var(--sb-muted-fg);
-}
-
-#user-settings-utility-actions .sb-settings-utility-note small {
-    display: block;
-    line-height: 1.45;
 }
 
 #user-settings-utility-actions .sb-settings-utility-action {
@@ -5670,10 +5639,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     margin-left: 0;
 }
 
-.sb-settings-topdrawer > .inline-drawer-content {
-    padding: 14px 16px 16px;
-}
-
 #CustomCSS-textAreaBlock {
     display: flex;
     align-items: stretch;
@@ -5681,15 +5646,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 .sb-appearance-select-group {
     gap: 10px;
-}
-
-.sb-appearance-select-row {
-    gap: 12px;
-    padding-inline: 10px;
-}
-
-.sb-appearance-select-row > span {
-    flex: 0 0 auto;
 }
 
 #rm_extensions_block {
@@ -5865,34 +5821,11 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 /* Make Prompt Manager header match other openai settings drawer sections */
-.sb-openai-settings-subdrawer > .inline-drawer-header > .completion_prompt_manager_header {
-    flex: 1 1 auto;
-    min-width: 0;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.sb-openai-settings-subdrawer .completion_prompt_manager_header_advanced {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.sb-openai-settings-subdrawer .completion_prompt_manager_header_title {
-    font-weight: bold;
-    margin-left: 0;
-    filter: none;
-    color: var(--sb-contrast-strong, var(--SmartThemeBodyColor));
-}
 
 .sb-openai-settings-subdrawer .completion_prompt_manager_header_description {
     margin-left: 0;
     margin-top: 2px;
     color: var(--sb-contrast-muted, var(--SmartThemeEmColor));
-}
-
-.sb-openai-settings-subdrawer .completion_prompt_manager_header_tokens {
-    font-size: var(--sb-type-control);
-    color: var(--sb-contrast-muted, var(--SmartThemeBodyColor));
 }
 
 .sb-settings-subdrawer-body {
@@ -6187,10 +6120,6 @@ body.reduced-motion *::after {
 
     /* Stacked rows: the note takes its own row ahead of the buttons. `auto` lets the note size to
        its text instead of the row, which pushes its last word past the container's edge. */
-    #user-settings-utility-actions .sb-settings-utility-note {
-        flex: 1 1 100%;
-        width: 100%;
-    }
 
     #user-settings-utility-actions .sb-settings-utility-action {
         flex: 0 0 auto;
@@ -6515,8 +6444,7 @@ body.reduced-motion #extensionsMenu {
 }
 
 /* Confirm-type dialogs use alert radius */
-.popup[data-type="confirm"],
-.popup.confirm-dialog {
+.popup[data-type="confirm"] {
     border-radius: var(--sb-radius-alert);
 }
 

@@ -1207,22 +1207,6 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     font-family: monospace;
 }
 
-.ica--diagnostics-output .diag-pass {
-    color: var(--green, #4caf50);
-}
-
-.ica--diagnostics-output .diag-warn {
-    color: var(--yellow, #ff9800);
-}
-
-.ica--diagnostics-output .diag-fail {
-    color: var(--red, #f44336);
-}
-
-.ica--diagnostics-output .diag-info {
-    color: var(--SmartThemeQuoteColor, #88c3e8);
-}
-
 /* Bulk edit popup */
 .ica--bulk-edit-popup {
     display: flex;

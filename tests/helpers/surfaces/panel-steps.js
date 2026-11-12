@@ -114,24 +114,6 @@ export async function closeBottomChatSheet(page) {
     await page.locator('#sb-bottom-chat-sheet').waitFor({ state: 'hidden' });
 }
 
-/**
- * Opens the chat tools sheet, which the shell routes to the chat sidebar on a wide window, so it exists on the mobile
- * layout only. From `mobile-character-toggle-and-panels.e2e.js`.
- */
-export async function openChatToolsSheet(page) {
-    await openAuditChat(page);
-    if (!await page.locator('#sb-mobile-chat-tools').isVisible()) {
-        await page.evaluate(() => window.SillyBunnyShell.openChatTools());
-    }
-    await page.locator('#sb-mobile-chat-tools').waitFor({ state: 'visible' });
-    await settle(page, { root: '#sb-mobile-chat-tools' });
-}
-
-export async function closeChatToolsSheet(page) {
-    await page.locator('#sb-mobile-chat-close').click();
-    await page.locator('#sb-mobile-chat-tools').waitFor({ state: 'hidden' });
-}
-
 /** Opens an entry of the audit lorebook in the World Info editor. From `sillybunny-mobile-overlays.e2e.js` (`openWorldInfoEntry`). */
 export async function openWorldInfoEditorEntry(page) {
     await page.evaluate(async name => {

@@ -753,8 +753,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     font-family: inherit;
 }
 
-#sb-settings-page .sb-wi-entry .sb-wi-property input[type='text'],
-.sb-wi-property-sheet .sb-wi-property input[type='text'] {
+#sb-settings-page .sb-wi-entry .sb-wi-property input[type='text'] {
     width: 160px;
     max-width: 100%;
 }
@@ -784,64 +783,6 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     background: transparent;
     color: inherit;
     box-shadow: none;
-}
-
-.sb-wi-sheet-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: calc(var(--sb-z-modal) - 10);
-    border: 0;
-    background: var(--sb-dialog-backdrop);
-}
-
-.sb-wi-property-sheet {
-    position: fixed;
-    inset: auto 0 0;
-    z-index: var(--sb-z-modal);
-    display: flex;
-    flex-direction: column;
-    max-height: 80dvh;
-    overflow: auto;
-    padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
-    background: var(--sb-layer-dialog);
-    color: var(--SmartThemeBodyColor);
-    font-family: var(--mainFontFamily);
-    box-shadow: var(--sb-shadow-dialog);
-}
-
-.sb-wi-property-sheet::before {
-    content: '';
-    align-self: center;
-    width: 32px;
-    height: 4px;
-    margin-bottom: 8px;
-    border-radius: var(--sb-radius-control);
-    background: var(--sb-muted-fg);
-}
-
-.sb-wi-sheet-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.sb-wi-sheet-header h2 {
-    margin: 0;
-    font-size: calc(var(--mainFontSize) * 1.08);
-}
-
-.sb-wi-property-sheet .sb-wi-properties {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 0;
-    border: 0;
-}
-
-.sb-wi-property-sheet .sb-wi-property {
-    min-height: 44px;
-    justify-content: space-between;
 }
 
 .sb-dialog.sb-world-info-properties-dialog .sb-dialog__body {
@@ -899,8 +840,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     background: var(--sb-flat-selected-bg);
 }
 
-:is(.sb-wi-property-sheet, .sb-wi-sheet-backdrop)[hidden],
-.sb-wi-property-sheet [hidden] {
+:is(.sb-wi-property-sheet, .sb-wi-sheet-backdrop)[hidden] {
     display: none !important;
 }
 

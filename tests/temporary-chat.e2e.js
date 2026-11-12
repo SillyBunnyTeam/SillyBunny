@@ -321,6 +321,10 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
             test('shows "Temporary Chat" in the chat bar instead of its internal id', async ({ page }) => {
                 const context = await boot(page);
                 await startTemporary(page, context);
+                // On a phone the chat picker lives in the sheet of the bottom chat bar, which is built when the chip opens it.
+                if (size.width <= 768) {
+                    await page.locator('#sb-bottom-chat-bar .sb-bottom-chat-chip').click();
+                }
 
                 await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('select option')].filter(option => option.textContent === 'Temporary Chat').length)).toBeGreaterThan(0);
                 const leaks = await page.evaluate(() => ({
