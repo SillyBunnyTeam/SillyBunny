@@ -773,7 +773,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-sheet-header h2 {
     margin: 0;
-    font-size: calc(var(--mainFontSize) * 1.08);
+    font-size: var(--sb-type-title);
 }
 
 .sb-prompt-sheet .sb-prompt-properties {

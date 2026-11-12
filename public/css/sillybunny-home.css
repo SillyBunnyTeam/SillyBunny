@@ -549,7 +549,7 @@
 .sbHomeTileLine {
     min-width: 0;
     color: var(--sb-muted-fg);
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
     line-height: 1.35;
     overflow-wrap: anywhere;
 }
@@ -557,7 +557,6 @@
 /* The progress is the state of the tile, so it takes the label role, a little apart from the line above it. */
 .sbHomeTileSub {
     margin-block-start: 8px;
-    font-size: var(--sb-type-caption);
     font-variant-numeric: tabular-nums;
     font-weight: 700;
 }

@@ -483,7 +483,7 @@ for (const width of [1440, 768, 390]) {
             expect(styles.background).not.toBe('rgba(0, 0, 0, 0)');
             expect(styles.header).not.toBe('rgba(0, 0, 0, 0)');
             expect(styles.nameX).toBe(styles.subtitleX);
-            expect(styles.weight).toBe('600');
+            expect(styles.weight).toBe('400');
             await page.screenshot({ path: test.info().outputPath(`tag-manager-${width}-${theme.replaceAll(' ', '-')}.png`) });
             await manager(page).locator('.sb-dialog__close').click();
             await expect(manager(page)).toHaveCount(0);

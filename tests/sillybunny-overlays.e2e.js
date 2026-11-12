@@ -249,8 +249,8 @@ for (const width of [1440, 390]) {
                 return metrics;
             });
             expect(rowTypeMetrics.chatTitle).toEqual(rowTypeMetrics.tagTitle);
-            expect(rowTypeMetrics.tagTitle).toEqual({ size: '13.5px', weight: '600' });
-            expect(rowTypeMetrics.tagSubtitle).toEqual({ size: '11.25px', weight: '400' });
+            expect(rowTypeMetrics.tagTitle).toEqual({ size: '15px', weight: '400' });
+            expect(rowTypeMetrics.tagSubtitle).toEqual({ size: '12.3px', weight: '400' });
             expect(rowTypeMetrics.chatMetadata).toEqual(rowTypeMetrics.tagSubtitle);
             expect(rowTypeMetrics.chatPreview).toEqual(rowTypeMetrics.tagSubtitle);
             expect(rowTypeMetrics.swipeTitle).toEqual({ size: '13.2px', weight: '700' });

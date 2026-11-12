@@ -92,7 +92,7 @@ export async function selectTheme(page, name) {
  */
 export async function readChipContrast(page, chip, where) {
     await chip.scrollIntoViewIfNeeded();
-    const look = await chip.evaluate((node) => {
+    const measure = () => chip.evaluate((node) => {
         const box = node.getBoundingClientRect();
         const style = getComputedStyle(node);
         const icon = node.querySelector('i');
@@ -103,10 +103,22 @@ export async function readChipContrast(page, chip, where) {
             checkColor: icon ? getComputedStyle(icon).color : null,
         };
     });
-    const x = Math.round(look.box.left + look.box.width / 2);
-    const above = Math.round(look.box.top) - 2;
-    const below = Math.round(look.box.top + look.box.height) + 2;
-    const pixel = await decodeClip(page, { x: x - 1, y: above - 1, width: 2, height: below - above + 2 });
+    let look;
+    let x;
+    let above;
+    let below;
+    let pixel;
+    // A bundled theme may pull a web font, and the text re-wraps when it arrives, which moves the chip between the
+    // measure and the screenshot. A reading counts only when the chip is where it was measured after the screenshot.
+    for (let attempt = 0; ; attempt++) {
+        look = await measure();
+        x = Math.round(look.box.left + look.box.width / 2);
+        above = Math.round(look.box.top) - 2;
+        below = Math.round(look.box.top + look.box.height) + 2;
+        pixel = await decodeClip(page, { x: x - 1, y: above - 1, width: 2, height: below - above + 2 });
+        if (JSON.stringify((await measure()).box) === JSON.stringify(look.box)) break;
+        expect(attempt, `${where}: the chip stops moving`).toBeLessThan(10);
+    }
     const background = await resolveColor(page, look.background);
     const parts = [{ part: 'text', color: await resolveColor(page, look.color), floor: TEXT_CONTRAST }];
     if (look.checkColor) {

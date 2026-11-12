@@ -1662,7 +1662,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             });
 
             expect(band.border).toBe('1px');
-            expect(band.radius).toBe('20px');
+            expect(band.radius).toBe('12px');
             expect(band.background).toBe(band.windowLayer);
             expect(Math.abs(band.artCentre - band.centre)).toBeLessThanOrEqual(1);
             expect(Math.abs(band.textCentre - band.centre)).toBeLessThanOrEqual(1);

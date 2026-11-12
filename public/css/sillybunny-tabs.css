@@ -3762,8 +3762,8 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 .sb-chat-history-row-title {
     align-items: center;
     color: var(--SmartThemeBodyColor);
-    font-size: calc(var(--sb-type-body) * 0.9);
-    font-weight: 600;
+    font-size: var(--sb-type-body);
+    font-weight: 400;
 }
 
 .sb-chat-history-row-title .select_chat_block_filename {
@@ -3781,7 +3781,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     flex-wrap: wrap;
     gap: 4px;
     color: var(--sb-muted-fg);
-    font-size: calc(var(--sb-type-body) * 0.75);
+    font-size: var(--sb-type-caption);
     font-weight: 400;
 }
 
@@ -3793,7 +3793,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     display: -webkit-box;
     overflow: hidden;
     color: var(--sb-muted-fg);
-    font-size: calc(var(--sb-type-body) * 0.75);
+    font-size: var(--sb-type-caption);
     font-weight: 400;
     line-height: 1.4;
     -webkit-box-orient: vertical;
@@ -5656,6 +5656,8 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     overflow: hidden;
     color: var(--sb-input-placeholder);
     text-shadow: none !important;
+    /* At rest the title stands where the value will be, so it takes the size of the value. */
+    font-size: var(--sb-type-control);
     font-weight: 400;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -9374,8 +9376,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 #sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle > b {
     margin: 0;
     font-family: var(--mainFontFamily);
-    font-size: var(--sb-type-control);
-    font-weight: 500;
+    font-size: var(--sb-type-body);
+    font-weight: 400;
     line-height: 1.3;
     color: var(--sb-shell-text);
 }

@@ -492,7 +492,7 @@ test.describe('Settings header consistency', () => {
                 localizedSubtitle: Boolean(subtitle && subtitle.dataset.i18n === subtitle.textContent),
                 titleMetrics: Boolean(titleStyle && Object.entries(expectedTitle).every(([key, value]) => titleStyle[key] === value)),
                 outerGroupHasNoBox: groupStyle.borderTopWidth === '0px' && groupStyle.padding === '0px' && groupStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && groupStyle.boxShadow === 'none',
-                bodyKeepsPreferenceBox: bodyStyle?.borderTopWidth === '1px' && bodyStyle.borderRadius !== '0px',
+                bodyKeepsPreferenceBox: bodyStyle?.borderTopWidth === '0px' && bodyStyle.boxShadow !== 'none' && bodyStyle.borderRadius === '12px',
             };
             return Object.entries(checks).filter(([, pass]) => !pass).map(([check]) => `${group.id}: ${check}`);
         }), titleMetrics);
@@ -885,7 +885,7 @@ test.describe('Backgrounds settings consistency', () => {
                 expect(switchFailures).toEqual([]);
 
                 const gallery = appearance.locator('#Backgrounds');
-                const pillFailures = await gallery.locator([
+                const radiusFailures = await gallery.locator([
                     '#bpt-animated-bg-url', '#bpt-animated-bg-apply', '#bg-filter', '#bg-sort', '#background_fitting',
                     '#auto_background', '#bg_add_folder_button', '#add_background_button_top', '#bg_tabs .heading-controls .menu_button',
                 ].map(selector => `${selector}:visible`).join(', ')).evaluateAll((controls, minimumHeight) => controls.flatMap(control => {
@@ -893,12 +893,12 @@ test.describe('Backgrounds settings consistency', () => {
                     const bounds = control.getBoundingClientRect();
                     const radii = ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'];
                     const checks = {
-                        pill: radii.every(radius => parseFloat(style[radius]) >= bounds.height / 2),
+                        controlRadius: radii.every(radius => style[radius] === '9px'),
                         comfortableTarget: bounds.height >= minimumHeight - 1,
                     };
                     return Object.entries(checks).filter(([, pass]) => !pass).map(([check]) => `${control.id}: ${check}`);
                 }), mobile ? 44 : 40);
-                expect(pillFailures).toEqual([]);
+                expect(radiusFailures).toEqual([]);
                 const circleFailures = await gallery.locator('#bg_selection_mode_button, #bg_thumb_zoom_out, #bg_thumb_zoom_in, #bg-scroll-top')
                     .evaluateAll(buttons => buttons.flatMap(button => {
                         const bounds = button.getBoundingClientRect();
@@ -984,14 +984,14 @@ test.describe('Backgrounds settings consistency', () => {
             const card = getComputedStyle(button.parentElement);
             return {
                 targetHeight: button.getBoundingClientRect().height,
-                pill: parseFloat(style.borderRadius) >= button.getBoundingClientRect().height / 2,
+                radius: style.borderRadius,
                 focusRing: style.boxShadow !== 'none',
                 selectedFill: card.backgroundColor !== 'rgba(0, 0, 0, 0)',
                 noSelectionGlow: card.boxShadow === 'none',
             };
         });
         expect(metrics.targetHeight).toBeGreaterThanOrEqual(40);
-        expect(metrics).toMatchObject({ pill: true, focusRing: true, selectedFill: true, noSelectionGlow: true });
+        expect(metrics).toMatchObject({ radius: '9px', focusRing: true, selectedFill: true, noSelectionGlow: true });
         const remove = sources.locator('.bpt-animated-source-card > .menu_button').last();
         const dimensions = await remove.evaluate(button => ({ width: button.clientWidth, height: button.clientHeight }));
         expect(dimensions.width).toBe(dimensions.height);
