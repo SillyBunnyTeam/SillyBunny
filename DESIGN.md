@@ -235,7 +235,7 @@ The palette is a neutral base for customisation and exploration: the accent dict
 
 ### Primary
 - **Accent** (`#82b3ee`): `--sb-accent`, a 62/38 mix of the theme quote colour and body colour. With the Libadwaita theme the quote colour is libadwaita blue `#3584e4`, so the derived accent sits close to libadwaita's dark standalone blue. Used for suggested actions, checked checkboxes and radios, the range thumb, focus rings, and the selected-item icon. Use it as a signal, never as ambient ornament.
-- **On Accent** (`--sb-on-accent` / `--sb-on-solid-accent`): Text and glyphs on a solid accent fill. Resolves to black or white per theme for contrast. Deviation: libadwaita always uses white on `#3584e4` (about 3.9:1); SillyBunny picks the ink that reaches 4.5:1.
+- **On Accent** (`--sb-on-accent` / `--sb-on-solid-accent`): Text and glyphs on a solid accent fill. Resolves to black or white per theme for contrast. Deviation: libadwaita always uses white on `#3584e4` (about 3.8:1); SillyBunny picks the ink that reaches 4.5:1.
 - **Soft Accent** (`#7191b8`): Secondary accent for quiet helper states and badges. Selected backgrounds use neutral fills, not Soft Accent.
 
 ### Secondary
@@ -319,7 +319,7 @@ Hex values are what the bundled Libadwaita and Libadwaita Light themes render. T
 - Headings omit articles and auxiliary verbs ("Three Documents Updated"). An informal heading written as a full sentence uses sentence capitalisation and stays bold.
 - Never all caps, and no uppercase tracked kickers.
 - Group headings are bold (`.heading`). Deviation: a dimmed leading icon on group headings is SillyBunny's; libadwaita group titles have none.
-- Resolution: the HIG Writing Style and Drop-Down Lists pages ask for sentence capitalisation on field and drop-down labels, while the Text Fields and Switches pages ask for header capitalisation. Every field label and boxed-list row title uses header capitalisation so a group reads consistently, as GNOME apps commonly do.
+- Resolution: the HIG Writing Style, Drop-Down Lists and Spin Buttons pages ask for sentence capitalisation on field, drop-down and spin-button labels, while the Text Fields and Switches pages ask for header capitalisation. Every field label and boxed-list row title uses header capitalisation so a group reads consistently, as GNOME apps commonly do.
 - Upstream SillyTavern strings keep their upstream wording and `data-i18n` keys. Existing sentence-case SillyBunny labels move to this rule as each surface is reworked.
 
 ## 4. Layout
@@ -360,7 +360,7 @@ Flat and raised controls use fills mixed from `--SmartThemeBodyColor`, so they f
 
 ## 6. Shapes
 
-Nothing is larger than `20px`.
+Nothing is larger than `20px`, except pills and circles.
 
 - **Control** (`--sb-radius-control`, `9px`, libadwaita `$button_radius`): menu and search result rows, tooltips, segments, and new shell controls that are not pills.
 - **Card** (`--sb-radius-card`, `12px`, libadwaita's card radius): groups inside editors, dialogs, windows, and side panels, and the boxed rows of list sidebars.

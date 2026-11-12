@@ -34,7 +34,7 @@
       "mono": {"displayName": "Mono", "token": "--monoFontFamily", "libadwaita": ".monospace", "purpose": "Logs, regex, prompt fragments, token diagnostics, and structured output."}
     },
     "shadows": [
-      {"name": "headerbar-shade", "token": "--sb-headerbar-shade", "value": "1px solid color-mix(in srgb, var(--SmartThemeShadowColor) …, transparent)", "purpose": "Bottom line of the top bar and top line of the composer. No blurred shadow."},
+      {"name": "headerbar-shade", "token": "--sb-headerbar-shade", "value": "1px solid var(--sb-shell-border)", "purpose": "Bottom line of the top bar and top line of the composer. No blurred shadow."},
       {"name": "popover", "token": "--sb-shadow-popover", "value": "0 1px 5px 1px <shade 9%>, 0 2px 14px 3px <shade 5%>", "libadwaita": "popover contents", "purpose": "Menus, select dropdowns, search results, persona picker, message popovers. Paired with one 1px border."},
       {"name": "dialog", "token": "--sb-shadow-dialog", "value": "0 0 14px 2px <shade 3%>, 0 0 5px 2px <shade 10%>; dark adds a 1px inner highlight", "libadwaita": "AdwDialog", "purpose": "Dialogs and shell drawers. Paired with one 1px border."},
       {"name": "dialog-backdrop", "token": "--sb-dialog-backdrop", "value": "shade colour at about 50% (dark) or 14% (light); no blur", "libadwaita": "shade-color x2", "purpose": "Dimming behind dialogs."},
