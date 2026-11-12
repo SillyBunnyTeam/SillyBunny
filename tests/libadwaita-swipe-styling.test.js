@@ -19,7 +19,7 @@ describe('libadwaita swipe styling', () => {
     });
 
     test('swipe picker row actions are circular flat icon buttons', () => {
-        expect(themeCss).toMatch(/\.swipe_picker_block :is\(\.swipe_picker_expand_label[^{]*\{[^}]*border-radius:\s*999px/);
+        expect(themeCss).toMatch(/\.swipe_picker_block :is\(\.swipe_picker_expand_label[^{]*\{[^}]*border-radius:\s*var\(--sb-radius-pill\)/);
         expect(themeCss).toMatch(/\.swipe_picker_block :is\(\.swipe_picker_expand_label[^{]*:hover\s*\{[^}]*var\(--sb-flat-hover-bg\)/);
     });
 });

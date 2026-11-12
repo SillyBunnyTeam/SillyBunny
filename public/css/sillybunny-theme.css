@@ -381,7 +381,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     min-width: 2rem;
     height: 2rem;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);
     box-shadow: 0 10px 24px color-mix(in srgb, var(--SmartThemeShadowColor) 28%, transparent);
     opacity: 0.88;
@@ -568,7 +568,7 @@ body {
 @media (hover: hover) {
     .mes_text .pura-choice:hover,
     .mes_text .pura-direction:hover {
-        background: color-mix(in srgb, var(--sb-button-hover) 54%, rgba(255, 255, 255, 0.06)) !important;
+        background: color-mix(in srgb, var(--sb-button-hover) 54%, color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent)) !important;
     }
 }
 
@@ -875,7 +875,7 @@ input[type="checkbox"]:is(.sb-switch, .checkbox_label > *)::after {
     block-size: var(--sb-switch-thumb);
     border-radius: var(--sb-radius-pill);
     background: var(--SmartThemeBodyColor);
-    box-shadow: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 40%, transparent);
+    box-shadow: var(--sb-shadow-control);
     transition: inset-inline-start var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
 
@@ -937,7 +937,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     min-block-size: var(--sb-radio-size);
     margin: 0;
     border: 2px solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     cursor: pointer;
     box-sizing: border-box;
@@ -948,7 +948,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     content: '';
     inline-size: calc(var(--sb-radio-size) * 0.4);
     block-size: calc(var(--sb-radio-size) * 0.4);
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: var(--sb-on-solid-accent, var(--SmartThemeCheckboxTickColor));
     transform: scale(0);
     transition: transform var(--sb-transition-fast);
@@ -987,7 +987,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     width: 100%;
     padding: 4px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
-    border-radius: 8px;
+    border-radius: var(--sb-radius-control);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
     box-sizing: border-box;
 }
@@ -1017,7 +1017,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     min-height: var(--sb-control-min-height);
     padding: 7px 10px;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: var(--sb-radius-inner);
     text-align: center;
     background: transparent;
     color: var(--SmartThemeBodyColor);
@@ -1216,7 +1216,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 :root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button_icon:where(:not(.sb-status-page__action)) {
     min-height: 32px;
     padding: 6px 10px;
-    border-radius: 10px;
+    border-radius: var(--sb-radius-control);
     font-size: calc(var(--mainFontSize) * 0.86);
     line-height: 1.2;
 }
@@ -1257,7 +1257,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     right: 6px;
     inline-size: 5px;
     block-size: 5px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: currentColor;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--sb-state-active-bg) 86%, transparent);
     pointer-events: none;
@@ -1300,7 +1300,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     bottom: 5px;
     left: 7px;
     block-size: 2px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--sb-color-warning) 82%, var(--SmartThemeBodyColor));
     pointer-events: none;
 }
@@ -1597,7 +1597,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     isolation: isolate;
     box-sizing: border-box;
     padding: 6px;
-    border-radius: 16px;
+    border-radius: var(--sb-radius-overlay);
     border-color: color-mix(in srgb, var(--sb-shell-border) 92%, transparent);
     /* libadwaita bottom toolbar: the 1px border separates it; no blurred drop shadow. */
     box-shadow: none;
@@ -1760,7 +1760,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 
 :root[data-sb-compact-mode='true'] #send_form {
     padding: 3px;
-    border-radius: 12px;
+    border-radius: var(--sb-radius-card);
 }
 
 :root[data-sb-compact-mode='true'] #nonQRFormItems {
@@ -1777,7 +1777,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     min-height: 38px;
     padding: 5px 7px;
     line-height: 1.18;
-    border-radius: 8px;
+    border-radius: var(--sb-radius-control);
     font-size: calc(var(--mainFontSize) * 0.86);
 }
 
@@ -1811,7 +1811,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     z-index: 1;
     inline-size: min(72px, 34%);
     block-size: 3px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--sb-generating-glow-color, var(--SmartThemeQuoteColor)) 96%, var(--SmartThemeBodyColor));
     transform: translateX(-50%);
     pointer-events: none;
@@ -1935,7 +1935,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     }
 }
 .popup {
-    box-shadow: 0 26px 60px color-mix(in srgb, var(--SmartThemeShadowColor) 28%, transparent);
+    box-shadow: var(--sb-shadow-dialog);
 }
 
 .mes {
@@ -2167,7 +2167,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     opacity: 1;
     color: var(--sb-edit-action-color);
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     box-shadow: none;
     filter: none;
@@ -2239,7 +2239,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 /* Guided Generations and input-history composer buttons: libadwaita flat toolbar buttons, circular. */
 #send_form :is(.gg-action-button, .stih--button).menu_button {
     border-color: transparent;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     box-shadow: none;
     transform: none;
@@ -2282,7 +2282,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 #chat .mes :is(.swipe_left, .swipe_right) {
     inline-size: var(--sb-message-hit-size);
     block-size: var(--sb-message-hit-size);
-    border-radius: 8px;
+    border-radius: var(--sb-radius-control);
     line-height: var(--sb-message-hit-size);
     text-align: center;
 }
@@ -2306,7 +2306,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     align-items: center;
     line-height: 1;
     box-sizing: border-box;
-    border-radius: 8px;
+    border-radius: var(--sb-radius-inner);
 }
 
 /* The counter is what opens the swipe picker on a press and hold, but it is only 18px tall.
@@ -2506,7 +2506,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     inline-size: 40px;
     block-size: 40px;
     padding: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast), transform var(--sb-transition-fast);
 }
 
@@ -2630,7 +2630,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 /* libadwaita expander row: neutral raised fill, button radius, no border. */
 #chat .mes_reasoning_header {
     border: 0;
-    border-radius: var(--sb-radius-button, 10px);
+    border-radius: var(--sb-radius-button);
     background: var(--sb-raised-bg);
     transition: background-color var(--sb-transition-fast);
 }
@@ -2963,7 +2963,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 }
 
 .neo-range-slider {
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
 }
 
 /* libadwaita-style scale: thin flat trough, plain thumb, no brightness filter or inset shadow. */
@@ -2971,7 +2971,7 @@ input[type='range'],
 input[type='range'].neo-range-slider {
     height: 4px;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     box-shadow: none;
     filter: none;
     transition: none;
@@ -2981,7 +2981,7 @@ input[type='range'].neo-range-slider {
 input[type='range'].neo-range-slider {
     height: 4px !important;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent) !important;
-    border-radius: 999px !important;
+    border-radius: var(--sb-radius-pill) !important;
     box-shadow: none !important;
 }
 
@@ -2994,9 +2994,9 @@ input[type='range']::-webkit-slider-thumb {
     width: 18px;
     height: 18px;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: var(--color-primary, var(--sb-accent));
-    box-shadow: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    box-shadow: var(--sb-shadow-control);
     transition: transform var(--sb-transition-fast);
 }
 
@@ -3004,16 +3004,16 @@ input[type='range']::-moz-range-thumb {
     width: 18px;
     height: 18px;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: var(--color-primary, var(--sb-accent));
-    box-shadow: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
+    box-shadow: var(--sb-shadow-control);
     transition: transform var(--sb-transition-fast);
 }
 
 /* Firefox paints the filled part of the trough; WebKit/Blink have no CSS-only equivalent without a value variable. */
 input[type='range']::-moz-range-progress {
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: var(--color-primary, var(--sb-accent));
 }
 
@@ -3064,7 +3064,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     background-image: none;
     border-radius: var(--sb-radius-button);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-    box-shadow: 0 18px 32px color-mix(in srgb, var(--SmartThemeShadowColor) 18%, transparent);
+    box-shadow: var(--sb-shadow-popover);
     max-width: 100%;
     overflow: hidden;
 }
@@ -3116,7 +3116,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .select2-container--default .select2-search--dropdown .select2-search__field {
     background: var(--sb-input-bg);
     border: 1px solid var(--sb-input-border);
-    border-radius: 12px;
+    border-radius: var(--sb-radius-card);
     color: var(--SmartThemeBodyColor);
     padding: 10px 12px;
 }
@@ -3245,7 +3245,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     gap: 4px;
     padding: 12px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    border-radius: 14px;
+    border-radius: var(--sb-radius-card);
     background: color-mix(in srgb, var(--sb-shell-surface) 78%, transparent);
 }
 
@@ -3274,7 +3274,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     width: fit-content;
     padding: 3px 8px;
     border: 1px solid color-mix(in srgb, var(--sb-accent) 34%, var(--sb-shell-border) 66%);
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--sb-accent) 10%, transparent);
     color: var(--sb-contrast-strong, var(--SmartThemeBodyColor));
     font-size: var(--sb-type-control);
@@ -3285,7 +3285,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     min-width: 0;
     padding: 12px;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
-    border-radius: 14px;
+    border-radius: var(--sb-radius-card);
     background: color-mix(in srgb, var(--sb-shell-surface) 72%, transparent);
 }
 
@@ -3348,7 +3348,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     gap: 4px;
     background: color-mix(in srgb, var(--sb-shell-surface) 90%, black 10%);
     padding: 2px;
-    border-radius: 8px;
+    border-radius: var(--sb-radius-control);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
 }
 
@@ -3356,7 +3356,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     padding: 3px 10px;
     font-size: var(--sb-type-meta);
     font-weight: 500;
-    border-radius: 6px;
+    border-radius: var(--sb-radius-inner);
     border: 1px solid transparent;
     background: transparent;
     color: var(--SmartThemeBodyColor);
@@ -3376,10 +3376,10 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .sb-transmission-btn.active {
     opacity: 1;
     font-weight: 700;
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent, #3b82f6)) 20%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, #3b82f6)) 60%, transparent);
-    color: var(--color-primary, var(--sb-accent, #60a5fa));
-    box-shadow: 0 1px 4px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent);
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 20%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 60%, transparent);
+    color: var(--color-primary, var(--sb-accent));
+    box-shadow: var(--sb-shadow-control);
 }
 
 
@@ -3409,7 +3409,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
     padding: 2px 6px;
-    border-radius: 6px;
+    border-radius: var(--sb-radius-inner);
 }
 
 .sb-capability-forbidden-badge[hidden] {
@@ -4371,7 +4371,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     min-width: 0;
     min-height: 34px;
     padding: 7px 10px;
-    border-radius: 12px;
+    border-radius: var(--sb-radius-card);
     font-size: var(--sb-type-control);
     line-height: 1.2;
     white-space: normal;
@@ -4927,7 +4927,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     border-radius: var(--sb-radius-lg);
     background: transparent;
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    box-shadow: 0 18px 34px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+    box-shadow: var(--sb-shadow-card);
 }
 
 #AdvancedFormatting > .sb-formatting-group::before {
@@ -5125,7 +5125,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     white-space: nowrap;
     background: color-mix(in srgb, var(--sb-button-bg) 92%, transparent);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
-    box-shadow: 0 10px 18px color-mix(in srgb, var(--SmartThemeShadowColor) 8%, transparent);
+    box-shadow: var(--sb-shadow-control);
 }
 
 .quick_context_size:focus-visible {
@@ -5253,7 +5253,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     max-height: var(--sb-accent-swatch-size);
     flex: 0 0 var(--sb-accent-swatch-size);
     padding: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);
     box-shadow:
@@ -5361,7 +5361,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .sb-message-style-button.is-selected {
     background: var(--sb-shell-tab-active-bg);
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 26%, var(--sb-shell-border));
-    box-shadow: 0 12px 24px color-mix(in srgb, var(--SmartThemeShadowColor) 14%, transparent);
+    box-shadow: var(--sb-shadow-control);
 }
 
 @media screen and (max-width: 768px) {
@@ -6010,7 +6010,7 @@ body #toast-container {
 body #toast-container > .toast,
 body #toast-container > .toast:hover {
     background-blend-mode: difference;
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-shadow, var(--SmartThemeShadowColor)) 30%, transparent);
+    box-shadow: var(--sb-shadow-toast);
 }
 
 @keyframes sb-entity-select-pulse {
@@ -6204,7 +6204,7 @@ body.reduced-motion *::after {
     .sb-chat-completion-server-config .sb-chat-completion-config-actions .menu_button {
         min-height: max(34px, var(--sb-control-min-height));
         padding: 7px 10px;
-        border-radius: 11px;
+        border-radius: var(--sb-radius-control);
         font-size: var(--sb-type-control);
     }
 
@@ -6214,7 +6214,7 @@ body.reduced-motion *::after {
     .sb-shell-panel-scroller button.menu_button_icon:where(:not(.sb-status-page__action)) {
         min-height: max(38px, var(--sb-control-min-height));
         padding: 8px 12px;
-        border-radius: 12px;
+        border-radius: var(--sb-radius-card);
         font-size: var(--sb-type-control);
         line-height: 1.25;
     }
@@ -6225,7 +6225,7 @@ body.reduced-motion *::after {
         height: var(--sb-accent-swatch-size);
         max-height: var(--sb-accent-swatch-size);
         padding: 0;
-        border-radius: 999px;
+        border-radius: var(--sb-radius-pill);
     }
 
     #leftSendForm > div,
@@ -6272,7 +6272,7 @@ body.reduced-motion *::after {
         min-height: var(--sb-preset-button-size) !important;
         max-height: var(--sb-preset-button-size) !important;
         padding: 0 !important;
-        border-radius: 12px;
+        border-radius: var(--sb-radius-card);
     }
 
     #AdvancedFormatting .title_restorable.standoutHeader .menu_button i,
@@ -6885,7 +6885,7 @@ dialog.popup.sb-dialog .sb-dialog__header > .popup-button-close {
     min-height: 40px;
     margin: 0;
     padding: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     font-size: calc(var(--mainFontSize) * 1.1);
     opacity: 1;
 }
@@ -6954,7 +6954,7 @@ dialog.popup.sb-dialog:is([data-presentation='sheet'], [data-covers-sheet]) > .s
     position: absolute;
     inset: 8px 19px auto;
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
 }
 
@@ -7646,7 +7646,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     color: var(--SmartThemeBodyColor);
     box-shadow: none;
@@ -7706,7 +7706,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     min-width: 0;
     height: 34px;
     min-height: 34px;
-    border-radius: 9px;
+    border-radius: var(--sb-radius-control);
     background: transparent;
 }
 
@@ -7729,7 +7729,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     margin: 0;
     padding-inline: 9px;
     border: 0;
-    border-radius: 9px;
+    border-radius: var(--sb-radius-control);
     background: color-mix(in srgb, var(--sb-shell-text) 10%, transparent);
     color: var(--sb-shell-text);
     box-shadow: none;
@@ -7960,7 +7960,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     position: absolute;
     inset: 8px 19px auto;
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
 }
 
@@ -8256,9 +8256,9 @@ body.reduced-motion #toast-container > div.sb-toast-leaving {
 
 /* Tooltips - libadwaita OSD (shadow ink, white text, subtle border, no shadow) */
 .tooltip-inner {
-    background: rgba(0, 0, 0, 0.8);
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--sb-layer-toast);
+    color: var(--sb-layer-toast-fg);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     border-radius: var(--sb-radius-control);
     padding: 6px 10px;
     box-shadow: none;
@@ -8266,22 +8266,49 @@ body.reduced-motion #toast-container > div.sb-toast-leaving {
 
 .tooltip.bs-tooltip-top .arrow::before,
 .tooltip.bs-tooltip-auto[data-popper-placement^="top"] .arrow::before {
-    border-top-color: rgba(0, 0, 0, 0.8);
+    border-top-color: var(--sb-layer-toast);
 }
 
 .tooltip.bs-tooltip-bottom .arrow::before,
 .tooltip.bs-tooltip-auto[data-popper-placement^="bottom"] .arrow::before {
-    border-bottom-color: rgba(0, 0, 0, 0.8);
+    border-bottom-color: var(--sb-layer-toast);
 }
 
 .tooltip.bs-tooltip-start .arrow::before,
 .tooltip.bs-tooltip-auto[data-popper-placement^="left"] .arrow::before {
-    border-left-color: rgba(0, 0, 0, 0.8);
+    border-left-color: var(--sb-layer-toast);
 }
 
 .tooltip.bs-tooltip-end .arrow::before,
 .tooltip.bs-tooltip-auto[data-popper-placement^="right"] .arrow::before {
-    border-right-color: rgba(0, 0, 0, 0.8);
+    border-right-color: var(--sb-layer-toast);
+}
+
+/* A tooltip is one of the two translucent overlays; engines without relative colours keep the opaque toast layer. */
+@supports (color: rgb(from black r g b / 1)) {
+    .tooltip-inner {
+        background: rgb(from var(--SmartThemeShadowColor) r g b / 80%);
+    }
+
+    .tooltip.bs-tooltip-top .arrow::before,
+    .tooltip.bs-tooltip-auto[data-popper-placement^="top"] .arrow::before {
+        border-top-color: rgb(from var(--SmartThemeShadowColor) r g b / 80%);
+    }
+
+    .tooltip.bs-tooltip-bottom .arrow::before,
+    .tooltip.bs-tooltip-auto[data-popper-placement^="bottom"] .arrow::before {
+        border-bottom-color: rgb(from var(--SmartThemeShadowColor) r g b / 80%);
+    }
+
+    .tooltip.bs-tooltip-start .arrow::before,
+    .tooltip.bs-tooltip-auto[data-popper-placement^="left"] .arrow::before {
+        border-left-color: rgb(from var(--SmartThemeShadowColor) r g b / 80%);
+    }
+
+    .tooltip.bs-tooltip-end .arrow::before,
+    .tooltip.bs-tooltip-auto[data-popper-placement^="right"] .arrow::before {
+        border-right-color: rgb(from var(--SmartThemeShadowColor) r g b / 80%);
+    }
 }
 
 /* Composer Frame - view layer, single border, no gradient, no accent wash on focus.

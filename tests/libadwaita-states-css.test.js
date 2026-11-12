@@ -130,7 +130,7 @@ describe('tooltips', () => {
         const body = bodies(themeCss, '.tooltip-inner');
         expect(body).toMatch(/padding:\s*6px 10px;/);
         expect(body).toMatch(/box-shadow:\s*none;/);
-        expect(body).toMatch(/border:\s*1px solid rgba\(255, 255, 255, 0\.1\);/);
+        expect(body).toMatch(/border:\s*1px solid color-mix\(in srgb, var\(--SmartThemeBodyColor\) 10%, transparent\);/);
     });
 });
 

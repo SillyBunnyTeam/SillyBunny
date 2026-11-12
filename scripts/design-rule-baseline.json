@@ -113,10 +113,8 @@
         },
         "public/css/sillybunny-tabs.css": {
             "color-literal": 6,
-            "color-literal-fallback": 8,
-            "radius-literal": 34,
-            "radius-literal-fallback": 24,
-            "shadow-literal": 10,
+            "radius-literal": 10,
+            "shadow-literal": 8,
             "duration-literal": 1,
             "important": 283,
             "breakpoint-off-set": 12,
@@ -132,11 +130,9 @@
             "spacing-off-scale": 4
         },
         "public/css/sillybunny-theme.css": {
-            "color-literal": 18,
-            "color-literal-fallback": 3,
-            "radius-literal": 44,
-            "radius-literal-fallback": 1,
-            "shadow-literal": 35,
+            "color-literal": 10,
+            "radius-literal": 2,
+            "shadow-literal": 25,
             "important": 199,
             "hover-ungated": 6,
             "breakpoint-off-set": 4,
