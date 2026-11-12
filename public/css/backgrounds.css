@@ -22,11 +22,6 @@ body.sb-bg-blur #bg_custom {
     filter: blur(calc(var(--customCSS-bg-blur, 0) * 1px));
 }
 
-/* Fitting options */
-#background_fitting {
-    max-width: 8em;
-}
-
 /* Fill/Cover - scales to fill width while maintaining aspect ratio */
 #bg1.cover {
     background-size: cover;
@@ -68,20 +63,37 @@ body.sb-bg-blur #bg_custom {
 
 #bg-header-fixed {
     flex-shrink: 0;
-    padding: 14px;
-    background: var(--sb-card-bg, var(--SmartThemeBlurTintColor));
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 84%, transparent);
-    border-radius: 18px;
+    padding: 0;
+    margin: 0;
     width: 100%;
 }
 
 .bg-header-row-1,
 .bg-header-row-2 {
-    display: flex;
+    width: 100%;
+}
+
+.bg-header-row-1 > .ds-row-suffix {
+    flex: 1 1 480px;
     flex-wrap: wrap;
     gap: 8px;
+}
+
+.bg-header-row-1 > .ds-row-text {
+    flex: 1 1 180px;
+}
+
+.bg-header-row-2 > .ds-row-text {
+    flex: 1 1 260px;
+}
+
+.bg-header-row-2 > .ds-row-suffix {
+    flex: 0 1 150px;
+}
+
+.bg-header-row-2 #bg-filter {
+    flex: 0 0 auto;
     width: 100%;
-    align-items: center;
 }
 
 /* Control buttons in header */
@@ -127,11 +139,11 @@ body.sb-bg-blur #bg_custom {
     display: grid;
     gap: 5px;
     width: 100%;
-    grid-template-columns: repeat(var(--bg-thumb-columns, 5), 1fr);
+    grid-template-columns: repeat(var(--bg-thumb-columns, 5), minmax(0, 1fr));
 }
 
 #bg-filter {
-    font-size: calc(var(--mainFontSize) * 0.95);
+    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
     flex: 1 1 260px;
     min-width: 0;
 }
@@ -326,29 +338,22 @@ body.sb-bg-blur #bg_custom {
 
 /* Scroll-to-Top Button */
 #bg-scroll-top {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
+    position: static;
     width: 42px;
     height: 42px;
     background: var(--SmartThemeBlurTintColor);
     color: var(--SmartThemeBodyColor);
     border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 50%;
     cursor: pointer;
-    z-index: var(--sb-z-raised);
     font-size: 18px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    opacity: 0;
-    transition: opacity var(--sb-transition);
-    pointer-events: none;
+    visibility: hidden;
 }
 
 #bg-scroll-top.visible {
-    opacity: 1;
-    pointer-events: auto;
+    visibility: visible;
 }
 
 #bg-scroll-top:hover {
@@ -385,9 +390,9 @@ body.sb-bg-blur #bg_custom {
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
-    color: var(--SmartThemeBodyColor);
-    font-size: 0.9em;
+    background: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.9));
+    color: #fff;
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 600;
     padding: 4px 8px 6px;
     text-align: center;
@@ -421,13 +426,15 @@ body.sb-bg-blur #bg_custom {
 #bg_tabs .bg_tabs_list {
     display: flex;
     flex-direction: row;
-    gap: 5px;
-    background: none;
+    gap: 4px;
+    background: var(--sb-composer-input-bg);
     border: none;
-    margin: 5px 0;
-    padding: 0;
-    padding-right: 4em;
-    position: relative;
+    margin: 0;
+    padding: 4px;
+    border-radius: 999px;
+    flex-wrap: nowrap;
+    align-self: flex-start;
+    max-width: 100%;
 }
 
 #bg_tabs .bg_tabs_list .bg_tab_button {
@@ -435,27 +442,30 @@ body.sb-bg-blur #bg_custom {
     align-items: center;
     justify-content: center;
     text-align: center;
-    min-width: 8em;
+    min-width: 0;
+    flex: 1 1 120px;
     list-style: none;
-    color: var(--SmartThemeBodyColor);
-    background-color: var(--SmartThemeBlurTintColor);
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 5px;
+    color: var(--sb-shell-text);
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
     padding: 0;
     cursor: pointer;
     font-weight: 600;
     margin: 0 !important;
     filter: none;
-    opacity: 0.8;
-    transition: opacity var(--animation-duration-2x);
+    /* SillyBunny: upstream dims every jQuery list item, including selected background tabs. */
+    opacity: 1;
+    transition: background-color var(--sb-transition-fast);
 }
 
 #bg_tabs .bg_tabs_list .bg_tab_button:hover {
-    opacity: 1;
+    background: var(--sb-flat-hover-bg);
 }
 
 #bg_tabs .bg_tabs_list .bg_tab_button.ui-tabs-active {
-    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 33%, var(--SmartThemeBlurTintColor) 66%);
+    background: var(--sb-layer-view);
+    box-shadow: var(--sb-shadow-sm);
 }
 
 #bg_tabs.ui-widget-content {
@@ -470,9 +480,10 @@ body.sb-bg-blur #bg_custom {
 #bg_tabs .bg_tabs_list .bg_tab_button a {
     width: 100%;
     height: 100%;
-    padding: 3px 5px;
+    padding: 10px 20px;
+    min-height: 44px;
     cursor: pointer;
-    color: var(--SmartThemeBodyColor);
+    color: var(--sb-shell-text);
 }
 
 #bg_tabs .bg_tab_panel {
@@ -480,6 +491,11 @@ body.sb-bg-blur #bg_custom {
     height: 100%;
     overflow-y: auto;
     padding: 10px;
+}
+
+#sb-settings-page #bg_tabs .bg_tab_panel {
+    max-height: min(65dvh, 720px);
+    min-height: 0;
 }
 
 #bg_custom_content:not(:empty)~#bg_chat_hint {
@@ -490,7 +506,7 @@ body.sb-bg-blur #bg_custom {
     display: grid;
     gap: 5px;
     width: 100%;
-    grid-template-columns: repeat(calc(var(--bg-thumb-columns, 5) + 2), 1fr);
+    grid-template-columns: repeat(calc(var(--bg-thumb-columns, 5) + 2), minmax(0, 1fr));
     margin-bottom: 10px;
 }
 
@@ -536,13 +552,13 @@ body.sb-bg-blur #bg_custom {
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
-    color: var(--SmartThemeBodyColor);
+    background: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.85));
+    color: #fff;
     padding: 6px 8px 4px;
     display: flex;
     align-items: center;
     gap: 5px;
-    font-size: 0.85em;
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 600;
     pointer-events: none;
     border-radius: 0 0 8px 8px;
@@ -616,7 +632,7 @@ body.sb-bg-blur #bg_custom {
     color: var(--SmartThemeBodyColor);
     opacity: 0.6;
     gap: 6px;
-    font-size: 0.85em;
+    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     font-weight: 600;
 }
 
@@ -637,7 +653,7 @@ body.sb-bg-blur #bg_custom {
 
 .bg_current_folder_name {
     font-weight: 600;
-    font-size: 1em;
+    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
     color: var(--SmartThemeBodyColor);
     white-space: normal;
     overflow-wrap: anywhere;
@@ -656,4 +672,35 @@ body.sb-bg-blur #bg_custom {
 .bg_example[custom="true"] .jg-folder,
 .bg_example[custom="true"] .jg-set-cover {
     display: none !important;
+}
+
+@media screen and (max-width: 620px) {
+    .bg-header-row-1.ds-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .bg-header-row-1 > :is(.ds-row-text, .ds-row-suffix) {
+        flex-basis: auto;
+        width: 100%;
+    }
+
+    #background_fitting {
+        flex-basis: 100%;
+        width: 100%;
+    }
+
+    .bg-header-row-2 {
+        flex-wrap: wrap;
+    }
+
+    #bg_menu_content,
+    #bg_custom_content,
+    .bg_folder_grid.bg_list {
+        grid-template-columns: repeat(min(var(--bg-thumb-columns, 5), 3), minmax(0, 1fr));
+    }
+
+    #bg_tabs .bg_tabs_list {
+        align-self: stretch;
+    }
 }

@@ -44,17 +44,23 @@ export const DISABLED_CONTROL_CLASS = 'disabled';
  * @type {MutationObserver}
  */
 const observer = new MutationObserver(mutations => {
-    mutations.forEach(mutation => {
+    // One batch can carry thousands of records for the same subtree (a page swap adds a node and then
+    // toggles classes inside it). Rescanning each one repeats full-subtree queries, so collapse the
+    // batch to its unique outermost elements first.
+    const changed = new Set();
+    for (const mutation of mutations) {
         if (mutation.type === 'childList') {
-            mutation.addedNodes.forEach(handleNodeChange);
+            mutation.addedNodes.forEach(node => node instanceof Element && changed.add(node));
+        } else if (mutation.type === 'attributes' && mutation.attributeName === 'class' && mutation.target instanceof Element) {
+            changed.add(mutation.target);
         }
-        if (mutation.type === 'attributes') {
-            const target = mutation.target;
-            if (mutation.attributeName === 'class' && target instanceof Element) {
-                handleNodeChange(target);
-            }
-        }
-    });
+    }
+    for (const node of changed) {
+        if (!node.isConnected) continue;
+        let ancestor = node.parentElement;
+        while (ancestor && !changed.has(ancestor)) ancestor = ancestor.parentElement;
+        if (!ancestor) handleNodeChange(node);
+    }
 });
 
 /**
@@ -223,6 +229,12 @@ function initializeScrollResetBehaviors(element = document) {
 function handleGlobalKeyDown(event) {
     if (event.key === 'Enter') {
         if (!(event.target instanceof HTMLElement))
+            return;
+
+        // SillyBunny: a native button, link, summary or button-like input already clicks on Enter, so the
+        // synthetic click below would run its handler twice, and the second click lands on whatever took focus
+        // after the first. Checkbox and radio stay out of this list because Enter does not toggle them.
+        if (event.target.matches('button, summary, a[href], input:is([type="button"], [type="submit"], [type="reset"], [type="image"])'))
             return;
 
         // Only count enter on this interactable if no modifier key is pressed

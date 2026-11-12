@@ -1,11 +1,29 @@
-<div class="{{prefix}}prompt_manager_footer">
-    <select id="{{prefix}}prompt_manager_footer_append_prompt" class="text_pole" name="append-prompt">
-        {{{promptsHtml}}}
-    </select>
-    <a class="menu_button fa-chain fa-solid fa-fw" title="Insert prompt" data-i18n="[title]Insert prompt"></a>
-    <a class="caution menu_button fa-x fa-solid fa-fw" title="Delete prompt" data-i18n="[title]Delete prompt"></a>
-    <a class="menu_button fa-file-import fa-solid fa-fw" id="prompt-manager-import" title="Import a prompt list" data-i18n="[title]Import a prompt list"></a>
-    <a class="menu_button fa-file-export fa-solid fa-fw" id="prompt-manager-export" title="Export this prompt list" data-i18n="[title]Export this prompt list"></a>
-    <a class="menu_button fa-undo fa-solid fa-fw" id="prompt-manager-reset-character" title="Reset current character" data-i18n="[title]Reset current character"></a>
-    <a class="menu_button fa-plus-square fa-solid fa-fw" title="New prompt" data-i18n="[title]New prompt"></a>
+<div class="{{prefix}}prompt_manager_footer pm-footer-toolbar">
+    <div class="pm-footer-group pm-footer-group-primary">
+        <select id="{{prefix}}prompt_manager_footer_append_prompt" class="text_pole" name="append-prompt">
+            {{{promptsHtml}}}
+        </select>
+        <button type="button" class="menu_button pm-footer-btn pm-footer-btn-labeled" data-pm-footer-action="insert" title="Insert selected prompt" data-i18n="[title]Insert selected prompt" aria-label="Insert selected prompt">
+            <i class="fa-solid fa-chain fa-fw" aria-hidden="true"></i>
+            <span data-i18n="Insert">Insert</span>
+        </button>
+    </div>
+    <div class="pm-footer-group pm-footer-group-actions">
+        <button type="button" class="menu_button pm-footer-btn pm-footer-btn-labeled" data-pm-footer-action="new" title="New prompt" data-i18n="[title]New prompt" aria-label="New prompt">
+            <i class="fa-solid fa-plus-square fa-fw" aria-hidden="true"></i>
+            <span data-i18n="New">New</span>
+        </button>
+        <button type="button" class="menu_button pm-footer-btn" id="prompt-manager-import" title="Import a prompt list" data-i18n="[title]Import a prompt list" aria-label="Import a prompt list">
+            <i class="fa-solid fa-file-import fa-fw" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="menu_button pm-footer-btn" id="prompt-manager-export" title="Export this prompt list" data-i18n="[title]Export this prompt list" aria-label="Export this prompt list">
+            <i class="fa-solid fa-file-export fa-fw" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="menu_button pm-footer-btn caution" id="prompt-manager-reset-character" title="Reset current character" data-i18n="[title]Reset current character" aria-label="Reset current character">
+            <i class="fa-solid fa-undo fa-fw" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="menu_button pm-footer-btn caution" data-pm-footer-action="delete" title="Delete prompt" data-i18n="[title]Delete prompt" aria-label="Delete prompt">
+            <i class="fa-solid fa-x fa-fw" aria-hidden="true"></i>
+        </button>
+    </div>
 </div>

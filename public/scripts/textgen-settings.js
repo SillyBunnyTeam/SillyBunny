@@ -49,6 +49,8 @@ import { getCurrentDreamGenModelTokenizer, getCurrentOpenRouterModelTokenizer, l
 import { ENCODE_TOKENIZERS, TEXTGEN_TOKENIZERS, TOKENIZER_SUPPORTED_KEY, getTextTokens, getTokenizerBestMatch, tokenizers } from './tokenizers.js';
 import { AbortReason } from './util/AbortReason.js';
 import { getSortableDelay, onlyUnique, arraysEqual, isObject } from './utils.js';
+// SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
+import { createFailedResponseError, extractProviderMessage, showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
 
 export const textgen_types = {
     OOBA: 'ooba',
@@ -1270,6 +1272,13 @@ function showSamplerControls(apiType = null) {
 
 function showTypeSpecificControls(apiType) {
     $('[data-tg-type]').each(function () {
+        // SillyBunny: the shared Sampling tab shows every sampler for every backend type
+        // (sillybunny-tabs.js SB_SAMPLER_REGISTRY). Manual sampler selection still applies afterwards.
+        if (this.hasAttribute('data-sb-sampler-ungated')) {
+            $(this).show();
+            return;
+        }
+
         const mode = String($(this).attr('data-tg-type-mode') ?? '').toLowerCase().trim();
         const tgTypes = $(this).attr('data-tg-type').split(',').map(x => x.trim());
 
@@ -1411,8 +1420,11 @@ export async function generateTextGenWithStreaming(generate_data, signal) {
     });
 
     if (!response.ok) {
-        tryParseStreamingError(response, await response.text());
-        throw new Error(`Got response status ${response.status}`);
+        const errorBody = await response.text();
+        tryParseStreamingError(response, errorBody);
+        // SillyBunny: bodies that are not JSON (proxy pages, plain text) used to fail without any message.
+        showRequestError({ title: 'Text Completion API', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });
+        throw createFailedResponseError({ status: getFailureStatus(response), body: errorBody });
     }
 
     const eventStream = getEventSourceStream();
@@ -1548,10 +1560,11 @@ function tryParseStreamingError(response, decoded) {
         // No JSON. Do nothing.
     }
 
-    const message = data?.error?.message || data?.error || data?.message || data?.detail;
+    // SillyBunny: the server wraps upstream failures as { error: true, response }, so the message can sit there.
+    const message = extractProviderMessage(data);
 
     if (message) {
-        toastr.error(message, 'Text Completion API');
+        showRequestError({ title: 'Text Completion API', status: getFailureStatus(response), body: data, message });
         throw new Error(message);
     }
 }

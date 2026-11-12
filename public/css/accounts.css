@@ -1,5 +1,23 @@
-.userAccount {
-    border: 1px solid var(--SmartThemeBorderColor);
-    padding: 5px 10px;
-    border-radius: 5px;
+/* SillyBunny: shared boxed-list styles replace the fixed legacy account-card treatment. */
+
+.sb-account-profile :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button,
+.sb-admin-window :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button,
+.sb-window-snapshots :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button {
+    box-sizing: border-box;
+    min-width: 40px;
+    min-height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+}
+
+@media (hover: hover) {
+    .sb-account-profile :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button:hover,
+    .sb-admin-window :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button:hover,
+    .sb-window-snapshots :is(.menu_button, .menu_button_icon, .right_menu_button).sb-dialog__icon-button:hover {
+        background: var(--sb-flat-hover-bg);
+    }
 }

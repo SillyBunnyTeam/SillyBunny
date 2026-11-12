@@ -28,6 +28,7 @@ import { clearFeed, getFeedItems } from './pathfinder/activity-feed.js';
 import { getSummaryMemoryState, onSummaryMemoryChanged, saveSummaryMemoryContent } from './pathfinder/summary-memory-store.js';
 import { sidecarGenerate } from './pathfinder/llm-sidecar.js';
 import { createSeparateSummaryMemoryEntry, createSummaryMemoryEntry, deriveSummaryLorebookTitle } from './pathfinder/tools/summarize.js';
+export { isPathfinderAgent } from './catalogue.js';
 
 const MODULE_NAME = 'in-chat-agents';
 const PATHFINDER_LOG_PREFIX = '[Pathfinder]';
@@ -70,7 +71,7 @@ export async function canClosePathfinderSettings(panel) {
 }
 
 export function refreshPathfinderSettings() {
-    if (!settingsSession) return;
+    if (!settingsSession || !isSettingsUiVisible()) return;
     const saved = getAgentById(currentAgent.id);
     if (!saved) return;
     const edits = Object.fromEntries([...settingsSession.dirtySettings].map(key => [key, currentAgent.settings[key]]));
@@ -79,6 +80,18 @@ export function refreshPathfinderSettings() {
     refreshLorebookList();
     updateModeCardStates();
     updateStatusBanner();
+}
+
+function isSettingsUiVisible() {
+    const element = settingsEl?.[0];
+    if (!element) return false;
+    // Detached panels are populated once before being handed to the host.
+    if (!element.isConnected) return true;
+    if (element.closest('[hidden], [aria-hidden="true"], [inert], .closedDrawer, .sb-subpage-store, dialog:not([open]), .sb-shell-panel:not(.sb-shell-panel-active), .sb-settings-mounted-shell:not(.sb-settings-active-root)')) return false;
+    for (let node = element; node; node = node.parentElement) {
+        if (node.style.display === 'none') return false;
+    }
+    return true;
 }
 
 function safeGetAccountStorageItem(key) {
@@ -272,10 +285,24 @@ export async function openPathfinderSettings(agent) {
         session.element.find('#pf--settings-save-status').text('');
         session.element.find('#pf--settings-retry').hide();
         refreshPathfinderSettings();
-        loadSettingsIntoUI();
+        if (isSettingsUiVisible()) loadSettingsIntoUI();
     };
     eventSource.on(event_types.CHAT_CHANGED, refreshContext);
     session.cleanup.push(() => eventSource.removeListener(event_types.CHAT_CHANGED, refreshContext));
+    const refreshOnReveal = () => {
+        if (!isSettingsUiVisible()) return;
+        refreshPathfinderSettings();
+        loadSettingsIntoUI();
+    };
+    document.addEventListener('sb:shell-tab-activated', refreshOnReveal);
+    session.cleanup.push(() => document.removeEventListener('sb:shell-tab-activated', refreshOnReveal));
+    if (typeof IntersectionObserver !== 'undefined') {
+        const observer = new IntersectionObserver(entries => {
+            if (entries.some(entry => entry.isIntersecting)) refreshOnReveal();
+        });
+        observer.observe(settingsEl[0]);
+        session.cleanup.push(() => observer.disconnect());
+    }
     const refreshStatus = () => {
         updateStatusBanner();
         populateConnectionProfiles();
@@ -1393,6 +1420,7 @@ function formatRetrievalLogItem(item) {
  * Update mode card visual states
  */
 function updateModeCardStates() {
+    if (!currentAgent || !isSettingsUiVisible()) return;
     const s = currentAgent.settings;
 
     const toolEnabled = Boolean(s.sidecarEnabled);
@@ -1589,13 +1617,4 @@ function showPromptStatus(message, type) {
 
 function clearPromptStatus() {
     settingsEl.find('#pf--prompt-status').text('');
-}
-
-/**
- * Check if an agent is Pathfinder
- */
-export function isPathfinderAgent(agent) {
-    return agent?.sourceTemplateId === 'tpl-pathfinder' ||
-           agent?.name === 'Pathfinder' ||
-           (agent?.category === 'tool' && agent?.tools?.some(t => t.name?.startsWith('Pathfinder_')));
 }

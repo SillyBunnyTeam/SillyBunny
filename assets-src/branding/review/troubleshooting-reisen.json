@@ -1,0 +1,39 @@
+{
+    "faces": [
+        {
+            "name": "face",
+            "left": {
+                "x": 442,
+                "y": 157,
+                "width": 100,
+                "height": 140
+            },
+            "right": {
+                "x": 530,
+                "y": 157,
+                "width": 100,
+                "height": 140
+            }
+        }
+    ],
+    "hands": [
+        {
+            "name": "left hand on the box",
+            "box": {
+                "x": 525,
+                "y": 395,
+                "width": 110,
+                "height": 90
+            }
+        },
+        {
+            "name": "right hand on the box",
+            "box": {
+                "x": 685,
+                "y": 390,
+                "width": 70,
+                "height": 80
+            }
+        }
+    ]
+}

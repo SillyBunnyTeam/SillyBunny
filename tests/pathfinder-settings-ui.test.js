@@ -175,6 +175,7 @@ beforeEach(() => {
     globalThis.$ = value => value instanceof Control ? value : new Control();
     globalThis.toastr = { info: jest.fn(), error: jest.fn(), warning: jest.fn(), success: jest.fn() };
     globalThis.window = { SillyTavern: { getContext: () => context }, matchMedia: () => ({ matches: true }) };
+    globalThis.document = new EventTarget();
     globalThis.fetch = jest.fn(async () => ({ ok: true }));
     profiles = [];
     generation = { chatId: 'chat-a', runId: 1, cancelRevision: 0 };

@@ -24,7 +24,7 @@
     pointer-events: auto;
 }
 
-#rm_api_block .select2-container--open .select2-dropdown,
+[data-sb-connections-panel] .select2-container--open .select2-dropdown,
 #left-nav-panel.openDrawer .select2-container--open .select2-dropdown,
 #right-nav-panel.openDrawer .select2-container--open .select2-dropdown {
     max-width: calc(100vw - 24px);

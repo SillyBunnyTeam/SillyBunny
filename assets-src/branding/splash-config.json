@@ -1,0 +1,70 @@
+{
+    "bases": {
+        "reisen": {
+            "id": "splash-loop-reisen",
+            "file": "raw/s5/splash-anim/base-reisen/20261102T052723Z-gpt-image-2.5-sunburst-h-pixel-still-2.png",
+            "character": "reisen",
+            "pose": "idle"
+        },
+        "tewi": {
+            "id": "splash-loop-tewi",
+            "file": "raw/s5/splash-anim/base-tewi/20261102T052903Z-gpt-image-2.5-sunburst-h-pixel-still-1.png",
+            "character": "tewi",
+            "pose": "raised"
+        }
+    },
+    "keep": {
+        "tewi": [
+            { "name": "face", "box": { "x": 420, "y": 200, "width": 170, "height": 125 } },
+            { "name": "skirt", "box": { "x": 200, "y": 520, "width": 250, "height": 260 } },
+            { "name": "legs", "box": { "x": 200, "y": 740, "width": 440, "height": 284 } },
+            { "name": "mortar-body", "box": { "x": 626, "y": 790, "width": 270, "height": 234 } }
+        ]
+    },
+    "frames": [
+        {
+            "name": "call",
+            "base": "reisen",
+            "edit": "raw/s5/splash-anim/reisen-call/20261102T053602Z-gpt-image-2.5-sunburst-h-patch-2.png",
+            "settings": { "colourTolerance": 30 }
+        },
+        {
+            "name": "mid",
+            "base": "tewi",
+            "edit": "raw/s5/splash-anim/tewi-mid/20261102T053602Z-gpt-image-2.5-sunburst-h-edit-1.png",
+            "keep": "tewi",
+            "settings": { "colourTolerance": 30, "closeRadius": 40 }
+        },
+        {
+            "name": "strike",
+            "base": "tewi",
+            "edit": "raw/s5/splash-anim/tewi-strike/20261102T053426Z-gpt-image-2.5-sunburst-h-edit-1.png",
+            "keep": "tewi",
+            "settings": { "colourTolerance": 30, "closeRadius": 40 }
+        }
+    ],
+    "scene": {
+        "id": "splash-loop-both",
+        "left": "reisen",
+        "right": "tewi",
+        "gap": 6,
+        "margin": 6
+    },
+    "timelines": {
+        "reisen": {
+            "seconds": 2.4,
+            "keys": [{ "at": 0, "frame": "idle" }, { "at": 0.8, "frame": "call" }, { "at": 1.8, "frame": "idle" }],
+            "effect": { "frame": "call", "at": { "x": 0.9, "y": 0.255 } }
+        },
+        "tewi": {
+            "seconds": 1.6,
+            "keys": [{ "at": 0, "frame": "raised" }, { "at": 0.45, "frame": "mid" }, { "at": 0.7, "frame": "strike" }, { "at": 1, "frame": "mid" }, { "at": 1.15, "frame": "raised" }],
+            "effect": { "frame": "strike", "at": { "x": 0.8, "y": 0.7 } }
+        },
+        "both": {
+            "seconds": 2.4,
+            "reisen": [{ "at": 0, "frame": "idle" }, { "at": 0.8, "frame": "call" }, { "at": 1.8, "frame": "idle" }],
+            "tewi": [{ "at": 0, "frame": "raised" }, { "at": 0.55, "frame": "mid" }, { "at": 0.8, "frame": "strike" }, { "at": 1.1, "frame": "mid" }, { "at": 1.25, "frame": "raised" }]
+        }
+    }
+}

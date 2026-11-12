@@ -1,0 +1,22 @@
+[
+    {
+        "filename": "default_AssistantReisen.png",
+        "type": "character"
+    },
+    {
+        "filename": "default_AssistantTewi.png",
+        "type": "character"
+    },
+    {
+        "filename": "Assistant Reisen",
+        "type": "sprites"
+    },
+    {
+        "filename": "Assistant Tewi",
+        "type": "sprites"
+    },
+    {
+        "filename": "SillyBunny Lexicon.json",
+        "type": "world"
+    }
+]

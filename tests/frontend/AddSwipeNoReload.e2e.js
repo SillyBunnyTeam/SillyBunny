@@ -21,14 +21,7 @@ test.describe('/addswipe without chat reload', () => {
                 throw new Error('Timed out waiting for condition');
             }
 
-            // A fresh account runs onboarding on load: dismiss its popup and wait for the
-            // welcome messages to finish arriving, so they don't land inside the test chat.
-            for (let i = 0; i < 10; i++) {
-                const okButton = document.querySelector('.popup:popover-open .popup-button-ok, dialog[open] .popup-button-ok');
-                if (!okButton) break;
-                okButton.click();
-                await delay(300);
-            }
+            // Wait for the welcome messages to finish arriving, so they don't land inside the test chat.
             const chat = ctx.chat;
             let settledLength = -1;
             await waitFor(() => {

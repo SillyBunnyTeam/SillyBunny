@@ -21,6 +21,8 @@ import {
 } from './utils.js';
 import { BIAS_CACHE, createNewLogitBiasEntry, displayLogitBias, getLogitBiasListResult } from './logit-bias.js';
 import { SECRET_KEYS, secret_state, writeSecret } from './secrets.js';
+// SillyBunny: failed requests show the provider's own message and a hint instead of only the HTTP reason.
+import { createFailedResponseError, showRequestError, getFailureStatus } from './sillybunny-request-errors.js';
 
 const default_preamble = '[ Style: chat, complex, sensory, visceral ]';
 const default_order = [1, 5, 0, 2, 3, 4];
@@ -753,21 +755,25 @@ export function adjustNovelInstructionPrompt(prompt) {
     return stripedPrompt;
 }
 
+// SillyBunny: returns whether the user was told, so the caller can report bodies that are not JSON.
 function tryParseStreamingError(response, decoded) {
+    let reported = false;
     try {
         const data = JSON.parse(decoded);
 
         if (!data) {
-            return;
+            return reported;
         }
 
         if (data.message || data.error) {
-            toastr.error(data.message || data.error?.message || response.statusText, 'NovelAI API');
+            showRequestError({ title: 'NovelAI API', status: getFailureStatus(response), statusText: response.statusText, body: data });
+            reported = true;
             throw new Error(data);
         }
     } catch {
         // No JSON. Do nothing.
     }
+    return reported;
 }
 
 export async function generateNovelWithStreaming(generate_data, signal) {
@@ -780,8 +786,12 @@ export async function generateNovelWithStreaming(generate_data, signal) {
         signal: signal,
     });
     if (!response.ok) {
-        tryParseStreamingError(response, await response.text());
-        throw new Error(`Got response status ${response.status}`);
+        // SillyBunny: bodies that are not JSON (proxy pages, plain text) used to fail without any message.
+        const errorBody = await response.text();
+        if (!tryParseStreamingError(response, errorBody)) {
+            showRequestError({ title: 'NovelAI API', status: getFailureStatus(response), statusText: response.statusText, body: errorBody });
+        }
+        throw createFailedResponseError({ status: getFailureStatus(response), body: errorBody });
     }
     const eventStream = getEventSourceStream();
     response.body.pipeThrough(eventStream);

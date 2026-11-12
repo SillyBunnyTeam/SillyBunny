@@ -1,0 +1,473 @@
+{
+    "refs": {
+        "sheet-reisen": "refs/20261101T063110Z-gpt-image-2.5-sunburst-h-patch-1.png",
+        "sheet-tewi": "refs/20261101T131025Z-gpt-image-2.5-sunburst-h-patch-2.png",
+        "lineup": "refs/20261101T055439Z-gpt-image-2.5-sunburst-h-patch-1.png",
+        "sprite-reisen": "refs/reisen-sprite-a.png",
+        "sprite-tewi": "refs/tewi-sprite.png"
+    },
+    "assets": {
+        "splash-reisen": {
+            "template": "pixel-still",
+            "characters": [
+                "reisen"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    128,
+                    128
+                ]
+            ],
+            "facing": "viewer",
+            "pose": "Standing full body, upright and patient, both arms folded in front of her chest around the item listed under Props, weight even on both feet, a loading-screen portrait that stays calm and still.",
+            "expression": "Earnest and attentive, eyes wide open and looking at the viewer, a small hopeful smile.",
+            "props": "A small plain closed notebook with a blank cover, held against her chest.",
+            "ears": "Both ears half raised and slightly apart with the upper halves folding softly over, the left ear a little lower than the right, every ear tip fully visible and clearly shaped so later frames can twitch them.",
+            "composition": "",
+            "animated": true,
+            "refs": [
+                "sheet-reisen",
+                "lineup",
+                "sprite-reisen"
+            ]
+        },
+        "splash-tewi": {
+            "template": "pixel-still",
+            "characters": [
+                "tewi"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    128,
+                    128
+                ]
+            ],
+            "facing": "viewer",
+            "pose": "Standing full body with her weight on one leg, one hand on her hip and the other holding the carrot pendant of her necklace up between two fingers, leaning very slightly to one side.",
+            "expression": "A sly, delighted smirk, eyes wide open and looking at the viewer.",
+            "props": "",
+            "ears": "Both ears perked up with the left ear tilted sideways in a mischievous angle, every ear tip fully visible and clearly shaped so later frames can twitch them.",
+            "composition": "",
+            "animated": true,
+            "refs": [
+                "sheet-tewi",
+                "lineup",
+                "sprite-tewi"
+            ]
+        },
+        "splash-both": {
+            "template": "pixel-scene",
+            "characters": [
+                "reisen",
+                "tewi"
+            ],
+            "size": "1536x1024",
+            "aspect": "3:2",
+            "css": [
+                [
+                    192,
+                    128
+                ]
+            ],
+            "facing": "viewer",
+            "pose": "Character 1 stands on the left and character 2 on the right, side by side with their shoulders almost touching, both full body at the true relative height of the line-up. Character 1 holds the item listed under Props against her chest; character 2 leans a little toward character 1 and raises one hand in a small playful wave.",
+            "expression": "Character 1 earnest and hopeful, character 2 sly and pleased with herself; both look at the viewer with their eyes wide open.",
+            "props": "A small plain closed notebook with a blank cover, held by character 1.",
+            "ears": "Character 1's ears are half raised with the upper halves folding softly over, the left a little lower; character 2's ears are perked, the left one tilted sideways. Every ear tip is fully visible so later frames can twitch them.",
+            "composition": "The pair is centred as one group and fills the canvas height with a small even margin, with equal empty space left and right of them.",
+            "animated": true,
+            "refs": [
+                "sheet-reisen",
+                "sheet-tewi",
+                "lineup",
+                "sprite-reisen",
+                "sprite-tewi"
+            ]
+        },
+        "welcome-both": {
+            "template": "pixel-scene",
+            "characters": [
+                "reisen",
+                "tewi"
+            ],
+            "size": "1536x1024",
+            "aspect": "3:2",
+            "css": [
+                [
+                    192,
+                    128
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Both stand side by side in a three-quarter view with character 1 on the left, character 2 slightly in front of her, and both full body at the true relative height of the line-up. Each raises the hand nearer the viewer in a friendly welcoming wave.",
+            "expression": "Warm and welcoming, both smiling, character 2 with a playful tilt of the head.",
+            "props": "",
+            "ears": "Both pairs of ears are lifted high and lean toward the right side of the picture as if listening; character 2's right ear is tilted a little more than her left.",
+            "composition": "The pair is centred as one group and fills the canvas height with a small even margin, with equal empty space left and right of them.",
+            "animated": true,
+            "refs": [
+                "sheet-reisen",
+                "sheet-tewi",
+                "lineup",
+                "sprite-reisen",
+                "sprite-tewi"
+            ]
+        },
+        "hero-duo": {
+            "template": "pixel-scene",
+            "characters": [
+                "reisen",
+                "tewi"
+            ],
+            "size": "2048x1024",
+            "aspect": "2:1",
+            "css": [
+                [
+                    640,
+                    320
+                ],
+                [
+                    320,
+                    160
+                ]
+            ],
+            "facing": "viewer",
+            "pose": "Character 1 stands on the left and character 2 on the right, side by side and both full body at the true relative height of the line-up, their feet near the bottom margin. Each extends the arm nearer the other character out and down with an open palm pointing toward the bottom edge of the picture, as if presenting what lies below them, and tilts her head slightly down toward it.",
+            "expression": "Calm and inviting, character 1 with a gentle smile and character 2 with a sly smile, both glancing down toward the bottom edge.",
+            "props": "",
+            "ears": "Character 1's ears are half raised with the upper halves bent forward and down toward the bottom edge; character 2's ears are perked, both tilted a little down toward the same place.",
+            "composition": "A wide 2:1 canvas: the pair stands in the middle third of the width and fills the canvas height with a small even margin, ears near the top margin and feet near the bottom margin, and the left and right thirds stay empty.",
+            "animated": true,
+            "refs": [
+                "sheet-reisen",
+                "sheet-tewi",
+                "lineup",
+                "sprite-reisen",
+                "sprite-tewi"
+            ]
+        },
+        "hero-duo-night": {
+            "template": "pixel-scene",
+            "characters": [
+                "reisen",
+                "tewi"
+            ],
+            "size": "2048x1024",
+            "aspect": "2:1",
+            "css": [
+                [
+                    640,
+                    320
+                ],
+                [
+                    320,
+                    160
+                ]
+            ],
+            "facing": "viewer",
+            "pose": "Character 1 stands on the left and character 2 on the right, side by side and both full body at the true relative height of the line-up, their feet near the bottom margin. Character 1 looks up at the moon behind them, one hand resting lightly on her chest. Character 2 covers a small yawn with one hand.",
+            "expression": "Character 1 looks wistful as she gazes at the moon. Character 2 looks sleepy, eyes half closed.",
+            "props": "A large, pale full moon, a flat disc with a few soft craters, drawn in the same pixel style behind and between the two characters, rising a little above their heads and centred on the pair, with its own unbroken white sticker edge and lavender rim; no stars and nothing else in the sky.",
+            "ears": "Character 1's ears droop back in a soft curve; character 2's ears flop down to the sides.",
+            "composition": "A wide 2:1 canvas: the pair stands in the middle third of the width and fills the canvas height with a small even margin, feet near the bottom margin, and the moon sits behind them in the upper middle; the left and right thirds stay empty.",
+            "animated": true,
+            "refs": [
+                "sheet-reisen",
+                "sheet-tewi",
+                "lineup",
+                "sprite-reisen",
+                "sprite-tewi"
+            ]
+        },
+        "welcome-persona-tewi": {
+            "template": "pixel-still",
+            "characters": [
+                "tewi"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    128,
+                    128
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Standing full body in a three-quarter view, one hand raised to her chin in thought and the other held out open with the palm up, as if inviting someone to introduce themselves, her head tilted curiously.",
+            "expression": "Curious and sly, one eyebrow raised, a small knowing smile.",
+            "props": "",
+            "ears": "The left ear bends forward in a curious question while the right ear stands perked up.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-tewi",
+                "lineup",
+                "sprite-tewi"
+            ]
+        },
+        "welcome-next-reisen": {
+            "template": "pixel-still",
+            "characters": [
+                "reisen"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    128,
+                    128
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Standing full body in a three-quarter view, one arm extended toward the right side of the picture with the open hand pointing the way forward, the other arm holding the item listed under Props against her chest.",
+            "expression": "Encouraging and hopeful, a bright friendly smile.",
+            "props": "A small plain closed notebook with a blank cover.",
+            "ears": "Both ears are raised high with the tips leaning toward the right side of the picture, hopeful and eager.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-reisen",
+                "lineup",
+                "sprite-reisen"
+            ]
+        },
+        "gs-reisen": {
+            "template": "pixel-still",
+            "characters": [
+                "reisen"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    96,
+                    96
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Standing full body in a three-quarter view, holding a clipboard in both hands at chest height and glancing up from it toward the right side of the picture, ready to start.",
+            "expression": "Earnest and ready to help, a small encouraging smile.",
+            "props": "A plain clipboard with a blank sheet of paper on it, with no marks of any kind.",
+            "ears": "Both ears stand upright and attentive, the left ear bent slightly at its tip.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-reisen",
+                "lineup",
+                "sprite-reisen"
+            ]
+        },
+        "gs-reisen-done": {
+            "template": "pixel-still",
+            "characters": [
+                "reisen"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    96,
+                    96
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Cheering with a small victory pose, standing full body in a three-quarter view with one arm raised high above her head and the other hand holding the item listed under Props up beside her, weight lifted onto her toes as if about to hop with joy, to mark that everything is finished.",
+            "expression": "Beaming, eyes closed in happy curves, a wide joyful smile.",
+            "props": "The same plain clipboard with a blank sheet of paper, held up in one hand.",
+            "ears": "Both ears shoot straight up, stretched tall with the tips flaring slightly outward.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-reisen",
+                "lineup",
+                "sprite-reisen"
+            ]
+        },
+        "help-reisen": {
+            "template": "pixel-still",
+            "characters": [
+                "reisen"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    96,
+                    96
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Standing full body in a three-quarter view, one finger raised as if offering a helpful tip and the other arm holding the item listed under Props against her side.",
+            "expression": "Kind and helpful, a gentle smile with raised brows.",
+            "props": "A thick closed book with a plain cover that has no title or marks.",
+            "ears": "One ear stands straight up like a raised finger of thought while the other folds over at the middle.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-reisen",
+                "lineup",
+                "sprite-reisen"
+            ]
+        },
+        "extras-tewi": {
+            "template": "pixel-still",
+            "characters": [
+                "tewi"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    96,
+                    96
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Standing full body in a three-quarter view, leaning forward a little and holding out the item listed under Props in both hands toward the right side of the picture, as if presenting a surprise.",
+            "expression": "Mischievous and delighted, a wide grin as if hiding a secret.",
+            "props": "A small gift box with a ribbon and a bow, with no writing on it.",
+            "ears": "Both ears are perked, the left ear tilted and its tip bending toward the gift box.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-tewi",
+                "lineup",
+                "sprite-tewi"
+            ]
+        },
+        "shortcuts-tewi": {
+            "template": "pixel-still",
+            "characters": [
+                "tewi"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    96,
+                    96
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Standing full body in a three-quarter view, holding the item listed under Props in the crook of one arm while the index finger of her other hand hovers just above one key, as if about to press it.",
+            "expression": "Quick and cheeky, a sideways grin.",
+            "props": "A small keyboard with plain blank keys that carry no letters, symbols or marks.",
+            "ears": "Both ears are perked, the right ear sharply tilted as if twitching with excitement.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-tewi",
+                "lineup",
+                "sprite-tewi"
+            ]
+        },
+        "about-reisen": {
+            "template": "pixel-still",
+            "characters": [
+                "reisen"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    96,
+                    96
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Standing upright and formal, full body, turned toward the right side of the picture with her hands clasped in front of her skirt, giving a small respectful nod.",
+            "expression": "Calm and courteous, a soft smile.",
+            "props": "",
+            "ears": "Both ears stand tall and relaxed, the left ear tilted slightly toward the right side of the picture as part of the nod.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-reisen",
+                "lineup",
+                "sprite-reisen"
+            ]
+        },
+        "about-tewi": {
+            "template": "pixel-still",
+            "characters": [
+                "tewi"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    96,
+                    96
+                ]
+            ],
+            "facing": "inline-start",
+            "pose": "Standing at ease, full body, turned toward the left side of the picture with her hands behind her back, leaning slightly forward.",
+            "expression": "Sly and self-assured, a confident little smile.",
+            "props": "",
+            "ears": "Both ears are perked, the right ear tilted toward the left side of the picture in a playful angle.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-tewi",
+                "lineup",
+                "sprite-tewi"
+            ]
+        },
+        "troubleshooting-reisen": {
+            "template": "pixel-still",
+            "characters": [
+                "reisen"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    96,
+                    96
+                ]
+            ],
+            "facing": "inline-end",
+            "pose": "Standing full body in a three-quarter view, holding the item listed under Props open in both hands at waist height with the lid raised, looking down into it and then glancing toward the right side of the picture.",
+            "expression": "Worried but determined, with her brows slightly drawn together.",
+            "props": "An open wooden medicine box with a lid, holding a few small plain bottles and a roll of bandage, with a simple plus sign on the lid and no writing.",
+            "ears": "Both ears droop backwards with worry, the tips folded down, the left ear a little lower than the right.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-reisen",
+                "lineup",
+                "sprite-reisen"
+            ]
+        },
+        "empty-tewi": {
+            "template": "pixel-still",
+            "characters": [
+                "tewi"
+            ],
+            "size": "1024x1024",
+            "aspect": "1:1",
+            "css": [
+                [
+                    96,
+                    96
+                ]
+            ],
+            "facing": "viewer",
+            "pose": "Standing full body, shrugging with both palms turned up and her head tilted to one side, glancing around as if looking for something that is not there.",
+            "expression": "Playful and a little puzzled, a lopsided smile.",
+            "props": "",
+            "ears": "One ear flops over to the side while the other curls into a question-mark shape.",
+            "composition": "",
+            "animated": false,
+            "refs": [
+                "sheet-tewi",
+                "lineup",
+                "sprite-tewi"
+            ]
+        }
+    }
+}

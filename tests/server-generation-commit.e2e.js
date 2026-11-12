@@ -2,15 +2,9 @@ import http from 'node:http';
 import { expect, test } from '@playwright/test';
 import { APP_URL, dismissOpenDialogIfPresent, selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
 
 test.use({ serviceWorkers: 'block' });
-
-// The tests that connect the fake model save different settings, a custom URL with its own port, at the same time on
-// one server. Saved for real, a page that loaded before another test's save would get the settings conflict prompt.
-test.beforeEach(async ({ context }) => {
-    let settingsVersion = Date.now();
-    await context.route('**/api/settings/save', route => route.fulfill({ json: { result: 'ok', version: ++settingsVersion } }));
-});
 
 const MODEL = 'fake-stream-model';
 const CHUNKS = Array.from({ length: 20 }, (_, index) => `word${index} `);
@@ -54,9 +48,14 @@ function startFakeModel(intervalMs, deltaField = 'content') {
 
 /**
  * Loads the app with real chat saves, unlike openReadyChat(), and opens a new chat of the sample character.
+ * Settings, cards and statistics are still stubbed, so connecting the fake model stays in the page and never reaches
+ * the saved settings of the test server.
  * @param {import('@playwright/test').Page} page
  */
 async function openChat(page) {
+    await protectMaintainerServer(page);
+    // The integrity check of a real chat save is what the first test is about.
+    await page.route(/\/api\/chats\/save$/, route => route.continue());
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
     await testSetup.waitForAppReady({ page });
@@ -240,7 +239,7 @@ for (const { name, options } of [
             try {
                 await openChat(page);
                 await connectFakeModel(page, `http://127.0.0.1:${model.address().port}/v1`);
-                await page.locator('#left-nav-panel .sb-shell-close').click();
+                await page.locator('#sb-settings-close').click();
                 // Enter adds a new line on touch layouts, so send with the button.
                 await page.locator('#send_textarea').fill(`stop during reasoning ${Date.now()}`);
                 await page.locator('#send_but').click();

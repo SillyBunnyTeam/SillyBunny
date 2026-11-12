@@ -1,0 +1,35 @@
+{
+    "canvas": {
+        "width": 1536,
+        "height": 1024
+    },
+    "layers": [
+        {
+            "id": "reisen",
+            "image": "raw/s5/masters/splash-reisen-r2.png",
+            "z": 1,
+            "at": "bottom-centre",
+            "measure": "figure",
+            "anchor": {
+                "x": 629,
+                "y": 1009
+            },
+            "height": 942
+        },
+        {
+            "id": "tewi",
+            "image": "raw/s5/masters/splash-both-tewi-r2.png",
+            "z": 2,
+            "at": "bottom-centre",
+            "measure": "figure",
+            "anchor": {
+                "x": 886,
+                "y": 1009
+            },
+            "height": {
+                "ratio": 0.8333,
+                "of": "reisen"
+            }
+        }
+    ]
+}

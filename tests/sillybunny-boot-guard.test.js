@@ -168,7 +168,7 @@ function createFakeXMLHttpRequest() {
     };
 }
 
-function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 'iPhone', maxTouchPoints = 5 } = {}) {
+function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 'iPhone', maxTouchPoints = 5, performance } = {}) {
     const document = new FakeDocument();
     const timers = [];
     const listeners = new Map();
@@ -180,6 +180,7 @@ function createBootGuardHarness({ userAgent = IOS_WEBKIT_USER_AGENT, platform = 
         clearTimeout: jest.fn(),
         location: { reload: jest.fn() },
         navigator: fakeNavigator,
+        performance,
         setTimeout: (callback, delay) => {
             timers.push({ callback, delay });
             return timers.length;
@@ -230,6 +231,26 @@ describe('SillyBunny boot guard', () => {
         window.SillyBunnyBootGuard.showFailure('boom');
 
         expect(preloader.querySelector('button')).toBeNull();
+    });
+
+    test.each([
+        ['iOS WebKit', {}],
+        ['a browser the guard does not watch', { maxTouchPoints: 0, platform: 'Linux x86_64', userAgent: DESKTOP_CHROME_USER_AGENT }],
+    ])('marks the end of the splash once on %s, for the boot timing', (_name, browser) => {
+        const performance = { mark: jest.fn() };
+        const { window } = createBootGuardHarness({ ...browser, performance });
+
+        window.SillyBunnyBootGuard.bootCompleted();
+        window.SillyBunnyBootGuard.bootCompleted();
+
+        expect(performance.mark).toHaveBeenCalledTimes(1);
+        expect(performance.mark).toHaveBeenCalledWith('sb-boot-dismiss');
+    });
+
+    test('completes the boot without a failure where the browser has no performance marks', () => {
+        const { window } = createBootGuardHarness({ performance: {} });
+
+        expect(() => window.SillyBunnyBootGuard.bootCompleted()).not.toThrow();
     });
 
     test('removes startup loader artifacts before showing the recovery panel', () => {

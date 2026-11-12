@@ -1,5 +1,3 @@
-import { closeArchive, openArchive } from './src/ui.js';
-
 const PANEL_SELECTOR = '#right-nav-panel';
 const BUTTON_ID = 'sbca_drawer_button';
 const OBSERVER_DEBOUNCE_MS = 150;
@@ -11,15 +9,36 @@ let pending = null;
 let readyHandler = null;
 let closing = null;
 let lifecycleGeneration = 0;
+let archiveImport = null;
+let archiveModule = null;
+
+// The archive UI loads on first open, so an enabled extension costs only this entry point until then.
+function loadArchive() {
+    archiveImport ??= import('./src/ui.js').then(
+        module => {
+            archiveModule = module;
+            return module;
+        },
+        error => {
+            archiveImport = null;
+            throw error;
+        },
+    );
+    return archiveImport;
+}
 
 function onOpen(event) {
     event.preventDefault();
     event.stopPropagation();
     const ctx = globalThis.SillyTavern.getContext();
-    void openArchive(ctx, event.currentTarget).catch(error => {
-        console.error('[Chat Archive] failed to open:', error);
-        globalThis.toastr?.error(ctx.translate?.('Could not open Chat Archive.') ?? 'Could not open Chat Archive.');
-    });
+    const opener = event.currentTarget;
+    const generation = lifecycleGeneration;
+    void loadArchive()
+        .then(module => (generation === lifecycleGeneration ? module.openArchive(ctx, opener) : undefined))
+        .catch(error => {
+            console.error('[Chat Archive] failed to open:', error);
+            globalThis.toastr?.error(ctx.translate?.('Could not open Chat Archive.') ?? 'Could not open Chat Archive.');
+        });
 }
 
 function ensureButton() {
@@ -115,7 +134,7 @@ async function deactivate() {
     observer = null;
     observerTarget = null;
     document.getElementById(BUTTON_ID)?.remove();
-    const operation = closeArchive();
+    const operation = archiveModule?.closeArchive() ?? Promise.resolve();
     closing = operation;
     try {
         await operation;

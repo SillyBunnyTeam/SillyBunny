@@ -66,6 +66,8 @@ import {
     initWorldInfo,
     charUpdatePrimaryWorld,
     charSetAuxWorlds,
+    // SillyBunny: reuse the upstream lorebook import/conversion path — see docs/ui-migration.md.
+    importWorldInfo,
 } from './scripts/world-info.js';
 import { buildWorldInfoScanChat, substituteWorldInfoGreeting } from './scripts/world-info-scan-chat.js';
 
@@ -92,6 +94,11 @@ import {
     deleteGroupChatByName,
     waitForQueuedGroupChatSaves,
 } from './scripts/group-chats.js';
+// SillyBunny: chat-history and chat-file confirmations use the shared frame so legacy controls keep their identities without owning modal geometry.
+import { openAlert } from './scripts/sillybunny-editor/dialog.js';
+import { openChatHistoryDialog } from './scripts/sillybunny-chat-dialogs.js';
+import { notifyNotConnected } from './scripts/sillybunny-connection-notices.js'; // SillyBunny: Send with no API connection says so and points to Connections.
+import { setConnectionStatus, setStatusCheckPending } from './scripts/sillybunny-connection-state.js'; // SillyBunny: the connection state is an attribute of the document, so Home can tell offline from still connecting.
 
 import {
     collapseNewlines,
@@ -256,6 +263,10 @@ import {
     tag_import_setting,
     applyCharacterTagsToMessageDivs,
 } from './scripts/tags.js';
+// SillyBunny: migrate the opt-in legacy tag folders after both settings stores load.
+import { convertLegacyTagFolders } from './scripts/sillybunny-folders.js';
+import { seedQuickImageGenFirstRun, showFirstRunWelcome } from './scripts/sillybunny-first-run-defaults.js'; // SillyBunny: first-run extension defaults and the first-run Welcome dialog.
+import { extractProviderMessage, getThrownResponseFailure, showRequestError } from './scripts/sillybunny-request-errors.js'; // SillyBunny: failed generation requests say what went wrong and what to do.
 import { checkOpenRouterAuth, initSecrets, readSecretState } from './scripts/secrets.js';
 import { markdownExclusionExt } from './scripts/showdown-exclusion.js';
 import { markdownUnderscoreExt } from './scripts/showdown-underscore.js';
@@ -269,6 +280,16 @@ import { collectHiddenGenerationMessages } from './scripts/generation-hidden-mes
 import { IN_CHAT_AGENT_PROMPT_KEY_PREFIX, instrumentInChatAgentPromptValue, trimOldestRetainedContribution } from './scripts/in-chat-agent-inspection.js';
 import { initLogprobs, saveLogprobsForActiveMessage } from './scripts/logprobs.js';
 import { FILTER_STATES, FILTER_TYPES, FilterHelper, isFilterState } from './scripts/filters.js';
+// SillyBunny: the Characters and Groups lists share view-scoped state while
+// retaining the upstream fallback renderer — see docs/ui-migration.md
+import {
+    getCharacterListView,
+    getListSort,
+    recordListPage,
+    registerCharacterListSortAccessors,
+    registerCharacterListStateRenderer,
+    resetListPage,
+} from './scripts/sillybunny-character-list-state.js';
 import { getCfgPrompt, getGuidanceScale, initCfg } from './scripts/cfg-scale.js';
 import {
     force_output_sequence,
@@ -292,7 +313,7 @@ import {
     isPersonaPanelOpen,
 } from './scripts/personas.js';
 import { getBackgrounds, initBackgrounds, loadBackgroundSettings, background_settings } from './scripts/backgrounds.js';
-import { cleanupActionLoaderArtifacts, loader } from './scripts/action-loader.js';
+import { dismissPreloader, loader } from './scripts/action-loader.js';
 import { BulkEditOverlay } from './scripts/BulkEditOverlay.js';
 import { initTextGenModels } from './scripts/textgen-models.js';
 import { appendFileContent, hasPendingFileAttachment, populateFileAttachment, decodeStyleTags, encodeStyleTags, isExternalMediaAllowed, preserveNeutralChat, restoreNeutralChat, formatCreatorNotes, initChatUtilities, addDOMPurifyHooks } from './scripts/chats.js';
@@ -301,6 +322,8 @@ import { evaluateMacros, getLastMessageId, initMacros } from './scripts/macros.j
 import { currentUser, setUserControls } from './scripts/user.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup, fixToastrForDialogs } from './scripts/popup.js';
 import { renderTemplate, renderTemplateAsync } from './scripts/templates.js';
+// SillyBunny: scenario overrides adopt their textareas into the shared Window rows.
+import { scenarioOverrideOptions } from './scripts/sillybunny-editor/adapters/window-content-dialogs.js';
 import { initScrapers } from './scripts/scrapers.js';
 import { initCustomSelectedSamplers, validateDisabledSamplers } from './scripts/samplerSelect.js';
 import { DragAndDropHandler } from './scripts/dragdrop.js';
@@ -340,6 +363,32 @@ import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/Macro
 import { compressRequest, setRequestCompressionConfig } from './scripts/request-compression.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
+import { DELETE_CHOICE, confirmMessageDeletion } from './scripts/sillybunny-delete-confirm.js';
+// SillyBunny: a temporary chat is never written; the narrow write seams below ask this flag. The module has no imports, so it adds no cycle.
+import { getStoredChatName, isTemporaryChat, isTemporaryChatWith, reassertReservedChatName } from './scripts/sillybunny-temporary-chat-state.js';
+// SillyBunny: starting, saving and leaving a temporary chat; its functions run only after script.js has loaded.
+import { beginTemporaryChat, endTemporaryChat, leaveTemporaryChat, showTemporaryChatError } from './scripts/sillybunny-temporary-chat.js';
+// SillyBunny: character lorebook rows mirror the existing native selects and Select2 state.
+import { lorebookSelectOptions } from './scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js';
+// SillyBunny: screenshot spin rows preserve the existing parseInt/range-validation contract.
+import { messageScreenshotOptions } from './scripts/sillybunny-editor/adapters/misc-dialogs.js';
+// SillyBunny: the scroll sink asks this whether a greeting-only chat that is opening stays at its top. The module has no imports, so it adds no cycle.
+import { shouldHoldChatAtTop } from './scripts/sillybunny-home/greeting-art-opening.js';
+// SillyBunny: character editor controller (Step 3b, feat/v1.9.0-ui-overhaul)
+import {
+    beginCharacterEditorLoad,
+    loadCharacterEditorGreetings,
+    openCharacterEditorSession,
+    openCharacterEditorCreateSession,
+    // SillyBunny: scope every form save to its submitted editor values — see docs/ui-migration.md
+    captureCharacterEditorSave,
+    markCharacterEditorSaved,
+    getCharacterEditorAlternateGreetings,
+    getCharacterEditorGroupGreetings,
+    // SillyBunny: list actions synchronize or close matching hidden drafts — see docs/ui-migration.md
+    syncCharacterEditorFavorite,
+    discardCharacterEditorForEntity,
+} from './scripts/sillybunny-character-editor.js';
 import { formatMobileStreamingPreview, getMobileStreamingBottomPinBehavior, getStreamingUpdateInterval, isAndroidStreamingPlatform, shouldReduceStreamingDomWork, shouldUsePlainTextStreamingPreview } from './scripts/mobile-streaming.js';
 import { fetchResumable, registerGenerationCommitPlan, settleGenerationCommit } from './scripts/resumable-generation.js';
 import { GENERATION_PLACEHOLDER_KEY, getMessageIdentity } from './scripts/generation-commit-plan.js';
@@ -558,73 +607,41 @@ export let characters = [];
 export let this_chid;
 let saveCharactersPage = 0;
 let characterMenuEntityView = 'characters';
+// SillyBunny: the optional renderer receives the upstream list model without
+// replacing any extension-facing activation hooks — see docs/ui-migration.md
+/**
+ * @typedef {object} CharacterListModel
+ * @property {'characters'|'groups'} view
+ * @property {Entity[]} entities
+ * @property {number} sourceCount
+ * @property {boolean} hasAnyFilter
+ * @property {boolean} folderOpen
+ * @property {boolean} fullRefresh
+ * @property {() => void} pageLoaded
+ */
+/** @type {{ render: (model: CharacterListModel) => void|Promise<void> }|null} */
+let characterListRenderer = null;
 export const default_avatar = 'img/ai4.png';
-const SILLYBUNNY_FRONTEND_ICON_STORAGE_KEY = 'sb-frontend-icon';
-const SILLYBUNNY_FRONTEND_ICON_DEFAULT = 'pixel';
-const SILLYBUNNY_FRONTEND_ICONS = Object.freeze({
-    pixel: 'img/sillybunny-pixel-logo-og.png',
-    badge: 'img/sillybunny-badge.png',
+
+// SillyBunny: state accessors let the shared renderer use per-view sorting and
+// paging without changing power-user's persisted character settings — see docs/ui-migration.md
+registerCharacterListSortAccessors({
+    read: () => ({ field: power_user.sort_field, order: power_user.sort_order, rule: power_user.sort_rule }),
+    write: sort => {
+        power_user.sort_field = sort.field;
+        power_user.sort_order = sort.order;
+        power_user.sort_rule = sort.rule;
+        saveSettingsDebounced();
+    },
 });
-let appliedSillyBunnyFrontendIconId = '';
+registerCharacterListStateRenderer(() => printCharacters(false));
 
-function normalizeSillyBunnyFrontendIcon(iconId) {
-    return Object.hasOwn(SILLYBUNNY_FRONTEND_ICONS, String(iconId)) ? String(iconId) : SILLYBUNNY_FRONTEND_ICON_DEFAULT;
-}
-
-function getStoredSillyBunnyFrontendIcon() {
-    try {
-        return normalizeSillyBunnyFrontendIcon(localStorage.getItem(SILLYBUNNY_FRONTEND_ICON_STORAGE_KEY));
-    } catch {
-        return SILLYBUNNY_FRONTEND_ICON_DEFAULT;
-    }
-}
-
-export function getSillyBunnyFrontendIconSrc({ absolute = false } = {}) {
-    const src = SILLYBUNNY_FRONTEND_ICONS[getStoredSillyBunnyFrontendIcon()];
-    return absolute ? `/${src}` : src;
-}
-
-export let system_avatar = getSillyBunnyFrontendIconSrc();
+// SillyBunny: narrator and tool messages show the SillyBunny logo.
+export const system_avatar = 'img/sillybunny/logo-64.png';
 export const comment_avatar = 'img/quill.png';
 export const default_user_avatar = 'img/user-default.png';
 export let CLIENT_VERSION = 'SillyBunny:v2.0.0-dev'; // For Horde header
 
-function applySillyBunnyFrontendIcon(iconId = getStoredSillyBunnyFrontendIcon()) {
-    const normalizedIconId = normalizeSillyBunnyFrontendIcon(iconId);
-    const src = SILLYBUNNY_FRONTEND_ICONS[normalizedIconId];
-    const absoluteSrc = `/${src}`;
-    const iconAlreadyApplied = appliedSillyBunnyFrontendIconId === normalizedIconId;
-    system_avatar = src;
-
-    document.documentElement.dataset.sbFrontendIcon = normalizedIconId;
-
-    for (const image of document.querySelectorAll('img[data-sb-frontend-icon]')) {
-        if (image.getAttribute('src') !== absoluteSrc) {
-            image.setAttribute('src', absoluteSrc);
-        }
-    }
-
-    if (!iconAlreadyApplied) {
-        for (const link of document.querySelectorAll('link[rel~="icon"]')) {
-            link.setAttribute('href', absoluteSrc);
-            link.setAttribute('type', 'image/png');
-        }
-    }
-
-    appliedSillyBunnyFrontendIconId = normalizedIconId;
-}
-
-window.SillyBunnyFrontendIcon = Object.assign(window.SillyBunnyFrontendIcon || {}, {
-    getId: getStoredSillyBunnyFrontendIcon,
-    getSrc: ({ absolute = true } = {}) => getSillyBunnyFrontendIconSrc({ absolute }),
-    apply: applySillyBunnyFrontendIcon,
-});
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => applySillyBunnyFrontendIcon(), { once: true });
-} else {
-    applySillyBunnyFrontendIcon();
-}
 let optionsPopper = Popper.createPopper(document.getElementById('options_button'), document.getElementById('options'), {
     placement: 'top-start',
 });
@@ -768,7 +785,7 @@ export function cancelCharacterSaveDebounced() {
  * Prints the character list in a debounced fashion without blocking, with a delay of 100 milliseconds.
  * Use this function instead of a direct `printCharacters()` whenever the reprinting of the character list is not the primary focus.
  *
- * The printing will also always reprint all filter options of the global list, to keep them up to date.
+ * SillyBunny: synchronizes changed filter presentations without rebuilding unchanged contexts.
  */
 export const printCharactersDebounced = debounce(() => { printCharacters(false); }, DEFAULT_PRINT_TIMEOUT);
 
@@ -929,6 +946,8 @@ export let create_save = {
     world: '',
     talkativeness: talkativeness_default,
     alternate_greetings: [],
+    group_only_greetings: [],
+    nickname: '',
     depth_prompt_prompt: '',
     depth_prompt_depth: depth_prompt_depth_default,
     depth_prompt_role: depth_prompt_role_default,
@@ -1120,51 +1139,27 @@ function scheduleDeferredStartupStylesheets() {
     window.setTimeout(loadStylesheets, 800);
 }
 
+const BOOT_SURFACE_STORAGE_KEY = 'sb-boot-surface';
+
+/**
+ * Stores the resolved page surface so index.html can paint the next startup splash in the same colors.
+ */
+function rememberBootSurface() {
+    try {
+        const style = getComputedStyle(document.body);
+        localStorage.setItem(BOOT_SURFACE_STORAGE_KEY, JSON.stringify({ bg: style.backgroundColor, fg: style.color }));
+    } catch (error) {
+        console.debug('Could not store the startup splash colors.', error);
+    }
+}
+
 //MARK: firstLoadInit
 async function firstLoadInit() {
-    const scheduleStartupLoaderCleanup = (reason) => {
-        cleanupActionLoaderArtifacts({ removePreloader: true, reason });
-        requestAnimationFrame(() => cleanupActionLoaderArtifacts({ removePreloader: true, reason: `${reason} (raf)` }));
-        window.setTimeout(() => cleanupActionLoaderArtifacts({ removePreloader: true, reason: `${reason} (timeout)` }), 250);
-    };
-
-    const initLoaderOverlay = loader.createOverlay();
-    initLoaderOverlay.classList.add('splash-screen');
-
-    const splashLogo = document.createElement('img');
-    splashLogo.src = getSillyBunnyFrontendIconSrc({ absolute: true });
-    splashLogo.alt = 'SillyBunny';
-    splashLogo.className = 'splash-logo';
-    splashLogo.ariaLabel = t`SillyBunny Badge`;
-    splashLogo.dataset.sbFrontendIcon = 'true';
-
-    const splashMessage = document.createElement('h2');
-    splashMessage.className = 'splash-message';
-    splashMessage.textContent = t`Initializing…`;
-    splashMessage.dataset.i18n = 'Initializing…';
-
-    initLoaderOverlay.prepend(splashLogo);
-    initLoaderOverlay.appendChild(splashMessage);
-
-    const initLoaderHandle = loader.show({
-        slug: 'app-init',
-        toastMode: loader.ToastMode.NONE,
-        overlayContent: initLoaderOverlay,
-    });
-    let startupLoaderReleased = false;
-
-
-    const releaseStartupLoader = async (reason) => {
-        if (startupLoaderReleased) return;
-        startupLoaderReleased = true;
-        if (initLoaderHandle.isActive) {
-            await initLoaderHandle.hide().catch((error) => {
-                console.error('Failed to hide startup loader.', error);
-            });
-        }
-        scheduleStartupLoaderCleanup(reason);
-    };
-
+    // SillyBunny: boot timing mark; the other three live in sillybunny-boot-marks.js, sillybunny-splash.js and sillybunny-boot-guard.js.
+    globalThis.performance?.mark?.('sb-boot-init-start');
+    // SillyBunny: `.splash-screen` is the boot guard's "the app is booting" marker. It is added here
+    // rather than in index.html so a bundle that never runs still surfaces the 25s boot failure.
+    document.querySelector('#preloader .sb-boot-splash')?.classList.add('splash-screen');
     try {
         await refreshCsrfToken();
 
@@ -1207,16 +1202,28 @@ async function firstLoadInit() {
         ToolManager.initToolSlashCommands();
         await initPresetManager();
         await initSystemMessages();
-        await getSettings(initLoaderHandle);
+        await getSettings();
         await checkOpenRouterAuth();
         initKeyboard();
         initDynamicStyles();
         initTags();
         initBookmarks();
         scheduleDeferredStartupStylesheets();
-        await releaseStartupLoader('startup loader release');
+        await dismissPreloader();
         await getUserAvatars(true, user_avatar);
         await getCharacters();
+        // SillyBunny: convert opt-in legacy tag folders once, after characters and groups exist to classify tag_map keys.
+        convertLegacyTagFolders({
+            enabled: power_user.bogus_folders === true,
+            tags,
+            tagMap: tag_map,
+            characters,
+            groups,
+            accountStorage,
+            entitiesFilter,
+            tagFilterType: FILTER_TYPES.TAG,
+            notify: () => globalThis.toastr?.info?.(t`Your tag folders are now folders. Manage them from Manage Folders in the Characters menu.`),
+        });
         await getBackgrounds();
         await initTokenizers();
         initBackgrounds();
@@ -1249,13 +1256,14 @@ async function firstLoadInit() {
         await eventSource.emit(event_types.APP_INITIALIZED);
         await fixViewport();
         await eventSource.emit(event_types.APP_READY);
-        scheduleStartupLoaderCleanup('app ready');
+        rememberBootSurface();
+        window.addEventListener('pagehide', rememberBootSurface);
     } catch (error) {
         console.error('Application initialization failed.', error);
         toastr.error(t`SillyBunny couldn't finish starting. Please refresh the page.`, t`Startup Error`, { timeOut: 0, extendedTimeOut: 0, preventDuplicates: true });
         throw error;
     } finally {
-        await releaseStartupLoader('startup finally');
+        await dismissPreloader();
     }
 }
 
@@ -1319,11 +1327,13 @@ export function setActiveGroup(entityOrKey) {
 export function startStatusLoading() {
     $('.api_loading').show();
     $('.api_button').addClass('disabled');
+    setStatusCheckPending(true); // SillyBunny: `online_status` is `no_connection` until a check ends, so a check in flight must not read as offline.
 }
 
 export function stopStatusLoading() {
     $('.api_loading').hide();
     $('.api_button').removeClass('disabled');
+    setStatusCheckPending(false); // SillyBunny: ends the pending state. A superseded check leaves that to its replacement, or to `changeMainAPI`.
 }
 
 export function resultCheckStatus() {
@@ -1340,9 +1350,12 @@ export function resultCheckStatus() {
  * @param {number} id The ID of the character to switch to.
  * @param {object} [options] Options for the switch.
  * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the character edit menu.
+ * @param {() => void} [options.onAccepted] SillyBunny navigation acceptance after pending saves are flushed.
+ * @param {boolean} [options.temporary=false] Open a temporary chat with the character, which is never written to disk.
  * @returns {Promise<boolean>} A promise that resolves to true when the character was selected.
  */
-export async function selectCharacterById(id, { switchMenu = true } = {}) {
+// SillyBunny: the temporary option opens a chat with the character that is never written to disk.
+export async function selectCharacterById(id, { switchMenu = true, onAccepted, temporary = false } = {}) {
     if (characters[id] === undefined) {
         return false;
     }
@@ -1351,7 +1364,8 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
         return false;
     }
 
-    if (selected_group || String(this_chid) !== String(id)) {
+    // SillyBunny: a temporary chat always starts fresh, even with the character that is already selected.
+    if (selected_group || String(this_chid) !== String(id) || temporary) {
         //if clicked on a different character from what was currently selected
         if (is_send_press) {
             return false;
@@ -1361,6 +1375,8 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
             return false;
         }
 
+        // SillyBunny: dismiss navigation after saves, before loading the next chat — see docs/ui-migration.md.
+        onAccepted?.();
         cancelCharacterSaveDebounced();
         setCharacterId(undefined);
         setCharacterName('');
@@ -1373,7 +1389,9 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
         }
         setCharacterId(id);
         chat_metadata = {};
-        await getChat({ switchMenu });
+        // SillyBunny: selection must report a failed load before the list dismisses its shell — see docs/ui-migration.md.
+        // SillyBunny: a temporary chat takes the greeting from the card and resolves, creates and saves no chat file.
+        if (!await (temporary ? getTemporaryChat({ switchMenu }) : getChat({ switchMenu }))) return false;
         window.dispatchEvent(new CustomEvent('sb:roleplay-character-selected', {
             detail: { avatar: characters[this_chid]?.avatar || '' },
         }));
@@ -1381,6 +1399,12 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
         return true;
     } else {
         //if clicked on character that was already selected
+        // SillyBunny: opt-in acceptance also flushes saves for the current chat — see docs/ui-migration.md.
+        if (onAccepted) {
+            // SillyBunny: selecting the character that is already open leaves nothing, so it never asks about a temporary chat.
+            if (!await flushPendingChatSavesForNavigation({ staying: true })) return false;
+            onAccepted();
+        }
         switchMenu && (selected_button = 'character_edit');
         await unshallowCharacter(this_chid);
         select_selected_character(this_chid, { switchMenu });
@@ -1389,12 +1413,23 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
     }
 }
 
-function getBackBlock() {
+// SillyBunny: retain the legacy list block factories for the upstream fallback
+// and expose template copy to the shared list renderer — see docs/ui-migration.md
+/**
+ * Builds the legacy folder back block used by the fallback renderer.
+ * @returns {JQuery<HTMLElement>}
+ */
+export function getBackBlock() {
     const template = $('#bogus_folder_back_template .bogus_folder_select').clone();
     return template;
 }
 
-async function getEmptyBlock() {
+/**
+ * Builds the legacy empty block used by the fallback renderer.
+ * @returns {Promise<JQuery<HTMLElement>>}
+ */
+// SillyBunny: expose the existing template copy to the shared renderer — see docs/ui-migration.md
+export async function getEmptyBlock() {
     const icons = ['fa-dragon', 'fa-otter', 'fa-kiwi-bird', 'fa-crow', 'fa-frog'];
     const texts = [t`Here be dragons`, t`Otterly empty`, t`Kiwibunga`, t`Pump-a-Rum`, t`Croak it`];
     const roll = new Date().getMinutes() % icons.length;
@@ -1408,8 +1443,10 @@ async function getEmptyBlock() {
 
 /**
  * @param {number} hidden Number of hidden characters
+ * @returns {Promise<JQuery<HTMLElement>>}
  */
-async function getHiddenBlock(hidden) {
+// SillyBunny: expose the existing template copy to the shared renderer — see docs/ui-migration.md
+export async function getHiddenBlock(hidden) {
     const params = {
         text: (hidden > 1 ? t`${hidden} characters hidden.` : t`${hidden} character hidden.`),
     };
@@ -1417,7 +1454,18 @@ async function getHiddenBlock(hidden) {
     return $(hiddenBlock);
 }
 
-function getCharacterBlock(item, id) {
+// SillyBunny: preserve reusable upstream list builders — see docs/ui-migration.md
+export { getTagBlock };
+export { getGroupBlock };
+
+/**
+ * Builds the legacy character block used by the fallback renderer.
+ * @param {Character} item
+ * @param {number|string} id
+ * @returns {JQuery<HTMLElement>}
+ */
+// SillyBunny: keep the upstream builder available to fallback consumers — see docs/ui-migration.md
+export function getCharacterBlock(item, id) {
     let this_avatar = default_avatar;
     if (item.avatar != 'none') {
         this_avatar = getThumbnailUrlForViewport('avatar', item.avatar);
@@ -1469,6 +1517,97 @@ function getCharacterBlock(item, id) {
     return template;
 }
 
+// SillyBunny: expose row data separately from fallback DOM templates — see docs/ui-migration.md
+/**
+ * Returns the data needed to render a character row without creating DOM.
+ * @param {Character} item
+ * @param {number|string} id
+ * @returns {object}
+ */
+export function getCharacterRowData(item, id) {
+    const avatar = item?.avatar ?? '';
+    const auxFieldName = power_user.aux_field || 'character_version';
+    const auxFieldValue = item?.data?.[auxFieldName] || '';
+    const creatorNotes = item?.data?.creator_notes || '';
+    const favorite = Boolean(item?.fav || item?.fav === 'true');
+    const isAssistant = avatar === getPermanentAssistantAvatar();
+    return {
+        id,
+        chid: id,
+        name: item?.name ?? '',
+        nameTitle: `[Character] ${item?.name ?? ''}`,
+        avatar,
+        avatarUrl: avatar === 'none' ? default_avatar : getThumbnailUrlForViewport('avatar', avatar),
+        avatarTitle: `[Character] ${item?.name ?? ''}\nFile: ${avatar}`,
+        favorite,
+        fav: item?.fav,
+        favIconDisplay: 'none',
+        active: !selected_group && String(this_chid) === String(id),
+        isActive: !selected_group && String(this_chid) === String(id),
+        assistant: isAssistant,
+        isAssistant,
+        creatorNotes,
+        auxFieldName,
+        auxFieldValue,
+        characterVersion: auxFieldValue,
+        showCardAvatarUrls: Boolean(power_user.show_card_avatar_urls),
+        avatarFileName: avatar,
+    };
+}
+
+/**
+ * Returns the data needed to render a group row without creating DOM.
+ * @param {Group} group
+ * @returns {object}
+ */
+export function getGroupRowData(group) {
+    const members = Array.isArray(group?.members) ? group.members : [];
+    const memberCharacters = members
+        .map(member => characters.find(character => character.avatar === member || character.name === member))
+        .filter(Boolean);
+    const memberNames = memberCharacters.map(character => character.name);
+    const memberCount = memberNames.length;
+    const avatarUrl = typeof group?.avatar_url === 'string' ? group.avatar_url : '';
+    const customAvatar = Boolean(avatarUrl && (isDataURL(avatarUrl) || avatarUrl.startsWith('user') || avatarUrl.startsWith('/user')));
+    return {
+        id: group?.id,
+        name: group?.name ?? '',
+        favorite: Boolean(group?.fav),
+        fav: group?.fav,
+        active: selected_group === group?.id,
+        isActive: selected_group === group?.id,
+        memberNames,
+        memberNamesText: memberNames.join(', '),
+        memberCount,
+        memberCountText: `${memberCount} ` + (memberCount !== 1 ? t`characters` : t`character`),
+        nameTitle: `[Group] ${group?.name ?? ''}`,
+        avatarTitle: `[Group] ${group?.name ?? ''}`,
+        favIconDisplay: 'none',
+        avatarUrl: customAvatar ? avatarUrl : '',
+        avatarInfo: {
+            custom: customAvatar,
+            memberAvatars: members
+                .map(member => characters.find(character => character.avatar === member))
+                .filter(character => character && character.avatar !== 'none')
+                .map(character => character.avatar)
+                .slice(0, 4),
+        },
+    };
+}
+
+// SillyBunny: renderer registration lets the list controller replace pagination
+// without changing upstream row activation — see docs/ui-migration.md
+/**
+ * Registers the main list renderer. Passing null restores the upstream pagination renderer.
+ * @param {{ render(model: CharacterListModel): void|Promise<void> }|null} renderer
+ */
+export function setCharacterListRenderer(renderer) {
+    if (renderer !== null && typeof renderer?.render !== 'function') {
+        throw new TypeError('Character list renderer must expose render(model)');
+    }
+    characterListRenderer = renderer;
+}
+
 /**
  * Prints the global character list, optionally doing a full refresh of the list
  * Use this function whenever the reprinting of the character list is the primary focus, otherwise using `printCharactersDebounced` is preferred for a cleaner, non-blocking experience.
@@ -1477,14 +1616,20 @@ function getCharacterBlock(item, id) {
  *
  * @param {boolean} fullRefresh - If true, the list is fully refreshed and the navigation is being reset
  */
+// SillyBunny: hand the already-filtered/sorted/view-adjusted entities to the
+// shared renderer while preserving the legacy pagination fallback — see docs/ui-migration.md
 export async function printCharacters(fullRefresh = false) {
     const storageKey = 'Characters_PerPage';
     const listId = '#rm_print_characters_block';
 
-    let currentScrollTop = $(listId).scrollTop();
+    // SillyBunny: the shared renderer owns its scroll box; avoid a hidden legacy layout read — see docs/ui-migration.md.
+    let currentScrollTop = characterListRenderer ? 0 : $(listId).scrollTop();
 
     if (fullRefresh) {
         saveCharactersPage = 0;
+        if (characterListRenderer) {
+            resetListPage(characterMenuEntityView);
+        }
         currentScrollTop = 0;
         await delay(1);
     }
@@ -1492,16 +1637,19 @@ export async function printCharacters(fullRefresh = false) {
     // Before printing the personas, we check if we should enable/disable search sorting
     verifyCharactersSearchSortRule();
 
-    // We are actually always reprinting filters, as it "doesn't hurt", and this way they are always up to date
+    // SillyBunny: changed filter presentations are cached per root — see docs/ui-migration.md.
     printTagFilters(tag_filter_type.character);
-    printTagFilters(tag_filter_type.group_members_list);
-    printTagFilters(tag_filter_type.group_candidates_list);
+    // SillyBunny: applyTagsOnGroupSelect owns its two filter contexts — see docs/ui-migration.md.
 
     // We are also always reprinting the lists on character/group edit window, as these ones doesn't get updated otherwise
     applyTagsOnCharacterSelect();
     applyTagsOnGroupSelect();
 
-    const entities = getEntitiesList({ doFilter: true })
+    const entities = getEntitiesList({
+        doFilter: true,
+        mainList: Boolean(characterListRenderer),
+        sortOptions: characterListRenderer ? getListSort(characterMenuEntityView) : undefined,
+    })
         .filter(entity => entityMatchesCharacterMenuView(entity))
         .map(entity => {
             if (entity.type !== 'tag') {
@@ -1515,6 +1663,24 @@ export async function printCharacters(fullRefresh = false) {
                 hidden: Math.max(0, (entity.entities?.length ?? 0) - visibleEntities.length),
             };
         });
+
+    if (characterListRenderer) {
+        const sourceCount = characterMenuEntityView === 'groups' ? groups.length : characters.length;
+        await characterListRenderer.render({
+            view: characterMenuEntityView,
+            entities,
+            sourceCount,
+            // SillyBunny: the shared list neutralises the groups-only and folders-only toggles.
+            hasAnyFilter: entitiesFilter.hasAnyFilter({ ignore: [FILTER_TYPES.GROUP, FILTER_TYPES.FOLDER] }),
+            // SillyBunny: tag folders remain available only to the upstream fallback.
+            folderOpen: false,
+            fullRefresh,
+            pageLoaded: () => eventSource.emit(event_types.CHARACTER_PAGE_LOADED),
+        });
+        favsToHotswap({ onlyIfVisible: true });
+        updatePersonaConnectionsAvatarList();
+        return;
+    }
 
     const pageSize = Number(accountStorage.getItem(storageKey)) || per_page_default;
     const sizeChangerOptions = [10, 25, 50, 100, 250, 500, 1000];
@@ -1573,13 +1739,15 @@ export async function printCharacters(fullRefresh = false) {
         },
         afterPaging: function (e) {
             saveCharactersPage = e;
+            // SillyBunny: remember fallback paging for a later renderer mount — see docs/ui-migration.md
+            recordListPage(characterMenuEntityView, e);
         },
         afterRender: function () {
             $(listId).scrollTop(currentScrollTop);
         },
     });
 
-    favsToHotswap();
+    favsToHotswap({ onlyIfVisible: true });
     updatePersonaConnectionsAvatarList();
 }
 
@@ -1595,12 +1763,18 @@ export function setCharacterMenuEntityView(value) {
     characterMenuEntityView = value === 'groups' ? 'groups' : 'characters';
 }
 
+// SillyBunny: keep the upstream search-sort option aligned with the active
+// Characters or Groups sort state — see docs/ui-migration.md
 /** Checks the state of the current search, and adds/removes the search sorting option accordingly */
 function verifyCharactersSearchSortRule() {
     const searchTerm = entitiesFilter.getFilterData(FILTER_TYPES.SEARCH);
     const searchOption = $('#character_sort_order option[data-field="search"]');
     const selector = $('#character_sort_order');
     const isHidden = searchOption.attr('hidden') !== undefined;
+    const sort = characterListRenderer ? getListSort(characterMenuEntityView) : {
+        field: power_user.sort_field,
+        order: power_user.sort_order,
+    };
 
     // If we have a search term, we are displaying the sorting option for it
     if (searchTerm && isHidden) {
@@ -1611,7 +1785,7 @@ function verifyCharactersSearchSortRule() {
     // If search got cleared, we make sure to hide the option and go back to the one before
     if (!searchTerm && !isHidden) {
         searchOption.attr('hidden', '');
-        $(`#character_sort_order option[data-order="${power_user.sort_order}"][data-field="${power_user.sort_field}"]`).prop('selected', true);
+        $(`#character_sort_order option[data-order="${sort.order}"][data-field="${sort.field}"]`).prop('selected', true);
     }
 }
 
@@ -1664,13 +1838,18 @@ export function tagToEntity(tag) {
  * @param {object} param0 - Optional parameters
  * @param {boolean} [param0.doFilter] - Whether this entity list should already be filtered based on the global filters
  * @param {boolean} [param0.doSort] - Whether the entity list should be sorted when returned
+ * @param {boolean} [param0.mainList] - Whether legacy Groups-only filtering is neutralized for the shared main list
+ * @param {{ field: string, order: string, rule?: string|null }} [param0.sortOptions] - Optional view-specific sort settings
  * @returns {Entity[]} All entities
  */
-export function getEntitiesList({ doFilter = false, doSort = true } = {}) {
+// SillyBunny: isolate shared-list filtering/sorting without changing other
+// callers or their persisted filters — see docs/ui-migration.md
+export function getEntitiesList({ doFilter = false, doSort = true, mainList = false, sortOptions = undefined } = {}) {
     let entities = [
         ...characters.map((item, index) => characterToEntity(item, index)),
         ...groups.map(item => groupToEntity(item)),
-        ...(power_user.bogus_folders ? tags.filter(isBogusFolder).sort(compareTagsForSort).map(item => tagToEntity(item)) : []),
+        // SillyBunny: the shared list has its own folder sections; preserve tag folders for fallback callers.
+        ...(power_user.bogus_folders && !mainList ? tags.filter(isBogusFolder).sort(compareTagsForSort).map(item => tagToEntity(item)) : []),
     ];
 
     // We need to do multiple filter runs in a specific order, otherwise different settings might override each other
@@ -1683,7 +1862,7 @@ export function getEntitiesList({ doFilter = false, doSort = true } = {}) {
 
     // First run filters, that will hide what should never be displayed
     if (doFilter) {
-        entities = filterByTagState(entities);
+        entities = filterByTagState(entities, { mainList });
     }
 
     // Run over all entities between first and second filter to save some states
@@ -1691,15 +1870,24 @@ export function getEntitiesList({ doFilter = false, doSort = true } = {}) {
         // For folders, we remember the sub entities so they can be displayed later, even if they might be filtered
         // Those sub entities should be filtered and have the search filters applied too
         if (entity.type === 'tag') {
-            let subEntities = filterByTagState(entities, { subForEntity: entity, filterHidden: false });
+            let subEntities = filterByTagState(entities, { subForEntity: entity, filterHidden: false, mainList });
             const subCount = subEntities.length;
-            subEntities = filterByTagState(entities, { subForEntity: entity });
+            subEntities = filterByTagState(entities, { subForEntity: entity, mainList });
             if (doFilter) {
                 // sub entities filter "hacked" because folder filter should not be applied there, so even in "only folders" mode characters show up
-                subEntities = entitiesFilter.applyFilters(subEntities, { clearScoreCache: false, tempOverrides: { [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED }, clearFuzzySearchCaches: false });
+                subEntities = entitiesFilter.applyFilters(subEntities, {
+                    clearScoreCache: false,
+                    // SillyBunny: the Groups-only filter is neutral only for
+                    // the shared main list — see docs/ui-migration.md
+                    tempOverrides: {
+                        [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED,
+                        ...(mainList ? { [FILTER_TYPES.GROUP]: false, [FILTER_TYPES.FOLDER]: false } : {}),
+                    },
+                    clearFuzzySearchCaches: false,
+                });
             }
             if (doSort) {
-                sortEntitiesList(subEntities, false);
+                sortEntitiesList(subEntities, false, null, sortOptions);
             }
             entity.entities = subEntities;
             entity.hidden = subCount - subEntities.length;
@@ -1708,12 +1896,23 @@ export function getEntitiesList({ doFilter = false, doSort = true } = {}) {
 
     // Second run filters, hiding whatever should be filtered later
     if (doFilter) {
-        const beforeFinalEntities = filterByTagState(entities, { globalDisplayFilters: true });
-        entities = entitiesFilter.applyFilters(beforeFinalEntities, { clearFuzzySearchCaches: false });
+        const beforeFinalEntities = filterByTagState(entities, { globalDisplayFilters: true, mainList });
+        entities = entitiesFilter.applyFilters(beforeFinalEntities, {
+            // SillyBunny: keep the persisted GROUP state for the fallback and
+            // filter UI, but neutralize it for the shared main list — see docs/ui-migration.md
+            tempOverrides: mainList ? { [FILTER_TYPES.GROUP]: false, [FILTER_TYPES.FOLDER]: false } : {},
+            clearFuzzySearchCaches: false,
+        });
 
         // Magic for folder filter. If that one is enabled, and no folders are display anymore, we remove that filter to actually show the characters.
         if (isFilterState(entitiesFilter.getFilterData(FILTER_TYPES.FOLDER), FILTER_STATES.SELECTED) && entities.filter(x => x.type == 'tag').length == 0) {
-            entities = entitiesFilter.applyFilters(beforeFinalEntities, { tempOverrides: { [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED }, clearFuzzySearchCaches: false });
+            entities = entitiesFilter.applyFilters(beforeFinalEntities, {
+                tempOverrides: {
+                    [FILTER_TYPES.FOLDER]: FILTER_STATES.UNDEFINED,
+                    ...(mainList ? { [FILTER_TYPES.GROUP]: false, [FILTER_TYPES.FOLDER]: false } : {}),
+                },
+                clearFuzzySearchCaches: false,
+            });
         }
     }
 
@@ -1727,7 +1926,7 @@ export function getEntitiesList({ doFilter = false, doSort = true } = {}) {
 
     // Sort before returning if requested
     if (doSort) {
-        sortEntitiesList(entities, false);
+        sortEntitiesList(entities, false, null, sortOptions);
     }
     entitiesFilter.clearFuzzySearchCaches();
     return entities;
@@ -1751,6 +1950,8 @@ export async function getOneCharacter(avatarUrl) {
 
         if (indexOf !== -1) {
             characters[indexOf] = getData;
+            // SillyBunny: the server still names the real chat; a temporary chat keeps its stand-in.
+            reassertReservedChatName(characters);
         } else {
             toastr.error(t`Character ${avatarUrl} not found in the list`, t`Error`, { timeOut: 5000, preventDuplicates: true });
         }
@@ -1804,7 +2005,8 @@ export function getCharacterSource(chId = this_chid) {
     return '';
 }
 
-export async function getCharacters() {
+// SillyBunny: receipt-owned creation refreshes the library without replacing live editor values — see docs/ui-migration.md
+export async function getCharacters({ preserveEditor = false } = {}) {
     const response = await fetch('/api/characters/all', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -1819,12 +2021,14 @@ export async function getCharacters() {
             characters[i].name = DOMPurify.sanitize(characters[i].name);
             characters[i].chat = characters[i].chat ? String(characters[i].chat) : '';
         }
+        // SillyBunny: the server still names the real chat; a temporary chat keeps its stand-in.
+        reassertReservedChatName(characters);
 
         if (previousAvatar) {
             const newCharacterId = characters.findIndex(x => x.avatar === previousAvatar);
             if (newCharacterId >= 0) {
                 setCharacterId(newCharacterId);
-                await selectCharacterById(newCharacterId, { switchMenu: false });
+                if (!preserveEditor) await selectCharacterById(newCharacterId, { switchMenu: false });
             } else {
                 await Popup.show.text(t`ERROR: The active character is no longer available.`, t`The page will be refreshed to prevent data loss. Press "OK" to continue.`);
                 return location.reload();
@@ -3615,7 +3819,14 @@ export async function clearChat({ clearData = false } = {}) {
         $('.zoomed_avatar[forChar]').remove();
     } else { console.debug('saw no avatars'); }
 
-    await saveItemizedPrompts(getCurrentChatId());
+    // SillyBunny: a temporary chat has no stored prompts, and clearing its messages for another chat ends it.
+    if (isTemporaryChat()) {
+        if (clearData) {
+            endTemporaryChat();
+        }
+    } else {
+        await saveItemizedPrompts(getCurrentChatId());
+    }
     itemizedPrompts.length = 0;
 
     if (clearData) {
@@ -3687,15 +3898,12 @@ export async function deleteMessage(id, swipeDeletionIndex = undefined, askConfi
 
     let deleteOnlySwipe = canDeleteSwipe;
     if (askConfirmation) {
-        const result = await callGenericPopup(t`Are you sure you want to delete this message?`, POPUP_TYPE.CONFIRM, null, {
-            okButton: canDeleteSwipe ? t`Delete Swipe` : t`Delete Message`,
-            cancelButton: 'Cancel',
-            customButtons: canDeleteSwipe ? [t`Delete Message`] : null,
-        });
-        if (!result) {
+        // SillyBunny: destructive alert with Cancel focused (sillybunny-delete-confirm.js).
+        const choice = await confirmMessageDeletion({ canDeleteSwipe });
+        if (!choice) {
             return;
         }
-        deleteOnlySwipe = canDeleteSwipe && result === POPUP_RESULT.AFFIRMATIVE; // Default button, not the custom one
+        deleteOnlySwipe = canDeleteSwipe && choice === DELETE_CHOICE.SWIPE;
     }
 
     if (deleteOnlySwipe) {
@@ -3740,6 +3948,14 @@ export const reloadCurrentChat = reloadChatMutex.update.bind(reloadChatMutex);
  * @returns {Promise<void>} A promise that resolves when the chat is reloaded.
  */
 export async function reloadCurrentChatUnsafe() {
+    // SillyBunny: a temporary chat is only ever reloaded for its own character. Anything else means the selection moved without leaving it.
+    if (isTemporaryChat() && !isTemporaryChatWith(characters[this_chid]?.avatar)) {
+        console.warn('A temporary chat was open for another character. Ending it before the reload.');
+        endTemporaryChat();
+        // The prompts belong to the chat that ended; clearChat would store them under the selected character.
+        itemizedPrompts.length = 0;
+    }
+
     const targetChatId = getCurrentChatId();
     const targetChid = this_chid;
     const targetGroup = selected_group;
@@ -3787,10 +4003,10 @@ export async function reloadCurrentChatUnsafe() {
                 return;
             }
 
-            // SillyBunny: persist any partial assistant message from the aborted generation.
+            // SillyBunny: persist any partial assistant message from the aborted generation. A temporary chat keeps it in memory only.
             const saved = targetGroup
                 ? await saveGroupChat(targetGroup, true)
-                : targetChid !== undefined
+                : targetChid !== undefined && !isTemporaryChat()
                     ? await saveChatConditional()
                     : true;
             if (saved !== true) {
@@ -3808,6 +4024,16 @@ export async function reloadCurrentChatUnsafe() {
             );
             return;
         }
+    }
+
+    // SillyBunny: a temporary chat has no file to read again, so a reload only redraws the messages in memory.
+    if (isTemporaryChat()) {
+        await clearChat({ clearData: false });
+        chat.forEach(ensureMessageMediaIsArray);
+        await printMessages();
+        await eventSource.emit(event_types.CHAT_CHANGED, targetChatId);
+        refreshSwipeButtons();
+        return;
     }
 
     // SillyBunny: flush pending user edits before re-reading from disk (fail-closed)
@@ -3964,6 +4190,12 @@ export async function sendTextareaMessage() {
     if (swipeState !== SWIPE_STATE.NONE) return; // don't proceed if mid-swipe.
     if (is_send_press) return;
     if (isExecutingCommandsFromChatInput) return;
+
+    // SillyBunny: with no API the message used to be posted without a reply or any word about why. Slash commands still run offline.
+    if ((online_status === 'no_connection' || online_status === undefined) && !String($('#send_textarea').val()).trimStart().startsWith('/')) {
+        notifyNotConnected();
+        return;
+    }
 
     hideSwipeButtons(); //Swipe buttons must be hidden now, otherwise concurrent generations are possible.
 
@@ -5433,6 +5665,11 @@ function formatGenerationTimer(gen_started, gen_finished, tokenCount, reasoningD
 let requestId = null;
 
 function scrollChatElementToBottom({ behavior = 'auto' } = {}) {
+    // SillyBunny: a greeting-only chat that is opening stays at its top. It is not skipped for `force`, because the pins of a chat load are forced too.
+    if (shouldHoldChatAtTop()) {
+        return;
+    }
+
     let position = chatElement[0].scrollHeight;
 
     if (power_user.waifuMode) {
@@ -9169,10 +9406,12 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             if (data.error) {
                 unblockGeneration(type);
 
-                if (data?.response) {
-                    toastr.error(data.response, t`API Error`, { preventDuplicates: true });
+                // SillyBunny: a 200 body shaped { error: { message } } stayed silent, because only data.response was read.
+                const errorMessage = extractProviderMessage(data);
+                if (errorMessage) {
+                    toastr.error(errorMessage, t`API Error`, { preventDuplicates: true });
                 }
-                throw new Error(data?.response);
+                throw new Error(errorMessage || data?.response);
             }
 
             if (jsonSchema) {
@@ -9334,8 +9573,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         function onError(exception) {
             if (!isCurrent()) throw exception;
             // if the response JSON was thrown (novel|textgenerationwebui|kobold), show the error message
-            if (typeof exception?.error?.message === 'string') {
-                toastr.error(exception.error.message, t`Text generation error`, { timeOut: 10000, extendedTimeOut: 20000 });
+            // SillyBunny: the text completion route throws { error: true, status, response } with no error.message, which stayed silent.
+            const thrownFailure = getThrownResponseFailure(exception);
+            if (thrownFailure) {
+                showRequestError({ title: t`Text generation error`, ...thrownFailure, toastOptions: { timeOut: 10000, extendedTimeOut: 20000 } });
             }
 
             if (!isAuxiliaryGeneration) {
@@ -9900,6 +10141,87 @@ export async function duplicateCharacter({ avatar = null, silent = false } = {})
     await getCharacters();
 
     return data.path;
+}
+
+// SillyBunny: expose the single-character merge-attributes favourite path for
+// list row actions without coupling the list to the bulk overlay — see docs/ui-migration.md
+function getCharacterForListAction(chid) {
+    return typeof chid === 'number' || (/^\d+$/.test(String(chid)) && characters[Number(chid)])
+        ? characters[Number(chid)]
+        : characters.find(item => item.avatar === String(chid));
+}
+
+/**
+ * Toggles a character's favourite flag by character index or avatar id.
+ * @param {number|string} chid Character index or avatar filename
+ * @returns {Promise<boolean>} Whether the favourite was persisted
+ */
+export async function toggleCharacterFavoriteById(chid) {
+    const character = getCharacterForListAction(chid);
+    if (!character) {
+        return false;
+    }
+
+    const newFavorite = !character.data?.extensions?.fav;
+    const data = {
+        name: character.name,
+        avatar: character.avatar,
+        data: {
+            extensions: {
+                fav: newFavorite,
+            },
+        },
+        fav: newFavorite,
+    };
+    const response = await fetch('/api/characters/merge-attributes', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+        response.json().then(json => toastr.error(`Character not saved. Error: ${json.message}. Field: ${json.error}`));
+        return false;
+    }
+
+    character.fav = newFavorite;
+    character.data ??= {};
+    character.data.extensions ??= {};
+    character.data.extensions.fav = newFavorite;
+    // SillyBunny: an immediate list action must not be undone by a hidden
+    // editor's later Save or draft recovery — see docs/ui-migration.md
+    if (syncCharacterEditorFavorite(character.avatar, newFavorite)) {
+        updateFavButtonState(newFavorite);
+    }
+    printCharactersDebounced();
+    return true;
+}
+
+// SillyBunny: list deletion reuses the editor's confirmation and chat checkbox,
+// capturing the target before any asynchronous popup — see docs/ui-migration.md
+/**
+ * Confirms and deletes a single character by index or avatar filename.
+ * @param {number|string} chid
+ * @returns {Promise<boolean>} Whether the character was deleted
+ */
+export async function deleteCharacterById(chid) {
+    const character = getCharacterForListAction(chid);
+    if (!character) {
+        return false;
+    }
+    const avatar = character.avatar;
+    let deleteChats = false;
+    // SillyBunny: destructive character confirmation names the delete action.
+    const confirmed = await Popup.show.confirm(t`Delete the character?`, await renderTemplateAsync('deleteConfirm'), {
+        okButton: t`Delete`,
+        // SillyBunny: destructive confirmations focus Cancel and style Delete in the shared frame.
+        defaultResult: 0,
+        onOpening: popup => popup.okButton.classList.add('is-destructive'),
+        onClose: () => { deleteChats = !!$('#del_char_checkbox').prop('checked'); },
+    });
+    if (!confirmed || !characters.some(item => item.avatar === avatar)) {
+        return false;
+    }
+    return await deleteCharacter(avatar, { deleteChats });
 }
 
 function setInContextMessages(msgInContextCount, type, preserveLastMessage = false) {
@@ -11053,6 +11375,10 @@ export function activateSendButtons({ emitGenerationEnded = true } = {}) {
     if (!lockState.shouldShowStopButton) {
         hideStopButton({ emitGenerationEnded });
     }
+    // SillyBunny: restore the disabled offline affordance after generation without waiting for a status change.
+    if (online_status === 'no_connection' && !lockState.shouldShowStopButton && !(selected_group && is_group_generating)) {
+        document.getElementById?.('send_but')?.classList?.remove('displayNone');
+    }
     if (!lockState.shouldHideSwipeButtons) {
         showSwipeButtons();
     }
@@ -11101,11 +11427,6 @@ export function resetChatState() {
 export function setMenuType(value) {
     const rightNavPanel = document.getElementById('right-nav-panel');
 
-    if (rightNavPanel instanceof HTMLElement && value !== 'character_edit' && value !== 'create') {
-        rightNavPanel.classList.remove('sb-character-editor-fullscreen');
-        rightNavPanel.dataset.sbCharacterEditorFullscreen = 'false';
-    }
-
     menu_type = value;
     // Allow custom CSS to see which menu type is active
     if (rightNavPanel instanceof HTMLElement) {
@@ -11153,6 +11474,7 @@ export function setCharacterName(value) {
 export function setOnlineStatus(value) {
     const previousStatus = online_status;
     online_status = value;
+    setConnectionStatus(online_status); // SillyBunny: runs on every set, so a failed check that leaves `no_connection` unchanged still settles to offline.
     displayOnlineStatus();
     if (previousStatus !== online_status) {
         eventSource.emitAndWait(event_types.ONLINE_STATUS_CHANGED, online_status);
@@ -11203,6 +11525,11 @@ export async function renameCharacter(name = null, { silent = false, renameChats
     }
     if (newValue === characters[this_chid].name) {
         toastr.info(t`Same character name provided, so name did not change.`, t`Rename Character`);
+        return false;
+    }
+
+    // SillyBunny: renaming reloads the character's real chat, so leaving a temporary chat is asked before anything is renamed.
+    if (isTemporaryChat() && !await leaveTemporaryChat()) {
         return false;
     }
 
@@ -11272,10 +11599,12 @@ export async function renameCharacter(name = null, { silent = false, renameChats
                     ? renameChats
                     : silent
                         ? false
+                        // SillyBunny: past-chat rename confirmation names the update action.
                         : await Popup.show.confirm(
                             t`Character renamed!`,
                             `<p>${t`Past chats will still contain the old character name. Would you like to update the character name in previous chats as well?`}</p>
                             <i><b>${t`Sprites folder (if any) should be renamed manually.`}</b></i>`,
+                            { okButton: t`Update` },
                         ) == POPUP_RESULT.AFFIRMATIVE;
 
                 if (renamePastChatsConfirm) {
@@ -11361,6 +11690,11 @@ async function renamePastChats(oldAvatar, newAvatar, newName) {
 }
 
 export function saveChatDebounced(options = {}) {
+    // SillyBunny: a temporary chat saves nothing, so there is nothing to wait for or to flush later.
+    if (isTemporaryChat()) {
+        return;
+    }
+
     const chid = this_chid;
     const selectedGroup = selected_group;
     const chatId = getCurrentChatId();
@@ -11418,7 +11752,21 @@ async function waitForQueuedChatSaves() {
     }
 }
 
-export async function flushPendingChatSavesForNavigation() {
+export async function flushPendingChatSavesForNavigation({ staying = false } = {}) {
+    // SillyBunny: nothing is flushed for a temporary chat, because nothing is saved. Leaving it asks first when the user wrote in it.
+    if (isTemporaryChat()) {
+        if (staying) {
+            return true;
+        }
+        if (!await leaveTemporaryChat()) {
+            return false;
+        }
+        // Save as New Chat ended the temporary state, so the chat it saved is flushed like any other.
+        if (isTemporaryChat()) {
+            return true;
+        }
+    }
+
     if (hasPendingChatSave()) {
         // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
         const didFlush = await flushPendingChatSaves({ silent: true });
@@ -11441,6 +11789,11 @@ export async function flushPendingChatSavesForNavigation() {
  * @returns {Promise<boolean>} Whether the chat save completed successfully.
  */
 export async function flushPendingChatSaves({ silent = false } = {}) {
+    // SillyBunny: a temporary chat has nothing to save, so callers such as Clear cache are not told that saving failed.
+    if (isTemporaryChat()) {
+        return true;
+    }
+
     const chatId = getCurrentChatId();
 
     if (!chatId) {
@@ -11608,6 +11961,11 @@ async function saveChatImmediately(...args) {
     const resolvedCharacterName = characterName || fallbackCharacter.name;
     const resolvedAvatarUrl = avatarUrl || fallbackCharacter.avatar;
     const integrityKey = getQueuedChatIntegrityKey(resolvedAvatarUrl, fileName);
+
+    // SillyBunny: a temporary chat with a character is never written. Save as New Chat leaves the temporary state before it saves.
+    if (isTemporaryChat()) {
+        return false;
+    }
 
     if (!fileName && name2 === neutralCharacterName) {
         // TODO: Do something for a temporary chat with no character.
@@ -12089,6 +12447,8 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
 
         // Focus on the textarea if not already focused on a visible text input
         delay(debounce_timeout.short).then(() => {
+            // SillyBunny: delayed chat autofocus must not steal shell navigation or restored list focus — see docs/ui-migration.md.
+            if (document.documentElement.dataset.sbSettingsOpen === 'true') return;
             if ($(document.activeElement).is('input:visible, textarea:visible')) {
                 return;
             }
@@ -12099,6 +12459,52 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
         // SillyBunny: a failed strict load must not be replaced with a newly saved greeting.
         console.log(error);
         toastr.error(t`Could not load chat data. Try reloading the page.`);
+        return false;
+    }
+}
+
+// SillyBunny: opens a temporary chat, the way getChat() opens a saved one, without any chat file.
+/**
+ * Opens a temporary chat with the selected character: no chat file is resolved, created, read or saved, and the chat
+ * starts with the card's greeting. Announces itself in the order getChat() does.
+ * @param {object} [options] Options
+ * @param {boolean} [options.switchMenu=true] Whether to switch the right menu to the character edit menu.
+ * @returns {Promise<boolean>} Whether the temporary chat opened.
+ */
+async function getTemporaryChat({ switchMenu = true } = {}) {
+    try {
+        incrementChatGeneration();
+        await unshallowCharacter(this_chid);
+        beginTemporaryChat(characters[this_chid]);
+
+        name2 = characters[this_chid].name;
+        chat.splice(0, chat.length);
+        const greeting = getFirstMessage();
+        if (greeting.mes) {
+            chat.push(greeting);
+        }
+        await printMessages();
+        select_selected_character(this_chid, { switchMenu });
+        await eventSource.emit(event_types.CHAT_CHANGED, (getCurrentChatId()));
+
+        if (chat.length === 1) {
+            await eventSource.emit(event_types.MESSAGE_RECEIVED, 0, 'first_message');
+            await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, 0, 'first_message');
+        }
+        eventSource.emit(event_types.CHAT_LOADED, { detail: { id: this_chid, character: characters[this_chid] } });
+
+        delay(debounce_timeout.short).then(() => {
+            if (!isTemporaryChat() || document.documentElement.dataset.sbSettingsOpen === 'true') return;
+            if ($(document.activeElement).is('input:visible, textarea:visible')) {
+                return;
+            }
+            $('#send_textarea').trigger('click').trigger('focus');
+        });
+        return true;
+    } catch (error) {
+        console.log(error);
+        endTemporaryChat();
+        showTemporaryChatError();
         return false;
     }
 }
@@ -12189,10 +12595,12 @@ export async function openCharacterChat(file_name) {
 
 ////////// OPTIMZED MAIN API CHANGE FUNCTION ////////////
 
-export function changeMainAPI(api = null) {
-    const selectedVal = api ?? $('#main_api').val();
-    //console.log(selectedVal);
-    const apiElements = {
+// SillyBunny (feat/v1.9.0-ui-overhaul): the element map below is shared by the two halves of the
+// main-API change. It is built once per call rather than hoisted, because several of the ids are
+// authored by extensions after this module is evaluated and a hoisted map would capture nulls. The
+// element set is deliberately unchanged from upstream.
+function collectMainApiElements() {
+    return {
         'koboldhorde': {
             apiStreaming: $('#NULL_SELECTOR'),
             apiSettings: $('#kobold_api-settings'),
@@ -12239,8 +12647,24 @@ export function changeMainAPI(api = null) {
             amountGenElem: $('#amount_gen_block'),
         },
     };
-    //console.log('--- apiElements--- ');
-    //console.log(apiElements);
+}
+
+/**
+ * Reshows the settings groups and backend block the chosen API owns, and hides the rest.
+ *
+ * This is the visibility half of the main-API change, split out so a control that only needs the
+ * right groups on screen can run it without the side effects below. It is pure presentation: the
+ * only writes are `display` on the connector, settings, range, preset, and streaming groups.
+ *
+ * The `apiConnector` ids are the five provider blocks in `#rm_api_block`, which the Connections
+ * panel moves into slots of its own. Those are skipped: the panel hides them with the `hidden`
+ * attribute, and a `display` written here would fight it. Everything else -- the settings, range,
+ * preset, and streaming groups, none of which the panel owns -- is switched as before.
+ *
+ * @param {string} selectedVal the `#main_api` value to show
+ */
+export function changePanelApiVisibility(selectedVal) {
+    const apiElements = collectMainApiElements();
 
     //first, disable everything so the old elements stop showing
     for (const apiName in apiElements) {
@@ -12250,7 +12674,9 @@ export function changeMainAPI(api = null) {
             continue;
         }
         apiObj.apiSettings.css('display', 'none');
-        apiObj.apiConnector.css('display', 'none');
+        if (!apiObj.apiConnector.closest('.sb-connections-provider').length) {
+            apiObj.apiConnector.css('display', 'none');
+        }
         apiObj.apiRanges.css('display', 'none');
         apiObj.apiPresets.css('display', 'none');
         apiObj.apiStreaming.css('display', 'none');
@@ -12258,11 +12684,16 @@ export function changeMainAPI(api = null) {
 
     //then, find and enable the active item.
     //This is split out of the loop so that different apis can share settings divs
-    let activeItem = apiElements[selectedVal];
+    const activeItem = apiElements[selectedVal];
+    if (!activeItem) {
+        return;
+    }
 
     activeItem.apiStreaming.css('display', 'block');
     activeItem.apiSettings.css('display', 'block');
-    activeItem.apiConnector.css('display', 'block');
+    if (!activeItem.apiConnector.closest('.sb-connections-provider').length) {
+        activeItem.apiConnector.css('display', 'block');
+    }
     activeItem.apiRanges.css('display', 'block');
     activeItem.apiPresets.css('display', 'block');
 
@@ -12293,11 +12724,19 @@ export function changeMainAPI(api = null) {
     } else {
         $('#common-gen-settings-block').css('display', 'block');
     }
+}
+
+export function changeMainAPI(api = null) {
+    const selectedVal = api ?? $('#main_api').val();
+
+    changePanelApiVisibility(selectedVal);
 
     main_api = selectedVal;
     setOnlineStatus('no_connection');
+    setStatusCheckPending(false); // SillyBunny: the change handler has cancelled any check in flight, and a Chat Completion check that was superseded returns without ending its state.
 
     if (main_api == 'koboldhorde') {
+        setStatusCheckPending(true); // SillyBunny: the Horde check never calls `startStatusLoading`, but it ends in `resultCheckStatus`.
         getStatusHorde();
         getHordeModels(true);
     }
@@ -12323,6 +12762,7 @@ export function setUserName(value, { toastPersonaNameChange = true } = {}) {
 }
 
 async function doOnboarding(avatarId) {
+    if (await showFirstRunWelcome(avatarId)) return; // SillyBunny: the Welcome dialog replaces the popup below, which stays as the fallback.
     const template = $('#onboarding_template .onboarding');
     let userName = await callGenericPopup(template, POPUP_TYPE.INPUT, currentUser?.name || name1, { wider: true, cancelButton: false });
 
@@ -12389,7 +12829,7 @@ async function promptSettingsConflictReload() {
 
 //MARK: getSettings()
 ///////////////////////////////////////////
-export async function getSettings(initLoaderHandle = null) {
+export async function getSettings() {
     const response = await fetch('/api/settings/get', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -12515,6 +12955,7 @@ export async function getSettings(initLoaderHandle = null) {
             if (await maybeAutoClearCacheOnVersionChange(isVersionChanged)) {
                 return;
             }
+            settings.extension_settings = seedQuickImageGenFirstRun(settings.extension_settings); // SillyBunny: keep the Quick Image Gen setup wizard from stacking under the first-run dialog.
             await loadExtensionSettings(settings, isVersionChanged, enableAutoUpdate);
             await eventSource.emit(event_types.EXTENSION_SETTINGS_LOADED);
             applyPowerUserSettings();
@@ -12532,7 +12973,7 @@ export async function getSettings(initLoaderHandle = null) {
         firstRun = !!settings.firstRun;
 
         if (firstRun) {
-            await initLoaderHandle?.hide();
+            await dismissPreloader();
             await doOnboarding(user_avatar);
             firstRun = false;
         }
@@ -12580,7 +13021,8 @@ async function saveSettingsInner(loopCounter = 0) {
         accountStorage: accountStorage.getState(),
         currentVersion: currentVersion,
         username: name1,
-        active_character: active_character,
+        // SillyBunny: a reload must not open the character a temporary chat is with, which would create its real chat.
+        active_character: isTemporaryChat() ? null : active_character,
         active_group: active_group,
         user_avatar: user_avatar,
         amount_gen: amount_gen,
@@ -13407,7 +13849,11 @@ async function promptForMessageScreenshotRange(messageId) {
         <small>${t`Single message: use the same message ID for both fields.`}</small>
     `;
 
+    // SillyBunny: retain one adapter lifecycle for the Popup-owned screenshot fields.
+    const dialogOptions = messageScreenshotOptions({ startId: MESSAGE_SCREENSHOT_INPUT_IDS.start, endId: MESSAGE_SCREENSHOT_INPUT_IDS.end });
     const popup = new Popup(content, POPUP_TYPE.CONFIRM, '', {
+        // SillyBunny: adopt custom inputs into unnormalized spin rows inside the scrolling body.
+        ...dialogOptions,
         okButton: t`Download PNG`,
         cancelButton: t`Cancel`,
         customInputs: [
@@ -13427,7 +13873,9 @@ async function promptForMessageScreenshotRange(messageId) {
             },
         ],
         wider: true,
-        onOpen: function () {
+        onOpening: function (activePopup) {
+            // SillyBunny: compose the adapter's rows with the initial selection, so the field is selected in the first frame.
+            dialogOptions.onOpening(activePopup);
             const startInput = popup.dlg.querySelector(`#${MESSAGE_SCREENSHOT_INPUT_IDS.start}`);
             if (startInput instanceof HTMLInputElement) {
                 startInput.focus({ preventScroll: true });
@@ -13626,6 +14074,7 @@ export async function messageEdit(editMessageId) {
     const messageBlock = messageElement.find('.mes_block');
     const messageText = messageBlock.find('.mes_text');
 
+    messageElement.addClass('sb-message-editing');
     messageText.empty();
     messageBlock.find('.mes_buttons').css('display', 'none');
     messageBlock.find('.mes_edit_buttons').css('display', 'inline-flex');
@@ -13654,6 +14103,13 @@ export async function messageEdit(editMessageId) {
 
     if (shouldGuardMobileChatScroll()) {
         markMobileChatManualScroll();
+    }
+
+    // SillyBunny: empty() briefly collapses the message, and near the chat bottom the browser clamps
+    // scrollTop to the shorter scrollHeight; the refilled editor never scrolls back. Undo only that clamp.
+    const chatScrollElement = chatElement[0];
+    if (!shouldGuardMobileChatScroll() && chatScrollElement && chatScrollElement.scrollTop < chatScrollPosition) {
+        chatScrollElement.scrollTop = chatScrollPosition;
     }
 
     // SillyBunny: on desktop the message resize observer owns the edit-open layout change and focus already has preventScroll; restoring here reverts it.
@@ -13694,6 +14150,7 @@ async function messageEditCancel(messageId = this_edit_mes_id) {
     }
 
     const thisMesBlock = thisMesDiv.find('.mes_block');
+    thisMesDiv.addClass('sb-message-edit-restored');
     thisMesBlock.find('.mes_text').empty();
     thisMesDiv.find('.mes_edit_buttons').css('display', 'none');
     thisMesBlock.find('.mes_buttons').css('display', '');
@@ -13783,13 +14240,15 @@ async function messageEditDone(div) {
     }
 
     let { mesBlock, text, mes, bias } = updateMessage(div);
+    const editedMessage = div.closest('.mes');
 
     await eventSource.emit(event_types.MESSAGE_EDITED, this_edit_mes_id);
     text = chat[this_edit_mes_id]?.mes ?? text;
     if (chat[this_edit_mes_id] && !chat[this_edit_mes_id].is_system) {
         await updateMessageTokenAccounting(chat[this_edit_mes_id]);
     }
-    updateMessageMetaBadges(div.closest('.mes'), chat[this_edit_mes_id]);
+    updateMessageMetaBadges(editedMessage, chat[this_edit_mes_id]);
+    editedMessage.addClass('sb-message-edit-restored');
     mesBlock.find('.mes_text').empty();
     mesBlock.find('.mes_edit_buttons').css('display', 'none');
     mesBlock.find('.mes_buttons').css('display', '');
@@ -13804,11 +14263,11 @@ async function messageEditDone(div) {
             false,
         ),
     );
-    notifyCardScriptStripped(div.closest('.mes'), this_edit_mes_id);
+    notifyCardScriptStripped(editedMessage, this_edit_mes_id);
     mesBlock.find('.mes_bias').empty();
     mesBlock.find('.mes_bias').append(messageFormatting(bias, '', false, false, -1, {}, false));
-    appendMediaToMessage(mes, div.closest('.mes'));
-    addCopyToCodeBlocks(div.closest('.mes'));
+    appendMediaToMessage(mes, editedMessage);
+    addCopyToCodeBlocks(editedMessage);
 
     const reasoningEditDone = mesBlock.find('.mes_reasoning_edit_done:visible');
     if (reasoningEditDone.length > 0) {
@@ -14520,7 +14979,12 @@ async function runChatCleanup() {
         ${renderChatCleanupList(candidates)}`,
         POPUP_TYPE.CONFIRM,
         null,
-        { wider: true, allowVerticalScrolling: true },
+        {
+            wider: true,
+            allowVerticalScrolling: true,
+            // SillyBunny: Cleanup defaults to cancel so the destructive action is always opt-in.
+            defaultResult: POPUP_RESULT.NEGATIVE,
+        },
     );
     if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
         return;
@@ -14646,7 +15110,9 @@ export function selectRightMenuWithAnimation(selectedMenuId) {
         'rm_characters_block': 'flex',
     };
     const normalizedSelectedMenuId = selectedMenuId?.replace('#', '') || '';
-    const shouldAnimate = !isMobile() && animation_duration > 0;
+    // SillyBunny: page-hosted tabs switch atomically; retain legacy drawer motion — see docs/ui-migration.md
+    const shellHosted = document.getElementById('right-nav-panel')?.classList.contains('sb-settings-mounted-shell');
+    const shouldAnimate = !shellHosted && !isMobile() && animation_duration > 0;
 
     $('#result_info').toggle(normalizedSelectedMenuId === 'rm_ch_create_block');
     document.querySelectorAll('#right-nav-panel .right_menu').forEach((menu) => {
@@ -14759,25 +15225,11 @@ function getEditableAlternateGreetings() {
     return characters[chid].data.alternate_greetings;
 }
 
-function getSubmittedAlternateGreetings() {
-    const greetings = getEditableAlternateGreetings();
-    if (!Array.isArray(greetings)) {
-        return [];
-    }
-
-    const editor = $('#character_greetings_editor');
-    if (!editor.length) {
-        return greetings;
-    }
-
-    const fields = editor.find('.alternate_greeting_text');
-    if (!fields.length) {
-        return greetings;
-    }
-
-    const currentValues = fields.toArray().map(field => String($(field).val()));
-    greetings.splice(0, greetings.length, ...currentValues);
-    return greetings;
+// SillyBunny: greetings are edited as session drafts in sillybunny-character-editor.js
+// and only reach the entity through a save. Reading the DOM here returned the stale
+// entity list whenever every row had been deleted (no fields to read).
+function getSubmittedAlternateGreetings(targetAvatar) {
+    return getCharacterEditorAlternateGreetings(targetAvatar);
 }
 
 function syncAlternateGreetingsEditor() {
@@ -14873,6 +15325,10 @@ export function select_rm_info(type, charId, previousCharId = null) {
     }
     const rightNavPanel = document.getElementById('right-nav-panel');
     const keepSillyBunnyImportTab = rightNavPanel?.dataset.menuType === 'import' && ['char_import', 'char_import_no_toast'].includes(type);
+    // SillyBunny: the shared list renderer reveals new entities by key; the legacy paginator is retired once it mounts.
+    const usesListNavigation = !keepSillyBunnyImportTab && Boolean(characterListRenderer)
+        && ['char_create', 'group_create', 'char_import', 'char_import_no_toast'].includes(type)
+        && typeof globalThis.SillyBunnyCharactersNavigation?.returnToCreatedEntity === 'function';
 
     if (type !== 'group_create') {
         var displayName = String(charId).replace('.png', '');
@@ -14895,7 +15351,11 @@ export function select_rm_info(type, charId, previousCharId = null) {
         toastr.success(t`Character Imported: ${displayName}`);
     }
 
-    if (!keepSillyBunnyImportTab) {
+    if (usesListNavigation) {
+        const key = type === 'group_create' ? `group:${charId}` : `character:${charId}`;
+        Promise.resolve(globalThis.SillyBunnyCharactersNavigation.returnToCreatedEntity(type, key))
+            .catch(error => console.error(error));
+    } else if (!keepSillyBunnyImportTab) {
         selectRightMenuWithAnimation('rm_characters_block');
     } else {
         document.dispatchEvent(new CustomEvent('sillybunny:character-import-tab-preserve'));
@@ -14904,7 +15364,7 @@ export function select_rm_info(type, charId, previousCharId = null) {
     // Set a timeout so multiple flashes don't overlap
     clearTimeout(importFlashTimeout);
     importFlashTimeout = setTimeout(function () {
-        if (keepSillyBunnyImportTab) {
+        if (keepSillyBunnyImportTab || usesListNavigation) {
             return;
         }
 
@@ -15016,16 +15476,20 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#add_avatar_button').val('');
     $('#avatar_div').css('display', 'flex');
 
+    // SillyBunny: flush pending draft before overwriting fields (Step 3b)
+    beginCharacterEditorLoad();
     $('#character_name_pole').val(characters[chid].name);
+    // SillyBunny: reset nicknames per character so a previous draft is never applied to another card.
+    $('#character_nickname_pole').val(characters[chid].data?.nickname ?? '');
     $('#description_textarea').val(characters[chid].description);
     $('#character_world').val(characters[chid].data?.extensions?.world || '');
     $('#creator_notes_textarea').val(characters[chid].data?.creator_notes || characters[chid].creatorcomment);
     $('#creator_notes_spoiler').html(formatCreatorNotes(characters[chid].data?.creator_notes || characters[chid].creatorcomment, characters[chid].avatar));
-    $('#character_version_textarea').val(characters[chid].data?.character_version || '');
     $('#system_prompt_textarea').val(characters[chid].data?.system_prompt || '');
     $('#post_history_instructions_textarea').val(characters[chid].data?.post_history_instructions || '');
     $('#tags_textarea').val(Array.isArray(characters[chid].data?.tags) ? characters[chid].data.tags.join(', ') : '');
     $('#creator_textarea').val(characters[chid].data?.creator);
+    // SillyBunny: populate the version once with the other metadata — see docs/ui-migration.md.
     $('#character_version_textarea').val(characters[chid].data?.character_version || '');
     $('#personality_textarea').val(characters[chid].personality);
     $('#firstmessage_textarea').val(characters[chid].first_mes);
@@ -15035,7 +15499,8 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#depth_prompt_role').val(characters[chid].data?.extensions?.depth_prompt?.role ?? depth_prompt_role_default);
     $('#talkativeness_slider').val(characters[chid].talkativeness || talkativeness_default);
     $('#mes_example_textarea').val(characters[chid].mes_example);
-    $('#selected_chat_pole').val(characters[chid].chat);
+    // SillyBunny: this field is saved with the card, so it holds the real chat name while the chat is temporary.
+    $('#selected_chat_pole').val(getStoredChatName(characters[chid]));
     $('#create_date_pole').val(timestampToMoment(characters[chid].create_date).toISOString());
     $('#avatar_url_pole').val(characters[chid].avatar);
     $('#chat_import_avatar_url').val(characters[chid].avatar);
@@ -15051,8 +15516,10 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#set_character_world').data('chid', chid);
     setWorldInfoButtonClass(chid);
     checkEmbeddedWorld(chid);
-    syncAlternateGreetingsEditor();
-    focusUiSurface(document.getElementById('right-nav-panel'));
+    // SillyBunny: controller renders greetings and opens edit session (Step 3b)
+    loadCharacterEditorGreetings(chid, 'edit');
+    openCharacterEditorSession(chid);
+    // SillyBunny: select_rm_create already schedules this surface's focus — see docs/ui-migration.md.
 
     $('#name_div').removeClass('displayNone');
     $('#name_div').addClass('displayBlock');
@@ -15109,7 +15576,10 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     //create text poles
     $('#rm_button_back').css('display', '');
     $('#character_import_button').css('display', '');
+    // SillyBunny: flush pending draft before overwriting fields (Step 3b)
+    beginCharacterEditorLoad();
     $('#character_name_pole').val(create_save.name);
+    $('#character_nickname_pole').val(create_save.nickname || '');
     $('#description_textarea').val(create_save.description);
     $('#character_world').val(create_save.world);
     $('#creator_notes_textarea').val(create_save.creator_notes);
@@ -15139,7 +15609,9 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     setWorldInfoButtonClass(undefined, !!create_save.world);
     updateFavButtonState(false);
     checkEmbeddedWorld();
-    syncAlternateGreetingsEditor();
+    // SillyBunny: controller renders greetings and opens create session (Step 3b)
+    loadCharacterEditorGreetings(null, 'create');
+    openCharacterEditorCreateSession();
     focusUiSurface(document.getElementById('right-nav-panel'));
 
     $('#form_create').attr('actiontype', 'createcharacter');
@@ -15274,7 +15746,8 @@ export async function setCharacterSettingsOverrides() {
     });
 
     $template.find('.remove_scenario_override').on('click', async function () {
-        const confirm = await Popup.show.confirm(t`Are you sure you want to remove all overrides?`, t`This action cannot be undone.`);
+        // SillyBunny: override removal is destructive and names the remove action.
+        const confirm = await Popup.show.confirm(t`Are you sure you want to remove all overrides?`, t`This action cannot be undone.`, { okButton: t`Remove`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
         if (!confirm) {
             return;
         }
@@ -15289,6 +15762,8 @@ export async function setCharacterSettingsOverrides() {
 
     // Wait for popup close/confirm.
     await callGenericPopup($template, POPUP_TYPE.TEXT, '', {
+        // SillyBunny: the override editor uses the Window tier with full-width textarea rows.
+        ...scenarioOverrideOptions($template),
         wide: true,
         large: true,
         allowVerticalScrolling: true,
@@ -15887,6 +16362,9 @@ async function openCharacterWorldPopup() {
     });
 
     const popup = new Popup(template, POPUP_TYPE.TEXT, '', {
+        // SillyBunny: adopt both selects before the existing desktop Select2 initialization.
+        ...lorebookSelectOptions(template[0], { character: true }),
+        // SillyBunny: Select2 stays in onOpen. The shared select row hides its container, so starting it late paints nothing.
         onOpen: function (popup) {
             const popupDialog = $(popup.dlg);
 
@@ -15943,8 +16421,9 @@ function openAlternateGreetings() {
 /**
  * Creates or edits a character based on the form data.
  * @param {Event} [e] Event that triggered the function call.
+ * @param {import('./scripts/sillybunny-editor/session.js').EditorSaveReceipt} [saveReceipt]
  */
-export async function createOrEditCharacter(e) {
+export async function createOrEditCharacter(e, saveReceipt) {
     if (!settingsReady) {
         console.warn('Settings not ready, aborting character creation/editing.');
         return;
@@ -15952,7 +16431,24 @@ export async function createOrEditCharacter(e) {
 
     $('#rm_info_avatar').html('');
     const formData = new FormData(/** @type {HTMLFormElement} */($('#form_create').get(0)));
-    formData.set('fav', String(fav_ch_checked));
+    // SillyBunny: capture external callers too, before any conversion/confirmation awaits — see docs/ui-migration.md
+    const creating = $('#form_create').attr('actiontype') === 'createcharacter';
+    const submittedAvatar = creating ? null : String(formData.get('avatar_url') ?? '');
+    saveReceipt ??= captureCharacterEditorSave(submittedAvatar);
+    if (saveReceipt && !saveReceipt.isCurrent()) return;
+    if (saveReceipt) {
+        for (const [id, value] of Object.entries(saveReceipt.snapshot)) {
+            const field = document.getElementById(id);
+            if (field?.name) formData.set(field.name, value);
+        }
+    }
+    formData.set('fav', String(saveReceipt?.snapshot._fav ?? fav_ch_checked));
+    formData.delete('alternate_greetings');
+    for (const value of saveReceipt?.snapshot._alt ?? getSubmittedAlternateGreetings(submittedAvatar)) {
+        formData.append('alternate_greetings', value);
+    }
+    formData.set('group_only_greetings', JSON.stringify(saveReceipt?.snapshot._grp ?? getCharacterEditorGroupGreetings(submittedAvatar)));
+    if (creating) formData.set('extensions', JSON.stringify(create_save.extensions));
     const isNewChat = e instanceof CustomEvent && e.type === 'newChat';
 
     const rawFile = formData.get('avatar');
@@ -15963,8 +16459,8 @@ export async function createOrEditCharacter(e) {
 
     const headers = getRequestHeaders({ omitContentType: true });
 
-    if ($('#form_create').attr('actiontype') == 'createcharacter') {
-        if (String($('#character_name_pole').val()).length === 0) {
+    if (creating) {
+        if (String(formData.get('ch_name') ?? '').length === 0) {
             toastr.error(t`Name is required`);
             return;
         }
@@ -15980,13 +16476,6 @@ export async function createOrEditCharacter(e) {
                 url += `?crop=${encodeURIComponent(JSON.stringify(crop_data))}`;
             }
 
-            formData.delete('alternate_greetings');
-            for (const value of getSubmittedAlternateGreetings()) {
-                formData.append('alternate_greetings', value);
-            }
-
-            formData.append('extensions', JSON.stringify(create_save.extensions));
-
             const fetchResult = await fetch(url, {
                 method: 'POST',
                 headers: headers,
@@ -15999,9 +16488,17 @@ export async function createOrEditCharacter(e) {
             }
 
             const avatarId = await fetchResult.text();
+            // SillyBunny: refresh without reopening the old card or clearing a successor's form/draft — see docs/ui-migration.md
+            if (!saveReceipt || saveReceipt.isCurrent()) createTagMapFromList('#tagList', avatarId);
+            await getCharacters({ preserveEditor: Boolean(saveReceipt) });
+            if (saveReceipt) {
+                await getOneCharacter(avatarId);
+                if (!saveReceipt.isCurrent()) return;
+            }
 
             const fields = [
                 { id: '#character_name_pole', callback: value => create_save.name = value },
+                { id: '#character_nickname_pole', callback: value => create_save.nickname = value },
                 { id: '#description_textarea', callback: value => create_save.description = value },
                 { id: '#creator_notes_textarea', callback: value => create_save.creator_notes = value },
                 { id: '#character_version_textarea', callback: value => create_save.character_version = value },
@@ -16025,7 +16522,8 @@ export async function createOrEditCharacter(e) {
 
             fields.forEach(field => {
                 const fieldValue = field.defaultValue !== undefined ? field.defaultValue : '';
-                $(field.id).val(fieldValue);
+                // SillyBunny: preserve live post-submit edits while clearing the create scratchpad — see docs/ui-migration.md
+                if (!saveReceipt) $(field.id).val(fieldValue);
                 field.callback && field.callback(fieldValue);
             });
 
@@ -16050,9 +16548,9 @@ export async function createOrEditCharacter(e) {
             }
 
             console.log(`new avatar id: ${avatarId}`);
-            createTagMapFromList('#tagList', avatarId);
-            await getCharacters();
 
+            // SillyBunny: re-key the submitted baseline before any list navigation — see docs/ui-migration.md
+            markCharacterEditorSaved(saveReceipt, avatarId);
             select_rm_info('char_create', avatarId, oldSelectedChar);
 
             crop_data = undefined;
@@ -16066,11 +16564,6 @@ export async function createOrEditCharacter(e) {
 
             if (crop_data != undefined) {
                 url += `?crop=${encodeURIComponent(JSON.stringify(crop_data))}`;
-            }
-
-            formData.delete('alternate_greetings');
-            for (const value of getSubmittedAlternateGreetings()) {
-                formData.append('alternate_greetings', value);
             }
 
             const editedAvatar = String(formData.get('avatar_url') ?? '');
@@ -16106,12 +16599,17 @@ export async function createOrEditCharacter(e) {
             await getOneCharacter(formData.get('avatar_url'));
             favsToHotswap(); // Update fav state
 
-            $('#add_avatar_button').replaceWith(
-                $('#add_avatar_button').val('').clone(true),
-            );
-            $('#create_button').attr('value', 'Save');
-            crop_data = undefined;
-            await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: this_chid, character: characters[this_chid] } });
+            // SillyBunny: late acknowledgements cannot reset a successor's editor controls — see docs/ui-migration.md
+            if (!saveReceipt || saveReceipt.isCurrent()) {
+                $('#add_avatar_button').replaceWith(
+                    $('#add_avatar_button').val('').clone(true),
+                );
+                $('#create_button').attr('value', 'Save');
+                crop_data = undefined;
+            }
+            markCharacterEditorSaved(saveReceipt);
+            const editedChid = characters.findIndex(character => character.avatar === submittedAvatar);
+            await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: editedChid, character: characters[editedChid] } }, saveReceipt);
 
             // Recreate the chat if it hasn't been used at least once (i.e. with continue).
             const message = getFirstMessage();
@@ -16695,38 +17193,91 @@ export async function swipe_right(event = null, { source, repeated, message } = 
  * @returns {Promise<void>}
  */
 export async function processDroppedFiles(files, data = new Map()) {
-    const allowedMimeTypes = [
-        'application/json',
-        'image/png',
-        'application/yaml',
-        'application/x-yaml',
-        'text/yaml',
-        'text/x-yaml',
-    ];
+    // SillyBunny: legacy drops, Assets, welcome and replacements retain select-last — see docs/ui-migration.md.
+    await runCharacterImport({ files, data, source: 'drop', policy: 'select-last' });
+}
 
-    const allowedExtensions = [
-        'charx',
-        'byaf',
-    ];
+// SillyBunny: one result-bearing operation for the Import tab and upstream transports — see docs/ui-migration.md.
+/**
+ * @typedef {{ kind: string, id: string|null, name: string, ok: boolean, error: string|null }} CharacterImportResult
+ */
+/**
+ * Imports immediately; only callers explicitly choosing stay suppress character selection.
+ * @param {object} input
+ * @param {Iterable<File>} [input.files=[]]
+ * @param {string[]} [input.urls=[]]
+ * @param {Map<File, string>} [input.data]
+ * @param {'picker'|'drop'} [input.source='picker'] Preserve the stricter upstream drop MIME gate.
+ * @param {'select-last'|'stay'} [input.policy='select-last']
+ * @returns {Promise<CharacterImportResult[]>}
+ */
+export async function runCharacterImport({ files = [], urls = [], data = new Map(), source = 'picker', policy = 'select-last' } = {}) {
+    if (!['stay', 'select-last'].includes(policy)) throw new TypeError(`Unknown import policy: ${policy}`);
+    if (!['picker', 'drop'].includes(source)) throw new TypeError(`Unknown import source: ${source}`);
+    const results = [];
+    const avatars = [];
+    const mimeTypes = ['application/json', 'image/png', 'application/yaml', 'application/x-yaml', 'text/yaml', 'text/x-yaml'];
+    const failed = (name, error, kind = 'character') => ({ kind, id: null, name, ok: false, error: String(error?.message ?? error) });
 
-    const avatarFileNames = [];
-    for (const file of files) {
+    async function importFile(file, preservedName, gate) {
         const extension = file.name.split('.').pop().toLowerCase();
-        if (allowedMimeTypes.some(x => file.type.startsWith(x)) || allowedExtensions.includes(extension)) {
-            const preservedName = data instanceof Map && data.get(file);
-            const avatarFileName = await importCharacter(file, { preserveFileName: preservedName });
-            if (avatarFileName !== undefined) {
-                avatarFileNames.push(avatarFileName);
-            }
-        } else {
-            toastr.warning(t`Unsupported file type: ` + file.name);
+        if (gate === 'drop' && !mimeTypes.some(type => file.type.startsWith(type)) && !['charx', 'byaf'].includes(extension)) {
+            const error = t`Unsupported file type: ` + file.name;
+            toastr.warning(error);
+            results.push(failed(file.name, error));
+            return;
+        }
+        try {
+            const avatar = await importCharacter(file, { preserveFileName: preservedName, throwOnError: true });
+            if (!avatar) throw new Error(t`Could not import character`);
+            avatars.push(avatar);
+            results.push({ kind: 'character', id: avatar, name: avatar.replace(/\.png$/i, ''), ok: true, error: null });
+        } catch (error) {
+            // SillyBunny: legacy callers must observe aborted imports, not report success — see docs/ui-migration.md.
+            if (policy === 'select-last' && error.name === 'CharacterImportPreconditionError') throw error;
+            results.push(failed(file.name, error));
         }
     }
 
-    if (avatarFileNames.length > 0) {
-        await importCharactersTags(avatarFileNames);
-        await selectImportedChar(avatarFileNames[avatarFileNames.length - 1]);
+    for (const file of files) await importFile(file, data instanceof Map ? data.get(file) : '', source);
+    for (const url of urls) {
+        let kind = 'character';
+        try {
+            const response = await fetch(isValidUrl(url) ? '/api/content/importURL' : '/api/content/importUUID', {
+                method: 'POST', headers: getRequestHeaders(), body: JSON.stringify({ url }),
+            });
+            if (!response.ok) throw new Error(await response.text() || response.statusText || `HTTP ${response.status}`);
+            kind = response.headers.get('X-Custom-Content-Type');
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename\*=(?:UTF-8'')?([^;]+)|filename="?([^";]+)"?/i);
+            let name = (match?.[1] || match?.[2] || url.split('/').filter(Boolean).pop() || 'file').replace(/^"|"$/g, '');
+            try { name = decodeURIComponent(name); } catch { /* Upstream accepts literal non-URI filenames. */ }
+            const blob = await response.blob();
+            const file = new File([blob], name, { type: blob.type });
+            if (kind === 'character') {
+                await importFile(file, '', 'drop');
+                continue;
+            }
+            if (kind !== 'lorebook') throw new Error(t`Unknown content type`);
+            // SillyBunny: the transport owns its result; unrelated WI updates cannot satisfy this import — see docs/ui-migration.md.
+            const imported = await importWorldInfo(file, { returnResult: true });
+            if (!imported.ok) throw new Error(imported.error);
+            results.push({ kind, id: imported.name, name: imported.name, ok: true, error: null });
+        } catch (error) {
+            if (policy === 'select-last' && error.name === 'CharacterImportPreconditionError') throw error;
+            results.push(failed(url, error, kind || 'unknown'));
+        }
     }
+    if (avatars.length) {
+        await importCharactersTags(avatars);
+        for (const result of results) {
+            if (result.ok && result.kind === 'character') {
+                result.name = characters.find(character => character.avatar === result.id)?.name ?? result.name;
+            }
+        }
+        if (policy === 'select-last') await selectImportedChar(avatars[avatars.length - 1]);
+    }
+    return results;
 }
 
 /**
@@ -16766,12 +17317,16 @@ async function selectImportedChar(charId) {
  * @param {object} [options] - Options
  * @param {string} [options.preserveFileName] Whether to preserve original file name
  * @param {Boolean} [options.importTags=false] Whether to import tags
+ * @param {boolean} [options.throwOnError=false] SillyBunny result-bearing imports retain the server error.
  * @returns {Promise<string>}
  */
-async function importCharacter(file, { preserveFileName = '', importTags = false } = {}) {
+async function importCharacter(file, { preserveFileName = '', importTags = false, throwOnError = false } = {}) {
     if (is_group_generating || is_send_press) {
         toastr.error(t`Cannot import characters while generating. Stop the request and try again.`, t`Import aborted`);
-        throw new Error('Cannot import character while generating');
+        // SillyBunny: identify precondition failures independently of transport errors — see docs/ui-migration.md.
+        const error = new Error('Cannot import character while generating');
+        error.name = 'CharacterImportPreconditionError';
+        throw error;
     }
 
     const ext = file.name.match(/\.(\w+)$/);
@@ -16798,13 +17353,18 @@ async function importCharacter(file, { preserveFileName = '', importTags = false
         });
 
         if (!result.ok) {
-            throw new Error(`Failed to import character: ${result.statusText}`);
+            // SillyBunny: keep the server's useful error in result rows — see docs/ui-migration.md.
+            const message = await result.text();
+            let detail;
+            try { detail = JSON.parse(message).error; } catch { /* Error responses may be plain text. */ }
+            throw new Error(String(detail || message || result.statusText));
         }
 
         const data = await result.json();
 
         if (data.error) {
-            throw new Error(`Server returned an error: ${data.error}`);
+            // SillyBunny: expose the original server message, not a presentation prefix — see docs/ui-migration.md.
+            throw new Error(String(data.error));
         }
 
         if (data.file_name !== undefined) {
@@ -16831,6 +17391,8 @@ async function importCharacter(file, { preserveFileName = '', importTags = false
     } catch (error) {
         console.error('Error importing character', error);
         toastr.error(t`The file is likely invalid or corrupted.`, t`Could not import character`);
+        // SillyBunny: legacy callers still swallow failures; the operation returns a failed item — see docs/ui-migration.md.
+        if (throwOnError) throw error;
     }
 }
 
@@ -16861,6 +17423,9 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
     if ((!selected_group && this_chid == undefined) || menu_type == 'create') {
         return;
     }
+
+    // SillyBunny: a temporary chat has no file, and once it is cleared the card names its real chat again, which must not be deleted.
+    deleteCurrentChat = deleteCurrentChat && !isTemporaryChat();
 
     if (!await flushPendingChatSavesForNavigation()) {
         return;
@@ -17080,6 +17645,10 @@ export async function updateRemoteChatName(characterId, newName) {
     if (!character) {
         throw new Error(`Character not found for ID: ${characterId}`);
     }
+    // SillyBunny: the chat name of a temporary chat is a stand-in that is never recorded for the character.
+    if (isTemporaryChat()) {
+        return;
+    }
     // SillyBunny: the last opened chat lives in a sidecar, not the card, so
     // switching chats no longer rewrites the character file.
     const response = await fetch('/api/characters/last-chat', {
@@ -17136,9 +17705,11 @@ export async function deleteCharacter(characterKey, { deleteChats = true } = {})
 
     const inTempChat = this_chid === undefined && name2 === neutralCharacterName;
     if (inTempChat) {
+        // SillyBunny: losing temporary-chat messages makes character deletion destructive.
         const confirmClose = await Popup.show.confirm(
             t`You are currently in a temporary chat.`,
             t`Deleting this character will close the chat and you will lose any unsaved messages. Do you want to proceed?`,
+            { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') },
         );
         if (!confirmClose) {
             return false;
@@ -17179,6 +17750,9 @@ export async function deleteCharacter(characterKey, { deleteChats = true } = {})
         accountStorage.removeItem(`AlertWI_${character.avatar}`);
         accountStorage.removeItem(`AlertRegex_${character.avatar}`);
         accountStorage.removeItem(`mediaWarningShown:${character.avatar}`);
+        // SillyBunny: successful deletion retires hidden sessions and their
+        // backups before list reload can resurrect the draft — see docs/ui-migration.md
+        discardCharacterEditorForEntity(character.avatar);
         delete tag_map[character.avatar];
         select_rm_info('char_delete', character.name);
 
@@ -17377,7 +17951,10 @@ API Settings: ${JSON.stringify(getSettingsContents[getSettingsContents.main_api 
 }
 
 function initCharacterSearch() {
-    const debouncedCharacterSearch = debounce((searchQuery) => {
+    // SillyBunny: a debounced input from the outgoing view cannot overwrite
+    // the incoming view's restored search — see docs/ui-migration.md
+    const debouncedCharacterSearch = debounce((searchQuery, view) => {
+        if (view !== getCharacterListView() || String(searchInput.val()) !== searchQuery) return;
         entitiesFilter.setFilterData(FILTER_TYPES.SEARCH, searchQuery);
     });
 
@@ -17389,7 +17966,7 @@ function initCharacterSearch() {
 
     searchInput.on('input', function () {
         const searchQuery = String($(this).val());
-        debouncedCharacterSearch(searchQuery);
+        debouncedCharacterSearch(searchQuery, getCharacterListView());
     });
 
     searchButton.on('click', function () {
@@ -17411,10 +17988,9 @@ function initCharacterSearch() {
 
 // MARK: DOM Handlers Start
 jQuery(async function () {
-    setTimeout(function () {
-        $('#groupControlsToggle').trigger('click');
-        $('#groupCurrentMemberListToggle .inline-drawer-icon').trigger('click');
-    }, 200);
+    // SillyBunny: the group editor's sections are always open in the scrolling
+    // sheet, so the upstream "expand the drawers on open" pre-clicks are gone
+    // with the drawer markup (Step 4).
 
     $(document).on('click', '.api_loading', () => {
         cancelStatusCheck('Canceled because connecting was manually canceled');
@@ -17510,6 +18086,11 @@ jQuery(async function () {
     const userInputGenerateMutex = new SimpleMutex(sendTextareaMessage);
     const sendButtonElement = document.getElementById('send_but');
     bindIOSFastTapSendButton(sendButtonElement, async () => {
+        // SillyBunny: the offline Send control stays visible; reject activation before draft or chat mutation.
+        if (online_status === 'no_connection' || online_status === undefined) {
+            notifyNotConnected();
+            return;
+        }
         await userInputGenerateMutex.update();
     }, { isIOS: isIOSFocusSensitiveBrowser });
 
@@ -17753,8 +18334,15 @@ jQuery(async function () {
             return;
         }
 
-        const result = await callGenericPopup('<h3>' + t`Delete the Chat File?` + '</h3>', POPUP_TYPE.CONFIRM);
-        if (result === POPUP_RESULT.AFFIRMATIVE) {
+        // SillyBunny: Return must not activate a committed chat-file deletion, so the shared alert focuses Cancel and has no destructive default.
+        const result = await openAlert({
+            heading: t`Delete the Chat File?`,
+            responses: [
+                { id: 'cancel', label: t`Cancel` },
+                { id: 'delete', label: t`Delete`, appearance: 'destructive' },
+            ],
+        });
+        if (result === 'delete') {
             await handleDeleteChat(deleteFileName, selected_group, false);
         }
     });
@@ -17819,16 +18407,9 @@ jQuery(async function () {
             return;
         }
 
-        let deleteChats = false;
-
-        const confirm = await Popup.show.confirm(t`Delete the character?`, await renderTemplateAsync('deleteConfirm'), {
-            onClose: () => { deleteChats = !!$('#del_char_checkbox').prop('checked'); },
-        });
-        if (!confirm) {
-            return;
-        }
-
-        await deleteCharacter(characters[this_chid].avatar, { deleteChats: deleteChats });
+        // SillyBunny: share the confirmed single-character delete flow with
+        // list actions without changing the upstream delete API — see docs/ui-migration.md
+        await deleteCharacterById(this_chid);
     });
 
     //////// OPTIMIZED ALL CHAR CREATION/EDITING TEXTAREA LISTENERS ///////////////
@@ -17836,6 +18417,12 @@ jQuery(async function () {
     $('#character_name_pole').on('input', function () {
         if (menu_type == 'create') {
             create_save.name = String($('#character_name_pole').val());
+        }
+    });
+
+    $('#character_nickname_pole').on('input', function () {
+        if (menu_type == 'create') {
+            create_save.nickname = String($('#character_nickname_pole').val());
         }
     });
 
@@ -17861,9 +18448,8 @@ jQuery(async function () {
         $(id).on('input', function () {
             if (menu_type == 'create') {
                 elementsToUpdate[id]();
-            } else {
-                saveCharacterDebounced();
             }
+            // SillyBunny: edit mode uses explicit save; controller dirty listener handles state (Step 3b)
         });
     });
 
@@ -17874,10 +18460,14 @@ jQuery(async function () {
     });
 
     $('#favorite_button').on('click', function () {
-        updateFavButtonState(!fav_ch_checked);
-        if (menu_type != 'create') {
-            saveCharacterDebounced();
+        // SillyBunny: a saved card's favourite is a live flag, as in the character list, so leaving
+        // the explicit-save editor without Save cannot drop it. A new card keeps it until creation.
+        if ($('#form_create').attr('actiontype') === 'editcharacter') {
+            void toggleCharacterFavoriteById(String($('#avatar_url_pole').val()));
+            return;
         }
+        updateFavButtonState(!fav_ch_checked);
+        // SillyBunny: explicit-save model; controller marks dirty via requestAnimationFrame (Step 3b)
     });
 
     /* $("#renameCharButton").on('click', renameCharacter); */
@@ -18005,23 +18595,28 @@ jQuery(async function () {
             }
             if ((selected_group && !is_group_generating) || (this_chid !== undefined && !is_send_press) || fromSlashCommand) {
                 await displayPastChats();
-                //this is just to avoid the shadow for past chat view when using /delchat
-                //however, the dialog popup still gets one..
                 if (!fromSlashCommand) {
-                    console.log('displaying shadow');
-                    $('#shadow_select_chat_popup').css('display', 'block');
-                    $('#shadow_select_chat_popup').css('opacity', 0.0);
-                    $('#shadow_select_chat_popup').transition({
-                        opacity: 1.0,
-                        duration: animation_duration,
-                        easing: animation_easing,
-                    });
+                    // SillyBunny: the adapter moves the existing controls into the Window and returns them to the hidden compatibility wrapper on close.
+                    openChatHistoryDialog();
                 }
             }
         } else if (id == 'option_start_new_chat') {
             if ((selected_group || this_chid !== undefined) && !is_send_press) {
                 let deleteCurrentChat = false;
+                // SillyBunny: deleting the current chat makes the new-chat action destructive.
                 const result = await Popup.show.confirm(t`Start new chat?`, await renderTemplateAsync('newChatConfirm'), {
+                    okButton: t`Start`,
+                    onOpen: popup => {
+                        const checkbox = popup.dlg.querySelector('#del_chat_checkbox');
+                        if (!(checkbox instanceof HTMLInputElement)) return;
+                        const syncDestructiveState = () => {
+                            const destructive = checkbox.checked;
+                            popup.defaultResult = destructive ? POPUP_RESULT.NEGATIVE : POPUP_RESULT.AFFIRMATIVE;
+                            popup.okButton.classList.toggle('is-destructive', destructive);
+                        };
+                        checkbox.addEventListener('change', syncDestructiveState);
+                        syncDestructiveState();
+                    },
                     onClose: () => { deleteCurrentChat = !!$('#del_chat_checkbox').prop('checked'); },
                 });
                 if (!result) {
@@ -18458,8 +19053,9 @@ jQuery(async function () {
         const message = chat[this_edit_mes_id];
         const selectedSwipe = message.swipe_id ?? undefined;
         const swipesArray = Array.isArray(message.swipes) ? message.swipes : [];
-        const canDeleteSwipe = power_user.confirm_message_delete && !fromSlashCommand && !message.is_user && swipesArray.length > 1 && this_edit_mes_id === chat.length - 1 && selectedSwipe !== undefined;
-        await deleteMessage(Number(this_edit_mes_id), canDeleteSwipe ? selectedSwipe : undefined, power_user.confirm_message_delete && fromSlashCommand !== true);
+        // SillyBunny: deleting from the edit row always confirms, like the row Delete; /del stays silent.
+        const canDeleteSwipe = !fromSlashCommand && !message.is_user && swipesArray.length > 1 && this_edit_mes_id === chat.length - 1 && selectedSwipe !== undefined;
+        await deleteMessage(Number(this_edit_mes_id), canDeleteSwipe ? selectedSwipe : undefined, fromSlashCommand !== true);
     });
 
     $(document).on('click', '.mes_edit_done', async function () {
@@ -18484,21 +19080,12 @@ jQuery(async function () {
             return;
         }
 
-        const avatarFileNames = [];
-        for (const file of e.target.files) {
-            const avatarFileName = await importCharacter(file);
-            if (avatarFileName !== undefined) {
-                avatarFileNames.push(avatarFileName);
-            }
+        // SillyBunny: the hidden upstream picker remains select-last, unlike the Import panel — see docs/ui-migration.md.
+        try {
+            await runCharacterImport({ files: e.target.files, policy: 'select-last' });
+        } finally {
+            e.target.value = '';
         }
-
-        if (avatarFileNames.length > 0) {
-            await importCharactersTags(avatarFileNames);
-            await selectImportedChar(avatarFileNames[avatarFileNames.length - 1]);
-        }
-
-        // Clear the file input value to allow re-uploading the same file
-        e.target.value = '';
     });
 
     $('#export_button').on('click', function () {
@@ -18880,7 +19467,8 @@ jQuery(async function () {
                 const source = getCharacterSource(this_chid);
                 if (source && isValidUrl(source)) {
                     const url = new URL(source);
-                    const confirm = await Popup.show.confirm('Open Source', `<span>Do you want to open the link to ${url.hostname} in a new tab?</span><var>${url}</var>`);
+                    // SillyBunny: source confirmation names the open action.
+                    const confirm = await Popup.show.confirm('Open Source', `<span>Do you want to open the link to ${url.hostname} in a new tab?</span><var>${url}</var>`, { okButton: t`Open` });
                     if (confirm) {
                         window.open(source, '_blank');
                     }

@@ -1,5 +1,6 @@
 import { registerDebugFunction } from './power-user.js';
 import { updateSecretDisplay } from './secrets.js';
+import { formatSettingsMacroExamples } from './sillybunny-settings-macros.js';
 
 const storageKey = 'language';
 const overrideLanguage = getStoredLanguage();
@@ -42,8 +43,18 @@ function safeRemoveLocalStorageItem(key) {
     }
 }
 
-/** @type {Set<string>|null} Array of translations keys if they should be tracked - if not tracked then null */
-let trackMissingDynamicTranslate = null;
+/**
+ * Array of translations keys if they should be tracked - if not tracked then null.
+ * @type {Set<string>|null}
+ *
+ * Don't change to let/const! It will break module loading. script.js suspends
+ * module evaluation on a top-level await for the window load event
+ * (script.js:451), so this file's body may not have run yet when a DOM-ready
+ * handler calls t`...`; a let/const binding is still in its temporal dead zone
+ * then and throws, aborting the caller. `localeData` above is var for the same
+ * reason.
+ */
+var trackMissingDynamicTranslate = null;
 
 export const getCurrentLocale = () => localeFile;
 
@@ -184,21 +195,27 @@ function findLang(language) {
  * @param {Element} element The element to translate
  */
 function translateElement(element) {
-    const keys = element.getAttribute('data-i18n').split(';'); // Multi-key entries are ; delimited
+    // SillyBunny: an attribute can be removed before its queued mutation is delivered.
+    const translationKeys = element.getAttribute('data-i18n');
+    if (translationKeys === null) return;
+    const keys = translationKeys.split(';'); // Multi-key entries are ; delimited
     for (const key of keys) {
         const attributeMatch = key.match(/\[(\S+)\](.+)/); // [attribute]key
         if (attributeMatch) { // attribute-tagged key
             const localizedValue = localeData?.[attributeMatch[2]];
             if (localizedValue || localizedValue === '') {
-                element.setAttribute(attributeMatch[1], localizedValue);
+                // SillyBunny: avoid re-firing shell observers for unchanged translations.
+                if (element.getAttribute(attributeMatch[1]) !== localizedValue) element.setAttribute(attributeMatch[1], localizedValue);
             }
         } else { // No attribute tag, treat as 'text'
             const localizedValue = localeData?.[key];
             if (localizedValue || localizedValue === '') {
-                element.textContent = localizedValue;
+                if (element.textContent !== localizedValue) element.textContent = localizedValue;
             }
         }
     }
+    // SillyBunny: restore code styling after translation writes subtitle text.
+    formatSettingsMacroExamples(element);
 }
 
 /**
@@ -293,14 +310,35 @@ export function applyLocale(root = document) {
     }
 }
 
-function addLanguagesToDropdown() {
-    const uiLanguageSelects = $('#ui_language_select, #onboarding_ui_language_select');
+// SillyBunny: the handler is named so addLanguagesToDropdown can bind it to a select it fills later.
+async function onUiLanguageSelectChange() {
+    const language = String($(this).val());
+
+    if (language) {
+        safeSetLocalStorageItem(storageKey, language);
+    } else {
+        safeRemoveLocalStorageItem(storageKey);
+    }
+
+    location.reload();
+}
+
+// SillyBunny: the settings split detaches #ui_language_select before the languages arrive, so the
+// Data & Security tab calls this again with its container. A select that is already filled is skipped.
+export function addLanguagesToDropdown(root = document) {
+    if (!Array.isArray(langs)) {
+        return;
+    }
+    const uiLanguageSelects = $(root).find('#ui_language_select, #onboarding_ui_language_select')
+        .filter((_index, select) => select.dataset.sbLanguagesLoaded !== 'true');
     for (const langObj of langs) { // Set the value to the language code
         const option = document.createElement('option');
         option.value = langObj.lang; // Set the value to the language code
         option.innerText = langObj.display; // Set the display text to the language name
         uiLanguageSelects.append(option);
     }
+    uiLanguageSelects.each((_index, select) => { select.dataset.sbLanguagesLoaded = 'true'; });
+    uiLanguageSelects.on('change', onUiLanguageSelectChange);
 
     const selectedLanguage = safeGetLocalStorageItem(storageKey);
     if (selectedLanguage) {
@@ -313,20 +351,9 @@ export async function initLocales() {
     localeData = await getLocaleData(localeFile);
     document.documentElement.lang = localeFile;
     applyLocale();
+    // SillyBunny: the language change handler is bound inside addLanguagesToDropdown, per select.
     addLanguagesToDropdown();
     updateSecretDisplay();
-
-    $('#ui_language_select, #onboarding_ui_language_select').on('change', async function () {
-        const language = String($(this).val());
-
-        if (language) {
-            safeSetLocalStorageItem(storageKey, language);
-        } else {
-            safeRemoveLocalStorageItem(storageKey);
-        }
-
-        location.reload();
-    });
 
     observer.observe(document, {
         childList: true,

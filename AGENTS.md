@@ -17,6 +17,7 @@ Read the docs below in full before you start; they change more often than this f
 | Upstream SillyTavern sync | `docs/upstream-sync.md` | Documentation for sync behaviour. |
 | Editing an upstream-origin file | `docs/upstream-touch-ledger.md` | |
 | Build, cache or generated-asset changes | `docs/frontend-build.md` | |
+| Adding, changing or removing a user-facing feature, setting or Help topic | `docs/lexicon.md` | How to keep the SillyBunny Lexicon, the assistants' shared lorebook, in step with the program. |
 | Release, RC, hotfix, tagging or CI workflow work | `CONTRIBUTING.md` § Release process | |
 
 ## Hard rules
@@ -73,6 +74,7 @@ Run what applies, then report what you verified and what you did not. → CONTRI
 8. Nothing from `data/default-user/**` or `dist/` is staged.
 9. List every placeholder you added, with its file and location.
 10. Fixed a bug, or the user corrected a mistake that could recur: update `LESSONS.md` (see § Copy and docs).
+11. Added, changed or removed a user-facing feature, setting or Help topic: update the SillyBunny Lexicon and its manifest (`docs/lexicon.md`).
 
 ## Commits, branches and PRs
 

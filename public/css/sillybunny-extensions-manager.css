@@ -1,0 +1,59 @@
+.sb-dialog__header > .extensions-header-menus {
+    grid-column: 3;
+    grid-row: 1;
+    width: max-content;
+}
+
+/* SillyBunny: keep the short manager title readable beside its three compact header actions. */
+@media (max-width: 450px) {
+    .sb-dialog__header:has(.extensions-header-menus) .sb-dialog__title {
+        width: max-content;
+        max-width: none;
+        overflow: visible;
+        text-overflow: clip;
+    }
+}
+
+.extensions_info .sb-extensions-section .extension_block {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group > .extension_block {
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group > .extension_block:last-child {
+    border-bottom: 0;
+}
+
+@media (hover: hover) {
+    .extensions_info .sb-extensions-section .extension_block:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.extensions_info .sb-extensions-section {
+    margin: 0 0 16px;
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group-header {
+    min-width: 0;
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group-header > .flex-container {
+    width: 100%;
+    min-width: 0;
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group-header .ds-row-suffix {
+    flex: 0 0 auto;
+}
+
+.extensions_info .extensions_loading {
+    justify-content: flex-start;
+    min-height: 44px;
+    margin: 0;
+    padding: 6px 16px;
+}

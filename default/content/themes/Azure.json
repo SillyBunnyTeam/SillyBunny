@@ -1,10 +1,10 @@
 {
     "name": "Azure",
     "blur_strength": 11,
-    "main_text_color": "rgba(171, 198, 223, 1)",
+    "main_text_color": "rgba(176, 203, 228, 1)",
     "italics_text_color": "rgba(255, 255, 255, 1)",
     "underline_text_color": "rgba(188, 231, 207, 1)",
-    "quote_text_color": "rgba(111, 133, 253, 1)",
+    "quote_text_color": "rgba(155, 175, 255, 1)",
     "blur_tint_color": "rgba(23, 30, 33, 0.61)",
     "chat_tint_color": "rgba(23, 23, 23, 0)",
     "user_mes_blur_tint_color": "rgba(0, 28, 174, 0.2)",

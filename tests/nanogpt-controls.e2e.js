@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { APP_URL, dismissOnboardingIfPresent, dismissOpenDialogIfPresent, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
+import { testSetup } from './frontend/frontent-test-utils.js';
+import { APP_URL, dismissOpenDialogIfPresent, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
+import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { keepSavesInPage } from './helpers/saves-in-page.js';
+import { keepWelcomeClosed } from './helpers/welcome-dialog.js';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -35,23 +39,12 @@ async function installRoutes(page, baseURL) {
     ]);
     const held = [];
     const catalogue = { json: [{ id: 'chutes', label: 'Chutes' }, { id: 'cerebras', label: 'Cerebras' }] };
-    // Other tests save real settings changes to the same server, and the version check then refuses the saves of a
-    // page that loaded before them. The settings of this context stay in the browser, through saves and reloads.
-    let savedSettings = null;
-    let settingsVersion = Date.now();
+    // The spec saves settings, presets and a key, then reloads and reads them back, so they stay in the page and never reach the server.
+    await protectMaintainerServer(page);
+    await keepSavesInPage(page);
     await page.context().route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.origin !== origin) return route.abort();
-        if (url.pathname === '/api/settings/save') {
-            savedSettings = route.request().postDataJSON();
-            settingsVersion = Math.max(settingsVersion, Number(savedSettings._version) || 0) + 1;
-            savedSettings._version = settingsVersion;
-            return route.fulfill({ json: { result: 'ok', version: settingsVersion } });
-        }
-        if (url.pathname === '/api/settings/get' && savedSettings) {
-            const response = await route.fetch();
-            return route.fulfill({ response, json: { ...await response.json(), settings: JSON.stringify(savedSettings) } });
-        }
         if (url.pathname === '/api/backends/chat-completions/status') {
             return route.fulfill({ json: { data: MODELS } });
         }
@@ -73,20 +66,16 @@ async function installRoutes(page, baseURL) {
             && !['/api/ping', '/api/extensions/discover'].includes(url.pathname)) {
             return route.abort();
         }
-        return route.continue();
+        // A fallback, not a continue: the context route that keeps Welcome closed answers the settings request.
+        return route.fallback();
     });
     return { discovery, held, catalogue };
 }
 
 async function openApi(page) {
     await page.waitForFunction(() => !document.getElementById('preloader'), null, { timeout: 60000 });
-    await page.waitForFunction(async () => (await import('/script.js')).settingsReady || document.querySelector('dialog[open] .onboarding'));
-    await dismissOnboardingIfPresent(page);
-    // The shared helper can match the input's data-result before the actual Save control.
-    const welcomeSave = page.locator('dialog[open]:has(.onboarding) .popup-button-ok');
-    if (await welcomeSave.isVisible()) await welcomeSave.click();
+    await testSetup.waitForAppReady({ page });
     await dismissOpenDialogIfPresent(page);
-    await page.waitForFunction(async () => (await import('/script.js')).settingsReady);
     await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function');
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'api'));
     await expect(page.locator('#main_api')).toBeVisible();
@@ -116,11 +105,9 @@ async function connectNanoGpt(page) {
 
 async function setupNanoGpt(page, baseURL) {
     const routes = await installRoutes(page, baseURL);
+    await keepWelcomeClosed(page.context());
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
     await openApi(page);
-    await page.addLocatorHandler(page.locator('#qig-setup-wizard'), async wizard => {
-        await wizard.getByRole('button', { name: 'Skip', exact: true }).click();
-    });
     await loadRoutingSettings(page, { nanogpt_model: MODELS[0].id, bind_preset_to_connection: false });
     await connectNanoGpt(page);
     return routes;

@@ -17,6 +17,8 @@ import { QuickReplyContextLink } from './QuickReplyContextLink.js';
 import { QuickReplySet } from './QuickReplySet.js';
 import { getUniqueQuickReplySetsByName } from './quick-reply-set-list.js';
 import { ContextMenu } from './ui/ctx/ContextMenu.js';
+// SillyBunny: adopt the editor controls without changing live-apply or debugger semantics.
+import { adaptQuickReplyEditor } from './sillybunny-editor.js';
 
 export class QuickReply {
     /**
@@ -390,7 +392,9 @@ export class QuickReply {
             // @ts-ignore
             const dom = this.template.cloneNode(true);
             this.editorDom = dom;
-            this.editorPopup = new Popup(dom, POPUP_TYPE.TEXT, undefined, { okButton: 'OK', wide: true, large: true, rows: 1 });
+            // SillyBunny: live edits use the Window header Close; nested pickers use its page stack.
+            const editor = adaptQuickReplyEditor(dom);
+            this.editorPopup = new Popup(dom, POPUP_TYPE.TEXT, undefined, { okButton: 'OK', wide: true, large: true, rows: 1, ...editor.options });
             const popupResult = this.editorPopup.show();
 
             // basics
@@ -986,6 +990,8 @@ export class QuickReply {
                         this.updateContext();
                     });
 
+                    // SillyBunny: adopt dynamically added context controls after upstream binding.
+                    editor.adoptContextItem(itemDom);
                     linkList.append(itemDom);
                 }
             };

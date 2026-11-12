@@ -1,37 +1,106 @@
 /* Styles for the debugger UI */
 #regex_debugger_rules {
     margin: 10px 0;
+    padding: 0;
+    list-style: none;
 }
 
-#regex_debugger_rules,
 #regex_debugger_rules .sortable-list {
-    padding-left: 0;
+    margin: 0 0 10px;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: var(--sb-radius-card, 12px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    overflow: hidden;
 }
 
+/* SillyBunny: keep the debugger columns fluid without changing its source controls. */
 .regex-debugger-rules-list {
     position: relative;
+    flex: 1 1 48%;
+    min-width: 0;
 }
 
-.regex-debugger-rule {
+.regex-debugger-container {
     display: flex;
+    gap: 24px;
+    min-width: 0;
+}
+
+.regex-debugger-tester {
+    flex: 1 1 52%;
+    min-width: 0;
+}
+
+/* SillyBunny: separate rules with boxed-list dividers instead of individual cards. */
+.regex-debugger-rule {
+    display: grid;
+    grid-template-columns: 24px 24px minmax(0, 1fr) 40px;
     align-items: center;
     padding: 8px 10px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 5px;
     cursor: pointer;
-    background-color: var(--black30a);
     gap: 5px;
-    margin-bottom: 5px;
+}
+
+#regex_debugger_rules .regex-debugger-rule {
+    border-bottom: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
+}
+
+#regex_debugger_rules .sortable-list .regex-debugger-rule:last-child {
+    border-bottom: 0;
+}
+
+.regex-debugger-list-header {
+    margin: 0 0 8px;
+    padding: 0 4px;
+}
+
+/* SillyBunny: align Save Order as a flat action in the shared group header. */
+.regex-debugger-rules-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.regex-debugger-save-order-suffix {
+    flex: 0 0 auto;
+}
+
+.regex-debugger-save-order-suffix button span {
+    display: none;
+}
+
+#regex_debugger_save_order {
+    position: static;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
 }
 
 #regex_debugger_run_test_header {
-    justify-content: space-between;
-    align-items: center;
+    display: flex;
+}
+
+.regex-debugger-controls > .ds-pref-group {
+    overflow: hidden;
+}
+
+.regex-debugger-run-button {
+    justify-content: flex-start;
+    min-height: 44px;
+    white-space: nowrap;
 }
 
 #regex_debugger_expand_steps,
-#regex_debugger_expand_final,
-#regex_debugger_save_order {
+#regex_debugger_expand_final {
     position: absolute;
     top: 0;
     right: 0;
@@ -45,37 +114,243 @@
 .regex-debugger-rule .handle {
     cursor: grab;
     margin-right: 5px;
+    flex: 0 0 24px;
+    text-align: center;
+}
+
+.regex-debugger-rule > .checkbox {
+    display: grid;
+    place-items: center;
+    flex: 0 0 24px;
+    width: 24px;
 }
 
 .regex-debugger-rule .rule-details {
-    flex-grow: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    flex: 1 1 auto;
+    min-width: 0;
     text-align: left;
+    grid-column: 3;
+    grid-row: 1;
+}
+
+.regex-debugger-rule .rule-meta {
     display: flex;
+    min-width: 0;
     align-items: baseline;
     gap: 5px;
+    grid-column: 1;
+    grid-row: 2;
 }
 
 .regex-debugger-rule .rule-name {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: bold;
+    grid-column: 1;
+    grid-row: 1;
 }
 
 .regex-debugger-rule .rule-regex {
+    display: block;
+    flex: 0 1 auto;
+    width: fit-content;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 0.8em;
     opacity: 0.8;
     font-family: var(--monoFontFamily);
 }
 
 .regex-debugger-rule .rule-scope {
+    flex: 0 1 auto;
+    max-width: 40%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 0.8em;
-    padding: 2px 6px;
-    border-radius: 5px;
-    background-color: var(--black30a);
-    margin-left: auto;
-    margin-right: 10px;
+    color: var(--sb-muted-fg, var(--SmartThemeBodyColor));
+}
+
+.regex-debugger-rule .rule-scope::before {
+    content: '·';
+    margin-inline-end: 5px;
 }
 
 .regex-debugger-rule .menu_button {
     margin: 0;
+}
+
+.regex-debugger-rule .edit_rule {
+    display: grid;
+    place-items: center;
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+}
+
+.regex-debugger-rule .edit_rule.sb-dialog__icon-button {
+    background: transparent;
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.regex-debugger-rule .edit_rule.menu_button.menu_button_icon:not(:hover):not(.active) {
+    background-color: transparent;
+    border-color: transparent;
+}
+
+/* SillyBunny: keep rule identity readable on narrow rows while preserving the source controls. */
+@media screen and (max-width: 600px) {
+    .regex-debugger-container {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .regex-debugger-rules-list,
+    .regex-debugger-tester {
+        flex: none;
+        width: 100%;
+    }
+
+    .regex-debugger-rule {
+        display: grid;
+        grid-template-columns: 24px 24px minmax(0, 1fr) 40px;
+        align-items: center;
+        column-gap: 8px;
+        row-gap: 1px;
+        padding: 8px 10px;
+    }
+
+    .regex-debugger-rule .rule-details {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        align-items: start;
+        min-width: 0;
+    }
+
+    .regex-debugger-rule .rule-meta {
+        grid-column: 1;
+        grid-row: 2;
+        min-width: 0;
+        gap: 4px;
+    }
+
+    .regex-debugger-rule .rule-name {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        width: 100%;
+        font-size: var(--sb-type-body, 1rem);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .regex-debugger-rule .rule-regex,
+    .regex-debugger-rule .rule-scope {
+        font-size: var(--sb-type-meta, 0.8em);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .regex-debugger-rule .rule-regex {
+        flex: 0 1 auto;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .regex-debugger-rule .rule-scope {
+        flex: 0 1 auto;
+        max-width: 40%;
+        margin: 0;
+    }
+
+    .regex-debugger-rule .rule-regex::after {
+        content: none;
+    }
+
+    .regex-debugger-rule .rule-scope {
+        margin: 0;
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
+        color: var(--sb-muted-fg, var(--SmartThemeBodyColor));
+        display: inline;
+    }
+
+    .regex-debugger-rule .rule-scope::before {
+        content: '·';
+        margin-inline-end: 4px;
+    }
+
+    .regex-debugger-rule > .handle {
+        grid-column: 1;
+        grid-row: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        min-height: 24px;
+        margin: 0;
+    }
+
+    .regex-debugger-rule > .checkbox {
+        grid-column: 2;
+        grid-row: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        min-height: 24px;
+    }
+
+    .regex-debugger-rule .rule-details {
+        grid-column: 3;
+        grid-row: 1;
+    }
+
+    .regex-debugger-rule .edit_rule {
+        grid-column: 4;
+        grid-row: 1;
+    }
+
+}
+
+@media (pointer: coarse) {
+    #regex_debugger_save_order,
+    .regex-debugger-rule .edit_rule {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+
+    .regex-debugger-rule > .handle,
+    .regex-debugger-rule > .checkbox {
+        padding: 10px;
+        box-sizing: content-box;
+    }
+
+    .regex-debugger-rule {
+        grid-template-columns: 44px 44px minmax(0, 1fr) 44px;
+    }
 }
 
 #regex_debugger_raw_input {
@@ -161,8 +436,9 @@
     margin: 10px 0;
 }
 
-.regex-debugger-tester .radio_group {
-    text-align: left;
+.regex-debugger-tester .ds-row--stacked textarea {
+    min-height: 7rem;
+    resize: vertical;
 }
 
 /* Styles for statistics and highlighting additions */
@@ -211,9 +487,9 @@ mark.red_hl {
 /* Styles for the expanded view with navigation */
 .expanded-regex-container {
     display: flex;
-    height: 75vh;
-    /* Give the container a good height */
-    overflow: hidden;
+    min-height: 0;
+    /* SillyBunny: the shared Popup frame body is the single scrolling area. */
+    overflow: visible;
 }
 
 .expanded-regex-nav {
@@ -221,7 +497,7 @@ mark.red_hl {
     /* Fixed width for the nav bar */
     border-right: 1px solid var(--SmartThemeBorderColor);
     padding: 5px;
-    overflow-y: auto;
+    overflow: visible;
     background-color: var(--black30a);
 }
 
@@ -245,9 +521,11 @@ mark.red_hl {
     color: var(--text_color_black);
 }
 
+/* SillyBunny: keep expanded Regex content in the shared Window scroller. */
 .expanded-regex-content {
     flex-grow: 1;
-    overflow-y: auto;
+    min-width: 0;
+    overflow: visible;
     padding-left: 10px;
 }
 

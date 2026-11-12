@@ -73,6 +73,70 @@
     }
 }
 
+/* SillyBunny: keep the JSON textarea and placeholder list inside one fixed Window body. */
+dialog.popup.sb-dialog--window.sd-comfy-workflow-window > .popup-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+dialog.popup.sb-dialog--window.sd-comfy-workflow-window .popup-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+dialog.popup.sb-dialog--window.sd-comfy-workflow-window #sd_comfy_workflow_editor_template,
+dialog.popup.sb-dialog--window.sd-comfy-workflow-window .sd_comfy_workflow_editor {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+dialog.popup.sb-dialog--window.sd-comfy-workflow-window .sd_comfy_workflow_editor_content {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+}
+
+dialog.popup.sb-dialog--window.sd-comfy-workflow-window .sd_comfy_workflow_editor_workflow_container {
+    min-height: 0;
+    min-width: 0;
+}
+
+dialog.popup.sb-dialog--window.sd-comfy-workflow-window #sd_comfy_workflow_editor_workflow {
+    flex: 1 1 0;
+    min-height: 0;
+    resize: none;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+dialog.popup.sb-dialog--window.sd-comfy-workflow-window .sd_comfy_workflow_editor_placeholder_container {
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+@media screen and (max-width: 600px) {
+    dialog.popup.sb-dialog--window.sd-comfy-workflow-window .sd_comfy_workflow_editor_content {
+        flex-direction: column;
+    }
+
+    dialog.popup.sb-dialog--window.sd-comfy-workflow-window .sd_comfy_workflow_editor_workflow_container {
+        flex: 1 1 0;
+    }
+
+    dialog.popup.sb-dialog--window.sd-comfy-workflow-window .sd_comfy_workflow_editor_placeholder_container {
+        flex: 0 1 40%;
+        max-height: 40%;
+    }
+}
+
 .sd_settings .flex1.checkbox_label input[type="checkbox"] {
     margin-right: 5px;
     margin-left: 5px;

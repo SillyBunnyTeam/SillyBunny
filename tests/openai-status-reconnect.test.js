@@ -59,6 +59,7 @@ function createHarness() {
         console: { error: jest.fn(), log: jest.fn(), debug: jest.fn() },
         toastr: { error: jest.fn() },
         displayOnlineStatus: jest.fn(),
+        setStatusCheckPending: jest.fn(),
         $: selector => ({
             val: () => '',
             empty: () => {},
@@ -169,6 +170,24 @@ describe('Chat Completion reconnect status ownership', () => {
         expect(context.models).toEqual([{ id: 'new-model' }]);
         expect(context.loading).toBe(false);
         expect(context.connectDisabled).toBe(false);
+    });
+
+    test('reports a check as pending from Connect until the check ends, and as not pending after a manual cancel', async () => {
+        const { context, connect, cancel } = createHarness();
+        const result = deferred();
+        context.fetch.mockReturnValueOnce(result.promise);
+
+        const first = connect();
+        expect(context.setStatusCheckPending.mock.calls).toEqual([[true]]);
+
+        result.resolve(response(['model']));
+        await first;
+        expect(context.setStatusCheckPending.mock.calls).toEqual([[true], [false]]);
+
+        context.fetch.mockReturnValueOnce(deferred().promise);
+        connect();
+        cancel();
+        expect(context.setStatusCheckPending.mock.calls.at(-1)).toEqual([false]);
     });
 
     test.each(['linkapi', 'openai'])('connects to %s when requests do not overlap', async source => {

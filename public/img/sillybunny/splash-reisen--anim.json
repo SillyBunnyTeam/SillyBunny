@@ -1,0 +1,100 @@
+{
+    "id": "splash-reisen",
+    "grid": {
+        "cell": 2.7558823529411764,
+        "width": 281,
+        "height": 371
+    },
+    "layers": [
+        {
+            "id": "reisen",
+            "z": 1,
+            "left": 0,
+            "top": 0,
+            "width": 281,
+            "height": 371,
+            "base": "idle",
+            "frames": {
+                "raised": "splash-reisen--raised@native.webp",
+                "idle": "splash-reisen--idle@native.webp",
+                "rise": "splash-reisen--rise@native.webp",
+                "inhale": "splash-reisen--inhale@native.webp",
+                "call": "splash-reisen--call@native.webp",
+                "hold": "splash-reisen--hold@native.webp",
+                "lower": "splash-reisen--lower@native.webp"
+            }
+        }
+    ],
+    "timelines": {
+        "reisen": {
+            "seconds": 2.8,
+            "keys": [
+                {
+                    "at": 0,
+                    "frame": "idle"
+                },
+                {
+                    "at": 0.45,
+                    "frame": "rise"
+                },
+                {
+                    "at": 0.65,
+                    "frame": "raised"
+                },
+                {
+                    "at": 1.05,
+                    "frame": "inhale"
+                },
+                {
+                    "at": 1.45,
+                    "frame": "call"
+                },
+                {
+                    "at": 1.9,
+                    "frame": "hold"
+                },
+                {
+                    "at": 2.4,
+                    "frame": "lower"
+                }
+            ],
+            "effects": [
+                {
+                    "kind": "rings",
+                    "frames": [
+                        "call",
+                        "hold"
+                    ],
+                    "from": 1.45,
+                    "x": 224,
+                    "y": 96
+                }
+            ]
+        }
+    },
+    "blinks": {
+        "steps": [
+            {
+                "variant": "half",
+                "ms": 70
+            },
+            {
+                "variant": "closed",
+                "ms": 110
+            },
+            {
+                "variant": "half",
+                "ms": 70
+            }
+        ],
+        "gapMs": [
+            4000,
+            5000
+        ],
+        "never": {
+            "reisen": [
+                "call"
+            ]
+        }
+    }
+}

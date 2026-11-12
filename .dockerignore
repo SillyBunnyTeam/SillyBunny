@@ -20,6 +20,7 @@
 !/plugins/package-lock.json
 
 # --- The Folders ---
+/assets-src
 /backups
 /cache
 /colab

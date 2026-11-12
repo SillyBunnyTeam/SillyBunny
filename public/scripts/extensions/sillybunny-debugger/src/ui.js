@@ -475,15 +475,16 @@ function ensureDrawer() {
     const content = el('div', 'inline-drawer-content');
     content.id = DRAWER_CONTENT_ID;
 
-    const actions = el('div', 'sbdbg-actions');
-    actions.appendChild(button('menu_button', 'Open debugger', () => openDebugger()));
-    actions.appendChild(button('menu_button', 'Diagnostic report', () => void showReportPopup()));
-    actions.appendChild(button('menu_button', 'Copy layout snapshot', () => void copyLayoutSnapshot()));
+    const actions = el('div', 'sbdbg-actions ds-pref-group');
+    actions.appendChild(button('ds-row ds-button-row', 'Open debugger', () => openDebugger()));
+    actions.appendChild(button('ds-row ds-button-row', 'Diagnostic report', () => void showReportPopup()));
+    actions.appendChild(button('ds-row ds-button-row', 'Copy layout snapshot', () => void copyLayoutSnapshot()));
     content.appendChild(actions);
 
-    const checkboxLabel = el('label', 'checkbox_label');
+    const checkboxLabel = el('label', 'checkbox_label ds-row ds-row-switch');
     const checkbox = el('input');
     checkbox.type = 'checkbox';
+    checkbox.setAttribute('role', 'switch');
     checkbox.checked = autoStartEnabled();
     let savedAutoStart = checkbox.checked;
     checkbox.addEventListener('change', () => {
@@ -501,7 +502,7 @@ function ensureDrawer() {
     checkboxLabel.appendChild(el('span', undefined, 'Show debugger button on this device at startup'));
     content.appendChild(checkboxLabel);
 
-    content.appendChild(el('div', 'sbdbg-hint',
+    content.appendChild(el('div', 'sbdbg-hint ds-pref-group-subtitle',
         'Reports include event types, error classes, sanitized stack locations, and failed-request origins. '
         + 'Console values and request bodies are omitted; read a report before sharing it.'));
 

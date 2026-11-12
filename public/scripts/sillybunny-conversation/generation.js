@@ -1,6 +1,7 @@
 import { characters, generateRaw } from '../../script.js';
 import { extractProfileResponseText } from '../extensions/in-chat-agents/llm-utils.js';
 import { isAbortLikeError } from '../util/abort-error.js';
+import { extractProviderMessage } from '../sillybunny-provider-message.js';
 import {
     CONVERSATION_ERROR_DETAIL_MAX_LENGTH,
     MAX_CONVERSATION_REPLY_MAX_TOKENS,
@@ -20,6 +21,7 @@ import { buildCharacterImagePrompt, generateConversationImage, getCharacterForAv
 import { appendConversationMessage } from './message-writer.js';
 import { stripSpeakerPrefix } from './partners.js';
 import { getSpeakerPrefixMatch } from './partners-utils.js';
+import { confirmConversationAction } from './dialogs.js';
 import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt } from './prompt.js';
 import { formatPromptText } from './shared-helpers.js';
@@ -120,7 +122,7 @@ export async function generateConversationReply(directive, settings, { responseL
     }, settings);
 }
 
-export function editConversationMessage(messageId) {
+export async function editConversationMessage(messageId) {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const personaId = getConversationPersonaId();
@@ -146,7 +148,7 @@ export function editConversationMessage(messageId) {
         return;
     }
 
-    if (activeConversationEditor && !activeConversationEditor.requestClose()) {
+    if (activeConversationEditor && !(await activeConversationEditor.requestClose())) {
         return;
     }
 
@@ -161,21 +163,27 @@ export function editConversationMessage(messageId) {
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-save fa-solid fa-check';
-    saveButton.title = 'Save message changes';
-    saveButton.setAttribute('aria-label', 'Save message changes');
+    // libadwaita inline editor: text pill buttons (suggested Save, flat Cancel, flat destructive
+    // Delete). DOM order stays save, cancel, delete; CSS places Delete at the start.
+    saveButton.className = 'sb-conversation-message-edit-control sb-conversation-message-edit-save';
+    saveButton.textContent = 'Save';
+    saveButton.title = 'Save message changes (Ctrl+Enter)';
 
     const cancelButton = document.createElement('button');
     cancelButton.type = 'button';
-    cancelButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-cancel fa-solid fa-xmark';
-    cancelButton.title = 'Discard message changes';
-    cancelButton.setAttribute('aria-label', 'Discard message changes');
+    cancelButton.className = 'sb-conversation-message-edit-control sb-conversation-message-edit-cancel';
+    cancelButton.textContent = 'Cancel';
+    cancelButton.title = 'Discard message changes (Esc)';
 
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
-    deleteButton.className = 'menu_button sb-conversation-message-edit-control sb-conversation-message-edit-delete fa-solid fa-trash-can';
+    deleteButton.className = 'sb-conversation-message-edit-control sb-conversation-message-edit-delete';
     deleteButton.title = 'Delete message';
     deleteButton.setAttribute('aria-label', 'Delete message');
+    const deleteIcon = document.createElement('i');
+    deleteIcon.className = 'fa-solid fa-trash-can';
+    deleteIcon.setAttribute('aria-hidden', 'true');
+    deleteButton.append(deleteIcon);
     deleteButton.dataset.sbConversationAction = 'delete-message';
     deleteButton.dataset.messageId = message.id;
 
@@ -185,6 +193,7 @@ export function editConversationMessage(messageId) {
     textElement.append(textarea, buttonContainer);
     messageElement.classList.add('is-editing');
     messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
+    messageElement.querySelector('.sb-conversation-mobile-menu-trigger')?.setAttribute('aria-expanded', 'false');
 
     const closeEditor = () => {
         if (textElement.isConnected) {
@@ -192,17 +201,20 @@ export function editConversationMessage(messageId) {
         }
         messageElement.classList.remove('is-editing');
         messageElement.querySelector('.sb-conversation-message-actions')?.classList.remove('open');
+        messageElement.querySelector('.sb-conversation-mobile-menu-trigger')?.setAttribute('aria-expanded', 'false');
         if (activeConversationEditor?.messageElement === messageElement) {
             activeConversationEditor = null;
         }
     };
 
     // Switching editors drops whatever is in the textarea, so confirm first when it differs
-    // from the stored message. Falls through when no confirm() exists (non-browser hosts).
-    const requestClose = () => {
-        if (textarea.value !== message.mes
-            && typeof globalThis.confirm === 'function'
-            && !globalThis.confirm('Discard unsaved changes to the message being edited?')) {
+    // from the stored message.
+    const requestClose = async () => {
+        if (textarea.value !== message.mes && !(await confirmConversationAction({
+            title: 'Discard unsaved changes?',
+            text: 'The message being edited has changes that have not been saved.',
+            confirmLabel: 'Discard',
+        }))) {
             return false;
         }
 
@@ -287,7 +299,11 @@ export function getConversationErrorDetail(error) {
         }
     }
 
-    return String(detail || '')
+    // Streaming failures throw the raw JSON body, which is unreadable in a toast.
+    const text = String(detail || '');
+    const providerMessage = /^\s*[{[]/.test(text) ? extractProviderMessage(text) : '';
+
+    return (providerMessage || text)
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, CONVERSATION_ERROR_DETAIL_MAX_LENGTH);

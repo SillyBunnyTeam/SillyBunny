@@ -142,6 +142,9 @@
 }
 
 .characterAssetName {
+    /* SillyBunny: constrain long titles so the catalogue card clips only at its trailing edge. */
+    box-sizing: border-box;
+    max-width: 100%;
     font-size: 1.2em;
     font-weight: bold;
     white-space: nowrap;

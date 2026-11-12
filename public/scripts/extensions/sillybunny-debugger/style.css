@@ -1,11 +1,13 @@
-/* Bunny Debugger — drawer and report popup. */
-
 #sbdbg-settings .sbdbg-actions,
 .sbdbg-report .sbdbg-actions {
     display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    margin: 5px 0;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+}
+
+#sbdbg-settings .sbdbg-actions {
+    padding: 0;
 }
 
 #sbdbg-settings .sbdbg-hint {
@@ -20,4 +22,9 @@
     font-family: monospace;
     font-size: 0.8em;
     white-space: pre;
+}
+
+#sbdbg-settings .sbdbg-hint {
+    display: block;
+    padding: 8px 16px 12px;
 }

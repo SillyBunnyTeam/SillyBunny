@@ -35,9 +35,8 @@ function getComposerSpacing(page) {
             rightClearance: Math.min(...rightControlRects.map(rect => rect.left)) - textareaRect.right,
             textareaWidth: textareaRect.width,
             composerBorderRadius: getComputedStyle(composer).borderRadius,
-            composerBorderTopWidth: getComputedStyle(composer).borderTopWidth,
-            composerBorderColor: getComputedStyle(composer).borderColor,
             composerBackgroundImage: getComputedStyle(composer).backgroundImage,
+            formBoxShadow: getComputedStyle(form).boxShadow,
             textareaBorderRadius: getComputedStyle(textarea).borderRadius,
             textareaBackgroundColor: getComputedStyle(textarea).backgroundColor,
             textareaBoxShadow: getComputedStyle(textarea).boxShadow,
@@ -55,7 +54,7 @@ test.describe('mobile composer spacing at 320x568', () => {
     });
 
     test('normal and compact modes keep the action rails clear of the textarea', async ({ page }) => {
-        await openQuietChatForSmoke(page, { selectCharacter: false });
+        await openQuietChatForSmoke(page);
 
         await page.evaluate(() => {
             document.documentElement.style.setProperty('--sb-bottom-bar-scale', '1.5');
@@ -75,9 +74,9 @@ test.describe('mobile composer spacing at 320x568', () => {
             const defaultState = await getComposerSpacing(page);
 
             expect(defaultState).not.toBeNull();
-            expect(Number.parseFloat(defaultState.composerBorderRadius)).toBeGreaterThan(0);
-            expect(Number.parseFloat(defaultState.composerBorderTopWidth)).toBeGreaterThan(0);
-            expect(defaultState.composerBackgroundImage).not.toBe('none');
+            // The composer is a flat toolbar row (sillybunny-theme.css, sillybunny-mobile-navigation.css): the radius is on the entry and the buttons.
+            expect(Number.parseFloat(defaultState.composerBorderRadius)).toBe(0);
+            expect(defaultState.composerBackgroundImage).toBe('none');
             expect(Number.parseFloat(defaultState.textareaBorderRadius)).toBeGreaterThan(0);
             expect(defaultState.textareaBackgroundColor).not.toBe('rgba(0, 0, 0, 0)');
             expect(defaultState.leftRailPaintClearance).toBeGreaterThanOrEqual(1);
@@ -94,9 +93,6 @@ test.describe('mobile composer spacing at 320x568', () => {
             expect(focusState.rightClearance).toBeGreaterThanOrEqual(6);
             expect(focusState.textareaWidth).toBeGreaterThanOrEqual(100);
             expect(focusState.formOutlineStyle).toBe('none');
-            expect(focusState.composerBorderColor).not.toBe(defaultState.composerBorderColor);
-            expect(focusState.composerBackgroundImage).not.toBe(defaultState.composerBackgroundImage);
-            expect(focusState.textareaBackgroundColor).not.toBe(defaultState.textareaBackgroundColor);
             expect(focusState.textareaBoxShadow).not.toBe(defaultState.textareaBoxShadow);
 
             await page.evaluate(() => {
@@ -110,8 +106,7 @@ test.describe('mobile composer spacing at 320x568', () => {
             const generatingState = await getComposerSpacing(page);
 
             expect(generatingState).not.toBeNull();
-            expect(generatingState.composerBorderColor).not.toBe(defaultState.composerBorderColor);
-            expect(generatingState.composerBackgroundImage).not.toBe(defaultState.composerBackgroundImage);
+            expect(generatingState.formBoxShadow).not.toBe(defaultState.formBoxShadow);
         }
     });
 });

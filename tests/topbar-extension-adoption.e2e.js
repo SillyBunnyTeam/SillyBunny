@@ -260,40 +260,68 @@ test.describe('third-party top-bar button adoption', () => {
         expect(composer.height).toBeGreaterThan(0);
     });
 
-    test('keeps a third-party settings drawer reachable in exactly one tab', async ({ page }) => {
+    test('lists a third-party settings drawer on the Extensions page and on no other', async ({ page }) => {
         await openBarForTest(page);
-        // The settings tab filter loads on demand when the Settings panel first opens.
-        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'settings'));
-        await expect(page.locator('#sb-settings-tabs')).toHaveCount(1);
+        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'appearance'));
+        await expect(page.locator('#sb-settings-page')).toBeVisible();
 
-        const visibility = await page.evaluate(async () => {
-            const content = document.getElementById('user-settings-block-content');
+        // An extension that predates the Extensions panel appends its drawer to the legacy settings column.
+        await page.evaluate(() => {
             const drawer = document.createElement('div');
             drawer.id = 'sb-e2e-ext-settings-drawer';
             drawer.className = 'inline-drawer wide100p flexFlowColumn';
             drawer.innerHTML = '<div class="inline-drawer-toggle inline-drawer-header"><b>E2E Ext</b></div>'
                 + '<div class="inline-drawer-content">body</div>';
-            content.appendChild(drawer);
-
-            await new Promise(resolve => setTimeout(resolve, 400));
-
-            const perTab = {};
-            const activeTab = content.getAttribute('data-active-tab');
-
-            for (const tab of ['appearance', 'chat-writing', 'system-device', 'cache-account']) {
-                content.setAttribute('data-active-tab', tab);
-                perTab[tab] = window.getComputedStyle(drawer).display;
-            }
-
-            content.setAttribute('data-active-tab', activeTab ?? 'appearance');
-
-            return { tagged: drawer.getAttribute('data-settings-tab'), perTab };
+            document.getElementById('user-settings-block-content').appendChild(drawer);
         });
 
-        // Before the fix an untagged drawer matched the hide rule in all four tabs.
-        expect(Object.values(visibility.perTab).filter(display => display !== 'none')).toHaveLength(1);
-        expect(visibility.tagged).toBe('system-device');
-        expect(visibility.perTab['system-device']).not.toBe('none');
+        const shown = page.locator(':text-is("E2E Ext"):visible');
+        const row = page.locator('.sb-subpage-row', { hasText: 'E2E Ext' });
+
+        for (const tab of ['appearance', 'interface', 'messages', 'data-security', 'logs']) {
+            await page.evaluate(id => window.SillyBunnyShell.openTab('right', id), tab);
+            await expect(page.locator('#sb-settings-page [aria-current="page"], #sb-settings-page .sb-settings-tab[aria-selected="true"]').first()).toBeVisible();
+            await expect(shown, `the drawer is not shown on ${tab}`).toHaveCount(0);
+        }
+
+        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
+        await expect(row, 'the drawer is a row of the Extensions page').toBeVisible();
+        await expect(row).toHaveCount(1);
+
+        const homes = await page.evaluate(() => ({
+            drawer: document.getElementById('sb-e2e-ext-settings-drawer').parentElement.id,
+            firstParty: document.getElementById('ChatCharactersSection')?.closest('#user-settings-block-content') !== null,
+        }));
+        expect(homes.drawer).toBe('extensions_settings2');
+        // A drawer that the page was authored with is not an extension's, so it stays where it is.
+        expect(homes.firstParty).toBe(true);
+
+        // The row opens the drawer as a page, which names it, so the drawer's own toggle stays hidden.
+        await row.click();
+        await expect(page.locator('#sb-e2e-ext-settings-drawer .inline-drawer-content')).toBeVisible();
+    });
+
+    test('global search finds a setting of a third-party drawer and opens the Extensions page for it', async ({ page }) => {
+        await openBarForTest(page);
+        await page.evaluate(() => {
+            const drawer = document.createElement('div');
+            drawer.id = 'sb-e2e-ext-settings-drawer';
+            drawer.className = 'inline-drawer wide100p flexFlowColumn';
+            drawer.innerHTML = '<div class="inline-drawer-toggle inline-drawer-header"><b>E2E Ext</b></div>'
+                + '<div class="inline-drawer-content"><label class="checkbox_label"><input type="checkbox" id="sb-e2e-ext-setting">'
+                + '<span>Frobnicate the widgets</span></label></div>';
+            document.getElementById('user-settings-block-content').appendChild(drawer);
+        });
+
+        await page.locator('#sb-topbar-search-toggle').click();
+        await page.locator('#sb-universal-search input').fill('Frobnicate the widgets');
+        const result = page.locator('#sb-universal-search-results').getByRole('group', { name: 'Customize · Extensions', exact: true })
+            .getByRole('option', { name: /Frobnicate the widgets/ });
+        await expect(result).toBeVisible();
+        await result.click();
+
+        await expect(page.locator('button[data-sb-settings-tab="extensions"]')).toHaveAttribute('aria-selected', 'true');
+        await expect(page.locator('#sb-e2e-ext-setting')).toBeVisible();
     });
 
     test('anchors a fixed extension panel below the whole bar, chat bar row included', async ({ page }) => {

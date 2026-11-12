@@ -27,6 +27,8 @@ import {
     writeExtensionField,
 } from '../../extensions.js';
 import { selected_group } from '../../group-chats.js';
+// SillyBunny: adopt prompt review fields into the scrolling dialog body.
+import { utilityFormOptions } from '../../sillybunny-editor/adapters/utility-dialogs.js';
 import {
     clamp,
     debounce,
@@ -842,16 +844,21 @@ async function refinePrompt(prompt, args = null) {
             });
         }
 
+        // SillyBunny: Popup still owns prompt results and optional custom inputs.
+        const dialogOptions = utilityFormOptions({ mainLabel: t`Prompt` });
         const refinedPrompt = await Popup.show.input(
             t`Review and edit the prompt:`,
             t`Press "Cancel" to abort the image generation.`,
             prompt.trim(),
             {
+                ...dialogOptions,
                 rows: 8,
                 okButton: t`Continue`,
                 cancelButton: t`Cancel`,
                 customInputs,
                 onClose: (popup) => {
+                    // SillyBunny: release row IDs while retaining the original prompt/result handling.
+                    dialogOptions.onClose(popup);
                     if (!popup.result || !(popup.inputResults instanceof Map) || !args) {
                         return;
                     }
@@ -4813,7 +4820,11 @@ async function onComfyOpenWorkflowEditorClick() {
         workflow = $('#sd_comfy_workflow_editor_workflow').val().toString();
         return true;
     };
-    const popup = new Popup(editorHtml, POPUP_TYPE.CONFIRM, '', { okButton: 'Save', cancelButton: 'Cancel', wide: true, large: true, onClosing: saveValue });
+    // SillyBunny: the JSON editor owns its scroll, so the Window body must not scroll it again.
+    const popup = new Popup(editorHtml, POPUP_TYPE.CONFIRM, '', { okButton: 'Save', cancelButton: 'Cancel', wide: true, large: true, tier: 'window', onClosing: saveValue });
+    popup.dlg.classList.add('sd-comfy-workflow-window');
+    // SillyBunny: the workflow JSON is a document, so its Window body uses the View surface.
+    popup.dlg.classList.add('sb-document');
     const popupResult = popup.show();
     const checkPlaceholders = () => {
         workflow = $('#sd_comfy_workflow_editor_workflow').val().toString();

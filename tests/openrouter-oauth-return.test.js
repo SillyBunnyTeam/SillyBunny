@@ -20,6 +20,7 @@ await jest.unstable_mockModule('../public/script.js', () => ({
 
 await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => `${text}${part}${values[index] ?? ''}`, ''),
+    translate: (text) => text,
 }));
 
 await jest.unstable_mockModule('../public/scripts/openai.js', () => ({

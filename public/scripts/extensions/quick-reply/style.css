@@ -233,6 +233,22 @@
   align-items: baseline;
   gap: 0.5em;
 }
+
+/* SillyBunny: retain the compact row label scale inside the Quick Reply editor. */
+.popup:has(#qr--modalEditor) .ds-pref-group .ds-row .ds-row-text > .ds-row-label {
+  font-size: var(--sb-type-control, var(--mainFontSize));
+  font-weight: 400;
+}
+
+.popup:has(#qr--modalEditor) .ds-pref-group-heading {
+  font-size: var(--sb-type-title, var(--mainFontSize));
+}
+
+.popup:has(#qr--modalEditor) .qr--modal-messageContainer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
 #qr--settings .qr--setList > .qr--item {
   display: flex;
   flex-direction: row;
@@ -336,6 +352,64 @@
   gap: 0.5em;
   justify-content: center;
   padding-bottom: 0.5em;
+}
+
+/* SillyBunny: make Quick Reply set links use shared row and action patterns on every width. */
+#qr--settings .qr--setList > .qr--item {
+  align-items: center;
+  min-width: 0;
+  min-height: 52px;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--sb-shell-border);
+  color: var(--sb-shell-text);
+}
+
+#qr--settings .qr--setList > .qr--item {
+  margin-block: 0;
+}
+
+#qr--settings .qr--setList > .qr--item:last-child {
+  border-bottom: 0;
+}
+
+#qr--settings .qr--setList > .qr--item > .drag-handle {
+  flex: 0 0 32px;
+  padding: 0;
+  color: var(--sb-muted-fg);
+  text-align: center;
+}
+
+#qr--settings .qr--setList > .qr--item > .qr--set {
+  flex: 1 1 190px;
+  min-width: 0;
+  min-height: 40px;
+  margin: 0;
+  padding-inline: 10px;
+  border: 1px solid var(--sb-shell-border);
+  border-radius: var(--sb-radius-control, 9px);
+  background: var(--sb-layer-window);
+  color: var(--sb-shell-text);
+}
+
+#qr--settings .qr--setList > .qr--item > .qr--visible {
+  flex: 0 0 auto;
+  min-height: 40px;
+  margin: 0;
+  gap: 8px;
+  color: var(--sb-shell-text);
+}
+
+#qr--settings .qr--setList > .qr--item > .qr--action {
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+@media (pointer: coarse) {
+  #qr--settings .qr--setList > .qr--item > .qr--action,
+  #qr--settings .qr--setList > .qr--item > .qr--visible {
+    min-height: 44px;
+  }
 }
 
 @media screen and (max-width: 600px) {
@@ -1215,4 +1289,201 @@
 .popup:has(.qr--transferModal):has(.qr--transferSelect:focus).qr--isCopy .qr--copy {
   font-weight: bold;
   box-shadow: 0 0 10px;
+}
+
+/* SillyBunny: this manifest stylesheet loads asynchronously with Quick Reply. Keep the
+   source editor's direct-child/debugger selectors intact; only the frame body scrolls. */
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) > .popup-body {
+  container: sb-qr / inline-size;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: visible;
+  align-items: flex-start;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: visible;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels {
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .ds-row {
+  flex: 0 0 auto;
+  flex-direction: row;
+  min-width: 0;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor .ds-row-label {
+  font-size: inherit;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor .qr--labelHint {
+  font-size: inherit;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor .qr--inputGroup {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor .qr--inputGroup > input {
+  min-width: 0;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--modal-icon {
+  height: auto;
+  min-height: 34px;
+  min-width: 34px;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--modal-messageContainer {
+  flex: 0 0 auto;
+  overflow: visible;
+  gap: 12px;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--modal-messageContainer > .qr--modal-editorSettings {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  color: inherit;
+  font-size: inherit;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor .qr--modal-editorSettings > small {
+  padding: 6px 16px;
+  color: var(--sb-input-placeholder);
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--modal-messageContainer > #qr--modal-messageHolder {
+  flex: 0 0 auto;
+  height: clamp(320px, 45dvh, 560px);
+  min-height: 320px;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--qrOptions {
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 12px;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--qrOptions > #qr--autoExec .checkbox_label {
+  text-wrap: wrap;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--autoExec {
+  gap: 0;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--ctxEditor .qr--ctxItem {
+  flex-wrap: wrap;
+  align-items: center;
+  margin-block-end: 12px;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--ctxEditor .ds-select-row {
+  flex: 1 1 220px;
+}
+dialog.popup.sb-dialog--window #qr--modalEditor #qr--ctxEditor .qr--isChainedLabel {
+  order: 1;
+  flex: 1 0 100%;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor :is(#qr--modal-debugState, #qr--modal-executeErrors, #qr--modal-executeResult) {
+  overflow: visible;
+  width: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--modal-debugState .qr--scope {
+  grid-template-columns: fit-content(35%) minmax(0, 1fr) minmax(0, 1fr);
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--modal-debugState .qr--stack {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--modal-debugState .qr--stack .qr--item .qr--source {
+  white-space: normal;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting {
+  align-items: stretch;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting > #qr--qrOptions {
+  flex: 0 1 auto;
+  width: var(--width, 40%);
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting) .sb-dialog__close {
+  visibility: hidden;
+}
+/* SillyBunny: min-content on the old body collapses the debugger inside the Window grid. */
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) {
+  width: min(420px, calc(100% - 32px)) !important;
+  height: auto !important;
+  max-height: min(50dvh, calc(100dvh - 32px));
+  max-width: calc(100% - 32px);
+  position: fixed;
+  inset: 16px 16px auto auto;
+  transform: none;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) > .popup-body {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) .popup-content {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) .popup-content > #qr--modalEditor {
+  width: 100%;
+  max-height: none;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor.qr--isExecuting.qr--minimized) .popup-content > #qr--modalEditor > #qr--qrOptions {
+  width: 100%;
+  flex: 1 1 auto;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--modal-debugButtons {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@container sb-qr (max-width: 1000px) {
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor:not(.qr--isExecuting) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor:not(.qr--isExecuting) > #qr--main,
+  dialog.popup.sb-dialog--window #qr--modalEditor:not(.qr--isExecuting) #qr--qrOptions {
+    flex: 0 0 auto;
+    width: auto;
+  }
+}
+@container sb-qr (max-width: 750px) {
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main,
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--qrOptions {
+    flex: 0 0 auto;
+    width: auto;
+  }
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor #qr--resizeHandle {
+    display: none;
+  }
+  /* Keep the running debugger wide enough to read when the Window cannot support two panes. */
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting > #qr--main,
+  dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor.qr--isExecuting > #qr--qrOptions {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* SillyBunny: shared transfer responses retain one suggested action and a neutral Copy footer. */
+.popup.sb-dialog:has(.qr--transferModal) :is(.popup-button-ok, .qr--copy) {
+  flex-direction: row;
+  white-space: normal;
+  transition: none;
+}
+
+.popup.sb-dialog:has(.qr--transferModal) :is(.popup-button-ok, .qr--copy)::after {
+  content: none;
 }

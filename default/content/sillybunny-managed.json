@@ -1,0 +1,336 @@
+{
+    "format": 1,
+    "items": [
+        {
+            "filename": "default_AssistantReisen.png",
+            "type": "character",
+            "version": 1,
+            "fingerprint": "d7135ead7018d562655f60dedc29c0156d5cac6efa31b7bd380fe78ad44157a3",
+            "previousFingerprints": [
+                "fb75a20e467163fc02412c187be5e5ee9fbce03fd28a257fc2d9c6e0aafeca3f",
+                "926f62bc3a1c6a4ec33da49b8903957db5ebc9ef41de04cf7ff7ccb649f52820"
+            ]
+        },
+        {
+            "filename": "default_AssistantTewi.png",
+            "type": "character",
+            "version": 1,
+            "fingerprint": "ddfd7a3a5292fca7e24ef4bf7c0ed57cf2b14049ee7b896776a9eb9a68ced56c",
+            "previousFingerprints": [
+                "c6fae718bf7b840656ce13a80a74a8bb30e2150944a0f6fb57616e2024028f9f",
+                "cfa541cabd82301e9a87b35a54bea4b0773ce77c547a741d73d54ee3c8a6f241"
+            ]
+        },
+        {
+            "filename": "Assistant Reisen",
+            "type": "sprites",
+            "version": 1,
+            "files": [
+                {
+                    "name": "admiration.webp",
+                    "sha256": "e426d87e10bff1c457ca5cf8c946114a3d8c08455dba17ef94ec1272b4cd76d5",
+                    "previous": []
+                },
+                {
+                    "name": "amusement.webp",
+                    "sha256": "0317c1e4ffb742927e45842505ce1a721e5f2665e49e3057bed8f143d595d7e7",
+                    "previous": []
+                },
+                {
+                    "name": "anger.webp",
+                    "sha256": "634ecec01c2049820ff2c44c47393b7ceaa2834c289d15643470093f937cfe04",
+                    "previous": []
+                },
+                {
+                    "name": "annoyance.webp",
+                    "sha256": "4fa34f287ca332adc079d7a028e909b06041d775de36b37e06595de8d87b43bb",
+                    "previous": []
+                },
+                {
+                    "name": "approval.webp",
+                    "sha256": "346f76d4e927a1a4c83919459b287c86868f5c2130c0bdb9847e1f63d21f0a2b",
+                    "previous": []
+                },
+                {
+                    "name": "caring.webp",
+                    "sha256": "cd6e4716c60e4c2bacaade4958a685869e9b1c30bd8619bd20175aab5b566064",
+                    "previous": []
+                },
+                {
+                    "name": "confusion.webp",
+                    "sha256": "28d0a5da53ecfad595668d5a0a34abb133e4843e9e5d77ca6ab41bd6ec326948",
+                    "previous": []
+                },
+                {
+                    "name": "curiosity.webp",
+                    "sha256": "b099566b68d25b08a5ab8a7ea0d8acfec75ff7c541436357441d8cdb9bc2b527",
+                    "previous": []
+                },
+                {
+                    "name": "desire.webp",
+                    "sha256": "342e3d8cc5d356bb98da7858d1112fa41ff1de9da73946f808d40d666e4178b7",
+                    "previous": []
+                },
+                {
+                    "name": "disappointment.webp",
+                    "sha256": "196de02608e9679f13954d0fda93ec74ce82368ba569e3da407e4f8c5afd95bd",
+                    "previous": []
+                },
+                {
+                    "name": "disapproval.webp",
+                    "sha256": "df7afe203afde73a8925a03b45e0dcbb29ca79fbf028a3bcd15d21b78c027886",
+                    "previous": []
+                },
+                {
+                    "name": "disgust.webp",
+                    "sha256": "042e71743e91ef0ada76642d2024d8a6beb9fd31756ef3abaf2e9ce64fa24671",
+                    "previous": []
+                },
+                {
+                    "name": "embarrassment.webp",
+                    "sha256": "84c699d3d5798f18ea22b1f1b2e45b091468db0757b1d7d77cb533b94f8d8466",
+                    "previous": []
+                },
+                {
+                    "name": "excitement.webp",
+                    "sha256": "aaaa40b7ec5f87510e64dc63813dbee76eb9e977ebd8b63de83a244db08ccb81",
+                    "previous": []
+                },
+                {
+                    "name": "fear.webp",
+                    "sha256": "529a26137d8f0fc9afe8f45909c25fe32bebb2f214bcf135984dac6a2e3e18a9",
+                    "previous": []
+                },
+                {
+                    "name": "gratitude.webp",
+                    "sha256": "74fcadd6b5e710c53dd4e02d1c3c20bf0bb959abbcf712fe3d700d49115498bc",
+                    "previous": []
+                },
+                {
+                    "name": "grief.webp",
+                    "sha256": "a65f362d0bd1bc0114b6fb797c486e1f634e3dc972422b7fdec5a10be8e3c5e5",
+                    "previous": []
+                },
+                {
+                    "name": "joy.webp",
+                    "sha256": "f49904cc02ad2bdfaee8345bcc1955d0bdeeb6c1bbfb57fba94a09f84e39d767",
+                    "previous": []
+                },
+                {
+                    "name": "love.webp",
+                    "sha256": "db002bf16fb20b8b9c3da81a4728c8c9068b9f13bbde0247db35b0e39bb763df",
+                    "previous": []
+                },
+                {
+                    "name": "nervousness.webp",
+                    "sha256": "5ade20d72222fff292e4dfe8044c03c8a00f78e77d855aa364eec659ded35bc3",
+                    "previous": []
+                },
+                {
+                    "name": "neutral.webp",
+                    "sha256": "60489835452841168f21ff201d5c48ff871f39392e93f31a9887023175b7fee5",
+                    "previous": []
+                },
+                {
+                    "name": "optimism.webp",
+                    "sha256": "49238c02f723ad5f8dfcfee152c5c2a2c7553c47feed572aff9a2009b27ef0c7",
+                    "previous": []
+                },
+                {
+                    "name": "pride.webp",
+                    "sha256": "7977e975397aa0553cf1e460156254b742e99c837d63d382c9ba9c04d51ee598",
+                    "previous": []
+                },
+                {
+                    "name": "realization.webp",
+                    "sha256": "9f0998c7b1cf5aad165842ee73aefb24d7568a39d394d2c7f6d2ec6e69e245eb",
+                    "previous": []
+                },
+                {
+                    "name": "relief.webp",
+                    "sha256": "9994c0d94a965b9802f7e6d701759b669340feca923c60123021546f90283486",
+                    "previous": []
+                },
+                {
+                    "name": "remorse.webp",
+                    "sha256": "802c12803dcc09a847b96cebc0fbd4190b62e8d3b0405237c51951bf7924cab6",
+                    "previous": []
+                },
+                {
+                    "name": "sadness.webp",
+                    "sha256": "6d1892d75de093eb327e7f40f5d3db5874d9812d63cbb7fa90aa470f5f355e44",
+                    "previous": []
+                },
+                {
+                    "name": "surprise.webp",
+                    "sha256": "6e659b9f7d06dbcb7ca9286a42a4f3046c7e3fd672ffd7d971747e6ed3414622",
+                    "previous": []
+                }
+            ]
+        },
+        {
+            "filename": "Assistant Tewi",
+            "type": "sprites",
+            "version": 1,
+            "files": [
+                {
+                    "name": "admiration.webp",
+                    "sha256": "36365ba200d2cf64fbb1666c73aa23b7c0b10faf962b085ebf1754ebe1a63c2f",
+                    "previous": []
+                },
+                {
+                    "name": "amusement.webp",
+                    "sha256": "aa7c41e1423c7216d918143a071d5df90326dc9c1b32f5a296547116a46245c3",
+                    "previous": []
+                },
+                {
+                    "name": "anger.webp",
+                    "sha256": "ab50e0be64031f986bf95176c49d4d5aa08aa09822940f4783566d194d1378a4",
+                    "previous": []
+                },
+                {
+                    "name": "annoyance.webp",
+                    "sha256": "989229356def36e088042668c0e8ba418327c0072ffea029008b404ab5aa0e27",
+                    "previous": []
+                },
+                {
+                    "name": "approval.webp",
+                    "sha256": "cd30ec1cf7b9aa25f39721be5dd68b6e9bbdbd2fa2e2f33a76b5e2e67a964b68",
+                    "previous": []
+                },
+                {
+                    "name": "caring.webp",
+                    "sha256": "88db48d99b457644e0043b2c4fe2b4136f23dcbb5dd8513e1fe4e3a80bb5d921",
+                    "previous": []
+                },
+                {
+                    "name": "confusion.webp",
+                    "sha256": "9fc3752ef8266f4c1d4f7dda5fc7467e63176dfa6051ad63415c1e52bad0a370",
+                    "previous": []
+                },
+                {
+                    "name": "curiosity.webp",
+                    "sha256": "5dadff5ab824eb6f7a8be3dd15cb815f24948d8068265bd8364c0f1a6677a88b",
+                    "previous": []
+                },
+                {
+                    "name": "desire.webp",
+                    "sha256": "e712cbb5b39c1c8ab8b27a4fe4a4df2d20bbfe39ca4b494bea1ed3cc1380ffc3",
+                    "previous": []
+                },
+                {
+                    "name": "disappointment.webp",
+                    "sha256": "d2f0d28284092499e3f6a892e5a54b8ca9b46273dcf2a640fcf6882514d6cddf",
+                    "previous": []
+                },
+                {
+                    "name": "disapproval.webp",
+                    "sha256": "b32c4ab3ab0ad29279b7f7dd3e8ad9c04f5816c96b95b4f7b1c92dba28ccea12",
+                    "previous": []
+                },
+                {
+                    "name": "disgust.webp",
+                    "sha256": "5e10a19a8e484b0463e650f37a09b6e433f4bd97033b132488b59acd1fe89722",
+                    "previous": []
+                },
+                {
+                    "name": "embarrassment.webp",
+                    "sha256": "c81836d6bdb4ce7709574a80f2adfbc76c4c372a1538f5ff3e26e4a3d08cc2fb",
+                    "previous": []
+                },
+                {
+                    "name": "excitement.webp",
+                    "sha256": "66541d38e1d47bcfd41dbbaecf008429f2fcc334cac79958a071680e3a25e7b0",
+                    "previous": []
+                },
+                {
+                    "name": "fear.webp",
+                    "sha256": "5c5858cc9597db58577e6885b1528847d9114cbc0f04f68255f425acf31ad5e0",
+                    "previous": []
+                },
+                {
+                    "name": "gratitude.webp",
+                    "sha256": "74e8eedc30b93d9e2fe2327f50a1ebd1f864739c653c10cc3ae05a990b2e34bc",
+                    "previous": []
+                },
+                {
+                    "name": "grief.webp",
+                    "sha256": "d25fe12afc5a8fb7f4009b064e7162238fb60463be18593d18753d8e23bfae5f",
+                    "previous": []
+                },
+                {
+                    "name": "joy.webp",
+                    "sha256": "fbe5f65bcaa2133a6d116253df3ab0b0a0070dcd51654ecb3b9b0aa5582e9a31",
+                    "previous": []
+                },
+                {
+                    "name": "love.webp",
+                    "sha256": "27637fe1aa97f612028907db7b0fc1f1587ca0d6d9cb0ccec7a199ca6cf2d93f",
+                    "previous": []
+                },
+                {
+                    "name": "nervousness.webp",
+                    "sha256": "5c0b71e6fa0a96f8eab372a55cfc00a42ce8fa9a7b175fe859d96d0463c5c005",
+                    "previous": []
+                },
+                {
+                    "name": "neutral.webp",
+                    "sha256": "fbf06fe9465a0bad6b132df488615603bbd64c8a675d9c0101071959b9e5790a",
+                    "previous": []
+                },
+                {
+                    "name": "optimism.webp",
+                    "sha256": "a422cd55dc70be9ff8742b0632ae14caad4222e32e377ac3b0d67b4c7e6c8cf0",
+                    "previous": []
+                },
+                {
+                    "name": "pride.webp",
+                    "sha256": "f10e8cfe7a1868035e26fbc409d168638381f1330050a2682f92c60f54b8551f",
+                    "previous": []
+                },
+                {
+                    "name": "realization.webp",
+                    "sha256": "bad32ce81173a6d136c318e4316d3a3de413fc70001142660fa73cec53031773",
+                    "previous": []
+                },
+                {
+                    "name": "relief.webp",
+                    "sha256": "313a97e1281488cda48b3124b27a4599c5905680067e4f37dbc301442b807e9b",
+                    "previous": []
+                },
+                {
+                    "name": "remorse.webp",
+                    "sha256": "18151b02204fd4c6315c6c05f2998c3f6a33f7c7c2db005061fe2264f8968dae",
+                    "previous": []
+                },
+                {
+                    "name": "sadness.webp",
+                    "sha256": "91c0d5cc6cefd03bc39579633ff2479a0d41d0a9e9b8f97ae50d3cea2eb57d53",
+                    "previous": []
+                },
+                {
+                    "name": "surprise.webp",
+                    "sha256": "e8d204806227bfb0fcde3945c2de65a26db2c5fd8744d3d3b84e27afabef1894",
+                    "previous": []
+                }
+            ]
+        },
+        {
+            "filename": "SillyBunny Lexicon.json",
+            "type": "world",
+            "version": 3,
+            "fingerprint": "5a4c3f7cfc92885b96ca90e6728cbb65966d14efa69235ad14ea679538f58442",
+            "previousFingerprints": [
+                "bfb296985b14982ff9c741317bdcb64a49ef1bb881fb761295490420eab50c8f",
+                "ce8a45e5385ff7b477fa8f0a76c6eddd12344291b49c80a082b34a31e3493041",
+                "8fc16bdbf7ad190744c53b5a0f5f8f80895872747506d72e30e1de93cef53d42",
+                "92324dece7df4e01b161efea80e2af0bd163ccecf272f7c44f6c6ed2b8b2eac9",
+                "41ac10a6a3ecd125c4dec9209d2bbb55768d02ca4b83402171125631dbf096d1",
+                "8e9a96bfdc2c25f90dde17c93ecf259078f0914009ea76b51b94de964ffadca8",
+                "897d27373696defb9156830e066d37e713c83a5a0d4155524d28c62b90d94fea",
+                "e3080d2951a589f59b57eb29256ab51cc0ecad5c28925891544f36c0c6a796fd",
+                "10ef1c6dc724b2bf9b3bf62ac2970737994fdb0769722695e9185b590e21e2b8"
+            ]
+        }
+    ]
+}

@@ -244,6 +244,8 @@ describe('Lorebook Scout sender', () => {
         expect(context.callGenericPopup).toHaveBeenCalledWith(
             'Add Lorebook Scout as an Auxiliary Lorebook to the current chat automatically?',
             'confirm',
+            '',
+            { okButton: 'Add' },
         );
         expect(context.charUpdateAddAuxWorld).toHaveBeenCalledWith('Scout.png', 'Lorebook Scout');
 

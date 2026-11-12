@@ -1,0 +1,101 @@
+{
+    "id": "splash-tewi",
+    "grid": {
+        "cell": 3.1731448763250882,
+        "width": 237,
+        "height": 317
+    },
+    "layers": [
+        {
+            "id": "tewi",
+            "z": 1,
+            "left": 0,
+            "top": 0,
+            "width": 237,
+            "height": 317,
+            "base": "raised",
+            "frames": {
+                "raised": "splash-tewi--raised@native.webp",
+                "windup": "splash-tewi--windup@native.webp",
+                "swing": "splash-tewi--swing@native.webp",
+                "mid": "splash-tewi--mid@native.webp",
+                "strike": "splash-tewi--strike@native.webp",
+                "rebound": "splash-tewi--rebound@native.webp",
+                "hoist": "splash-tewi--hoist@native.webp"
+            }
+        }
+    ],
+    "timelines": {
+        "tewi": {
+            "seconds": 1.62,
+            "keys": [
+                {
+                    "at": 0,
+                    "frame": "raised"
+                },
+                {
+                    "at": 0.3,
+                    "frame": "windup"
+                },
+                {
+                    "at": 0.6,
+                    "frame": "swing"
+                },
+                {
+                    "at": 0.72,
+                    "frame": "mid"
+                },
+                {
+                    "at": 0.84,
+                    "frame": "strike"
+                },
+                {
+                    "at": 1.06,
+                    "frame": "rebound"
+                },
+                {
+                    "at": 1.28,
+                    "frame": "hoist"
+                }
+            ],
+            "effects": [
+                {
+                    "kind": "burst",
+                    "frames": [
+                        "strike",
+                        "rebound",
+                        "hoist"
+                    ],
+                    "from": 0.84,
+                    "x": 194,
+                    "y": 234
+                }
+            ]
+        }
+    },
+    "blinks": {
+        "steps": [
+            {
+                "variant": "half",
+                "ms": 70
+            },
+            {
+                "variant": "closed",
+                "ms": 110
+            },
+            {
+                "variant": "half",
+                "ms": 70
+            }
+        ],
+        "gapMs": [
+            4000,
+            5000
+        ],
+        "never": {
+            "tewi": [
+                "strike"
+            ]
+        }
+    }
+}

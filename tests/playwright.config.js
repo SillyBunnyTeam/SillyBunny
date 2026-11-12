@@ -8,6 +8,7 @@ const sillyBunny = await getServerConfig();
 
 export default defineConfig({
     testMatch: '*.e2e.js',
+    testIgnore: '**/foundation/**',
     use: {
         baseURL,
         video: 'only-on-failure',

@@ -1,0 +1,103 @@
+{
+    "id": "splash-both",
+    "grid": {
+        "cell": 2.767,
+        "width": 295,
+        "height": 362
+    },
+    "layers": [
+        {
+            "id": "scene",
+            "z": 1,
+            "left": 0,
+            "top": 0,
+            "width": 295,
+            "height": 362,
+            "base": "write-a",
+            "frames": {
+                "write-a": "splash-both--write-a@native.webp",
+                "write-b": "splash-both--write-b@native.webp",
+                "write-c": "splash-both--write-c@native.webp",
+                "lean-a": "splash-both--lean-a@native.webp",
+                "lean-b": "splash-both--lean-b@native.webp",
+                "sigh": "splash-both--sigh@native.webp",
+                "resume": "splash-both--resume@native.webp"
+            }
+        }
+    ],
+    "timelines": {
+        "scene": {
+            "seconds": 4.8,
+            "keys": [
+                {
+                    "at": 0,
+                    "frame": "write-a"
+                },
+                {
+                    "at": 0.5,
+                    "frame": "write-b"
+                },
+                {
+                    "at": 0.9,
+                    "frame": "write-c"
+                },
+                {
+                    "at": 1.3,
+                    "frame": "lean-a"
+                },
+                {
+                    "at": 1.7,
+                    "frame": "lean-b"
+                },
+                {
+                    "at": 2.1,
+                    "frame": "lean-a"
+                },
+                {
+                    "at": 2.5,
+                    "frame": "lean-b"
+                },
+                {
+                    "at": 2.9,
+                    "frame": "sigh"
+                },
+                {
+                    "at": 4.1,
+                    "frame": "resume"
+                }
+            ],
+            "effects": [
+                {
+                    "kind": "puff",
+                    "frames": [
+                        "sigh"
+                    ],
+                    "from": 2.9,
+                    "x": 109,
+                    "y": 87
+                }
+            ]
+        }
+    },
+    "blinks": {
+        "steps": [
+            {
+                "variant": "half",
+                "ms": 70
+            },
+            {
+                "variant": "closed",
+                "ms": 110
+            },
+            {
+                "variant": "half",
+                "ms": 70
+            }
+        ],
+        "gapMs": [
+            4000,
+            5000
+        ],
+        "never": {}
+    }
+}

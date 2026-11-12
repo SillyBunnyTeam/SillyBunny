@@ -1,0 +1,108 @@
+<div class="welcomePanel" data-home-panel-mode="{{welcomePanelMode}}">
+    <div class="sbHomeLayout">
+        <header class="sbHomeHeader" aria-labelledby="sb-home-title">
+            <div class="sbHomeIdentity">
+                <img class="sbHomeLogo" src="img/sillybunny/logo-32.png" srcset="img/sillybunny/logo-32.png 1x, img/sillybunny/logo-64.png 2x, img/sillybunny/logo.svg 3x" width="32" height="32" alt="" aria-hidden="true" decoding="async">
+                <div class="sbHomeWordmark">
+                    <h1 id="sb-home-title" class="sbHomeTitle">SillyBunny</h1>
+                    <span class="sbHomeVersion" data-sb-home-version></span>
+                </div>
+            </div>
+            <button type="button" class="sbHomeMenuButton" title="Main Menu" aria-label="Main Menu" aria-haspopup="menu" aria-expanded="false" data-i18n="[title]Main Menu;[aria-label]Main Menu">
+                <i class="fa-solid fa-bars" aria-hidden="true"></i>
+            </button>
+        </header>
+        <div class="sbHomeBand" data-sb-home-region="hero">
+            <div class="sbHomeHeroText">
+                <p class="sbHomeDescription" data-i18n="Welcome to SillyBunny, our roleplay and storywriting frontend! To navigate the GUI, use our top bar to situate yourself. Start with Backend, then move onto Characters. Feel free to ask Reisen or Tewi for extra help!">Welcome to SillyBunny, our roleplay and storywriting frontend! To navigate the GUI, use our top bar to situate yourself. Start with Backend, then move onto Characters. Feel free to ask Reisen or Tewi for extra help!</p>
+                <div class="sbHomeFork">
+                    <p data-i18n="SillyBunny is our opinionated fork of SillyTavern. Your characters, chats, presets, and extensions should all be compatible.">SillyBunny is our opinionated fork of SillyTavern. Your characters, chats, presets, and extensions should all be compatible.</p>
+                    <a class="sbHomeForkLink" href="https://github.com/SillyTavern/SillyTavern" data-sb-external-link>SillyTavern</a>
+                </div>
+                <p class="sbHomeGreeting" data-i18n="Lucky you, stopping by! Pick a character and let's get started.">Lucky you, stopping by! Pick a character and let's get started.</p>
+            </div>
+        </div>
+        <section class="sbHomeTiles" data-sb-home-region="tiles" aria-label="Quick Links" data-i18n="[aria-label]Quick Links"></section>
+        <section class="sbHomeSection" data-sb-home-region="assistants" aria-labelledby="sb-home-assistants-title">
+            <div class="sbHomeGroupHeader">
+                <h2 id="sb-home-assistants-title" class="sbHomeGroupTitle" data-i18n="Assistants">Assistants</h2>
+            </div>
+            <div class="sbHomeCards" data-sb-home-list="assistants"></div>
+        </section>
+        <section class="sbHomeSection sbHomeRecent welcomeRecentShell" data-sb-home-region="recent-chats" aria-labelledby="welcome-recent-title">
+            <div class="sbHomeGroupHeader">
+                <h2 id="welcome-recent-title" class="recentChatsTitle" data-i18n="Recent Chats">Recent Chats</h2>
+                <div class="welcomeRecentTabs" role="group" aria-label="Recent chat type filter" data-i18n="[aria-label]Recent chat type filter">
+                    <button type="button" class="welcomeRecentTab active" data-recent-chat-filter="all" aria-pressed="true" data-i18n="All">All</button>
+                    <button type="button" class="welcomeRecentTab" data-recent-chat-filter="individual" aria-pressed="false" data-i18n="Individual">Individual</button>
+                    <button type="button" class="welcomeRecentTab" data-recent-chat-filter="group" aria-pressed="false" data-i18n="Groups">Groups</button>
+                    <button type="button" class="welcomeRecentTab" data-recent-chat-filter="conversation" aria-pressed="false" data-i18n="Conversation">Conversation</button>
+                    <button type="button" class="welcomeRecentTab {{#unless separateAgentRecentChats}}displayNone{{/unless}}" data-recent-chat-filter="agent" aria-pressed="false" data-i18n="Agents">Agents</button>
+                </div>
+            </div>
+            <div class="welcomeRecent">
+                <div id="welcome-recent-chat-list" class="recentChatList">
+                {{#if empty}}
+                    <div class="noRecentChat sbHomeEmpty" data-sb-home-empty="all" role="status">
+                        <div class="sbHomeArt" data-sb-home-region="mascot-art" data-sb-art-placeholder="empty-tewi" aria-hidden="true"></div>
+                        <h3 class="sbHomeEmptyTitle" data-i18n="Oops! You don't have any chats yet. Unlucky you.">Oops! You don't have any chats yet. Unlucky you.</h3>
+                        <p class="sbHomeEmptyDescription" data-i18n="Make sure to actually start one with any character, or say hello to Reisen or me first. Nothing will show here otherwise!">Make sure to actually start one with any character, or say hello to Reisen or me first. Nothing will show here otherwise!</p>
+                    </div>
+                {{/if}}
+                    <div class="noRecentChat displayNone" data-recent-chat-empty-state="filtered"></div>
+                {{#each chats}}
+                    {{#with this}}
+                    <article class="recentChat {{#if hidden}}hidden{{/if}} {{#if is_group}}group{{else}}individual{{/if}} {{#if is_agent}}agent{{/if}} {{#if is_conversation}}conversation{{/if}}" data-recent-chat-type="{{recent_chat_type}}" data-file="{{chat_name}}" data-avatar="{{avatar}}" data-group="{{group}}" data-conversation-branch-id="{{conversation_branch_id}}" data-conversation-branch-name="{{conversation_branch_name}}">
+                        <button type="button" class="recentChatOpen"><span class="sr-only">{{char_name}} &ndash; {{chat_name}}</span></button>
+                        {{#if pinned}}
+                            <div class="recentChatPinned">
+                                <i class="fa-solid fa-thumbtack fa-fw fa-xs" title="Pinned chat" data-i18n="[title]Pinned chat"></i>
+                            </div>
+                        {{/if}}
+                        <div class="avatar" title="[Character] {{char_name}}&#10;File: {{avatar}}">
+                            <img src="{{char_thumbnail}}" alt="{{char_name}}" width="64" height="64" loading="lazy" decoding="async">
+                        </div>
+                        <div class="recentChatInfo">
+                            <div class="chatNameContainer">
+                                <div class="chatName" title="{{file_name}}">
+                                    <strong class="characterName">{{char_name}}</strong>
+                                    <span>&ndash;</span>
+                                    <span>{{chat_name}}</span>
+                                </div>
+                                <small class="chatDate" title="{{date_long}}">{{date_short}}</small>
+                                <div class="chatActions">
+                                    {{!-- The data-i18n keys of the pin button stay "Pin chat" and "Unpin chat" while its text is header-capitalised: the key is kept for the existing translation. --}}
+                                    <button type="button" class="pinChat {{#if pinned}}active{{/if}}" title="{{#if pinned}}Unpin Chat{{else}}Pin Chat{{/if}}" aria-label="{{#if pinned}}Unpin Chat{{else}}Pin Chat{{/if}}" aria-pressed="{{#if pinned}}true{{else}}false{{/if}}" data-i18n="[title]{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}};[aria-label]{{#if pinned}}Unpin chat{{else}}Pin chat{{/if}}">
+                                        <i class="fa-solid fa-thumbtack fa-fw"></i>
+                                    </button>
+                                    <button type="button" class="chatMenu" title="Chat Menu" aria-label="Chat Menu" aria-haspopup="menu" aria-expanded="false" data-i18n="[title]Chat Menu;[aria-label]Chat Menu">
+                                        <i class="fa-solid fa-ellipsis-vertical fa-fw" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chatMessageContainer">
+                                <div class="chatMessage" title="{{mes}}">
+                                    {{mes}}
+                                </div>
+                                <div class="chatStats">
+                                    <div class="counterBlock">
+                                        <i class="fa-solid fa-comment fa-xs"></i>
+                                        <small>{{chat_items}}</small>
+                                    </div>
+                                    <small class="fileSize">{{file_size}}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+                    {{/with}}
+                {{/each}}
+                {{#if more}}
+                    <button type="button" class="showMoreChats" aria-controls="welcome-recent-chat-list" aria-expanded="false">
+                        <small class="fa-solid fa-chevron-down fa-fw fa-1x"></small>
+                    </button>
+                {{/if}}
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
