@@ -725,7 +725,6 @@
 .sb-preview-pane:empty::before {
     content: attr(data-empty-text);
     color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
-    font-style: italic;
 }
 
 .sb-preview-empty {

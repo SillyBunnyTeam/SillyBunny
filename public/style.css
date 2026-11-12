@@ -153,8 +153,6 @@
     --sb-weight-body: 400;
     --sb-weight-control: 600;
     --sb-weight-title: 700;
-    --sb-tracking-label: 0.06em;
-    --sb-tracking-kicker: 0.1em;
     /* Compatibility aliases for older imported themes and extension-style presets. */
     --mainFont: var(--mainFontFamily);
     --headerFont: var(--mainFontFamily);

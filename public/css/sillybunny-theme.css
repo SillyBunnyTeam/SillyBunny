@@ -3218,8 +3218,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .sb-sampling-transmission__label {
     font-size: var(--sb-type-meta);
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     color: var(--sb-contrast-muted, var(--SmartThemeEmColor));
     opacity: 0.8;
 }
@@ -4975,8 +4973,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     color: var(--sb-muted-fg);
     font-size: calc(var(--mainFontSize) * 0.72);
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
 }
 
 .sb-theme-preset-buttons {
@@ -5052,9 +5048,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .quick_context_size small {
     font-size: var(--sb-type-caption);
     font-weight: 700;
-    letter-spacing: 0.03em;
     line-height: 1;
-    text-transform: uppercase;
     opacity: 0.82;
 }
 

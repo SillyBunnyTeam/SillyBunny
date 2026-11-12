@@ -2287,8 +2287,6 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-agent-state-label {
     font-size: var(--sb-type-caption);
-    letter-spacing: var(--sb-tracking-label);
-    text-transform: uppercase;
     opacity: 0.68;
 }
 
@@ -2660,8 +2658,6 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-server-stat-label {
     font-size: var(--sb-type-caption);
-    letter-spacing: var(--sb-tracking-label);
-    text-transform: uppercase;
     opacity: 0.68;
 }
 
@@ -2681,8 +2677,6 @@ body:not(.movingUI) .drawer-content.maximized {
     border-radius: 999px;
     font-size: var(--sb-type-caption);
     font-weight: var(--sb-weight-title);
-    letter-spacing: var(--sb-tracking-label);
-    text-transform: uppercase;
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     color: var(--SmartThemeBodyColor);
     white-space: nowrap;
@@ -2882,7 +2876,6 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-console-log-output.is-empty {
-    font-style: italic;
     color: var(--sb-input-placeholder);
 }
 
@@ -3175,9 +3168,7 @@ body:not(.movingUI) .drawer-content.maximized {
     padding: 0 8px;
     border-radius: 999px;
     font-size: var(--sb-type-caption);
-    text-transform: uppercase;
     flex-shrink: 0;
-    letter-spacing: 0.08em;
 }
 
 .sb-agent-pill.is-on {
@@ -5040,8 +5031,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: calc(var(--mainFontSize) * 0.78);
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
     opacity: 0.8;
 }
 

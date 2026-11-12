@@ -337,7 +337,7 @@ A layer that names a libadwaita role renders that role's colour on the bundled t
 
 **Mono Font:** Adwaita Mono for code-like, structured, or machine-readable text (`--monoFontFamily`).
 
-**Character:** One dependable sans keeps all interface text in the same voice. Weight and size create hierarchy. libadwaita uses no letter-spacing; new work sets none, and the legacy `--sb-tracking-label` and `--sb-tracking-kicker` tokens stay only until the remaining uppercase labels are reworked. Interface chrome avoids italic and oblique faces (HIG Typography); italics in chat messages are user formatting and are unaffected.
+**Character:** One dependable sans keeps all interface text in the same voice. Weight and size create hierarchy. libadwaita uses no letter-spacing, and neither does SillyBunny's interface text. Interface chrome avoids italic and oblique faces (HIG Typography); italics in chat messages are user formatting and are unaffected.
 
 ### Hierarchy
 | Role | Token | Weight | Size | Line | libadwaita |

@@ -199,8 +199,6 @@
 .ica--tracker-preview-status {
     font-size: calc(var(--mainFontSize) * 0.72);
     font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
     color: color-mix(in srgb, var(--SmartThemeQuoteColor, #8b8) 76%, var(--SmartThemeBodyColor, #ddd) 24%);
 }
 

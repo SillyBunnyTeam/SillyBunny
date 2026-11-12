@@ -2913,7 +2913,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     display: flex;
     align-items: center;
     gap: 8px;
-    font-style: italic;
     opacity: 0.8;
 }
 
