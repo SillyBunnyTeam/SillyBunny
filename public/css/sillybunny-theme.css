@@ -196,7 +196,7 @@
     --sb-flat-selected-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 13%, transparent);
     --sb-raised-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     --sb-raised-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
-    --sb-raised-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
+    --sb-raised-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
     /* Shell layer ladder; forced opaque below where rgb(from) is supported. */
     --sb-layer-view-source: var(--SmartThemeChatTintColor);
     --sb-layer-window-source: var(--SmartThemeBlurTintColor);
@@ -2898,7 +2898,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 input[type='range'],
 input[type='range'].neo-range-slider {
     height: 4px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
     border-radius: 999px;
     box-shadow: none;
     filter: none;
@@ -2908,7 +2908,7 @@ input[type='range'].neo-range-slider {
 /* style.css pins the .neo-range-slider track with important declarations, so these must match that weight. */
 input[type='range'].neo-range-slider {
     height: 4px !important;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent) !important;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent) !important;
     border-radius: 999px !important;
     box-shadow: none !important;
 }

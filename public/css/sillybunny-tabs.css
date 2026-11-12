@@ -6281,10 +6281,10 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     flex-direction: column;
     gap: 0;
     min-width: 0;
-    border-radius: var(--sb-radius-lg, 16px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    box-shadow: none;
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-card-fill);
+    border: 0;
+    box-shadow: var(--sb-shadow-card);
     overflow: hidden;
     margin-bottom: 0;
 }

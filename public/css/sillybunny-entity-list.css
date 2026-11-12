@@ -15,10 +15,8 @@
     padding: 0;
     overflow: hidden;
     border-radius: var(--sb-radius-card);
-}
-
-:root[data-sb-surface-tone='light'] .ds-entity-list {
-    background: var(--sb-layer-view);
+    background: var(--sb-card-fill);
+    box-shadow: var(--sb-shadow-card);
 }
 
 .ds-entity-list__rows {
