@@ -1224,7 +1224,7 @@
     }
 
     .sb-workspace-list-pane {
-        transition: transform 220ms ease, opacity 220ms ease;
+        transition: transform var(--sb-transition-fast), opacity var(--sb-transition-fast);
     }
 
     .sb-workspace-editor-pane {
@@ -1232,7 +1232,7 @@
         inset: 0;
         width: 100%;
         transform: translateX(100%);
-        transition: transform 220ms ease;
+        transition: transform var(--sb-transition-fast);
         background: var(--SmartThemeBlurTintColor, var(--grey1000, #18181b));
         border-radius: var(--sb-radius-md, 16px);
         padding: 12px;
@@ -1371,11 +1371,11 @@
         box-shadow: none;
         overflow: hidden;
         transition:
-            flex-basis 220ms ease,
-            width 220ms ease,
-            padding 220ms ease,
-            border-color 220ms ease,
-            background 220ms ease;
+            flex-basis var(--sb-transition-fast),
+            width var(--sb-transition-fast),
+            padding var(--sb-transition-fast),
+            border-color var(--sb-transition-fast),
+            background var(--sb-transition-fast);
     }
 
     #completion_prompt_manager.completion_prompt_manager_has_editor .completion_prompt_manager_editor_pane {

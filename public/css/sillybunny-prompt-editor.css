@@ -89,7 +89,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     color: inherit;
     box-shadow: none;
     cursor: pointer;
-    transition: transform 100ms var(--sb-ease-out), background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+    transition: transform var(--sb-duration-fast) var(--sb-ease-out), background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 #sb-settings-page .sb-prompt-editor .menu_button_icon,

@@ -63,7 +63,7 @@
     font-size: calc(var(--mainFontSize) * 0.78);
     cursor: pointer;
     opacity: 0.7;
-    transition: opacity 0.15s, background 0.15s;
+    transition: opacity var(--sb-transition-fast), background var(--sb-transition-fast);
     background: transparent;
     border: none;
     color: inherit;
@@ -85,7 +85,7 @@
 .prompt-manager-send-to-agents-action {
     cursor: pointer;
     opacity: 0.5;
-    transition: opacity 0.15s;
+    transition: opacity var(--sb-transition-fast);
 }
 
 .prompt-manager-send-to-agents-action:hover {
@@ -630,7 +630,7 @@ dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
 .ica--tpanel:not(.is-open) {
     visibility: hidden;
     pointer-events: none;
-    transition: -webkit-clip-path var(--sb-transition), clip-path var(--sb-transition), visibility 0s linear 250ms;
+    transition: -webkit-clip-path var(--sb-transition), clip-path var(--sb-transition), visibility var(--sb-transition);
 }
 
 .ica--tpanel[data-edge="right"].is-open,

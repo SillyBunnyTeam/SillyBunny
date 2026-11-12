@@ -3213,7 +3213,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .sb-sampling-info-icon {
     font-size: 0.75rem;
     cursor: help;
-    transition: opacity 120ms ease-in-out;
+    transition: opacity var(--sb-transition-fast);
 }
 
 .sb-sampling-info-icon:hover {
@@ -3239,7 +3239,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     color: var(--SmartThemeBodyColor);
     opacity: 0.65;
     cursor: pointer;
-    transition: all 120ms ease-in-out;
+    transition: all var(--sb-transition-fast);
 }
 
 .sb-transmission-btn:hover:not(.active):not([disabled]) {
@@ -3270,7 +3270,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .sb-sampling-control-card:has(.sb-transmission-btn[data-policy-state='omit'].active) .neo-range-input {
     opacity: 0.35;
     filter: grayscale(0.8);
-    transition: opacity 150ms ease-in-out;
+    transition: opacity var(--sb-transition-fast);
 }
 
 /* Capability forbidden pill */
@@ -6418,7 +6418,7 @@ body.reduced-motion *::after {
 
 #options,
 #extensionsMenu {
-    animation: sb-menu-enter 200ms var(--sb-ease-out-cubic);
+    animation: sb-menu-enter var(--sb-duration-fast) var(--sb-ease-out-cubic);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6494,7 +6494,7 @@ body.reduced-motion .popup[opening] {
 }
 
 .popup[closing] {
-    animation: pop-out 200ms var(--sb-ease-out-cubic);
+    animation: pop-out var(--sb-duration-fast) var(--sb-ease-out-cubic);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7065,7 +7065,7 @@ dialog.popup.sb-dialog--page[data-covers-sheet] {
     }
 
     body:not(.reduced-motion) dialog.popup.sb-dialog--window[data-presentation='floating'][closing] {
-        animation: sb-dialog-window-out 200ms var(--sb-ease-out-cubic) forwards;
+        animation: sb-dialog-window-out var(--sb-duration-fast) var(--sb-ease-out-cubic) forwards;
     }
 
     body:not(.reduced-motion) dialog.popup.sb-dialog[data-presentation='sheet'][opening] {
@@ -7073,7 +7073,7 @@ dialog.popup.sb-dialog--page[data-covers-sheet] {
     }
 
     body:not(.reduced-motion) dialog.popup.sb-dialog[data-presentation='sheet'][closing] {
-        animation: sb-dialog-sheet-out 200ms var(--sb-ease-out-cubic) forwards;
+        animation: sb-dialog-sheet-out var(--sb-duration-fast) var(--sb-ease-out-cubic) forwards;
     }
 
     body:not(.reduced-motion) dialog.popup.sb-dialog--page[opening] {
@@ -7081,11 +7081,11 @@ dialog.popup.sb-dialog--page[data-covers-sheet] {
     }
 
     body:not(.reduced-motion) dialog.popup.sb-dialog--page[closing] {
-        animation: sb-dialog-page-out 200ms var(--sb-ease-out-cubic) forwards;
+        animation: sb-dialog-page-out var(--sb-duration-fast) var(--sb-ease-out-cubic) forwards;
     }
 
     body:not(.reduced-motion) dialog.popup.sb-dialog--page[data-sheet-dismiss][closing] {
-        animation: sb-dialog-sheet-out 200ms var(--sb-ease-out-cubic) forwards;
+        animation: sb-dialog-sheet-out var(--sb-duration-fast) var(--sb-ease-out-cubic) forwards;
     }
 }
 
@@ -8143,7 +8143,8 @@ body.reduced-motion .sb-dialog-host * {
 }
 
 .toast {
-    animation: sb-toast-in 300ms var(--sb-ease-out-cubic) both;
+    animation: sb-toast-in var(--sb-transition-slow) both;
+    animation-timing-function: var(--sb-ease-out-cubic);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -8169,7 +8170,8 @@ body.reduced-motion .toast {
 }
 
 #toast-container > div.sb-toast-leaving {
-    animation: sb-toast-exit 300ms var(--sb-ease-out-cubic);
+    animation: sb-toast-exit var(--sb-transition-slow);
+    animation-timing-function: var(--sb-ease-out-cubic);
 }
 
 @media (prefers-reduced-motion: reduce) {

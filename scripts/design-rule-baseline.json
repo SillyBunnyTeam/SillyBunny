@@ -4,7 +4,6 @@
         "public/css/sillybunny-character-editor.css": {
             "radius-literal": 8,
             "radius-literal-fallback": 9,
-            "duration-literal-fallback": 1,
             "italic": 1,
             "important": 12,
             "breakpoint-off-set": 2,
@@ -44,8 +43,7 @@
             "radius-literal": 37,
             "radius-literal-fallback": 18,
             "shadow-literal": 4,
-            "duration-literal": 24,
-            "duration-literal-fallback": 7,
+            "duration-literal": 3,
             "italic": 1,
             "important": 6,
             "hover-ungated": 8,
@@ -86,7 +84,6 @@
         "public/css/sillybunny-mobile-navigation.css": {
             "color-literal-fallback": 2,
             "radius-literal": 7,
-            "duration-literal-fallback": 5,
             "important": 43
         },
         "public/css/sillybunny-mobile-shell.css": {
@@ -113,7 +110,6 @@
             "color-literal": 1,
             "radius-literal": 1,
             "shadow-literal": 1,
-            "duration-literal": 1,
             "important": 21,
             "hover-ungated": 2
         },
@@ -122,7 +118,6 @@
             "radius-literal": 1,
             "radius-literal-fallback": 4,
             "shadow-literal": 1,
-            "duration-literal-fallback": 2,
             "important": 60,
             "focus-outline": 1
         },
@@ -132,8 +127,7 @@
             "radius-literal": 39,
             "radius-literal-fallback": 28,
             "shadow-literal": 11,
-            "duration-literal": 10,
-            "duration-literal-fallback": 1,
+            "duration-literal": 1,
             "letter-spacing": 5,
             "uppercase": 5,
             "italic": 1,
@@ -154,7 +148,6 @@
             "radius-literal": 46,
             "radius-literal-fallback": 1,
             "shadow-literal": 35,
-            "duration-literal": 11,
             "letter-spacing": 3,
             "uppercase": 3,
             "important": 201,
@@ -184,7 +177,7 @@
             "color-literal-fallback": 23,
             "radius-literal": 12,
             "radius-literal-fallback": 2,
-            "duration-literal": 5,
+            "duration-literal": 1,
             "letter-spacing": 1,
             "uppercase": 1,
             "important": 7,
@@ -197,7 +190,6 @@
         "public/scripts/extensions/input-history/style.css": {
             "color-literal": 2,
             "radius-literal": 2,
-            "duration-literal": 3,
             "important": 11,
             "hover-ungated": 3,
             "breakpoint-off-set": 1

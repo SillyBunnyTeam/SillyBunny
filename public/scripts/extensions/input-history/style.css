@@ -24,7 +24,7 @@
   padding: 0;
   background-color: transparent;
   opacity: 0.5;
-  transition: 200ms;
+  transition: var(--sb-transition-fast);
 }
 .stih--buttons .stih--button:hover {
   opacity: 1;
@@ -58,7 +58,7 @@
   min-height: 2em;
   max-height: calc(50dvh);
   width: min(420px, calc(100vw - 16px));
-  transition: 200ms;
+  transition: var(--sb-transition-fast);
   transform-origin: 0 100%;
   scale: 1 0;
   font-size: calc(var(--bottomFormIconSize, 20px) * 0.5);
@@ -77,7 +77,7 @@
   opacity: 0.5;
   background-color: rgba(255, 255, 255, 0);
   cursor: pointer;
-  transition: 200ms;
+  transition: var(--sb-transition-fast);
   display: flex;
   gap: 0.5em;
   align-items: baseline;

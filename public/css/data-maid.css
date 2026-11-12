@@ -168,7 +168,7 @@
     padding: 0;
     width: 100%;
     border-bottom: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
-    transition: background-color var(--sb-transition-fast, 120ms ease);
+    transition: background-color var(--sb-transition-fast);
 }
 
 @media (hover: hover) {

@@ -287,7 +287,7 @@ body.sb-has-docked-panel #sheld {
     max-width: var(--sb-chat-width) !important;
     margin: 0 auto !important;
     transform: translateX(var(--sb-chat-shift, 0px)) !important;
-    transition: transform var(--sb-transition, 250ms cubic-bezier(0.25, 0.1, 0.25, 1)), width var(--sb-transition, 250ms cubic-bezier(0.25, 0.1, 0.25, 1));
+    transition: transform var(--sb-transition), width var(--sb-transition);
 }
 
 body.sb-has-docked-panel #chat,

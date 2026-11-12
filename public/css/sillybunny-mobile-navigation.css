@@ -98,15 +98,15 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .
     flex: none;
     opacity: 0.7;
     font-size: 0.9em;
-    transition: transform var(--sb-transition-slow, 240ms cubic-bezier(0.22, 1, 0.36, 1));
+    transition: transform var(--sb-transition-slow);
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :is(.sb-bottom-chat-chip, .sb-bottom-chat-tray-toggle) {
-    transition: border-color var(--sb-transition-fast, 180ms ease-out), background-color var(--sb-transition-fast, 180ms ease-out), color var(--sb-transition-fast, 180ms ease-out);
+    transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle > i {
-    transition: transform var(--sb-transition-slow, 240ms cubic-bezier(0.22, 1, 0.36, 1));
+    transition: transform var(--sb-transition-slow);
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-tray-toggle[aria-expanded='true'] > i {

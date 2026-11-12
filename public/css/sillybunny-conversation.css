@@ -841,7 +841,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     grid-template-areas:
         'pals header settings'
         'pals stage settings';
-    transition: grid-template-columns var(--sb-spring-sheet-duration, 472ms) var(--sb-spring-sheet);
+    transition: grid-template-columns var(--sb-spring-sheet-duration) var(--sb-spring-sheet);
 }
 
 #sheld[data-sb-conversation-mode='on'][data-sb-conversation-layout='split'][data-sb-conversation-page='settings'] {
@@ -1189,7 +1189,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     gap: 8px;
     align-items: flex-start;
     margin-inline: auto;
-    animation: sb-message-appear 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: sb-message-appear var(--sb-transition) both;
 }
 
 .sb-conversation-message[data-role='user'] {
@@ -1418,7 +1418,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 58%, transparent);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 160ms ease-out, background-color 160ms ease-out, color 160ms ease-out;
+    transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 .sb-conversation-message:hover .sb-conversation-message-edit,
@@ -1639,7 +1639,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     font-size: var(--sb-type-meta);
     font-weight: var(--sb-weight-control);
     line-height: 1;
-    transition: background-color 140ms ease-out, color 140ms ease-out;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -2389,7 +2389,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     font-size: var(--sb-type-control);
     text-align: left;
     white-space: nowrap;
-    transition: background-color 160ms ease-out;
+    transition: background-color var(--sb-transition-fast);
 }
 
 /* libadwaita popover menu rows: neutral fills, no border. */
@@ -2469,7 +2469,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     cursor: pointer;
     font-size: var(--sb-type-meta);
     line-height: var(--sb-line-compact);
-    transition: background-color 160ms ease-out, color 160ms ease-out;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -2531,7 +2531,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     font-size: var(--sb-type-meta);
     -webkit-user-select: none;
     user-select: none;
-    transition: background-color 160ms ease-out, color 160ms ease-out;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 .sb-conversation-day-pill:focus-within {
@@ -2607,7 +2607,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     gap: 8px;
     padding: 6px 8px;
     border-radius: var(--sb-radius-sm, 6px);
-    transition: background-color 160ms ease-out;
+    transition: background-color var(--sb-transition-fast);
 }
 
 .sb-conversation-partner-option:hover,
@@ -2710,7 +2710,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     opacity: 0;
     cursor: pointer;
     font-size: var(--sb-type-meta);
-    transition: opacity 160ms ease-out, color 160ms ease-out;
+    transition: opacity var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 .sb-conversation-message:hover .sb-conversation-message-polish,
@@ -2814,7 +2814,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-add-dm-option {
-    transition: background-color 160ms ease-out;
+    transition: background-color var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -2901,7 +2901,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     cursor: pointer;
     font-size: var(--sb-type-meta);
     line-height: var(--sb-line-compact);
-    transition: background-color 160ms ease-out, border-color 160ms ease-out;
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast);
 }
 
 .sb-conversation-stop-image:hover,
@@ -2995,24 +2995,24 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         visibility: hidden;
         transform: translateX(-100%);
         pointer-events: none;
-        transition: transform var(--sb-spring-navigation-duration, 334ms) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration, 334ms);
+        transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration);
     }
 
     #sheld[data-sb-conversation-mode='on'][data-sb-conversation-page='pals'] #sb_conversation_pals_rail {
         visibility: visible;
         transform: none;
         pointer-events: auto;
-        transition: transform var(--sb-spring-navigation-duration, 334ms) var(--sb-spring-navigation), visibility 0s;
+        transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s;
     }
 
     #sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_header, #sb_conversation_stage) {
-        transition: transform var(--sb-spring-navigation-duration, 334ms) var(--sb-spring-navigation), visibility 0s;
+        transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s;
     }
 
     #sheld[data-sb-conversation-mode='on'][data-sb-conversation-page='pals'] :is(#sb_conversation_header, #sb_conversation_stage) {
         visibility: hidden;
         transform: translateX(100%);
-        transition: transform var(--sb-spring-navigation-duration, 334ms) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration, 334ms);
+        transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration);
     }
 
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-rail-search {
@@ -3317,14 +3317,14 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 
 /* Pop-out Schedule Editor Modal Overlay & Controls */
 .sb-conversation-schedule-modal-overlay {
-    transition: opacity 220ms ease-out;
+    transition: opacity var(--sb-transition-fast);
 }
 .sb-conversation-schedule-modal {
     font-family: var(--mainFontFamily, sans-serif);
-    animation: sb-scale-up 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    animation: sb-scale-up var(--sb-transition);
 }
 .sb-schedule-modal-tab {
-    transition: background-color 150ms ease-out, color 150ms ease-out;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
 /* libadwaita dialog controls. The overlay ID outranks the shared .menu_button border and fill. */

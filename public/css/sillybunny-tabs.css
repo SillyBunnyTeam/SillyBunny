@@ -462,7 +462,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
     transition:
         opacity var(--sb-transition-fast),
         transform var(--sb-transition-fast),
-        visibility 0s linear 180ms;
+        visibility 0s linear var(--sb-duration-fast);
 }
 
 #sb-topbar-search-row.is-open {
@@ -1521,7 +1521,7 @@ body:not(.movingUI) .drawer-content.maximized {
     width: 0 !important;
     height: 0 !important;
     overflow: hidden !important;
-    transition: opacity var(--sb-transition-fast), visibility 0s 180ms, width 0s 180ms, height 0s 180ms, overflow 0s 180ms;
+    transition: opacity var(--sb-transition-fast), visibility 0s var(--sb-duration-fast), width 0s var(--sb-duration-fast), height 0s var(--sb-duration-fast), overflow 0s var(--sb-duration-fast);
 }
 
 .sb-shell-root.fillLeft.openDrawer,
@@ -4493,7 +4493,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     border-radius: 0;
     background: transparent;
     color: var(--SmartThemeBodyColor);
-    transition: background-color var(--sb-transition-fast, 200ms) ease;
+    transition: background-color var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
@@ -4807,7 +4807,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     border-radius: var(--sb-radius-overlay);
     box-shadow: var(--sb-shadow-popover);
     z-index: calc(var(--sb-z-modal-content, 3100) + 1);
-    animation: sbShellContentReveal 200ms var(--sb-ease-out);
+    animation: sbShellContentReveal var(--sb-duration-fast) var(--sb-ease-out);
 }
 
 .sb-mode-menu-item {
@@ -4892,7 +4892,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     padding: 6px;
     z-index: calc(var(--sb-z-modal-content, 3100) + 1);
     box-shadow: var(--sb-shadow-popover);
-    animation: sbShellContentReveal 200ms var(--sb-ease-out);
+    animation: sbShellContentReveal var(--sb-duration-fast) var(--sb-ease-out);
 }
 
 .sb-persona-options {
@@ -7444,7 +7444,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     font-size: calc(var(--mainFontSize) * 0.82);
     cursor: pointer;
     white-space: nowrap;
-    transition: background-color 150ms ease, border-color 150ms ease;
+    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast);
     user-select: none;
     -webkit-user-select: none;
 }

@@ -654,7 +654,7 @@
     border-radius: var(--sb-radius-card, 12px);
     overflow: hidden;
     cursor: pointer;
-    transition: opacity var(--sb-transition-fast, 200ms ease);
+    transition: opacity var(--sb-transition-fast);
 }
 
 @media (hover: hover) {
