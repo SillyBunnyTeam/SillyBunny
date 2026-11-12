@@ -21,6 +21,7 @@
         "jest": "^29.7.0"
     },
     "devDependencies": {
+        "@axe-core/playwright": "4.14.0",
         "jest-environment-jsdom": "29.7.0"
     }
 }
