@@ -192,6 +192,42 @@ describe('flattening settings drawers', () => {
         expect(levelOf(stays)).toEqual({ flat: true, top: true });
     });
 
+    test('a root that sits inside a boxed group keeps its own sections at the top level', () => {
+        const outside = document.createElement('div');
+        outside.className = 'ds-pref-group';
+        const outsideRow = document.createElement('div');
+        outsideRow.className = 'ds-row';
+        const root = document.createElement('div');
+        const section = drawer('section');
+        root.append(section);
+        outsideRow.append(root);
+        outside.append(outsideRow);
+
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+        expect(levelOf(section)).toEqual({ flat: true, top: true });
+
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+        expect(levelOf(section)).toEqual({ flat: true, top: true });
+    });
+
+    test('a run after everything is flattened and moved changes nothing', () => {
+        const root = document.createElement('div');
+        const group = document.createElement('div');
+        group.className = 'ds-pref-group';
+        const moved = drawer('moved');
+        const stays = drawer('stays');
+        root.append(moved, stays, group);
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+        group.append(moved);
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+        const before = root.innerHTML;
+
+        expect(flattenNestedSettingsDrawers(root, { includeTopLevel: true })).toBe(0);
+        expect(root.innerHTML).toBe(before);
+        expect(levelOf(moved)).toEqual({ flat: true, top: false });
+        expect(levelOf(stays)).toEqual({ flat: true, top: true });
+    });
+
     test('a later run without top-level flattening unwraps a drawer inside a flattened section', () => {
         const root = document.createElement('div');
         const outer = drawer('outer');

@@ -179,10 +179,11 @@ const SB_FLAT_SECTION_HEADER_CLASSES = Object.freeze([
  * Two modes, both keeping the header element so search still resolves a name for the controls
  * inside:
  *
- * - `nested` (default) flattens only a drawer that sits inside another drawer. A sub-category
- *   may hold at most one collapsible section, so a drawer inside a drawer breaks that rule and is
- *   what this removes. The outermost drawer of each nest keeps its toggle, which is why the work
- *   is driven by ancestry rather than by depth from the root.
+ * - `nested` (default) flattens only a drawer that sits inside another drawer, inside a section
+ *   that an earlier run flattened, or inside a boxed group or a row. A sub-category may hold at
+ *   most one collapsible section, so a drawer inside any of these breaks that rule and is what
+ *   this removes. The outermost drawer of each nest keeps its toggle, which is why the work is
+ *   driven by ancestry rather than by depth from the root.
  * - `all` also flattens the outermost drawer. The panels built from the settings content use
  *   this, because no setting there may hide behind a click. Connections and Extensions are
  *   exempt: Extensions drawers are independently authored
