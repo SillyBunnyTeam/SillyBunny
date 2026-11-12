@@ -1363,7 +1363,7 @@ export function initializePromptEditor(column) {
     const resizeObserver = new ResizeObserver(scheduleLayout);
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261104a', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261112a', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

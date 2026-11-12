@@ -1722,6 +1722,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     inline-size: 100%;
     min-block-size: 80px;
     max-block-size: 50vh;
+    max-block-size: 50dvh;
     box-sizing: border-box;
     margin: 0 0 8px;
     padding: 9px 12px;
@@ -3457,6 +3458,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     left: max(12px, env(safe-area-inset-left, 0px));
     top: max(72px, env(safe-area-inset-top, 0px));
     max-width: min(var(--maxWidth, calc(90vh * 0.666)), 42vw);
+    max-width: min(var(--maxWidth, calc(90dvh * 0.666)), 42vw);
 }
 
 @media (max-width: 768px) {
@@ -3465,6 +3467,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         right: auto;
         top: max(64px, env(safe-area-inset-top, 0px));
         max-width: min(90vw, calc(70vh * 0.666));
+        max-width: min(90vw, calc(70dvh * 0.666));
         transform: translateX(-50%);
     }
 }

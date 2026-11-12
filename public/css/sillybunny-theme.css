@@ -1564,6 +1564,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     height: auto;
     field-sizing: content;
     max-height: min(50vh, 28rem);
+    max-height: min(50dvh, 28rem);
     overflow-y: auto;
     padding: 6px 12px;
     line-height: 1.28;
@@ -3025,6 +3026,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     display: block;
     min-height: var(--sb-field-min-height);
     max-height: min(320px, 42vh);
+    max-height: min(320px, 42dvh);
     overflow-x: hidden;
     overflow-y: auto;
     background-color: var(--sb-layer-popover);

@@ -905,6 +905,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     .sb-universal-search .sb-search-results {
         max-height: min(300px, 44vh);
+        max-height: min(300px, 44dvh);
         padding: 8px;
     }
 
@@ -1173,6 +1174,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     .sb-search-results {
         max-height: min(220px, 32vh);
+        max-height: min(220px, 32dvh);
         padding: 8px;
     }
 
@@ -1940,6 +1942,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         right: 10px;
         width: calc(100vw - 20px);
         max-height: 50vh;
+        max-height: 50dvh;
     }
 
     .streaming-display-minimized.streaming-display {
@@ -1967,6 +1970,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     .streaming-display-reasoning-content {
         font-size: 0.77em;
         max-height: 15vh;
+        max-height: 15dvh;
     }
 
     .streaming-display-text {
@@ -1976,6 +1980,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     .streaming-display-text-content {
         font-size: 0.82em;
         max-height: 20vh;
+        max-height: 20dvh;
     }
 
     .streaming-display-btn {

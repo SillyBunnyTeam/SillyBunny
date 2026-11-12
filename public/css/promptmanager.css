@@ -1328,7 +1328,9 @@
         max-width: 480px;
         min-height: min-content;
         height: min(90vh, 900px);
+        height: min(90dvh, 900px);
         max-height: min(90vh, 900px);
+        max-height: min(90dvh, 900px);
     }
 
     #completion_prompt_manager:not(.completion_prompt_manager_has_editor) .completion_prompt_manager_list_pane {
@@ -1344,6 +1346,7 @@
         height: 0;
         min-height: 140px;
         max-height: min(74vh, 760px);
+        max-height: min(74dvh, 760px);
         overflow-y: auto;
         padding-right: 4px;
     }
@@ -1358,7 +1361,9 @@
         flex-direction: column;
         min-height: 0;
         height: min(90vh, 900px);
+        height: min(90dvh, 900px);
         max-height: min(90vh, 900px);
+        max-height: min(90dvh, 900px);
         padding: 0;
         border-radius: var(--sb-radius-md, 16px);
         border: 1px solid transparent;
@@ -1505,6 +1510,7 @@
            editor pane rather than collapsing to its default 2-row intrinsic height. — feat/v1.9.0-ui-overhaul */
         flex: 1 1 auto;
         min-height: clamp(220px, 32vh, 420px);
+        min-height: clamp(220px, 32dvh, 420px);
     }
 
     #completion_prompt_manager .completion_prompt_manager_editor_host #completion_prompt_manager_depth_block[style*="visibility: hidden"],

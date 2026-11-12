@@ -14,6 +14,7 @@
 .ds-row[data-sb-editor-field='token-counter-input'] textarea {
     box-sizing: border-box;
     min-height: clamp(9rem, 35vh, 24rem);
+    min-height: clamp(9rem, 35dvh, 24rem);
     resize: vertical;
 }
 

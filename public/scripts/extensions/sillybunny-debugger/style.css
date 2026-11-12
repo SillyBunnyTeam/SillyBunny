@@ -19,6 +19,7 @@
 .sbdbg-report-text {
     width: 100%;
     min-height: 40vh;
+    min-height: 40dvh;
     font-family: monospace;
     font-size: 0.8em;
     white-space: pre;

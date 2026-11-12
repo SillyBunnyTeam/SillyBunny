@@ -2873,6 +2873,7 @@ body:not(.movingUI) .drawer-content.maximized {
 .sb-console-log-output {
     min-height: 420px;
     max-height: min(72vh, 920px);
+    max-height: min(72dvh, 920px);
     tab-size: 4;
 }
 
@@ -4793,7 +4794,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 /* ── Mode dropdown (GNOME-style) ── */
 #sb-mode-menu {
     position: fixed;
-    left: var(--sb-mode-menu-left, 8px);
+    left: max(var(--sb-mode-menu-left, 8px), calc(env(safe-area-inset-left, 0px) + 8px));
     top: var(--sb-mode-menu-top, 48px);
     min-width: 220px;
     max-width: min(280px, calc(100vw - 16px));
@@ -7319,6 +7320,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     width: 100%;
     min-height: 8lh;
     max-height: 55vh;
+    max-height: 55dvh;
     overflow-y: auto;
     resize: vertical;
 }
@@ -10661,6 +10663,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
 .sb-inline-select-picker-menu {
     width: 100%;
     max-height: min(320px, 60vh);
+    max-height: min(320px, 60dvh);
     margin-top: 8px;
     padding: 6px;
     overflow: auto;
@@ -10788,6 +10791,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
 [data-sb-connections-panel] .select2-container--default .select2-results__options,
 .sb-legacy-api-drawer .select2-container--default .select2-results__options {
     max-height: min(320px, 60vh);
+    max-height: min(320px, 60dvh);
     padding: 2px;
 }
 

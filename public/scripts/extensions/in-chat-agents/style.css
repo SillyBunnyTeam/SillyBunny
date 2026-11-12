@@ -1114,6 +1114,7 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     margin: 10px 0 0;
     padding-inline-start: 20px;
     max-height: 40vh;
+    max-height: 40dvh;
     overflow-y: auto;
     text-align: start;
     font-size: calc(var(--mainFontSize) * 0.9);

@@ -327,6 +327,7 @@ body.sb-has-side-panel-sheet #form_sheld {
     max-height: min(50vh, 50dvh, calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize)) - var(--bottomFormBlockSize) - 100px));
     flex: none;
     overflow: hidden;
+    padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
     border: 1px solid var(--SmartThemeBorderColor);
     border-bottom: 0;
     border-radius: var(--sb-radius-overlay, 15px) var(--sb-radius-overlay, 15px) 0 0;
