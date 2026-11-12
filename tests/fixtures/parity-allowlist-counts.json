@@ -1,14 +1,14 @@
 {
     "version": 1,
     "temporary": {
-        "settings": 110,
-        "list": 293,
-        "editor": 111,
+        "settings": 111,
+        "list": 282,
+        "editor": 108,
         "dialog": 17,
-        "menu": 640,
-        "header": 210,
-        "panel": 6,
-        "status": 105,
+        "menu": 638,
+        "header": 209,
+        "panel": 5,
+        "status": 103,
         "home": 1
     }
 }
