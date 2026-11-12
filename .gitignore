@@ -81,3 +81,21 @@ screenshots/sillybunny-ui-polish-mobile-workspace.png
 # Local Agent Skills
 .agents/
 skills-lock.json
+
+# SillyBunny: keep the Android app's downloaded runtime packages and generated native payloads out of source control.
+/android/runtime/out/
+/android/runtime/cache/
+
+# SillyBunny: keep the Android app's local SDK settings and generated Gradle/Kotlin outputs out of source control.
+/android/.gradle/
+/android/.kotlin/
+/android/build/
+/android/app/build/
+/android/local.properties
+
+# SillyBunny: keep the Android app's staged Node and npm runtime inputs out of source control.
+/android/runtime/node-out/
+/android/runtime/npm-out/
+
+# SillyBunny: keep the Python bytecode the Android runtime tools write out of source control.
+/android/runtime/__pycache__/

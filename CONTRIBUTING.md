@@ -155,6 +155,19 @@ When upstream SillyTavern publishes a new release tag:
 
 Native Termux contributors should use `bash start-termux-node.sh` for Node.js + npm unless specifically testing Bun behaviour; use `bash start-termux-bun.sh` when checking Bun-specific behaviour.
 
+## TODO(copy)
+
+<!--
+MANDATORY: maintainers write this section about the Android app. It is a placeholder (docs/android-apk-plan.md §8 and §9.13).
+Cover:
+- Building android/ locally: JDK 21 and the SDK and NDK versions pinned in android/app/build.gradle.kts (step 4 of the setup above), then ./gradlew assembleDebug from android/.
+- Running the Android smoke locally: node tests/android-smoke/run-smoke.js, as AGENTS.md describes.
+- The bump rules: android/app-version.properties (see Release process), android/min-app-version, and android/runtime.lock with its digest pull requests.
+- The corresponding-source and GPL obligations: each APK release attaches the sources archive, and the input mirror keeps the pinned Termux packages together with their sources.
+-->
+
+TODO(copy)
+
 ## Getting the code ready
 
 1. Register a GitHub account.

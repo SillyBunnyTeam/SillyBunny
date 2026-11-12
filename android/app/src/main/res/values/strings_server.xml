@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server foreground service notification (task 5.4). -->
+    <string name="server_notification_channel">Server status</string>
+    <string name="server_notification_title">SillyBunny server</string>
+    <string name="server_notification_running">Running on this device. Tap to open.</string>
+    <string name="server_notification_setup">Getting ready. Tap to see progress.</string>
+    <string name="server_notification_stop">Stop server</string>
+</resources>

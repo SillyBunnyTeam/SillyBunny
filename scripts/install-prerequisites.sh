@@ -28,6 +28,11 @@ while (($#)); do
     shift
 done
 
+# APK mode bundles Git, Node.js, Bun, npm and bash; its shell lacks download tools.
+if [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]; then
+    exit 0
+fi
+
 OS_NAME="$(uname -s 2>/dev/null || echo unknown)"
 BUN_INSTALL_DIR="${BUN_INSTALL:-$HOME/.bun}"
 TERMUX_PREFIX_DEFAULT='/data/data/com.termux/files/usr'

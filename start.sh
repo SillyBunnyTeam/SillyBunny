@@ -19,7 +19,19 @@ is_truthy() {
     esac
 }
 
+# SillyBunny: the Android app (android/) sets this. It bundles git, Node.js and
+# npm, so it skips the Termux, prerequisite and runtime detection paths.
+is_android_app() {
+    [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]
+}
+
 is_termux() {
+    # SillyBunny: the Android app ships its own tools and paths, so it never takes
+    # the Termux paths, even with a Termux variable set.
+    if is_android_app; then
+        return 1
+    fi
+
     [[ -n "${TERMUX_VERSION:-}" || "${PREFIX:-}" == /data/data/com.termux/files/usr ]]
 }
 
@@ -47,6 +59,11 @@ prefer_node_runtime() {
     # Forced Bun override for users who accept the ARM/macOS CPU tradeoff
     if is_truthy "${SILLYBUNNY_USE_BUN:-}"; then
         return 1
+    fi
+
+    # SillyBunny: the APK bundles Node.js but not Bun.
+    if is_android_app; then
+        return 0
     fi
 
     # Termux always prefers Node unless overridden
@@ -183,7 +200,11 @@ if (( auto_update_enabled )) && [[ -d "$SCRIPT_DIR/.git" ]]; then
     prereq_args+=(--require-git)
 fi
 
-if (( ${#prereq_args[@]} )); then
+if is_android_app; then
+    # SillyBunny: the APK ships every prerequisite, and the download tools the
+    # installer relies on may not exist on Android.
+    :
+elif (( ${#prereq_args[@]} )); then
     bash "$SCRIPT_DIR/scripts/install-prerequisites.sh" "${prereq_args[@]}"
 else
     bash "$SCRIPT_DIR/scripts/install-prerequisites.sh"

@@ -4,6 +4,8 @@ import { sync as commandExistsSync } from 'command-exists';
 // SillyBunny: simple-git 4 has no default export.
 import { simpleGit } from 'simple-git';
 import { isBunRuntime } from '../runtime.js';
+// SillyBunny: simple-git 4 removes the GIT_* variables that the Android app needs to pass to git.
+import { getAndroidAppGitOptions } from '../android-app-gate.js';
 
 /** @type {{ AUTO: 'auto', SYSTEM: 'system', BUILTIN: 'builtin' }} */
 export const GIT_BACKENDS = {
@@ -86,7 +88,8 @@ export function createGitClient(options = {}) {
 class SimpleGitClient {
     constructor() {
         this.backend = GIT_BACKENDS.SYSTEM;
-        this.git = simpleGit();
+        // SillyBunny: simple-git 4 removes the GIT_* variables that the Android app needs to pass to git.
+        this.git = simpleGit(getAndroidAppGitOptions());
     }
 
     /**

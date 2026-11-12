@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000;text-decoration:none}</style>
+<title>fixture-clipboard</title></head><body>
+<textarea id="src" style="height:40px;margin:6px 8px">fixture-exec-copy</textarea>
+<button class="b" id="write-text">write text</button>
+<button class="b" id="exec-copy">exec copy</button>
+<button class="b" id="read-text">read text</button>
+<button class="b" id="write-png">write png</button>
+<button class="b" id="write-late">write late</button>
+<script>
+window.results = {};
+function track(key, run) {
+  results[key] = 'pending';
+  let p;
+  try { p = run(); } catch (e) { results[key] = 'throw:' + e.name; return; }
+  Promise.resolve(p).then(
+    (v) => { results[key] = 'ok' + (typeof v === 'string' ? ':' + v : ''); },
+    (e) => { results[key] = 'err:' + (e && e.name); });
+}
+document.getElementById('write-text').onclick = () => {
+  const v = 'fixture-clip-' + Math.random().toString(36).slice(2);
+  results.written = v;
+  track('writeText', () => navigator.clipboard.writeText(v));
+};
+document.getElementById('exec-copy').onclick = () => {
+  const t = document.getElementById('src');
+  t.focus();
+  t.select();
+  results.execCopy = String(document.execCommand('copy'));
+};
+document.getElementById('read-text').onclick = () => track('readText', () => navigator.clipboard.readText());
+document.getElementById('write-png').onclick = () => track('writePng', () => {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard || !navigator.clipboard.write) {
+    const e = new Error('no ClipboardItem');
+    e.name = 'Unsupported';
+    throw e;
+  }
+  return navigator.clipboard.write([new ClipboardItem({ 'image/png': fetch('/png').then((r) => r.blob()) })]);
+});
+document.getElementById('write-late').onclick = () => {
+  results.writeLate = 'waiting';
+  setTimeout(() => track('writeLate', () => navigator.clipboard.writeText('fixture-late')), 6000);
+};
+function writeWithoutGesture() { track('writeNoGesture', () => navigator.clipboard.writeText('fixture-no-gesture')); }
+</script>
+</body></html>

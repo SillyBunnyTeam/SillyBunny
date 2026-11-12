@@ -640,17 +640,18 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-26 PR #638 review follow-up. |
 | Owner | Extension maintainer. |
 
-### `public/scripts/extensions/quick-image-gen/index.js` - Conversation selfie readiness guard (fork seam reference)
+### `public/scripts/extensions/quick-image-gen/index.js` - Conversation selfie readiness guard (fork seam reference) and unconfirmed sync id claim
 | Field | Value |
 | --- | --- |
-| Area | Extension boot and image-generation integration. |
-| Divergence reason | SillyBunny Conversation selfie actions can fire before Quick Image Gen finishes booting, so the fork needs a small readiness gate rather than duplicating QIG init state in Conversation modules. |
-| Target seam | `public/scripts/sillybunny-conversation/media.js`. |
-| Adapter shape | Keep QIG changes limited to exporting `ensureQuickImageGenReady()`; keep Conversation modules responsible for when to await it. |
-| Protecting tests | `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-image-safety.test.js`. |
-| Validation | `npm run test:unit --prefix tests -- conversation-mode-scoped-profile.test.js sillybunny-conversation-image-safety.test.js`, `node --check public/scripts/extensions/quick-image-gen/index.js`. |
-| Rollback path | Remove the readiness helper export and revert Conversation callers to direct QIG access if boot timing changes upstream. |
-| Last reviewed | 2026-07-26 PR #638 review follow-up. |
+| File | `public/scripts/extensions/quick-image-gen/index.js`. |
+| Area | Extension boot, image-generation integration, and the settings sync cache id. |
+| Divergence reason | SillyBunny Conversation selfie actions can fire before Quick Image Gen finishes booting, so the fork needs a small readiness gate rather than duplicating QIG init state in Conversation modules. It also keeps an unconfirmed claim on a new sync id for the server user who wrote it, so that its own browser caches do not look like legacy data, and ask to be imported, on every boot while the host skips settings saves, for example until the user answers the Welcome prompt. |
+| Target seam | `public/scripts/sillybunny-conversation/media.js` for the readiness guard; none yet for the unconfirmed sync id claim. |
+| Adapter shape | Keep the readiness guard limited to exporting `ensureQuickImageGenReady()`; keep Conversation modules responsible for when to await it. The unconfirmed sync id claim stays inside QIG. `UNCONFIRMED_SYNC_CACHE_ID_KEY` (`qig_sync_cache_id_unconfirmed` in `localStorage`) holds `{ id, user }`. `initializeQuickImageGen()` imports `getCurrentUserHandle()` from `public/scripts/user.js` before `loadSettings()`. `loadSettings()` reuses the claimed id as `_syncCacheId` only when the server has no `_syncCacheId`, `qig_sync_cache_id` is empty and the claim's user is the current user; it then skips the legacy-import question and may seed from this browser's caches. Otherwise it removes the claim. When the server has no `_syncCacheId`, it writes the claim before its cache writes, unless the legacy import was declined or local cache writes are blocked. `removeUnconfirmedClaimWhenSaved()` removes the claim after a host `SETTINGS_UPDATED` event once `confirmSyncCacheIdSaved()` confirms that the server stored the id. Each block carries a `SillyBunny divergence:` marker. |
+| Protecting tests | `tests/conversation-mode-scoped-profile.test.js`, `tests/sillybunny-conversation-image-safety.test.js`, `tests/quick-image-gen-legacy-import.test.js`. |
+| Validation | `npm run test:unit --prefix tests -- quick-image-gen-legacy-import.test.js conversation-mode-scoped-profile.test.js` (three legacy-import tests fail when `loadSettings()` ignores the claim), `node --check public/scripts/extensions/quick-image-gen/index.js`. Not checked in a browser. |
+| Rollback path | Remove the readiness helper export and revert Conversation callers to direct QIG access if boot timing changes upstream. For the claim, revert the hunks that use `getCurrentUserHandle`, `UNCONFIRMED_SYNC_CACHE_ID_KEY`, `unconfirmedCacheId` or `removeUnconfirmedClaimWhenSaved()`; boots then ask the legacy-import question again while the host skips settings saves. Nothing reads a `qig_sync_cache_id_unconfirmed` key left in `localStorage`, and no server data changes. |
+| Last reviewed | 2026-11-11 PR #918 Android APK. |
 | Owner | Extension maintainer. |
 
 ### `public/scripts/extensions/in-chat-agents/companion/companion-panel.js` and `public/scripts/welcome-screen.js` - Conversation UI coexistence guards
@@ -823,14 +824,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Field | Value |
 | --- | --- |
 | File | `src/endpoints/content-manager.js`, `src/server-init.js`, `src/server-main.js`, `src/util.js`, `src/plugin-loader.js`. |
-| Area | Install, defaults, server lifecycle, and runtime utilities. |
-| Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. |
-| Target seam | `src/server-init.js`, `src/server-directory.js`, `src/runtime.js`, and the bundled-content helpers in `content-manager.js`. |
-| Adapter shape | Keep startup order and upstream routes stable; isolate default synchronization and fork content reconciliation behind small helpers. |
-| Protecting tests | CI `bun src/server-init.js` smoke, `tests/default-preset-deletions.test.js`, `tests/sillybunny-launcher-smol.test.js`, and root lint. |
-| Validation | `npm run init`, `node --check src/server-init.js`, `node --check src/server-main.js`, `npm run lint`. |
-| Rollback path | Revert default/content reconciliation while retaining upstream config initialization and server startup. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Area | Install, defaults, server lifecycle, runtime utilities, and Android app runtime. |
+| Divergence reason | SillyBunny synchronizes ignored default files, manages fork-owned bundled content, and adds runtime/server safeguards while preserving upstream startup contracts. When the Android app starts the server with `SILLYBUNNY_LAUNCH_TOKEN`, the server must refuse requests that do not carry that token, so other apps on the device cannot use it. |
+| Target seam | `src/server-init.js`, `src/server-directory.js`, `src/runtime.js`, the bundled-content helpers in `content-manager.js`, and `src/middleware/launchToken.js` for launch authentication, health probes, and browser handoff. |
+| Adapter shape | Keep startup order and upstream routes stable; isolate default synchronization and fork content reconciliation behind small helpers. In `src/server-main.js`, mount `createLaunchTokenMiddleware()` immediately after helmet and exempt `LAUNCH_COOKIE_NAME` from `/api/cookies/clear` only while enabled. Both hooks are inert unless `SILLYBUNNY_LAUNCH_TOKEN` is non-empty. |
+| Protecting tests | CI `bun src/server-init.js` smoke, `tests/default-preset-deletions.test.js`, `tests/sillybunny-launcher-smol.test.js`, `tests/launch-token.test.js`, `tests/launch-token-server-wiring.test.js`, and root lint. |
+| Validation | Android hooks: `node --check src/server-main.js`, `npm run test:unit --prefix tests -- launch-token.test.js launch-token-server-wiring.test.js`. Existing initialization checks: `npm run init`, `node --check src/server-init.js`, `npm run lint`. |
+| Rollback path | Revert default/content reconciliation while retaining upstream config initialization and server startup. For the Android hooks, remove the `createLaunchTokenMiddleware()` mount after `helmet()` and the `LAUNCH_COOKIE_NAME` exemption in `/api/cookies/clear` in `src/server-main.js`, then delete `src/middleware/launchToken.js` and its tests. The server then accepts requests without a launch token and stops serving `/__sillybunny/health` and `/__sillybunny/handoff`, which the Android app uses for its health probe and browser handoff. The Android hooks write no saved data. |
+| Last reviewed | 2026-10-21, PR SillyBunnyTeam/SillyBunny#918 (Android hooks; prior initialization review 2026-07-28). |
 | Owner | Runtime and release integrator. |
 
 ### Chat backups, characters, and thumbnails
@@ -847,10 +848,24 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-07-28 pre-release audit. |
 | Owner | Chat and media integrator. |
 
+### `start.sh` - Android app runtime
+| Field | Value |
+| --- | --- |
+| File | `start.sh` |
+| Area | Android app runtime. |
+| Divergence reason | The Android app bundles Node.js, git and npm but not Bun. SillyBunny must make `start.sh` skip Termux detection and the prerequisite installer and default to Node.js when `SILLYBUNNY_ANDROID_APP=1`, because the app ships its own tools and the installer relies on download tools that may not exist on Android. |
+| Target seam | `scripts/install-prerequisites.sh`, `scripts/self-update.sh`, and `scripts/dependency-state.js` own setup, updates, and dependencies; no separate seam yet for APK runtime selection. |
+| Adapter shape | Keep `is_android_app()` guards around Termux detection, runtime fallback, and the prerequisite call. Honor Node/Bun overrides, otherwise default APK launches to Node; keep existing update/dependency helper calls. APK branches are inert unless `SILLYBUNNY_ANDROID_APP=1`. |
+| Protecting tests | `tests/android-app-mode-scripts.test.js`, `tests/sillybunny-launcher-smol.test.js`. |
+| Validation | `bash -n start.sh`, `npm run test:unit --prefix tests -- android-app-mode-scripts.test.js sillybunny-launcher-smol.test.js` (shell cases require a POSIX host). |
+| Rollback path | Remove `is_android_app()` and its guards in `start.sh`: the early return in `is_termux()`, the Node.js default in `prefer_node_runtime()` and the skip of `scripts/install-prerequisites.sh`. The Android app then runs the prerequisite installer, whose download tools may not exist on Android. No saved data changes. |
+| Last reviewed | 2026-10-21, PR SillyBunnyTeam/SillyBunny#918. |
+| Owner | Runtime and release integrator. |
+
 ### Repository policy, launchers, packaging, and build infrastructure
 | Field | Value |
 | --- | --- |
-| File | Root upstream-origin files, `.github/**`, `docker/**`, `package.json`, lockfiles, launcher scripts, `webpack.config.js`, and repository policy/setup documents. |
+| File | Root upstream-origin files, `.github/**`, `docker/**`, `package.json`, lockfiles, launcher scripts, `webpack.config.js`, and repository policy/setup documents not named by a narrower active entry. |
 | Area | Release policy, packaging, launch, CI, container runtime, and project identity. |
 | Divergence reason | SillyBunny carries fork branch policy, branding, Bun-first and Node-compatible launch paths, constrained installs, release automation, and container defaults. |
 | Target seam | `.github/workflows/`, launcher scripts, `scripts/dependency-state.js`, `src/runtime.js`, and Docker entrypoints. |
@@ -972,6 +987,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Restore the default import in each file: `import { default as git, CheckRepoActions } from 'simple-git'` in `plugins.js` and `src/plugin-loader.js`, `import { default as simpleGit } from 'simple-git'` in `src/util.js`, `import { CheckRepoActions, default as simpleGit } from 'simple-git'` in `src/endpoints/extensions.js`, and `import simpleGit from 'simple-git'` in `src/git/client.js`. simple-git 4 removes the default export, so do this only on simple-git 3. No saved data changes. |
 | Last reviewed | 2026-10-24 simple-git 4 upgrade. |
 | Owner | Server runtime integrator. |
+
+### simple-git environment in the Android app
+| Field | Value |
+| --- | --- |
+| File | `src/util.js`, `src/plugin-loader.js`, `src/endpoints/extensions.js`, `src/git/client.js`. |
+| Area | Git integration for version info, server plugin updates, extensions and the git backend client in the Android app. |
+| Divergence reason | The Android app gives git its paths, CA bundle and identity only through `GIT_*` environment variables, and simple-git 4 removes every inherited `GIT_*` variable that `allowEnvironment` does not name. Without them, git in the app cannot find its helpers or verify https, and commits and stashes have no identity, so Server Tools, extension and server plugin updates fail. |
+| Target seam | `getAndroidAppGitOptions()` in `src/android-app-gate.js`. |
+| Adapter shape | Each file imports `getAndroidAppGitOptions()` and passes its result to simple-git: spread into the options of `simpleGit()` in `getVersion()` in `src/util.js` and into `OPTIONS` in `src/endpoints/extensions.js`, as the second argument of `git()` in `updatePlugins()` in `src/plugin-loader.js`, and as the argument of `simpleGit()` in the `SimpleGitClient` constructor in `src/git/client.js`. Outside the Android app it returns an empty object, so these calls keep simple-git's environment guard as upstream does. |
+| Protecting tests | `tests/android-app-git-environment.test.js` checks the `allowEnvironment` option at each simple-git call site in these files and in `src/endpoints/server-admin.js`, in and outside app mode. `tests/android-app-gate.test.js` checks with the real simple-git and git that the inherited git variables reach git only in app mode. |
+| Validation | `npm run test:unit --prefix tests -- android-app-gate.test.js android-app-git-environment.test.js plugin-loader.test.js extensions-discover.test.js extensions-bundled-third-party.test.js server-admin-android-gate.test.js util.test.js`, `npx eslint` on the changed files. Not run in the Android app. |
+| Rollback path | Remove the `getAndroidAppGitOptions` import and its use in each file: `simpleGit({ baseDir: serverDirectory })` in `src/util.js`, `git(pluginPath)` in `src/plugin-loader.js`, `Object.freeze({ timeout: { block: 5 * 60 * 1000 } })` in `src/endpoints/extensions.js` and `simpleGit()` in `src/git/client.js`. In the Android app, git then loses its exec path, CA bundle and identity again, so its fetches, clones and pulls over https fail there. No saved data changes. |
+| Last reviewed | 2026-11-11 PR #918 Android APK. |
+| Owner | Runtime and release integrator. |
 
 ### Upstream test harness and dependency metadata
 | Field | Value |

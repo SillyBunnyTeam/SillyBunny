@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fixture-openrouter</title></head><body><h1>openrouter</h1>
+<script>
+window.results = {};
+// Like authorizeOpenRouter in public/scripts/secrets.js: the provider's /auth with the app's own callback, here the
+// fixture provider instead of https://openrouter.ai. With mode '302' the provider sends the browser straight back.
+function signIn(mode, callback) {
+  const url = new URL('http://provider.localhost:{{PROVIDER}}/auth');
+  if (mode) url.searchParams.set('mode', mode);
+  url.searchParams.set('callback_url', callback || new URL('/callback/openrouter', location.origin).toString());
+  url.searchParams.set('code_challenge', 'fixture-challenge');
+  url.searchParams.set('code_challenge_method', 'S256');
+  location.href = url.toString();
+}
+// A sign-in whose callback is not the app's own: another origin of the same server.
+function signInElsewhere() {
+  signIn('', 'http://127.0.0.1:{{PORT}}/callback/openrouter');
+}
+</script>
+</body></html>

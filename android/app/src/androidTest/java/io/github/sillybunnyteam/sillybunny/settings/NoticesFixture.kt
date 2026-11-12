@@ -1,0 +1,93 @@
+package io.github.sillybunnyteam.sillybunny.settings
+
+import java.util.Base64
+
+/**
+ * A THIRD_PARTY_NOTICES pair produced by `android/runtime/notices.py`'s own `render()` and serialized the
+ * way its `publish()` writes the index. It covers a null SPDX, two licenses in one component and an
+ * ISO-8859-1 license beside UTF-8 ones.
+ */
+object NoticesFixture {
+    private const val TEXT_BASE64 =
+        "VEhJUkRfUEFSVFlfTk9USUNFUwoKIyMgYW5kcm9pZAoKIyMgbm9kZQoKIyMjIG5vZGUKdmVyc2lvbjogMjQuMjIuMApTUERYOiBN" +
+        "SVQKc291cmNlVXJsOiBodHRwczovL25vZGVqcy5vcmcvZGlzdC92MjQuMjIuMC8KCiMjIyMgTElDRU5TRQoKTm9kZS5qcyBmaXh0" +
+        "dXJlIE1JVCB0ZXh0CgoKIyMgbnBtCgojIyMgZml4dHVyZS1wa2cKdmVyc2lvbjogMi4wLjAKc291cmNlVXJsOiBodHRwczovL3Jl" +
+        "Z2lzdHJ5Lm5wbWpzLm9yZy9maXh0dXJlLXBrZwoKIyMjIyBMSUNFTlNFCgpmaXh0dXJlLXBrZyBsaWNlbnNlIGxpbmUKCgojIyMj" +
+        "IE5PVElDRQoKZml4dHVyZS1wa2cgbm90aWNlIOKckwoKCiMjIHRlcm11eAoKIyMjIGJhc2gKdmVyc2lvbjogNS4zLjIwClNQRFg6" +
+        "IEdQTC0zLjAtb3ItbGF0ZXIKc291cmNlVXJsOiBodHRwczovL2dpdGh1Yi5jb20vdGVybXV4L3Rlcm11eC1wYWNrYWdlcwoKIyMj" +
+        "IyBiYXNoL0NPUFlJTkcKCkdOVSBHRU5FUkFMIFBVQkxJQyBMSUNFTlNFCmZpeHR1cmUgYmFzaCB0ZXh0CgoKIyMjIGxpYmZpeHR1" +
+        "cmUKdmVyc2lvbjogMS4wLjAKU1BEWDogQ0VDSUxMLTIuMQpzb3VyY2VVcmw6IGh0dHBzOi8vZ2l0aHViLmNvbS90ZXJtdXgvdGVy" +
+        "bXV4LXBhY2thZ2VzCgojIyMjIGxpYmZpeHR1cmUvTElDRU5TRQoKTGljZW5jZSBDZUNJTEwgZml4dHVyZSDpdOkKCgo="
+
+    private const val INDEX_BASE64 =
+        "ewogICAgImNvbXBvbmVudHMiOiBbCiAgICAgICAgewogICAgICAgICAgICAiaWQiOiAibm9kZSIsCiAgICAgICAgICAgICJsZW5n" +
+        "dGgiOiAxMjMsCiAgICAgICAgICAgICJsaWNlbnNlcyI6IFsKICAgICAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgICAgICAi" +
+        "ZW5jb2RpbmciOiAidXRmLTgiLAogICAgICAgICAgICAgICAgICAgICJsZW5ndGgiOiAyNSwKICAgICAgICAgICAgICAgICAgICAi" +
+        "b2Zmc2V0IjogMTM4LAogICAgICAgICAgICAgICAgICAgICJwYXRoIjogIkxJQ0VOU0UiLAogICAgICAgICAgICAgICAgICAgICJz" +
+        "aGEyNTYiOiAiNmJhYjQ0ZTZjYWJmOWY2MTcyN2Q0OTIxYTRmOGRlMTY5ZDE2ZTBlZTU2OWU0OGE0ZWMwY2VlODI1MTkwYTJjMSIK" +
+        "ICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgXSwKICAgICAgICAgICAgIm5hbWUiOiAibm9kZSIsCiAgICAgICAgICAgICJv" +
+        "ZmZzZXQiOiA0MiwKICAgICAgICAgICAgInNlY3Rpb24iOiAibm9kZSIsCiAgICAgICAgICAgICJzb3VyY2VVcmwiOiAiaHR0cHM6" +
+        "Ly9ub2RlanMub3JnL2Rpc3QvdjI0LjIyLjAvIiwKICAgICAgICAgICAgInNwZHgiOiAiTUlUIiwKICAgICAgICAgICAgInZlcnNp" +
+        "b24iOiAiMjQuMjIuMCIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICAgImlkIjogIm5wbS9maXh0dXJlLXBrZyIsCiAg" +
+        "ICAgICAgICAgICJsZW5ndGgiOiAxNjEsCiAgICAgICAgICAgICJsaWNlbnNlcyI6IFsKICAgICAgICAgICAgICAgIHsKICAgICAg" +
+        "ICAgICAgICAgICAgICAiZW5jb2RpbmciOiAidXRmLTgiLAogICAgICAgICAgICAgICAgICAgICJsZW5ndGgiOiAyNSwKICAgICAg" +
+        "ICAgICAgICAgICAgICAib2Zmc2V0IjogMjY5LAogICAgICAgICAgICAgICAgICAgICJwYXRoIjogIkxJQ0VOU0UiLAogICAgICAg" +
+        "ICAgICAgICAgICAgICJzaGEyNTYiOiAiNGRlNTcyMGRlZTY3NTM1ZGZkZGI3OGNjZDU5NWYwZjM0OTZkMjhmMjY5MWEyMmE3NDRh" +
+        "Nzg0YzJkNjVjYzQ3YyIKICAgICAgICAgICAgICAgIH0sCiAgICAgICAgICAgICAgICB7CiAgICAgICAgICAgICAgICAgICAgImVu" +
+        "Y29kaW5nIjogInV0Zi04IiwKICAgICAgICAgICAgICAgICAgICAibGVuZ3RoIjogMjMsCiAgICAgICAgICAgICAgICAgICAgIm9m" +
+        "ZnNldCI6IDMwOSwKICAgICAgICAgICAgICAgICAgICAicGF0aCI6ICJOT1RJQ0UiLAogICAgICAgICAgICAgICAgICAgICJzaGEy" +
+        "NTYiOiAiMWNhYTMyMTA2MTJmMWRjZjUxYzkzYTMzZjMzMGE4MmIxYWUyZDVkNDQzZmE2NDRmYmFjZGY0OGI0Mjg0YTMzMSIKICAg" +
+        "ICAgICAgICAgICAgIH0KICAgICAgICAgICAgXSwKICAgICAgICAgICAgIm5hbWUiOiAiZml4dHVyZS1wa2ciLAogICAgICAgICAg" +
+        "ICAib2Zmc2V0IjogMTczLAogICAgICAgICAgICAic2VjdGlvbiI6ICJucG0iLAogICAgICAgICAgICAic291cmNlVXJsIjogImh0" +
+        "dHBzOi8vcmVnaXN0cnkubnBtanMub3JnL2ZpeHR1cmUtcGtnIiwKICAgICAgICAgICAgInNwZHgiOiBudWxsLAogICAgICAgICAg" +
+        "ICAidmVyc2lvbiI6ICIyLjAuMCIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICAgImlkIjogInRlcm11eC9iYXNoIiwK" +
+        "ICAgICAgICAgICAgImxlbmd0aCI6IDE2OCwKICAgICAgICAgICAgImxpY2Vuc2VzIjogWwogICAgICAgICAgICAgICAgewogICAg" +
+        "ICAgICAgICAgICAgICAgICJlbmNvZGluZyI6ICJ1dGYtOCIsCiAgICAgICAgICAgICAgICAgICAgImxlbmd0aCI6IDQ1LAogICAg" +
+        "ICAgICAgICAgICAgICAgICJvZmZzZXQiOiA0NjYsCiAgICAgICAgICAgICAgICAgICAgInBhdGgiOiAiYmFzaC9DT1BZSU5HIiwK" +
+        "ICAgICAgICAgICAgICAgICAgICAic2hhMjU2IjogImRlMmVmMzc1YjEzZWU4NTg0MzcwZjZmMjg5OWJkY2UwYTVlYWExYmMzMDA1" +
+        "OTI5ZjdkNGFiNmE2OTY5NGRiOTEiCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIF0sCiAgICAgICAgICAgICJuYW1lIjog" +
+        "ImJhc2giLAogICAgICAgICAgICAib2Zmc2V0IjogMzQ1LAogICAgICAgICAgICAic2VjdGlvbiI6ICJ0ZXJtdXgiLAogICAgICAg" +
+        "ICAgICAic291cmNlVXJsIjogImh0dHBzOi8vZ2l0aHViLmNvbS90ZXJtdXgvdGVybXV4LXBhY2thZ2VzIiwKICAgICAgICAgICAg" +
+        "InNwZHgiOiAiR1BMLTMuMC1vci1sYXRlciIsCiAgICAgICAgICAgICJ2ZXJzaW9uIjogIjUuMy4yMCIKICAgICAgICB9LAogICAg" +
+        "ICAgIHsKICAgICAgICAgICAgImlkIjogInRlcm11eC9saWJmaXh0dXJlIiwKICAgICAgICAgICAgImxlbmd0aCI6IDE1NSwKICAg" +
+        "ICAgICAgICAgImxpY2Vuc2VzIjogWwogICAgICAgICAgICAgICAgewogICAgICAgICAgICAgICAgICAgICJlbmNvZGluZyI6ICJp" +
+        "c28tODg1OS0xIiwKICAgICAgICAgICAgICAgICAgICAibGVuZ3RoIjogMjcsCiAgICAgICAgICAgICAgICAgICAgIm9mZnNldCI6" +
+        "IDYzOSwKICAgICAgICAgICAgICAgICAgICAicGF0aCI6ICJsaWJmaXh0dXJlL0xJQ0VOU0UiLAogICAgICAgICAgICAgICAgICAg" +
+        "ICJzaGEyNTYiOiAiMDA0MjRmYjY0YzYwODk4YTZhODVkZGU4ODBlOTc5MTc1YTdhZjZiZTZiZTVjNzNkYjRiYTU2NmFmZGQyNGFh" +
+        "MiIKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgXSwKICAgICAgICAgICAgIm5hbWUiOiAibGliZml4dHVyZSIsCiAgICAg" +
+        "ICAgICAgICJvZmZzZXQiOiA1MTMsCiAgICAgICAgICAgICJzZWN0aW9uIjogInRlcm11eCIsCiAgICAgICAgICAgICJzb3VyY2VV" +
+        "cmwiOiAiaHR0cHM6Ly9naXRodWIuY29tL3Rlcm11eC90ZXJtdXgtcGFja2FnZXMiLAogICAgICAgICAgICAic3BkeCI6ICJDRUNJ" +
+        "TEwtMi4xIiwKICAgICAgICAgICAgInZlcnNpb24iOiAiMS4wLjAiCiAgICAgICAgfQogICAgXSwKICAgICJub3RpY2VzIjogewog" +
+        "ICAgICAgICJieXRlTGVuZ3RoIjogNjY4LAogICAgICAgICJmaWxlIjogIlRISVJEX1BBUlRZX05PVElDRVMiLAogICAgICAgICJz" +
+        "aGEyNTYiOiAiZDFlNDE5Y2FlZmVjMGY1MjhhYjU3Nzg4ZjQ1NjQ4MDA5ZWNhNzE0YzgxMWU3M2YyNGRlMTc4YzZkZDc0MzEyYyIK" +
+        "ICAgIH0sCiAgICAicnVudGltZUxvY2tTaGEyNTYiOiAiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh" +
+        "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsCiAgICAic2NoZW1hIjogMSwKICAgICJzZWN0aW9ucyI6IHsKICAgICAgICAiYW5kcm9p" +
+        "ZCI6IHsKICAgICAgICAgICAgImNvbXBvbmVudHMiOiBbXSwKICAgICAgICAgICAgImlucHV0U3RhdHVzIjogIm5vdC1zdXBwbGll" +
+        "ZCIsCiAgICAgICAgICAgICJzdGF0dXMiOiAibm90LXN1cHBsaWVkIgogICAgICAgIH0sCiAgICAgICAgIm5vZGUiOiB7CiAgICAg" +
+        "ICAgICAgICJjb21wb25lbnRzIjogWwogICAgICAgICAgICAgICAgIm5vZGUiCiAgICAgICAgICAgIF0sCiAgICAgICAgICAgICJp" +
+        "bnB1dFN0YXR1cyI6ICJwcm92aWRlZCIsCiAgICAgICAgICAgICJzdGF0dXMiOiAiYnVuZGxlZCIKICAgICAgICB9LAogICAgICAg" +
+        "ICJucG0iOiB7CiAgICAgICAgICAgICJjb21wb25lbnRzIjogWwogICAgICAgICAgICAgICAgIm5wbS9maXh0dXJlLXBrZyIKICAg" +
+        "ICAgICAgICAgXSwKICAgICAgICAgICAgImlucHV0U3RhdHVzIjogInByb3ZpZGVkIiwKICAgICAgICAgICAgInN0YXR1cyI6ICJi" +
+        "dW5kbGVkIgogICAgICAgIH0sCiAgICAgICAgInRlcm11eCI6IHsKICAgICAgICAgICAgImNvbXBvbmVudHMiOiBbCiAgICAgICAg" +
+        "ICAgICAgICAidGVybXV4L2Jhc2giLAogICAgICAgICAgICAgICAgInRlcm11eC9saWJmaXh0dXJlIgogICAgICAgICAgICBdLAog" +
+        "ICAgICAgICAgICAiaW5wdXRTdGF0dXMiOiAicHJvdmlkZWQiLAogICAgICAgICAgICAic3RhdHVzIjogImJ1bmRsZWQiCiAgICAg" +
+        "ICAgfQogICAgfSwKICAgICJzb3VyY2VzTG9ja1NoYTI1NiI6ICJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJi" +
+        "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiIgp9Cg=="
+
+    val text: ByteArray get() = Base64.getDecoder().decode(TEXT_BASE64)
+
+    val index: ByteArray get() = Base64.getDecoder().decode(INDEX_BASE64)
+
+    val indexJson: String get() = String(index, Charsets.UTF_8)
+
+    /** Component ids in index order, as the generator sorts them. */
+    val componentIds = listOf("node", "npm/fixture-pkg", "termux/bash", "termux/libfixture")
+
+    fun source(index: ByteArray? = this.index, text: ByteArray? = this.text) = NoticesSource { name ->
+        when (name) {
+            ThirdPartyNotices.INDEX_ASSET -> index?.inputStream()
+            ThirdPartyNotices.NOTICES_ASSET -> text?.inputStream()
+            else -> null
+        }
+    }
+}
