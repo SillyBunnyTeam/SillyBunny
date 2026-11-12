@@ -197,12 +197,14 @@
     /* Shell layer ladder; forced opaque below where rgb(from) is supported. */
     --sb-layer-view-source: var(--SmartThemeChatTintColor);
     --sb-layer-window-source: var(--SmartThemeBlurTintColor);
-    --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
+    /* The mixes give libadwaita's role colours on the bundled dark theme, whose 0.9 BlurTint alpha color-mix() weighs in:
+       header bar and sidebar #2e2e32, popover and dialog #36363a, toast #505053. */
+    --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
     --sb-layer-headerbar-source: var(--sb-layer-canvas-source);
     --sb-layer-drawer-source: var(--sb-layer-headerbar-source);
-    --sb-layer-popover-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
+    --sb-layer-popover-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 91.8%, var(--SmartThemeBodyColor) 8.2%);
     --sb-layer-dialog-source: var(--sb-layer-popover-source);
-    --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 80%, var(--SmartThemeBodyColor) 20%);
+    --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 81%, var(--SmartThemeBodyColor) 19%);
     /* Bottom toolbar (Roleplay composer stack, Conversation composer). Anchored to Canvas so a
        light SmartThemeChatTintColor does not produce a white bar in dark mode. */
     --sb-layer-bottombar-source: var(--sb-layer-canvas-source);
@@ -429,23 +431,22 @@ input[type="submit"] {
     --color-success: #007c3d;
     --color-danger: #c30000;
     --color-warning: #905400;
-    /* libadwaita light: white View and popovers; toasts stay dark. The header bar mirrors dark mode
-       and sits on Canvas, one tonal step away from View, so the top bar, chat column, and composer
-       do not collapse into one white band. */
-    --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%);
-    --sb-layer-headerbar-source: var(--sb-layer-canvas-source);
-    /* White-on-white View and composer read as one band; step the bottom toolbar halfway to Canvas. */
-    --sb-layer-bottombar-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 95%, var(--SmartThemeBodyColor) 5%);
+    /* libadwaita light: white View, header bars, bottom bars and popovers, which the 1px shade line separates; a #ebebed
+       sidebar; toasts stay dark (#505053). */
+    --sb-layer-canvas-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 93.3%, var(--SmartThemeBodyColor) 6.7%);
+    --sb-layer-headerbar-source: var(--SmartThemeChatTintColor);
+    --sb-layer-bottombar-source: var(--SmartThemeChatTintColor);
     --sb-page-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, var(--SmartThemeBodyColor) 14%);
     --sb-layer-drawer-source: var(--SmartThemeBlurTintColor);
     --sb-layer-popover-source: var(--SmartThemeChatTintColor);
     --sb-layer-dialog-source: var(--SmartThemeBlurTintColor);
-    --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBodyColor) 90%, black 10%);
+    --sb-layer-toast-source: color-mix(in srgb, var(--SmartThemeBodyColor) 86%, white 14%);
     --sb-layer-toast-fg: #ffffff;
     /* The rail leans a touch further toward the body colour in light mode so it separates from a
        white View; mirrors the Conversation rail's light value. */
     --sb-sidebar-bg-source: color-mix(in srgb, var(--SmartThemeBlurTintColor) 93%, var(--SmartThemeBodyColor) 7%);
     --sb-dialog-backdrop-alpha: 0.14;
+    --sb-card-fill: var(--sb-layer-view);
     --sb-shadow-dialog-highlight: 0 0 #0000;
 }
 

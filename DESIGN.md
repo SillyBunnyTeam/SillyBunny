@@ -294,15 +294,15 @@ Shell layers are separated by tone first, then by a `1px` shade line or one over
 | Content surface (desktop) | `--sb-chat-view-bg` | View at the tint's own alpha, `min(1, alpha / 0.9)` | `#1d1d20` (0.9 maps to opaque) | `#ffffff` (0.9 maps to opaque) | `view-bg` |
 | Window (also Dialog and Window overlays) | `--sb-layer-window` | `--SmartThemeBlurTintColor` | `#222226` | `#fafafb` | `window-bg` |
 | Page | `--sb-page-bg-source` | BlurTint 88% + Body 12% (light 86/14) | `#3f3f43` | `#dcdcdd` | none (window background behind the content) |
-| Canvas | `--sb-layer-canvas` | BlurTint and Body | `#2e2e32` | `#ebebed` | `sidebar-bg` |
-| Header bar | `--sb-layer-headerbar` | BlurTint and Body | `#2e2e32` | `#ffffff` | `headerbar-bg` |
-| Bottom bar | `--sb-layer-bottombar` | BlurTint and Body | `#2e2e32` | `#ffffff` | `headerbar-bg` |
+| Canvas | `--sb-layer-canvas` | BlurTint 95% + Body 5% (light 93.3/6.7) | `#2e2e32` | `#ebebed` | `sidebar-bg` |
+| Header bar | `--sb-layer-headerbar` | Same as canvas; light uses ChatTint | `#2e2e32` | `#ffffff` | `headerbar-bg` |
+| Bottom bar | `--sb-layer-bottombar` | Same as canvas; light uses ChatTint | `#2e2e32` | `#ffffff` | `headerbar-bg` |
 | Shell drawer | `--sb-layer-drawer` | Same as header bar; light uses BlurTint | `#2e2e32` | `#fafafb` | `headerbar-bg` / `dialog-bg` |
-| Popover | `--sb-layer-popover` | BlurTint and Body; light uses ChatTint | `#36363a` | `#ffffff` | `popover-bg` |
-| Alert | `--sb-layer-dialog` | BlurTint and Body; light uses BlurTint | `#36363a` | `#fafafb` | `dialog-bg` |
-| Toast | `--sb-layer-toast` | BlurTint and Body; light uses Body and black | `#505053` | `#505053` | toast `#505053` |
+| Popover | `--sb-layer-popover` | BlurTint 91.8% + Body 8.2%; light uses ChatTint | `#36363a` | `#ffffff` | `popover-bg` |
+| Alert | `--sb-layer-dialog` | Same as popover; light uses BlurTint | `#36363a` | `#fafafb` | `dialog-bg` |
+| Toast | `--sb-layer-toast` | BlurTint 81% + Body 19%; light uses Body 86% + white 14% | `#505053` | `#505053` | toast `#505053` |
 
-A layer that names a libadwaita role renders that role's colour on the bundled themes. A layer with no role keeps the value its mix gives on the bundled themes; their BlurTint and ChatTint carry 0.9 alpha, which `color-mix()` takes into account before the layer is forced opaque, so such mixes come out a few steps lighter than the same mix of opaque colours (checked in Chromium, 2026-10-19). Existing layers move to the role values when the layer mixes are reworked.
+A layer that names a libadwaita role renders that role's colour on the bundled themes. A layer with no role keeps the value its mix gives on the bundled themes; their BlurTint and ChatTint carry 0.9 alpha, which `color-mix()` takes into account before the layer is forced opaque, so such mixes come out a few steps lighter than the same mix of opaque colours (checked in Chromium, 2026-10-19). The mixes of the layers with a role are chosen for that alpha.
 
 - **The content surface** is the raw chat tint on mobile (upstream's rule) and `--sb-chat-view-bg` on desktop, so the bundled 0.9 tints stay opaque and lower tints show the background. The window background behind the content mixes BlurTint toward Body, so the main window stays distinct from the canvas in every theme.
 - **Bars:** a bar is flat and recedes, so messages and lists carry the visual weight; do not raise it into a heavier, toolbar-style band. The top bar uses Header bar, and the composers and bottom bar use Bottom bar, which takes the header bar fill as libadwaita's bottom bars do. Where two layers share a colour, as a bar and the View do in the light tone, the `1px` shade line separates them, as in libadwaita.
