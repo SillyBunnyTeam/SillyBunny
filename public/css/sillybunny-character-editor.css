@@ -513,7 +513,7 @@
 #sb_creator_notes_maximize {
     margin: 0;
     padding: 4px 10px;
-    min-height: 28px;
+    min-height: 32px;
     font-size: var(--sb-type-meta, 13px);
 }
 
@@ -1084,9 +1084,15 @@ body.reduced-motion :is(
 
 /* Touch targets are 44px on coarse pointers; the toolbar and
    header are the primary hit areas in this editor. */
-@media (pointer: coarse), (max-width: 768px) {
+@media (pointer: coarse) {
     #right-nav-panel {
         --sb-tag-remove-size: 44px;
+    }
+
+    .ds-field-actions .menu_button,
+    #tags_div .tags_view,
+    #sb_creator_notes_maximize {
+        min-height: 44px;
     }
 
     #right-nav-panel .ds-field-header > .notes-link {

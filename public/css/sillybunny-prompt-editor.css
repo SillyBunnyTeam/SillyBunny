@@ -536,7 +536,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 #sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > span,
 :is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > span {
     padding: 6px 9px;
-    min-height: 30px;
+    min-height: 32px;
     border: 0;
     border-radius: var(--sb-radius-control);
     box-shadow: none;
@@ -1010,8 +1010,29 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
         min-height: 44px;
     }
 
-    .sb-prompt-trigger-row {
+    .sb-prompt-trigger-row,
+    .sb-prompt-option,
+    #sb-settings-page .sb-prompt-editor .menu_button,
+    :is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button,
+    #sb-settings-page .sb-prompt-editor .sb-prompt-title,
+    #sb-settings-page .sb-prompt-editor .sb-prompt-tc-properties select,
+    #sb-settings-page .sb-prompt-editor .sb-prompt-property input,
+    :is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-property input,
+    #sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > span,
+    :is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > span,
+    .sb-prompt-tc-toggle {
         min-height: 44px;
+    }
+
+    #sb-settings-page .sb-prompt-editor .menu_button_icon,
+    :is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button_icon {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+    }
+
+    #sb-settings-page .sb-prompt-editor .sb-prompt-title {
+        height: 44px;
     }
 }
 

@@ -13,6 +13,7 @@ import { eventSource, event_types } from './events.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
 import { openActionMenu, closeActionMenu, isActionMenuOpen } from './sillybunny-action-menu.js';
 import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list-shell.js';
+import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
@@ -28,7 +29,7 @@ import {
 import { mountWorldInfoSettings } from './sillybunny-world-info-settings.js';
 import { mountWorldInfoEntry, worldInfoDraftKey } from './sillybunny-world-info-entry.js';
 
-const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261112c1', id: 'deferred-world-info-editor-css' };
+const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261112l', id: 'deferred-world-info-editor-css' };
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
 
@@ -656,7 +657,7 @@ export function mountWorldInfoEditor(container) {
         selection?.decorate();
         sortable = bindSortable(entryBox, {
             handle: '.sb-wi-grip', items: '> .sb-wi-row', disabled: selection?.isActive || !customSort() || Boolean(searchControl.query),
-            touch: () => matchMedia('(max-width: 768px)').matches,
+            touch: () => matchMedia(LAYOUT_MOBILE_QUERY).matches,
             start: () => { dragBook = state; },
             update: () => run(async () => {
                 if (dragBook !== state) return;

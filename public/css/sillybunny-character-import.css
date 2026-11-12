@@ -197,14 +197,17 @@
     }
 }
 
-@media (max-width: 768px) {
+@media (pointer: coarse) {
     #sb-settings-page #sb_character_import_panel .sb-import-group .menu_button {
-        min-width: 44px;
-        min-height: 44px;
+        min-width: var(--sb-mobile-touch-target, 44px);
+        min-height: var(--sb-mobile-touch-target, 44px);
     }
+}
+
+@media (max-width: 768px) {
     #sb-settings-page #sb_character_import_panel .sb-import-result-action {
-        width: 44px;
-        height: 44px;
+        width: var(--sb-control-min-height);
+        height: var(--sb-control-min-height);
         padding: 0;
         border-radius: var(--sb-radius-pill);
     }

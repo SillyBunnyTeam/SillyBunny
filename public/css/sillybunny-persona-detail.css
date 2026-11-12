@@ -283,7 +283,7 @@
 
 .sb-persona-entry-modes .sb-boolean-radio-option > span {
     padding: 6px 9px;
-    min-height: 30px;
+    min-height: 32px;
     border: 0;
     border-radius: var(--sb-radius-control);
     background: transparent;
@@ -576,7 +576,7 @@
     border-color: var(--sb-color-danger);
 }
 
-@media (pointer: coarse), (max-width: 768px) {
+@media (pointer: coarse) {
     #sb-settings-page .sb-persona-entry :is(.menu_button, input:not(.sb-switch), textarea),
     #sb-settings-page .sb-persona-entry .ds-row-entry input,
     :is(.sb-persona-property-sheet, .sb-dialog.sb-persona-properties-dialog) :is(.menu_button, .sb-persona-property input),

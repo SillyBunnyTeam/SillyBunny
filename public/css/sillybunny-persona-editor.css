@@ -257,7 +257,7 @@
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-@media (pointer: coarse), (max-width: 768px) {
+@media (pointer: coarse) {
     #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button) {
         min-width: 44px;
         min-height: 44px;

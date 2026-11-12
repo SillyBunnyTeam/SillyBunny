@@ -1,5 +1,7 @@
 // SillyBunny: data-backed destinations; context, editors, and world data stay lazy.
 
+import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
+
 const DEFAULT_ENTITY_SEARCH_LIMIT = 4000;
 const WORLD_INFO_SEARCH_TEXT_LIMIT = 64000;
 const WORLD_INFO_SELECT_RETRY_MS = 40;
@@ -116,7 +118,7 @@ async function refreshStaleCharacterEditor() {
         if (!panel?.classList.contains('openDrawer') || !['character_edit', 'editor_empty'].includes(panel.dataset.menuType)) return;
         // A phone page on its section list keeps the Editor off-screen, and opening the tab would slide it in.
         // Choosing Editor there resolves the open chat anyway.
-        const onPhoneSectionList = Boolean(globalThis.matchMedia?.('(max-width: 768px)')?.matches)
+        const onPhoneSectionList = Boolean(globalThis.matchMedia?.(LAYOUT_MOBILE_QUERY)?.matches)
             && !globalThis.document.getElementById('sb-settings-page')?.classList.contains('sb-settings-page--content');
         if (onPhoneSectionList) return;
         await globalThis.SillyBunnyShell?.openTab?.('characters', 'editor');

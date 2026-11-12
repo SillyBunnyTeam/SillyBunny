@@ -27,11 +27,10 @@ function getRuleDeclarations(selector) {
 }
 
 describe('Conversation mobile controls', () => {
-    test('44px touch targets apply to coarse pointers and the 1000px project mobile breakpoint', () => {
-        const media = findMediaRule(query => query.includes('pointer: coarse') && query.includes('max-width: 1000px'));
+    test('44px touch targets follow the pointer, not a width', () => {
+        const media = findMediaRule(query => query.includes('pointer: coarse') && !query.includes('max-width'));
         expect(media).toBeDefined();
-        // Comma-separated query: either condition alone is sufficient.
-        expect(media.media).toMatch(/\(pointer: coarse\)\s*,\s*\(max-width: 1000px\)/);
+        expect(media.media).toMatch(/^\(pointer: coarse\)$/);
 
         expect(getDeclarations(media, '.sb-conversation-selfie-action')).toMatchObject({
             'min-block-size': 'var(--sb-mobile-touch-target, 44px)',

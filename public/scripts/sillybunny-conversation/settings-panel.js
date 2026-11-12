@@ -16,6 +16,7 @@ import {
     saveGroupConversationSettings,
 } from './context.js';
 import { confirmConversationAction, promptConversationText } from './dialogs.js';
+import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../popup.js';
 import { animateIn, animateOut, MOTION_FAST, SPRING_NAVIGATION, SPRING_SHEET } from '../sillybunny-motion.js';
 import { applySettingsToPanel, saveCurrentPanelSettings, updateConversationChrome } from './interface.js';
@@ -42,7 +43,7 @@ import {
     ensureConversationChrome,
 } from './timeline-render.js';
 
-const MOBILE_LAYOUT_QUERY = '(max-width: 768px)';
+const MOBILE_LAYOUT_QUERY = LAYOUT_MOBILE_QUERY;
 
 function isMobileConversationLayout() {
     return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_LAYOUT_QUERY).matches;

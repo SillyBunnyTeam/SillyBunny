@@ -82,7 +82,7 @@ body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ri
     background-color: var(--SmartThemeUserMesBlurTintColor);
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 768px) {
     body.sb-sheld-blur #sheld::before {
         backdrop-filter: blur(calc(var(--mobileSheldBlurStrength, 0) * 1px));
         -webkit-backdrop-filter: blur(calc(var(--mobileSheldBlurStrength, 0) * 1px));
@@ -228,7 +228,7 @@ body.echostyle #chat {
                     border-radius: var(--moonlit-sb-card-radius) 0 0 var(--moonlit-sb-card-radius);
                     z-index: 3;
 
-                    @media screen and (max-width: 1000px) {
+                    @media screen and (max-width: 768px) {
                         width: var(--custom-EchoAvatarMobileWidth, 25%);
                         height: var(--custom-EchoAvatarMobileHeight, 250px);
                     }
@@ -244,7 +244,7 @@ body.echostyle #chat {
                 padding: 8px 14px 8px var(--custom-EchoAvatarWidth, 22%) !important;
                 background-color: var(--moonlit-sb-user-message-bg);
 
-                @media screen and (max-width: 1000px) {
+                @media screen and (max-width: 768px) {
                     padding: 8px 14px 8px var(--custom-EchoAvatarMobileWidth, 22%) !important;
                 }
             }
@@ -280,7 +280,7 @@ body.echostyle #chat {
                     border-radius: 0 var(--moonlit-sb-card-radius) var(--moonlit-sb-card-radius) 0;
                     z-index: 3;
 
-                    @media screen and (max-width: 1000px) {
+                    @media screen and (max-width: 768px) {
                         width: var(--custom-EchoAvatarMobileWidth, 25%);
                         height: var(--custom-EchoAvatarMobileHeight, 250px);
                     }
@@ -290,7 +290,7 @@ body.echostyle #chat {
             .last_mes .mes_text {
                 padding: 8px var(--custom-EchoAvatarWidth, 22%) 8px 14px !important;
 
-                @media screen and (max-width: 1000px) {
+                @media screen and (max-width: 768px) {
                     padding: 8px var(--custom-EchoAvatarMobileWidth, 22%) 8px 14px !important;
                 }
             }
@@ -362,7 +362,7 @@ body.echostyle #chat {
     }
 
     /* Desktop: keep swipe controls inside the message without clipping content. */
-    @media screen and (min-width: 1001px) {
+    @media screen and (min-width: 769px) {
         .last_mes .swipeRightBlock {
             right: 15px;
         }
@@ -423,7 +423,7 @@ body.whisperstyle #chat {
             opacity: 0.9;
             z-index: 3;
         }
-        @media screen and (max-width: 1000px) {
+        @media screen and (max-width: 768px) {
             &::before {
                 top: 0;
                 width: 55%;
@@ -559,7 +559,7 @@ body.whisperstyle #chat {
     }
 
     /* Desktop: keep swipe controls inside the message without clipping content. */
-    @media screen and (min-width: 1001px) {
+    @media screen and (min-width: 769px) {
         .last_mes .swipeRightBlock {
             right: 30px;
         }
@@ -720,7 +720,7 @@ body.hushstyle #chat {
     }
 
     /* Desktop: keep swipe controls inside the message without clipping content. */
-    @media screen and (min-width: 1001px) {
+    @media screen and (min-width: 769px) {
         .last_mes .swipeRightBlock {
             right: 30px;
         }
@@ -815,7 +815,7 @@ body.ripplestyle #chat {
     }
 
     /* Desktop: reserve real flex space for Ripple avatars so text cannot slide underneath. */
-    @media screen and (min-width: 1001px) {
+    @media screen and (min-width: 769px) {
         .mes .mesAvatarWrapper {
             box-sizing: border-box;
             flex: 0 0 var(--moonlit-sb-ripple-avatar-desktop-width);
@@ -850,7 +850,7 @@ body.ripplestyle #chat {
         }
     }
 
-    @media screen and (max-width: 1000px) {
+    @media screen and (max-width: 768px) {
         .mes .avatar {
             width: var(--customRippleAvatarMobileWidth) !important;
             height: calc(var(--customRippleAvatarMobileWidth) * var(--customRippleAvatarRatio)) !important;
@@ -886,7 +886,7 @@ body.ripplestyle.big-avatars #chat .mes {
         }
     }
 
-    @media screen and (max-width: 1000px) {
+    @media screen and (max-width: 768px) {
         .avatar {
             width: var(--customRippleAvatarMobileWidth) !important;
             height: calc(var(--customRippleAvatarMobileWidth) * var(--customRippleAvatarRatio)) !important;
@@ -909,7 +909,7 @@ body.ripplestyle.big-avatars #chat .mes {
 body.tidestyle #chat {
     padding: 0 12px;
 
-    @media screen and (max-width: 1000px) {
+    @media screen and (max-width: 768px) {
         padding: 0 0.8em;
     }
 
@@ -960,7 +960,7 @@ body.tidestyle #chat {
                 border-radius: var(--moonlit-sb-bubble-radius);
             }
 
-            @media screen and (max-width: 1000px) {
+            @media screen and (max-width: 768px) {
                 max-width: 92%;
             }
         }
@@ -1201,18 +1201,18 @@ body.tidestyle {
         margin-top: 3px;
         margin-left: calc(var(--custom-echo-avatar) + 8px);
 
-        @media screen and (max-width: 1000px) {
+        @media screen and (max-width: 768px) {
             margin-left: calc(var(--custom-echo-avatar) + 11px)
         }
     }
 }
 body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes .ch_name .flex-container {
-    @media screen and (max-width: 1000px) {
+    @media screen and (max-width: 768px) {
         margin-bottom: 0 !important;
     }
 }
 
-@media screen and (min-width: 1001px) {
+@media screen and (min-width: 769px) {
     body:is(.echostyle, .whisperstyle, .hushstyle, .tidestyle) #chat .mes:not(.smallSysMes) .mesAvatarWrapper {
         flex: 0 0 auto;
         inline-size: auto;
@@ -1368,7 +1368,7 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     width: var(--moonlit-sb-swipe-counter-width) !important;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 768px) {
     body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes {
         position: relative !important;
     }

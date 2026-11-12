@@ -290,7 +290,7 @@ body.reduced-motion .sb-list-editor__divider::before {
     opacity: 1;
 }
 
-@media (pointer: coarse), (max-width: 768px) {
+@media (pointer: coarse) {
     .sb-list-editor .ds-row-entry input {
         min-height: 44px;
     }
@@ -672,6 +672,8 @@ body.reduced-motion :is(.ds-row--activatable, .ds-row.ds-button-row, .sb-status-
     height: 20px;
     min-height: 20px;
     box-sizing: content-box;
+    padding: 6px;
+    margin: -6px -3px -6px 0;
 }
 
 .sb-chip .sb-chip__remove:focus-visible,
@@ -757,6 +759,7 @@ body.reduced-motion :is(.ds-row--activatable, .ds-row.ds-button-row, .sb-status-
 
     .sb-chip .sb-chip__remove {
         padding: 12px;
+        margin: 0;
     }
 
     .sb-chip-entry .sb-chip-entry__input,
@@ -1121,7 +1124,7 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     .sb-selection-action-bar--icon-only-narrow .sb-selection-action {
         flex: 1 1 0;
         min-width: 0;
-        min-height: 44px;
+        min-height: var(--sb-control-min-height);
     }
 
     .sb-selection-action-bar--icon-only-narrow .sb-selection-action > span {

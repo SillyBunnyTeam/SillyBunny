@@ -22,9 +22,9 @@ import { mountPersonaSettings } from './sillybunny-persona-settings.js';
 import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-entity-list.css?v=20261112d', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261029a', id: 'deferred-persona-editor-css' },
-    { href: 'css/sillybunny-persona-detail.css?v=20261112c1', id: 'deferred-persona-detail-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261112l', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261112l', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-persona-detail.css?v=20261112l', id: 'deferred-persona-detail-css' },
 ];
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'persona' ? entityKey('persona', item.avatarId) : item.kind;

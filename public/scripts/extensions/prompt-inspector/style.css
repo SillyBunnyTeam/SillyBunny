@@ -32,7 +32,7 @@ dialog.popup.sb-dialog--window.sb-prompt-inspector-window #inspectPrompt {
     overscroll-behavior: contain;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 768px) {
     #inspectPromptHeader {
         display: flex;
         flex-direction: column;

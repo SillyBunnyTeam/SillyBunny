@@ -753,7 +753,7 @@ body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row
     background: var(--sb-flat-active-bg);
 }
 
-@media (pointer: coarse), (max-width: 768px) {
+@media (pointer: coarse) {
     /* SillyBunny: the mobile drawer adds top margin to legacy tag controls; this row already owns its spacing. */
     #right-nav-panel.openDrawer #rm_characters_block > .sb-character-list .rm_tag_controls {
         min-height: 44px;

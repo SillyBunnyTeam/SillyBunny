@@ -57,7 +57,7 @@
     --sb-chatbar-padding-y: calc(var(--sb-chatbar-padding-y-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-padding-x: calc(var(--sb-chatbar-padding-x-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-radius: calc(var(--sb-chatbar-radius-base) * var(--sb-chatbar-scale-active));
-    --sb-chatbar-button-size: calc(var(--sb-chatbar-button-size-base) * var(--sb-chatbar-scale-active));
+    --sb-chatbar-button-size: max(32px, calc(var(--sb-chatbar-button-size-base) * var(--sb-chatbar-scale-active)));
     --sb-chatbar-status-font-size: calc(var(--mainFontSize) * var(--sb-chatbar-status-font-scale-base) * var(--sb-chatbar-scale-active));
     --sb-proxy-button-padding-x: var(--sb-proxy-button-padding-x-base);
     --sb-proxy-button-height: var(--sb-proxy-button-height-base);
@@ -96,7 +96,6 @@
 
 :root[data-sb-compact-mode='true'] {
     --sb-density-scale: 0.88;
-    --sb-bottom-chat-min-touch: 28px;
     --sb-topbar-primary-height-base: 34px;
     --sb-topbar-padding-x-base: 7px;
     --sb-topbar-stack-gap-base: 3px;
@@ -217,7 +216,7 @@
     z-index: calc(var(--sb-z-overlay) + 1);
 }
 
-@media screen and (min-width: 1001px) {
+@media screen and (min-width: 769px) {
     #top-bar {
         padding-top: 0 !important;
     }
@@ -654,6 +653,9 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-brand-title {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 32px;
     max-width: min(100%, 42rem);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1629,7 +1631,7 @@ body:not(.movingUI) .drawer-content.maximized {
     border-radius: 999px;
 }
 
-@media screen and (min-width: 1001px) {
+@media screen and (min-width: 769px) {
     #right-nav-panel[data-menu-type="character_edit"] #sb_character_editor_exit,
     #right-nav-panel[data-menu-type="create"] #sb_character_editor_exit {
         display: inline-flex;
@@ -1839,7 +1841,7 @@ body:not(.movingUI) .drawer-content.maximized {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
-    min-height: 30px;
+    min-height: 32px;
     margin-top: 2px;
     padding: 6px 12px;
     border: 0;
@@ -2588,7 +2590,7 @@ body:not(.movingUI) .drawer-content.maximized {
     align-items: center;
     justify-content: center;
     min-width: 52px;
-    min-height: 30px;
+    min-height: 32px;
     padding: 0 10px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--sb-button-hover) 72%, transparent);
@@ -3025,7 +3027,7 @@ body:not(.movingUI) .drawer-content.maximized {
 .sb-mobile-quick-action-add,
 .sb-mobile-quick-action-remove,
 .sb-mobile-quick-action-reset {
-    min-height: 30px;
+    min-height: 32px;
     margin: 0;
     white-space: nowrap;
 }
@@ -3135,7 +3137,7 @@ body:not(.movingUI) .drawer-content.maximized {
     border-radius: 50%;
 }
 
-@media screen and (min-width: 1001px) {
+@media screen and (min-width: 769px) {
     #send_form #qig-input-btn {
         padding: 0 !important;
         box-sizing: border-box !important;
@@ -3393,6 +3395,8 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     pointer-events: none;
 }
 
+/* This breakpoint is not folded into 768px: the bar sits in the chat column, whose width follows the Page Width
+   setting. Between 769px and 1000px the one-row desktop layout of the bar clips its buttons in that column. */
 @media screen and (max-width: 1000px) {
     #sb-bottom-chat-bar {
         --sb-bottom-chat-mobile-gutter: max(14px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
@@ -3400,9 +3404,9 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         --sb-bottom-chat-mobile-gap: clamp(1px, calc(2px * var(--sb-bottom-bar-scale)), 4px);
         --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(2px * var(--sb-bottom-bar-scale)), 3px);
         --sb-bottom-chat-mobile-padding-inline: clamp(4px, calc(5px * var(--sb-bottom-bar-scale)), 7px);
-        --sb-bottom-chat-mobile-button-size: clamp(28px, calc(30px * var(--sb-bottom-bar-scale)), 34px);
-        --sb-bottom-chat-mobile-select-height: clamp(28px, calc(30px * var(--sb-bottom-bar-scale)), 34px);
-        --sb-bottom-chat-mobile-persona-size: clamp(28px, calc(30px * var(--sb-bottom-bar-scale)), 34px);
+        --sb-bottom-chat-mobile-button-size: clamp(32px, calc(30px * var(--sb-bottom-bar-scale)), 34px);
+        --sb-bottom-chat-mobile-select-height: clamp(32px, calc(30px * var(--sb-bottom-bar-scale)), 34px);
+        --sb-bottom-chat-mobile-persona-size: clamp(32px, calc(30px * var(--sb-bottom-bar-scale)), 34px);
         --sb-bottom-chat-mobile-radius: clamp(9px, calc(11px * var(--sb-bottom-bar-scale)), 14px);
         width: min(var(--sb-bottom-chat-mobile-width), calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2)));
         max-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
@@ -3556,9 +3560,9 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         --sb-bottom-chat-mobile-gap: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 3px);
         --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 2px);
         --sb-bottom-chat-mobile-padding-inline: clamp(3px, calc(4px * var(--sb-bottom-bar-scale)), 6px);
-        --sb-bottom-chat-mobile-button-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
-        --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
-        --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-button-size: 32px;
+        --sb-bottom-chat-mobile-select-height: 32px;
+        --sb-bottom-chat-mobile-persona-size: 32px;
         --sb-bottom-chat-mobile-radius: clamp(8px, calc(10px * var(--sb-bottom-bar-scale)), 13px);
     }
 
@@ -3941,16 +3945,8 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         justify-content: flex-end;
     }
 
-    .sb-chat-history-row-actions > :is(.sb-dialog__icon-button, .PastChat_cross, .renameChatButton) {
-        width: 44px;
-        min-width: 44px;
-        height: 44px;
-        min-height: 44px;
-    }
-
     .sb-chat-history-cleanup-actions .menu_button {
         width: 100%;
-        min-height: 44px;
     }
 }
 
@@ -4309,13 +4305,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     .sb-persona-picker-manage {
         width: 100%;
         justify-content: center;
-        min-height: 44px;
-    }
-
-    .sb-persona-option,
-    .sb-persona-option-empty,
-    .sb-persona-picker-appendix-toggle {
-        min-height: 44px;
     }
 }
 
@@ -4442,7 +4431,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 
     .sb-compact-mode-option {
         align-items: flex-start;
-        min-height: 44px;
         padding: 10px 12px;
     }
 
@@ -4748,7 +4736,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         flex-basis: clamp(150px, 64vw, 204px);
         min-width: clamp(150px, 64vw, 204px);
         max-width: calc(100vw - 36px);
-        min-height: var(--sb-mobile-touch-target, 44px);
         padding: 8px 12px;
         gap: 6px;
         align-items: center;
@@ -4887,7 +4874,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     display: none !important;
 }
 
-@media screen and (min-width: 1001px) {
+@media screen and (min-width: 769px) {
 
     #right-nav-panel.openDrawer .sb-character-shell-nav {
         justify-content: center !important;
@@ -5409,8 +5396,8 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 
 :root[data-sb-compact-mode='true'] .sb-settings-search-toggle-btn,
 :root[data-sb-compact-mode='true'] .sb-settings-close-button {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
 }
 
 :root[data-sb-compact-mode='true'] #sb-settings-tab-list {
@@ -5435,7 +5422,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 }
 
 :root[data-sb-compact-mode='true'] .sb-settings-search-field {
-    height: 30px;
+    height: 32px;
     padding: 0 8px;
 }
 
@@ -7090,8 +7077,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     color: var(--sb-shell-text-secondary);
 }
 
@@ -8650,10 +8637,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
         padding: 12px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
     }
 
-    /* Coarse pointer: bump sidebar tab touch targets to 48px minimum. */
-    .sb-settings-tab {
-        min-height: 48px;
-    }
 }
 
 @media screen and (max-width: 420px) {
@@ -10022,5 +10005,93 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
         width: auto;
         min-width: 0;
         text-align: center;
+    }
+}
+
+/* Touch floor for controls whose base rules size them in literal pixels or in width-gated blocks.
+   Last in the file so these beat the equal-specificity rules above; ID-scoped selectors repeat the base selector. */
+@media (pointer: coarse) {
+    :root {
+        --sb-chatbar-button-size: max(var(--sb-control-min-height), calc(var(--sb-chatbar-button-size-base) * var(--sb-chatbar-scale-active)));
+    }
+
+    .sb-brand-title {
+        min-block-size: 44px;
+    }
+
+    .sb-shell-tab {
+        min-height: max(44px, calc(44px * var(--sb-desktop-button-scale)));
+    }
+
+    .sb-settings-tab {
+        min-height: 48px;
+    }
+
+    :is(.sb-shell-nav-scroll, .sb-mobile-panel-close, #sb_character_editor_exit, .sb-settings-search-toggle-btn, .sb-settings-close-button, .sb-settings-back-button, .sb-subpage-back, .sb-connections-help),
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info > .right_menu_button {
+        width: 44px;
+        min-width: 44px;
+        max-width: none;
+        height: 44px;
+        min-height: 44px;
+        max-height: none;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell .sb-settings-category-title-row > .notes-link,
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-help-toggle {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        flex-basis: 44px;
+    }
+
+    .sb-character-shell-mode-button,
+    .sb-search-show-all,
+    .sb-shell-search,
+    .sb-theme-slider-value,
+    .sb-mobile-nav-replacement-select,
+    .sb-mobile-quick-action-search,
+    .sb-mobile-quick-action-add,
+    .sb-mobile-quick-action-remove,
+    .sb-mobile-quick-action-reset,
+    .sb-compact-mode-option,
+    .sb-persona-option,
+    .sb-persona-option-empty,
+    .sb-persona-picker-manage,
+    .sb-persona-picker-appendix-toggle,
+    .sb-model-id-picker-empty,
+    .sb-model-id-picker-option,
+    :root[data-sb-compact-mode='true'] .sb-settings-tab,
+    .sb-settings-search-field,
+    :root[data-sb-compact-mode='true'] .sb-settings-search-field,
+    :is(.sb-thumbnail-card .sb-server-action, .sb-import-action-row .sb-server-action, .sb-import-pane .ds-row-suffix > .sb-server-action),
+    :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets .menu_button,
+    .sb-chat-history-cleanup-actions .menu_button,
+    #sb-settings-page .sb-action-btn,
+    #sb-settings-page .ds-button,
+    #sb-settings-page .ds-row-suffix :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, select),
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(.ds-row, button, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), .menu_button),
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_selected_ch {
+        min-height: 44px;
+    }
+
+    .sb-chat-history-row-actions > :is(.sb-dialog__icon-button, .PastChat_cross, .renameChatButton) {
+        width: 44px;
+        min-width: 44px;
+    }
+
+    .sb-chat-history-row-actions > :is(.sb-dialog__icon-button, .PastChat_cross, .renameChatButton),
+    .sb-chat-history-cleanup-page .ds-row-suffix > :is(input.ds-spin, select),
+    #right-nav-panel[data-menu-type="create"] #avatar_controls .char-button-group-icons :is(#create_button_label, #world_button) {
+        height: 44px;
+        min-height: 44px;
+        max-height: none;
+    }
+
+    :root #sb-bottom-chat-bar {
+        --sb-bottom-chat-min-touch: var(--sb-control-min-height);
+        --sb-bottom-chat-mobile-button-size: var(--sb-control-min-height);
+        --sb-bottom-chat-mobile-select-height: var(--sb-control-min-height);
+        --sb-bottom-chat-mobile-persona-size: var(--sb-control-min-height);
     }
 }

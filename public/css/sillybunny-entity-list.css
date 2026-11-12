@@ -768,7 +768,7 @@
     background: var(--sb-flat-active-bg);
 }
 
-@media (pointer: coarse), (max-width: 768px) {
+@media (pointer: coarse) {
     .ds-entity-row__grip {
         flex-basis: 44px;
         min-height: 44px;
@@ -948,7 +948,7 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
     cursor: pointer;
 }
 
-@media (pointer: coarse), (max-width: 768px) {
+@media (pointer: coarse) {
     :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .group_member_icon > :is(.right_menu_button, .ds-entity-row__button) {
         width: 44px;
         min-width: 44px;

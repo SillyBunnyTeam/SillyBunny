@@ -11,6 +11,7 @@ import {
     releaseRowIds,
 } from '../../../sillybunny-editor/rows.js';
 import { createToggleRow } from '../../../sillybunny-editor/toggle-row.js';
+import { LAYOUT_MOBILE_QUERY } from '../../../sillybunny-editor/breakpoints.js';
 import { createSelectRow, createProfileRow } from '../../../sillybunny-editor/select-row.js';
 import { createChipEntry } from '../../../sillybunny-editor/chip-entry.js';
 import { mountEditorChrome, showDraftRecoveryToast } from '../../../sillybunny-editor/chrome.js';
@@ -348,7 +349,7 @@ export function mountAgentDetail({
                 - fixed.reduce((sum, node) => sum + node.getBoundingClientRect().width, 0)
                 - parseFloat(getComputedStyle(title).minWidth) - more.getBoundingClientRect().width
                 - (fixed.length + 2) * (parseFloat(style.gap) || 0);
-            let count = matchMedia('(max-width: 768px)').matches ? 0 : headerTasks.length;
+            let count = matchMedia(LAYOUT_MOBILE_QUERY).matches ? 0 : headerTasks.length;
             while (count > 0 && count * 42 > available) count--;
             for (const [index, control] of headerTasks.entries()) {
                 if (index >= count && document.activeElement === control) title.focus({ preventScroll: true });
@@ -377,7 +378,7 @@ export function mountAgentDetail({
         textareaViewportFrame = requestAnimationFrame(() => {
             textareaViewportFrame = 0;
             const focused = document.activeElement;
-            if (destroyed || !focused?.matches('textarea') || !body.contains(focused) || !matchMedia('(max-width: 768px)').matches) return;
+            if (destroyed || !focused?.matches('textarea') || !body.contains(focused) || !matchMedia(LAYOUT_MOBILE_QUERY).matches) return;
             const rect = focused.getBoundingClientRect();
             const bounds = body.getBoundingClientRect();
             const viewport = globalThis.visualViewport;

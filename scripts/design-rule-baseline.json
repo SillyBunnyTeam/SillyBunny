@@ -27,8 +27,6 @@
             "shadow-literal": 1,
             "letter-spacing": 1,
             "important": 225,
-            "breakpoint-off-set": 18,
-            "breakpoint-1000": 18,
             "spacing-off-scale": 72
         },
         "public/css/sillybunny-color-picker.css": {
@@ -47,8 +45,7 @@
             "shadow-literal": 4,
             "duration-literal": 3,
             "important": 6,
-            "breakpoint-off-set": 3,
-            "breakpoint-1000": 1,
+            "breakpoint-off-set": 2,
             "spacing-off-scale": 138
         },
         "public/css/sillybunny-editor-shell.css": {
@@ -99,8 +96,7 @@
         "public/css/sillybunny-mobile-shell.css": {
             "radius-literal": 11,
             "shadow-literal": 2,
-            "important": 330,
-            "breakpoint-off-set": 1,
+            "important": 317,
             "spacing-off-scale": 88,
             "spacing-off-scale-fallback": 3
         },
@@ -144,8 +140,8 @@
             "shadow-literal": 10,
             "duration-literal": 1,
             "important": 283,
-            "breakpoint-off-set": 16,
-            "breakpoint-1000": 6,
+            "breakpoint-off-set": 12,
+            "breakpoint-1000": 2,
             "focus-outline": 1,
             "spacing-off-scale": 309,
             "spacing-off-scale-fallback": 4
@@ -164,8 +160,7 @@
             "shadow-literal": 35,
             "important": 199,
             "hover-ungated": 6,
-            "breakpoint-off-set": 7,
-            "breakpoint-1000": 3,
+            "breakpoint-off-set": 4,
             "focus-outline": 1,
             "spacing-off-scale": 255,
             "spacing-off-scale-fallback": 4
@@ -209,10 +204,6 @@
             "important": 11,
             "breakpoint-off-set": 1,
             "spacing-off-scale": 6
-        },
-        "public/scripts/extensions/prompt-inspector/style.css": {
-            "breakpoint-off-set": 1,
-            "breakpoint-1000": 1
         },
         "public/scripts/extensions/sillybunny-chats-archive/style.css": {
             "color-literal-fallback": 1,

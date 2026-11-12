@@ -363,7 +363,7 @@
 .sbHomeForkLink {
     display: inline-flex;
     align-items: center;
-    min-height: 24px;
+    min-height: 32px;
     border-radius: var(--sb-radius-control);
     color: var(--sb-accent-ink);
     font-weight: 700;
@@ -666,7 +666,7 @@
     display: none;
     align-items: center;
     max-width: 100%;
-    min-height: 24px;
+    min-height: 32px;
     margin: 0;
     padding: 0 4px;
     border: 0;
@@ -1413,6 +1413,10 @@ body.big-avatars .welcomeRecent .chatMessage {
     .welcomeRecentTab,
     .welcomeRecent .showMoreChats {
         min-height: 44px;
+    }
+
+    .welcomeRecentTab {
+        min-width: 44px;
     }
 
     .welcomeRecent .chatActions button,

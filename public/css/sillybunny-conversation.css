@@ -1414,8 +1414,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 }
 
 .sb-conversation-message-edit {
-    inline-size: 24px;
-    block-size: 24px;
+    inline-size: 32px;
+    block-size: 32px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1500,8 +1500,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 /* libadwaita flat buttons: transparent at rest, neutral fills, no hover lift. */
 .sb-conversation-message-action,
 .sb-conversation-reaction-button {
-    min-block-size: 28px;
-    min-inline-size: 28px;
+    min-block-size: 32px;
+    min-inline-size: 32px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1592,12 +1592,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 @media (min-width: 769px) {
-    :root[data-sb-compact-mode='true'] .sb-conversation-message-action,
-    :root[data-sb-compact-mode='true'] .sb-conversation-reaction-button {
-        min-block-size: 24px;
-        min-inline-size: 24px;
-    }
-
     :root[data-sb-compact-mode='true'] .sb-conversation-message-action {
         font-size: 11px;
     }
@@ -2536,6 +2530,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     align-items: center;
     justify-content: center;
     min-inline-size: 38px;
+    min-block-size: 32px;
     padding: 4px 8px;
     border: 0;
     border-radius: 999px;
@@ -2913,7 +2908,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-stop-image {
-    min-block-size: 24px;
+    min-block-size: 32px;
     padding: 2px 8px;
     border: 1px solid color-mix(in srgb, var(--sb-color-danger) 34%, var(--sb-shell-border));
     border-radius: 999px;
@@ -2955,9 +2950,8 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     }
 }
 
-/* Touch-target sizing must cover coarse pointers and the project mobile
-   breakpoint (<=1000px), not only phone-width layouts. */
-@media (pointer: coarse), (max-width: 1000px) {
+/* Touch targets follow the pointer, not the layout width. */
+@media (pointer: coarse) {
     .sb-conversation-selfie-action {
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
@@ -2967,6 +2961,35 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         block-size: var(--sb-mobile-touch-target, 44px);
         min-inline-size: var(--sb-mobile-touch-target, 44px);
         min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-search-entry {
+        block-size: var(--sb-mobile-touch-target, 44px);
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-add-dm-option, .sb-conversation-group-member-option, .sb-conversation-persona-option, .sb-conversation-status-option, .sb-conversation-persona-note-option) {
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    #sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab {
+        block-size: var(--sb-mobile-touch-target, 44px);
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    .sb-conversation-pref-row,
+    :root[data-sb-compact-mode='true'] .sb-conversation-pref-row {
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-day-pill, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger, .sb-conversation-schedule-display, .sb-conv-weekly-enabled),
+    :root[data-sb-compact-mode='true'] :is(.sb-conversation-message-action, .sb-conversation-reaction-button) {
+        min-block-size: var(--sb-mobile-touch-target, 44px);
+        min-inline-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    #sb_conversation_schedule_modal .sb-schedule-modal-row :is(input, select) {
+        height: var(--sb-mobile-touch-target, 44px);
     }
 }
 
@@ -3057,8 +3080,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     }
 
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-search-entry {
-        block-size: var(--sb-mobile-touch-target, 44px);
-        min-block-size: var(--sb-mobile-touch-target, 44px);
         font-size: max(16px, var(--mainFontSize));
     }
 
@@ -3069,18 +3090,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-search-bar .sb-conversation-search-wrap {
         flex: 0 0 auto;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab {
-        block-size: 40px;
-        min-block-size: 40px;
-    }
-
-    /* 44px hit area around the 40px pill. */
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-channel-tab::after {
-        content: '';
-        position: absolute;
-        inset: -2px 0;
     }
 
     /* Keyboard: #sheld already contracts to the visual viewport, so the composer stays above it.
@@ -3145,12 +3154,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         padding-block-end: max(16px, env(safe-area-inset-bottom));
     }
 
-    #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-add-dm-option, .sb-conversation-group-member-option, .sb-conversation-persona-option, .sb-conversation-status-option) {
-        min-block-size: var(--sb-mobile-touch-target, 44px);
-    }
-
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-persona-note-option {
-        min-block-size: var(--sb-mobile-touch-target, 44px);
         align-items: center;
     }
 
@@ -3239,10 +3243,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     }
 
     /* Settings fields: two-column grids that never overflow the page. */
-    .sb-conversation-pref-row {
-        min-block-size: var(--sb-mobile-touch-target, 44px);
-    }
-
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-notification-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         align-items: stretch;

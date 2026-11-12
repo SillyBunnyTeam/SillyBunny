@@ -409,40 +409,45 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     });
 }
 
-test('narrow selection actions stay on one row with accessible names', async ({ page }) => {
-    await prepare(page, { width: 390, height: 844 });
-    await page.evaluate(async () => {
-        const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
-        const { createSelectionMode } = await import('/scripts/sillybunny-editor/selection-mode.js');
-        const content = document.createElement('div');
-        const list = document.createElement('div');
-        const row = document.createElement('div');
-        row.dataset.sbListKey = 'one';
-        row.textContent = 'One';
-        list.append(row);
-        const header = document.createElement('div');
-        const actionBar = document.createElement('div');
-        content.append(header, list, actionBar);
-        window.qaDialog = openDialog({ title: 'Archive', content });
-        window.qaSelection = createSelectionMode({ root: content, list, header, actionBar, iconOnlyAtNarrow: true, actions: [
-            { id: 'one', label: 'Restore', icon: 'fa-solid fa-rotate-left', onActivate() {} },
-            { id: 'two', label: 'Export', icon: 'fa-solid fa-download', onActivate() {} },
-            { id: 'three', label: 'Delete', icon: 'fa-solid fa-trash', onActivate() {} },
-        ] });
-        window.qaSelection.enter();
+// The 44px floor follows the pointer, so the phone is emulated with touch.
+test.describe('on a touch phone', () => {
+    test.use({ hasTouch: true, isMobile: true });
+
+    test('narrow selection actions stay on one row with accessible names', async ({ page }) => {
+        await prepare(page, { width: 390, height: 844 });
+        await page.evaluate(async () => {
+            const { openDialog } = await import('/scripts/sillybunny-editor/dialog.js');
+            const { createSelectionMode } = await import('/scripts/sillybunny-editor/selection-mode.js');
+            const content = document.createElement('div');
+            const list = document.createElement('div');
+            const row = document.createElement('div');
+            row.dataset.sbListKey = 'one';
+            row.textContent = 'One';
+            list.append(row);
+            const header = document.createElement('div');
+            const actionBar = document.createElement('div');
+            content.append(header, list, actionBar);
+            window.qaDialog = openDialog({ title: 'Archive', content });
+            window.qaSelection = createSelectionMode({ root: content, list, header, actionBar, iconOnlyAtNarrow: true, actions: [
+                { id: 'one', label: 'Restore', icon: 'fa-solid fa-rotate-left', onActivate() {} },
+                { id: 'two', label: 'Export', icon: 'fa-solid fa-download', onActivate() {} },
+                { id: 'three', label: 'Delete', icon: 'fa-solid fa-trash', onActivate() {} },
+            ] });
+            window.qaSelection.enter();
+        });
+        const actionBar = page.getByRole('toolbar', { name: 'Selection actions' });
+        await expect(actionBar).toBeVisible();
+        const buttons = actionBar.getByRole('button');
+        await expect(buttons).toHaveCount(3);
+        const positions = await buttons.evaluateAll(nodes => nodes.map(node => ({ top: node.getBoundingClientRect().top, name: node.getAttribute('aria-label') })));
+        expect(positions.every(position => position.name && Math.abs(position.top - positions[0].top) <= 1)).toBe(true);
+        const distribution = await actionBar.evaluate(node => getComputedStyle(node).justifyContent);
+        expect(distribution).toBe('space-evenly');
+        const sizes = await buttons.evaluateAll(nodes => nodes.map(node => ({ width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height })));
+        expect(sizes.every(size => size.width >= 44 && size.height >= 44)).toBe(true);
+        await page.screenshot({ path: test.info().outputPath('icon-action-bar-390.png') });
+        await page.evaluate(() => { window.qaSelection.destroy(); window.qaDialog.forceClose(); });
     });
-    const actionBar = page.getByRole('toolbar', { name: 'Selection actions' });
-    await expect(actionBar).toBeVisible();
-    const buttons = actionBar.getByRole('button');
-    await expect(buttons).toHaveCount(3);
-    const positions = await buttons.evaluateAll(nodes => nodes.map(node => ({ top: node.getBoundingClientRect().top, name: node.getAttribute('aria-label') })));
-    expect(positions.every(position => position.name && Math.abs(position.top - positions[0].top) <= 1)).toBe(true);
-    const distribution = await actionBar.evaluate(node => getComputedStyle(node).justifyContent);
-    expect(distribution).toBe('space-evenly');
-    const sizes = await buttons.evaluateAll(nodes => nodes.map(node => ({ width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height })));
-    expect(sizes.every(size => size.width >= 44 && size.height >= 44)).toBe(true);
-    await page.screenshot({ path: test.info().outputPath('icon-action-bar-390.png') });
-    await page.evaluate(() => { window.qaSelection.destroy(); window.qaDialog.forceClose(); });
 });
 
 test('popover sheet swipe closes and content scrolling does not', async ({ page }) => {

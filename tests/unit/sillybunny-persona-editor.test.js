@@ -107,10 +107,10 @@ const personasSource = readFileSync(new URL('../../public/scripts/personas.js', 
 const personaMountSource = tabsSource.split('let personaEditorMountPromise = null;')[1].split('function setCharacterImportPanelVisible')[0];
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261112c1', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-entity-list.css?v=20261112d', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261029a', id: 'deferred-persona-editor-css' },
-    { href: 'css/sillybunny-persona-detail.css?v=20261112c1', id: 'deferred-persona-detail-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261112l', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261112l', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261112l', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-persona-detail.css?v=20261112l', id: 'deferred-persona-detail-css' },
 ];
 let container;
 let mounted;
@@ -444,7 +444,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a failed adopted preload is removed and a fresh stylesheet can load on retry', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261112d&retry-test=adopted', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261112l&retry-test=adopted', id: 'deferred-entity-list-css' };
         const existing = document.createElement('link');
         existing.rel = 'preload';
         existing.setAttribute('as', 'style');
@@ -469,7 +469,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a deferred stylesheet that failed before Persona subscribed is replaced and loaded', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261112d&retry-test=failed-before-subscribe', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261112l&retry-test=failed-before-subscribe', id: 'deferred-entity-list-css' };
         const { link, activate } = await activateDeferredStylesheet(stylesheet);
         expect(link.dataset.sbStyleState).toBe('loading');
         link.dispatchEvent(new Event('error'));
@@ -490,7 +490,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a failed-before-subscribe stylesheet gets only one replacement and a second failure rejects', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261112d&retry-test=failed-twice', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261112l&retry-test=failed-twice', id: 'deferred-entity-list-css' };
         const { link } = await activateDeferredStylesheet(stylesheet);
         link.dispatchEvent(new Event('error'));
         globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
@@ -506,7 +506,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a deferred stylesheet loaded before Persona subscribed resolves without another load event', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261112d&retry-test=loaded-before-subscribe', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261112l&retry-test=loaded-before-subscribe', id: 'deferred-entity-list-css' };
         const { link, activate } = await activateDeferredStylesheet(stylesheet);
         link.dispatchEvent(new Event('load'));
         expect(link.dataset.sbStyleState).toBe('loaded');

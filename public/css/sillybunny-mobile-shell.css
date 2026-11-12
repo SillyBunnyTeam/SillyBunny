@@ -254,14 +254,14 @@
     #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
         flex-basis: auto !important;
         min-width: max-content !important;
-        min-height: 40px !important;
+        min-height: max(40px, var(--sb-control-min-height)) !important;
         padding: 5px 9px !important;
         border-radius: 9px !important;
     }
 
     #right-nav-panel.openDrawer #character_search_bar {
-        height: 38px !important;
-        min-height: 38px !important;
+        height: max(38px, var(--sb-control-min-height)) !important;
+        min-height: max(38px, var(--sb-control-min-height)) !important;
     }
 
     #right-nav-panel.openDrawer #form_character_search_form {
@@ -284,14 +284,6 @@
         height: 34px !important;
         min-height: 34px !important;
         font-size: calc(var(--mainFontSize) * 0.9) !important;
-    }
-
-    /* SillyBunny: group-editor filters use the shared 44px coarse-pointer target. */
-    #right-nav-panel.openDrawer .rm_tag_controls.ds-tag-filter :is(.tag.actionable, .tags_view, .right_menu_button) {
-        width: 44px !important;
-        min-width: 44px !important;
-        height: 44px !important;
-        min-height: 44px !important;
     }
 
     .sb-shell-root.openDrawer .sb-shell-frame,
@@ -420,28 +412,6 @@
             left: 0;
             right: 0;
         }
-    }
-}
-
-@media screen and (min-width: 769px) and (max-width: 1180px) {
-    /* SillyBunny: keep tablet full-screen shells edge-to-edge without overriding MovingUI resizing. */
-    body:not(.movingUI) #sheld {
-        width: 100vw !important;
-        width: 100dvw !important;
-        max-width: 100dvw !important;
-        min-width: 0 !important;
-        margin: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        transform: none !important;
-        box-sizing: border-box !important;
-    }
-
-    #chat {
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 0 !important;
-        box-sizing: border-box !important;
     }
 }
 
@@ -954,7 +924,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         width: auto;
         min-width: max-content;
         max-width: calc(100vw - 32px);
-        min-height: var(--sb-mobile-touch-target, 44px);
         padding: 9px 14px;
         border-radius: 12px;
         gap: 8px;
@@ -1102,8 +1071,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     .sb-mobile-panel-close {
         -webkit-appearance: none;
         appearance: none;
-        width: var(--sb-mobile-touch-target, 44px);
-        height: var(--sb-mobile-touch-target, 44px);
         border: 0;
         border-radius: var(--sb-radius-pill);
         background: var(--sb-raised-bg);
@@ -1133,7 +1100,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     .sb-mobile-quick-actions-trigger {
         width: 100%;
-        min-height: 44px;
         border: 0;
         border-radius: var(--sb-radius-control);
         background: transparent;
@@ -1273,7 +1239,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     }
 
     #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
-        min-height: var(--sb-mobile-touch-target, 44px);
         padding: 7px 10px;
         border-radius: 10px;
     }
@@ -1312,7 +1277,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_selected_ch {
         grid-area: title;
-        min-height: var(--sb-mobile-touch-target, 44px);
         display: flex;
         align-items: center;
         padding: 0 8px;
@@ -1330,11 +1294,11 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         /* Implicit columns so every visible action stays on the token row, however many are shown. */
         grid-template-columns: minmax(0, 1fr);
         grid-auto-flow: column;
-        grid-auto-columns: minmax(34px, 40px);
+        grid-auto-columns: minmax(34px, max(40px, var(--sb-control-min-height)));
         align-items: center;
         justify-content: stretch;
         gap: 4px;
-        min-height: 40px;
+        min-height: max(40px, var(--sb-control-min-height));
         padding: 0;
         font-size: calc(var(--mainFontSize) * 0.74);
     }
@@ -1349,22 +1313,16 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info .right_menu_button {
         width: 100%;
         min-width: 34px;
-        max-width: 40px;
-        height: 40px;
-        min-height: 40px;
-        max-height: 40px;
+        max-width: max(40px, var(--sb-control-min-height));
+        height: max(40px, var(--sb-control-min-height));
+        min-height: max(40px, var(--sb-control-min-height));
+        max-height: max(40px, var(--sb-control-min-height));
         margin: 0;
         padding: 0 !important;
         border-radius: 8px;
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb_character_editor_exit {
-        width: var(--sb-mobile-touch-target, 44px);
-        min-width: var(--sb-mobile-touch-target, 44px);
-        max-width: var(--sb-mobile-touch-target, 44px);
-        height: var(--sb-mobile-touch-target, 44px);
-        min-height: var(--sb-mobile-touch-target, 44px);
-        max-height: var(--sb-mobile-touch-target, 44px);
         margin: 0;
         padding: 0 !important;
         border-radius: 8px;
@@ -1503,7 +1461,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     #nanogpt_form .sb-nanogpt-provider-picker {
         display: block;
         width: 100%;
-        min-height: max(44px, var(--sb-field-min-height));
+        min-height: var(--sb-field-min-height);
         height: auto;
         padding: 8px var(--sb-field-padding-x);
         text-align: left;
@@ -1511,10 +1469,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         overflow-wrap: anywhere;
     }
 
-    .sb-model-id-picker-empty,
-    .sb-model-id-picker-option {
-        min-height: 44px;
-    }
 }
 
 @media screen and (max-width: 768px) {
@@ -1578,9 +1532,9 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         --sb-bottom-chat-mobile-gap: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 3px);
         --sb-bottom-chat-mobile-padding-block: clamp(1px, calc(1.5px * var(--sb-bottom-bar-scale)), 2px);
         --sb-bottom-chat-mobile-padding-inline: clamp(3px, calc(4px * var(--sb-bottom-bar-scale)), 6px);
-        --sb-bottom-chat-mobile-button-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
-        --sb-bottom-chat-mobile-select-height: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
-        --sb-bottom-chat-mobile-persona-size: clamp(26px, calc(28px * var(--sb-bottom-bar-scale)), 32px);
+        --sb-bottom-chat-mobile-button-size: 32px;
+        --sb-bottom-chat-mobile-select-height: 32px;
+        --sb-bottom-chat-mobile-persona-size: 32px;
         --sb-bottom-chat-mobile-radius: 0px;
         /* Keep vertical drags on the band between #chat and the composer from
            becoming visual-viewport pans; its only owned gesture is the
@@ -1817,5 +1771,16 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 @media screen and (max-width: 768px) and (prefers-reduced-motion: reduce) {
 .sb-nav-item {
         transition: none;
+    }
+}
+
+/* Touch floor for the tag filter buttons, which the compact rule above sizes with `!important` literals.
+   Their elements exist only in this layout, so the pointer rule can stay in this sheet. */
+@media (pointer: coarse) {
+    #right-nav-panel.openDrawer .rm_tag_controls :is(.tag.actionable, .tags_view, .right_menu_button) {
+        width: var(--sb-mobile-touch-target, 44px) !important;
+        min-width: var(--sb-mobile-touch-target, 44px) !important;
+        height: var(--sb-mobile-touch-target, 44px) !important;
+        min-height: var(--sb-mobile-touch-target, 44px) !important;
     }
 }

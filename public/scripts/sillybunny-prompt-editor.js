@@ -10,6 +10,7 @@ import { t, translate } from './i18n.js';
 import { createSegmentedControl } from './sillybunny-segmented-control.js';
 import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list-shell.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
+import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
@@ -125,7 +126,7 @@ export function initializePromptEditor(column) {
     const contentCounts = new Map();
     const contentRequests = new Map();
     const listGroups = new Map();
-    const mobile = matchMedia('(max-width: 768px)');
+    const mobile = matchMedia(LAYOUT_MOBILE_QUERY);
 
     const dirty = () => Boolean(draft) && JSON.stringify(draft) !== baseline;
     const textCompletionView = () => state?.type === 'text-completions';
@@ -1363,7 +1364,7 @@ export function initializePromptEditor(column) {
     const resizeObserver = new ResizeObserver(scheduleLayout);
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261112j', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261112l', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

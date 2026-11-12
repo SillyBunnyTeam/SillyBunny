@@ -83,8 +83,8 @@
     --sb-section-gap: 14px;
     --sb-settings-card-padding: var(--spacing-md) 14px;
     --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.78), 30px);
-    --sb-message-hit-size: var(--sb-message-icon-size);
-    --sb-message-glyph-size: calc(var(--sb-message-hit-size) * 0.52);
+    --sb-message-hit-size: max(var(--sb-message-icon-size), 32px);
+    --sb-message-glyph-size: calc(var(--sb-message-icon-size) * 0.52);
     --sb-composer-action-size: clamp(34px, calc(var(--bottomFormBlockSize, 36px) * 0.94), 38px);
     --sb-composer-send-width: var(--sb-composer-action-size);
     --sb-composer-action-icon-size: clamp(14px, calc(var(--bottomFormIconSize, 20px) * 0.72), 17px);
@@ -422,7 +422,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     --sb-composer-action-icon-size: clamp(12px, calc(var(--bottomFormIconSize, 18px) * 0.7), 15px);
 }
 
-@media (pointer: coarse), screen and (max-width: 768px) {
+@media (pointer: coarse) {
     :root,
     :root[data-sb-compact-mode='true'] {
         --sb-control-min-height: var(--sb-mobile-touch-target);
@@ -430,6 +430,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
         --sb-icon-control-size: var(--sb-mobile-touch-target);
         --sb-inline-drawer-icon-size: var(--sb-mobile-touch-target);
         --sb-field-min-height: var(--sb-mobile-touch-target);
+        --sb-message-hit-size: var(--sb-mobile-touch-target);
     }
 }
 
@@ -827,7 +828,7 @@ h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3) {
 }
 
 :root[data-sb-compact-mode='true'] .checkbox_label {
-    min-height: 30px;
+    min-height: var(--sb-control-min-height);
     gap: 6px;
     padding-block: max(0px, calc((var(--sb-control-min-height) - 1.32em) / 2));
 }
@@ -1061,7 +1062,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 
 .sb-segmented-control--compact .sb-boolean-radio-option > span {
     padding: 6px 9px;
-    min-height: 30px;
+    min-height: 32px;
     border: 0;
     border-radius: var(--sb-radius-control);
     box-shadow: none;
@@ -1149,7 +1150,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     }
 }
 
-@media screen and (max-width: 768px) {
+@media (pointer: coarse) {
     :is(.menu_button, .menu_button_icon, .right_menu_button, .drawer-icon.closedIcon) {
         min-inline-size: var(--sb-mobile-touch-target);
     }
@@ -1172,6 +1173,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 
     .sb-boolean-radio-option,
     .sb-boolean-radio-option > span,
+    .sb-segmented-control--compact .sb-boolean-radio-option > span,
     .floating_prompt_radio_group label {
         min-height: var(--sb-mobile-touch-target);
         min-inline-size: var(--sb-mobile-touch-target);
@@ -2278,10 +2280,10 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 }
 
 #chat .mes :is(.swipe_left, .swipe_right) {
-    inline-size: var(--sb-message-icon-size);
-    block-size: var(--sb-message-icon-size);
+    inline-size: var(--sb-message-hit-size);
+    block-size: var(--sb-message-hit-size);
     border-radius: 8px;
-    line-height: var(--sb-message-icon-size);
+    line-height: var(--sb-message-hit-size);
     text-align: center;
 }
 
@@ -2656,7 +2658,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     max-width: 100%;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 768px) {
     .mes .mes_media_wrapper,
     .mes .mes_img_container,
     .mes .mes_video_container {
@@ -2674,18 +2676,14 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 @media screen and (max-width: 768px) {
     :root {
         --sb-icon-control-size: 2.5rem;
-        --sb-control-min-height: var(--sb-mobile-touch-target);
         --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
         --sb-message-icon-size: clamp(28px, calc(var(--bottomFormBlockSize, 44px) * 0.62), 34px);
-        --sb-message-hit-size: var(--sb-mobile-touch-target);
         --sb-message-glyph-size: 18px;
     }
 
     :root[data-sb-compact-mode='true'] {
-        --sb-control-min-height: var(--sb-mobile-touch-target);
         --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.62), 30px);
-        --sb-message-hit-size: 40px;
         --sb-message-glyph-size: 17px;
     }
 
@@ -3746,7 +3744,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     }
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 768px) {
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers] {
         display: flex;
         flex-direction: column;
@@ -4195,7 +4193,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     }
 }
 
-@media (pointer: coarse) and (max-width: 1000px) {
+@media (pointer: coarse) and (max-width: 768px) {
     #left-nav-panel.openDrawer {
         --sb-mobile-range-label-width: clamp(5.75rem, 30vw, 7.25rem);
         --sb-mobile-range-counter-width: 3.25rem;
@@ -4802,7 +4800,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     #openai_api .checkbox_label,
     #openai_settings .checkbox_label,
     #range_block_openai .checkbox_label {
-        min-height: 38px;
+        min-height: var(--sb-control-min-height);
         padding-block: 2px;
     }
 
@@ -5245,7 +5243,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .sb-accent-preset {
-    --sb-accent-swatch-size: 30px;
+    --sb-accent-swatch-size: 32px;
     position: relative;
     width: var(--sb-accent-swatch-size);
     min-width: var(--sb-accent-swatch-size);
@@ -6124,14 +6122,6 @@ body.reduced-motion *::after {
         gap: 8px;
     }
 
-    #model_openai_favorite_toggle,
-    .sb-model-id-favorite-toggle {
-        flex-basis: 44px;
-        width: 44px;
-        min-width: 44px;
-        min-height: 44px;
-    }
-
     .sb-model-id-search-row {
         gap: 8px;
     }
@@ -6212,7 +6202,7 @@ body.reduced-motion *::after {
     }
 
     .sb-chat-completion-server-config .sb-chat-completion-config-actions .menu_button {
-        min-height: 34px;
+        min-height: max(34px, var(--sb-control-min-height));
         padding: 7px 10px;
         border-radius: 11px;
         font-size: var(--sb-type-control);
@@ -6222,7 +6212,7 @@ body.reduced-motion *::after {
     .sb-shell-panel-scroller .menu_button_icon:where(:not(.sb-status-page__action)),
     .sb-shell-panel-scroller button.menu_button:where(:not(.sb-status-page__action)),
     .sb-shell-panel-scroller button.menu_button_icon:where(:not(.sb-status-page__action)) {
-        min-height: 38px;
+        min-height: max(38px, var(--sb-control-min-height));
         padding: 8px 12px;
         border-radius: 12px;
         font-size: var(--sb-type-control);
@@ -6274,12 +6264,13 @@ body.reduced-motion *::after {
     #AdvancedFormatting .title_restorable.standoutHeader .menu_button_icon,
     #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5 > .menu_button,
     #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) > .flex-container.marginLeft5 > .menu_button_icon {
-        width: 38px !important;
-        min-width: 38px !important;
-        max-width: 38px !important;
-        height: 38px !important;
-        min-height: 38px !important;
-        max-height: 38px !important;
+        --sb-preset-button-size: max(38px, var(--sb-control-min-height));
+        width: var(--sb-preset-button-size) !important;
+        min-width: var(--sb-preset-button-size) !important;
+        max-width: var(--sb-preset-button-size) !important;
+        height: var(--sb-preset-button-size) !important;
+        min-height: var(--sb-preset-button-size) !important;
+        max-height: var(--sb-preset-button-size) !important;
         padding: 0 !important;
         border-radius: 12px;
     }
@@ -6292,7 +6283,7 @@ body.reduced-motion *::after {
     }
 
     #AdvancedFormatting .flex-container.flexNoGap:has(> select[data-preset-manager-for]) {
-        --sb-preset-row-control-size: 38px;
+        --sb-preset-row-control-size: max(38px, var(--sb-control-min-height));
     }
 
     .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers='rep_pen_slope']:has(> input[type='range'].neo-range-slider),
@@ -8409,4 +8400,68 @@ input::placeholder {
 /* .hidden only hides; a spinner under it would otherwise keep running. */
 :is(.fa-spin, .fa-spin-pulse, .fa-pulse).hidden {
     animation: none;
+}
+
+/* Fine-pointer floor for the help links beside setting labels. */
+a.note-link-span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 32px;
+    min-block-size: 32px;
+}
+
+/* Touch floor for controls that size themselves with literal pixels. Placed last so that the
+   width-gated and ID-scoped size rules above do not keep these under 44px. */
+@media (pointer: coarse) {
+    .sb-accent-preset {
+        --sb-accent-swatch-size: var(--sb-mobile-touch-target);
+    }
+
+    :is(.menu_button, .right_menu_button):is(.fa, .fa-solid, .fa-regular, .fa-brands),
+    a.note-link-span {
+        min-inline-size: 44px;
+        min-block-size: 44px;
+    }
+
+    /* The Assets connect button takes 15% of its row (extensions/assets/style.css), which is under the floor in a narrow dialog. */
+    #assets-connect-button {
+        min-width: 44px;
+    }
+
+    textarea.textarea_compact {
+        min-height: 44px;
+    }
+
+    :is(.sampler-order-lock, #model_openai_favorite_toggle, .sb-model-id-favorite-toggle) {
+        flex-basis: 44px;
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        min-height: 44px;
+    }
+
+    :is(.quick_context_size, .sb-shell-panel-scroller .quick_context_size_container .quick_context_size, #left-nav-panel.openDrawer #max_context_block .quick_context_size) {
+        height: 44px;
+        min-height: 44px;
+        max-height: 44px;
+    }
+
+    .sb-theme-preset-button,
+    .sb-dialog__search-entry,
+    :is(#options .options-content a, #extensionsMenu > .extension_container > div),
+    :is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option,
+    .sb-world-info-select2-dropdown .select2-results__option {
+        min-height: 44px;
+    }
+
+    :is(#options .options-content a, #extensionsMenu > .extension_container > div),
+    .sb-dialog__search-entry {
+        height: 44px;
+    }
+
+    #completion_prompt_manager_popup .completion_prompt_manager_popup_entry_form :is(input.text_pole, select.text_pole:not(.select2-hidden-accessible)),
+    #completion_prompt_manager_popup .select2-container .select2-selection {
+        min-height: 44px;
+    }
 }
