@@ -151,6 +151,47 @@ describe('flattening settings drawers', () => {
         expect(levelOf(inner)).toEqual({ flat: true, top: false });
     });
 
+    test('a drawer inside a boxed group or a row is a subsection, with no drawer around it', () => {
+        const root = document.createElement('div');
+        const group = document.createElement('div');
+        group.className = 'ds-pref-group';
+        const row = document.createElement('div');
+        row.className = 'ds-row';
+        const inGroup = drawer('in-group');
+        const inRow = drawer('in-row');
+        const free = drawer('free');
+        row.append(inRow);
+        group.append(row, inGroup);
+        root.append(group, free);
+
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+
+        expect(levelOf(inGroup)).toEqual({ flat: true, top: false });
+        expect(levelOf(inRow)).toEqual({ flat: true, top: false });
+        expect(levelOf(free)).toEqual({ flat: true, top: true });
+    });
+
+    test('a section that is moved into a boxed row after it was flattened becomes a subsection on the next run', () => {
+        const root = document.createElement('div');
+        const moved = drawer('moved');
+        const stays = drawer('stays');
+        root.append(moved, stays);
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+        expect(levelOf(moved)).toEqual({ flat: true, top: true });
+
+        const group = document.createElement('div');
+        group.className = 'ds-pref-group';
+        const row = document.createElement('div');
+        row.className = 'ds-row';
+        group.append(row);
+        root.append(group);
+        row.append(moved);
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+
+        expect(levelOf(moved)).toEqual({ flat: true, top: false });
+        expect(levelOf(stays)).toEqual({ flat: true, top: true });
+    });
+
     test('a later run without top-level flattening unwraps a drawer inside a flattened section', () => {
         const root = document.createElement('div');
         const outer = drawer('outer');

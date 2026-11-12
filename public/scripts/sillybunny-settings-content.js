@@ -220,8 +220,10 @@ export function flattenNestedSettingsDrawers(root, options = {}) {
         let nested = false;
         for (let ancestor = drawer.parentElement; ancestor && ancestor !== root; ancestor = ancestor.parentElement) {
             // A section that an earlier run flattened is no longer a drawer, but a drawer that is built inside it afterwards
-            // is nested all the same. Without this, the level of such a subsection depended on which was built first.
-            if (drawerSet.has(ancestor) || ancestor.classList.contains(SB_FLAT_SECTION_CLASS)) {
+            // is nested all the same. A drawer inside a boxed group or a row is part of that box, also when the page builder
+            // moved it there out of the drawer that held it. Without these two, the level of such a subsection depended on
+            // whether it was flattened before or after it was built or moved.
+            if (drawerSet.has(ancestor) || ancestor.classList.contains(SB_FLAT_SECTION_CLASS) || ancestor.matches('.ds-pref-group, .ds-row')) {
                 nested = true;
                 break;
             }
@@ -233,6 +235,15 @@ export function flattenNestedSettingsDrawers(root, options = {}) {
 
         if (flattenSettingsDrawer(drawer, !nested)) {
             flattened++;
+        }
+    }
+
+    // A page builder may flatten a section where it stands alone and move it into a boxed group or a row afterwards. There it
+    // is a subsection, as it would have been had the move come first, so the level does not depend on that order.
+    for (const section of root.querySelectorAll(`.${SB_FLAT_SECTION_TOP_CLASS}`)) {
+        const box = section.parentElement?.closest('.ds-pref-group, .ds-row');
+        if (box && box !== root && root.contains(box)) {
+            section.classList.remove(SB_FLAT_SECTION_TOP_CLASS);
         }
     }
 
