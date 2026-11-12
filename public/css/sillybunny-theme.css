@@ -459,15 +459,6 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     }
 }
 
-@media (prefers-contrast: more) {
-    :root {
-        --sb-shadow-card:
-            0 0 0 1px var(--SmartThemeBorderColor),
-            0 1px 3px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent),
-            0 2px 6px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 8%, transparent);
-    }
-}
-
 @supports (transition-timing-function: linear(0, 1)) {
     :root {
         --sb-spring-dialog: linear(0, 0.096, 0.299, 0.533, 0.737, 0.897, 1, 1.059, 1.081, 1.079, 1.065, 1.046, 1.028, 1.013, 1.003, 0.997, 0.994, 0.993, 0.994, 0.996, 0.997, 0.998, 0.999, 1, 1);
@@ -522,10 +513,20 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     --sb-focus-ring: color-mix(in srgb, var(--sb-accent) 85%, transparent);
 }
 
+/* The stronger strengths of the Layer Ladder. Borders are the body colour at 50%, as the list and editor edges are, so a
+   theme's own border colour, which can lie close to the surface colour, cannot weaken them. */
 @media (prefers-contrast: more) {
     :root,
+    :root[data-sb-theme='clean-minimal'],
     :root[data-sb-surface-tone='light'] {
         --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 90%, transparent);
+        --sb-shell-border: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+        --sb-input-border: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+        --sb-shadow-dialog-highlight: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+        --sb-shadow-card:
+            0 0 0 1px var(--SmartThemeBorderColor),
+            0 1px 3px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent),
+            0 2px 6px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 8%, transparent);
     }
 }
 
@@ -3032,6 +3033,7 @@ input[type='range']:focus-visible,
 input[type='range'].neo-range-slider:focus-visible {
     outline: 2px solid var(--sb-focus-ring);
     outline-offset: 4px;
+    box-shadow: none;
 }
 
 input[type='range']:disabled,
@@ -8038,10 +8040,11 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         border: 1px solid ButtonText;
     }
 
-    /* Forced colours have no error colour, so an invalid field gets a double border. Entry rows set their border with an id. */
-    :is(.text_pole, select)[aria-invalid='true'] {
-        border-style: double !important;
-        border-width: 3px !important;
+    /* Forced colours have no error colour, so an invalid field gets a double border in Mark. The danger colour is not a
+       system colour and would be forced to ButtonBorder. Entry rows and the Persona and Tag Manager fields set their
+       border with an id or a longer selector, so the shorthand is important. */
+    :is(input, textarea, select, .text_pole)[aria-invalid='true'] {
+        border: 3px double Mark !important;
     }
 
     /* A toast is told from the page by its shadow alone, which forced colours remove. */

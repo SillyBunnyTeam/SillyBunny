@@ -215,8 +215,8 @@
 
 #chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):focus-visible {
     opacity: 1;
-    outline: 2px solid var(--sb-focus-ring);
-    outline-offset: -2px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 #chat .mes .mes_edit_buttons .menu_button {

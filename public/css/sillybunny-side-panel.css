@@ -52,8 +52,8 @@
 }
 
 .sb-side-panel__menu-item:focus-visible {
-    outline: 2px solid var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-side-panel__menu {

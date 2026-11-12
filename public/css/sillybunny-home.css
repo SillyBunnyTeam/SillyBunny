@@ -1495,9 +1495,11 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
     cursor: pointer;
 }
 
+/* The ring stays in the toast's ink: the toast layer is dark in both tones, where an accent ring does not reach 3:1. */
 .sbHomeToastAction:focus-visible {
     outline: 2px solid currentColor;
     outline-offset: -2px;
+    box-shadow: none;
 }
 
 @media (hover: hover) {

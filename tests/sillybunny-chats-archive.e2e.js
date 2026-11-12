@@ -897,7 +897,8 @@ test('the @mention combobox completes fuzzily, scopes the content search, and ke
     await field.press('ArrowUp');
     const last = menu.getByRole('option', { name: 'Prime "One"' });
     await expect(last).toHaveAttribute('aria-selected', 'true');
-    await expect(last).toHaveCSS('outline-style', 'solid');
+    await expect(last).toHaveCSS('box-shadow', /0px 0px 0px 2px inset/);
+    await expect(last).toHaveCSS('outline-style', 'none');
     await expect(field).toBeFocused();
     await field.press('ArrowDown');
     await expect(menu.getByRole('option', { name: 'Alice' })).toHaveAttribute('aria-selected', 'true');

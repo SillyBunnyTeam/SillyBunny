@@ -70,9 +70,9 @@
     display: none !important;
 }
 
-.sbca-dialog :is(button, summary, input, select):focus-visible {
-    outline: 2px solid var(--sbca-focus);
-    outline-offset: 2px;
+.sbca-dialog :is(button, summary):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* The root frame's body hosts the list editor edge to edge; its panes own their padding and scrolling.
@@ -458,8 +458,8 @@
 .sbca-mention-option:focus-visible,
 .sbca-mention-option[aria-selected='true'] {
     background: var(--sb-selection-bg, var(--sbca-surface));
-    outline: 2px solid var(--sbca-focus);
-    outline-offset: -2px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 @media (hover: hover) {

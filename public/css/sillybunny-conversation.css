@@ -815,8 +815,9 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 }
 
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_send:focus-visible {
-    outline: 2px solid var(--sb-focus-ring);
-    outline-offset: 2px;
+    outline: none;
+    background: color-mix(in srgb, var(--sb-accent) 82%, var(--sb-on-solid-accent) 18%);
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* ---------- Settings pane ---------- */
@@ -1037,8 +1038,9 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 }
 
 .sb-conversation-participant-avatar.is-interactive:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--sb-accent) 72%, var(--SmartThemeBodyColor));
+    outline: 2px solid var(--sb-focus-ring);
     outline-offset: 2px;
+    box-shadow: none;
 }
 
 .sb-conversation-participant-avatar img {
@@ -1232,9 +1234,10 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 }
 
 .sb-conversation-message-avatar:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--sb-accent) 72%, var(--SmartThemeBodyColor));
+    outline: 2px solid var(--sb-focus-ring);
     outline-offset: 2px;
     border-radius: 50%;
+    box-shadow: none;
 }
 
 .sb-conversation-message-avatar .sb-conversation-status-dot {
@@ -2145,6 +2148,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 .sb-conversation-switch:focus-visible {
     outline: 2px solid var(--sb-focus-ring);
     outline-offset: 2px;
+    box-shadow: none;
 }
 
 .sb-conversation-switch:disabled {

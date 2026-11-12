@@ -4051,8 +4051,8 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 }
 
 .sb-mode-menu-item:focus-visible {
-    outline: 2px solid var(--color-primary, var(--sb-accent));
-    outline-offset: -2px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-mode-menu-item.is-active {
@@ -4151,8 +4151,8 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 }
 
 .sb-persona-option:focus-visible {
-    outline: 2px solid var(--color-focus-ring, var(--color-primary, var(--sb-accent)));
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-persona-option.is-active {
@@ -7835,8 +7835,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-help-toggle:focus-visible {
-    outline: 2px solid var(--sb-accent);
-    outline-offset: 1px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* Keep a field's explanation with its label, and keep capability icons in that heading. */
@@ -8880,8 +8880,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 .sb-subpage-row:focus-visible {
-    outline: 2px solid var(--color-primary, var(--sb-accent));
-    outline-offset: -2px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-subpage-detail-bar {
@@ -8944,8 +8944,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 .sb-subpage-back:focus-visible {
-    outline: 2px solid var(--color-primary, var(--sb-accent));
-    outline-offset: 1px;
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-subpage-detail-body {
