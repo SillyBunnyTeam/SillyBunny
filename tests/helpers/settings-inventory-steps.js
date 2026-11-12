@@ -10,7 +10,7 @@ import { settle, expandAll } from './surfaces/steps.js';
 import { installInventoryApi } from './settings-inventory-collect.js';
 import { diffSettings, driftPaths, getPath, nextNumber, sameValue, textCandidates } from './settings-inventory.js';
 import { isIgnoredPath, readyExtrasFor } from './settings-inventory-rules.js';
-import { SERVER_ADMIN_FIXED as SERVER_ADMIN_STATUS } from './surfaces/server-admin-fixed.js';
+import { SERVER_ADMIN_FIXED } from './surfaces/server-admin-fixed.js';
 
 export const EXTENSIONS_PANEL = '[data-sb-panel="extensions"]';
 export const EXTENSION_DETAIL = `${EXTENSIONS_PANEL} .sb-subpage-detail[aria-hidden="false"]`;
@@ -34,15 +34,6 @@ const OUTBOUND = /\/api\/(?:backends|novelai|horde|openai|openrouter|nanogpt|ant
  * which the guard of the boot does not cover, so they are answered here.
  */
 const SERVER_ADMIN_WRITES = /\/api\/server-admin\/(?!(?:install-type|status|logs|branches|server-plugins\/capabilities|config\/get|config\/[a-z-]+\/get)$)/;
-
-/**
- * The reads that the Data & Security page builds itself from, answered with fixed data: what the real ones say depends on the git
- * state of the checkout that the server runs from (whether an update is ready, which branches exist) and on its config.yaml.
- */
-const SERVER_ADMIN_FIXED = Object.freeze({
-    ...SERVER_ADMIN_STATUS,
-    '/api/server-admin/config/get': { path: 'config.yaml', content: 'listen: false\n', lastModifiedMs: 1 },
-});
 
 function readPayload(request) {
     const buffer = request.postDataBuffer();
