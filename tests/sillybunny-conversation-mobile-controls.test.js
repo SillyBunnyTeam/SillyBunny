@@ -158,7 +158,7 @@ describe('Conversation mobile controls', () => {
 
     test('inline editor uses libadwaita pill buttons, not legacy menu buttons', () => {
         expect(getRuleDeclarations('.sb-conversation-message-edit-control')).toMatchObject({
-            'border-radius': '999px',
+            'border-radius': 'var(--sb-radius-pill)',
             background: 'var(--sb-raised-bg)',
         });
         expect(getRuleDeclarations('.sb-conversation-message-edit-save')).toMatchObject({

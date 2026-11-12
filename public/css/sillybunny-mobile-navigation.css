@@ -67,7 +67,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .
     padding: 0 12px;
     box-sizing: border-box;
     border: 1px solid transparent;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: var(--sb-raised-bg);
     color: var(--SmartThemeBodyColor);
     font: inherit;
@@ -132,7 +132,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > :
     min-height: 44px;
     max-width: 44px;
     max-height: 44px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     font-size: calc(var(--mainFontSize) * 0.95);
 }
 
@@ -159,7 +159,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .
     min-height: 44px;
     max-height: 44px;
     padding-inline: 12px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #sb-bottom-chat-bar > .sb-bottom-chat-search-field input:not(#sb-specificity) {
@@ -193,7 +193,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #nonQRFormItems > :is(#
 }
 
 html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #form_sheld :is(#options_button, #leftSendForm > div, #rightSendForm > div, #send_but, .mes_stop):not(#sb-specificity) {
-    border-radius: 999px !important;
+    border-radius: var(--sb-radius-pill) !important;
     box-shadow: none !important;
 }
 
@@ -237,7 +237,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-mobile-tray-ope
     height: 44px !important;
     min-height: 44px !important;
     max-height: 44px !important;
-    border-radius: 999px !important;
+    border-radius: var(--sb-radius-pill) !important;
     font-size: calc(var(--mainFontSize) * 0.95) !important;
 }
 
@@ -276,7 +276,7 @@ html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-ac
     max-height: none;
     padding: 6px 10px;
     border: 1px solid transparent;
-    border-radius: 10px;
+    border-radius: var(--sb-radius-control);
     font-size: calc(var(--mainFontSize) * 0.86);
     text-align: start;
 }
@@ -287,7 +287,7 @@ html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] .sb-dialog.sb-bottom-ch
     min-height: 44px;
     max-height: 44px;
     padding: 0 12px;
-    border-radius: 12px;
+    border-radius: var(--sb-radius-card);
     font-size: calc(var(--mainFontSize) * 0.9);
     line-height: 44px;
 }
@@ -316,6 +316,6 @@ html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-ac
 
 html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:has(> .fa-trash):not(#sb-specificity) {
     grid-column: 1 / -1;
-    color: var(--sb-color-danger, #fb7185);
-    border-color: color-mix(in srgb, var(--sb-color-danger, #fb7185) 32%, transparent);
+    color: var(--sb-color-danger);
+    border-color: color-mix(in srgb, var(--sb-color-danger) 32%, transparent);
 }

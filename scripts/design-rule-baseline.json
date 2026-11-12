@@ -2,8 +2,7 @@
     "version": 1,
     "files": {
         "public/css/sillybunny-character-editor.css": {
-            "radius-literal": 8,
-            "radius-literal-fallback": 9,
+            "radius-literal": 2,
             "important": 12,
             "breakpoint-off-set": 2,
             "breakpoint-1000": 1,
@@ -22,8 +21,7 @@
             "spacing-off-scale": 40
         },
         "public/css/sillybunny-chat-styles.css": {
-            "color-literal": 52,
-            "radius-literal": 7,
+            "color-literal": 26,
             "shadow-literal": 1,
             "letter-spacing": 1,
             "important": 225,
@@ -38,26 +36,22 @@
             "spacing-off-scale": 6
         },
         "public/css/sillybunny-conversation.css": {
-            "color-literal": 6,
-            "color-literal-fallback": 5,
-            "radius-literal": 36,
-            "radius-literal-fallback": 18,
-            "shadow-literal": 4,
+            "color-literal": 2,
+            "radius-literal": 11,
+            "shadow-literal": 2,
             "duration-literal": 3,
             "important": 6,
             "breakpoint-off-set": 2,
             "spacing-off-scale": 138
         },
         "public/css/sillybunny-editor-shell.css": {
-            "radius-literal": 3,
-            "radius-literal-fallback": 2,
+            "radius-literal": 2,
             "important": 10,
             "spacing-off-scale": 33,
             "spacing-off-scale-fallback": 1
         },
         "public/css/sillybunny-entity-list.css": {
-            "radius-literal": 15,
-            "radius-literal-fallback": 2,
+            "radius-literal": 12,
             "important": 33,
             "spacing-off-scale": 28,
             "spacing-off-scale-fallback": 1
@@ -66,35 +60,29 @@
             "spacing-off-scale": 2
         },
         "public/css/sillybunny-folder-manager.css": {
-            "radius-literal": 3,
+            "radius-literal": 2,
             "important": 1,
             "spacing-off-scale": 4
         },
         "public/css/sillybunny-home.css": {
             "color-literal": 2,
-            "radius-literal": 3,
+            "radius-literal": 1,
             "shadow-literal": 2,
             "important": 1,
             "spacing-off-scale": 48,
             "spacing-off-scale-fallback": 1
         },
         "public/css/sillybunny-message-actions.css": {
-            "color-literal": 3,
-            "color-literal-fallback": 1,
-            "radius-literal": 4,
-            "radius-literal-fallback": 1,
-            "shadow-literal": 1,
+            "radius-literal": 2,
             "important": 12,
             "spacing-off-scale": 15
         },
         "public/css/sillybunny-mobile-navigation.css": {
-            "color-literal-fallback": 2,
-            "radius-literal": 7,
             "important": 33,
             "spacing-off-scale": 10
         },
         "public/css/sillybunny-mobile-shell.css": {
-            "radius-literal": 11,
+            "radius-literal": 1,
             "shadow-literal": 2,
             "important": 317,
             "spacing-off-scale": 88,
@@ -102,8 +90,6 @@
         },
         "public/css/sillybunny-paper-theme.css": {
             "color-literal": 11,
-            "radius-literal": 6,
-            "radius-literal-fallback": 1,
             "important": 51,
             "spacing-off-scale": 9
         },
@@ -118,16 +104,11 @@
             "spacing-off-scale": 20
         },
         "public/css/sillybunny-prompt-editor.css": {
-            "color-literal": 1,
-            "radius-literal": 1,
             "shadow-literal": 1,
             "important": 21,
             "spacing-off-scale": 39
         },
         "public/css/sillybunny-side-panel.css": {
-            "color-literal-fallback": 1,
-            "radius-literal": 1,
-            "radius-literal-fallback": 4,
             "shadow-literal": 1,
             "important": 60,
             "spacing-off-scale": 4
@@ -147,7 +128,7 @@
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-tag-manager.css": {
-            "radius-literal": 3,
+            "radius-literal": 2,
             "shadow-literal": 1,
             "important": 2,
             "spacing-off-scale": 4
@@ -179,16 +160,13 @@
             "breakpoint-1000": 1
         },
         "public/scripts/extensions/guided-generations/style.css": {
-            "radius-literal": 2,
             "shadow-literal": 1,
             "important": 11,
             "breakpoint-off-set": 1,
             "spacing-off-scale": 6
         },
         "public/scripts/extensions/in-chat-agents/style.css": {
-            "color-literal-fallback": 19,
-            "radius-literal": 12,
-            "radius-literal-fallback": 2,
+            "radius-literal": 1,
             "duration-literal": 1,
             "important": 7,
             "breakpoint-off-set": 1,
@@ -199,16 +177,12 @@
             "spacing-off-scale": 3
         },
         "public/scripts/extensions/input-history/style.css": {
-            "color-literal": 3,
-            "radius-literal": 2,
             "important": 11,
             "breakpoint-off-set": 1,
             "spacing-off-scale": 6
         },
         "public/scripts/extensions/sillybunny-chats-archive/style.css": {
-            "color-literal-fallback": 1,
             "radius-literal": 2,
-            "radius-literal-fallback": 3,
             "shadow-literal": 1,
             "italic": 1,
             "important": 19,

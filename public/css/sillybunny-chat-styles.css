@@ -214,15 +214,15 @@ body.echostyle #chat {
                     background-size: cover;
                     background-attachment: fixed;
                     -webkit-mask-image:
-                    linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                    linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                    linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+                    linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     mask-image:
-                    linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                    linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                    linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+                    linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     -webkit-mask-composite: destination-in;
                     mask-composite: intersect;
                     border-radius: var(--moonlit-sb-card-radius) 0 0 var(--moonlit-sb-card-radius);
@@ -266,15 +266,15 @@ body.echostyle #chat {
                     background-size: cover;
                     background-attachment: fixed;
                     -webkit-mask-image:
-                    linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                    linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                    linear-gradient(to left, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to right, transparent, rgba(0,0,0,1) 30%),
+                    linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     mask-image:
-                    linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                    linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                    linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                    linear-gradient(to left, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to right, transparent, rgba(0,0,0,1) 30%),
+                    linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                    linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     -webkit-mask-composite: destination-in;
                     mask-composite: intersect;
                     border-radius: 0 var(--moonlit-sb-card-radius) var(--moonlit-sb-card-radius) 0;
@@ -308,7 +308,7 @@ body.echostyle #chat {
     .mesIDDisplay {
         background: var(--moonlit-sb-pill-bg);
         padding: 0 8px;
-        border-radius: 999px;
+        border-radius: var(--sb-radius-pill);
         opacity: 0.8;
     }
     .timestamp {
@@ -399,10 +399,10 @@ body.whisperstyle #chat {
             height: 100px;
             background: var(--mes-avatar-url, var(--sb-message-avatar)) var(--customWhisperAvatarAlign) no-repeat;
             background-size: cover;
-            mask-image: linear-gradient(to bottom, black 60%, rgba(0, 0, 0, 0) 100%);
+            mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
             mask-size: 100% 100%;
             mask-repeat: no-repeat;
-            -webkit-mask-image: linear-gradient(to left, black 60%, rgba(0, 0, 0, 0) 100%);
+            -webkit-mask-image: linear-gradient(to left, black 60%, transparent 100%);
             -webkit-mask-size: 100% 100%;
             -webkit-mask-repeat: no-repeat;
             z-index: 0;
@@ -419,7 +419,7 @@ body.whisperstyle #chat {
             right: 0;
             width: 3px;
             height: 30px;
-            border-radius: 999px 0 0 999px;
+            border-radius: var(--sb-radius-pill) 0 0 var(--sb-radius-pill);
             opacity: 0.9;
             z-index: 3;
         }
@@ -510,7 +510,7 @@ body.whisperstyle #chat {
     .mesIDDisplay {
         background: var(--customBgColor1, var(--moonlit-sb-pill-bg));
         padding: 0 8px;
-        border-radius: 999px;
+        border-radius: var(--sb-radius-pill);
         opacity: 0.8;
     }
     .timestamp {
@@ -594,7 +594,7 @@ body.hushstyle #chat {
             right: 0;
             width: 3px;
             height: 30px;
-            border-radius: 999px 0 0 999px;
+            border-radius: var(--sb-radius-pill) 0 0 var(--sb-radius-pill);
             opacity: 0.9;
             z-index: 3;
         }
@@ -673,7 +673,7 @@ body.hushstyle #chat {
     .mesIDDisplay {
         background: var(--customBgColor1, var(--moonlit-sb-pill-bg));
         padding: 0 8px;
-        border-radius: 999px;
+        border-radius: var(--sb-radius-pill);
         opacity: 0.8;
     }
     .timestamp {
@@ -773,15 +773,15 @@ body.ripplestyle #chat {
                     border: 0 !important;
                     border-radius: var(--moonlit-sb-card-radius) 0 0 0 !important;
                     -webkit-mask-image:
-                        linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                        linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                        linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                        linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                        linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+                        linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+                        linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                        linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     mask-image:
-                        linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                        linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,1) 30%),
-                        linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,1) 0%),
-                        linear-gradient(to top, rgba(0,0,0,0), rgba(0,0,0,1) 40%);
+                        linear-gradient(to right, transparent, rgba(0,0,0,1) 0%),
+                        linear-gradient(to left, transparent, rgba(0,0,0,1) 30%),
+                        linear-gradient(to bottom, transparent, rgba(0,0,0,1) 0%),
+                        linear-gradient(to top, transparent, rgba(0,0,0,1) 40%);
                     -webkit-mask-composite: destination-in;
                     mask-composite: intersect;
                 }
@@ -1039,7 +1039,7 @@ body.tidestyle #chat {
     .mesIDDisplay {
         background: var(--moonlit-sb-pill-bg);
         padding: 0 8px;
-        border-radius: 999px;
+        border-radius: var(--sb-radius-pill);
         opacity: 0.8;
     }
     .timestamp {
@@ -1103,7 +1103,7 @@ body.ripplestyle {
         background: var(--customBgColor2, var(--moonlit-sb-pill-bg)) !important;
         width: fit-content;
         padding: 0 8px;
-        border-radius: 999px;
+        border-radius: var(--sb-radius-pill);
         justify-self: center;
         text-align: center;
         margin-top: 5px !important;

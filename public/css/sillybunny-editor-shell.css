@@ -416,7 +416,7 @@ body.reduced-motion .sb-list-editor__divider::before {
 }
 
 .sb-status-page__action.is-suggested {
-    border-radius: var(--sb-radius-pill, 999px);
+    border-radius: var(--sb-radius-pill);
 }
 
 .sb-status-page .sb-status-page__action.is-suggested:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
@@ -453,7 +453,7 @@ body.reduced-motion .sb-list-editor__divider::before {
 .sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     border: 0;
     --sb-icon-control-radius: var(--sb-radius-control, 9px);
-    border-radius: var(--sb-radius-control, 9px);
+    border-radius: var(--sb-radius-control);
     background: transparent;
     color: var(--sb-shell-text);
     opacity: 1;
@@ -627,7 +627,7 @@ body.reduced-motion :is(.ds-row--activatable, .ds-row.ds-button-row, .sb-status-
     min-width: 0;
     margin: 0;
     padding: 2px 4px 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: var(--sb-flat-selected-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
     color: inherit;
     font-size: var(--sb-type-meta);

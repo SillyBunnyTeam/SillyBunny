@@ -65,7 +65,7 @@
     height: 13px;
     padding: 0 3px;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 24%, transparent);
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, var(--SmartThemeBlurTintColor) 86%);
     color: var(--SmartThemeBodyColor);
     font-family: var(--mainFontFamily);
@@ -154,7 +154,7 @@
         min-height: var(--gg-mobile-action-size) !important;
         max-height: var(--gg-mobile-action-size) !important;
         flex: 0 0 var(--gg-mobile-action-size) !important;
-        border-radius: 999px !important;
+        border-radius: var(--sb-radius-pill) !important;
         font-size: var(--gg-mobile-action-icon-size) !important;
         padding: 0 !important;
     }

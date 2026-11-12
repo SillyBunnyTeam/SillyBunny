@@ -132,7 +132,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: var(--sb-icon-control-radius, 10px);
+    border-radius: var(--sb-icon-control-radius);
     cursor: pointer;
 }
 
@@ -155,7 +155,7 @@
     margin: 0;
     padding: 6px 8px;
     border: 0;
-    border-radius: var(--sb-radius-control, 9px);
+    border-radius: var(--sb-radius-control);
     background: transparent;
     color: var(--sb-shell-text);
     font-family: var(--mainFontFamily);
@@ -200,7 +200,7 @@
     margin: 0;
     padding: 4px 8px;
     border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-control, 9px);
+    border-radius: var(--sb-radius-control);
     background: var(--sb-flat-hover-bg);
     font-family: inherit;
     font-size: var(--sb-type-title, 16px);
@@ -269,7 +269,7 @@
 }
 
 .sb-editor-tokens__warning:focus-visible {
-    border-radius: var(--sb-radius-control, 9px);
+    border-radius: var(--sb-radius-control);
 }
 
 .sb-editor-tokens__value {
@@ -290,7 +290,7 @@
     min-height: 38px;
     margin: 0;
     padding: 0 16px;
-    border-radius: var(--sb-radius-control, 9px);
+    border-radius: var(--sb-radius-control);
     box-shadow: none;
     font-family: inherit;
     white-space: nowrap;
@@ -390,7 +390,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: var(--sb-radius-control, 9px);
+    border-radius: var(--sb-radius-control);
     background: transparent;
     color: var(--sb-shell-text);
     font-size: var(--sb-type-body, 15px);
@@ -657,7 +657,7 @@
     background: transparent;
     width: 88px;
     height: 88px;
-    border-radius: var(--sb-radius-card, 12px);
+    border-radius: var(--sb-radius-card);
     overflow: hidden;
     cursor: pointer;
     transition: opacity var(--sb-transition-fast);
@@ -721,7 +721,7 @@
     overscroll-behavior: contain;
     background: var(--sb-input-bg, color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent));
     border: 1px solid var(--sb-input-border, color-mix(in srgb, var(--SmartThemeBorderColor) 92%, transparent));
-    border-radius: var(--sb-radius-control, 9px);
+    border-radius: var(--sb-radius-control);
     font-size: var(--sb-type-control, 15px);
     color: var(--SmartThemeBodyColor);
     line-height: 1.5;
@@ -742,7 +742,7 @@
     align-items: center;
     margin: 2px 4px 2px 0;
     padding: 2px 10px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: var(--sb-flat-selected-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
     font-size: var(--sb-type-meta, 13px);
     color: var(--SmartThemeBodyColor);
@@ -942,7 +942,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     color: var(--sb-shell-text);
     font-size: 15px;
@@ -1001,7 +1001,7 @@
     font-weight: 600;
     color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
     background: var(--sb-flat-selected-bg, color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent));
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
 }
 
 .sb-greetings-expander__count:empty {
@@ -1114,7 +1114,7 @@ body.reduced-motion :is(
 
     #right-nav-panel #talkativeness_slider::-webkit-slider-runnable-track {
         height: 4px;
-        border-radius: 999px;
+        border-radius: var(--sb-radius-pill);
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
     }
 
@@ -1124,7 +1124,7 @@ body.reduced-motion :is(
 
     #right-nav-panel #talkativeness_slider::-moz-range-track {
         height: 4px;
-        border-radius: 999px;
+        border-radius: var(--sb-radius-pill);
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
     }
 
@@ -1164,7 +1164,7 @@ body.reduced-motion :is(
     gap: 4px;
     max-width: 100%;
     padding: 3px 10px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
     font-size: var(--sb-type-meta, 13px);
@@ -1277,7 +1277,7 @@ body.reduced-motion :is(
 
 .sb-character-essentials__avatar #group_avatar_div {
     display: block;
-    border-radius: var(--sb-radius-card, 12px);
+    border-radius: var(--sb-radius-card);
     overflow: hidden;
 }
 

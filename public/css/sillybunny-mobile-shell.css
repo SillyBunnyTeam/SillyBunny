@@ -45,7 +45,7 @@
     #send_form {
         margin-bottom: 0;
         border-width: 1px 0 0;
-        border-radius: 10px 10px 0 0;
+        border-radius: var(--sb-radius-control) var(--sb-radius-control) 0 0;
         border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
         /* libadwaita bottom bar: 1px top separator, no blurred shadow or glow. */
         box-shadow: none;
@@ -256,7 +256,7 @@
         min-width: max-content !important;
         min-height: max(40px, var(--sb-control-min-height)) !important;
         padding: 5px 9px !important;
-        border-radius: 9px !important;
+        border-radius: var(--sb-radius-control) !important;
     }
 
     #right-nav-panel.openDrawer #character_search_bar {
@@ -613,7 +613,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         max-height: var(--sb-mobile-toggle-size) !important;
         flex: 0 0 var(--sb-mobile-toggle-size) !important;
         padding: 0 !important;
-        border-radius: 999px !important;
+        border-radius: var(--sb-radius-pill) !important;
         box-sizing: border-box !important;
         line-height: 1 !important;
         aspect-ratio: 1 / 1;
@@ -886,7 +886,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         z-index: var(--sb-z-raised);
         width: 42px;
         height: 4px;
-        border-radius: 999px;
+        border-radius: var(--sb-radius-pill);
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
         opacity: 0.82;
         pointer-events: none;
@@ -925,7 +925,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         min-width: max-content;
         max-width: calc(100vw - 32px);
         padding: 9px 14px;
-        border-radius: 12px;
+        border-radius: var(--sb-radius-card);
         gap: 8px;
         align-items: center;
         scroll-snap-align: start;
@@ -1240,7 +1240,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
         padding: 7px 10px;
-        border-radius: 10px;
+        border-radius: var(--sb-radius-control);
     }
 
     #right-nav-panel.openDrawer > #rm_PinAndTabs {
@@ -1271,7 +1271,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         min-height: var(--sb-mobile-touch-target, 44px);
         padding: 5px 8px;
         border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-        border-radius: 10px;
+        border-radius: var(--sb-radius-card);
         background: color-mix(in srgb, var(--sb-shell-main-bg) 92%, transparent);
     }
 
@@ -1280,7 +1280,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         display: flex;
         align-items: center;
         padding: 0 8px;
-        border-radius: 8px;
+        border-radius: var(--sb-radius-control);
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_selected_ch h2 {
@@ -1319,13 +1319,13 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         max-height: max(40px, var(--sb-control-min-height));
         margin: 0;
         padding: 0 !important;
-        border-radius: 8px;
+        border-radius: var(--sb-radius-control);
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb_character_editor_exit {
         margin: 0;
         padding: 0 !important;
-        border-radius: 8px;
+        border-radius: var(--sb-radius-control);
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #sb_character_editor_exit {

@@ -64,10 +64,10 @@
     min-width: 190px;
     padding: 4px;
     border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-popover, 10px);
+    border-radius: var(--sb-radius-overlay);
     color: inherit;
     background: var(--sb-layer-drawer, var(--SmartThemeBlurTintColor));
-    box-shadow: var(--sb-shadow-popover, 0 8px 24px rgba(0, 0, 0, 0.28));
+    box-shadow: var(--sb-shadow-popover);
 }
 
 .sb-side-panel__menu[hidden] {
@@ -81,7 +81,7 @@
     align-items: center;
     padding: 0 12px;
     border: 0;
-    border-radius: var(--sb-radius-control, 8px);
+    border-radius: var(--sb-radius-control);
     color: inherit;
     text-align: start;
     background: transparent;
@@ -220,7 +220,7 @@
 
 .sb-side-panel input[type='number'] {
     border-color: var(--sb-input-border, var(--SmartThemeBorderColor));
-    border-radius: var(--sb-radius-button, 8px);
+    border-radius: var(--sb-radius-button);
     color: var(--SmartThemeBodyColor);
     background-color: var(--sb-input-bg, var(--SmartThemeBlurTintColor));
 }
@@ -330,7 +330,7 @@ body.sb-has-side-panel-sheet #form_sheld {
     padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
     border: 1px solid var(--SmartThemeBorderColor);
     border-bottom: 0;
-    border-radius: var(--sb-radius-overlay, 15px) var(--sb-radius-overlay, 15px) 0 0;
+    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
     box-shadow: var(--sb-shadow-dialog), var(--sb-shadow-dialog-highlight), inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBorderColor) 85%, transparent);
 }
 
@@ -350,7 +350,7 @@ body.sb-has-side-panel-sheet #form_sheld {
     position: absolute;
     inset: 8px 19px auto;
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
 }
 

@@ -712,7 +712,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     padding: 8px 12px;
     border-radius: var(--sb-radius-overlay);
     background: var(--sb-layer-toast);
-    color: #ffffff;
+    color: var(--sb-layer-toast-fg);
     box-shadow: var(--sb-shadow-toast);
 }
 
@@ -757,7 +757,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     position: absolute;
     inset: 8px 19px auto;
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
 }
 

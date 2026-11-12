@@ -87,14 +87,14 @@ input:not(.sb-dialog__entry),
 textarea:not(.sb-dialog__entry),
 select:not(.sb-dialog__entry),
 button:not(.sb-status-page__action):not(.ica--tpanel-handle):not(.gg-action-button):not(.sb-shell-close):not(.sbGreetingArtOpen):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *) {
-    border-radius: 14px !important;
+    border-radius: var(--sb-radius-card) !important;
 }
 
 /* Keep the draggable companion panel handle notched for the edge it snaps to */
-.ica--tpanel-handle[data-edge='right'] { border-radius: 10px 0 0 10px !important; }
-.ica--tpanel-handle[data-edge='left']  { border-radius: 0 10px 10px 0 !important; }
-.ica--tpanel-handle[data-edge='top']   { border-radius: 0 0 10px 10px !important; }
-.ica--tpanel-handle[data-edge='bottom']{ border-radius: 10px 10px 0 0 !important; }
+.ica--tpanel-handle[data-edge='right'] { border-radius: var(--sb-radius-control) 0 0 var(--sb-radius-control) !important; }
+.ica--tpanel-handle[data-edge='left']  { border-radius: 0 var(--sb-radius-control) var(--sb-radius-control) 0 !important; }
+.ica--tpanel-handle[data-edge='top']   { border-radius: 0 0 var(--sb-radius-control) var(--sb-radius-control) !important; }
+.ica--tpanel-handle[data-edge='bottom']{ border-radius: var(--sb-radius-control) var(--sb-radius-control) 0 0 !important; }
 
 /* Add breathing room between chat and screen edges */
 #chat {
@@ -106,7 +106,7 @@ button:not(.sb-status-page__action):not(.ica--tpanel-handle):not(.gg-action-butt
    unscoped, these forced cards overrode Flat and every Moonlit Echoes style on phones. */
 body.bubblechat .mes {
     position: relative;
-    border-radius: var(--sb-radius-card, 12px) !important;
+    border-radius: var(--sb-radius-card) !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
     margin-bottom: 8px !important;
@@ -161,7 +161,7 @@ body.bubblechat .mes .mes_text {
 .mes audio,
 .mes pre,
 .mes code {
-    border-radius: 12px !important;
+    border-radius: var(--sb-radius-card) !important;
 }
 
 /* Edge-to-edge input area */

@@ -124,7 +124,7 @@
 }
 
 .sb-tag-manager .sb-tag-manager__button {
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: transparent !important;
 }
 

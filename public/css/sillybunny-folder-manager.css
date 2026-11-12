@@ -35,7 +35,7 @@
 .sb-folder-manager__error { display: block; padding: 2px 4px; color: var(--sb-color-danger); font-size: var(--sb-type-meta); white-space: normal; }
 .sb-folder-manager__colors { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; }
 
-.sb-folder-manager .sb-folder-manager__button { border-radius: 999px; background: transparent !important; }
+.sb-folder-manager .sb-folder-manager__button { border-radius: var(--sb-radius-pill); background: transparent !important; }
 
 @media (hover: hover) {
     .sb-folder-manager__button:hover, .sb-folder-manager__name:hover:not(:focus) { background: var(--sb-flat-hover-bg); }

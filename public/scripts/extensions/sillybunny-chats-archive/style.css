@@ -438,16 +438,16 @@
     overflow-y: auto;
     padding: var(--sbca-space-xs);
     border: 1px solid var(--sbca-border);
-    border-radius: var(--sb-radius-button, 14px);
+    border-radius: var(--sb-radius-button);
     background: var(--sbca-surface);
-    box-shadow: var(--sb-shadow-popup, 0 8px 24px rgb(0 0 0 / 20%));
+    box-shadow: var(--sb-shadow-popover);
 }
 
 .sbca-mention-option {
     min-block-size: 40px;
     padding: var(--sbca-space-xs) var(--sbca-space-sm);
     border: 0;
-    border-radius: var(--sb-radius-sm, 8px);
+    border-radius: var(--sb-radius-sm);
     background: transparent;
     color: inherit;
     font: inherit;
@@ -521,7 +521,7 @@
     margin: 0;
     padding: 0 12px;
     border: 1px solid var(--sb-input-border, var(--SmartThemeBorderColor));
-    border-radius: var(--sb-radius-button, 14px);
+    border-radius: var(--sb-radius-button);
     background: var(--sb-input-bg, var(--SmartThemeBlurTintColor));
     color: var(--SmartThemeBodyColor);
     color-scheme: light dark;

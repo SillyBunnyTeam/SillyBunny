@@ -408,7 +408,7 @@
     gap: 4px;
     max-width: 100%;
     padding: 3px 10px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
     font-size: var(--sb-type-meta, 13px);
@@ -484,7 +484,7 @@
     min-height: 28px;
     padding: 3px 10px;
     border: 1px solid transparent !important;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent) !important;
     color: var(--SmartThemeBodyColor) !important;
     filter: none !important;
@@ -694,7 +694,7 @@
     min-inline-size: 16px;
     block-size: 16px;
     padding-inline: 4px;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: var(--sb-accent);
     color: var(--sb-on-solid-accent, var(--SmartThemeBodyColor));
     font-size: 10px;
@@ -965,7 +965,7 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
    reads as lifted rather than pasted over the row beneath. */
 #rm_group_members .group_member.ui-sortable-helper {
     background: var(--sb-layer-view);
-    border-radius: var(--sb-radius-card, 12px);
+    border-radius: var(--sb-radius-card);
     box-shadow: var(--sb-shadow-popover);
     opacity: 0.95;
 }
@@ -973,7 +973,7 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
 #rm_group_members .group_member.ui-sortable-placeholder {
     visibility: visible !important;
     border: 1px dashed var(--sb-shell-border);
-    border-radius: var(--sb-radius-card, 12px);
+    border-radius: var(--sb-radius-card);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
 }
 

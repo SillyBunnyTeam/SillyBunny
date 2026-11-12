@@ -269,7 +269,7 @@
     padding: 0 12px;
     box-sizing: border-box;
     border: 0;
-    border-radius: var(--sb-radius-control, 9px);
+    border-radius: var(--sb-radius-control);
     background: transparent;
     color: inherit;
     font: inherit;
@@ -435,7 +435,7 @@
     block-size: var(--sb-action-row);
     padding: 0;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     color: inherit;
     font-size: 20px;
@@ -539,7 +539,7 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     z-index: 2990;
     padding: 0;
     border: 0;
-    background: var(--sb-dialog-backdrop, rgba(0, 0, 6, 0.5));
+    background: var(--sb-dialog-backdrop);
     cursor: default;
 }
 
@@ -605,7 +605,7 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     block-size: 44px;
     padding: 0;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     color: inherit;
     font-size: 18px;
@@ -658,15 +658,22 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     padding: 6px 10px;
     box-sizing: border-box;
     border-radius: var(--sb-icon-control-radius);
-    background: rgb(0 0 6 / 0.86);
-    color: #fff;
+    background: var(--sb-layer-toast);
+    color: var(--sb-layer-toast-fg);
     font-family: var(--mainFontFamily, inherit);
     font-size: 0.8125rem;
     font-weight: 500;
     line-height: 1.3;
     overflow-wrap: anywhere;
     pointer-events: none;
-    box-shadow: 0 6px 18px rgb(0 0 0 / 0.32);
+    box-shadow: var(--sb-shadow-popover);
+}
+
+/* A tooltip is one of the two translucent overlays; engines without relative colours keep the opaque toast layer. */
+@supports (color: rgb(from black r g b / 1)) {
+    .sb-press-tooltip {
+        background: rgb(from var(--SmartThemeShadowColor) r g b / 86%);
+    }
 }
 
 .sb-press-tooltip[hidden] {

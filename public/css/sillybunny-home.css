@@ -105,7 +105,7 @@
     margin-inline: auto;
     max-width: min(100%, 600px);
     padding: 10px 12px;
-    border-radius: 14px;
+    border-radius: var(--sb-radius-card);
     font-size: calc(var(--mainFontSize) * 0.82);
     line-height: 1.5;
     display: block;
@@ -272,7 +272,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--sb-radius-pill);
     background: transparent;
     color: inherit;
     font-size: var(--sb-type-body);
