@@ -91,8 +91,8 @@ All PRs must have their descriptions *manually* written, without AI assistance. 
 
 Project maintainers will test and can change your code before merging. To keep our workflow smooth, please ensure the following:
 - The "Allow edits from maintainers" option is checked.
-- Avoid force-pushing your branch once the PR is out of draft state.
-- Do not merge your own PR. Another maintainer must review it. Direct end user debugging to the correct PR branch instead of staging, before merging.
+- That you submit your PR as a draft if it is currently being worked on. Otherwise, we will assume it is ready to merge.
+- Undraft your PR when it is actually ready to be merged.
 
 #### Before opening a PR
 
