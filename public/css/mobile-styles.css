@@ -1235,22 +1235,22 @@
     }
 }
 
-/* Final mobile chat-bar guardrails: keep controls compact and square. */
+/* SillyBunny: final mobile chat-bar guardrails keep the controls compact and square, and at the pointer's target floor in both densities. */
 @media screen and (max-width: 768px) {
     :root {
-        --bottomFormBlockSize: clamp(30px, calc(var(--sb-mobile-touch-target, 44px) * 0.92 * var(--sb-bottom-bar-scale, 1)), 50px);
+        --bottomFormBlockSize: clamp(max(var(--sb-density-floor), 30px), calc(var(--sb-mobile-touch-target, 44px) * 0.92 * var(--sb-bottom-bar-scale, 1)), 50px);
         --bottomFormIconSize: clamp(14px, calc(17px * var(--sb-bottom-bar-scale, 1)), 21px);
-        --sb-composer-action-size: clamp(22px, calc(var(--bottomFormBlockSize) * 0.56), 28px);
+        --sb-composer-action-size: max(var(--sb-density-floor), clamp(22px, calc(var(--bottomFormBlockSize) * 0.56), 28px));
         --sb-composer-action-icon-size: clamp(11px, calc(var(--bottomFormIconSize, 20px) * 0.62), 14px);
-        --sb-mobile-composer-input-height: clamp(34px, calc(44px * var(--sb-bottom-bar-scale, 1)), 58px);
+        --sb-mobile-composer-input-height: clamp(max(var(--sb-density-floor), 34px), calc(44px * var(--sb-bottom-bar-scale, 1)), 58px);
     }
 
     :root[data-sb-compact-mode='true'] {
-        --bottomFormBlockSize: clamp(26px, calc(var(--sb-mobile-touch-target, 44px) * 0.82 * var(--sb-bottom-bar-scale, 1)), 44px);
+        --bottomFormBlockSize: clamp(max(var(--sb-density-floor), 26px), calc(var(--sb-mobile-touch-target, 44px) * 0.82 * var(--sb-bottom-bar-scale, 1)), 44px);
         --bottomFormIconSize: clamp(13px, calc(15px * var(--sb-bottom-bar-scale, 1)), 19px);
-        --sb-composer-action-size: clamp(20px, calc(var(--bottomFormBlockSize) * 0.54), 25px);
+        --sb-composer-action-size: max(var(--sb-density-floor), clamp(20px, calc(var(--bottomFormBlockSize) * 0.54), 25px));
         --sb-composer-action-icon-size: clamp(10px, calc(var(--bottomFormIconSize, 18px) * 0.58), 12px);
-        --sb-mobile-composer-input-height: clamp(30px, calc(36px * var(--sb-bottom-bar-scale, 1)), 50px);
+        --sb-mobile-composer-input-height: clamp(max(var(--sb-density-floor), 30px), calc(36px * var(--sb-bottom-bar-scale, 1)), 50px);
     }
 
     #form_sheld {
@@ -1294,9 +1294,6 @@
 
     :root[data-sb-compact-mode='true'] #nonQRFormItems {
         column-gap: 3px !important;
-        row-gap: 0 !important;
-        min-height: calc(var(--sb-mobile-composer-input-height) + 5px) !important;
-        padding: 2px 4px 3px !important;
     }
 
     #leftSendForm,
@@ -1321,8 +1318,6 @@
     }
 
     :root[data-sb-compact-mode='true'] #leftSendForm {
-        min-height: var(--sb-composer-action-size) !important;
-        height: var(--sb-composer-action-size) !important;
         gap: 2px !important;
     }
 
@@ -1392,7 +1387,6 @@
     :root[data-sb-compact-mode='true'] #send_form .mes_stop,
     :root[data-sb-compact-mode='true'] #send_form.sb-generating-controls #mes_stop {
         border-radius: 9px !important;
-        font-size: var(--sb-composer-action-icon-size) !important;
     }
 
     #send_textarea {
@@ -1414,7 +1408,6 @@
     }
 
     :root[data-sb-compact-mode='true'] #send_textarea {
-        min-height: var(--sb-mobile-composer-input-height) !important;
         padding: 4px 6px !important;
         line-height: 1.12 !important;
     }
@@ -1429,11 +1422,6 @@
         justify-content: center !important;
         font-size: var(--sb-composer-action-icon-size) !important;
         line-height: 1 !important;
-    }
-
-    :root[data-sb-compact-mode='true'] #send_but::before,
-    :root[data-sb-compact-mode='true'] #mes_stop > i {
-        font-size: var(--sb-composer-action-icon-size) !important;
     }
 
     #send_form:not(.sb-generating-controls) #mes_stop {

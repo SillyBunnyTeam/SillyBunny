@@ -70,22 +70,31 @@
     --sb-color-error: var(--color-danger, #ff938c);
     --sb-color-success: var(--color-success, #78e9ab);
     --sb-color-info: var(--color-primary, var(--SmartThemeQuoteColor));
-    --sb-icon-control-size: 2rem;
-    --sb-icon-control-radius: var(--sb-radius-control);
-    --sb-inline-drawer-icon-size: 2rem;
-    --sb-control-min-height: 38px;
+    /* Density. --sb-density-scale (tabs.css) is the one input: --sb-density-t turns it into 0 in normal density and 1 in
+       compact, so a token reads "normal value, less what compact takes off". A token that sizes a target never drops under
+       --sb-density-floor, the pointer's floor: 32px for a fine pointer and 44px for a coarse one (set below). */
+    --sb-density-compact-scale: 0.88;
+    --sb-density-t: calc((1 - var(--sb-density-scale, 1)) / (1 - var(--sb-density-compact-scale)));
+    --sb-density-floor: 32px;
+    --sb-control-min-height: max(var(--sb-density-floor), calc(38px - 6px * var(--sb-density-t)));
+    --sb-field-min-height: max(var(--sb-density-floor), calc(46px - 6px * var(--sb-density-t)));
+    /* A row is a target, so compact keeps its 44px; only a row that is not a target may shrink. */
+    --sb-density-row-min-height: max(var(--sb-density-floor), calc(44px - 4px * var(--sb-density-t)));
+    --sb-density-row-padding-block: 6px;
+    --sb-density-container-padding: calc(12px - 2px * var(--sb-density-t));
+    --sb-row-gap: calc(10px - 2px * var(--sb-density-t));
+    --sb-section-gap: calc(14px - 4px * var(--sb-density-t));
+    --sb-select-arrow-space: calc(38px - 4px * var(--sb-density-t));
+    --sb-select-arrow-inset: calc(14px - 2px * var(--sb-density-t));
+    --sb-icon-control-size: max(var(--sb-density-floor), calc(2rem - 0.15rem * var(--sb-density-t)));
+    --sb-inline-drawer-icon-size: max(var(--sb-density-floor), calc(2rem - 0.15rem * var(--sb-density-t)));
     --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
-    --sb-field-min-height: 46px;
     --sb-field-padding-x: 12px;
-    --sb-select-arrow-space: 38px;
-    --sb-select-arrow-inset: 14px;
-    --sb-row-gap: 10px;
-    --sb-section-gap: 14px;
-    --sb-settings-card-padding: var(--spacing-md) 14px;
+    --sb-settings-card-padding: var(--sb-density-container-padding) calc(var(--sb-density-container-padding) + 2px);
     --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.78), 30px);
-    --sb-message-hit-size: max(var(--sb-message-icon-size), 32px);
+    --sb-message-hit-size: max(var(--sb-message-icon-size), var(--sb-density-floor));
     --sb-message-glyph-size: calc(var(--sb-message-icon-size) * 0.52);
-    --sb-composer-action-size: clamp(34px, calc(var(--bottomFormBlockSize, 36px) * 0.94), 38px);
+    --sb-composer-action-size: max(var(--sb-density-floor), clamp(34px, calc(var(--bottomFormBlockSize, 36px) * 0.94), 38px));
     --sb-composer-send-width: var(--sb-composer-action-size);
     --sb-composer-action-icon-size: clamp(14px, calc(var(--bottomFormIconSize, 20px) * 0.72), 17px);
     --sb-message-meta-line-height: 1.18;
@@ -403,34 +412,22 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     }
 }
 
+/* The composer's own measures: clamps against the bottom bar size, which the density tokens do not cover. The action size keeps the pointer floor. */
 :root[data-sb-compact-mode='true'] {
-    --sb-control-min-height: 32px;
-    --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
-    --sb-field-min-height: 40px;
-    --sb-select-arrow-space: 34px;
-    --sb-select-arrow-inset: 12px;
-    --sb-row-gap: 8px;
-    --sb-section-gap: 10px;
-    --sb-settings-card-padding: 10px 12px;
     --sb-chat-composer-gap: 6px;
     --sb-chat-composer-edge-gap: 6px;
-    --sb-icon-control-size: 1.85rem;
-    --sb-inline-drawer-icon-size: 1.85rem;
     --sb-message-icon-size: clamp(20px, calc(var(--bottomFormBlockSize, 34px) * 0.68), 26px);
-    --sb-composer-action-size: clamp(30px, calc(var(--bottomFormBlockSize, 34px) * 0.88), 34px);
+    --sb-composer-action-size: max(var(--sb-density-floor), clamp(30px, calc(var(--bottomFormBlockSize, 34px) * 0.88), 34px));
     --sb-composer-send-width: var(--sb-composer-action-size);
     --sb-composer-action-icon-size: clamp(12px, calc(var(--bottomFormIconSize, 18px) * 0.7), 15px);
 }
 
+/* Coarse forms: the floor is 44px, and the control and the field are exactly that. The row, the icon control and the message hit size reach it through the floor in their formulas. */
 @media (pointer: coarse) {
-    :root,
-    :root[data-sb-compact-mode='true'] {
-        --sb-control-min-height: var(--sb-mobile-touch-target);
-        --sb-control-icon-physical-size: var(--sb-mobile-touch-target);
-        --sb-icon-control-size: var(--sb-mobile-touch-target);
-        --sb-inline-drawer-icon-size: var(--sb-mobile-touch-target);
-        --sb-field-min-height: var(--sb-mobile-touch-target);
-        --sb-message-hit-size: var(--sb-mobile-touch-target);
+    :root {
+        --sb-density-floor: var(--sb-mobile-touch-target);
+        --sb-control-min-height: var(--sb-density-floor);
+        --sb-field-min-height: var(--sb-density-floor);
     }
 }
 
@@ -828,8 +825,6 @@ h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3) {
 }
 
 :root[data-sb-compact-mode='true'] .checkbox_label {
-    min-height: var(--sb-control-min-height);
-    gap: 6px;
     padding-block: max(0px, calc((var(--sb-control-min-height) - 1.32em) / 2));
 }
 
@@ -1132,11 +1127,6 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     line-height: 1.32;
 }
 
-:root[data-sb-compact-mode='true'] .checkbox_label > input[type="checkbox"],
-:root[data-sb-compact-mode='true'] .checkbox_label > input[type="radio"] {
-    margin-top: 0;
-}
-
 :root[data-sb-compact-mode='true'] {
     --sb-switch-width: 38px;
     --sb-switch-height: 22px;
@@ -1214,10 +1204,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 :root[data-sb-compact-mode='true'] .sb-shell-panel-scroller .menu_button_icon:where(:not(.sb-status-page__action)),
 :root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button:where(:not(.sb-status-page__action)),
 :root[data-sb-compact-mode='true'] .sb-shell-panel-scroller button.menu_button_icon:where(:not(.sb-status-page__action)) {
-    min-height: 32px;
     padding: 6px 10px;
-    border-radius: var(--sb-radius-control);
-    font-size: calc(var(--mainFontSize) * 0.86);
     line-height: 1.2;
 }
 
@@ -1698,7 +1685,7 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     min-width: 0;
     width: auto;
     flex: 1 1 0;
-    min-height: 46px;
+    min-height: max(var(--sb-density-floor), calc(46px - 8px * var(--sb-density-t)));
     height: auto;
     field-sizing: content;
     max-height: min(50vh, 28rem);
@@ -1774,11 +1761,9 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
 }
 
 :root[data-sb-compact-mode='true'] #send_textarea {
-    min-height: 38px;
     padding: 5px 7px;
     line-height: 1.18;
     border-radius: var(--sb-radius-control);
-    font-size: calc(var(--mainFontSize) * 0.86);
 }
 
 #send_textarea::placeholder {
@@ -2675,14 +2660,12 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 
 @media screen and (max-width: 768px) {
     :root {
-        --sb-icon-control-size: 2.5rem;
-        --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
+        --sb-icon-control-size: max(var(--sb-density-floor), calc(2.5rem - 0.65rem * var(--sb-density-t)));
         --sb-message-icon-size: clamp(28px, calc(var(--bottomFormBlockSize, 44px) * 0.62), 34px);
         --sb-message-glyph-size: 18px;
     }
 
     :root[data-sb-compact-mode='true'] {
-        --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.62), 30px);
         --sb-message-glyph-size: 17px;
     }
@@ -6240,12 +6223,11 @@ body.reduced-motion *::after {
     }
 
     #send_textarea {
-        min-height: 46px;
+        min-height: max(var(--sb-density-floor), calc(46px - 8px * var(--sb-density-t)));
         padding: 6px 8px;
     }
 
     :root[data-sb-compact-mode='true'] #send_textarea {
-        min-height: 38px;
         padding: 5px 7px;
     }
 }

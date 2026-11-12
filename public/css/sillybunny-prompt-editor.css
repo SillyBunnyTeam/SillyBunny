@@ -164,7 +164,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 .sb-prompt-search-field {
-    --sb-prompt-search-height: 40px;
+    --sb-prompt-search-height: max(var(--sb-density-floor), calc(40px - 4px * var(--sb-density-t)));
     display: flex;
     align-items: center;
     gap: 8px;
@@ -202,10 +202,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-search::placeholder {
     color: var(--sb-shell-text-secondary);
-}
-
-:root[data-sb-compact-mode='true'] .sb-prompt-search-field {
-    --sb-prompt-search-height: 36px;
 }
 
 .sb-prompt-list-body {
@@ -247,7 +243,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 .sb-prompt-row {
     display: flex;
     align-items: center;
-    min-height: 52px;
+    min-height: max(var(--sb-density-floor), calc(52px - 6px * var(--sb-density-t)));
     padding: 6px 8px;
     gap: 10px;
     border-bottom: 1px solid var(--SmartThemeBorderColor);
@@ -356,20 +352,8 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     width: var(--sb-prompt-switch-width);
 }
 
-:root[data-sb-compact-mode='true'] .sb-prompt-row {
-    min-height: 46px;
-}
-
 :root[data-sb-compact-mode='true'] .sb-prompt-list-header {
     min-height: 52px;
-}
-
-:root[data-sb-compact-mode='true'] .sb-prompt-list-titles h2 {
-    font-size: var(--mainFontSize);
-}
-
-:root[data-sb-compact-mode='true'] .sb-prompt-row-name {
-    font-size: calc(var(--mainFontSize) * 0.85);
 }
 
 @container sb-list-editor-sidebar (width < 440px) {

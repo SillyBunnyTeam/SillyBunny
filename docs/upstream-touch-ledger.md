@@ -1394,6 +1394,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-12, UI polish sweep. |
 | Owner | `TODO(copy)` |
 
+### `public/css/mobile-styles.css` - mobile chat bar guardrails
+| Field | Value |
+| --- | --- |
+| File | `public/css/mobile-styles.css` |
+| Area | The phone chat bar: composer block, action and input sizes in both densities. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The density tokens in `public/css/sillybunny-theme.css` (`--sb-density-floor`, `--sb-density-t`). |
+| Adapter shape | The `@media screen and (max-width: 768px)` block marked `SillyBunny:` near the end of the sheet sets `--bottomFormBlockSize`, `--sb-composer-action-size` and `--sb-mobile-composer-input-height` no lower than `--sb-density-floor`, in normal and compact density; its compact rules no longer shrink the input, the left send form or the icons. |
+| Protecting tests | `tests/density-tokens-css.test.js`, `tests/mobile-composer-spacing.e2e.js`, `tests/mobile-ios26-keyboard-layout.e2e.js`. |
+| Validation | 2026-11-12: the full unit run; the e2e specs that name the changed classes; captures of the chat at 390x844 in both densities. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-12, UI polish sweep. |
+| Owner | `TODO(copy)` |
+
 ### Frontend identity, localization, and static boot assets
 | Field | Value |
 | --- | --- |

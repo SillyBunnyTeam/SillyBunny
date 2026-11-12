@@ -46,7 +46,7 @@
     --sb-topbar-stack-gap: calc(var(--sb-topbar-stack-gap-base) * var(--sb-topbar-scale-active));
     --sb-topbar-bottom-padding: calc(var(--sb-topbar-bottom-padding-base) * var(--sb-topbar-scale-active));
     --sb-topbar-inline-gap: calc(var(--sb-topbar-inline-gap-base) * var(--sb-topbar-scale-active));
-    --sb-topbar-search-row-height: calc(var(--sb-topbar-search-row-height-base) * var(--sb-topbar-scale-active));
+    --sb-topbar-search-row-height: max(var(--sb-density-floor), calc(var(--sb-topbar-search-row-height-base) * var(--sb-topbar-scale-active)));
     --sb-topbar-search-panel-gap: calc(var(--sb-topbar-search-panel-gap-base) * var(--sb-topbar-scale-active));
     --sb-topbar-group-gap: calc(var(--sb-topbar-group-gap-base) * var(--sb-topbar-scale-active));
     /* Seam between icons-only clusters. A multiple of the group gap rather than a fixed value, so
@@ -60,7 +60,7 @@
     --sb-chatbar-button-size: max(32px, calc(var(--sb-chatbar-button-size-base) * var(--sb-chatbar-scale-active)));
     --sb-chatbar-status-font-size: calc(var(--mainFontSize) * var(--sb-chatbar-status-font-scale-base) * var(--sb-chatbar-scale-active));
     --sb-proxy-button-padding-x: var(--sb-proxy-button-padding-x-base);
-    --sb-proxy-button-height: var(--sb-proxy-button-height-base);
+    --sb-proxy-button-height: max(var(--sb-density-floor), var(--sb-proxy-button-height-base));
     --sb-proxy-button-min-width: var(--sb-proxy-button-min-width-base);
     --sb-proxy-button-gap: var(--sb-proxy-button-gap-base);
     --sb-proxy-icon-size: calc(var(--mainFontSize) * var(--sb-proxy-icon-scale-base));
@@ -95,7 +95,7 @@
 }
 
 :root[data-sb-compact-mode='true'] {
-    --sb-density-scale: 0.88;
+    --sb-density-scale: var(--sb-density-compact-scale);
     --sb-topbar-primary-height-base: 34px;
     --sb-topbar-padding-x-base: 7px;
     --sb-topbar-stack-gap-base: 3px;
@@ -304,7 +304,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
 @media screen and (min-width: 769px) {
     :root {
         --sb-proxy-button-padding-x: calc(var(--sb-proxy-button-padding-x-base) * var(--sb-desktop-button-scale));
-        --sb-proxy-button-height: calc(var(--sb-proxy-button-height-base) * var(--sb-desktop-button-scale));
+        --sb-proxy-button-height: max(var(--sb-density-floor), calc(var(--sb-proxy-button-height-base) * var(--sb-desktop-button-scale)));
         --sb-proxy-button-min-width: calc(var(--sb-proxy-button-min-width-base) * var(--sb-desktop-button-scale));
         --sb-proxy-button-gap: calc(var(--sb-proxy-button-gap-base) * var(--sb-desktop-button-scale));
         --sb-proxy-icon-size: calc(var(--mainFontSize) * var(--sb-proxy-icon-scale-base) * var(--sb-desktop-button-scale));
@@ -1933,20 +1933,12 @@ body:not(.movingUI) .drawer-content.maximized {
     gap: var(--sb-shell-section-gap);
 }
 
-:root[data-sb-compact-mode='true'] .sb-shell-column {
-    gap: var(--sb-shell-section-gap);
-}
-
 /* Customize tab content. Each Customize tab has its own container, so the layout of the tab
    hangs off `.sb-settings-tab-content`. The legacy `#user-settings-block-content` is not
    painted. */
 .sb-shell-root-right .sb-settings-tab-content {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--sb-shell-section-gap);
-}
-
-:root[data-sb-compact-mode='true'] .sb-shell-root-right .sb-settings-tab-content {
     gap: var(--sb-shell-section-gap);
 }
 
@@ -2502,7 +2494,6 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 :root[data-sb-compact-mode='true'] .sb-theme-card {
-    gap: var(--sb-shell-card-gap);
     margin-bottom: var(--sb-shell-space-md);
 }
 
@@ -5059,7 +5050,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     align-items: center;
     gap: 8px;
     padding: 0 10px;
-    height: 36px;
+    height: max(var(--sb-density-floor), calc(36px - 4px * var(--sb-density-t)));
     border-radius: var(--sb-radius-control);
     background: var(--sb-flat-hover-bg);
     border: 1px solid var(--sb-shell-border);
@@ -5116,7 +5107,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     align-items: center;
     gap: 9px;
     width: 100%;
-    min-height: 40px;
+    min-height: max(var(--sb-density-floor), calc(40px - 6px * var(--sb-density-t)));
     padding: 8px 12px;
     border: 0;
     border-radius: var(--sb-radius-control);
@@ -5221,7 +5212,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 
 /* Spacer balances the close button so the heading stays centered */
 .sb-settings-header-spacer {
-    width: 36px;
+    width: max(var(--sb-density-floor), calc(36px - 4px * var(--sb-density-t)));
     flex-shrink: 0;
 }
 
@@ -5265,8 +5256,8 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: max(var(--sb-density-floor), calc(36px - 4px * var(--sb-density-t)));
+    height: max(var(--sb-density-floor), calc(36px - 4px * var(--sb-density-t)));
     flex-shrink: 0;
     border: 0;
     border-radius: var(--sb-radius-control);
@@ -5389,24 +5380,12 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     padding: 0 12px;
 }
 
-:root[data-sb-compact-mode='true'] #sb-settings-sidebar-title,
-:root[data-sb-compact-mode='true'] .sb-settings-title {
-    font-size: var(--mainFontSize);
-}
-
-:root[data-sb-compact-mode='true'] .sb-settings-search-toggle-btn,
-:root[data-sb-compact-mode='true'] .sb-settings-close-button {
-    width: 32px;
-    height: 32px;
-}
-
 :root[data-sb-compact-mode='true'] #sb-settings-tab-list {
     padding: 3px 6px 8px;
     gap: 1px;
 }
 
 :root[data-sb-compact-mode='true'] .sb-settings-tab {
-    min-height: 34px;
     padding: 6px 10px;
     gap: 7px;
 }
@@ -5422,7 +5401,6 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 }
 
 :root[data-sb-compact-mode='true'] .sb-settings-search-field {
-    height: 32px;
     padding: 0 8px;
 }
 
@@ -5557,9 +5535,9 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     align-items: center;
     gap: 12px;
     min-width: 0;
-    min-height: 44px;
+    min-height: var(--sb-density-row-min-height);
     margin: 0;
-    padding: 6px 16px;
+    padding: var(--sb-density-row-padding-block) 16px;
     border: 0;
     border-bottom: 1px solid var(--sb-shell-border);
     background: transparent;
@@ -5569,14 +5547,8 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     box-sizing: border-box;
 }
 
-:root[data-sb-compact-mode='true'] .ds-row {
-    min-height: 44px;
-    padding-block: 6px;
-}
-
-.ds-row:has(.ds-row-subtitle),
-:root[data-sb-compact-mode='true'] .ds-row:has(.ds-row-subtitle) {
-    min-height: 52px;
+.ds-row:has(.ds-row-subtitle) {
+    min-height: calc(var(--sb-density-row-min-height) + 8px);
 }
 
 .ds-pref-group > :is(.ds-row, .ds-row-expander):last-child {
@@ -10063,9 +10035,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     .sb-persona-picker-appendix-toggle,
     .sb-model-id-picker-empty,
     .sb-model-id-picker-option,
-    :root[data-sb-compact-mode='true'] .sb-settings-tab,
     .sb-settings-search-field,
-    :root[data-sb-compact-mode='true'] .sb-settings-search-field,
     :is(.sb-thumbnail-card .sb-server-action, .sb-import-action-row .sb-server-action, .sb-import-pane .ds-row-suffix > .sb-server-action),
     :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets .menu_button,
     .sb-chat-history-cleanup-actions .menu_button,

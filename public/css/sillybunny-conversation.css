@@ -1500,8 +1500,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 /* libadwaita flat buttons: transparent at rest, neutral fills, no hover lift. */
 .sb-conversation-message-action,
 .sb-conversation-reaction-button {
-    min-block-size: 32px;
-    min-inline-size: 32px;
+    min-block-size: var(--sb-density-floor);
+    min-inline-size: var(--sb-density-floor);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2076,9 +2076,9 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     display: flex;
     align-items: center;
     gap: 12px;
-    min-block-size: 46px;
+    min-block-size: max(var(--sb-density-floor), calc(46px - 6px * var(--sb-density-t)));
     margin-inline: -14px;
-    padding: 8px 14px;
+    padding: calc(8px - 2px * var(--sb-density-t)) 14px;
     border-block-start: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
 }
 
@@ -2148,11 +2148,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 .sb-conversation-switch:disabled {
     cursor: not-allowed;
     opacity: 0.45;
-}
-
-:root[data-sb-compact-mode='true'] .sb-conversation-pref-row {
-    min-block-size: 40px;
-    padding-block: 6px;
 }
 
 .sb-conversation-field-row {
@@ -2977,13 +2972,11 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
 
-    .sb-conversation-pref-row,
-    :root[data-sb-compact-mode='true'] .sb-conversation-pref-row {
+    .sb-conversation-pref-row {
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
 
-    :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-day-pill, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger, .sb-conversation-schedule-display, .sb-conv-weekly-enabled),
-    :root[data-sb-compact-mode='true'] :is(.sb-conversation-message-action, .sb-conversation-reaction-button) {
+    :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-day-pill, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger, .sb-conversation-schedule-display, .sb-conv-weekly-enabled) {
         min-block-size: var(--sb-mobile-touch-target, 44px);
         min-inline-size: var(--sb-mobile-touch-target, 44px);
     }

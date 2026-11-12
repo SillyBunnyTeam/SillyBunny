@@ -189,7 +189,7 @@ describe('Conversation mobile controls', () => {
         });
         expect(getRuleDeclarations('.sb-conversation-pref-row')).toMatchObject({
             display: 'flex',
-            'min-block-size': '46px',
+            'min-block-size': 'max(var(--sb-density-floor), calc(46px - 6px * var(--sb-density-t)))',
         });
         expect(getRuleDeclarations('.sb-conversation-switch')).toMatchObject({
             appearance: 'none',
