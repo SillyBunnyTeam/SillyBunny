@@ -455,12 +455,19 @@
     cursor: pointer;
 }
 
-.sbca-mention-option:hover,
 .sbca-mention-option:focus-visible,
 .sbca-mention-option[aria-selected='true'] {
     background: var(--sb-selection-bg, var(--sbca-surface));
     outline: 2px solid var(--sbca-focus);
     outline-offset: -2px;
+}
+
+@media (hover: hover) {
+    .sbca-mention-option:hover {
+        background: var(--sb-selection-bg, var(--sbca-surface));
+        outline: 2px solid var(--sbca-focus);
+        outline-offset: -2px;
+    }
 }
 
 .sb-action-popover:has(:is(.sbca-filters, .sbca-save-view, .sbca-batch-tags)) {

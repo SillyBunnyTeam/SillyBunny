@@ -72,7 +72,6 @@ dialog.sb-color-picker-sheet:not([open]) { display: none !important; }
     touch-action: manipulation;
     transition: background-color var(--sb-transition-fast);
 }
-.sb-color-picker-close:active { background: var(--sb-flat-active-bg); }
 .sb-color-picker-close:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
@@ -288,6 +287,7 @@ dialog.sb-color-picker-sheet::backdrop { background: var(--sb-dialog-backdrop); 
 @media (hover: hover) {
     .sb-color-picker-close:hover { background: var(--sb-flat-hover-bg); }
 }
+.sb-color-picker-close:active { background: var(--sb-flat-active-bg); }
 @media (pointer: coarse) {
     .sb-color-picker-menu { --sb-picker-target: 44px; }
     .sb-color-picker-field input { font-size: max(16px, calc(var(--mainFontSize) * 0.84)); }
@@ -297,9 +297,13 @@ dialog.sb-color-picker-sheet::backdrop { background: var(--sb-dialog-backdrop); 
 }
 @media (prefers-reduced-motion: reduce) {
     .sb-color-picker-close { transition: none; }
+}
+@media (prefers-reduced-motion: reduce) and (hover: hover) {
     .sb-color-picker-menu input[type='range']:hover::-webkit-slider-thumb { transform: none; }
     .sb-color-picker-menu input[type='range']:hover::-moz-range-thumb { transform: none; }
 }
 body.reduced-motion .sb-color-picker-close { transition: none; }
-body.reduced-motion .sb-color-picker-menu input[type='range']:hover::-webkit-slider-thumb { transform: none; }
-body.reduced-motion .sb-color-picker-menu input[type='range']:hover::-moz-range-thumb { transform: none; }
+@media (hover: hover) {
+    body.reduced-motion .sb-color-picker-menu input[type='range']:hover::-webkit-slider-thumb { transform: none; }
+    body.reduced-motion .sb-color-picker-menu input[type='range']:hover::-moz-range-thumb { transform: none; }
+}

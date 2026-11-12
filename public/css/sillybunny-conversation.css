@@ -1421,9 +1421,14 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
-.sb-conversation-message:hover .sb-conversation-message-edit,
 .sb-conversation-message:focus-within .sb-conversation-message-edit {
     opacity: 1;
+}
+
+@media (hover: hover) {
+    .sb-conversation-message:hover .sb-conversation-message-edit {
+        opacity: 1;
+    }
 }
 
 @media (hover: hover) {
@@ -1892,10 +1897,16 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     text-decoration: none;
 }
 
-.sb-conversation-file-attachment:hover,
 .sb-conversation-file-attachment:focus-visible {
     border-color: color-mix(in srgb, var(--sb-accent) 36%, var(--sb-shell-border));
     background: color-mix(in srgb, var(--sb-accent) 10%, var(--SmartThemeBlurTintColor));
+}
+
+@media (hover: hover) {
+    .sb-conversation-file-attachment:hover {
+        border-color: color-mix(in srgb, var(--sb-accent) 36%, var(--sb-shell-border));
+        background: color-mix(in srgb, var(--sb-accent) 10%, var(--SmartThemeBlurTintColor));
+    }
 }
 
 .sb-conversation-file-copy {
@@ -1946,11 +1957,18 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     cursor: pointer;
 }
 
-.sb-conversation-reply-cancel:hover,
 .sb-conversation-reply-cancel:focus-visible {
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     color: var(--SmartThemeBodyColor);
     outline: none;
+}
+
+@media (hover: hover) {
+    .sb-conversation-reply-cancel:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+        color: var(--SmartThemeBodyColor);
+        outline: none;
+    }
 }
 
 .sb-conversation-attachment-preview {
@@ -2610,9 +2628,14 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     transition: background-color var(--sb-transition-fast);
 }
 
-.sb-conversation-partner-option:hover,
 .sb-conversation-partner-option:focus-within {
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+}
+
+@media (hover: hover) {
+    .sb-conversation-partner-option:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    }
 }
 
 .sb-conversation-partner-avatar {
@@ -2713,16 +2736,28 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     transition: opacity var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
-.sb-conversation-message:hover .sb-conversation-message-polish,
 .sb-conversation-message:focus-within .sb-conversation-message-polish {
     opacity: 0.6;
 }
 
-.sb-conversation-message-polish:hover,
+@media (hover: hover) {
+    .sb-conversation-message:hover .sb-conversation-message-polish {
+        opacity: 0.6;
+    }
+}
+
 .sb-conversation-message-polish:focus-visible {
     opacity: 1;
     color: var(--sb-accent);
     outline: none;
+}
+
+@media (hover: hover) {
+    .sb-conversation-message-polish:hover {
+        opacity: 1;
+        color: var(--sb-accent);
+        outline: none;
+    }
 }
 
 /* Style Add DM picker popover options */
@@ -2904,11 +2939,18 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast);
 }
 
-.sb-conversation-stop-image:hover,
 .sb-conversation-stop-image:focus-visible {
     border-color: color-mix(in srgb, var(--sb-color-danger) 60%, var(--sb-shell-border));
     background: color-mix(in srgb, var(--sb-color-danger) 18%, transparent);
     outline: none;
+}
+
+@media (hover: hover) {
+    .sb-conversation-stop-image:hover {
+        border-color: color-mix(in srgb, var(--sb-color-danger) 60%, var(--sb-shell-border));
+        background: color-mix(in srgb, var(--sb-color-danger) 18%, transparent);
+        outline: none;
+    }
 }
 
 @media (max-width: 700px) {
@@ -3388,8 +3430,10 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 .sb-schedule-modal-delete {
     color: var(--sb-color-danger, #ff4a4a);
 }
-.sb-schedule-modal-delete:hover {
-    background-color: color-mix(in srgb, var(--sb-color-danger) 15%, transparent);
+@media (hover: hover) {
+    .sb-schedule-modal-delete:hover {
+        background-color: color-mix(in srgb, var(--sb-color-danger) 15%, transparent);
+    }
 }
 @keyframes sb-scale-up {
     from {

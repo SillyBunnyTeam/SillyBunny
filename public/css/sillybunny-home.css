@@ -1495,10 +1495,6 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
     cursor: pointer;
 }
 
-.sbHomeToastAction:active {
-    background: color-mix(in srgb, currentColor 22%, transparent);
-}
-
 .sbHomeToastAction:focus-visible {
     outline: 2px solid currentColor;
     outline-offset: -2px;
@@ -1508,6 +1504,10 @@ body.reduced-motion .welcomeRecent .showMoreChats > small {
     .sbHomeToastAction:hover {
         background: color-mix(in srgb, currentColor 14%, transparent);
     }
+}
+
+.sbHomeToastAction:active {
+    background: color-mix(in srgb, currentColor 22%, transparent);
 }
 
 @media (pointer: coarse) {

@@ -88,14 +88,14 @@
     cursor: pointer;
 }
 
-.sb-side-panel__menu-item:active {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-}
-
 @media (hover: hover) {
     .sb-side-panel__menu-item:hover {
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     }
+}
+
+.sb-side-panel__menu-item:active {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
 }
 
 .sb-side-panel__body {

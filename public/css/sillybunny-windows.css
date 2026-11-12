@@ -399,10 +399,6 @@ kbd.sbKeys > kbd {
     margin-inline-start: -6px;
 }
 
-.sbHelpTrailLink:active {
-    background: var(--sb-flat-active-bg);
-}
-
 .sbHelpTrailLink:focus-visible {
     outline: 2px solid transparent;
     box-shadow: var(--sb-focus-ring-inset);
@@ -413,6 +409,10 @@ kbd.sbKeys > kbd {
         background: var(--sb-flat-hover-bg);
         text-decoration: underline;
     }
+}
+
+.sbHelpTrailLink:active {
+    background: var(--sb-flat-active-bg);
 }
 
 @media (pointer: coarse) {

@@ -422,9 +422,11 @@ body.sb-topbar-compact #sb-chatbar-layer {
         font-size: var(--sb-proxy-icon-size);
     }
 
-    #sb-topbar-primary #sb-chatbar-visibility-toggle:hover {
-        opacity: 1;
-        box-shadow: none;
+    @media (hover: hover) {
+        #sb-topbar-primary #sb-chatbar-visibility-toggle:hover {
+            opacity: 1;
+            box-shadow: none;
+        }
     }
 
     #sb-topbar-primary #sb-chatbar-visibility-toggle.is-active {
@@ -876,8 +878,10 @@ body:not(.movingUI) .drawer-content.maximized {
     transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
 
-.sb-chat-file:hover {
-    background-color: var(--sb-flat-hover-bg);
+@media (hover: hover) {
+    .sb-chat-file:hover {
+        background-color: var(--sb-flat-hover-bg);
+    }
 }
 
 .sb-chat-file.is-current {
@@ -3484,8 +3488,10 @@ body:not(.movingUI) .drawer-content.maximized {
     opacity: var(--sb-shell-control-opacity);
 }
 
-.sb-compact-mode-option:hover::before {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-shell-main-bg));
+@media (hover: hover) {
+    .sb-compact-mode-option:hover::before {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-shell-main-bg));
+    }
 }
 
 .sb-compact-mode-option.is-selected {
@@ -3583,8 +3589,10 @@ body:not(.movingUI) .drawer-content.maximized {
     opacity: var(--sb-shell-control-opacity);
 }
 
-.sb-mobile-nav-choice:not(.is-disabled):hover::before {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-shell-main-bg));
+@media (hover: hover) {
+    .sb-mobile-nav-choice:not(.is-disabled):hover::before {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-shell-main-bg));
+    }
 }
 
 .sb-mobile-nav-choice.is-selected {
@@ -4926,9 +4934,14 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     min-height: 40px;
 }
 
-.sb-persona-option:hover,
 .sb-persona-option:focus-visible {
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+}
+
+@media (hover: hover) {
+    .sb-persona-option:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    }
 }
 
 .sb-persona-option:focus-visible {
@@ -5287,8 +5300,10 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     opacity: var(--sb-shell-control-opacity);
 }
 
-.sb-topbar-label-option:hover::before {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-shell-main-bg));
+@media (hover: hover) {
+    .sb-topbar-label-option:hover::before {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-shell-main-bg));
+    }
 }
 
 .sb-topbar-label-option.is-selected {
@@ -7449,9 +7464,11 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     -webkit-user-select: none;
 }
 
-#sb-settings-page .sb-action-btn:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
-    border-color: color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 100%, transparent);
+@media (hover: hover) {
+    #sb-settings-page .sb-action-btn:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+        border-color: color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 100%, transparent);
+    }
 }
 
 #sb-settings-page .sb-action-btn:active {
@@ -8469,11 +8486,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     outline-color: var(--sb-focus-ring);
 }
 
-#sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):active {
-    background: var(--sb-raised-active-bg);
-    transform: none;
-}
-
 #sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
@@ -8489,6 +8501,11 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     #sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):hover:focus-visible {
         box-shadow: var(--sb-focus-ring-inset);
     }
+}
+
+#sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):active {
+    background: var(--sb-raised-active-bg);
+    transform: none;
 }
 
 @media (pointer: coarse) {
@@ -8722,9 +8739,16 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     cursor: pointer;
 }
 
-#sb-settings-page .sb-sampling-panel .sb-sampling-help-toggle:is(:hover, [aria-expanded='true']) {
+#sb-settings-page .sb-sampling-panel .sb-sampling-help-toggle[aria-expanded='true'] {
     background: var(--sb-flat-hover-bg);
     color: var(--SmartThemeBodyColor);
+}
+
+@media (hover: hover) {
+    #sb-settings-page .sb-sampling-panel .sb-sampling-help-toggle:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--SmartThemeBodyColor);
+    }
 }
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-help-toggle:focus-visible {
@@ -9250,8 +9274,10 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     border-inline-start: 0;
 }
 
-#sb-settings-page .ds-button:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+@media (hover: hover) {
+    #sb-settings-page .ds-button:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
+    }
 }
 
 #sb-settings-page .ds-button:active {
@@ -10724,10 +10750,18 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     overflow-wrap: anywhere;
 }
 
-.sb-model-id-picker-option:is(:hover, :focus-visible) {
+.sb-model-id-picker-option:focus-visible {
     border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border) 72%);
     background: var(--sb-flat-hover-bg);
     outline: none;
+}
+
+@media (hover: hover) {
+    .sb-model-id-picker-option:hover {
+        border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 28%, var(--sb-shell-border) 72%);
+        background: var(--sb-flat-hover-bg);
+        outline: none;
+    }
 }
 
 .sb-model-id-picker-option[aria-selected='true'] {

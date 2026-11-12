@@ -88,8 +88,10 @@
     transition: opacity var(--sb-transition-fast);
 }
 
-.prompt-manager-send-to-agents-action:hover {
-    opacity: 1;
+@media (hover: hover) {
+    .prompt-manager-send-to-agents-action:hover {
+        opacity: 1;
+    }
 }
 
 /* ── Helper previews ────────────────────────────────── */
@@ -130,9 +132,14 @@
     opacity: 0.72;
 }
 
-.ica--textarea-fullscreen-toggle:hover,
 .ica--textarea-fullscreen-wrapper:focus-within .ica--textarea-fullscreen-toggle {
     opacity: 1;
+}
+
+@media (hover: hover) {
+    .ica--textarea-fullscreen-toggle:hover {
+        opacity: 1;
+    }
 }
 
 .ica--prompt-preview pre {
@@ -957,15 +964,15 @@ dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
     transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-.ica--tpanel-handle:active {
-    cursor: grabbing;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, var(--sb-layer-drawer));
-}
-
 @media (hover: hover) {
     .ica--tpanel-handle:hover {
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-layer-drawer));
     }
+}
+
+.ica--tpanel-handle:active {
+    cursor: grabbing;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, var(--sb-layer-drawer));
 }
 
 .ica--tpanel-handle:focus-visible {

@@ -26,9 +26,11 @@
   opacity: 0.5;
   transition: var(--sb-transition-fast);
 }
-.stih--buttons .stih--button:hover {
-  opacity: 1;
-  background-color: var(--white30a);
+@media (hover: hover) {
+  .stih--buttons .stih--button:hover {
+    opacity: 1;
+    background-color: var(--white30a);
+  }
 }
 .stih--buttons .stih--arrows {
   display: flex;
@@ -83,11 +85,16 @@
   align-items: baseline;
   transform: translateX(0);
 }
-.stih--history .stih--item:hover,
-.stih--history .stih--item.stih--chat:not(.stih--current):hover,
 .stih--history .stih--item:has([contenteditable]) {
   opacity: 1;
   background-color: rgba(255, 255, 255, 0.0625);
+}
+@media (hover: hover) {
+  .stih--history .stih--item:hover,
+  .stih--history .stih--item.stih--chat:not(.stih--current):hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.0625);
+  }
 }
 .stih--history .stih--item.stih--current {
   font-weight: bold;

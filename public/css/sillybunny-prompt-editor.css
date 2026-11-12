@@ -552,9 +552,11 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-#sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > span:hover,
-:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > span:hover {
-    background: var(--sb-flat-hover-bg);
+@media (hover: hover) {
+    #sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > span:hover,
+    :is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > span:hover {
+        background: var(--sb-flat-hover-bg);
+    }
 }
 
 #sb-settings-page .sb-prompt-editor .sb-boolean-radio-option > input:checked + span,

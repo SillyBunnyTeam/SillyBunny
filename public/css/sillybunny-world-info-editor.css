@@ -571,14 +571,14 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-#sb-settings-page .sb-wi-settings .sb-wi-detail-back:active {
-    background: var(--sb-flat-active-bg);
-}
-
 @media (hover: hover) {
     #sb-settings-page .sb-wi-settings .sb-wi-detail-back:hover {
         background: var(--sb-flat-hover-bg);
     }
+}
+
+#sb-settings-page .sb-wi-settings .sb-wi-detail-back:active {
+    background: var(--sb-flat-active-bg);
 }
 
 @container sb-list-editor-detail (width < 560px) {

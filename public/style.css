@@ -11,7 +11,7 @@
 @import url(css/tags.css);
 @import url(css/scrollable-button.css?v=20260517a);
 /* SillyBunny: Home rules live in their own sheet */
-@import url(css/sillybunny-home.css?v=20261110b);
+@import url(css/sillybunny-home.css?v=20261112a);
 @import url(css/data-maid.css);
 @import url(css/secrets.css);
 @import url(css/backgrounds.css?v=20260606a);
@@ -6275,9 +6275,12 @@ body:has(.drawer-content.open) #top-settings-holder:has(.drawer-content.openDraw
     border: 1px solid var(--SmartThemeBorderColor);
 }
 
-.inline-drawer-header:hover {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 30%, transparent);
+/* SillyBunny: hover fills only where a pointer can hover; a tap on touch would leave the fill stuck. */
+@media (hover: hover) {
+    .inline-drawer-header:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+        border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 30%, transparent);
+    }
 }
 
 /* Top-level settings section headers */

@@ -37,7 +37,6 @@
             "radius-literal": 3,
             "shadow-literal": 1,
             "important": 1,
-            "hover-ungated": 4,
             "breakpoint-off-set": 1,
             "focus-outline": 1,
             "spacing-off-scale": 6
@@ -51,7 +50,6 @@
             "duration-literal": 3,
             "italic": 1,
             "important": 6,
-            "hover-ungated": 8,
             "breakpoint-off-set": 3,
             "breakpoint-1000": 1,
             "focus-outline": 4,
@@ -134,7 +132,6 @@
             "radius-literal": 1,
             "shadow-literal": 1,
             "important": 21,
-            "hover-ungated": 2,
             "spacing-off-scale": 39
         },
         "public/css/sillybunny-side-panel.css": {
@@ -157,7 +154,6 @@
             "uppercase": 5,
             "italic": 1,
             "important": 296,
-            "hover-ungated": 10,
             "breakpoint-off-set": 17,
             "breakpoint-1000": 7,
             "focus-outline": 6,
@@ -175,11 +171,11 @@
             "color-literal-fallback": 3,
             "radius-literal": 46,
             "radius-literal-fallback": 1,
-            "shadow-literal": 35,
+            "shadow-literal": 36,
             "letter-spacing": 3,
             "uppercase": 3,
             "important": 201,
-            "hover-ungated": 23,
+            "hover-ungated": 6,
             "breakpoint-off-set": 7,
             "breakpoint-1000": 3,
             "focus-outline": 2,
@@ -214,7 +210,6 @@
             "letter-spacing": 1,
             "uppercase": 1,
             "important": 7,
-            "hover-ungated": 2,
             "breakpoint-off-set": 1,
             "spacing-off-scale": 98
         },
@@ -223,10 +218,9 @@
             "spacing-off-scale": 3
         },
         "public/scripts/extensions/input-history/style.css": {
-            "color-literal": 2,
+            "color-literal": 3,
             "radius-literal": 2,
             "important": 11,
-            "hover-ungated": 3,
             "breakpoint-off-set": 1,
             "spacing-off-scale": 6
         },
@@ -241,7 +235,6 @@
             "shadow-literal": 1,
             "italic": 1,
             "important": 19,
-            "hover-ungated": 1,
             "focus-outline": 2,
             "spacing-off-scale": 36
         },

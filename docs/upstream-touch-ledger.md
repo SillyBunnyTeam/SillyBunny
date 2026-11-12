@@ -1352,6 +1352,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-01 PR #870 libadwaita shell. |
 | Owner | UI and shell integrator. |
 
+### `public/style.css` - hover gating of the drawer header
+| Field | Value |
+| --- | --- |
+| File | `public/style.css`; `public/css/sillybunny-theme.css`. |
+| Area | Settings drawers. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/css/sillybunny-theme.css`, the `.inline-drawer-header:hover` block, which already carries the SillyBunny fill. |
+| Adapter shape | The upstream `.inline-drawer-header:hover` rule is wrapped in `@media (hover: hover)` under a `/* SillyBunny: */` marker. Selectors, declarations and position are unchanged, so a hover fill no longer sticks after a tap on touch. |
+| Protecting tests | `tests/design-rule-ratchet.test.js` and `tests/audit-design-rules.test.js` for the count; `tests/sillybunny-settings-consistency.e2e.js` and `tests/sillybunny-backend-settings.e2e.js` for the drawer headers. |
+| Validation | 2026-11-12: `check:design-rules` matches the baseline; `check:frontend-budgets` and `check:frontend-contracts` pass; the full unit run; the e2e specs that name the changed classes. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-12, UI polish sweep. |
+| Owner | `TODO(copy)` |
+
 ### Frontend identity, localization, and static boot assets
 | Field | Value |
 | --- | --- |

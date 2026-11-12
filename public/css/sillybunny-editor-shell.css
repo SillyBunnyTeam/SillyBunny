@@ -678,11 +678,6 @@ body.reduced-motion :is(.ds-row--activatable, .ds-row.ds-button-row, .sb-status-
     box-sizing: content-box;
 }
 
-.sb-chip .sb-chip__remove:not(:disabled):active,
-.sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):active {
-    background: var(--sb-flat-active-bg);
-}
-
 .sb-chip .sb-chip__remove:focus-visible,
 .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size):focus-visible {
     outline: none;
@@ -751,6 +746,11 @@ body.reduced-motion :is(.ds-row--activatable, .ds-row.ds-button-row, .sb-status-
     .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
+}
+
+.sb-chip .sb-chip__remove:not(:disabled):active,
+.sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):active {
+    background: var(--sb-flat-active-bg);
 }
 
 @media (pointer: coarse) {
