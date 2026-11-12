@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SETTINGS_COPY } from '../helpers/copy-settings.js';
-import { SB_DATA_SECURITY_CONTAINER_ID, splitUserSettingsContent } from '../../public/scripts/sillybunny-settings-content.js';
+import { SB_DATA_SECURITY_CONTAINER_ID, SB_FLAT_SECTION_CLASS, SB_FLAT_SECTION_TOP_CLASS, flattenNestedSettingsDrawers, splitUserSettingsContent } from '../../public/scripts/sillybunny-settings-content.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
@@ -105,5 +105,62 @@ describe('Account popup', () => {
         const accountActions = template.querySelector('h3[data-i18n="Account Actions"]').parentElement;
         expect(accountActions.hasAttribute('data-require-accounts')).toBe(true);
         expect(accountActions.querySelector('.userChangePasswordButton')).not.toBeNull();
+    });
+});
+
+describe('flattening settings drawers', () => {
+    /** A drawer as the settings markup writes it: a header and a content wrapper. */
+    function drawer(id) {
+        const element = document.createElement('div');
+        element.id = id;
+        element.className = 'inline-drawer';
+        element.innerHTML = '<div class="inline-drawer-toggle inline-drawer-header"><b></b><div class="inline-drawer-icon"></div></div><div class="inline-drawer-content"></div>';
+        element.querySelector('b').textContent = id;
+        return element;
+    }
+
+    const levelOf = element => ({
+        flat: element.classList.contains(SB_FLAT_SECTION_CLASS),
+        top: element.classList.contains(SB_FLAT_SECTION_TOP_CLASS),
+    });
+
+    test('a drawer inside another one is a subsection when both exist on the first run', () => {
+        const root = document.createElement('div');
+        const outer = drawer('outer');
+        const inner = drawer('inner');
+        outer.querySelector('.inline-drawer-content').append(inner);
+        root.append(outer);
+
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+
+        expect(levelOf(outer)).toEqual({ flat: true, top: true });
+        expect(levelOf(inner)).toEqual({ flat: true, top: false });
+    });
+
+    test('a drawer that is built inside a section after it was flattened is a subsection too', () => {
+        const root = document.createElement('div');
+        const outer = drawer('outer');
+        root.append(outer);
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+
+        const inner = drawer('inner');
+        outer.append(inner);
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+
+        expect(levelOf(outer)).toEqual({ flat: true, top: true });
+        expect(levelOf(inner)).toEqual({ flat: true, top: false });
+    });
+
+    test('a later run without top-level flattening unwraps a drawer inside a flattened section', () => {
+        const root = document.createElement('div');
+        const outer = drawer('outer');
+        root.append(outer);
+        flattenNestedSettingsDrawers(root, { includeTopLevel: true });
+
+        const inner = drawer('inner');
+        outer.append(inner);
+
+        expect(flattenNestedSettingsDrawers(root)).toBe(1);
+        expect(levelOf(inner)).toEqual({ flat: true, top: false });
     });
 });

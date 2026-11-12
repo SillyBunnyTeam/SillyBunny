@@ -218,8 +218,10 @@ export function flattenNestedSettingsDrawers(root, options = {}) {
 
     for (const drawer of drawers) {
         let nested = false;
-        for (let ancestor = drawer.parentElement; ancestor; ancestor = ancestor.parentElement) {
-            if (drawerSet.has(ancestor)) {
+        for (let ancestor = drawer.parentElement; ancestor && ancestor !== root; ancestor = ancestor.parentElement) {
+            // A section that an earlier run flattened is no longer a drawer, but a drawer that is built inside it afterwards
+            // is nested all the same. Without this, the level of such a subsection depended on which was built first.
+            if (drawerSet.has(ancestor) || ancestor.classList.contains(SB_FLAT_SECTION_CLASS)) {
                 nested = true;
                 break;
             }
