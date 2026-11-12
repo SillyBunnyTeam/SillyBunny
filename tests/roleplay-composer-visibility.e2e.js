@@ -181,7 +181,10 @@ for (const width of [390, 1440]) {
     test(`reconnection restores normal roleplay sending at ${width}px`, async ({ page }) => {
         await renderComposer(page, width);
         const send = page.locator('#send_but');
-        const offlineBackground = await send.evaluate(element => getComputedStyle(element).backgroundColor);
+        const offlineFill = await send.evaluate(element => {
+            const style = getComputedStyle(element);
+            return { background: style.backgroundColor, opacity: style.opacity };
+        });
         await setComposerState(page, { connected: true });
 
         await expect(send).toBeVisible();
@@ -189,7 +192,10 @@ for (const width of [390, 1440]) {
         await expect(send).toHaveAttribute('aria-disabled', 'false');
         await expect(send).toHaveAttribute('tabindex', '0');
         await expect(send).toHaveCSS('pointer-events', 'auto');
-        expect(await send.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe(offlineBackground);
+        // A disabled suggested button stays the accent and fades to the disabled opacity.
+        expect(offlineFill.opacity).toBe('0.5');
+        expect(await send.evaluate(element => getComputedStyle(element).backgroundColor)).toBe(offlineFill.background);
+        expect(await send.evaluate(element => getComputedStyle(element).opacity)).toBe('1');
         await page.locator('#send_textarea').fill('Connected click');
         await send.click();
         await expect(page.locator('#chat .mes')).toHaveCount(1);

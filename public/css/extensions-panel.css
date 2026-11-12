@@ -13,12 +13,13 @@
     flex: 0 0 auto;
 }
 
+/* SillyBunny: the toggle column is as wide as the shared switch (--sb-switch-width in sillybunny-theme.css). */
 .extensions_info .extension_toggle {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    flex: 0 0 42px;
-    width: 42px;
+    flex: 0 0 var(--sb-switch-width);
+    width: var(--sb-switch-width);
     min-height: 24px;
     margin-inline-start: auto;
 }

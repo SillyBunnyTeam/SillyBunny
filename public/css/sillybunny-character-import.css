@@ -74,9 +74,13 @@
     transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
 
+/* A drop area: a 2px ring at 40% Accent inside the box over a 10% Accent fill. The ring is an outline, so the
+   focus ring (a box-shadow) can still show while a file is dragged over a focused zone. */
 #sb-settings-page #sb_character_import_panel .sb-import-drop.is-dragover {
-    border-color: var(--sb-accent);
-    background: color-mix(in srgb, var(--sb-accent) 12%, var(--sb-layer-view));
+    border-color: transparent;
+    background: color-mix(in srgb, var(--sb-accent) 10%, var(--sb-layer-view));
+    outline: 2px solid color-mix(in srgb, var(--sb-accent) 40%, transparent);
+    outline-offset: -2px;
     color: var(--SmartThemeBodyColor);
 }
 

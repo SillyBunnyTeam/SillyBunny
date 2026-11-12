@@ -403,14 +403,11 @@ input[type='checkbox']:focus-visible {
 }
 
 /* General dragover styling */
+/* SillyBunny: a whole drop area is a 2px inset ring at 40% Accent over a 10% Accent fill (DESIGN.md Elevation, Drop Target), in place of the dashed outline and its pulse. The ring is an outline pulled inside the box so it paints over the children, which matters for body. The fill is an inset shadow so the element keeps its own background. */
 .dragover {
-    filter: brightness(1.1) saturate(1.0);
-    outline: 3px dashed var(--SmartThemeBorderColor);
-    animation: pulse var(--animation-duration-3x) infinite alternate;
-}
-
-.dragover.no_animation {
-    animation: none;
+    outline: 2px solid color-mix(in srgb, var(--sb-accent, var(--SmartThemeQuoteColor)) 40%, transparent);
+    outline-offset: -2px;
+    box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--sb-accent, var(--SmartThemeQuoteColor)) 10%, transparent);
 }
 
 .tokenItemizingSubclass {

@@ -92,7 +92,7 @@ async function expectSwitchGeometry(root, compactSampling = false) {
             padding: style.padding === (compactSampling ? '4px 16px' : '6px 16px'),
             gap: style.gap === '12px',
             minHeight: parseFloat(style.minHeight) === (row.querySelector('.ds-row-subtitle') ? (compactSampling ? 44 : 52) : (compactSampling ? 36 : 44)),
-            suffixWidth: suffix && Math.abs(suffix.getBoundingClientRect().width - 42) <= 1,
+            suffixWidth: suffix && Math.abs(suffix.getBoundingClientRect().width - 46) <= 1,
             rightInset: Math.abs(rowRect.right - switchRect.right - parseFloat(style.borderRightWidth) - 16) <= 1,
             centered: Math.abs(switchRect.top + switchRect.height / 2 - rowRect.top - rowRect.height / 2) <= 1,
         };

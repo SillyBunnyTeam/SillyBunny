@@ -43,7 +43,7 @@
         "public/css/sillybunny-conversation.css": {
             "color-literal": 6,
             "color-literal-fallback": 5,
-            "radius-literal": 37,
+            "radius-literal": 36,
             "radius-literal-fallback": 18,
             "shadow-literal": 4,
             "duration-literal": 3,
@@ -162,17 +162,17 @@
             "spacing-off-scale": 4
         },
         "public/css/sillybunny-theme.css": {
-            "color-literal": 19,
+            "color-literal": 18,
             "color-literal-fallback": 3,
-            "radius-literal": 46,
+            "radius-literal": 44,
             "radius-literal-fallback": 1,
-            "shadow-literal": 36,
+            "shadow-literal": 35,
             "important": 200,
             "hover-ungated": 6,
             "breakpoint-off-set": 7,
             "breakpoint-1000": 3,
             "focus-outline": 2,
-            "spacing-off-scale": 254,
+            "spacing-off-scale": 255,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-windows.css": {

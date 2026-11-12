@@ -63,7 +63,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-editor {
     /* Shell layout, edge and pane geometry live in sillybunny-editor-shell.css. */
-    --sb-prompt-switch-width: 42px;
+    --sb-prompt-switch-width: var(--sb-switch-width);
 }
 
 :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-sheet-backdrop)[hidden],
@@ -336,7 +336,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 #sb-settings-page .sb-prompt-editor input.sb-switch::after,
 .sb-prompt-sheet input.sb-switch::after,
 .sb-dialog.sb-prompt-properties-dialog input.sb-switch::after {
-    transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
+    transition: inset-inline-start var(--sb-transition-fast), background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
     transition-timing-function: var(--sb-ease);
 }
 
@@ -354,10 +354,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-switch-slot {
     width: var(--sb-prompt-switch-width);
-}
-
-:root[data-sb-compact-mode='true'] .sb-prompt-editor {
-    --sb-prompt-switch-width: 38px;
 }
 
 :root[data-sb-compact-mode='true'] .sb-prompt-row {

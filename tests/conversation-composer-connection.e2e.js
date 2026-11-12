@@ -83,7 +83,7 @@ for (const width of [390, 1440]) {
         await expect(send).toBeDisabled();
         const offlineColors = await send.evaluate(element => {
             const style = getComputedStyle(element);
-            return { background: style.backgroundColor, color: style.color };
+            return { background: style.backgroundColor, color: style.color, opacity: style.opacity };
         });
         await page.screenshot({ path: testInfo.outputPath('conversation-offline.png') });
 
@@ -108,10 +108,13 @@ for (const width of [390, 1440]) {
         await expect(input).toHaveValue('Unsent offline draft');
         const connectedColors = await send.evaluate(element => {
             const style = getComputedStyle(element);
-            return { background: style.backgroundColor, color: style.color };
+            return { background: style.backgroundColor, color: style.color, opacity: style.opacity };
         });
-        expect(connectedColors.background).not.toBe(offlineColors.background);
-        expect(connectedColors.color).not.toBe(offlineColors.color);
+        // A disabled suggested button stays the accent and fades to the disabled opacity.
+        expect(connectedColors.background).toBe(offlineColors.background);
+        expect(connectedColors.color).toBe(offlineColors.color);
+        expect(offlineColors.opacity).toBe('0.5');
+        expect(connectedColors.opacity).toBe('1');
 
         await page.evaluate(async () => {
             const { setOnlineStatus } = await import('/script.js');

@@ -335,6 +335,12 @@
     cursor: default;
 }
 
+@media (prefers-contrast: more) {
+    .sb-editor-action.sb-editor-action:disabled {
+        opacity: 0.4;
+    }
+}
+
 .sb-editor-action.sb-editor-action:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);

@@ -792,12 +792,16 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     text-shadow: none;
 }
 
-/* libadwaita insensitive suggested-action: neutral fill with dimmed body ink. */
+/* libadwaita insensitive suggested-action: the accent at the disabled opacity, 50% and 40% under prefers-contrast: more. */
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_send:disabled {
-    background: var(--sb-raised-bg);
-    color: var(--sb-muted-fg);
     cursor: default;
-    opacity: 1;
+    opacity: 0.5;
+}
+
+@media (prefers-contrast: more) {
+    #sheld[data-sb-conversation-mode='on'] #sb_conversation_send:disabled {
+        opacity: 0.4;
+    }
 }
 
 @media (hover: hover) {
@@ -2103,25 +2107,26 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     appearance: none;
     -webkit-appearance: none;
     position: relative;
-    inline-size: 42px;
-    block-size: 24px;
+    inline-size: var(--sb-switch-width);
+    block-size: var(--sb-switch-height);
     flex: 0 0 auto;
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
+    border-radius: var(--sb-radius-pill);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
     cursor: pointer;
     transition: background-color var(--sb-transition-fast);
 }
 
+/* This switch has no border, so the thumb sits one padding from the edge. */
 .sb-conversation-switch::before {
     content: '';
     position: absolute;
-    inset-block-start: 2px;
-    inset-inline-start: 2px;
-    inline-size: 20px;
-    block-size: 20px;
+    inset-block-start: var(--sb-switch-padding);
+    inset-inline-start: var(--sb-switch-padding);
+    inline-size: var(--sb-switch-thumb);
+    block-size: var(--sb-switch-thumb);
     border-radius: 50%;
     background: #fff;
     box-shadow: 0 1px 3px color-mix(in srgb, #000 28%, transparent);
@@ -2133,7 +2138,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-switch:checked::before {
-    inset-inline-start: 20px;
+    inset-inline-start: calc(var(--sb-switch-width) - var(--sb-switch-thumb) - var(--sb-switch-padding));
     background: var(--sb-on-solid-accent, #fff);
 }
 
@@ -2150,20 +2155,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 :root[data-sb-compact-mode='true'] .sb-conversation-pref-row {
     min-block-size: 40px;
     padding-block: 6px;
-}
-
-:root[data-sb-compact-mode='true'] .sb-conversation-switch {
-    inline-size: 38px;
-    block-size: 22px;
-}
-
-:root[data-sb-compact-mode='true'] .sb-conversation-switch::before {
-    inline-size: 18px;
-    block-size: 18px;
-}
-
-:root[data-sb-compact-mode='true'] .sb-conversation-switch:checked::before {
-    inset-inline-start: 18px;
 }
 
 .sb-conversation-field-row {

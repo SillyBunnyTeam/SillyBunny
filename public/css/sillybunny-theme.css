@@ -27,6 +27,14 @@
     --sb-ease-out-quad: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     --sb-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
     --sb-ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+    /* Switch: one size for every switch. The thumb sits one padding from the outer edge, so its inset is the padding less the border. */
+    --sb-switch-width: 46px;
+    --sb-switch-height: 26px;
+    --sb-switch-thumb: 20px;
+    --sb-switch-padding: 3px;
+    --sb-switch-border: 1px;
+    --sb-switch-inset: calc(var(--sb-switch-padding) - var(--sb-switch-border));
+    --sb-switch-inset-on: calc(var(--sb-switch-width) - var(--sb-switch-thumb) - var(--sb-switch-padding) - var(--sb-switch-border));
     /* Kept for existing rules and user CSS */
     --sb-ease-out: var(--sb-ease-out-cubic);
     /* libadwaita springs; linear() samples are swapped in below where supported. */
@@ -267,9 +275,17 @@
    otherwise fall back to the OS highlight colour with the text colour untouched,
    which leaves code/kbd chips unreadable because they set their own ink. */
 ::selection {
-    background-color: var(--sb-selection-bg);
+    background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     color: var(--sb-selection-fg);
 }
+
+/* The field that has focus takes the stronger accent selection. */
+:is(input, textarea):focus::selection,
+[contenteditable]:focus::selection,
+[contenteditable]:focus ::selection {
+    background-color: color-mix(in srgb, var(--sb-accent) 30%, transparent);
+}
+
 
 /* style.css paints the inline code chip with var(--black70a) over var(--white70a),
    but themes treat both as free aliases and several repoint them at the same
@@ -287,6 +303,58 @@ button,
 input[type="button"],
 input[type="submit"] {
     -webkit-tap-highlight-color: transparent;
+}
+
+/* A link is Accent and underlined (a link never relies on colour alone). An anchor that carries a class or a role,
+   or that points at a fragment or a script, is a control or an icon and keeps the style of its own surface. */
+a[href]:not([class], [role], [href^='#'], [href^='javascript:']) {
+    color: var(--sb-accent);
+    text-decoration: underline;
+}
+
+a[href]:not([class], [role], [href^='#'], [href^='javascript:']):visited {
+    color: color-mix(in srgb, var(--sb-accent) 80%, var(--SmartThemeBodyColor));
+}
+
+/* Where the engine lacks relative colours, a small brightness step stands for the 1.1 step of saturation and lightness. */
+@media (hover: hover) {
+    a[href]:not([class], [role], [href^='#'], [href^='javascript:']):hover {
+        filter: brightness(1.1);
+    }
+}
+
+@supports (color: hsl(from red h s l)) {
+    @media (hover: hover) {
+        a[href]:not([class], [role], [href^='#'], [href^='javascript:']):hover {
+            color: hsl(from var(--sb-accent) h calc(s * 1.1) calc(l * 1.1));
+            filter: none;
+        }
+    }
+}
+
+a[href]:not([class], [role], [href^='#'], [href^='javascript:']):active {
+    color: var(--sb-accent);
+    filter: none;
+}
+
+a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='true'] {
+    opacity: 0.5;
+}
+
+@media (prefers-contrast: more) {
+    a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='true'] {
+        opacity: 0.4;
+    }
+}
+
+/* On a dark overlay a link is Accent mixed with white. */
+#toast-container .toast-message a[href] {
+    color: color-mix(in srgb, var(--sb-accent) 50%, var(--sb-layer-toast-fg));
+    text-decoration: underline;
+}
+
+#toast-container .toast-message a[href]:visited {
+    color: color-mix(in srgb, var(--sb-accent) 25%, var(--sb-layer-toast-fg));
 }
 
 .zoomed_avatar_container,
@@ -717,7 +785,7 @@ h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3) {
 
 .menu_button:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
 .menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
-    background: var(--sb-button-bg);
+    background: var(--sb-raised-bg);
     border-radius: var(--sb-radius-button);
 }
 
@@ -777,20 +845,20 @@ input[type="checkbox"]:is(.sb-switch, .checkbox_label > *) {
     appearance: none;
     position: relative;
     display: block;
-    inline-size: 42px;
-    block-size: 24px;
-    min-inline-size: 42px;
-    min-block-size: 24px;
-    width: 42px;
-    height: 24px;
-    min-width: 42px;
-    min-height: 24px;
+    inline-size: var(--sb-switch-width);
+    block-size: var(--sb-switch-height);
+    min-inline-size: var(--sb-switch-width);
+    min-block-size: var(--sb-switch-height);
+    width: var(--sb-switch-width);
+    height: var(--sb-switch-height);
+    min-width: var(--sb-switch-width);
+    min-height: var(--sb-switch-height);
     aspect-ratio: auto;
     overflow: visible;
     place-content: normal;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
+    border: var(--sb-switch-border) solid color-mix(in srgb, var(--SmartThemeBodyColor) 28%, transparent);
+    border-radius: var(--sb-radius-pill);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
     cursor: pointer;
     box-sizing: border-box;
     transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
@@ -799,14 +867,14 @@ input[type="checkbox"]:is(.sb-switch, .checkbox_label > *) {
 input[type="checkbox"]:is(.sb-switch, .checkbox_label > *)::after {
     content: '';
     position: absolute;
-    inset-block-start: 3px;
-    inset-inline-start: 3px;
-    inline-size: 16px;
-    block-size: 16px;
-    border-radius: 999px;
+    inset-block-start: var(--sb-switch-inset);
+    inset-inline-start: var(--sb-switch-inset);
+    inline-size: var(--sb-switch-thumb);
+    block-size: var(--sb-switch-thumb);
+    border-radius: var(--sb-radius-pill);
     background: var(--SmartThemeBodyColor);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--SmartThemeShadowColor) 40%, transparent);
-    transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast);
+    transition: inset-inline-start var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
 
 input[type="checkbox"]:is(.sb-switch, .checkbox_label > *)::before {
@@ -820,7 +888,7 @@ input[type="checkbox"]:is(.sb-switch, .checkbox_label > *):checked {
 
 input[type="checkbox"]:is(.sb-switch, .checkbox_label > *):checked::after {
     background: var(--sb-on-solid-accent, var(--SmartThemeCheckboxTickColor));
-    transform: translateX(18px);
+    inset-inline-start: var(--sb-switch-inset-on);
 }
 
 @media (hover: hover) {
@@ -1067,25 +1135,10 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     margin-top: 0;
 }
 
-:root[data-sb-compact-mode='true'] .checkbox_label > input[type="checkbox"],
-:root[data-sb-compact-mode='true'] input[type="checkbox"].sb-switch {
-    inline-size: 36px;
-    block-size: 20px;
-    min-inline-size: 36px;
-    min-block-size: 20px;
-}
-
-:root[data-sb-compact-mode='true'] .checkbox_label > input[type="checkbox"]::after,
-:root[data-sb-compact-mode='true'] input[type="checkbox"].sb-switch::after {
-    inline-size: 14px;
-    block-size: 14px;
-    inset-block-start: 2px;
-    inset-inline-start: 2px;
-}
-
-:root[data-sb-compact-mode='true'] .checkbox_label > input[type="checkbox"]:checked::after,
-:root[data-sb-compact-mode='true'] input[type="checkbox"].sb-switch:checked::after {
-    transform: translateX(16px);
+:root[data-sb-compact-mode='true'] {
+    --sb-switch-width: 38px;
+    --sb-switch-height: 22px;
+    --sb-switch-thumb: 16px;
 }
 
 @media screen and (min-width: 769px) and (max-width: 1280px) and (pointer: fine) {
@@ -1124,23 +1177,32 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     }
 }
 
-/* libadwaita button hover: a deeper neutral fill only, no accent ring or lift. */
+/* libadwaita button hover: a secondary (raised) button deepens to 15%, a flat button fills 7%; no accent ring or lift. */
 @media (hover: hover) {
     .menu_button:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
-    .menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
+    .menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+        transform: none;
+        background: var(--sb-raised-hover-bg);
+        box-shadow: none;
+    }
+
     .right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
     .drawer-icon.closedIcon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
         transform: none;
-        background: var(--sb-button-hover);
+        background: var(--sb-flat-hover-bg);
         box-shadow: none;
     }
 
     /* A generated :focus-visible copy of the hover rule would reset the ring. A rule with the same
        selectors replaces that copy, so the ring stays. */
     .menu_button:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible,
-    .menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible,
+    .menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
+        background: var(--sb-raised-hover-bg);
+        box-shadow: var(--sb-focus-ring-inset);
+    }
+
     .right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
-        background: var(--sb-button-hover);
+        background: var(--sb-flat-hover-bg);
         box-shadow: var(--sb-focus-ring-inset);
     }
 }
@@ -1161,6 +1223,16 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 .right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
     transform: scale(0.97);
     transition: transform var(--sb-transition-fast);
+}
+
+.menu_button:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
+.menu_button_icon:not(.sb-status-page__action):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
+    background: var(--sb-raised-active-bg);
+}
+
+.right_menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
+.drawer-icon.closedIcon:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
+    background: var(--sb-flat-active-bg);
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.is-active, .active, .selected, .is-selected, .is-current, [aria-pressed='true'], [aria-selected='true'], [aria-current]):not([aria-current='false']):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
@@ -1202,6 +1274,20 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     cursor: not-allowed;
     -webkit-user-select: none;
     user-select: none;
+}
+
+/* A disabled suggested button is the accent at the disabled opacity, 50% and 40% under prefers-contrast: more.
+   A destructive response keeps its own fill. */
+.menu_button:is(.menu_button_primary, .popup-button-ok, .suggested-action, .is-suggested):not(.is-destructive):is(.disabled, .is-disabled, [disabled], [aria-disabled='true']):not(.is-busy):not([aria-busy='true']) {
+    background: var(--color-primary, var(--sb-accent));
+    color: var(--sb-on-solid-accent);
+    opacity: 0.5;
+}
+
+@media (prefers-contrast: more) {
+    .menu_button:is(.menu_button_primary, .popup-button-ok, .suggested-action, .is-suggested):not(.is-destructive):is(.disabled, .is-disabled, [disabled], [aria-disabled='true']):not(.is-busy):not([aria-busy='true']) {
+        opacity: 0.4;
+    }
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.is-busy, [aria-busy='true'])::after {
@@ -1765,13 +1851,6 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     color: var(--sb-on-solid-accent, var(--sb-on-accent, var(--color-background, var(--SmartThemeBlurTintColor)))) !important;
     font-size: var(--sb-composer-action-icon-size) !important;
     opacity: 1;
-}
-
-/* Keep the send affordance in place offline; show it as unavailable until an API is connected. */
-#send_form.no-connection #rightSendForm > #send_but {
-    background: var(--sb-raised-bg) !important;
-    color: var(--sb-muted-fg) !important;
-    cursor: not-allowed;
 }
 
 /*
@@ -8181,14 +8260,14 @@ body.reduced-motion #toast-container > div.sb-toast-leaving {
     opacity: 0;
 }
 
-/* Tooltips - libadwaita OSD (shadow ink, white text, subtle border) */
+/* Tooltips - libadwaita OSD (shadow ink, white text, subtle border, no shadow) */
 .tooltip-inner {
     background: rgba(0, 0, 0, 0.8);
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: var(--sb-radius-control);
-    padding: 6px 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    padding: 6px 10px;
+    box-shadow: none;
 }
 
 .tooltip.bs-tooltip-top .arrow::before,
@@ -8265,10 +8344,20 @@ body.no-blur #send_form {
     background: color-mix(in srgb, var(--sb-accent) 80%, black) !important;
 }
 
-#send_but:disabled {
-    background: var(--sb-raised-bg) !important;
-    color: var(--sb-muted-fg) !important;
+/* libadwaita insensitive suggested-action: the accent at the disabled opacity, 50% and 40% under prefers-contrast: more. */
+#rightSendForm > #send_but:is(:disabled, .disabled, [aria-disabled='true']),
+#send_form.no-connection #rightSendForm > #send_but {
+    background: var(--sb-accent) !important;
+    color: var(--sb-on-solid-accent) !important;
     cursor: not-allowed !important;
+    opacity: 0.5 !important;
+}
+
+@media (prefers-contrast: more) {
+    #rightSendForm > #send_but:is(:disabled, .disabled, [aria-disabled='true']),
+    #send_form.no-connection #rightSendForm > #send_but {
+        opacity: 0.4 !important;
+    }
 }
 
 /* Composer icon buttons - flat circles. #send_but and .mes_stop are excluded so the suggested/destructive fills win. */

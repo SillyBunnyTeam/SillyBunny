@@ -713,7 +713,7 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
         { href: 'css/sillybunny-editor-shell.css?v=20261112c1', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261112a', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261112j', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
@@ -741,13 +741,13 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:import': [
         { href: 'css/sillybunny-editor-shell.css?v=20261112c1', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112d', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-import.css?v=20261018a', id: 'deferred-character-import-css' },
+        { href: 'css/sillybunny-character-import.css?v=20261112j', id: 'deferred-character-import-css' },
     ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
     ],
     'right:extensions': [
-        { href: 'css/extensions-panel.css?v=20260425a', id: 'deferred-extensions-panel-css' },
+        { href: 'css/extensions-panel.css?v=20261112j', id: 'deferred-extensions-panel-css' },
     ],
 });
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';

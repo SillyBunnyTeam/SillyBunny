@@ -195,8 +195,8 @@ describe('Conversation mobile controls', () => {
         expect(getRuleDeclarations('.sb-conversation-switch')).toMatchObject({
             appearance: 'none',
             '-webkit-appearance': 'none',
-            'inline-size': '42px',
-            'block-size': '24px',
+            'inline-size': 'var(--sb-switch-width)',
+            'block-size': 'var(--sb-switch-height)',
         });
         expect(getRuleDeclarations('.sb-conversation-switch:checked')).toMatchObject({
             background: 'var(--sb-accent, var(--SmartThemeQuoteColor))',

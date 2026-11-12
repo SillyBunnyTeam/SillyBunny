@@ -1366,6 +1366,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-12, UI polish sweep. |
 | Owner | `TODO(copy)` |
 
+### `public/style.css` - drop target
+| Field | Value |
+| --- | --- |
+| File | `public/style.css`; `public/css/sillybunny-theme.css`. |
+| Area | Drag-and-drop highlight. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/css/sillybunny-theme.css` and `--sb-accent`. |
+| Adapter shape | Under a `/* SillyBunny: */` marker, `.dragover` draws a 2px inset outline at 40% accent and a 10% accent inset-shadow fill, in place of the dashed outline, the brightness filter and the pulse; the class contract is unchanged. |
+| Protecting tests | `tests/libadwaita-states-css.test.js`, `tests/window-dialogs.e2e.js` (class contract). |
+| Validation | 2026-11-12: computed-style check at 1440x900; the full unit run. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-12, UI polish sweep. |
+| Owner | `TODO(copy)` |
+
+### `public/css/extensions-panel.css` - extension toggle column
+| Field | Value |
+| --- | --- |
+| File | `public/css/extensions-panel.css` |
+| Area | Extension toggle column width. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `--sb-switch-width` in `public/css/sillybunny-theme.css`. |
+| Adapter shape | Under a `/* SillyBunny: */` marker, `flex-basis` and `width` of `.extensions_info .extension_toggle` read the shared switch width instead of 42px, so the switch is not clipped. |
+| Protecting tests | `tests/sillybunny-backend-settings.e2e.js`, `tests/extensions-row-actions.e2e.js`, `tests/libadwaita-states-css.test.js`. |
+| Validation | 2026-11-12: the same specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-12, UI polish sweep. |
+| Owner | `TODO(copy)` |
+
 ### Frontend identity, localization, and static boot assets
 | Field | Value |
 | --- | --- |

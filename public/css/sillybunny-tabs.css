@@ -7972,10 +7972,10 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 .ds-row-switch > .ds-row-suffix,
 #sb-settings-page .ds-row-switch > .ds-row-suffix {
     display: flex;
-    flex: 0 0 42px;
+    flex: 0 0 var(--sb-switch-width);
     align-items: center;
     justify-content: flex-end;
-    width: 42px;
+    width: var(--sb-switch-width);
     margin-inline-start: auto;
 }
 
