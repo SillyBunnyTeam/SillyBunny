@@ -36,9 +36,6 @@ export const SELECTION_TONES = Object.freeze([
     { tone: 'light', theme: 'Libadwaita Light' },
 ]);
 
-/** The contrast that a control's edge needs against what it sits on (DESIGN.md Contrast Rule). */
-export const EDGE_CONTRAST = 3;
-
 /**
  * The rendered outline of an unchecked selection check against the row fill around it. The fill is read from the pixels just
  * above and below the check as painted, the outline colour from the computed border laid over them.

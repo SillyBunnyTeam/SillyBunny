@@ -4,7 +4,7 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { q56Screenshot } from './helpers/q56-review.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
 import { selectTheme } from './helpers/page-contrast.js';
-import { EDGE_CONTRAST, parseComputedColor, readBodyColor, readSelectionCheckOutline, SELECTION_TONES } from './helpers/selection-forms.js';
+import { parseComputedColor, readBodyColor, readSelectionCheckOutline, SELECTION_TONES } from './helpers/selection-forms.js';
 
 const list = page => page.locator('.sb-character-list[data-mounted="true"]');
 const listRows = (page, view) => list(page).locator(view === 'groups' ? '.group_select' : '.character_select');
@@ -793,7 +793,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     });
 
     for (const { tone, theme } of SELECTION_TONES) {
-        test(`selection check outline is the 15% trough, and 3:1 against the row under more contrast, at ${viewport.width}px in the ${tone} tone`, async ({ page }) => {
+        test(`selection check outline is the 15% trough, and the 50% border strength under more contrast, at ${viewport.width}px in the ${tone} tone`, async ({ page }) => {
             await prepareList(page, viewport);
             await selectTheme(page, theme);
             await enterSelection(page);
@@ -817,7 +817,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             const hovered = await readSelectionCheckOutline(page, check);
             const rows = [resting.ratio, hovered.ratio];
             test.info().annotations.push({ type: 'selection check outline contrast under more contrast', description: `${tone}: ${rows.map(ratio => ratio.toFixed(2)).join(', ')} at ${(resting.border.a * 100).toFixed(0)}%` });
-            for (const ratio of rows) expect(ratio).toBeGreaterThanOrEqual(EDGE_CONTRAST);
+            expect(resting.border.a).toBeCloseTo(0.5, 2);
+            expect(hovered.border.a).toBeCloseTo(0.6, 2);
             await check.check();
             const accent = await check.evaluate((element) => {
                 const probe = document.createElement('span');

@@ -542,8 +542,8 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
         --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 90%, transparent);
         --sb-shell-border: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
         --sb-input-border: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
-        --sb-selection-check-outline: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
-        --sb-selection-check-outline-hover: var(--sb-selection-check-outline);
+        --sb-selection-check-outline: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
+        --sb-selection-check-outline-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
         --sb-toggle-raised-shadow: inset 0 0 0 1px var(--sb-shell-border), 0 1px 3px 1px rgb(0 0 6 / 7%), 0 2px 6px 2px rgb(0 0 6 / 3%);
         --sb-shadow-dialog-highlight: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
         --sb-shadow-card:

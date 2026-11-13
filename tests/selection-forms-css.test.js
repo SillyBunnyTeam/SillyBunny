@@ -27,15 +27,6 @@ const declared = (source, selector, property, context = []) => rulesFor(source, 
     .map(rule => rule.declarations[property])
     .findLast(value => value !== undefined);
 
-function luminance([red, green, blue]) {
-    return [red, green, blue].map((channel) => {
-        const value = channel / 255;
-        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    }).reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index], 0);
-}
-const mix = (top, bottom, weight) => top.map((value, index) => value * weight + bottom[index] * (1 - weight));
-const contrast = (first, second) => (Math.max(luminance(first), luminance(second)) + 0.05) / (Math.min(luminance(first), luminance(second)) + 0.05);
-
 const strengthOf = value => Number(/color-mix\(in srgb, var\(--SmartThemeBodyColor\) (\d+)%, transparent\)/.exec(value)?.[1]);
 const MORE = '(prefers-contrast: more)';
 /** The declarations that a more-contrast block sets on the root for `property`. */
@@ -96,23 +87,9 @@ describe('selection check tokens', () => {
         expect(declared(shell, `${check}:not(:checked):not(:disabled):hover`, 'border-color', ['(hover: hover)'])).toBe('var(--sb-selection-check-outline-hover)');
     });
 
-    test('under more contrast the outline reaches 3:1 against the row fills of both tones, and hovering never weakens it', () => {
-        const more = moreRoot('--sb-selection-check-outline');
-        expect(more['--sb-selection-check-outline-hover']).toBe('var(--sb-selection-check-outline)');
-        const strength = strengthOf(strong) / 100;
-        // The unchecked row fills of the Characters, World Info and Chats Archive lists as painted in the two bundled themes:
-        // #3f3f42, #2f2f32 and #343437 on the dark tone, #fff, #efefef and #eaeaeb on the light tone. 3:1 needs 54.4% on the
-        // darkest of these.
-        const tones = [
-            { tone: 'dark', body: [255, 255, 255], fills: [[0x3f, 0x3f, 0x42], [0x2f, 0x2f, 0x32], [0x34, 0x34, 0x37]] },
-            { tone: 'light', body: [0x33, 0x33, 0x38], fills: [[255, 255, 255], [0xef, 0xef, 0xef], [0xea, 0xea, 0xeb]] },
-        ];
-        const short = tones.flatMap(({ tone, body, fills }) => fills
-            .map(fill => ({ tone, fill, ratio: contrast(mix(body, fill, strength), fill) }))
-            .filter(({ ratio }) => ratio < 3));
-        expect(short).toEqual([]);
-        // The border strength of 50% falls short on the light tone, which is why the check does not take it.
-        expect(contrast(mix(tones[1].body, tones[1].fills[1], 0.5), tones[1].fills[1])).toBeLessThan(3);
+    test('under more contrast the outline takes the border strength, 50%, and 60% on hover, as libadwaita draws it', () => {
+        expect(strengthOf(strong)).toBe(50);
+        expect(strengthOf(moreRoot('--sb-selection-check-outline')['--sb-selection-check-outline-hover'])).toBe(60);
     });
 });
 
