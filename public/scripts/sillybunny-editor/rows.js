@@ -532,6 +532,39 @@ function prepareEntryInput(input, id, type) {
     return input;
 }
 
+/**
+ * The error state of a field: the caller's text in a caption that `place` puts under the control, with `aria-invalid`
+ * and a description link. An empty message clears it. Shared by the entry row and the text-area field.
+ * @param {HTMLElement} control
+ * @param {string} className  Classes of the caption.
+ * @param {(caption: HTMLElement) => void} place
+ */
+function createErrorState(control, className, place) {
+    let caption = null;
+    const clearError = () => {
+        if (!caption) return;
+        const ids = (control.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(id => id && id !== caption.id);
+        if (ids.length) control.setAttribute('aria-describedby', ids.join(' '));
+        else control.removeAttribute('aria-describedby');
+        control.removeAttribute('aria-invalid');
+        releaseRowIds(caption);
+        caption.remove();
+        caption = null;
+    };
+    const setError = message => {
+        const text = String(message ?? '').trim();
+        if (!text) return clearError();
+        if (!caption) {
+            caption = element('small', className);
+            place(caption);
+            associateDescription(control, caption);
+        }
+        caption.textContent = text;
+        control.setAttribute('aria-invalid', 'true');
+    };
+    return { setError, clearError };
+}
+
 function secretStatus(control, { savedText, missingText }) {
     const status = element('span', 'ds-row-entry__status');
     ensureId(status);
@@ -650,17 +683,7 @@ export function createEntryRow({ label, subtitle, field, id, value, placeholder,
     control.addEventListener('input', () => onInput?.(control.value));
     control.addEventListener('change', () => onChange?.(control.value));
     const controller = rowController(row, control);
-    let errorCaption = null;
-    const clearError = () => {
-        if (!errorCaption) return;
-        const ids = (control.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(id => id && id !== errorCaption.id);
-        if (ids.length) control.setAttribute('aria-describedby', ids.join(' '));
-        else control.removeAttribute('aria-describedby');
-        control.removeAttribute('aria-invalid');
-        releaseRowIds(errorCaption);
-        errorCaption.remove();
-        errorCaption = null;
-    };
+    const { setError, clearError } = createErrorState(control, 'ds-row-subtitle ds-row-entry__caption ds-row-entry__error', caption => (floating ? row.firstElementChild : control).after(caption));
     return {
         ...controller,
         destroy() {
@@ -668,21 +691,110 @@ export function createEntryRow({ label, subtitle, field, id, value, placeholder,
             clearError();
             controller.destroy();
         },
-        setError(message) {
-            const text = String(message ?? '').trim();
-            if (!text) return clearError();
-            if (!errorCaption) {
-                errorCaption = element('small', 'ds-row-subtitle ds-row-entry__caption ds-row-entry__error');
-                (floating ? row.firstElementChild : control).after(errorCaption);
-                associateDescription(control, errorCaption);
-            }
-            errorCaption.textContent = text;
-            control.setAttribute('aria-invalid', 'true');
-        },
+        setError,
         clearError,
         getValue: () => control.value,
         setValue(value, { silent = true } = {}) {
             control.value = value ?? '';
+            if (!silent) onChange?.(control.value);
+        },
+    };
+}
+
+function textAreaCount({ label, element: adopted }) {
+    const caption = element('small', 'ds-row-subtitle ds-row-textarea__count');
+    const value = adopted ?? element('span', '');
+    value.classList.add('ds-row-textarea__count-value');
+    caption.append(element('span', 'ds-row-textarea__count-label', label), ' ', value);
+    return { caption, value };
+}
+
+function textAreaExpand(control, label) {
+    const button = element('button', 'menu_button menu_button_icon editor_maximize ds-row-textarea__expand');
+    button.type = 'button';
+    // The shared .editor_maximize handler finds its field by this id.
+    button.dataset.for = control.id;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    const glyph = element('i', 'fa-solid fa-maximize');
+    glyph.setAttribute('aria-hidden', 'true');
+    button.append(glyph);
+    return button;
+}
+
+/**
+ * A multi-line field with a label row above it: the label, an optional count of this field's tokens, and Expand at
+ * the inline end. The textarea carries the shell's field tokens; a help caption sits under it. An adopted textarea
+ * moves into the row with its id, name, classes and listeners; the caller inserts `row` where it was.
+ * @param {object} options
+ * @param {string} options.label
+ * @param {string} options.field
+ * @param {string} [options.id]
+ * @param {string} [options.subtitle]  One line of help under the field, linked by `aria-describedby`.
+ * @param {string} [options.value]
+ * @param {string} [options.placeholder]
+ * @param {number} [options.rows]
+ * @param {number} [options.maxLength]
+ * @param {{ label: string, element?: HTMLElement }} [options.count]
+ *     Shows a dimmed count in the label row, under the label `label` (for example "Tokens:"). `element` adopts a node
+ *     that other code already writes the number to; without it the field makes its own and `setCount` writes it.
+ * @param {boolean} [options.expand=true]  The Expand button, which opens the shared expanded editor for the textarea.
+ * @param {string} [options.expandLabel]  The translated name of Expand. Required unless `expand` is false.
+ * @param {(value: string) => void} [options.onInput]
+ * @param {(value: string) => void} [options.onChange]
+ * @param {HTMLTextAreaElement} [options.input]
+ * @returns {object}  The row controller, plus `labelRow`, `expand` (null when left out), `setCount(value)`,
+ *     `setError(message)` and `clearError()` as on the entry row, and `getValue` and `setValue`.
+ */
+export function createTextAreaField({ label, subtitle, field, id, value, placeholder, rows, maxLength, count, expand = true, expandLabel, onInput, onChange, input }) {
+    if (input && input.tagName !== 'TEXTAREA') throw new TypeError('Expected a textarea.');
+    if (expand && !expandLabel) throw new TypeError('The text-area field needs the translated name of its Expand button.');
+    const control = input ?? element('textarea', 'text_pole');
+    ensureId(control, id);
+    control.classList.add('ds-row-textarea__input');
+    if (value !== undefined) control.value = value;
+    if (placeholder !== undefined) control.placeholder = placeholder;
+    if (rows !== undefined) control.rows = rows;
+    if (maxLength !== undefined) control.maxLength = maxLength;
+
+    const row = element('div', 'ds-row ds-row--stacked ds-row-textarea');
+    markField(row, field);
+    // The class is the one the editors' label rows share (see attachToLabelRow in chrome.js).
+    const labelRow = element('div', 'ds-row-textarea__label-row sb-editor-label-row');
+    const title = element('label', 'ds-row-label ds-row-textarea__label', label);
+    title.htmlFor = control.id;
+    labelRow.append(title);
+    const counter = count ? textAreaCount(count) : null;
+    if (counter) labelRow.append(counter.caption);
+    const expandButton = expand ? textAreaExpand(control, expandLabel) : null;
+    if (expandButton) labelRow.append(expandButton);
+    row.append(labelRow, control);
+    if (subtitle) {
+        const caption = element('small', 'ds-row-subtitle ds-row-textarea__caption', subtitle);
+        associateDescription(control, caption);
+        row.append(caption);
+    }
+
+    control.addEventListener('input', () => onInput?.(control.value));
+    control.addEventListener('change', () => onChange?.(control.value));
+    const controller = rowController(row, control);
+    const { setError, clearError } = createErrorState(control, 'ds-row-subtitle ds-row-textarea__error', caption => control.after(caption));
+    return {
+        ...controller,
+        labelRow,
+        expand: expandButton,
+        destroy() {
+            clearError();
+            controller.destroy();
+        },
+        setCount(number) {
+            if (counter) counter.value.textContent = number === null || number === undefined ? '' : String(number);
+        },
+        setError,
+        clearError,
+        getValue: () => control.value,
+        setValue(next, { silent = true } = {}) {
+            control.value = next ?? '';
             if (!silent) onChange?.(control.value);
         },
     };

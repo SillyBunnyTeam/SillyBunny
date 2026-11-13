@@ -782,7 +782,7 @@ export function mountAgentsPanel(column) {
             if (!adapter || destroyed) return;
             await loadListEditorStyles();
             for (const href of [
-                'css/sillybunny-persona-detail.css',
+                'css/sillybunny-persona-detail.css?v=20261114l',
                 'css/sillybunny-prompt-editor.css',
                 'scripts/extensions/in-chat-agents/ui/agent-editor.css',
             ]) {

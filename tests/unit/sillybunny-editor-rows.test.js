@@ -11,6 +11,7 @@ import {
     createComboRow,
     createSpinRow,
     createEntryRow,
+    createTextAreaField,
     createPropertyRow,
     createExpanderRow,
     adoptExpanderRow,
@@ -1229,6 +1230,230 @@ describe('createEntryRow password', () => {
         expect(result.control.getAttribute('aria-invalid')).toBe('true');
         result.setDisabled(true);
         expect(result.control.disabled).toBe(true);
+    });
+});
+
+describe('createTextAreaField', () => {
+    const make = (options = {}) => createTextAreaField({ label: 'Notes', field: 'notes', expandLabel: 'Expand the editor', ...options });
+
+    function textarea(value = '') {
+        const control = document.createElement('textarea');
+        control.id = 'existing-notes';
+        control.name = 'preserved-name';
+        control.className = 'text_pole preserved-class';
+        control.value = value;
+        return control;
+    }
+
+    test('the label row holds a real label for the textarea, then Expand at the inline end', () => {
+        const { row, control, labelRow } = make();
+        const label = labelRow.querySelector('label.ds-row-textarea__label');
+        expect(row.dataset.sbEditorField).toBe('notes');
+        expect(row.classList.contains('ds-row--stacked')).toBe(true);
+        expect(control.tagName).toBe('TEXTAREA');
+        expect(control.id).not.toBe('');
+        expect(label.htmlFor).toBe(control.id);
+        expect(label.textContent).toBe('Notes');
+        expect(labelRow.classList.contains('sb-editor-label-row')).toBe(true);
+        expect(row.firstElementChild).toBe(labelRow);
+        expect(labelRow.firstElementChild).toBe(label);
+        expect(row.querySelectorAll('label')).toHaveLength(1);
+        expect(labelRow.nextElementSibling).toBe(control);
+    });
+
+    test('Expand is the existing expanded-editor trigger, named, wired to the textarea and last in the row', () => {
+        const { control, labelRow, expand } = make({ count: { label: 'Tokens:' } });
+        expect(expand.tagName).toBe('BUTTON');
+        expect(expand.type).toBe('button');
+        expect(expand.classList.contains('editor_maximize')).toBe(true);
+        expect(expand.dataset.for).toBe(control.id);
+        expect(expand.getAttribute('aria-label')).toBe('Expand the editor');
+        expect(expand.title).toBe('Expand the editor');
+        expect(expand.querySelector('i').getAttribute('aria-hidden')).toBe('true');
+        expect(labelRow.lastElementChild).toBe(expand);
+    });
+
+    test('Expand needs its translated label and can be left out', () => {
+        expect(() => createTextAreaField({ label: 'Notes', field: 'notes' })).toThrow(TypeError);
+        const { labelRow, expand } = createTextAreaField({ label: 'Notes', field: 'notes', expand: false });
+        expect(expand).toBeNull();
+        expect(labelRow.querySelector('button')).toBeNull();
+    });
+
+    test('a field token count is a dimmed caption between the label and Expand and counts only this field', () => {
+        const { labelRow, setCount } = make({ count: { label: 'Tokens:' } });
+        const count = labelRow.querySelector('.ds-row-textarea__count');
+        expect(count.classList.contains('ds-row-subtitle')).toBe(true);
+        expect(count.textContent).toBe('Tokens: ');
+        expect(count.previousElementSibling).toBe(labelRow.querySelector('label'));
+        expect(count.nextElementSibling).toBe(labelRow.querySelector('.editor_maximize'));
+        setCount(42);
+        expect(count.textContent).toBe('Tokens: 42');
+        setCount(null);
+        expect(count.textContent).toBe('Tokens: ');
+    });
+
+    test('an existing count element is adopted in place of a new one and keeps its id', () => {
+        const value = document.createElement('span');
+        value.id = 'existing-counter';
+        value.textContent = '7';
+        const { labelRow, setCount } = make({ count: { label: 'Tokens:', element: value } });
+        expect(labelRow.querySelector('#existing-counter')).toBe(value);
+        expect(labelRow.querySelectorAll('.ds-row-textarea__count-value')).toHaveLength(1);
+        expect(labelRow.querySelector('.ds-row-textarea__count').textContent).toBe('Tokens: 7');
+        setCount(9);
+        expect(value.textContent).toBe('9');
+    });
+
+    test('has no count unless one is asked for', () => {
+        const { labelRow, setCount } = make();
+        expect(labelRow.querySelector('.ds-row-textarea__count')).toBeNull();
+        expect(() => setCount(3)).not.toThrow();
+    });
+
+    test('a help caption sits under the field and is linked by aria-describedby', () => {
+        const { row, control } = make({ subtitle: 'Helpful description' });
+        const caption = row.querySelector('small.ds-row-textarea__caption');
+        expect(caption.textContent).toBe('Helpful description');
+        expect(caption.classList.contains('ds-row-subtitle')).toBe(true);
+        expect(control.nextElementSibling).toBe(caption);
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(caption.id);
+        expect(caption.id).not.toBe('');
+    });
+
+    test('has no caption and no aria-describedby without a subtitle', () => {
+        const { row, control } = make();
+        expect(row.querySelector('.ds-row-textarea__caption')).toBeNull();
+        expect(control.hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    test('creates a themed textarea that takes the value, placeholder, rows and length limit', () => {
+        const { control } = make({ id: 'made-notes', value: 'abc', placeholder: 'Write here', rows: 6, maxLength: 40 });
+        expect(control.id).toBe('made-notes');
+        expect(control.classList.contains('text_pole')).toBe(true);
+        expect(control.classList.contains('ds-row-textarea__input')).toBe(true);
+        expect(control.value).toBe('abc');
+        expect(control.placeholder).toBe('Write here');
+        expect(control.rows).toBe(6);
+        expect(control.maxLength).toBe(40);
+    });
+
+    test('adopts an existing textarea in place: same node, id, name, classes and listeners', () => {
+        const adopted = textarea('kept');
+        const upstream = jest.fn();
+        adopted.addEventListener('input', upstream);
+        const onInput = jest.fn();
+        const onChange = jest.fn();
+        const { row, control, labelRow } = make({ input: adopted, onInput, onChange });
+        document.body.replaceChildren(row);
+        expect(control).toBe(adopted);
+        expect(row.contains(adopted)).toBe(true);
+        expect(adopted.id).toBe('existing-notes');
+        expect(adopted.name).toBe('preserved-name');
+        expect(adopted.classList.contains('preserved-class')).toBe(true);
+        expect(adopted.value).toBe('kept');
+        expect(labelRow.querySelector('label').htmlFor).toBe('existing-notes');
+        expect(labelRow.querySelector('.editor_maximize').dataset.for).toBe('existing-notes');
+        adopted.value = 'typed';
+        adopted.dispatchEvent(new Event('input', { bubbles: true }));
+        adopted.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(upstream).toHaveBeenCalledTimes(1);
+        expect(onInput).toHaveBeenCalledWith('typed');
+        expect(onChange).toHaveBeenCalledWith('typed');
+    });
+
+    test('adoption leaves a jQuery-style listener of the adopter working', () => {
+        const adopted = textarea();
+        const seen = [];
+        adopted.addEventListener('input', () => seen.push(adopted.value));
+        make({ input: adopted });
+        adopted.value = 'one';
+        adopted.dispatchEvent(new Event('input'));
+        expect(seen).toEqual(['one']);
+    });
+
+    test('refuses anything that is not a textarea', () => {
+        expect(() => make({ input: input('text') })).toThrow(TypeError);
+    });
+
+    test('setValue and getValue read and write the textarea, silently unless asked', () => {
+        const onChange = jest.fn();
+        const field = make({ onChange });
+        field.setValue('first');
+        expect(field.getValue()).toBe('first');
+        expect(field.control.value).toBe('first');
+        expect(onChange).not.toHaveBeenCalled();
+        field.setValue('second', { silent: false });
+        expect(onChange).toHaveBeenCalledWith('second');
+    });
+
+    test('setDisabled disables the textarea and dims the row; setVisible hides the row', () => {
+        const { row, control, setDisabled, setVisible } = make();
+        setDisabled(true);
+        expect(control.disabled).toBe(true);
+        expect(row.classList.contains('is-insensitive')).toBe(true);
+        setVisible(false);
+        expect(row.hidden).toBe(true);
+    });
+
+    describe('error state', () => {
+        test('setError marks the textarea invalid and links a caption that carries the caller text', () => {
+            const { row, control, setError } = make();
+            setError('Too long');
+            const caption = row.querySelector('.ds-row-textarea__error');
+            expect(caption.textContent).toBe('Too long');
+            expect(control.getAttribute('aria-invalid')).toBe('true');
+            expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(caption.id);
+            expect(control.nextElementSibling).toBe(caption);
+        });
+
+        test('the error comes before the help caption and each keeps its own description id', () => {
+            const { row, control, setError, clearError } = make({ subtitle: 'Helpful description' });
+            const helpId = control.getAttribute('aria-describedby');
+            setError('Required');
+            const error = row.querySelector('.ds-row-textarea__error');
+            expect(error.nextElementSibling).toBe(row.querySelector('.ds-row-textarea__caption'));
+            expect(control.getAttribute('aria-describedby').split(/\s+/)).toHaveLength(2);
+            clearError();
+            expect(row.querySelector('.ds-row-textarea__error')).toBeNull();
+            expect(control.hasAttribute('aria-invalid')).toBe(false);
+            expect(control.getAttribute('aria-describedby')).toBe(helpId);
+        });
+
+        test('a second message replaces the first and an empty one clears', () => {
+            const { row, control, setError } = make();
+            setError('First');
+            setError('Second');
+            expect(row.querySelectorAll('.ds-row-textarea__error')).toHaveLength(1);
+            expect(row.querySelector('.ds-row-textarea__error').textContent).toBe('Second');
+            setError('  ');
+            expect(row.querySelector('.ds-row-textarea__error')).toBeNull();
+            expect(control.hasAttribute('aria-describedby')).toBe(false);
+        });
+
+        test('the message is text, never markup', () => {
+            const { row, setError } = make();
+            setError('<img src=x onerror=alert(1)>');
+            expect(row.querySelector('.ds-row-textarea__error').children).toHaveLength(0);
+        });
+
+        test('destroy leaves an adopted textarea without the error state', () => {
+            const adopted = textarea();
+            const field = make({ input: adopted, subtitle: 'Help' });
+            field.setError('Required');
+            field.destroy();
+            expect(adopted.hasAttribute('aria-invalid')).toBe(false);
+        });
+    });
+
+    test('every id the field reserves is released with it', () => {
+        const api = evaluateRows('{ createTextAreaField, reservationCount: () => reservedIds.size }');
+        const field = api.createTextAreaField({ label: 'Notes', field: 'notes', subtitle: 'Help', expandLabel: 'Expand' });
+        expect(api.reservationCount()).toBe(2);
+        field.setError('Required');
+        expect(api.reservationCount()).toBe(3);
+        field.destroy();
+        expect(api.reservationCount()).toBe(0);
     });
 });
 

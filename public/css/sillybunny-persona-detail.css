@@ -339,7 +339,7 @@
     gap: 8px;
 }
 
-#sb-settings-page .sb-persona-entry :is(.sb-persona-entry-textarea, .sb-persona-note-textarea),
+#sb-settings-page .sb-persona-entry .sb-persona-entry-textarea,
 .sb-persona-entry-preview {
     box-sizing: border-box;
     width: 100%;
@@ -359,10 +359,6 @@
 #sb-settings-page .sb-persona-entry textarea {
     max-height: none;
     resize: vertical;
-}
-
-#sb-settings-page .sb-persona-entry .sb-persona-note-textarea {
-    min-height: 160px;
 }
 
 .sb-persona-entry-preview {
@@ -507,7 +503,7 @@
 }
 
 @media (pointer: coarse) {
-    #sb-settings-page .sb-persona-entry :is(.menu_button, input:not(.sb-switch), textarea),
+    #sb-settings-page .sb-persona-entry :is(.menu_button, input:not(.sb-switch), textarea:not(.ds-row-textarea__input)),
     #sb-settings-page .sb-persona-entry .ds-row-entry input,
     :is(.sb-persona-property-sheet, .sb-dialog.sb-persona-properties-dialog) :is(.menu_button, .sb-persona-property input),
     .sb-persona-property-option,

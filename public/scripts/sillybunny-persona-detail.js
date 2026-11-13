@@ -12,7 +12,7 @@ import {
     changePersonaImage, convertPersonaToCharacter,
 } from './personas.js';
 import * as model from './sillybunny-persona-model.js';
-import { createRow, createSwitchRow, createEntryRow, createPropertyRow, createExpanderRow, createButtonRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
+import { createRow, createSwitchRow, createEntryRow, createTextAreaField, createPropertyRow, createExpanderRow, createButtonRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
@@ -390,13 +390,12 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         textarea.id = `${instanceId}-note-${++nextNoteId}`;
         textarea.dataset.macros = '';
         textarea.value = note.description;
-        textarea.setAttribute('aria-label', t`Scenario Note text`);
         $(textarea).on('input.sbPersonaDetail', () => {
             note.description = textarea.value;
             session.changed();
             refreshPreview();
         });
-        const noteBody = createRow({ label: t`Scenario Note text`, field: 'appendix-description', stacked: true, suffix: textarea });
+        const noteBody = createTextAreaField({ label: t`Scenario Note text`, field: 'appendix-description', input: textarea, rows: 6, expandLabel: t`Expand the editor` });
         const active = createSwitchRow({ label: t`Enabled`, field: 'appendix-active', onChange: enabled => {
             void runImmediate(() => {
                 const ids = new Set(getPersonaActiveAppendixIds(currentId));

@@ -3,6 +3,7 @@ import { getCurrentUserHandle } from '../../../user.js';
 import {
     createRow,
     createEntryRow,
+    createTextAreaField,
     createSpinRow,
     createSwitchRow,
     createPropertyRow,
@@ -220,14 +221,12 @@ export function mountAgentDetail({
         input.id = `${id}-${path.replaceAll('.', '-')}`;
         input.value = read(initial, path) ?? '';
         input.dataset.sbEditorField = path;
-        input.setAttribute('aria-label', label);
+        if (prompt) input.setAttribute('aria-label', label);
         $(input).on('input.icaAgentDetail', () => update(path, input.value));
-        const view = createRow({
-            field: path,
-            label,
-            stacked: true,
-            suffix: input,
-        });
+        // The prompt is named by its group heading, which carries its Expand; every other area has a label row of its own.
+        const view = prompt
+            ? createRow({ field: path, label, stacked: true, suffix: input })
+            : createTextAreaField({ field: path, label, input, rows: 6, expandLabel: t`Expand the editor` });
         const error = prompt ? element('div', 'ica-agent-field-error') : null;
         if (error) {
             error.id = `${input.id}-error`;

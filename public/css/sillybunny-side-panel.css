@@ -178,31 +178,10 @@
     margin-top: 12px;
 }
 
-.sb-side-panel .ds-row--stacked > .ds-row-text {
-    flex: 1 1 auto;
-    width: 100%;
-    min-width: 0;
-}
-
-.sb-side-panel :is(.sb-editor-section, .ds-pref-group, .ds-pref-group-header, .ds-row, .ds-row--stacked > .ds-row-text) {
+.sb-side-panel :is(.sb-editor-section, .ds-pref-group, .ds-pref-group-header, .ds-row) {
     box-sizing: border-box;
     min-width: 0;
     max-width: 100%;
-}
-
-.sb-side-panel .ds-row--stacked .ds-row-text > textarea {
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    min-height: 8lh;
-    resize: vertical;
-}
-
-.sb-side-panel .ds-row--stacked .extension_token_counter {
-    display: block;
-    width: 100%;
-    text-align: end;
 }
 
 .sb-side-panel .ds-row-slider > .ds-row-suffix {

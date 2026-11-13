@@ -343,6 +343,15 @@ describe('mountEditorChrome shared header', () => {
         expect(labelRow.classList.contains('sb-editor-label-row')).toBe(true);
         expect(labelRow.lastElementChild).toBe(expand);
         expect(attachToLabelRow(document.createElement('section'), expand)).toBe(false);
+
+        const field = document.createElement('div');
+        const fieldLabelRow = Object.assign(document.createElement('div'), { className: 'sb-editor-label-row' });
+        const unrelated = Object.assign(document.createElement('div'), { className: 'sb-editor-label-row' });
+        field.append(fieldLabelRow, document.createElement('textarea'), unrelated);
+        const extra = document.createElement('button');
+        expect(attachToLabelRow(field, extra)).toBe(true);
+        expect(fieldLabelRow.lastElementChild).toBe(extra);
+        expect(unrelated.childElementCount).toBe(0);
     });
 });
 

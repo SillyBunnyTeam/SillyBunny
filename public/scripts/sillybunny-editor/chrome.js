@@ -96,13 +96,14 @@ export function createSummaryRow(summary) {
 }
 
 /**
- * Puts a field's control at the inline end of its label row: the group header that holds the field's heading.
- * @param {HTMLElement} section  The group's `.sb-editor-section`.
+ * Puts a field's control at the inline end of its label row: the group header that holds the field's heading, or the
+ * label row of a text-area field (`createTextAreaField` in rows.js), which already carries its own Expand.
+ * @param {HTMLElement} section  The group's `.sb-editor-section`, or the text-area field's row.
  * @param {HTMLElement} control
- * @returns {boolean} False when the group has no heading row.
+ * @returns {boolean} False when there is no label row.
  */
 export function attachToLabelRow(section, control) {
-    const row = section.querySelector('.ds-pref-group-header');
+    const row = section.querySelector(':scope > .ds-pref-group-header, :scope > .sb-editor-label-row');
     if (!row) return false;
     row.classList.add('sb-editor-label-row');
     row.append(control);

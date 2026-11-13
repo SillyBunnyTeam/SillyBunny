@@ -49,6 +49,7 @@
             <label class="checkbox_label"><input type="checkbox">Default</label>
         </div>
         <div class="fixture-surface" id="entry-rows"></div>
+        <div class="fixture-surface" id="textarea-fields"></div>
         <div class="fixture-surface" id="search-entries"></div>
         <div class="fixture-surface">
             <div class="fixture-scroll" id="banners">
@@ -61,7 +62,7 @@
         <div class="fixture-surface" id="expander-rows"></div>
     </main>
     <script type="module">
-        import { createEntryRow, createExpanderRow, createPrefGroup, createSwitchRow } from '/scripts/sillybunny-editor/rows.js';
+        import { createEntryRow, createExpanderRow, createPrefGroup, createSwitchRow, createTextAreaField } from '/scripts/sillybunny-editor/rows.js';
         import { createSearchEntry } from '/scripts/sillybunny-editor/search-entry.js';
         import { createBanner } from '/scripts/sillybunny-editor/banner.js';
         import { createStatusPage } from '/scripts/sillybunny-editor/status-page.js';
@@ -111,6 +112,16 @@
         ];
         document.getElementById('expander-rows').append(createPrefGroup({ field: 'expander-rows', rows: expanders }).section);
         document.getElementById('entry-rows').append(createPrefGroup({ field: 'entry-rows', rows: Object.values(rows) }).section);
+        const areas = {
+            'area-rest': { label: 'Notes', field: 'rest', subtitle: 'One line of help', count: { label: 'Tokens:' }, expandLabel: 'Expand the editor' },
+            'area-error': { label: 'Rules', field: 'error', value: 'Alex', expandLabel: 'Expand the editor' },
+            'area-disabled': { label: 'Style', field: 'disabled', value: 'Alex', expand: false },
+        };
+        const fields = Object.fromEntries(Object.entries(areas).map(([id, options]) => [id, createTextAreaField({ id, ...options })]));
+        fields['area-rest'].setCount(12);
+        fields['area-error'].setError('Too long');
+        fields['area-disabled'].setDisabled(true);
+        document.getElementById('textarea-fields').append(createPrefGroup({ field: 'textarea-fields', rows: Object.values(fields) }).section);
     </script>
 </body>
 </html>

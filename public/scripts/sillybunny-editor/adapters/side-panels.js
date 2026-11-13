@@ -1,6 +1,6 @@
 import { t } from '../../i18n.js';
 import { registerSidePanel } from '../side-panel.js';
-import { createCheckRow, createComboRow, createEntryRow, createPrefGroup, createSpinRow, createSwitchRow } from '../rows.js';
+import { createCheckRow, createComboRow, createEntryRow, createPrefGroup, createSpinRow, createSwitchRow, createTextAreaField } from '../rows.js';
 import { createToggleRow } from '../toggle-row.js';
 
 const controllers = new Map();
@@ -37,10 +37,15 @@ function listenForChange(input, listener) {
     input.addEventListener('change', listener);
 }
 
-function createTextareaRow(input, label, field) {
-    const row = createEntryRow({ label, field, input });
-    row.row.classList.add('ds-row--stacked', 'sb-side-panel__textarea-row');
-    return row.row;
+function createTextareaRow(input, label, field, counter = null) {
+    const textarea = createTextAreaField({
+        label,
+        field,
+        input,
+        ...(counter ? { count: { label: t`Tokens:`, element: counter } } : {}),
+        expandLabel: t`Expand the editor`,
+    });
+    return textarea.row;
 }
 
 function createSectionGroup({ title, titleKey, titleId, field, rows, description = null }) {
@@ -199,8 +204,7 @@ function adaptAuthorNote(root) {
         input: scanInput,
     });
     setRowLabel(scanRow.row, 'Include in World Info Scanning');
-    const mainTextareaRow = createTextareaRow(mainPrompt, t`Author's Note`, 'authors-note-prompt');
-    mainTextareaRow.append(mainCounter);
+    const mainTextareaRow = createTextareaRow(mainPrompt, t`Author's Note`, 'authors-note-prompt', mainCounter);
     const mainDescription = mainParts.content.querySelector('small');
     const mainGroup = createAuthorNoteSection({
         title: t`Author's Note`,
@@ -245,8 +249,7 @@ function adaptAuthorNote(root) {
         input: useCharacterInput,
     });
     setRowLabel(characterSwitch.row, 'Use character author\'s note');
-    const characterTextareaRow = createTextareaRow(characterPrompt, t`Author's Note`, 'authors-note-character-prompt');
-    characterTextareaRow.append(characterCounter);
+    const characterTextareaRow = createTextareaRow(characterPrompt, t`Author's Note`, 'authors-note-character-prompt', characterCounter);
     const characterGroup = createAuthorNoteSection({
         title: t`Character Author's Note (Private)`,
         titleKey: 'Character Author\'s Note (Private)',
@@ -267,8 +270,7 @@ function adaptAuthorNote(root) {
         depthId: 'extension_default_depth',
         roleId: 'extension_default_role',
     });
-    const defaultTextareaRow = createTextareaRow(defaultPrompt, t`Default Author's Note`, 'authors-note-default-prompt');
-    defaultTextareaRow.append(defaultCounter);
+    const defaultTextareaRow = createTextareaRow(defaultPrompt, t`Default Author's Note`, 'authors-note-default-prompt', defaultCounter);
     const defaultGroup = createAuthorNoteSection({
         title: t`Default Author's Note`,
         titleKey: 'Default Author\'s Note',

@@ -1384,6 +1384,59 @@ body.reduced-motion [data-selection-mode='true'] button.menu_button.sb-selection
     min-width: 0;
 }
 
+/* --- Text-area field (rows.js createTextAreaField) ---
+   A label row (label, field token count, Expand at the inline end), the field and a help caption. The shell's
+   .text_pole rules draw the fill, border, radius and entry focus; this sheet sets the height and inline padding. */
+
+/* The row wraps rather than squeezing the label: at a large text size the count and Expand drop under it, still at the
+   inline end, and no word of the label breaks. */
+.ds-row-textarea__label-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0 9px;
+    min-width: 0;
+}
+
+.ds-row-textarea__label {
+    flex: 1 1 auto;
+    min-width: min-content;
+    overflow-wrap: normal;
+}
+
+.ds-row-textarea__count {
+    flex: none;
+    white-space: nowrap;
+}
+
+.ds-row-textarea > .ds-row-textarea__input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: calc(var(--sb-field-min-height) * 4);
+    margin: 0;
+    padding-inline: var(--sb-field-padding-x);
+    resize: vertical;
+}
+
+/* Expand is a theme icon button: its size follows --sb-control-icon-physical-size, which is 44px on a coarse pointer. */
+.ds-row-textarea__expand {
+    flex: none;
+    margin: 0;
+}
+
+/* An error keeps the Destructive colour on the border at rest and takes it into the focus ring, as an entry row does. */
+.ds-row-textarea > .ds-row-textarea__input[aria-invalid='true'] {
+    --sb-entry-focus-border: var(--sb-color-danger);
+    --sb-entry-focus-ring: inset 0 0 0 1px var(--sb-color-danger);
+    border-color: var(--sb-color-danger);
+}
+
+.ds-row-textarea__error {
+    color: var(--sb-color-danger);
+}
+
 .menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action, .sb-status-page__action) {
     white-space: nowrap;
 }

@@ -78,6 +78,61 @@ async function expectEntryRows(page) {
     await expect(page.locator('.ds-row-entry--floating:has(#entry-password) .ds-row-entry__reveal')).toHaveCount(0);
 }
 
+async function expectTextAreaFields(page, isMobile) {
+    const rest = page.locator('#area-rest');
+    const row = page.locator('.ds-row-textarea:has(#area-rest)');
+    const labelRow = row.locator('> .sb-editor-label-row');
+
+    await expect(rest).toHaveAccessibleName('Notes');
+    await expect(rest).toHaveAccessibleDescription('One line of help');
+    await expect(labelRow.locator('> label')).toHaveAttribute('for', 'area-rest');
+    await expect(labelRow.locator('> .ds-row-textarea__count')).toHaveText('Tokens: 12');
+    await expect(labelRow.locator('> .editor_maximize')).toHaveAccessibleName('Expand the editor');
+    await expect(labelRow.locator('> .editor_maximize')).toHaveAttribute('data-for', 'area-rest');
+    await expect(page.locator('.ds-row-textarea:has(#area-disabled) .editor_maximize')).toHaveCount(0);
+
+    // Label, count and Expand read in that order, with Expand flush with the inline end of the field.
+    const [label, count, expand, field] = await Promise.all(['> label', '> .ds-row-textarea__count', '> .editor_maximize'].map(selector => labelRow.locator(selector).boundingBox()).concat(rest.boundingBox()));
+    expect(label.x + label.width).toBeLessThanOrEqual(count.x + 0.5);
+    expect(count.x + count.width).toBeLessThanOrEqual(expand.x + 0.5);
+    expect(field.x + field.width - (expand.x + expand.width), 'Expand sits at the inline end of the field').toBeLessThanOrEqual(1);
+    const target = parseFloat(await resolved(page, 'height', 'var(--sb-control-icon-physical-size)'));
+    expect(target, 'the control size is 44px on touch').toBeGreaterThanOrEqual(isMobile ? 44 : 32);
+    expect(expand.width, 'Expand is a full-size icon button').toBeGreaterThanOrEqual(target - 0.5);
+    expect(expand.height).toBeGreaterThanOrEqual(target - 0.5);
+
+    for (const compact of [false, true]) {
+        await page.evaluate(value => document.documentElement.dataset.sbCompactMode = String(value), compact);
+        const token = parseFloat(await resolved(page, 'min-height', 'var(--sb-field-min-height)'));
+        expect((await rest.boundingBox()).height, `the field has a minimum height from --sb-field-min-height (compact ${compact})`).toBeGreaterThanOrEqual(token * 4 - 0.5);
+    }
+    await page.evaluate(() => delete document.documentElement.dataset.sbCompactMode);
+
+    await expect(rest).toHaveCSS('border-top-width', '1px');
+    await expect(rest).toHaveCSS('border-top-left-radius', await resolved(page, 'border-top-left-radius', 'var(--sb-radius-control)'));
+    await expect(rest).toHaveCSS('background-color', await resolved(page, 'background-color', 'var(--sb-input-bg)'));
+    await expect(rest).toHaveCSS('padding-left', await resolved(page, 'padding-left', 'var(--sb-field-padding-x)'));
+    const focusBorder = await resolved(page, 'border-top-color', 'var(--sb-entry-focus-border)');
+    const focusRing = await resolved(page, 'box-shadow', 'var(--sb-entry-focus-ring)');
+    await rest.focus();
+    await expect(rest).toHaveCSS('border-top-color', focusBorder);
+    await expect(rest).toHaveCSS('box-shadow', focusRing);
+    await rest.blur();
+
+    const danger = await resolved(page, 'color', 'var(--sb-color-danger)');
+    const invalid = page.locator('#area-error');
+    await expect(invalid).toHaveAttribute('aria-invalid', 'true');
+    await expect(invalid).toHaveCSS('border-top-color', danger);
+    await expect(page.locator('.ds-row-textarea__error')).toHaveText('Too long');
+    await expect(page.locator('.ds-row-textarea__error')).toHaveCSS('color', danger);
+    await expect(invalid).toHaveAccessibleDescription('Too long');
+
+    const disabled = page.locator('#area-disabled');
+    await expect(disabled).toBeDisabled();
+    await expect(page.locator('.ds-row-textarea:has(#area-disabled)')).toHaveCSS('opacity', '0.5');
+    await expect(page.locator('.ds-row-textarea:has(#area-disabled) label')).toBeVisible();
+}
+
 const searchIds = ['search-rest', 'search-filled', 'search-bar'];
 
 async function expectSearchEntries(page, isMobile) {
@@ -314,6 +369,7 @@ for (const [name, colors] of Object.entries(themes)) {
         await expect(page.locator('.menu_button[aria-busy]')).toHaveCSS('cursor', 'progress');
 
         await expectEntryRows(page);
+        await expectTextAreaFields(page, isMobile);
         await expectSearchEntries(page, isMobile);
         await expectStatusPages(page, isMobile);
         await expectExpanderRows(page, isMobile);

@@ -1,3 +1,4 @@
+/* global globalThis */
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';

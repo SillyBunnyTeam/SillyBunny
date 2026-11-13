@@ -117,6 +117,20 @@ test('Author\'s Note, CFG, and token adapters adopt source controls without chan
 
     expect(host.querySelectorAll('#floatingPrompt .ds-pref-group')).toHaveLength(3);
     expect(host.querySelectorAll('#floatingPrompt .ds-row--stacked textarea')).toHaveLength(3);
+    for (const [id, field, counterId] of [
+        ['extension_floating_prompt', 'authors-note-prompt', 'extension_floating_prompt_token_counter'],
+        ['extension_floating_chara', 'authors-note-character-prompt', 'extension_floating_chara_token_counter'],
+        ['extension_floating_default', 'authors-note-default-prompt', 'extension_floating_default_token_counter'],
+    ]) {
+        const row = host.querySelector(`.ds-row-textarea[data-sb-editor-field="${field}"]`);
+        const labelRow = row.querySelector(':scope > .sb-editor-label-row');
+        expect(labelRow.querySelector('label').htmlFor).toBe(id);
+        expect(labelRow.querySelector('.ds-row-textarea__count')).toBe(labelRow.querySelector(`#${counterId}`).parentElement);
+        expect(labelRow.querySelector('.ds-row-textarea__count').textContent).toBe('Tokens: 0');
+        expect(labelRow.lastElementChild.dataset.for).toBe(id);
+        expect(labelRow.lastElementChild.classList.contains('editor_maximize')).toBe(true);
+        expect(row.contains(host.querySelector(`#${id}`))).toBe(true);
+    }
     expect(host.querySelector('#ANBlockToggle')).not.toBeNull();
     expect(host.querySelector('#extension_floating_prompt')).toBe(authorPrompt);
     expect([mainPositionBefore.id, mainPositionBefore.name, mainPositionBefore.value]).toEqual([
@@ -161,6 +175,13 @@ test('Author\'s Note, CFG, and token adapters adopt source controls without chan
     expect(host.querySelectorAll('#cfgConfig .ds-pref-group')).toHaveLength(4);
     expect(host.querySelectorAll('#cfgConfig .ds-row-slider')).toHaveLength(3);
     expect(host.querySelectorAll('#cfgConfig .ds-row--stacked textarea')).toHaveLength(6);
+    for (const id of ['chat_cfg_negative_prompt', 'chat_cfg_positive_prompt', 'chara_cfg_negative_prompt', 'chara_cfg_positive_prompt', 'global_cfg_negative_prompt', 'global_cfg_positive_prompt']) {
+        const labelRow = host.querySelector(`#${id}`).closest('.ds-row-textarea').querySelector(':scope > .sb-editor-label-row');
+        expect(labelRow.querySelector('label').htmlFor).toBe(id);
+        expect(labelRow.querySelector('label').dataset.i18n).toMatch(/^(Negative|Positive) Prompt$/);
+        expect(labelRow.querySelector('.ds-row-textarea__count')).toBeNull();
+        expect(labelRow.querySelector('.editor_maximize').dataset.for).toBe(id);
+    }
     expect(host.querySelectorAll('#cfgConfig .ds-row-check input[name="cfg_prompt_combine"][type="checkbox"][role="switch"]')).toHaveLength(0);
     expect(host.querySelectorAll('#cfgConfig .ds-row-check input[name="cfg_prompt_combine"][type="checkbox"]')).toHaveLength(3);
     expect(host.querySelector('#chat_cfg_guidance_scale')).toBe(host.querySelector('.ds-row-slider input[type="range"]'));

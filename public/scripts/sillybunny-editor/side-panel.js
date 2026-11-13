@@ -6,7 +6,7 @@ import { returnFocusTo } from './page-chain.js';
 import { bindSheetGestures, createSheetHandle } from './sheet-gestures.js';
 
 export const SIDE_PANEL_STYLESHEET = {
-    href: 'css/sillybunny-side-panel.css?v=20261112o',
+    href: 'css/sillybunny-side-panel.css?v=20261114l',
     id: 'deferred-side-panel-css',
 };
 
@@ -617,8 +617,9 @@ function observeLayoutChanges() {
 }
 
 function focusPanel(entry) {
+    // A field's Expand button sits before the field in its label row; opening a panel lands on the field, not on it.
     const focusable = [...entry.shell.content.querySelectorAll(PANEL_FOCUSABLE_SELECTOR)]
-        .find(element => element.getClientRects().length > 0 && !element.closest('[hidden], [inert]'));
+        .find(element => element.getClientRects().length > 0 && !element.closest('[hidden], [inert]') && !element.matches('.editor_maximize'));
     const target = focusable ?? entry.shell.closeButton;
     target.focus({ preventScroll: true });
 }

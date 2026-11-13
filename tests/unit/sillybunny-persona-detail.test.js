@@ -170,7 +170,8 @@ test('deleting a scenario note releases its row reservations before the editor c
 
 function field(host, id) {
     const row = host.querySelector(`[data-sb-editor-field="${id}"]`);
-    return row?.matches('input, textarea') ? row : row?.querySelector('input, textarea, select, button');
+    // A text-area field's label row holds its Expand button before the textarea.
+    return row?.matches('input, textarea') ? row : row?.querySelector('input, textarea, select, button:not(.editor_maximize)');
 }
 
 function edit(host, id, value, type = 'input') {
@@ -415,6 +416,21 @@ describe('Scenario notes and immediate state', () => {
         expect(host.querySelector('.sb-persona-entry-save').disabled).toBe(false);
         expect(await controller.save()).toBe(true);
         expect(state.persona_descriptions['first.png'].appendices[1].name).toBe('Named');
+    });
+
+    test('a scenario note text is a text-area field: label row with Expand, same textarea and draft binding', () => {
+        const { host, controller } = mount();
+        const [note] = host.querySelectorAll('[data-sb-editor-field="appendix"]');
+        const textarea = field(note, 'appendix-description');
+        const row = note.querySelector('.ds-row-textarea[data-sb-editor-field="appendix-description"]');
+        const expand = row.querySelector(':scope > .sb-editor-label-row > .editor_maximize');
+        expect(textarea.classList.contains('sb-persona-note-textarea')).toBe(true);
+        expect(row.querySelector('label').htmlFor).toBe(textarea.id);
+        expect(row.querySelector('label').textContent).toBe('Scenario Note text');
+        expect(expand.dataset.for).toBe(textarea.id);
+        expect(expand.title).toBe('Expand the editor');
+        $(textarea).val('Written in the expanded editor').trigger('input');
+        expect(controller.isDirty()).toBe(true);
     });
 
     test('note content add/edit/delete is draft-only and Cancel restores the library', async () => {
