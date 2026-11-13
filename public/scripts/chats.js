@@ -61,6 +61,8 @@ import { MEDIA_DISPLAY, MEDIA_SOURCE, MEDIA_TYPE, SCROLL_BEHAVIOR, SWIPE_DIRECTI
 import { creatorStylesPreferenceOptions, externalMediaOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
 // SillyBunny: Data Bank presentation stays in a dedicated adapter so upstream attachment handlers remain source-compatible.
 import { decorateDataBankRow, frameDataBankManager } from './sillybunny-editor/adapters/data-bank-dialog.js';
+// SillyBunny: the Data Bank Add menu is presented as a bottom sheet on phones, on its upstream node.
+import { presentMenuAsSheet } from './sillybunny-editor/sheet-gestures.js';
 
 /**
  * @typedef {Object} FileAttachment
@@ -1454,6 +1456,9 @@ async function openAttachmentManager() {
 
         const modal = template.find('.actionButtonsModal').hide();
         const scrapers = ScraperManager.getDataBankScrapers();
+        // SillyBunny: the Add menu is a bottom sheet on phones, on this same node. Its three triggers share it, so the last one pressed is the trigger.
+        let addMenuTrigger = null;
+        const addMenuSheet = presentMenuAsSheet({ node: modal.get(0), getTrigger: () => addMenuTrigger, close: () => modal.hide() });
 
         for (const scraper of scrapers) {
             const isAvailable = await ScraperManager.isScraperAvailable(scraper.id);
@@ -1500,6 +1505,7 @@ async function openAttachmentManager() {
 
             const popper = Popper.createPopper(button, modal.get(0), { placement: 'bottom-end' });
             button.addEventListener('click', () => {
+                addMenuTrigger = button;
                 modal.attr('data-attachment-manager-target', source);
                 modal.toggle();
                 popper.update();
@@ -1509,6 +1515,7 @@ async function openAttachmentManager() {
         }).filter(Boolean);
 
         return () => {
+            addMenuSheet.dispose();
             modalButtonData.forEach(p => {
                 const { popper, bodyListener } = p;
                 popper.destroy();

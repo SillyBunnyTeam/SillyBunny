@@ -29,6 +29,7 @@ import { openActionMenu } from './sillybunny-action-menu.js';
 import { isApplePlatform } from './sillybunny-platform.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
+import { adoptComposerMenus } from './sillybunny-editor/sheet-gestures.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
 import { createExpanderRow, createRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
@@ -14482,6 +14483,7 @@ function initAll() {
     setDesktopButtonScale(sbState.desktopButtonScale, { persist: false });
     setMobileButtonScale(sbState.mobileButtonScale, { persist: false });
     bindComposerControlPlacement();
+    adoptComposerMenus();
     initChatAvatarVariables();
     buildTopBar();
     // Must follow buildTopBar(): it rearranges the buttons that call creates.

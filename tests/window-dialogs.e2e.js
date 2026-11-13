@@ -221,7 +221,10 @@ for (const viewport of WINDOW_VIEWPORTS) {
         for (const [section, source] of [['characterAttachmentsBlock', 'character'], ['chatAttachmentsBlock', 'chat']]) {
             await manager.locator(`.${section} .openActionModalButton`).click();
             await expect(manager.locator('.actionButtonsModal')).toHaveAttribute('data-attachment-manager-target', source);
-            await manager.locator('.globalAttachmentsTitle').click();
+            // On a phone the menu is a bottom sheet with a scrim over the heading, so the press that dismisses it lands on the scrim.
+            // eslint-disable-next-line playwright/no-conditional-in-test -- a sheet and a popover are dismissed from different places
+            await (viewport.presentation === 'sheet' ? page.locator('.sb-menu-sheet-scrim') : manager.locator('.globalAttachmentsTitle')).click();
+            await expect(manager.locator('.actionButtonsModal')).toBeHidden();
         }
         const body = manager.locator('.popup-content');
         expect(await body.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);

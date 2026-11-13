@@ -1450,6 +1450,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-12, UI polish sweep. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/chats.js` - Data Bank Add menu as a sheet
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js` |
+| Area | The Data Bank Add menu (`.actionButtonsModal`) in `openAttachmentManager`. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `presentMenuAsSheet()` in `public/scripts/sillybunny-editor/sheet-gestures.js`. |
+| Adapter shape | One `presentMenuAsSheet()` call on the upstream node in `renderButtons()`, with `getTrigger` returning the Add button pressed last, `close: () => modal.hide()`, and `dispose()` in the existing cleanup; the import and the block carry `SillyBunny:` markers. No handler, markup or Popper line changes. |
+| Protecting tests | `tests/unit/sillybunny-menu-sheet.test.js`; `tests/window-dialogs.e2e.js`. |
+| Validation | 2026-11-14: root and tests lint, the full unit run, `composer-menu-sheets.e2e.js`, `window-dialogs.e2e.js`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-14, UI polish sweep (task 2.8). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/group-chats.js` - group member move items
 | Field | Value |
 | --- | --- |

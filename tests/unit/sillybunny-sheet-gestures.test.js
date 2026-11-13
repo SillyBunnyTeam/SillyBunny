@@ -133,6 +133,52 @@ describe('bindSheetSwipeClose', () => {
     });
 });
 
+describe('bindSheetGestures with the translate property', () => {
+    function bind() {
+        const parts = makeSheet();
+        const requestClose = jest.fn(() => true);
+        bindSheetGestures({
+            surface: parts.sheet,
+            scrim: parts.backdrop,
+            targets: [parts.sheet],
+            startSelector: '.sb-dialog__handle',
+            property: 'translate',
+            isActive: () => true,
+            requestClose,
+        });
+        return { ...parts, requestClose };
+    }
+
+    // jsdom's CSSStyleDeclaration does not know `translate`, so the writes are read from the calls.
+    test('the drag moves translate and leaves an inline transform alone', () => {
+        const { sheet, handle, requestClose } = bind();
+        sheet.style.transform = 'translate(12px, 34px)';
+        const setProperty = jest.spyOn(sheet.style, 'setProperty');
+
+        pointer(handle, 'pointerdown', 100, 0);
+        pointer(handle, 'pointermove', 220, 100);
+        expect(setProperty).toHaveBeenCalledWith('translate', '0 120px');
+        expect(setProperty).not.toHaveBeenCalledWith('transform', expect.anything());
+        pointer(handle, 'pointerup', 220, 100);
+
+        expect(requestClose).toHaveBeenCalledTimes(1);
+        expect(sheet.style.transform).toBe('translate(12px, 34px)');
+    });
+
+    test('a short swipe springs back on translate and clears it', () => {
+        const { sheet, handle } = bind();
+        const removeProperty = jest.spyOn(sheet.style, 'removeProperty');
+
+        pointer(handle, 'pointerdown', 100, 0);
+        pointer(handle, 'pointermove', 130, 600);
+        pointer(handle, 'pointerup', 130, 1200);
+
+        expect(removeProperty).toHaveBeenCalledWith('translate');
+        expect(removeProperty).not.toHaveBeenCalledWith('transform');
+        expect(play).toHaveBeenCalledWith(sheet, [{ translate: '0 30px' }, { translate: '0 0' }], {});
+    });
+});
+
 describe('bindSheetGestures drag lifetime', () => {
     function bind() {
         const parts = makeSheet();
