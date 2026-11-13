@@ -1,7 +1,10 @@
 import { Buffer } from 'node:buffer';
+import { deflateSync } from 'node:zlib';
 import archiver from 'archiver';
 import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { normalizeNovelAIImageParameters } from '../public/scripts/novelai-image-models.js';
+import encodePng from '../src/png/encode.js';
+import { MAX_PRECISE_REFERENCE_BYTES, buildNovelAIPreciseReferenceParameters, getNovelAIPreciseReferenceSize } from '../public/scripts/novelai-precise-reference.js';
 
 const fetchMock = jest.fn();
 jest.unstable_mockModule('node-fetch', () => ({ default: fetchMock }));
@@ -11,6 +14,26 @@ jest.unstable_mockModule('../src/endpoints/secrets.js', () => ({
 }));
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+function referenceImage() {
+    const header = Buffer.alloc(13);
+    header.writeUInt32BE(1472, 0);
+    header.writeUInt32BE(1472, 4);
+    header[8] = 8;
+    return Buffer.from(encodePng([
+        { name: 'IHDR', data: header },
+        { name: 'IDAT', data: deflateSync(Buffer.alloc(1473 * 1472)) },
+        { name: 'IEND', data: Buffer.alloc(0) },
+    ])).toString('base64');
+}
+
+const reference = { image: referenceImage(), type: 'character', strength: 0.7, fidelity: 0.2 };
+
+function overwriteBytes(image, offset, bytes) {
+    const data = Buffer.from(image, 'base64');
+    data.set(bytes, offset);
+    return data.toString('base64');
+}
 
 function imageArchive() {
     return new Promise((resolve, reject) => {
@@ -34,7 +57,8 @@ describe('NovelAI image request compatibility', () => {
         const { default: express } = await import('express');
         const { router } = await import('../src/endpoints/novelai.js');
         const app = express();
-        app.use(express.json());
+        // Same body limit as the server, so reference sets above the cap reach the route.
+        app.use(express.json({ limit: '500mb' }));
         app.use((request, _response, next) => {
             request.user = { directories: {} };
             next();
@@ -119,6 +143,57 @@ describe('NovelAI image request compatibility', () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    test('encodes independent precise reference modes and slider values in aligned provider arrays', async () => {
+        const payload = await generate('nai-diffusion-4-5-full', {
+            precise_reference: [reference, { ...reference, type: 'style', strength: 0, fidelity: 1 }, { ...reference, type: 'character&style', strength: 1, fidelity: 0 }],
+        });
+        expect(payload.parameters.director_reference_descriptions.map(value => value.caption.base_caption)).toEqual(['character', 'style', 'character&style']);
+        expect(payload.parameters.director_reference_strength_values).toEqual([0.7, 0, 1]);
+        expect(payload.parameters.director_reference_secondary_strength_values).toEqual([0.8, 0, 1]);
+        expect(payload.parameters.director_reference_information_extracted).toEqual([1, 1, 1]);
+        expect(payload.parameters.director_reference_images).toEqual([reference.image, reference.image, reference.image]);
+        expect(payload.parameters.reference_image_multiple).toEqual([]);
+    });
+
+    test.each([
+        { model: 'nai-diffusion-3' },
+        { model: 'nai-diffusion-4-full' },
+        { model: 'nai-diffusion-5-full' },
+        { novel_anlas_guard: true },
+        { precise_reference: [{ ...reference, image: png.toString('base64') }] },
+        { precise_reference: [{ ...reference, image: overwriteBytes(reference.image, 0, [0xff, 0xd8, 0xff, 0xe0]) }] },
+        { precise_reference: [{ ...reference, image: overwriteBytes(reference.image, 12, Buffer.from('IDAT')) }] },
+        { precise_reference: [{ ...reference, image: `${reference.image.slice(0, 60)}-${reference.image.slice(61)}` }] },
+        { precise_reference: [{ ...reference, image: reference.image.slice(0, 60) + reference.image.slice(61) }] },
+        { precise_reference: [{ ...reference, type: 'unknown' }] },
+        { precise_reference: [{ ...reference, strength: 'invalid' }] },
+        { precise_reference: [{ ...reference, fidelity: null }] },
+        { precise_reference: {} },
+        { precise_reference: Array.from({ length: 17 }, () => reference) },
+    ])('rejects unsupported or invalid references before any paid request (case %#)', async overrides => {
+        const response = await fetch(`${baseUrl}/generate-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'nai-diffusion-4-5-full', precise_reference: [reference], ...overrides }),
+        });
+        expect(response.status).toBe(400);
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    test('rejects references above the total size cap before any paid request', async () => {
+        const image = reference.image.slice(0, 44).padEnd(4 * Math.ceil((MAX_PRECISE_REFERENCE_BYTES / 2 + 1) / 3), 'A');
+        const overHalfTheCap = { ...reference, image };
+        expect(() => buildNovelAIPreciseReferenceParameters('nai-diffusion-4-5-full', [overHalfTheCap])).not.toThrow();
+
+        const response = await fetch(`${baseUrl}/generate-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'nai-diffusion-4-5-full', precise_reference: [overHalfTheCap, overHalfTheCap] }),
+        });
+        expect(response.status).toBe(400);
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     test.each([
         ['nai-diffusion-3', 19, true],
         ['nai-diffusion-4-5-full', 58, false],
@@ -166,4 +241,26 @@ describe('shared NovelAI parameter normalization', () => {
             expect(normalizeNovelAIImageParameters(model, parameters)).toEqual(original);
         });
     }
+});
+
+describe('NovelAI reference preparation contract', () => {
+    test.each([[600, 1200, 1024, 1536], [1800, 800, 1536, 1024], [1200, 1200, 1472, 1472], [82, 100, 1024, 1536], [84, 100, 1472, 1472]])('fits %s×%s into the matching reference canvas', (width, height, expectedWidth, expectedHeight) => {
+        expect(getNovelAIPreciseReferenceSize(width, height)).toEqual({ width: expectedWidth, height: expectedHeight });
+    });
+
+    test('leaves incompatible models usable when references are disabled', () => {
+        expect(buildNovelAIPreciseReferenceParameters('nai-diffusion-3', [], { anlasGuard: true })).toEqual({});
+    });
+
+    test('retains explicit zero and negative reference controls', () => {
+        const result = buildNovelAIPreciseReferenceParameters('nai-diffusion-4-5-curated', [{ ...reference, strength: -0.5, fidelity: 0 }]);
+        expect(result.director_reference_strength_values).toEqual([-0.5]);
+        expect(result.director_reference_secondary_strength_values).toEqual([1]);
+    });
+
+    test('matches negative Fidelity and uncapped Strength in the first-party editor', () => {
+        const result = buildNovelAIPreciseReferenceParameters('nai-diffusion-4-5-full', [{ ...reference, strength: 1.2, fidelity: -0.5 }]);
+        expect(result.director_reference_strength_values).toEqual([1.2]);
+        expect(result.director_reference_secondary_strength_values).toEqual([1.5]);
+    });
 });

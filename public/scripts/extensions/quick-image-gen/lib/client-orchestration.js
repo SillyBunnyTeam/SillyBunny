@@ -1,3 +1,6 @@
+// SillyBunny divergence: character records also keep a NovelAI Precise Reference state.
+import { cloneNovelAIPreciseReferenceState } from "./generation-semantics.js";
+
 export function createPromiseQueue() {
     let tail = Promise.resolve();
     return function enqueue(task) {
@@ -494,12 +497,18 @@ export function normalizeCharacterReferenceRecord(value, legacyProvider = "") {
     if (typeof value.localRefImage === "string" && value.localRefImage) {
         normalized.localRefImage = value.localRefImage;
     }
+    // SillyBunny divergence: keep a NovelAI Precise Reference state even when it is off or empty.
+    if (value.naiPreciseReference && typeof value.naiPreciseReference === "object") {
+        normalized.naiPreciseReference = cloneNovelAIPreciseReferenceState(value.naiPreciseReference);
+    }
     return normalized;
 }
 
 export function getCharacterProviderReferences(record, provider) {
     const normalized = normalizeCharacterReferenceRecord(record);
     if (provider === "local") return normalized.localRefImage || "";
+    // SillyBunny divergence: NovelAI Precise References are a state object, not a list.
+    if (provider === "novelai") return cloneNovelAIPreciseReferenceState(normalized.naiPreciseReference);
     const key = CHARACTER_REFERENCE_ARRAY_KEYS[provider];
     return key ? [...(normalized[key] || [])] : [];
 }
@@ -510,6 +519,11 @@ export function hasCharacterReferenceOverrides(record) {
 
 export function setCharacterProviderReferences(record, provider, references) {
     const normalized = normalizeCharacterReferenceRecord(record);
+    // SillyBunny divergence: NovelAI stores its whole state, so a character can keep Precise Reference off.
+    if (provider === "novelai") {
+        normalized.naiPreciseReference = cloneNovelAIPreciseReferenceState(references);
+        return normalized;
+    }
     if (provider === "local") {
         const value = typeof references === "string" ? references : "";
         if (value) normalized.localRefImage = value;
