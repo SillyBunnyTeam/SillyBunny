@@ -9065,12 +9065,15 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                             }
 
                             getMessage = interceptResult.text;
-                            messageChunk = cleanUpMessage({
-                                getMessage: getMessage,
-                                isImpersonate: isImpersonate,
-                                isContinue: isContinue,
-                                displayIncompleteSentences: activeStreamingProcessor.finishReason === 'length',
-                            });
+                            // SillyBunny: the intercepted text of a continuation also holds the earlier text, so auto-continue would not see an empty continuation.
+                            if (!isContinue) {
+                                messageChunk = cleanUpMessage({
+                                    getMessage: getMessage,
+                                    isImpersonate: isImpersonate,
+                                    isContinue: isContinue,
+                                    displayIncompleteSentences: activeStreamingProcessor.finishReason === 'length',
+                                });
+                            }
 
                             const saveReplyType = originalType !== 'continue' ? type : 'appendFinal';
                             ({ type, getMessage } = await saveReply({
@@ -9250,12 +9253,15 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
 
             getMessage = interceptResult.text;
-            messageChunk = cleanUpMessage({
-                getMessage: getMessage,
-                isImpersonate: isImpersonate,
-                isContinue: isContinue,
-                displayIncompleteSentences: limitedOutput.limited,
-            });
+            // SillyBunny: the intercepted text of a continuation also holds the earlier text, so auto-continue would not see an empty continuation.
+            if (!isContinue) {
+                messageChunk = cleanUpMessage({
+                    getMessage: getMessage,
+                    isImpersonate: isImpersonate,
+                    isContinue: isContinue,
+                    displayIncompleteSentences: limitedOutput.limited,
+                });
+            }
 
             if (isImpersonate) {
                 $('#send_textarea').val(getMessage)[0].dispatchEvent(new Event('input', { bubbles: true }));

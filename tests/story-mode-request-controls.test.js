@@ -717,6 +717,64 @@ describe('owned host generation flow', () => {
         expect(context.power_user.auto_continue.enabled).toBe(true);
     });
 
+    const CONTINUATION_PATHS = [
+        ['a whole openai reply', { api: 'openai' }],
+        ['a whole textgenerationwebui reply', { api: 'textgenerationwebui' }],
+        ['a whole kobold reply', { api: 'kobold' }],
+        ['a whole koboldhorde reply', { api: 'koboldhorde' }],
+        ['a whole novel reply', { api: 'novel' }],
+        ['a buffered streamed reply', { api: 'textgenerationwebui', stream: true, buffer: true }],
+        ['an unbuffered streamed reply', { api: 'textgenerationwebui', stream: true }],
+    ];
+
+    test.each(CONTINUATION_PATHS)('auto-continue ends after a continuation that adds no text: %s', async (_, options) => {
+        const { context, dom } = makeRuntime(options);
+        context.power_user.auto_continue.target_length = 100;
+        context.getTokenCount = () => 1;
+        context.reply = '';
+        context.chunks = [{ text: context.reply }];
+        const result = await context.Generate('continue', { suppressUserMessage: true });
+        expect(dom.trigger).not.toHaveBeenCalledWith('click', expect.anything());
+        expect(result.messageChunk).toBe('');
+        expect(context.chat[0].mes).toBe('Existing prose. ');
+    });
+
+    test.each(CONTINUATION_PATHS)('auto-continue asks again after a continuation that adds text: %s', async (_, options) => {
+        const { context, dom } = makeRuntime(options);
+        context.power_user.auto_continue.target_length = 100;
+        context.getTokenCount = () => 1;
+        context.chunks = [{ text: context.reply }];
+        const result = await context.Generate('continue', { suppressUserMessage: true });
+        expect(dom.trigger).toHaveBeenCalledWith('click', { generationOptions: expect.objectContaining({ suppressUserMessage: true }) });
+        expect(result.messageChunk).toBe('New prose. ');
+        expect(context.chat[0].mes).toBe('Existing prose. New prose. ');
+    });
+
+    describe.each([
+        ['a whole reply', {}],
+        ['a buffered streamed reply', { api: 'textgenerationwebui', stream: true, buffer: true }],
+    ])('an output interceptor that rewrites %s', (_, options) => {
+        async function generateRewritten(type) {
+            const { context, eventSource } = makeRuntime(options);
+            context.chunks = [{ text: context.reply }];
+            eventSource.on(event_types.MAIN_GENERATION_OUTPUT_READY, data => { data.text = data.text.toUpperCase(); });
+            const result = await context.Generate(type, { suppressUserMessage: true, suppressAutoContinue: true });
+            return { result, saved: context.chat.at(-1).mes };
+        }
+
+        test('leaves the chunk of a continuation as the text the model added', async () => {
+            const { result, saved } = await generateRewritten('continue');
+            expect(result.messageChunk).toBe('New prose. ');
+            expect(saved).toBe('EXISTING PROSE. NEW PROSE. ');
+        });
+
+        test('gives a fresh reply the rewritten text as its chunk', async () => {
+            const { result, saved } = await generateRewritten('normal');
+            expect(result.messageChunk).toBe('NEW PROSE. ');
+            expect(saved).toBe('NEW PROSE. ');
+        });
+    });
+
     test('the context swipe entry point forwards retry controls into the real successor request', async () => {
         const { context, requests, textarea, eventSource } = makeRuntime({ composer: '/echo untouched' });
         const messageDom = { 0: { scrollHeight: 100 }, length: 1 };
