@@ -66,6 +66,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-13, UI polish sweep (task 2.13). |
 | Owner | `TODO(copy)` |
 
+### `public/script.js` - keyboard moves for upstream sortable lists
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` |
+| Area | Keyboard moves for the jQuery UI sortable lists of upstream code. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-editor/reorder-menu.js` (`adoptUpstreamSortables`, `attachSortableKeys`). |
+| Adapter shape | One import and one `adoptUpstreamSortables()` call after `batchSortableHandleClasses()` in `firstLoadInit`, both marked `SillyBunny:`. The seam wraps the sortable widget's `_create` and attaches Alt+Arrow moves to the lists named in `UPSTREAM_SORTABLES`; each list's own `stop` handler saves, so no list file changes. |
+| Protecting tests | `tests/unit/sillybunny-sortable-keys.test.js`; `tests/sortable-keys.e2e.js`; `tests/frontend-performance.e2e.js`. |
+| Validation | 2026-11-13: root and tests lint, the full unit run, `sortable-keys.e2e.js`, `frontend-performance.e2e.js`, the specs that create the lists. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-13, UI polish sweep (task 2.7). |
+| Owner | `TODO(copy)` |
+
 ### Shared header icon-button markup
 | Field | Value |
 | --- | --- |

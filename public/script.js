@@ -337,6 +337,7 @@ import { ToolManager } from './scripts/tool-calling.js';
 import { addShowdownPatch } from './scripts/util/showdown-patch.js';
 import { applyBrowserFixes } from './scripts/browser-fixes.js';
 import { batchSortableHandleClasses } from './scripts/sortable-handle-classes.js';
+import { adoptUpstreamSortables } from './scripts/sillybunny-editor/reorder-menu.js'; // SillyBunny: keyboard moves for upstream sortable lists
 import { initServerHistory } from './scripts/server-history.js';
 import { initSettingsSearch } from './scripts/setting-search.js';
 import { initBulkEdit } from './scripts/bulk-edit.js';
@@ -1169,6 +1170,8 @@ async function firstLoadInit() {
         initLibraryShims();
         // SillyBunny: must run before any list becomes sortable; see sortable-handle-classes.js.
         batchSortableHandleClasses();
+        // SillyBunny: lists that upstream code makes sortable get Alt+Arrow moves; a list is reached only if this runs before its sortable is created.
+        adoptUpstreamSortables();
         addShowdownPatch(showdown);
         addDOMPurifyHooks();
         // SillyBunny: card script detection - see #94.
