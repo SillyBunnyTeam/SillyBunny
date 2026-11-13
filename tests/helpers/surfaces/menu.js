@@ -159,7 +159,7 @@ export const surfaces = [
                 await openFrom(page, '#export_button');
             } else {
                 await openFrom(page, '#sb_character_editor_more');
-                await chooseItem(page, 'Export…');
+                await chooseItem(page, 'Export and Download');
             }
         },
     }),
