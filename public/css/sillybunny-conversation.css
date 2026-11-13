@@ -815,9 +815,9 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 }
 
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_send:focus-visible {
-    outline: none;
-    background: color-mix(in srgb, var(--sb-accent) 82%, var(--sb-on-solid-accent) 18%);
-    box-shadow: var(--sb-focus-ring-inset);
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
 }
 
 /* ---------- Settings pane ---------- */
@@ -1038,8 +1038,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 }
 
 .sb-conversation-participant-avatar.is-interactive:focus-visible {
-    outline: 2px solid var(--sb-focus-ring);
-    outline-offset: 2px;
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
     box-shadow: none;
 }
 
@@ -1234,8 +1234,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 }
 
 .sb-conversation-message-avatar:focus-visible {
-    outline: 2px solid var(--sb-focus-ring);
-    outline-offset: 2px;
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
     border-radius: 50%;
     box-shadow: none;
 }
@@ -1829,6 +1829,12 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 .sb-conversation-message-edit-control:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-conversation-message-edit-save:focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
 }
 
 /* The editor has its own buttons; keep the gutter so the bubble does not shift. */
@@ -2538,8 +2544,8 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-day-pill:focus-within {
-    outline: 2px solid var(--sb-focus-ring);
-    outline-offset: 2px;
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
 }
 
 .sb-conversation-day-pill .sb-conv-day-check {

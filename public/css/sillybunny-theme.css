@@ -199,10 +199,11 @@
     /* The ring and the field focus edge draw this at 78%: about 55% of the accent, as libadwaita's ring, and 66% on the
        light tone, where 55% gives 2.5:1 on white. */
     --sb-focus-ring: color-mix(in srgb, var(--sb-accent) 70%, transparent);
-    --sb-focus-ring-inset: inset 0 0 0 2px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    --sb-focus-ring-color: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    --sb-focus-ring-inset: inset 0 0 0 2px var(--sb-focus-ring-color);
     /* libadwaita entry focus: the 1px border plus a 1px inset in the focus-ring colour read as one 2px accent ring. */
-    --sb-entry-focus-border: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
-    --sb-entry-focus-ring: inset 0 0 0 1px color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    --sb-entry-focus-border: var(--sb-focus-ring-color);
+    --sb-entry-focus-ring: inset 0 0 0 1px var(--sb-focus-ring-color);
     /* libadwaita composer entry: body-colour tint at rest, accent outline on focus. */
     --sb-composer-focus-border: var(--color-primary, var(--sb-accent));
     --sb-composer-focus-ring: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 50%, transparent);
@@ -1428,6 +1429,15 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
     border-color: transparent;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
+}
+
+/* A solid accent or destructive fill takes the ring outside, one pixel off the edge: inset, the ring is the fill's own
+   colour drawn on itself. The :is() argument with two classes and the :not() chain lift this to eight classes, above
+   the inset rules for these buttons, which sit at seven. */
+.menu_button:is(.menu_button_primary, .popup-button-ok, .suggested-action, .is-suggested, .red_button, .redWarningBG, .is-destructive:is(.popup-button-ok, .sb-dialog__response)):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
 }
 
 .inline-drawer-header > b,
@@ -5985,6 +5995,21 @@ body #toast-container {
     }
 }
 
+/* The toast layer is dark in both tones, where the accent ring does not reach 3:1. The ring takes the ink of the toast,
+   or, where relative colours work, libadwaita's light form of the accent. The two tokens that read --sb-focus-ring
+   resolve where they are declared, so they are declared again here. */
+body #toast-container {
+    --sb-focus-ring: currentColor;
+    --sb-focus-ring-color: color-mix(in srgb, var(--sb-focus-ring) 78%, transparent);
+    --sb-focus-ring-inset: inset 0 0 0 2px var(--sb-focus-ring-color);
+}
+
+@supports (color: oklab(from red l a b)) {
+    body #toast-container {
+        --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b);
+    }
+}
+
 .toast {
     border-radius: var(--sb-radius-md) !important;
 }
@@ -7197,6 +7222,12 @@ dialog.popup.sb-dialog--page[data-covers-sheet] {
     color: var(--sb-on-solid-accent);
 }
 
+#dialogue_popup_controls > #dialogue_popup_ok:focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
 /* Extensions manager (Window tier). */
 dialog.popup.sb-dialog .extensions_info {
     width: 100%;
@@ -8345,6 +8376,14 @@ body.no-blur #send_form {
 
 #send_but:active:not(:disabled) {
     background: color-mix(in srgb, var(--sb-accent) 80%, black) !important;
+}
+
+/* The ring of a solid fill is drawn outside, as on the suggested buttons. */
+#send_but:focus-visible,
+#send_form.sb-generating-controls #mes_stop:focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
 }
 
 /* libadwaita insensitive suggested-action: the accent at the disabled opacity, 50% and 40% under prefers-contrast: more. */

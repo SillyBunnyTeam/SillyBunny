@@ -346,6 +346,14 @@
     box-shadow: var(--sb-focus-ring-inset);
 }
 
+/* The primary action is a solid accent fill, so its ring is drawn outside. The prompt, persona and World Info editors
+   draw the inset ring on their buttons with rules up to one id and four classes, so this one is above them. */
+.sb-editor-action.sb-editor-action.sb-editor-action--primary.sb-editor-action--primary:not(#sb-specificity):focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
 /* Toolbar — horizontal action buttons
    ========================================================================= */
 
