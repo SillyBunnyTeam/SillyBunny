@@ -591,8 +591,11 @@ test('keyboard reorder and Move Up/Down persist identical saved slots without ma
     await expect(bravo.locator('.ica-agent-grip')).toBeFocused();
     await menu(page, bravo, 'Agent Menu');
     await expect(page.getByRole('menuitem', { name: 'Move Up', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: 'Move Down', exact: true })).toHaveAttribute('data-sb-reorder', 'down');
     await page.getByRole('menuitem', { name: 'Move Down', exact: true }).click();
     await expect.poll(() => group.locator('.ica-agent-row').evaluateAll(rows => rows.map(row => row.dataset.agentId))).toEqual(['qa-alpha', 'qa-bravo', 'qa-charlie']);
+    await expect(page.locator('.sb-reorder-status')).toHaveText(/^Moved .+ to position 2 of 3$/);
+    await expect(bravo).toBeFocused();
     const gripBox = await bravo.locator('.ica-agent-grip').boundingBox();
     const firstBox = await group.locator('.ica-agent-row').first().boundingBox();
     await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);

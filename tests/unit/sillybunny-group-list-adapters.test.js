@@ -10,6 +10,11 @@ const $ = window.jQuery;
 const { createEntityRow, entityKey, limitTagChips } = await import('../../public/scripts/sillybunny-editor/entity-row.js');
 const { bindListKeyboard, reconcileRows } = await import('../../public/scripts/sillybunny-editor/list-rows.js');
 const { loadStylesheetAsync } = await import('../../public/scripts/dynamic-styles.js');
+await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+    translate: text => text,
+}));
+const { reorderMenuItems } = await import('../../public/scripts/sillybunny-editor/reorder-menu.js');
 const source = readFileSync(new URL('../../public/scripts/group-chats.js', import.meta.url), 'utf8');
 const declarations = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }).body.map(node => node.declaration ?? node);
 
@@ -326,11 +331,25 @@ describe('group row keyboard and pointer bindings', () => {
             editGroupMemberModel: jest.fn().mockRejectedValue(failure),
             console: { error: jest.fn() }, toastr: { error: jest.fn() },
             t: strings => strings.join(''),
+            reorderMenuItems, groupMembersFilter: { hasAnyFilter: () => false },
         });
         context.api.onGroupMemberMenuClick.call(document.querySelector('button'), { preventDefault() {}, stopPropagation() {} });
         const items = context.openActionMenu.mock.calls[0][0].sections.flatMap(section => section.items);
+        expect(items.filter(item => item.data?.sbReorder).map(item => item.data.sbReorder)).toEqual(['down']);
         for (const item of items.filter(item => !item.disabled)) await item.onSelect();
         expect(context.toastr.error).toHaveBeenCalledTimes(4);
+    });
+
+    test('member menu leaves the move items out while a member filter is active', () => {
+        document.body.innerHTML = '<input id="rm_group_members_filter" value="al"><div class="group_member" data-avatar="alice.png"><span class="ch_name">Alice</span><button></button></div>';
+        const context = loadFunctions(['onGroupMemberMenuClick'], {
+            $, openGroupId: 'group-1', getEditedGroup: () => ({ members: ['bob.png', 'alice.png', 'cara.png'] }),
+            openActionMenu: jest.fn(), runGroupMemberAction: jest.fn(), runGroupEditorAction: jest.fn(), editGroupMemberModel: jest.fn(),
+            t: strings => strings.join(''),
+            reorderMenuItems, groupMembersFilter: { hasAnyFilter: () => false },
+        });
+        context.api.onGroupMemberMenuClick.call(document.querySelector('button'), { preventDefault() {}, stopPropagation() {} });
+        expect(context.openActionMenu.mock.calls[0][0].sections.flatMap(section => section.items).some(item => item.data?.sbReorder)).toBe(false);
     });
 });
 

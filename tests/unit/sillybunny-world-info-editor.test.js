@@ -685,10 +685,30 @@ describe('World Info shell', () => {
         container.querySelector('.sb-wi-row[data-uid="0"] input').click();
         await settle();
         saveWorldInfo.mockRejectedValueOnce(new Error('Offline'));
-        await selectMenuAction('Move down', '.sb-wi-row[data-uid="0"] .sb-wi-row-menu');
+        await selectMenuAction('Move Down', '.sb-wi-row[data-uid="0"] .sb-wi-row-menu');
         expect([...container.querySelectorAll('.sb-wi-row')].map(row => row.dataset.uid)).toEqual(['0', '7', '14']);
         expect([data.entries[0].displayIndex, data.entries[7].displayIndex]).toEqual([0, 1]);
         expect(detail.rebaseKey).toHaveBeenCalledWith('displayIndex');
+        expect(document.querySelector('.sb-reorder-status')).toBeNull();
+    });
+
+    test('the row menu takes its move items from the shared reorder helper, a successful move is announced', async () => {
+        const data = book(3);
+        document.getElementById('world_info_sort_order').value = '13';
+        displayEntries.mockImplementation(data => Object.values(data.entries).sort((left, right) => left.displayIndex - right.displayIndex));
+        await mount({ name: 'Book A', data });
+        const kinds = async uid => {
+            container.querySelector(`.sb-wi-row[data-uid="${uid}"] .sb-wi-row-menu`).click();
+            await settle();
+            const items = actionMenu.sections.flatMap(section => section.items).filter(item => item.data?.sbReorder);
+            closeActionMenu();
+            return items.map(item => item.data.sbReorder);
+        };
+        expect(await kinds(0)).toEqual(['down']);
+        expect(await kinds(7)).toEqual(['up', 'down']);
+        expect(await kinds(14)).toEqual(['up']);
+        await selectMenuAction('Move Down', '.sb-wi-row[data-uid="0"] .sb-wi-row-menu');
+        expect(document.querySelector('.sb-reorder-status').textContent).toBe('Moved Entry 0 to position 2 of 3');
     });
 
     test('enabling a different row never rebases the open draft', async () => {

@@ -1408,6 +1408,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-12, UI polish sweep. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/group-chats.js` - group member move items
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/group-chats.js` |
+| Area | Group member row menu. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-editor/reorder-menu.js`. |
+| Adapter shape | `onGroupMemberMenuClick` passes the member's position in the draft order, the member filter state and the existing `runGroupMemberAction('up'/'down')` to `reorderMenuItems`, and puts the items it returns in their own menu section; the import and the menu block carry `SillyBunny:` markers. |
+| Protecting tests | `tests/unit/sillybunny-group-list-adapters.test.js`, `tests/group-editor-member-lists.e2e.js`. |
+| Validation | 2026-11-13: root and tests lint, the full unit run, `group-editor-member-lists.e2e.js`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-13, UI polish sweep (task 2.6). |
+| Owner | `TODO(copy)` |
+
 ### Frontend identity, localization, and static boot assets
 | Field | Value |
 | --- | --- |

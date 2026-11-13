@@ -445,6 +445,19 @@ describe('Agents row-menu rules', () => {
         expect(menuIds(model, selected, middleEntries(selected), options).filter(id => id.startsWith('move-'))).toEqual([]);
     });
 
+    test('the position the row menu hands to the shared reorder helper follows the same sub-heading edges and filters', async () => {
+        const model = await loadModel();
+        const first = entry('first', { injection: { order: 0 } });
+        const last = entry('last', { injection: { order: 20 } });
+        const otherCategory = entry('earlier', { category: 'tracker', injection: { order: -10 } });
+        const list = build(model, [otherCategory, first, last]);
+        expect(model.agentMovePosition(list, first.key)).toEqual({ index: 0, count: 2 });
+        expect(model.agentMovePosition(list, last.key)).toEqual({ index: 1, count: 2 });
+        expect(model.agentMovePosition(list, otherCategory.key)).toEqual({ index: 0, count: 1 });
+        expect(model.agentMovePosition(build(model, [otherCategory, first, last], { search: 'first' }), first.key)).toBeNull();
+        expect(model.agentMovePosition(list, `pinned:${first.key}`)).toBeNull();
+    });
+
     test('Move actions cannot cross stages or template subcategories', async () => {
         const model = await loadModel();
         const selected = bundled('saved', { phase: 'both' }, { subcategory: 'pov' });

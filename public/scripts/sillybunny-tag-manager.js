@@ -4,6 +4,7 @@ import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-edit
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
+import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 
@@ -221,10 +222,11 @@ export function createTagManager(adapter) {
     }
 
     function mutate(action) {
-        if (!canClose()) return;
+        if (!canClose()) return false;
         action();
         commit();
         refresh();
+        return true;
     }
 
     function item(label, glyph, action, options = {}) {
@@ -250,28 +252,33 @@ export function createTagManager(adapter) {
 
     function move(tag, direction) {
         const state = getState();
-        if (state.settings.tag_sort_mode !== 'manual' || search.query) return;
+        if (state.settings.tag_sort_mode !== 'manual' || search.query) return false;
         const ordered = adapter.sort(state.tags, countLiveTagEntities(state.tagMap, state.characters, state.groups));
         const index = ordered.indexOf(tag);
-        if (!ordered[index + direction]) return;
+        if (!ordered[index + direction]) return false;
         [ordered[index], ordered[index + direction]] = [ordered[index + direction], ordered[index]];
-        mutate(() => ordered.forEach((entry, position) => entry.sort_order = position));
+        return mutate(() => ordered.forEach((entry, position) => entry.sort_order = position));
     }
 
     function rowSections(tag, row) {
         const state = getState();
         const ordered = adapter.sort(state.tags, countLiveTagEntities(state.tagMap, state.characters, state.groups));
         const index = ordered.indexOf(tag);
-        const manual = state.settings.tag_sort_mode === 'manual' && !search.query;
+        const moves = reorderMenuItems({
+            index,
+            count: ordered.length,
+            filtered: state.settings.tag_sort_mode !== 'manual' || Boolean(search.query),
+            name: tag.name,
+            move: to => move(tag, to - index),
+            onError: error => globalThis.toastr?.error(error.message),
+            focus: () => row,
+        });
         return [{ items: [
             item(t`Background Color`, 'palette', () => showColor(tag, 'color')),
             item(t`Text Color`, 'font', () => showColor(tag, 'color2')),
         ] }, { items: [
             item(t`Hide on character card`, 'eye-slash', () => mutate(() => tag.is_hidden_on_character_card = !tag.is_hidden_on_character_card), { kind: 'check', checked: Boolean(tag.is_hidden_on_character_card) }),
-        ] }, { items: [
-            item(t`Move up`, 'arrow-up', () => move(tag, -1), { disabled: !manual || index === 0 }),
-            item(t`Move down`, 'arrow-down', () => move(tag, 1), { disabled: !manual || index === ordered.length - 1 }),
-        ] }, { items: [item(t`Delete`, 'trash-can', async () => {
+        ] }, { items: moves }, { items: [item(t`Delete`, 'trash-can', async () => {
             await actions.delete(row);
             refresh();
         }, { danger: true })] }];

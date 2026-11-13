@@ -99,6 +99,7 @@ import { createEntityRow, entityKey, entityRowMotionKey, limitTagChips } from '.
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { bindListKeyboard, reconcileRows } from './sillybunny-editor/list-rows.js';
+import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js'; // SillyBunny: shared move section for the member menu
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { compressRequest } from './request-compression.js';
@@ -3548,15 +3549,25 @@ function onGroupMemberMenuClick(event) {
     if (openGroupId) actions.push(actionItem(t`Speak now`, 'comment', 'speak'));
     // SillyBunny: the member row opens its character editor; the menu stays action-only — see docs/ui-migration.md
     actions.push({ label: t`Model override…`, icon: 'fa-solid fa-microchip', onSelect: () => runGroupEditorAction(() => editGroupMemberModel(member)) });
+    const title = member.find('.ch_name').text();
+    // SillyBunny: the move items come from the shared reorder helper, which leaves them out at an end of the order and while a search or filter hides members
+    const moves = reorderMenuItems({
+        index,
+        count: order.length,
+        filtered: groupMembersFilter.hasAnyFilter() || Boolean($('#rm_group_members_filter').val()),
+        name: title,
+        move: async (to) => {
+            await runGroupEditorAction(() => runGroupMemberAction(to < index ? 'up' : 'down', member));
+            return (getEditedGroup()?.members ?? []).indexOf(avatarId) === to;
+        },
+        focus: () => member[0]?.querySelector('.sb-group-member-menu') ?? null,
+    });
     openActionMenu({
         trigger: this,
-        title: member.find('.ch_name').text(),
+        title,
         sections: [
             { items: actions },
-            { items: [
-                actionItem(t`Move up`, 'arrow-up', 'up', { disabled: index === 0 }),
-                actionItem(t`Move down`, 'arrow-down', 'down', { disabled: index === order.length - 1 }),
-            ] },
+            { items: moves },
             { items: [actionItem(t`Remove`, 'minus', 'remove', { danger: true })] },
         ],
     });

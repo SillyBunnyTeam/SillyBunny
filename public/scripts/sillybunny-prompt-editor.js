@@ -13,6 +13,7 @@ import { openDialog } from './sillybunny-editor/dialog.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
+import { announceReorder, reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
 
 const mountedEditors = new WeakSet();
@@ -254,25 +255,42 @@ export function initializePromptEditor(column) {
         }, 5000);
     }
 
-    function announceMove(id) {
-        const order = state.order.filter(entry => promptFor(entry.identifier));
-        const position = order.findIndex(entry => entry.identifier === id) + 1;
-        const name = promptFor(id)?.name ?? '';
-        status.textContent = t`Moved ${name} to position ${position} of ${order.length}`;
+    function orderedIds() {
+        return state.order.filter(entry => promptFor(entry.identifier)).map(entry => entry.identifier);
+    }
+
+    // Keyboard and drag moves announce and refocus here; the menu's moves do it through reorderMenuItems.
+    function movedByKeyboardOrDrag(id) {
+        const ids = orderedIds();
+        announceReorder({ name: promptFor(id)?.name ?? '', position: ids.indexOf(id) + 1, count: ids.length, region: status });
+        rowFor(id)?.focus({ preventScroll: true });
     }
 
     function move(id, position) {
-        if (filter) return;
-        const ids = state.order.filter(entry => promptFor(entry.identifier)).map(entry => entry.identifier);
+        if (filter) return false;
+        const ids = orderedIds();
         const previous = ids.indexOf(id);
-        if (previous < 0) return;
+        if (previous < 0) return false;
         ids.splice(previous, 1);
         ids.splice(Math.max(0, Math.min(ids.length, position)), 0, id);
-        run(() => model.reorder(ids, state.scope));
+        const saved = run(() => model.reorder(ids, state.scope)) !== false;
         state = model.snapshot();
         renderList();
-        announceMove(id);
-        rowFor(id)?.focus({ preventScroll: true });
+        return saved;
+    }
+
+    function moveItems(id) {
+        const ids = orderedIds();
+        return reorderMenuItems({
+            index: ids.indexOf(id),
+            count: ids.length,
+            filtered: Boolean(filter),
+            extremes: true,
+            name: promptFor(id)?.name ?? '',
+            move: to => move(id, to),
+            focus: () => rowFor(id),
+            region: status,
+        });
     }
 
     async function remove(id) {
@@ -342,7 +360,7 @@ export function initializePromptEditor(column) {
         const permission = model.permissions(prompt);
         menu(trigger, prompt.name, [
             [permission.edit && menuItem(t`Edit`, 'pen', () => openPrompt(prompt)), permission.rename && menuItem(t`Rename`, 'i-cursor', () => rename(prompt)), menuItem(t`Preview`, 'eye', () => openPrompt(prompt, 'preview'))],
-            available ? [] : [menuItem(t`Move to top`, 'arrow-up', () => move(id, 0)), menuItem(t`Move to bottom`, 'arrow-down', () => move(id, state.order.length - 1))],
+            available ? [] : moveItems(id),
             [!prompt.marker && menuItem(t`Send to agents`, 'robot', () => model.sendToAgents(id))],
             [!available && permission.remove && menuItem(t`Remove from list`, 'minus', () => remove(id), true), permission.delete && menuItem(t`Delete`, 'trash', () => deletePrompt(id), true)],
         ]);
@@ -485,7 +503,7 @@ export function initializePromptEditor(column) {
             const entry = rowEntry(row);
             if (!entry?.orderEntry) return false;
             const id = entry.prompt.identifier;
-            move(id, state.order.findIndex(item => item.identifier === id) + direction);
+            if (move(id, state.order.findIndex(item => item.identifier === id) + direction)) movedByKeyboardOrDrag(id);
         },
     });
 
@@ -567,9 +585,7 @@ export function initializePromptEditor(column) {
                 const ids = [...box.children].filter(row => row.querySelector('.sb-prompt-grip')).map(row => row.dataset.promptId);
                 run(() => model.reorder(ids, dragScope));
                 state = model.snapshot();
-                const id = ui.item[0].dataset.promptId;
-                announceMove(id);
-                rowFor(id)?.focus({ preventScroll: true });
+                movedByKeyboardOrDrag(ui.item[0].dataset.promptId);
             },
             stop: () => requestAnimationFrame(() => shell.flushRefresh()),
         });

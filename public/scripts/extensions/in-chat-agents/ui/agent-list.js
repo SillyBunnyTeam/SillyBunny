@@ -14,7 +14,8 @@ import { openActionMenu, closeActionMenu, isActionMenuOpen } from '../../../sill
 import { getTokenCountAsync, getTokenizerModel } from '../../../tokenizers.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
 import { t, translate } from '../../../i18n.js';
-import { buildAgentListModel, buildAgentTemplatePickerModel, getAgentRowMenuItems, moveAgentWithinSubheading, getAgentSelectionKeys, getAgentSelectionKey } from './agent-list-model.js';
+import { reorderMenuItems } from '../../../sillybunny-editor/reorder-menu.js';
+import { agentMovePosition, buildAgentListModel, buildAgentTemplatePickerModel, getAgentRowMenuItems, moveAgentWithinSubheading, getAgentSelectionKeys, getAgentSelectionKey } from './agent-list-model.js';
 import { mountAgentSettings } from './settings-page.js';
 import { mountCompanionsPage } from './companions-page.js';
 import { mountAgentGroups } from './groups-page.js';
@@ -138,8 +139,6 @@ function menuLabel(item) {
     switch (item.id) {
         case 'pin': return t`Pin to Top`;
         case 'unpin': return t`Unpin`;
-        case 'move-up': return t`Move Up`;
-        case 'move-down': return t`Move Down`;
         case 'preview-prompt': return t`Preview Prompt in Context`;
         case 'preview-feedback': return t`Preview Feedback`;
         case 'run-last': return t`Run on Last Message`;
@@ -157,7 +156,7 @@ function menuLabel(item) {
 }
 
 const ROW_MENU_GLYPHS = {
-    pin: 'thumbtack', unpin: 'thumbtack', 'move-up': 'arrow-up', 'move-down': 'arrow-down',
+    pin: 'thumbtack', unpin: 'thumbtack',
     'preview-prompt': 'file-lines', 'preview-feedback': 'file-lines', 'run-last': 'play',
     'apply-last': 'paper-plane', 'apply-target': 'bullseye',
     'convert-companion': 'right-left', 'convert-inline': 'right-left', duplicate: 'clone', update: 'arrows-rotate',
@@ -434,26 +433,44 @@ export function mountAgentsPanel(column) {
         }
     }
 
-    async function move(key, values) {
+    async function reorder(key, values) {
         const result = moveAgentWithinSubheading(model, { key, ...values });
-        if (!result) return;
-        const focusedGrip = document.activeElement?.matches('.ica-agent-grip');
+        if (!result) return null;
         await adapter.reorder(result.orderedKeys.map(key => key.slice(6)));
         refresh();
-        focusRow(result.focusKey, focusedGrip ? '.ica-agent-grip' : '');
+        return result;
+    }
+
+    async function move(key, values) {
+        const focusedGrip = document.activeElement?.matches('.ica-agent-grip');
+        const result = await reorder(key, values);
+        if (result) focusRow(result.focusKey, focusedGrip ? '.ica-agent-grip' : '');
+    }
+
+    function moveItems(current) {
+        const position = agentMovePosition(model, current.key);
+        if (!position) return [];
+        return reorderMenuItems({
+            ...position,
+            name: current.entry.agent.name,
+            move: async to => Boolean(await reorder(current.key, { direction: to > position.index ? 1 : -1 })),
+            onError: error => globalThis.toastr?.error(error.message),
+            focus: () => body.querySelector(`[data-sb-list-key="${CSS.escape(current.key)}"]`),
+        });
     }
 
     function openRowMenu(row, trigger) {
         const current = rowEntry(row);
         const sections = ['organise', 'run', 'manage', 'destructive'].map(section => ({
-            items:
-            getAgentRowMenuItems(current.entry, { model, rowKey: current.key }).filter(item => item.section === section).map(item => ({
-                label: menuLabel(item), icon: `fa-solid fa-${ROW_MENU_GLYPHS[item.id]}`, danger: item.danger, onSelect: () => run(async () => {
-                    if (item.id.startsWith('move-')) return move(current.key, { direction: item.id === 'move-up' ? -1 : 1 });
-                    if (item.danger && !await confirmDestructiveAction({ text: t`lorum ipsum`, confirmLabel: item.id === 'delete' ? t`Delete` : t`Restore Default`, copyPlaceholder: true })) return;
-                    await mutate(row, entry => adapter.perform(entry, item.id));
-                }),
-            })),
+            items: [
+                ...getAgentRowMenuItems(current.entry, { model, rowKey: current.key }).filter(item => item.section === section && !item.id.startsWith('move-')).map(item => ({
+                    label: menuLabel(item), icon: `fa-solid fa-${ROW_MENU_GLYPHS[item.id]}`, danger: item.danger, onSelect: () => run(async () => {
+                        if (item.danger && !await confirmDestructiveAction({ text: t`lorum ipsum`, confirmLabel: item.id === 'delete' ? t`Delete` : t`Restore Default`, copyPlaceholder: true })) return;
+                        await mutate(row, entry => adapter.perform(entry, item.id));
+                    }),
+                })),
+                ...(section === 'organise' ? moveItems(current) : []),
+            ],
         }));
         showMenu(trigger, sections, t`Agent Menu`);
     }

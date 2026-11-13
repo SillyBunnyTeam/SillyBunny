@@ -227,14 +227,15 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
 
         // Upstream inserts new members at the start of the draft order.
         await openMemberMenu(page, second.row);
-        await expect(page.getByRole('menuitem', { name: 'Move up', exact: true })).toHaveAttribute('aria-disabled', 'true');
-        await expect(page.getByRole('menuitem', { name: 'Move down', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+        await expect(page.getByRole('menuitem', { name: 'Move Up', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('menuitem', { name: 'Move Down', exact: true })).toHaveAttribute('data-sb-reorder', 'down');
         await expect(page.getByRole('menuitem', { name: 'Remove', exact: true })).toBeVisible();
         await expect(page.getByRole('menuitem', { name: 'View character', exact: true })).toHaveCount(0);
         await expect(page.getByRole('menuitem', { name: 'Speak now', exact: true })).toHaveCount(0);
-        await page.getByRole('menuitem', { name: 'Move down', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Move Down', exact: true }).click();
         await expect(page.locator('#rm_group_members .group_member').first()).toHaveAttribute('data-avatar', first.avatar);
         await expect(second.row.locator('.sb-group-member-menu')).toBeFocused();
+        await expect(page.locator('.sb-reorder-status')).toHaveText(/^Moved .+ to position 2 of 2$/);
 
         const replies = first.row.getByRole('switch');
         await expect(replies).toBeChecked();
@@ -344,7 +345,7 @@ test('cloned member popout keeps delegated switches and action menus', async ({ 
     await expect(row).toHaveClass(/disabled/);
     await expect(clone.getByRole('switch')).toBeFocused();
     await openMemberMenu(page, clone);
-    await page.getByRole('menuitem', { name: 'Move up', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Move Up', exact: true }).click();
     await expect(clone.locator('.sb-group-member-menu')).toBeFocused();
     await openMemberMenu(page, clone);
     await page.getByRole('menuitem', { name: 'Model override…', exact: true }).click();
@@ -511,10 +512,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         const added = await addFirstCandidate(page);
         await openMemberMenu(page, added.row);
         await expect(page.getByRole('menuitem', { name: 'Speak now', exact: true })).toBeVisible();
-        await page.getByRole('menuitem', { name: 'Move down', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Move Down', exact: true }).click();
         await expect(added.row.locator('.sb-group-member-menu')).toBeFocused();
         await openMemberMenu(page, added.row);
-        await page.getByRole('menuitem', { name: 'Move up', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Move Up', exact: true }).click();
         await expect(added.row.locator('.sb-group-member-menu')).toBeFocused();
         await added.row.getByRole('switch').focus();
         await page.keyboard.press('Space');

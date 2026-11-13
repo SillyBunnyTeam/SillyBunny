@@ -411,7 +411,7 @@ for (const width of [1440, 390]) {
             menu = await headerMenu(page);
             await menu.getByRole('menuitemradio', { name: 'Alphabetical (A-Z)', exact: true }).click();
             await row(page, fixtureTag).locator('.sb-tag-manager__row-menu').click();
-            await expect(page.getByRole('menuitem', { name: 'Move down', exact: true })).toHaveAttribute('aria-disabled', 'true');
+            await expect(page.getByRole('menuitem', { name: /^Move / })).toHaveCount(0);
             await page.keyboard.press('Escape');
             menu = await headerMenu(page);
             const download = page.waitForEvent('download');

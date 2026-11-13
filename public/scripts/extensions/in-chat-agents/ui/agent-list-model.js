@@ -87,6 +87,13 @@ function savedNeighbours(model, key) {
     return [];
 }
 
+/** Position of a saved row among the rows of its sub-heading, or null when no move is offered (a filter is on, or the row is a Pinned copy). */
+export function agentMovePosition(model, key) {
+    const keys = savedNeighbours(model, key);
+    const index = keys.indexOf(key);
+    return index < 0 ? null : { index, count: keys.length };
+}
+
 export function moveAgentWithinSubheading(model, { key, direction, orderedKeys }) {
     const keys = savedNeighbours(model, key);
     if (!keys.length) return null;

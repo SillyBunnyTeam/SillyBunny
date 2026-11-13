@@ -251,10 +251,12 @@ describe('tag manager interactions', () => {
         expect(manager.root.querySelectorAll('toolcool-color-picker')).toHaveLength(0);
         row.querySelector('.sb-tag-manager__row-menu').click();
         let items = menuOptions.sections.flatMap(section => section.items);
-        expect(items.find(item => item.label === 'Move up').disabled).toBe(true);
-        items.find(item => item.label === 'Move down').onSelect();
+        expect(items.some(item => item.label === 'Move Up')).toBe(false);
+        expect(items.filter(item => item.data?.sbReorder).map(item => item.data.sbReorder)).toEqual(['down']);
+        items.find(item => item.label === 'Move Down').onSelect();
         await settle();
         expect(names()).toEqual(['beta', 'alpha']);
+        expect(document.querySelector('.sb-reorder-status').textContent).toBe('Moved Alpha to position 2 of 2');
         items.find(item => item.label === 'Delete').onSelect();
         await settle();
         expect(adapter.actions.delete).toHaveBeenCalledWith(row);
@@ -268,7 +270,7 @@ describe('tag manager interactions', () => {
         state.settings.tag_sort_mode = 'alphabetical';
         row.querySelector('.sb-tag-manager__row-menu').click();
         items = menuOptions.sections.flatMap(section => section.items);
-        expect(items.find(item => item.label === 'Move down').disabled).toBe(true);
+        expect(items.some(item => item.data?.sbReorder)).toBe(false);
     });
 
     test('external reprint reconciles counts, colour and rows while preserving focus and scroll', () => {

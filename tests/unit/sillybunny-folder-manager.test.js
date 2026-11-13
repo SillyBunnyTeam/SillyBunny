@@ -108,10 +108,12 @@ describe('Folder Manager', () => {
         expect(folders.getFolders('groups')[0].name).toBe('Renamed');
         manager.root.querySelector(`[data-folder-id="${first.id}"] .sb-folder-manager__row-menu`).click();
         const items = menuOptions.sections.flatMap(section => section.items);
-        expect(items.map(item => item.label)).toEqual(['Rename', 'Colour', 'Expanded by Default', 'Move Up', 'Move Down', 'Delete']);
+        expect(items.map(item => item.label)).toEqual(['Rename', 'Colour', 'Expanded by Default', 'Move Down', 'Delete']);
+        expect(items.filter(item => item.data?.sbReorder).map(item => item.data.sbReorder)).toEqual(['down']);
         items.find(item => item.label === 'Expanded by Default').onSelect();
         items.find(item => item.label === 'Move Down').onSelect();
         expect(folders.getFolders('groups').map(folder => folder.name)).toEqual(['Second', 'Renamed']);
+        expect(document.querySelector('.sb-reorder-status').textContent).toBe('Moved Renamed to position 2 of 2');
         expect(folders.getFolders('groups')[1].expanded).toBe(false);
         items.find(item => item.label === 'Colour').onSelect();
         expect(manager.root.querySelector('toolcool-color-picker')).not.toBeNull();

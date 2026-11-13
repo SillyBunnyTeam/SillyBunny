@@ -5,6 +5,7 @@ import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-edit
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
+import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 import {
@@ -201,10 +202,19 @@ export function createFolderManager(scope, adapter) {
         ] }, { items: [
             { label: t`Expanded by Default`, icon: 'fa-solid fa-arrows-up-down', kind: 'check', checked: folder.expanded,
                 onSelect: () => { setFolderExpanded(scope, folder.id, !folder.expanded); refresh(); } },
-        ] }, { items: [
-            { label: t`Move Up`, icon: 'fa-solid fa-arrow-up', disabled: index <= 0, onSelect: () => { moveFolder(scope, folder.id, -1); refresh(); } },
-            { label: t`Move Down`, icon: 'fa-solid fa-arrow-down', disabled: index < 0 || index >= folders.length - 1, onSelect: () => { moveFolder(scope, folder.id, 1); refresh(); } },
-        ] }, { items: [{ label: t`Delete`, icon: 'fa-solid fa-trash-can', danger: true, onSelect: () => confirmDelete(folder) }] }];
+        ] }, { items: reorderMenuItems({
+            index,
+            count: folders.length,
+            filtered: Boolean(frame?.search?.query.trim()),
+            // The row keeps the folder object it was created with, so a rename shows only in the store's copy.
+            name: folders[index]?.name ?? folder.name,
+            move: to => {
+                const moved = moveFolder(scope, folder.id, to - index);
+                refresh();
+                return moved;
+            },
+            focus: () => entries.get(folder.id)?.row ?? null,
+        }) }, { items: [{ label: t`Delete`, icon: 'fa-solid fa-trash-can', danger: true, onSelect: () => confirmDelete(folder) }] }];
         openActionMenu({ trigger, title: folder.name, sections, bounds: frame?.surface ?? null });
     }
 

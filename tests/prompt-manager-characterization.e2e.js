@@ -620,6 +620,28 @@ test.describe('Prompt Manager characterization', () => {
         expect(await ui.visibleOrder()).toEqual(expected.map(entry => entry.identifier));
     });
 
+    test('the row menu takes its move items from the shared helper, saves the same order and announces the move', async ({ page }) => {
+        const { store, ui } = await setup(page);
+        const order = await ui.visibleOrder();
+
+        await ui.row(order[0]).locator('.sb-prompt-row-menu').click();
+        await expect(page.getByRole('menuitem', { name: 'Move Up', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('menuitem', { name: 'Move to Top', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('menuitem', { name: 'Move to Bottom', exact: true })).toHaveAttribute('data-sb-reorder', 'bottom');
+        await page.getByRole('menuitem', { name: 'Move Down', exact: true }).click();
+
+        await waitForSavedOai(store, oai => orderFor(oai, GLOBAL_ORDER_ID)[0]?.identifier === order[1]);
+        await expect.poll(() => ui.visibleOrder()).toEqual([order[1], order[0], ...order.slice(2)]);
+        await expect(ui.row(order[0])).toBeFocused();
+        await expect(page.locator('[aria-live="polite"]').filter({ hasText: /^Moved .+ to position 2 of \d+$/ })).toHaveCount(1);
+
+        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
+        await page.getByRole('searchbox', { name: 'Search prompts', exact: true }).fill('Fixture');
+        await ui.row('sbFixtureRelative').locator('.sb-prompt-row-menu').click();
+        await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: /^Move / })).toHaveCount(0);
+    });
+
     test('remove detaches from the order but keeps the definition', async ({ page }) => {
         const { store, ui, baseline } = await setup(page);
 

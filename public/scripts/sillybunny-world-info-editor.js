@@ -16,6 +16,7 @@ import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
+import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
@@ -496,7 +497,7 @@ export function mountWorldInfoEditor(container) {
         if (!result.ok && heldOrder === submittedOrder) heldOrder = previousOrder;
         if (selectedUid() !== null && ids.some(uid => String(uid) === String(selectedUid()))) rebase(selectedUid(), 'displayIndex');
         await finishListMutation(data, result);
-        return true;
+        return result.ok;
     }
 
     async function openMovePicker(trigger, uid) {
@@ -546,15 +547,22 @@ export function mountWorldInfoEditor(container) {
 
     function openEntryMenu(trigger, uid) {
         const entry = state.data.entries[uid];
+        const title = entryTitle(entry, t`Untitled entry`);
         const actions = [
             menuItem(t`Duplicate`, 'copy', () => duplicateEntry(uid)),
             menuItem(`${t`Move`}/${t`Copy`}`, 'arrows-up-down-left-right', () => openMovePicker(trigger, uid)),
         ];
-        if (customSort() && !searchControl.query) actions.push(
-            menuItem(t`Move up`, 'arrow-up', () => moveEntryBy(uid, -1)),
-            menuItem(t`Move down`, 'arrow-down', () => moveEntryBy(uid, 1)),
-        );
-        menu(trigger, entryTitle(entry, t`Untitled entry`), [actions, [menuItem(t`Delete`, 'trash', () => deleteEntry(uid), true)]]);
+        const index = entries.findIndex(item => String(item.uid) === String(uid));
+        const moves = reorderMenuItems({
+            index,
+            count: entries.length,
+            filtered: !customSort() || Boolean(searchControl.query),
+            name: title,
+            move: to => moveEntryBy(uid, to - index),
+            onError: error => globalThis.toastr?.error(error.message),
+            focus: () => rows.get(`entry:${uid}`)?.row ?? null,
+        });
+        menu(trigger, title, [actions, moves, [menuItem(t`Delete`, 'trash', () => deleteEntry(uid), true)]]);
     }
 
     function makeEntryRow(entry) {
