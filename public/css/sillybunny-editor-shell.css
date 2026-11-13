@@ -1142,10 +1142,6 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     font-weight: 400;
 }
 
-.sb-selection-header .sb-editor-action--primary {
-    font-weight: 600;
-}
-
 @media (forced-colors: active) {
     .sb-selection-header .sb-editor-action {
         border: 1px solid ButtonText;
@@ -1193,6 +1189,12 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     background: var(--sb-raised-bg);
     box-shadow: none;
     color: inherit;
+}
+
+/* The standalone header raises both buttons the same way. The doubled class outranks the editor action's own fills. */
+.sb-selection-header .sb-editor-action.sb-editor-action:not(:disabled) {
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
+    background: var(--sb-raised-bg);
 }
 
 .sb-selection-action-bar {
@@ -1264,16 +1266,16 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
 }
 
 [data-selection-mode='true'] .sb-selection-check {
-    --sb-checkbox-size: 24px;
+    --sb-checkbox-size: 28px;
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
     flex: none;
-    inline-size: 24px;
-    block-size: 24px;
+    inline-size: 28px;
+    block-size: 28px;
     margin: 0;
     margin-inline-end: 0;
-    border: 2px solid color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
+    border: 2px solid var(--sb-selection-check-outline);
     border-radius: 50%;
     background: transparent;
     color: var(--sb-on-solid-accent);
@@ -1285,6 +1287,17 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
 [data-selection-mode='true'] .sb-selection-check:checked {
     border-color: var(--sb-accent);
     background: var(--sb-accent);
+}
+
+@media (hover: hover) {
+    [data-selection-mode='true'] .sb-selection-check:not(:checked):not(:disabled):hover {
+        border-color: var(--sb-selection-check-outline-hover);
+    }
+}
+
+[data-selection-mode='true'] .sb-selection-check:not(:checked):active {
+    border-color: transparent;
+    background: var(--sb-flat-active-bg);
 }
 
 [data-selection-mode='true'] .sb-selection-check:focus-visible {
@@ -1321,11 +1334,13 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
         background: var(--sb-flat-hover-bg);
     }
 
+    .sb-selection-header .sb-editor-action.sb-editor-action:not(:disabled):hover,
     .sb-dialog__header.is-selection-mode .menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
         background: var(--sb-raised-hover-bg);
     }
 }
 
+.sb-selection-header .sb-editor-action.sb-editor-action:not(:disabled):active,
 .sb-dialog__header.is-selection-mode .menu_button:is(.sb-dialog__selection-cancel, .sb-dialog__selection-select-all):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active {
     background: var(--sb-raised-active-bg);
     transform: none;

@@ -26,7 +26,10 @@ async function expectFrame(popup, viewport, immediate = false) {
     expect(await content.locator('.ds-row-check, .ds-row-switch').evaluateAll(rows => rows.every(row => {
         const label = row.querySelector('.ds-row-label').getBoundingClientRect();
         const input = row.querySelector('input').getBoundingClientRect();
-        return input.left > label.right && row.lastElementChild.matches('input');
+        // A check leads its row and a switch ends it.
+        return row.classList.contains('ds-row-check')
+            ? input.right <= label.left && row.firstElementChild.matches('input') && row.lastElementChild.matches('.ds-row-text')
+            : input.left > label.right && row.lastElementChild.matches('input');
     }))).toBe(true);
     expect(await content.locator('.ds-row:has(> .ds-row-suffix)').evaluateAll(rows => rows.every(row => {
         const label = row.querySelector('.ds-row-text').getBoundingClientRect();

@@ -122,7 +122,7 @@ for (const width of [1440, 390]) {
     test.describe(`${width}px SillyBunny chat overlays`, () => {
         test.use({ viewport: { width, height: 844 }, hasTouch: width === 390, isMobile: width === 390 });
 
-        test('mass delete preserves its Dialog tier, trailing checks and a Cancel-default destructive alert', async ({ page }) => {
+        test('mass delete preserves its Dialog tier, leading checks and a Cancel-default destructive alert', async ({ page }) => {
             const { context, deleteRequests } = await prepareChat(page);
             const actions = await openChatActions(page, width);
             await actions.getByRole('button', { name: 'Mass delete chats', exact: true }).click();
@@ -144,9 +144,10 @@ for (const width of [1440, 390]) {
             const rowGeometry = await first.evaluate(row => {
                 const label = row.querySelector('.ds-row-label').getBoundingClientRect();
                 const checkbox = row.querySelector('input[type="checkbox"]').getBoundingClientRect();
-                return { labelRight: label.right, checkboxLeft: checkbox.left };
+                return { labelLeft: label.left, checkboxRight: checkbox.right, firstChildIsCheckbox: row.firstElementChild.matches('input[type="checkbox"]') };
             });
-            expect(rowGeometry.checkboxLeft).toBeGreaterThan(rowGeometry.labelRight);
+            expect(rowGeometry.checkboxRight).toBeLessThanOrEqual(rowGeometry.labelLeft);
+            expect(rowGeometry.firstChildIsCheckbox).toBe(true);
             await first.click();
             await frame.getByRole('button', { name: 'Delete selected', exact: true }).click();
 

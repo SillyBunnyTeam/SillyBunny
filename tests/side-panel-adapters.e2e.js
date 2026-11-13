@@ -396,14 +396,16 @@ async function closePanel(page, id) {
     await expect(page.locator(`.sb-side-panel[data-sb-side-panel-id="${id}"]`)).toBeHidden();
 }
 
-async function expectControlAtRowEnd(panel, controlSelector) {
+/** A switch ends its row and a check starts it. */
+async function expectControlAtRowEdge(panel, controlSelector, edge) {
     const control = panel.locator(controlSelector);
     const row = control.locator('xpath=..');
     const label = row.locator('.ds-row-text');
     const [controlBox, labelBox] = await Promise.all([control.boundingBox(), label.boundingBox()]);
     expect(controlBox).not.toBeNull();
     expect(labelBox).not.toBeNull();
-    expect(controlBox.x).toBeGreaterThanOrEqual(labelBox.x + labelBox.width - 1);
+    if (edge === 'start') expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(labelBox.x + 1);
+    else expect(controlBox.x).toBeGreaterThanOrEqual(labelBox.x + labelBox.width - 1);
 }
 
 async function readGeometry(page, panel) {
@@ -446,10 +448,10 @@ for (const viewport of VIEWPORTS) {
             await panel.locator('.sb-side-panel__body').evaluate(body => { body.scrollTop = body.scrollHeight; });
             await expect(panel.locator(definition.lastControl)).toBeVisible();
             if (definition.id === 'floatingPrompt') {
-                await expectControlAtRowEnd(panel, '#extension_floating_allow_wi_scan');
+                await expectControlAtRowEdge(panel, '#extension_floating_allow_wi_scan', 'end');
             }
             if (definition.id === 'cfgConfig') {
-                await expectControlAtRowEnd(panel, 'input[name="cfg_prompt_combine"][value="1"]');
+                await expectControlAtRowEdge(panel, 'input[name="cfg_prompt_combine"][value="1"]', 'start');
                 const numberInputStyles = await panel.locator('#chat_cfg_guidance_scale_counter').evaluate(input => {
                     const style = getComputedStyle(input);
                     return { backgroundColor: style.backgroundColor, color: style.color };

@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { selectTheme } from './helpers/page-contrast.js';
+import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
 
 const sessions = new WeakMap();
 
@@ -143,6 +145,17 @@ test.describe('Persona editor', () => {
         expect(await legacy.count()).toBeGreaterThan(0);
         for (const child of await legacy.all()) await expect(child).toBeHidden();
     });
+
+    for (const { tone, theme } of SELECTION_TONES) {
+        test(`the Edit / Preview toggle is a tray with a raised selected toggle in the ${tone} tone`, async ({ page }) => {
+            const persona = await currentPersona(page);
+            const editor = await openList(page);
+            await editor.getByRole('listitem', { name: persona.name, exact: true }).click();
+            await selectTheme(page, theme);
+            await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', tone);
+            await expectToggleGroupForm(page, entryFor(page).locator('.sb-persona-entry-modes'), { tone, floor: 32 });
+        });
+    }
 
     test('the page size stays reachable after a size that fits every persona on one page', async ({ page }) => {
         const extra = Array.from({ length: 8 }, (_, index) => `sb-page-size-${index}.png`);

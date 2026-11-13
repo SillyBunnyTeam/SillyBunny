@@ -24,7 +24,7 @@ async function expectFrame(popup, viewport, { immediate = false } = {}) {
     const checks = await content.locator('.ds-row-check').evaluateAll(rows => rows.every(row => {
         const label = row.querySelector('.ds-row-label').getBoundingClientRect();
         const control = row.querySelector('input').getBoundingClientRect();
-        return control.left > label.right && row.lastElementChild.matches('input:not([role="switch"])');
+        return control.right <= label.left && row.firstElementChild.matches('input:not([role="switch"])') && row.lastElementChild.matches('.ds-row-text');
     }));
     expect(checks).toBe(true);
 }

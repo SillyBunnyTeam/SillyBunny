@@ -36,7 +36,7 @@ describe('Connection Manager dialog adapters', () => {
         expect(input.value).toBe('id-0');
         expect(input.checked).toBe(true);
         expect(input.getAttribute('role')).toBeNull();
-        expect(input.parentElement.lastElementChild).toBe(input);
+        expect(input.parentElement.firstElementChild).toBe(input);
         expect(node.querySelector('[data-i18n="Label"]')).toBe(caption);
         input.click();
         expect(onInput).toHaveBeenCalledTimes(1);

@@ -60,11 +60,14 @@ describe('Characters menu contrast and token contracts', () => {
         }
     });
 
-    test('selected compact modes use body ink and retain only an inset focus ring', () => {
-        const selector = '.sb-segmented-control--compact .sb-boolean-radio-option > input';
-        expect(rule(theme, `${selector}:checked + span`)).toContain('color: var(--SmartThemeBodyColor);');
-        expect(rule(theme, `${selector}:focus-visible + span`)).toContain('outline: none;');
-        expect(rule(theme, `${selector}:focus-visible + span`)).toContain('box-shadow: var(--sb-focus-ring-inset);');
+    test('selected toggles use body ink on a raised fill and draw the focus ring outside the toggle', () => {
+        const selector = '.sb-boolean-radio-option > input[type="radio"]';
+        expect(rule(theme, '.sb-boolean-radio-option > span')).toContain('color: var(--SmartThemeBodyColor);');
+        expect(rule(theme, `${selector}:checked + span`)).toContain('background: var(--sb-toggle-raised-bg);');
+        expect(rule(theme, `${selector}:checked + span`)).not.toMatch(/color:/);
+        expect(rule(theme, `${selector}:focus-visible + span`)).toContain('outline: 2px solid var(--sb-focus-ring-color);');
+        expect(rule(theme, `${selector}:focus-visible + span`)).toContain('outline-offset: 0;');
+        expect(rule(theme, `${selector}:focus-visible + span`)).not.toContain('box-shadow');
     });
 
     test('migrated placeholders override the legacy important color', () => {

@@ -35,6 +35,30 @@ export async function buttonStates(button) {
     return { rest, hover, active, focus, disabled: inactive };
 }
 
+/**
+ * A selection header raises both its text buttons, so Select All reads in every state as Cancel does, with the raised fills
+ * (10%, 15% hovered, 30% pressed), the regular weight and none of the suggested action's solid accent.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ cancel: object, save: object }} selection The states of the header's Cancel and of its Select All (as `save`).
+ * @param {{ cancel: object, save: object }} reference The states of the prompt editor's Cancel and suggested Save.
+ */
+export async function expectRaisedSelectionButtons(page, selection, reference) {
+    expect(selection.save).toEqual(selection.cancel);
+    const fills = await page.evaluate(() => Object.fromEntries(['--sb-raised-bg', '--sb-raised-hover-bg', '--sb-raised-active-bg'].map((name) => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = `var(${name})`;
+        document.body.append(probe);
+        const color = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return [name, color];
+    })));
+    expect(selection.save.rest['background-color']).toBe(fills['--sb-raised-bg']);
+    expect(selection.save.hover['background-color']).toBe(fills['--sb-raised-hover-bg']);
+    expect(selection.save.active['background-color']).toBe(fills['--sb-raised-active-bg']);
+    expect(selection.save.rest['font-weight']).toBe(reference.cancel.rest['font-weight']);
+    expect(selection.save.rest['background-color']).not.toBe(reference.save.rest['background-color']);
+}
+
 export async function promptButtonReference(page) {
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'editor'));
     await page.locator('[data-sb-settings-tab="editor"]').evaluate(node => node.click());

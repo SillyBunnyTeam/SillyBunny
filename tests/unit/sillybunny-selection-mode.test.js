@@ -275,6 +275,17 @@ describe('selection mode', () => {
             selection.enter('a');
             expect(slots.headerEnd.querySelector('.sb-selection-select-all').textContent).toBe('Select All');
         });
+
+        test('the dialog header keeps Cancel and Select All as the same kind of menu button', () => {
+            const { selection, slots } = makeSlotted();
+
+            selection.enter('a');
+            const cancel = slots.headerStart.querySelector('.sb-selection-cancel');
+            const selectAll = slots.headerEnd.querySelector('.sb-selection-select-all');
+            expect(cancel.classList.contains('menu_button')).toBe(true);
+            expect(selectAll.classList.contains('menu_button')).toBe(true);
+            expect(selectAll.className).not.toMatch(/sb-editor-action--primary/);
+        });
     });
 
     test('the standalone header uses Select All as the default label', () => {
@@ -285,6 +296,19 @@ describe('selection mode', () => {
         expect(selection.selectAllButton).toBe(header.querySelector('.sb-selection-select-all'));
         expect(selection.cancelButton).toBe(header.querySelector('.sb-selection-cancel'));
         expect(selection.selectionTitle).toBe(header.querySelector('.sb-selection-title'));
+    });
+
+    test('the standalone header gives Select All the style of Cancel, as a text button and never as the suggested action', () => {
+        const { selection, header } = makeSelection();
+
+        selection.enter('a');
+        const cancel = header.querySelector('.sb-selection-cancel');
+        const selectAll = header.querySelector('.sb-selection-select-all');
+        expect([...cancel.classList].filter(name => name.startsWith('sb-editor-action'))).toEqual(['sb-editor-action', 'sb-editor-action--secondary']);
+        expect([...selectAll.classList].filter(name => name.startsWith('sb-editor-action'))).toEqual(['sb-editor-action', 'sb-editor-action--secondary']);
+        expect(selectAll.classList.contains('sb-editor-action--primary')).toBe(false);
+        expect(selectAll.type).toBe('button');
+        expect([...header.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Cancel', 'Select All']);
     });
 
     test('starts inactive without filling the header or action bar', () => {

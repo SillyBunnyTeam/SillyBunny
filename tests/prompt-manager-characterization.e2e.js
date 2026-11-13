@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test';
 import { acceptPopup } from './helpers/popup.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { selectTheme } from './helpers/page-contrast.js';
+import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
 
 // Characterizes Prompt Manager behaviour through what it persists (the /api/settings/save payload).
 // UI interactions stay in the driver; persisted-data assertions are unchanged by the replacement UI.
@@ -551,6 +553,23 @@ test.describe('Prompt Manager characterization', () => {
         await editor.getByRole('button', { name: 'Prompt Actions', exact: true }).click();
         await expect(page.getByRole('menuitem')).toHaveText(['Inspect', 'Send to agents', 'Remove from list', 'Delete']);
     });
+
+    for (const { tone, theme } of SELECTION_TONES) {
+        test(`the Edit / Preview and Position toggles are trays with a raised selected toggle in the ${tone} tone`, async ({ page }) => {
+            const { ui } = await setup(page);
+            const editor = page.locator('.sb-prompt-detail');
+            await ui.openEditor('sbFixtureRelative');
+            await selectTheme(page, theme);
+            await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', tone);
+            for (const group of [editor.locator('.sb-prompt-modes'), editor.getByRole('group', { name: 'Position', exact: true })]) {
+                await expect(group).toBeVisible();
+                await expect(group).toHaveClass(/sb-segmented-control--compact/);
+                await expectToggleGroupForm(page, group, { tone, floor: 32 });
+            }
+            await page.emulateMedia({ contrast: 'more' });
+            await expectToggleGroupForm(page, editor.getByRole('group', { name: 'Position', exact: true }), { tone, floor: 32, more: true });
+        });
+    }
 
     test('reset to default fills the form and only persists on save', async ({ page }) => {
         const { store, ui } = await setup(page);

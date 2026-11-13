@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { selectSampleCharacter } from './chat-scroll-regression-helpers.js';
 import { chooseAgentTemplate, expectAgentMenuIcons } from './helpers/in-chat-agents-editor.js';
-import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
+import { buttonStates, expectRaisedSelectionButtons, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
 import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintainer-server.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
@@ -16,8 +16,8 @@ const READS = new Set([
     '/api/presets/list', '/api/in-chat-agents/groups/list', '/api/chats/search',
 ]);
 const selectionLayout = {
-    1440: { titleX: 84.90625, descriptionRight: 1142, truncated: false },
-    390: { titleX: 72, descriptionRight: 318, truncated: true },
+    1440: { titleX: 88, descriptionRight: 1142, truncated: false },
+    390: { titleX: 76, descriptionRight: 318, truncated: true },
 };
 
 async function openAgents(page, baseURL, width = 1440, { withChat = false } = {}) {
@@ -154,7 +154,7 @@ for (const width of [1440, 390]) {
         expect(saves()).toHaveLength(0);
     });
 
-    test(`q56 ${width}px Agents selection buttons match editor Cancel and suggested Save`, async ({ page, baseURL }, testInfo) => {
+    test(`q56 ${width}px Agents selection raises both header text buttons, Select All like Cancel`, async ({ page, baseURL }, testInfo) => {
         const { root, saves } = await openAgents(page, baseURL, width);
         const reference = await promptButtonReference(page);
         await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'agents'));
@@ -166,7 +166,7 @@ for (const width of [1440, 390]) {
         };
         await q56Screenshot(page, `selection-agents-${width}`);
         await testInfo.attach('q56 selection button states', { body: JSON.stringify({ reference, selection }), contentType: 'application/json' });
-        expect(selection).toEqual(reference);
+        await expectRaisedSelectionButtons(page, selection, reference);
         expect(saves()).toHaveLength(0);
         await page.emulateMedia({ forcedColors: 'active' });
         await root.locator('.sb-selection-select-all').focus();
@@ -538,8 +538,8 @@ for (const width of [1440, 390]) {
                 description: description ? { right: description.getBoundingClientRect().right - rowBounds.x, truncated: description.scrollWidth > description.clientWidth } : null,
             };
         });
-        expect(checkMetrics.width).toBe(24);
-        expect(checkMetrics.height).toBe(24);
+        expect(checkMetrics.width).toBe(28);
+        expect(checkMetrics.height).toBe(28);
         expect(checkMetrics.radius).toBeGreaterThanOrEqual(checkMetrics.width / 2);
         expect(checkMetrics.titleX).toBeGreaterThanOrEqual(selectionLayout[width].titleX - 1);
         expect(checkMetrics.titleX).toBeLessThanOrEqual(selectionLayout[width].titleX + 1);
@@ -550,8 +550,8 @@ for (const width of [1440, 390]) {
         expect(appearance.backgroundImage).toBe('none');
         expect(appearance.display).toBe('grid');
         expect(appearance.placeContent).toBe('center');
-        expect(appearance.glyphWidth).toBeCloseTo(13.44, 1);
-        expect(appearance.glyphHeight).toBeCloseTo(13.44, 1);
+        expect(appearance.glyphWidth).toBeCloseTo(15.68, 1);
+        expect(appearance.glyphHeight).toBeCloseTo(15.68, 1);
         expect(appearance.glyphFitsInnerCircle).toBe(true);
         expect(appearance.centeredByGrid).toBe(true);
         if (process.env.CAPTURE_SELECTION_SHOTS) {

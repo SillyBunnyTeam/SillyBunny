@@ -3,13 +3,15 @@ import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { q56Screenshot } from './helpers/q56-review.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
+import { selectTheme } from './helpers/page-contrast.js';
+import { EDGE_CONTRAST, parseComputedColor, readBodyColor, readSelectionCheckOutline, SELECTION_TONES } from './helpers/selection-forms.js';
 
 const list = page => page.locator('.sb-character-list[data-mounted="true"]');
 const listRows = (page, view) => list(page).locator(view === 'groups' ? '.group_select' : '.character_select');
 const pageSize = page => list(page).getByRole('combobox', { name: 'Items per page' });
 const selectionLayout = {
-    1440: { titleX: 92.90625, descriptionRight: 1118, truncated: false },
-    390: { titleX: 92, descriptionRight: 306, truncated: false },
+    1440: { titleX: 96, descriptionRight: 1118, truncated: false },
+    390: { titleX: 96, descriptionRight: 306, truncated: false },
 };
 
 test.beforeEach(async ({ page }) => {
@@ -643,12 +645,48 @@ async function enterSelection(page) {
 }
 
 for (const width of [1440, 390]) {
-    test(`q56 ${width}px Characters selection header retains contrasting header actions`, async ({ page }) => {
+    test(`q56 ${width}px Characters selection header raises both text buttons, never a solid accent`, async ({ page }) => {
         await prepareList(page, { width, height: 1000 });
         await enterSelection(page);
         await expect(list(page).locator('.sb-selection-cancel')).toHaveClass(/sb-editor-action--secondary/);
-        await expect(list(page).locator('.sb-selection-select-all')).toHaveClass(/sb-editor-action--primary/);
+        await expect(list(page).locator('.sb-selection-select-all')).toHaveClass(/sb-editor-action--secondary/);
+        await expect(list(page).locator('.sb-selection-select-all')).not.toHaveClass(/sb-editor-action--primary/);
         await q56Screenshot(page, `selection-characters-${width}`);
+    });
+}
+
+for (const { tone, theme } of SELECTION_TONES) {
+    test(`Select All is a raised text button like Cancel, at rest, hovered and pressed, in the ${tone} tone`, async ({ page }) => {
+        await prepareList(page, { width: 1440, height: 900 });
+        await selectTheme(page, theme);
+        await enterSelection(page);
+        const cancel = list(page).locator('.sb-selection-cancel');
+        const selectAll = list(page).locator('.sb-selection-select-all');
+        const read = button => button.evaluate((node) => {
+            const style = getComputedStyle(node);
+            return Object.fromEntries(['backgroundColor', 'color', 'borderTopColor', 'borderTopWidth', 'borderRadius', 'fontWeight', 'minHeight', 'paddingLeft']
+                .map(property => [property, style[property]]));
+        });
+        // The fills transition, so a reading waits until the button has settled on the strength.
+        const raised = async (button, strength) => {
+            const body = await readBodyColor(page);
+            await expect.poll(async () => {
+                const fill = parseComputedColor((await read(button)).backgroundColor);
+                return [Math.round(fill.r), Math.round(fill.g), Math.round(fill.b), +fill.a.toFixed(2)];
+            }).toEqual([Math.round(body.r), Math.round(body.g), Math.round(body.b), strength]);
+        };
+        await page.mouse.move(1, 1);
+        await cancel.evaluate(node => node.blur());
+        await expect.poll(() => read(selectAll)).toEqual(await read(cancel));
+        expect((await read(selectAll)).fontWeight).toBe('400');
+        await raised(selectAll, 0.1);
+        await raised(cancel, 0.1);
+        await selectAll.hover();
+        await raised(selectAll, 0.15);
+        await page.mouse.down();
+        await raised(selectAll, 0.3);
+        await page.mouse.move(1, 1);
+        await page.mouse.up();
     });
 }
 
@@ -682,6 +720,26 @@ async function chatState(page) {
     });
 }
 
+test.describe('selection row hit areas', () => {
+    for (const [pointer, hasTouch, floor] of [['fine', false, 32], ['coarse', true, 44]]) {
+        test.describe(`${pointer} pointer`, () => {
+            test.use({ hasTouch });
+            test(`a selection row is at least ${floor}px tall and a press at its blank end toggles the 28px check`, async ({ page }) => {
+                await prepareList(page, { width: 1440, height: 900 });
+                expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(pointer === 'coarse');
+                await enterSelection(page);
+                const row = listRows(page, 'characters').nth(2);
+                const check = row.locator('.sb-selection-check');
+                const bounds = await row.boundingBox();
+                expect(bounds.height).toBeGreaterThanOrEqual(floor);
+                expect((await check.boundingBox()).height).toBe(28);
+                await row.click({ position: { x: bounds.width - 6, y: bounds.height / 2 } });
+                await expect(check).toBeChecked();
+            });
+        });
+    }
+});
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     test(`selection checks are round and share a fixed size at ${viewport.width}px`, async ({ page }) => {
         await prepareList(page, viewport);
@@ -701,8 +759,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                 description: description ? { right: description.getBoundingClientRect().right - rowBounds.x, truncated: description.scrollWidth > description.clientWidth } : null,
             };
         });
-        expect(metrics.width).toBe(24);
-        expect(metrics.height).toBe(24);
+        expect(metrics.width).toBe(28);
+        expect(metrics.height).toBe(28);
         expect(metrics.radius).toBeGreaterThanOrEqual(metrics.width / 2);
         expect(metrics.titleX).toBeGreaterThanOrEqual(selectionLayout[viewport.width].titleX - 1);
         expect(metrics.titleX).toBeLessThanOrEqual(selectionLayout[viewport.width].titleX + 1);
@@ -713,8 +771,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         expect(appearance.backgroundImage).toBe('none');
         expect(appearance.display).toBe('grid');
         expect(appearance.placeContent).toBe('center');
-        expect(appearance.glyphWidth).toBeCloseTo(13.44, 1);
-        expect(appearance.glyphHeight).toBeCloseTo(13.44, 1);
+        expect(appearance.glyphWidth).toBeCloseTo(15.68, 1);
+        expect(appearance.glyphHeight).toBeCloseTo(15.68, 1);
         expect(appearance.glyphFitsInnerCircle).toBe(true);
         expect(appearance.centeredByGrid).toBe(true);
         if (process.env.CAPTURE_SELECTION_SHOTS) {
@@ -733,6 +791,46 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             }
         }
     });
+
+    for (const { tone, theme } of SELECTION_TONES) {
+        test(`selection check outline is the 15% trough, and 3:1 against the row under more contrast, at ${viewport.width}px in the ${tone} tone`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await selectTheme(page, theme);
+            await enterSelection(page);
+            const body = await readBodyColor(page);
+            const row = listRows(page, 'characters').nth(2);
+            const check = row.locator('.sb-selection-check');
+            await expect(check).not.toBeChecked();
+            await page.mouse.move(1, 1);
+            const rest = await readSelectionCheckOutline(page, check);
+            expect(rest.size).toEqual({ width: 28, height: 28 });
+            expect([rest.border.r, rest.border.g, rest.border.b].map(Math.round)).toEqual([body.r, body.g, body.b].map(Math.round));
+            expect(rest.border.a).toBeCloseTo(0.15, 2);
+            await expect(check).toHaveCSS('border-top-width', '2px');
+            await check.hover();
+            await expect.poll(async () => +(await readSelectionCheckOutline(page, check)).border.a.toFixed(2)).toBe(0.2);
+
+            await page.emulateMedia({ contrast: 'more' });
+            await page.mouse.move(1, 1);
+            const resting = await readSelectionCheckOutline(page, check);
+            await check.hover();
+            const hovered = await readSelectionCheckOutline(page, check);
+            const rows = [resting.ratio, hovered.ratio];
+            test.info().annotations.push({ type: 'selection check outline contrast under more contrast', description: `${tone}: ${rows.map(ratio => ratio.toFixed(2)).join(', ')} at ${(resting.border.a * 100).toFixed(0)}%` });
+            for (const ratio of rows) expect(ratio).toBeGreaterThanOrEqual(EDGE_CONTRAST);
+            await check.check();
+            const accent = await check.evaluate((element) => {
+                const probe = document.createElement('span');
+                probe.style.backgroundColor = 'var(--sb-accent)';
+                element.parentElement.append(probe);
+                const color = getComputedStyle(probe).backgroundColor;
+                probe.remove();
+                return color;
+            });
+            await expect(check).toHaveCSS('border-top-color', accent);
+            await expect(check).toHaveCSS('background-color', accent);
+        });
+    }
 
     for (const view of ['characters', 'groups']) {
         test(`${view} activation closes the shell and reopening reveals the current row at ${viewport.width}px`, async ({ page }) => {

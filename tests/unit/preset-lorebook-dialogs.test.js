@@ -36,7 +36,7 @@ test('preset checks adopt state, IDs, values, translated labels, details and lis
     expect(input.checked).toBe(true);
     expect(input.name).toBe('section');
     expect(input.value).toBe('value-0');
-    expect(input.parentElement.lastElementChild).toBe(input);
+    expect(input.parentElement.firstElementChild).toBe(input);
     expect(input.hasAttribute('role')).toBe(false);
     expect(node.querySelector('.ds-row-label').dataset.i18n).toBe('Section');
     expect(node.querySelector('.ds-row-subtitle').textContent).toBe('Preset 0');

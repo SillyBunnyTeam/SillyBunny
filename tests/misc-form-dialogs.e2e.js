@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { bootMiscDialogs, MISC_VIEWPORTS, openMiscDialog } from './helpers/misc-dialogs.js';
+import { selectTheme } from './helpers/page-contrast.js';
+import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
 
 test.setTimeout(90000);
 
@@ -98,6 +100,36 @@ for (const viewport of MISC_VIEWPORTS) {
         await popup.locator('.sb-dialog__close').click();
         await expect(popup).toHaveCount(0);
     });
+
+    for (const { tone, theme } of SELECTION_TONES) {
+        test.describe(`toggle row in a dialog at ${size}, ${tone} tone`, () => {
+            // A phone is a touch device, so its toggles stand 44px tall; the desktop floor is 32px.
+            const floor = viewport.width < 450 ? 44 : 32;
+            test.use({ hasTouch: floor === 44 });
+            test('is a tray with a raised selected toggle, and gains rings under more contrast', async ({ page }) => {
+                await bootMiscDialogs(page, viewport);
+                const popup = await openMiscDialog(page, 'styles');
+                await selectTheme(page, theme);
+                await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', tone);
+                const group = popup.locator('.ds-toggle-row__group');
+                await expect(group).toHaveCount(1);
+                expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(floor === 44);
+                await popup.locator('#global_styles_forbidden').check();
+                await expectToggleGroupForm(page, group, { tone, floor });
+                await popup.locator('#global_styles_allowed').check();
+                await expectToggleGroupForm(page, group, { tone, floor });
+                await page.emulateMedia({ contrast: 'more' });
+                await expectToggleGroupForm(page, group, { tone, floor, more: true });
+                await popup.locator('#global_styles_allowed').focus();
+                await page.keyboard.press('Shift+Tab');
+                await page.keyboard.press('Tab');
+                const ring = await popup.locator('#global_styles_allowed + span').evaluate(node => ({ style: getComputedStyle(node).outlineStyle, width: getComputedStyle(node).outlineWidth, offset: getComputedStyle(node).outlineOffset, shadow: getComputedStyle(node).boxShadow }));
+                expect(ring.style).toBe('solid');
+                expect(ring.width).toBe('2px');
+                expect(ring.offset).toBe('0px');
+            });
+        });
+    }
 
     test(`External media keeps delegated input persistence for all three modes at ${size}`, async ({ page }) => {
         const state = await bootMiscDialogs(page, viewport);

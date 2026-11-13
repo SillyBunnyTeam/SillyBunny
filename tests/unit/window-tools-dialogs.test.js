@@ -67,7 +67,7 @@ test('sampler visibility adopts source inputs and Select All synchronizes only l
         `sampler-${index}`, `sampler-${index}_checkbox`, `source-${index}`, index < 4,
     ]));
     expect(inputs.every(input => !input.hasAttribute('role'))).toBe(true);
-    expect(inputs.every(input => input.parentElement.lastElementChild === input)).toBe(true);
+    expect(inputs.every(input => input.parentElement.firstElementChild === input)).toBe(true);
     expect(node.querySelector('.ds-row-label.sampler_name').getAttribute('style')).toBe('color: red');
     expect(node.querySelector('.sampler-select-all')).toBeNull();
     expect(selectAll.indeterminate).toBe(true);

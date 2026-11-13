@@ -199,7 +199,7 @@ export function createSwitchRow({ label, subtitle, field, id, checked, disabled,
 }
 
 /**
- * One item of a pick-several list: a native checkbox at the end, and the whole row toggles it.
+ * One item of a pick-several list: a native checkbox at the start, and the whole row toggles it.
  * Same contract as {@link createSwitchRow}; use a switch row for a single on/off setting.
  * @param {object} options
  * @param {string} options.label
@@ -227,7 +227,9 @@ function checkboxRow(variant, { label, subtitle, field, checked, disabled, onCha
     const row = element('label', `ds-row ${variant}`);
     markField(row, field);
     row.htmlFor = control.id;
-    row.append(textColumn(label, subtitle, control), control);
+    const text = textColumn(label, subtitle, control);
+    // A check leads its row and a switch ends it, as libadwaita's check prefix and switch suffix.
+    row.append(...(variant === 'ds-row-check' ? [control, text] : [text, control]));
     const notify = () => onChange?.(control.checked);
     control.addEventListener('change', notify);
     const controller = rowController(row, control);

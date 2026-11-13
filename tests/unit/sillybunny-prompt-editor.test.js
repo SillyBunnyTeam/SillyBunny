@@ -180,7 +180,7 @@ describe('Prompt editor header', () => {
             'sb-prompt-title',
             'sb-editor-dirty sb-prompt-dirty',
             'sb-editor-tokens sb-prompt-tokens',
-            'sb-boolean-radio-group sb-prompt-modes',
+            'sb-boolean-radio-group sb-segmented-control--compact sb-prompt-modes',
             'sb-editor-icon-button sb-header-icon-button sb-prompt-mode-toggle',
             'sb-editor-icon-button sb-header-icon-button sb-prompt-more',
             'sb-editor-action sb-editor-action--secondary sb-prompt-cancel',

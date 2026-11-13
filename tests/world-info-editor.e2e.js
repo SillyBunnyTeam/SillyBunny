@@ -2,15 +2,17 @@ import { expect, test } from '@playwright/test';
 import { acceptPopup } from './helpers/popup.js';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
-import { buttonStates, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
+import { buttonStates, expectRaisedSelectionButtons, promptButtonReference, q56Screenshot } from './helpers/q56-review.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
+import { selectTheme } from './helpers/page-contrast.js';
+import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
 const TARGET_BOOK = `${BOOK}_TARGET`;
 const selectionLayout = {
-    1440: { titleX: 42.90625, descriptionRight: 1126, truncated: false },
-    390: { titleX: 34, descriptionRight: 310, truncated: false },
+    1440: { titleX: 46, descriptionRight: 1126, truncated: false },
+    390: { titleX: 38, descriptionRight: 310, truncated: false },
 };
 
 test.beforeEach(async ({ page }) => {
@@ -100,7 +102,7 @@ async function selectSortOrFilter(page, editor, label) {
 }
 
 for (const width of [1440, 390]) {
-    test(`q56 ${width}px World Info selection uses header Cancel and suggested Save styles`, async ({ page }, testInfo) => {
+    test(`q56 ${width}px World Info selection raises both header text buttons, Select All like Cancel`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width, height: 1000 });
         await page.emulateMedia({ reducedMotion: 'reduce' });
         const reference = await promptButtonReference(page);
@@ -112,7 +114,7 @@ for (const width of [1440, 390]) {
         };
         await q56Screenshot(page, `selection-world-info-${width}`);
         await testInfo.attach('q56 selection button states', { body: JSON.stringify({ reference, selection }), contentType: 'application/json' });
-        expect(selection).toEqual(reference);
+        await expectRaisedSelectionButtons(page, selection, reference);
     });
 }
 
@@ -253,6 +255,16 @@ test.describe('World Info editor', () => {
         await expect(textarea).toHaveValue('Expanded WI content');
         expect((await readEntries(page))[0].content).toBe('Expanded WI content');
     });
+
+    for (const { tone, theme } of SELECTION_TONES) {
+        test(`the Edit / Preview toggle is a tray with a raised selected toggle in the ${tone} tone`, async ({ page }) => {
+            const editor = await openBook(page);
+            await row(editor, 'Alpha').click();
+            await selectTheme(page, theme);
+            await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', tone);
+            await expectToggleGroupForm(page, editor.locator('.sb-wi-entry .sb-wi-entry-modes'), { tone, floor: 32 });
+        });
+    }
 
     test('row switch enables an entry immediately', async ({ page }) => {
         const editor = await openBook(page);
@@ -469,8 +481,8 @@ test.describe('World Info selection mode', () => {
                     description: description ? { right: description.getBoundingClientRect().right - rowBounds.x, truncated: description.scrollWidth > description.clientWidth } : null,
                 };
             });
-            expect(metrics.width).toBe(24);
-            expect(metrics.height).toBe(24);
+            expect(metrics.width).toBe(28);
+            expect(metrics.height).toBe(28);
             expect(metrics.radius).toBeGreaterThanOrEqual(metrics.width / 2);
             expect(metrics.titleX).toBeGreaterThanOrEqual(selectionLayout[viewport.width].titleX - 1);
             expect(metrics.titleX).toBeLessThanOrEqual(selectionLayout[viewport.width].titleX + 1);
@@ -481,8 +493,8 @@ test.describe('World Info selection mode', () => {
             expect(appearance.backgroundImage).toBe('none');
             expect(appearance.display).toBe('grid');
             expect(appearance.placeContent).toBe('center');
-            expect(appearance.glyphWidth).toBeCloseTo(13.44, 1);
-            expect(appearance.glyphHeight).toBeCloseTo(13.44, 1);
+            expect(appearance.glyphWidth).toBeCloseTo(15.68, 1);
+            expect(appearance.glyphHeight).toBeCloseTo(15.68, 1);
             expect(appearance.glyphFitsInnerCircle).toBe(true);
             expect(appearance.centeredByGrid).toBe(true);
             if (process.env.CAPTURE_SELECTION_SHOTS) await page.screenshot({ path: test.info().outputPath(`world-info-${viewport.width}.png`) });

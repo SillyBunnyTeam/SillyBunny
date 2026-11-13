@@ -27,17 +27,19 @@ async function expectPopupSingleScroller(popup) {
     expect(nestedScrollers).toEqual([]);
 }
 
-async function expectTrailingChecks(root, rowSelector) {
-    const failures = await root.locator(rowSelector).evaluateAll(rows => rows.flatMap(row => {
+/** A switch ends its row and a check starts it. */
+async function expectControlPlacement(root, rowSelector, placement) {
+    const failures = await root.locator(rowSelector).evaluateAll((rows, placement) => rows.flatMap(row => {
         const label = row.querySelector('.ds-row-text, .ds-row-label, .sampler_name');
         const control = row.querySelector('input[type="checkbox"]');
         if (!label || !control) return ['missing label/control'];
         const labelBox = label.getBoundingClientRect();
         const controlBox = control.getBoundingClientRect();
-        return controlBox.left >= labelBox.right && (row.lastElementChild === control || row.lastElementChild.contains(control))
-            ? []
-            : [`${row.textContent.trim()}: checkbox is not trailing`];
-    }));
+        const placed = placement === 'start'
+            ? controlBox.right <= labelBox.left && (row.firstElementChild === control || row.firstElementChild.contains(control))
+            : controlBox.left >= labelBox.right && (row.lastElementChild === control || row.lastElementChild.contains(control));
+        return placed ? [] : [`${row.textContent.trim()}: checkbox is not at the ${placement}`];
+    }), placement);
     expect(failures).toEqual([]);
 }
 
@@ -165,7 +167,7 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
         await content.evaluate(node => { node.scrollTop = node.scrollHeight; });
         await expect(rows.last()).toBeInViewport();
         await expect(manager.locator('.sb-dialog__close')).toBeInViewport();
-        await expectTrailingChecks(manager, '.extension_block');
+        await expectControlPlacement(manager, '.extension_block', 'end');
         await expect(manager.locator('.extension_block .extension_toggle input').first()).toHaveAttribute('role', 'switch');
         await captureWindowToolsSurface(page, viewport, 'extensions-manager-scrolled');
 
@@ -190,7 +192,7 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
         const warningTier = await warning.evaluate(node => node.classList.contains('sb-dialog--alert') ? 'alert' : 'dialog');
         expect(await warning.evaluate(node => node.classList.contains('sb-dialog--page'))).toBe(warningTier !== 'alert');
         expect(await manager.evaluate(node => node.hasAttribute('data-sb-covered'))).toBe(warningTier !== 'alert');
-        await expectTrailingChecks(warning, '.ds-row-switch');
+        await expectControlPlacement(warning, '.ds-row-switch', 'end');
         await warning.locator('.popup-button-cancel').click();
         await expectToolParentRestored(page, warning, manager);
         expect(state.installs).toEqual([]);
@@ -237,7 +239,7 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
         const selectAll = popup.locator('#apiSamplersList input[name="sampler_select_all"]');
         await expect(selectAll).toHaveCount(1);
         await expect(selectAll).toHaveAttribute('name', 'sampler_select_all');
-        await expectTrailingChecks(popup, '#apiSamplersList .sampler_view_list_item');
+        await expectControlPlacement(popup, '#apiSamplersList .sampler_view_list_item', 'start');
         const all = popup.locator('#apiSamplersList .ds-row-check').first();
         await expect(all.locator('.ds-row-label')).toHaveText('Select All');
 

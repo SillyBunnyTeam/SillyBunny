@@ -4,6 +4,8 @@ import { acceptPopup } from './helpers/popup.js';
 import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { selectTheme } from './helpers/page-contrast.js';
+import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -842,6 +844,23 @@ test('Native sampler expanders reveal search results and preserve switch and cou
     await page.keyboard.press('Enter');
     await expect(toggle).toBeChecked({ checked: !checked });
 });
+
+for (const width of [1440, 390]) {
+    for (const { tone, theme } of SELECTION_TONES) {
+        test(`Backend Type is a filled tray with a raised selected toggle at ${width}px in the ${tone} tone`, async ({ page, baseURL }) => {
+            await loadSettings(page, baseURL);
+            await page.setViewportSize({ width, height: 844 });
+            const connections = await openPanel(page, 'connections');
+            await selectTheme(page, theme);
+            await expect(page.locator('html')).toHaveAttribute('data-sb-surface-tone', tone);
+            const group = connections.locator('.ds-toggle-row__group--fill');
+            await expect(group).toHaveCount(1);
+            await expectToggleGroupForm(page, group, { tone, floor: 32 });
+            await page.emulateMedia({ contrast: 'more' });
+            await expectToggleGroupForm(page, group, { tone, floor: 32, more: true });
+        });
+    }
+}
 
 test('Agents globals and Connections switches use the shared row semantics', async ({ page, baseURL }) => {
     await loadSettings(page, baseURL);

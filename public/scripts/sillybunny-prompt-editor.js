@@ -868,8 +868,7 @@ export function initializePromptEditor(column) {
     }
 
     function segmented(label, choices, value, change) {
-        // The prompt sheet scopes its own pill styling (sillybunny-prompt-editor.css:601).
-        return createSegmentedControl(label, choices, value, change, { compact: false });
+        return createSegmentedControl(label, choices, value, change);
     }
 
     function closePopover(animate = true, restoreFocus = false) {
@@ -1474,7 +1473,7 @@ export function initializePromptEditor(column) {
     window.addEventListener('pagehide', () => session.flushDraft());
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261114p', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261114t', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

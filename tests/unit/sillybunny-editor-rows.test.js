@@ -316,6 +316,7 @@ describe('createSwitchRow', () => {
         expect(row.tagName).toBe('LABEL');
         expect(row.className).toBe('ds-row ds-row-switch is-insensitive');
         expect(row.lastChild).toBe(control);
+        expect(row.firstChild.className).toBe('ds-row-text');
         expect(control.type).toBe('checkbox');
         expect(control.classList.contains('sb-switch')).toBe(true);
         expect(control.getAttribute('role')).toBe('switch');
@@ -387,13 +388,15 @@ describe('createSwitchRow', () => {
 });
 
 describe('createCheckRow', () => {
-    test('puts a plain native checkbox at the end of a whole-row label', () => {
+    test('puts a plain native checkbox at the start of a whole-row label, before its text', () => {
         const onChange = jest.fn();
         const { row, control } = createCheckRow({ label: 'Model', subtitle: 'Helpful description', field: 'model', checked: true, onChange });
         expect(row.tagName).toBe('LABEL');
         expect(row.className).toBe('ds-row ds-row-check');
         expect(row.htmlFor).toBe(control.id);
-        expect(row.lastChild).toBe(control);
+        expect(row.firstChild).toBe(control);
+        expect(row.lastChild.className).toBe('ds-row-text');
+        expect(row.children).toHaveLength(2);
         expect(control.type).toBe('checkbox');
         expect(control.classList.contains('sb-switch')).toBe(false);
         expect(control.hasAttribute('role')).toBe(false);
@@ -413,6 +416,7 @@ describe('createCheckRow', () => {
         control.addEventListener('input', existing);
         const result = createCheckRow({ label: 'API URL', field: 'exclude', input: control });
         expect(result.control).toBe(control);
+        expect(result.row.firstChild).toBe(control);
         expect([control.id, control.name, control.value]).toEqual(['existing-checkbox', 'preserved-name', 'api-url']);
         expect(control.classList.contains('sb-switch')).toBe(false);
         expect(control.hasAttribute('role')).toBe(false);

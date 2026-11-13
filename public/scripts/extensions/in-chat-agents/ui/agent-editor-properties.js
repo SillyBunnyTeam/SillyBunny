@@ -160,7 +160,7 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
         choices,
         choices[0][0],
         value => onChange(path, value),
-        { compact: false, detachFromForm: true },
+        { detachFromForm: true },
     );
     const stage = segmented(t`Stage`, stages, 'phase');
     const stageProperty = property('phase', t`Stage`, stage);

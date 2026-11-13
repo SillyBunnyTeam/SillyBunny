@@ -6249,10 +6249,18 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 }
 
 :is(.ds-row-switch, .ds-row-check) > input[type='checkbox'] {
-    order: 1;
     flex: 0 0 auto;
     margin: 0;
+}
+
+.ds-row-switch > input[type='checkbox'] {
+    order: 1;
     margin-inline-start: auto;
+}
+
+/* The row gap plus this is libadwaita's 12px between a check and its title. */
+.ds-row-check > input[type='checkbox'] {
+    margin-inline-end: 6px;
 }
 
 :is(.ds-row-switch, .ds-row-check):has(input:disabled) {
