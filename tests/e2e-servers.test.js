@@ -1,4 +1,4 @@
-import { describe, expect, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,6 +15,8 @@ import {
     getServerConfig,
     getServerCount,
     getServerUrl,
+    isFirstRunOver,
+    waitUntilFirstRunIsOver,
 } from './e2e-servers.js';
 
 const SERVERS = [
@@ -67,7 +69,10 @@ describe('e2e servers', () => {
 
     test('starts a server with Bun, or with Node.js when asked, without a shell', () => {
         const server = { port: 5001, dataRoot: '/tmp/sillybunny test $data' };
-        const args = ['server.js', '--browserLaunchEnabled=false', '--port', '5001', '--dataRoot', '/tmp/sillybunny test $data'];
+        const args = [
+            'server.js', '--browserLaunchEnabled=false', '--port', '5001', '--dataRoot', '/tmp/sillybunny test $data',
+            '--configPath', path.join('/tmp/sillybunny test $data', 'config.yaml'),
+        ];
         expect(getServerCommand({}, server)).toEqual({ command: 'bun', args });
         expect(getServerCommand({ SILLYBUNNY_TEST_SERVER_RUNTIME: 'node' }, server)).toEqual({ command: process.execPath, args: ['--no-warnings', ...args] });
         expect(() => getServerCommand({ SILLYBUNNY_TEST_SERVER_RUNTIME: 'deno' }, server)).toThrow('SILLYBUNNY_TEST_SERVER_RUNTIME');
@@ -156,5 +161,77 @@ describe('e2e servers', () => {
         expect(Object.hasOwn(config.use, 'baseURL')).toBe(true);
         expect(config.use.baseURL).toBeUndefined();
         expect(config.workers).toBe(getDefaultWorkers(SERVERS.length, os.cpus().length));
+    });
+
+    test('starts the servers in a main process that inherits an empty parallel index', async () => {
+        const env = { SILLYBUNNY_TEST_SERVERS: '1', TEST_PARALLEL_INDEX: '' };
+        let servers = [];
+        try {
+            const config = await getServerConfig(env);
+            servers = JSON.parse(env[SERVER_LIST_VARIABLE] ?? '[]');
+
+            expect(servers).toHaveLength(1);
+            expect(config.config.webServer.command).toContain('e2e-servers-launch.js');
+            expect(Object.hasOwn(config.use, 'baseURL')).toBe(true);
+            expect(config.use.baseURL).toBeUndefined();
+            expect(env.SILLYBUNNY_TEST_BASE_URL).toBeUndefined();
+        } finally {
+            for (const { dataRoot } of servers) {
+                fs.rmSync(dataRoot, { recursive: true, force: true });
+            }
+        }
+    });
+
+    describe('first run of a server', () => {
+        let dataRoot;
+        let settingsFile;
+
+        beforeEach(() => {
+            dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-first-run-'));
+            settingsFile = path.join(dataRoot, 'default-user', 'settings.json');
+        });
+
+        afterEach(() => {
+            fs.rmSync(dataRoot, { recursive: true, force: true });
+        });
+
+        const store = text => {
+            fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+            fs.writeFileSync(settingsFile, text);
+        };
+
+        test('is over only when the stored settings say so', () => {
+            expect(isFirstRunOver(dataRoot)).toBe(false);
+
+            store('{ "firstRun": fal');
+            expect(isFirstRunOver(dataRoot)).toBe(false);
+
+            store(JSON.stringify({ firstRun: true }));
+            expect(isFirstRunOver(dataRoot)).toBe(false);
+
+            store(JSON.stringify({ firstRun: false }));
+            expect(isFirstRunOver(dataRoot)).toBe(true);
+        });
+
+        test('is awaited until the server has stored its end', async () => {
+            store(JSON.stringify({ firstRun: true }));
+            let over = false;
+            const wait = waitUntilFirstRunIsOver(dataRoot, { timeoutMs: 10_000, intervalMs: 5 }).then(() => {
+                over = true;
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(over).toBe(false);
+
+            store(JSON.stringify({ firstRun: false }));
+            await wait;
+            expect(over).toBe(true);
+        });
+
+        test('fails the wait with the data root when its end is not stored in time', async () => {
+            store(JSON.stringify({ firstRun: true }));
+
+            await expect(waitUntilFirstRunIsOver(dataRoot, { timeoutMs: 30, intervalMs: 5 })).rejects.toThrow(dataRoot);
+        });
     });
 });
