@@ -290,7 +290,8 @@ for (const width of [1440, 390]) {
                 const style = getComputedStyle(node);
                 return { height: style.height, background: style.backgroundColor, appearance: style.appearance };
             });
-            expect(ageStyles.height).toBe(width === 390 ? '44px' : '34px');
+            // The number of a spin row draws no field: its box is the hit height of the buttons beside it.
+            expect(ageStyles.height).toBe(width === 390 ? '44px' : '32px');
             expect(ageStyles.appearance).toBe('textfield');
             const datedOnly = cleanup.locator('.chat_cleanup_checkbox');
             await expect(datedOnly.getByRole('switch', { name: 'Dated only', exact: true })).toBeChecked();

@@ -682,3 +682,113 @@ test.describe('World Info selection touch entry', () => {
         await expect(alpha).toBeFocused();
     });
 });
+
+async function openSpinRows(page) {
+    const editor = await openBook(page);
+    await row(editor, 'Alpha').click();
+    const entry = editor.locator('.sb-wi-entry');
+    await expect(entry).toBeVisible();
+    await entry.locator('details.ds-row-expander').evaluateAll(sections => sections.forEach(section => { section.open = true; }));
+    await expect(entry.locator('.ds-row--spin').first()).toBeVisible();
+    return entry;
+}
+
+/** Reads the geometry of every visible spin row: the buttons' boxes, the drawn gap between the circles and the placeholder. */
+const measureSpinRows = page => page.evaluate(() => [...document.querySelectorAll('.sb-wi-entry .ds-row--spin')].filter(row => row.offsetParent).map((row) => {
+    const input = row.querySelector('.ds-row-suffix > input');
+    const [down, up] = [...row.querySelectorAll('.ds-spin-btn')].map(button => button.getBoundingClientRect());
+    const draw = parseFloat(getComputedStyle(row.querySelector('.ds-spin-btn'), '::before').width);
+    const style = getComputedStyle(input, '::placeholder');
+    const probe = document.createElement('span');
+    probe.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font:${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    probe.textContent = input.placeholder;
+    document.body.append(probe);
+    const placeholderWidth = probe.getBoundingClientRect().width;
+    probe.remove();
+    return {
+        title: row.querySelector('.ds-row-label').textContent,
+        down: { width: down.width, height: down.height },
+        up: { width: up.width, height: up.height },
+        boxGap: up.left - down.right,
+        drawnGap: (up.left + (up.width - draw) / 2) - (down.right - (down.width - draw) / 2),
+        draw,
+        placeholderWidth,
+        valueWidth: input.clientWidth,
+        rowHeight: row.getBoundingClientRect().height,
+        overflows: row.scrollWidth > row.clientWidth + 1,
+    };
+}));
+
+test.describe('World Info spin rows on a coarse pointer', () => {
+    test.use({ viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true });
+
+    test('keep 44px targets 14px apart, show the whole placeholder and do not overflow', async ({ page }) => {
+        await openSpinRows(page);
+        const rows = await measureSpinRows(page);
+        expect(rows.length).toBeGreaterThanOrEqual(4);
+        for (const spin of rows) {
+            expect(spin.down.width, spin.title).toBeGreaterThanOrEqual(44);
+            expect(spin.down.height, spin.title).toBeGreaterThanOrEqual(44);
+            expect(spin.up.width, spin.title).toBeGreaterThanOrEqual(44);
+            expect(spin.up.height, spin.title).toBeGreaterThanOrEqual(44);
+            expect(spin.boxGap, spin.title).toBeGreaterThanOrEqual(-0.5);
+            expect(spin.draw, spin.title).toBe(30);
+            expect(spin.drawnGap, spin.title).toBeCloseTo(14, 0);
+            expect(spin.valueWidth, spin.title).toBeGreaterThanOrEqual(spin.placeholderWidth);
+            expect(spin.overflows, spin.title).toBe(false);
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    });
+
+    test('the plus and minus buttons edit the entry like typing', async ({ page }) => {
+        const entry = await openSpinRows(page);
+        const sticky = entry.locator('.ds-row--spin', { hasText: 'Sticky' });
+        const field = sticky.getByRole('spinbutton');
+        await expect(field).toHaveValue('');
+        await sticky.locator('.ds-spin-btn--up').tap();
+        await expect(field).toHaveValue('1');
+        await sticky.locator('.ds-spin-btn--up').tap();
+        await expect(field).toHaveValue('2');
+        await sticky.locator('.ds-spin-btn--down').tap();
+        await expect(field).toHaveValue('1');
+        await sticky.locator('.ds-spin-btn--down').tap();
+        await expect(field).toHaveValue('0');
+        await expect(sticky.locator('.ds-spin-btn--down')).toBeDisabled();
+    });
+});
+
+test.describe('World Info spin rows on a fine pointer', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    test('keep 32px targets 6px apart', async ({ page }) => {
+        await openSpinRows(page);
+        const rows = await measureSpinRows(page);
+        expect(rows.length).toBeGreaterThanOrEqual(4);
+        for (const spin of rows) {
+            expect(spin.down.width, spin.title).toBeGreaterThanOrEqual(32);
+            expect(spin.down.height, spin.title).toBeGreaterThanOrEqual(32);
+            expect(spin.up.width, spin.title).toBeGreaterThanOrEqual(32);
+            expect(spin.up.height, spin.title).toBeGreaterThanOrEqual(32);
+            expect(spin.boxGap, spin.title).toBeGreaterThanOrEqual(0);
+            expect(spin.drawnGap, spin.title).toBeCloseTo(6, 0);
+            expect(spin.valueWidth, spin.title).toBeGreaterThanOrEqual(spin.placeholderWidth);
+            expect(spin.rowHeight, spin.title).toBeLessThanOrEqual(44.5);
+        }
+    });
+
+    test('the row draws the focus ring, not the number', async ({ page }) => {
+        const entry = await openSpinRows(page);
+        const spin = entry.locator('.ds-row--spin').first();
+        await spin.getByRole('spinbutton').focus();
+        await expect(spin).toBeVisible();
+        const rings = await spin.evaluate(row => {
+            const field = row.querySelector('input');
+            const style = getComputedStyle(field);
+            return { row: getComputedStyle(row).boxShadow, fieldShadow: style.boxShadow, fieldOutline: style.outlineStyle, fieldBackground: style.backgroundColor };
+        });
+        expect(rings.row).toMatch(/inset/);
+        expect(rings.fieldShadow).toBe('none');
+        expect(rings.fieldOutline).toBe('none');
+        expect(rings.fieldBackground).toBe('rgba(0, 0, 0, 0)');
+    });
+});

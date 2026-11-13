@@ -111,8 +111,10 @@ export async function installProbes(page) {
                 const element = document.activeElement;
                 if (!element || element === document.body || element === document.documentElement) return { kind: 'document', id: -1 };
                 if (!seenStops.includes(element)) seenStops.push(element);
-                // A segmented control hides its radio at opacity 0 and draws the ring on the next sibling.
-                const segment = element.matches('.sb-boolean-radio-option > input') ? element.nextElementSibling : null;
+                // A segmented control hides its radio at opacity 0 and draws the ring on the next sibling; a spin row's
+                // number draws no ring of its own, its row does.
+                const segment = element.matches('.sb-boolean-radio-option > input') ? element.nextElementSibling
+                    : element.matches('.ds-row--spin > .ds-row-suffix > input.ds-spin') ? element.closest('.ds-row--spin') : null;
                 const style = getComputedStyle(segment ?? element);
                 return {
                     kind: 'element',

@@ -549,6 +549,256 @@ describe('createSpinRow', () => {
     });
 });
 
+describe('createSpinRow buttons', () => {
+    const buttonsOf = ({ row }) => ({
+        down: row.querySelector('.ds-row-suffix > .ds-spin-btn--down'),
+        up: row.querySelector('.ds-row-suffix > .ds-spin-btn--up'),
+    });
+    const press = button => button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const typed = (control, value) => {
+        control.value = value;
+        control.dispatchEvent(new Event('input', { bubbles: true }));
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    test.each([
+        ['a created input', () => createSpinRow({ label: 'Count', field: 'count', value: 4 })],
+        ['an adopted input', () => createSpinRow({ label: 'Count', field: 'count', input: input('number', '4') })],
+        ['an adopted text input without normalizing', () => createSpinRow({ label: 'Count', field: 'count', input: input('text', '4'), normalize: false })],
+        ['an adopted number input without normalizing', () => createSpinRow({ label: 'Count', field: 'count', input: input('number', '4'), normalize: false })],
+    ])('%s gets a minus and a plus button after the field, named by a copy placeholder', (_name, make) => {
+        const result = make();
+        const { down, up } = buttonsOf(result);
+        const suffix = result.row.querySelector('.ds-row-suffix');
+        expect([...suffix.children]).toEqual([result.control, down, up]);
+        expect(result.row.classList.contains('ds-row--spin')).toBe(true);
+        for (const [button, icon] of [[down, 'fa-minus'], [up, 'fa-plus']]) {
+            expect(button.tagName).toBe('BUTTON');
+            expect(button.type).toBe('button');
+            expect(button.getAttribute('aria-label')).toBe('TODO(copy)');
+            expect(button.title).toBe('TODO(copy)');
+            expect(button.dataset.sbCopyPlaceholder).toBe('true');
+            const glyph = button.querySelector('i');
+            expect(glyph.classList.contains(icon)).toBe(true);
+            expect(glyph.getAttribute('aria-hidden')).toBe('true');
+        }
+    });
+
+    test('steps by the input step and dispatches input then change on the native input', () => {
+        const onChange = jest.fn();
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 0, max: 20, step: 2, onChange });
+        const { down, up } = buttonsOf(result);
+        const events = [];
+        let bubbled = true;
+        for (const type of ['input', 'change']) {
+            result.control.addEventListener(type, event => {
+                events.push(`${type}:${result.control.value}`);
+                bubbled &&= event.bubbles;
+            });
+        }
+        press(up);
+        expect(result.control.value).toBe('6');
+        expect(events).toEqual(['input:6', 'change:6']);
+        expect(bubbled).toBe(true);
+        expect(onChange).toHaveBeenLastCalledWith(6);
+        press(down);
+        press(down);
+        expect(result.control.value).toBe('2');
+        expect(onChange).toHaveBeenLastCalledWith(2);
+        expect(result.getValue()).toBe(2);
+    });
+
+    test('listeners that existed before the row see the stepped value', () => {
+        const control = input('number', '5');
+        const listener = jest.fn(() => control.value);
+        control.addEventListener('input', listener);
+        control.addEventListener('change', listener);
+        const result = createSpinRow({ label: 'Count', field: 'count', input: control });
+        press(buttonsOf(result).up);
+        expect(listener).toHaveBeenCalledTimes(2);
+        expect(listener.mock.results.map(entry => entry.value)).toEqual(['6', '6']);
+    });
+
+    test.each([['any'], [undefined], ['0'], ['-2'], ['abc']])('step %j steps by 1', step => {
+        const control = input('number', '10');
+        if (step !== undefined) control.setAttribute('step', step);
+        const result = createSpinRow({ label: 'Count', field: 'count', input: control, normalize: false });
+        press(buttonsOf(result).up);
+        expect(control.value).toBe('11');
+        press(buttonsOf(result).down);
+        press(buttonsOf(result).down);
+        expect(control.value).toBe('9');
+    });
+
+    test('the any step of a created row also steps by 1', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 3, step: 'any', nullable: true });
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('4');
+    });
+
+    test('decimal steps carry no floating point noise', () => {
+        const result = createSpinRow({ label: 'Rate', field: 'rate', value: 0.2, step: 0.1 });
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('0.3');
+        press(buttonsOf(result).up);
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('0.5');
+        typed(result.control, '1.005');
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('1.105');
+    });
+
+    test('clamps to min and max, and disables the button that cannot move', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 7, min: 2, max: 8, step: 2 });
+        const { down, up } = buttonsOf(result);
+        expect([down.disabled, up.disabled]).toEqual([false, false]);
+        press(up);
+        expect(result.control.value).toBe('8');
+        expect([down.disabled, up.disabled]).toEqual([false, true]);
+        press(up);
+        expect(result.control.value).toBe('8');
+        for (let index = 0; index < 5; index++) press(down);
+        expect(result.control.value).toBe('2');
+        expect([down.disabled, up.disabled]).toEqual([true, false]);
+    });
+
+    test('a disabled button does nothing and sends no event', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 8, min: 2, max: 8 });
+        const listener = jest.fn();
+        result.control.addEventListener('input', listener);
+        result.control.addEventListener('change', listener);
+        buttonsOf(result).up.click();
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('bounds are read when pressed, so limits written after the row exists apply', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 3, nullable: true, step: 'any' });
+        result.control.min = '0';
+        result.control.max = '4';
+        press(buttonsOf(result).up);
+        expect(result.control.value).toBe('4');
+        expect(buttonsOf(result).up.disabled).toBe(true);
+    });
+
+    describe('an empty nullable value', () => {
+        test('counts as 0, so the first press adds or subtracts one step, then the bounds apply', () => {
+            const plain = createSpinRow({ label: 'Count', field: 'count', nullable: true, step: 3 });
+            expect(plain.control.value).toBe('');
+            press(buttonsOf(plain).up);
+            expect(plain.control.value).toBe('3');
+            const lower = createSpinRow({ label: 'Count', field: 'count', nullable: true });
+            press(buttonsOf(lower).down);
+            expect(lower.control.value).toBe('-1');
+        });
+
+        test('with a minimum above 0 the first press of either button sets the minimum', () => {
+            for (const key of ['up', 'down']) {
+                const result = createSpinRow({ label: 'Depth', field: 'depth', nullable: true, min: 2, max: 9 });
+                expect([buttonsOf(result).down.disabled, buttonsOf(result).up.disabled]).toEqual([false, false]);
+                press(buttonsOf(result)[key]);
+                expect(result.control.value).toBe('2');
+            }
+        });
+
+        test('with a minimum of 0 the plus button sets the step and the minus button sets 0', () => {
+            const up = createSpinRow({ label: 'Sticky', field: 'sticky', nullable: true, min: 0, step: 'any' });
+            press(buttonsOf(up).up);
+            expect(up.control.value).toBe('1');
+            const down = createSpinRow({ label: 'Sticky', field: 'sticky', nullable: true, min: 0, step: 'any' });
+            press(buttonsOf(down).down);
+            expect(down.control.value).toBe('0');
+        });
+
+        test('unparsable text in an unnormalized text field counts as empty', () => {
+            const control = input('text', 'abc');
+            const result = createSpinRow({ label: 'Count', field: 'count', input: control, normalize: false });
+            press(buttonsOf(result).up);
+            expect(control.value).toBe('1');
+        });
+    });
+
+    test('a normalized row reports the stepped value to onChange once per press', () => {
+        const onChange = jest.fn();
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8, nullable: true, onChange });
+        press(buttonsOf(result).up);
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange).toHaveBeenCalledWith(5);
+    });
+
+    test('keeps the buttons in step with typing, setValue and the bounds of the field', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8 });
+        const { down, up } = buttonsOf(result);
+        typed(result.control, '8');
+        expect(up.disabled).toBe(true);
+        typed(result.control, '2');
+        expect([down.disabled, up.disabled]).toEqual([true, false]);
+        result.setValue(8);
+        expect([down.disabled, up.disabled]).toEqual([false, true]);
+        result.setValue(5);
+        expect([down.disabled, up.disabled]).toEqual([false, false]);
+    });
+
+    test('a value written by other code is picked up when the pointer or focus reaches the row', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8 });
+        result.control.value = '8';
+        expect(buttonsOf(result).up.disabled).toBe(false);
+        result.row.dispatchEvent(new Event('pointerover', { bubbles: true }));
+        expect(buttonsOf(result).up.disabled).toBe(true);
+        result.control.value = '3';
+        result.control.dispatchEvent(new Event('focusin', { bubbles: true }));
+        expect(buttonsOf(result).up.disabled).toBe(false);
+    });
+
+    test('a disabled or read-only field disables both buttons, and setDisabled follows', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 4, min: 2, max: 8 });
+        const { down, up } = buttonsOf(result);
+        result.setDisabled(true);
+        expect([result.control.disabled, down.disabled, up.disabled]).toEqual([true, true, true]);
+        result.setDisabled(false);
+        expect([down.disabled, up.disabled]).toEqual([false, false]);
+        result.control.readOnly = true;
+        result.setValue(5);
+        expect([down.disabled, up.disabled]).toEqual([true, true]);
+        const locked = input('number', '4');
+        locked.disabled = true;
+        const adopted = createSpinRow({ label: 'Count', field: 'count', input: locked });
+        expect([buttonsOf(adopted).down.disabled, buttonsOf(adopted).up.disabled]).toEqual([true, true]);
+    });
+
+    test('focus moves to the field when the focused button reaches its bound', () => {
+        const result = createSpinRow({ label: 'Count', field: 'count', value: 7, min: 2, max: 8 });
+        document.body.replaceChildren(result.row);
+        const { up } = buttonsOf(result);
+        up.focus();
+        expect(document.activeElement).toBe(up);
+        press(up);
+        expect(up.disabled).toBe(true);
+        expect(document.activeElement).toBe(result.control);
+    });
+
+    test('a placeholder reserves its width in the row through --sb-spin-chars', () => {
+        const withHint = createSpinRow({ label: 'Count', field: 'count', nullable: true, placeholder: 'Use global setting' });
+        expect(withHint.row.style.getPropertyValue('--sb-spin-chars')).toBe('18');
+        const without = createSpinRow({ label: 'Count', field: 'count' });
+        expect(without.row.style.getPropertyValue('--sb-spin-chars')).toBe('');
+        const adopted = input('number', '');
+        adopted.placeholder = 'No delay';
+        expect(createSpinRow({ label: 'Count', field: 'count', input: adopted, normalize: false }).row.style.getPropertyValue('--sb-spin-chars')).toBe('8');
+    });
+
+    test('destroy removes the row and stops the field from driving the buttons', () => {
+        const adopted = input('number', '7');
+        adopted.max = '8';
+        const result = createSpinRow({ label: 'Count', field: 'count', input: adopted, normalize: false });
+        const { up } = buttonsOf(result);
+        document.body.replaceChildren(result.row);
+        result.destroy();
+        expect(document.body.contains(result.row)).toBe(false);
+        typed(result.control, '8');
+        expect(up.disabled).toBe(false);
+    });
+});
+
 describe('createEntryRow', () => {
     test('adopts Popup mainInput without changing textarea identity, classes or results', () => {
         const input = document.createElement('textarea');

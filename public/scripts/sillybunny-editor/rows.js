@@ -293,7 +293,122 @@ function numberAttribute(input, name) {
     return Number.isFinite(value) ? value : undefined;
 }
 
+// Not yet worded: both buttons carry the copy placeholder. rows.js takes no i18n import (its callers pass translated labels).
+const SPIN_BUTTON_LABEL = 'TODO(copy)';
+
+/** The step of the buttons is the input's `step`; `any`, a missing or a non-positive step steps by 1. */
+function spinStep(control) {
+    const step = numberAttribute(control, 'step');
+    return step !== undefined && step > 0 ? step : 1;
+}
+
+function decimalPlaces(number) {
+    const [, fraction = '', exponent = '0'] = /(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(number));
+    return Math.max(0, fraction.length - Number(exponent));
+}
+
+function spinValue(control) {
+    const raw = control.value.trim();
+    const number = raw === '' ? Number.NaN : Number(raw);
+    return Number.isFinite(number) ? number : null;
+}
+
 /**
+ * The minus and plus buttons of a spin row. They act on the field as typing would: the new value is
+ * written, then `input` and `change` are dispatched on it, so every listener on the field runs.
+ * An empty (or unparsable) field counts as 0 before the step, as the native stepper does, so the first
+ * press adds or subtracts one step and the bounds then apply (a minimum above 0 is what either press sets).
+ */
+function createSpinButtons(control, row) {
+    const button = (direction, icon) => {
+        const node = element('button', `ds-spin-btn ds-spin-btn--${direction}`);
+        node.type = 'button';
+        node.setAttribute('aria-label', SPIN_BUTTON_LABEL);
+        node.title = SPIN_BUTTON_LABEL;
+        node.dataset.sbCopyPlaceholder = 'true';
+        const glyph = element('i', `fa-solid ${icon}`);
+        glyph.setAttribute('aria-hidden', 'true');
+        node.append(glyph);
+        return node;
+    };
+    const decrease = button('down', 'fa-minus');
+    const increase = button('up', 'fa-plus');
+    const bounds = () => [numberAttribute(control, 'min') ?? -Infinity, numberAttribute(control, 'max') ?? Infinity];
+
+    const sync = () => {
+        const locked = control.disabled || control.readOnly;
+        const [lower, upper] = bounds();
+        const current = spinValue(control);
+        const refresh = (node, limited) => {
+            const disabled = locked || (current !== null && limited);
+            // A disabled button drops focus, so a keyboard user who reached a bound keeps their place in the field.
+            if (disabled && !node.disabled && node.ownerDocument.activeElement === node) control.focus();
+            node.disabled = disabled;
+        };
+        refresh(decrease, current !== null && current <= lower);
+        refresh(increase, current !== null && current >= upper);
+    };
+
+    const step = direction => {
+        const [lower, upper] = bounds();
+        const current = spinValue(control) ?? 0;
+        const size = spinStep(control);
+        const places = Math.max(decimalPlaces(size), decimalPlaces(current));
+        const next = Math.min(upper, Math.max(lower, Number((current + direction * size).toFixed(places))));
+        if (next === spinValue(control)) return;
+        control.value = String(next);
+        control.dispatchEvent(new Event('input', { bubbles: true }));
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    decrease.addEventListener('click', () => step(-1));
+    increase.addEventListener('click', () => step(1));
+
+    // Other code writes the value without an event, so the row also looks again when the user reaches it.
+    control.addEventListener('input', sync);
+    control.addEventListener('change', sync);
+    row.addEventListener('pointerover', sync);
+    row.addEventListener('focusin', sync);
+    sync();
+    return {
+        nodes: [decrease, increase],
+        sync,
+        destroy() {
+            control.removeEventListener('input', sync);
+            control.removeEventListener('change', sync);
+        },
+    };
+}
+
+/** Builds the row, adds the spin buttons after the field and lets the row controller drive them. */
+function spinRow(label, subtitle, field, control) {
+    const row = suffixRow(label, subtitle, field, control);
+    row.classList.add('ds-row--spin');
+    // The stylesheet cannot measure a placeholder, so the row reserves room for its length.
+    if (control.placeholder) row.style.setProperty('--sb-spin-chars', String(control.placeholder.length));
+    const buttons = createSpinButtons(control, row);
+    row.querySelector('.ds-row-suffix').append(...buttons.nodes);
+    const controller = rowController(row, control);
+    buttons.sync();
+    return {
+        row,
+        buttons,
+        controller: {
+            ...controller,
+            setDisabled(disabled) {
+                controller.setDisabled(disabled);
+                buttons.sync();
+            },
+            destroy() {
+                buttons.destroy();
+                controller.destroy();
+            },
+        },
+    };
+}
+
+/**
+ * The value is right-aligned at the end of the row with a minus and a plus button beside it. The buttons
+ * step by the input's `step` (`any` steps by 1), stop at `min` and `max`, and disable there.
  * @param {object} options
  * @param {string} options.label
  * @param {string} options.field
@@ -302,7 +417,7 @@ function numberAttribute(input, name) {
  * @param {number|null} [options.value]
  * @param {number} [options.min]
  * @param {number} [options.max]
- * @param {number} [options.step=1]
+ * @param {number|'any'} [options.step=1]
  * @param {boolean} [options.nullable=false]
  * @param {boolean} [options.normalize=true]  False keeps an adopted text/number input's upstream validation unchanged.
  * @param {string} [options.placeholder]
@@ -318,8 +433,7 @@ export function createSpinRow({ label, subtitle, field, id, value, min, max, ste
         ensureId(input, id);
         input.classList.add('ds-spin');
         input.inputMode = 'numeric';
-        const row = suffixRow(label, subtitle, field, input);
-        return rowController(row, input);
+        return spinRow(label, subtitle, field, input).controller;
     }
     const control = prepareInput(input, 'number', id);
     // Created spin inputs take the app's themed field style; adopted ones keep their own classes.
@@ -347,16 +461,18 @@ export function createSpinRow({ label, subtitle, field, id, value, min, max, ste
         return previousValue;
     };
     commit(value === undefined ? control.value : value);
-    const row = suffixRow(label, subtitle, field, control);
+    const { buttons, controller } = spinRow(label, subtitle, field, control);
     control.addEventListener('change', () => {
         const next = commit(control.value);
+        buttons.sync();
         onChange?.(next);
     });
     return {
-        ...rowController(row, control),
+        ...controller,
         getValue: () => normalize(control.value),
         setValue(value, { silent = true } = {}) {
             const next = commit(value);
+            buttons.sync();
             if (!silent) onChange?.(next);
         },
     };

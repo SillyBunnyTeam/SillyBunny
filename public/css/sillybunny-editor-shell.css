@@ -1276,13 +1276,6 @@ body.reduced-motion [data-selection-mode='true'] button.menu_button.sb-selection
     min-width: 0;
 }
 
-.ds-row-suffix > input.ds-spin {
-    width: 7em;
-    min-width: 0;
-    text-align: end;
-    font-variant-numeric: tabular-nums;
-}
-
 .menu_button:is(.sb-selection-cancel, .sb-selection-select-all, .sb-selection-action, .sb-status-page__action) {
     white-space: nowrap;
 }

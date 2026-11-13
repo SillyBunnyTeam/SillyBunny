@@ -244,7 +244,7 @@
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-#sb-settings-page .sb-persona-entry :is(input:not([type='checkbox']), textarea):focus-visible,
+#sb-settings-page .sb-persona-entry :is(input:not([type='checkbox'], .ds-spin), textarea):focus-visible,
 :is(.sb-persona-property-sheet, .sb-dialog.sb-persona-properties-dialog) input:focus-visible {
     outline: none;
     border-color: var(--sb-composer-focus-border);

@@ -977,7 +977,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     color: inherit;
 }
 
-#sb-settings-page .sb-wi-entry :is(input:not([type='checkbox']), textarea):focus-visible {
+#sb-settings-page .sb-wi-entry :is(input:not([type='checkbox'], .ds-spin), textarea):focus-visible {
     outline: none;
     border-color: var(--sb-composer-focus-border);
     box-shadow: var(--sb-composer-focus-ring);

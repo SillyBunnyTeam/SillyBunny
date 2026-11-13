@@ -3883,7 +3883,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
 }
 
-.sb-chat-history-cleanup-page .ds-row-suffix > :is(input.ds-spin, select) {
+.sb-chat-history-cleanup-page .ds-row-suffix > select {
     box-sizing: border-box;
     height: 34px;
     min-height: 34px;
@@ -3892,17 +3892,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     border-radius: var(--sb-radius-control);
     background: color-mix(in srgb, var(--sb-shell-text) 10%, transparent);
     color: var(--sb-shell-text);
-}
-
-.sb-chat-history-cleanup-page input.ds-spin {
-    appearance: textfield;
-    -webkit-appearance: textfield;
-    -moz-appearance: textfield;
-}
-
-.sb-chat-history-cleanup-page input.ds-spin::-webkit-inner-spin-button,
-.sb-chat-history-cleanup-page input.ds-spin::-webkit-outer-spin-button {
-    -webkit-appearance: none;
 }
 
 .sb-chat-history-cleanup-page .ds-chat-history-unit-row .ds-row-suffix {
@@ -5695,6 +5684,170 @@ body.reduced-motion .sb-search-entry {
 
 .ds-row-suffix > :is(input, select, textarea) {
     margin: 0;
+}
+
+/* Spin row: the value takes the free width and is right-aligned, beside a round minus and plus button.
+   The buttons draw 30px; their hit area is the 32px (44px coarse) box, which reaches out of the row through
+   the suffix's negative margin, so the row keeps its height. The circles sit 6px apart (14px coarse), and
+   on a coarse pointer the two 44px boxes abut. The row draws the focus ring, not the field. */
+.ds-row--spin {
+    --sb-spin-draw: 30px;
+    --sb-spin-hit: 32px;
+    --sb-spin-gap: 6px;
+    --sb-spin-number-min: max(3.5em, calc(var(--sb-spin-chars, 0) * 0.55 * var(--sb-type-caption)));
+    --sb-spin-overhang: calc((var(--sb-spin-hit) - var(--sb-spin-draw)) / 2);
+    --sb-spin-before-minus: max(0px, calc(6px - var(--sb-spin-overhang)));
+    --sb-spin-between: calc(var(--sb-spin-gap) - 2 * var(--sb-spin-overhang));
+}
+
+@media (pointer: coarse) {
+    .ds-row--spin {
+        --sb-spin-hit: 44px;
+        --sb-spin-gap: 14px;
+    }
+}
+
+.ds-row.ds-row--spin > .ds-row-text {
+    flex: 0 1 auto;
+}
+
+.ds-row.ds-row--spin > .ds-row-suffix {
+    flex: 1 1 0;
+    gap: 0;
+    min-width: calc(var(--sb-spin-number-min) + var(--sb-spin-before-minus) + 2 * var(--sb-spin-hit) + var(--sb-spin-between));
+    margin-block: calc(-1 * var(--sb-spin-overhang));
+    margin-inline-end: calc(-1 * var(--sb-spin-overhang));
+}
+
+.ds-row.ds-row--spin > .ds-row-suffix > input.ds-spin {
+    flex: 1 1 0;
+    box-sizing: border-box;
+    height: var(--sb-spin-hit);
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+    transition: none;
+    text-align: end;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+    -webkit-appearance: textfield;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+/* The entry focus rules of the theme match as many classes as the rule above; the same :not() chain wins over them. */
+.ds-row.ds-row--spin > .ds-row-suffix > input.ds-spin:is(:focus, :focus-visible):not([disabled]):not([readonly]) {
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.ds-row--spin > .ds-row-suffix > input.ds-spin::-webkit-inner-spin-button,
+.ds-row--spin > .ds-row-suffix > input.ds-spin::-webkit-outer-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+}
+
+.ds-row--spin > .ds-row-suffix > input.ds-spin::placeholder {
+    font-size: var(--sb-type-caption);
+    text-align: end;
+}
+
+.ds-row--spin:has(> .ds-row-suffix > input.ds-spin:focus-visible) {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.ds-spin-btn {
+    position: relative;
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--sb-spin-hit);
+    height: var(--sb-spin-hit);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-pill);
+    background: transparent;
+    color: var(--sb-shell-text);
+    font-size: var(--sb-type-caption);
+    line-height: 1;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ds-spin-btn--down {
+    margin-inline-start: var(--sb-spin-before-minus);
+}
+
+.ds-spin-btn--up {
+    margin-inline-start: var(--sb-spin-between);
+}
+
+.ds-spin-btn::before {
+    content: '';
+    position: absolute;
+    inset-block-start: calc((100% - var(--sb-spin-draw)) / 2);
+    inset-inline-start: calc((100% - var(--sb-spin-draw)) / 2);
+    width: var(--sb-spin-draw);
+    height: var(--sb-spin-draw);
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-raised-bg);
+}
+
+.ds-spin-btn > i {
+    position: relative;
+    pointer-events: none;
+}
+
+@media (hover: hover) {
+    .ds-spin-btn:not(:disabled):hover::before {
+        background: var(--sb-raised-hover-bg);
+    }
+}
+
+.ds-spin-btn:not(:disabled):active::before {
+    background: var(--sb-raised-active-bg);
+}
+
+.ds-spin-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.ds-spin-btn:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+@media (prefers-contrast: more) {
+    .ds-spin-btn:disabled {
+        opacity: 0.4;
+    }
+}
+
+/* Forced colours paint no shadow and no fill: the circle and the focus ring become outlines. */
+@media (forced-colors: active) {
+    .ds-spin-btn {
+        outline: 1px solid ButtonBorder;
+        outline-offset: calc(-1 * var(--sb-spin-overhang));
+    }
+
+    .ds-spin-btn:focus-visible {
+        outline: 2px solid Highlight;
+        outline-offset: calc(-1 * var(--sb-spin-overhang));
+    }
+
+    .ds-row--spin:has(> .ds-row-suffix > input.ds-spin:focus-visible) {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
 }
 
 /* Floating-title entry row (AdwEntryRow): the title sits in the field and floats above the value on
@@ -8512,7 +8665,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 @media screen and (max-width: 620px) {
     #sb-settings-page .sb-settings-mounted-shell .ds-row:is(.ds-row-slider, .ds-row-actions, .sb-import-pane),
-    #sb-settings-page .sb-settings-mounted-shell .ds-row:has(> .ds-row-suffix > input[type='number']),
+    #sb-settings-page .sb-settings-mounted-shell .ds-row:not(.ds-row--spin):has(> .ds-row-suffix > input[type='number']),
     #sb-settings-page .sb-settings-mounted-shell .ds-row:has(> .ds-row-suffix > .ds-control-flex),
     #sb-settings-page .ds-row:has(> .ds-row-suffix > textarea) {
         flex-direction: column;
@@ -8520,7 +8673,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     }
 
     #sb-settings-page .ds-row:is(.ds-row-actions, .sb-import-pane) > :is(.ds-row-text, .ds-row-suffix),
-    #sb-settings-page .ds-row:has(> .ds-row-suffix > input[type='number']) > :is(.ds-row-text, .ds-row-suffix),
+    #sb-settings-page .ds-row:not(.ds-row--spin):has(> .ds-row-suffix > input[type='number']) > :is(.ds-row-text, .ds-row-suffix),
     #sb-settings-page .ds-row:has(> .ds-row-suffix > textarea) > :is(.ds-row-text, .ds-row-suffix) {
         flex-basis: auto;
         width: 100%;
@@ -10198,7 +10351,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     }
 
     .sb-chat-history-row-actions > :is(.sb-dialog__icon-button, .PastChat_cross, .renameChatButton),
-    .sb-chat-history-cleanup-page .ds-row-suffix > :is(input.ds-spin, select),
+    .sb-chat-history-cleanup-page .ds-row-suffix > select,
     #right-nav-panel[data-menu-type="create"] #avatar_controls .char-button-group-icons :is(#create_button_label, #world_button) {
         height: 44px;
         min-height: 44px;
