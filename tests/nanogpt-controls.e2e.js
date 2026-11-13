@@ -252,6 +252,45 @@ for (const mobile of [false, true]) {
             expect(await page.evaluate(async () => (await import('/scripts/openai.js')).oai_settings.nanogpt_model)).toBe(MODELS[1].id);
         });
 
+        test('the model row describes the chosen model and follows a value written through select2', async ({ page, baseURL }, testInfo) => {
+            await setupNanoGpt(page, baseURL);
+            const detail = selectRow(page, 'model_nanogpt_select').locator('.ds-select-row__detail');
+            const value = rowTrigger(page, 'model_nanogpt_select').locator('.ds-select-row__value');
+            await expect(value).toHaveText(MODELS[0].name);
+            await expect(detail).toContainText('128000 ctx');
+            await expect(detail).toContainText('$0.15/$0.6 in/out Mtoken');
+            await expect(detail.getByRole('img', { name: 'This model supports vision' })).toHaveCount(1);
+            await expect(detail.locator('small[title]')).toHaveAttribute('title', 'Included in subscription');
+            await expect(rowTrigger(page, 'model_nanogpt_select')).toHaveAttribute('aria-describedby', await detail.getAttribute('id'));
+            await selectRow(page, 'model_nanogpt_select').scrollIntoViewIfNeeded();
+            await screenshot(page, testInfo, `${layout}-model-details`);
+
+            await chooseModel(page, mobile, MODELS[1]);
+            await expect(detail.locator('small[title]')).toHaveAttribute('title', 'Included in subscription - Input Multiplier: 2x');
+
+            // Upstream writes loaded values with trigger('change.select2'), which reaches no plain change listener.
+            const writeThroughSelect2 = id => page.evaluate(model => {
+                window.$('#model_nanogpt_select').val(model).trigger('change.select2');
+            }, id);
+            await writeThroughSelect2(MODELS[2].id);
+            await expect(value).toHaveText(MODELS[2].name);
+            await expect(detail.locator('small[title]')).toHaveAttribute('title', 'Not included in subscription');
+            await writeThroughSelect2(MODELS[3].id);
+            await expect(value).toHaveText(MODELS[3].name);
+            await expect(detail).toContainText('128000 ctx');
+            await expect(detail.locator('small[title]')).toHaveCount(0);
+
+            // A model without catalogue metadata shows its name only.
+            await page.evaluate(() => {
+                const select = document.getElementById('model_nanogpt_select');
+                select.append(new Option('Unlisted model', 'unlisted/model'));
+                window.$(select).val('unlisted/model').trigger('change.select2');
+            });
+            await expect(value).toHaveText('Unlisted model');
+            await expect(detail).toHaveCount(0);
+            await expect(rowTrigger(page, 'model_nanogpt_select')).not.toHaveAttribute('aria-describedby', /.+/);
+        });
+
         test('live catalogues and service tiers respect saved choices and PAYG eligibility', async ({ page, baseURL }, testInfo) => {
             const routes = await setupNanoGpt(page, baseURL);
             const tier = page.locator('#nanogpt_service_tier');

@@ -285,11 +285,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Tag Manager destructive deletion confirmation and member page data. |
 | Divergence reason | Upstream confirms tag deletion with a generic Popup where Return can confirm. SillyBunny uses the shared destructive Alert with Cancel focused and keeps the merge-target control inside it. The Tag Manager also needs avatar and member callbacks from this file for its member pages. |
 | Target seam | `public/scripts/sillybunny-editor/dialog.js` (`openAlert`); `public/scripts/sillybunny-tag-manager.js`. |
-| Adapter shape | Preserve the existing tag reference merge control and deletion persistence; replace only the confirmation surface and response IDs. Pass avatar getters and add/remove member callbacks to `openTagManager()`, which call the existing tag functions. |
-| Protecting tests | `tests/tag-manager.e2e.js`; `tests/unit/sillybunny-dialog.test.js`. |
-| Validation | Root lint; tests lint; focused and full unit tests; tag-manager Chromium E2E at desktop and phone widths. |
+| Adapter shape | Preserve the existing tag reference merge control and deletion persistence; replace only the confirmation surface and response IDs. Pass avatar getters and add/remove member callbacks to `openTagManager()`, which call the existing tag functions. The merge-target select is read through a held reference (`mergeSelect`, the template's top-level `select`, which `popupContent.find()` cannot reach) and adopted into a select row (`createSelectRow` in `createPrefGroup`). |
+| Protecting tests | `tests/tag-manager.e2e.js` (with `Delete Tag offers its merge target as a select row and merges into the tag picked there`); `tests/unit/sillybunny-dialog.test.js`. |
+| Validation | Root lint; tests lint; focused and full unit tests; tag-manager Chromium E2E at desktop and phone widths (2026-11-13, UI polish sweep task 2.5). |
 | Rollback path | In `public/scripts/tags.js`, replace the `openAlert()` call in the tag-deletion handler with `callGenericPopup(popupContent, POPUP_TYPE.CONFIRM)` and the `POPUP_RESULT.AFFIRMATIVE` check, and remove the `openAlert` import. Remove `getAvatar`, `getGroupAvatar`, `addMember` and `removeMember` from the `openTagManager()` call, and the two imports they need. The merge control and deletion code stay as they are. Then update the delete case in `tests/tag-manager.e2e.js`. |
-| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Last reviewed | 2026-11-13, UI polish sweep (the merge-target select row). |
 | Owner | UI overhaul integrator. |
 
 ### Utility dialogs - shared content rows

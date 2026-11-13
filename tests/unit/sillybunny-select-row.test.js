@@ -239,6 +239,112 @@ describe('createSelectRow', () => {
         expect(result.trigger.textContent).not.toContain('Claude Sonnet');
     });
 
+    describe('with a value written through select2 or a plain change', () => {
+        const loadSelect2 = () => new Function(readFileSync(new URL('../../public/lib/select2.min.js', import.meta.url), 'utf8')).call(window);
+
+        test('trigger(\'change.select2\') updates the row without running onChange', () => {
+            loadJQuery();
+            const select = makeSelect();
+            const onChange = jest.fn();
+            const { trigger } = mount({ select, onChange });
+            globalThis.jQuery(select).val('claude').trigger('change.select2');
+            expect(trigger.textContent).toContain('Claude Sonnet');
+            expect(onChange).not.toHaveBeenCalled();
+            globalThis.jQuery(select).val('gpt').trigger('change');
+            expect(trigger.textContent).toContain('GPT-4o');
+            expect(onChange).toHaveBeenCalledTimes(1);
+        });
+
+        test('a plain change event and a select2-namespaced one both update a multiple select', () => {
+            loadJQuery();
+            const select = makeSelect({ multiple: true });
+            const { trigger } = mount({ select, noneLabel: 'None' });
+            globalThis.jQuery(select).val(['gpt', 'claude']).trigger('change.select2');
+            expect(trigger.textContent).toContain('GPT-4o, Claude Sonnet');
+            select.querySelector('option[value="claude"]').selected = false;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(trigger.textContent).toBe('GPT-4o');
+        });
+
+        test('keeps following change.select2 after select2 is destroyed and initialised again', async () => {
+            loadJQuery();
+            loadSelect2();
+            const select = makeSelect();
+            globalThis.jQuery(select).select2();
+            const { trigger } = mount({ select });
+            globalThis.jQuery(select).select2('destroy');
+            globalThis.jQuery(select).select2();
+            await flush();
+            globalThis.jQuery(select).val('claude').trigger('change.select2');
+            expect(trigger.textContent).toContain('Claude Sonnet');
+            globalThis.jQuery(select).select2('destroy');
+        });
+
+        test('destroy unbinds the select2-namespaced listener', () => {
+            loadJQuery();
+            const select = makeSelect();
+            const result = mount({ select });
+            result.destroy();
+            globalThis.jQuery(select).val('claude').trigger('change.select2');
+            expect(result.trigger.textContent).not.toContain('Claude Sonnet');
+        });
+    });
+
+    describe('with an item mapper', () => {
+        const detailOf = row => row.querySelector('.ds-select-row__detail');
+
+        test('the row shows the selected option\'s details and follows every way the value changes', async () => {
+            loadJQuery();
+            const { createDetailsMapper, registerOptionDetails, icon } = await import('../../public/scripts/sillybunny-editor/option-details.js');
+            registerOptionDetails({ model_fixture_select: option => (option.value ? [`${option.value} ctx`, [icon('fa-solid fa-eye', 'Vision')]] : null) });
+            const select = makeSelect();
+            const { row, trigger } = mount({ select, mapItem: createDetailsMapper('model_fixture_select') });
+            expect(detailOf(row)).toBeNull();
+            globalThis.jQuery(select).val('gpt').trigger('change.select2');
+            expect(detailOf(row).textContent).toBe('gpt ctx · ');
+            expect(detailOf(row).querySelector('i[aria-label="Vision"]')).not.toBeNull();
+            expect(trigger.getAttribute('aria-describedby').split(/\s+/)).toContain(detailOf(row).id);
+            trigger.click();
+            pickerOptions().find(option => option.textContent.startsWith('Claude Sonnet')).click();
+            expect(detailOf(row).textContent).toBe('claude ctx · ');
+            select.value = '';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(detailOf(row)).toBeNull();
+            expect(trigger.getAttribute('aria-describedby')).toBeNull();
+        });
+
+        test('an option the mapper has no data for shows its title only', () => {
+            const select = makeSelect();
+            select.value = 'claude';
+            const { row, trigger } = mount({ select, mapItem: (item, option) => (option.value === 'gpt' ? { ...item, subtitle: 'Mapped' } : undefined) });
+            expect(detailOf(row)).toBeNull();
+            expect(trigger.textContent).toContain('Claude Sonnet');
+            select.value = 'gpt';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            expect(detailOf(row).textContent).toBe('Mapped');
+        });
+
+        test('a mapped title replaces the option text on the trigger and in the list', () => {
+            const select = makeSelect();
+            select.value = 'gpt';
+            const { trigger } = mount({ select, mapItem: (item, option) => (option.value ? { ...item, label: `${item.label} (mapped)` } : undefined) });
+            expect(trigger.textContent).toContain('GPT-4o (mapped)');
+            trigger.click();
+            expect(pickerOptions().map(option => option.querySelector('.sb-picker__label').textContent)).toEqual(['Select a model', 'GPT-4o (mapped)', 'GPT-4o mini (mapped)', 'Claude Sonnet (mapped)']);
+        });
+
+        test('a multiple select shows no details line, and a throwing mapper leaves the row working', () => {
+            const multiple = makeSelect({ multiple: true });
+            multiple.value = 'gpt';
+            expect(detailOf(mount({ select: multiple, mapItem: item => ({ ...item, subtitle: 'Mapped' }) }).row)).toBeNull();
+            const single = makeSelect();
+            single.value = 'gpt';
+            const { row, trigger } = mount({ select: single, mapItem: () => { throw new Error('bad entry'); } });
+            expect(detailOf(row)).toBeNull();
+            expect(trigger.textContent).toContain('GPT-4o');
+        });
+    });
+
     test('follows late option loads, attribute changes and external changes', async () => {
         const select = makeSelect();
         const { trigger, sync } = mount({ select });

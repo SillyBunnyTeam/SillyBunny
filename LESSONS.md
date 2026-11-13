@@ -181,6 +181,14 @@ This is the largest class by a wide margin.
   - **Breaks:** the trigger was described only by the row subtitle. The NanoGPT Allowed and Ignored providers rows lost the PAYG billing warning (`aria-describedby="nanogpt_billing_warning"` in `public/index.html`), and seven other Connections select rows, `#model_openai_select` among them, lost the help that `applyConnectionsFormPass()` (`public/scripts/sillybunny-connections-form.js`) attaches to the select after the row is built.
   - **Guard:** `sync()` gives the trigger the select's own description ids followed by the subtitle's id, and the row's existing `MutationObserver` on the select runs `sync()` again when a caller changes the select's `aria-describedby` later. The row never writes the select's attribute, so `destroy()` has nothing to restore.
   - **Tests:** `tests/unit/sillybunny-select-row.test.js` (`the trigger carries the select's own descriptions, then the subtitle`; `the trigger follows a description added to the select after the row is built`).
+- **Values written with `change.select2`:** upstream writes a loaded model with `$(select).val(x).trigger('change.select2')` (`openai.js`, `textgen-models.js`) to refresh select2 without running the page's change handlers.
+  - **Breaks:** jQuery runs only the handlers in the `select2` namespace for that event, so the row's `change.sbSelectRow` listener never ran, and setting `.value` queues no mutation. The row kept the old model name until something else changed the select. select2's `destroy()` also calls `off('.select2')`, which removes any listener bound in that namespace.
+  - **Guard:** `onSelectChanges()` in `select-row.js` also binds `sync` as `change.select2.sbSelectRow` and binds it again from the row's `MutationObserver` (select2 destroy and init change the select's class and attributes). The select2-namespaced listener only syncs; it never calls `onChange`, which stays for plain changes.
+  - **Tests:** `tests/unit/sillybunny-select-row.test.js` (`with a value written through select2 or a plain change`); `tests/nanogpt-controls.e2e.js` (`the model row describes the chosen model and follows a value written through select2`).
+- **Delete Tag merge target:** `onTagDeleteClick()` in `public/scripts/tags.js` looked the select up with `popupContent.find('#merge_tag_select')`. The select is a top-level node of the `deleteTag` template, and jQuery's `find()` only matches descendants.
+  - **Breaks:** select2 was never initialised on desktop, and the Delete confirmation always read an empty value, so a chosen merge target was dropped and the tag was deleted without merging.
+  - **Guard:** the handler holds `mergeSelect`, built from `filter()` plus `find()`, for the select2 setup, the select row and the final read.
+  - **Tests:** `tests/tag-manager.e2e.js` (`Delete Tag offers its merge target as a select row and merges into the tag picked there`, 1440 and 390 px).
 
 ### Cache, boot and reload
 

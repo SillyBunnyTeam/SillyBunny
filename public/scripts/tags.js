@@ -37,6 +37,8 @@ import { animateHeightFrom, animateIn, fadeOutAndRemove } from './sillybunny-mot
 import { openTagManager, refreshTagManager, updateTagColors } from './sillybunny-tag-manager.js';
 // SillyBunny: tag deletion uses the shared destructive alert so Return cannot confirm it.
 import { openAlert } from './sillybunny-editor/dialog.js';
+import { createPrefGroup } from './sillybunny-editor/rows.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
 
 export {
     TAG_FOLDER_TYPES,
@@ -2253,22 +2255,36 @@ async function onTagDeleteClick() {
 
     appendTagToList(popupContent.find('#tag_to_delete'), tag);
 
+    // SillyBunny: the select is a top-level node of the template, which find() never matches, so look at the set itself too.
+    const mergeSelect = popupContent.filter('#merge_tag_select').add(popupContent.find('#merge_tag_select'));
+
     // Make the select control more fancy on not mobile
     if (!isMobile()) {
-        // Delete the empty option in the dropdown, and make the select2 be empty by default
-        popupContent.find('#merge_tag_select option[value=""]').remove();
-        popupContent.find('#merge_tag_select').select2({
+        // Make the select2 be empty by default
+        mergeSelect.select2({
             width: '50%',
             placeholder: 'Select tag to merge into',
             allowClear: true,
         }).val(null).trigger('change');
     }
 
-    // SillyBunny: keep the merge control in the shared destructive Alert.
+    // SillyBunny: keep the merge control in the shared destructive Alert, as a select row. The row adopts the
+    // select and its select2 container, so the select leaves the template nodes that are appended below.
     const alertBody = document.createElement('div');
     const headingSelector = 'h1, h2, h3, h4, h5, h6';
     popupContent.filter(headingSelector).add(popupContent.find(headingSelector)).remove();
-    alertBody.append(...popupContent.toArray().filter(node => !/^H[1-6]$/.test(node.tagName)));
+    const mergeRow = createSelectRow({
+        select: mergeSelect[0],
+        label: t`Select tag to merge into`,
+        field: 'merge_tag_select',
+        searchLabel: t`Search`,
+        emptyText: t`No results`,
+        noneLabel: mergeSelect[0].options[0]?.textContent ?? '',
+    });
+    alertBody.append(
+        ...popupContent.toArray().filter(node => !/^H[1-6]$/.test(node.tagName) && node !== mergeSelect[0]),
+        createPrefGroup({ field: 'delete-tag-merge', rows: [mergeRow] }).section,
+    );
     const result = await openAlert({
         heading: t`Delete Tag`,
         bodyNode: alertBody,
@@ -2279,7 +2295,7 @@ async function onTagDeleteClick() {
         return;
     }
 
-    const mergeValue = popupContent.find('#merge_tag_select').val();
+    const mergeValue = mergeSelect.val();
     const mergeTagId = mergeValue ? String(mergeValue) : null;
 
     // Remove the tag from all entities that use it

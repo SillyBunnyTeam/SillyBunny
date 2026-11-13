@@ -1,5 +1,6 @@
 /** Rows that mirror a native <select> through the shared picker (AdwComboRow). Labels arrive translated. */
 import { closePicker, isPickerOpen, openPicker } from './picker.js';
+import { renderDetails } from './option-details.js';
 import { createRow } from './rows.js';
 
 let nextId = 0;
@@ -24,13 +25,26 @@ function optionLabel(option) {
 }
 
 /**
+ * Maps one option's item. A mapper that returns nothing, or throws on an entry it cannot read, keeps
+ * the plain item, so a bad catalogue entry never stops the row or its list.
+ */
+function mapOption(mapItem, item, option) {
+    if (!mapItem) return item;
+    try {
+        return mapItem(item, option) || item;
+    } catch {
+        return item;
+    }
+}
+
+/**
  * Reads picker items from the select: optgroups become headings; hidden options are skipped. The
- * mapper may return a richer item for an option (a subtitle, say); one that returns nothing keeps the item.
+ * mapper may return a richer item for an option (a title or a subtitle, say); one that returns nothing keeps the item.
  */
 function readItems(select, mapItem) {
     const items = [];
     const add = (item, option) => {
-        items.push((mapItem && mapItem(item, option)) || item);
+        items.push(mapOption(mapItem, item, option));
     };
     for (const child of select.children) {
         if (child instanceof HTMLOptGroupElement) {
@@ -66,16 +80,32 @@ function writeBack(select, value) {
 /**
  * Listens for every change of the select. Profiles and upstream code change it with jQuery's
  * trigger('change'), which only jQuery handlers receive, so bind through jQuery when it is present.
- * @returns {() => void} unbind
+ *
+ * Upstream also writes a value with trigger('change.select2') to refresh select2 without running the
+ * page's change handlers. jQuery runs only the handlers in the `select2` namespace for that event, so
+ * `refresh` is bound in that namespace too. select2 removes every `.select2` handler when it is destroyed
+ * or initialised again, so `rebind` puts it back.
+ * @param {HTMLSelectElement} select
+ * @param {() => void} handler  Runs for a plain change.
+ * @param {() => void} refresh  Runs for a plain change and for a select2-namespaced one; it must be idempotent.
+ * @returns {{ unbind: () => void, rebind: () => void }}
  */
-function onSelectChanges(select, handler) {
+function onSelectChanges(select, handler, refresh) {
     const $ = globalThis.jQuery;
     if (typeof $ === 'function') {
+        const bindRefresh = () => $(select).off('change.select2.sbSelectRow', refresh).on('change.select2.sbSelectRow', refresh);
         $(select).on('change.sbSelectRow', handler);
-        return () => $(select).off('change.sbSelectRow', handler);
+        bindRefresh();
+        return {
+            unbind() {
+                $(select).off('change.sbSelectRow', handler);
+                $(select).off('change.select2.sbSelectRow', refresh);
+            },
+            rebind: bindRefresh,
+        };
     }
     select.addEventListener('change', handler);
-    return () => select.removeEventListener('change', handler);
+    return { unbind: () => select.removeEventListener('change', handler), rebind() {} };
 }
 
 /**
@@ -118,7 +148,9 @@ function rememberPosition(nodes) {
  * @param {Node|Node[]} [options.suffix]  Extra trailing nodes after the trigger.
  * @param {boolean} [options.ordered=false]  Newly selected options move last (routing priority).
  * @param {(item: object, option: HTMLOptionElement) => object|void} [options.mapItem]  Called for each option
- *     with its picker item; returns the item to show (a subtitle or details, for example). The select stays the source of truth.
+ *     with its picker item (`value`, `label`, `group`, `disabled`); returns the item to show, with a different
+ *     `label` (the title) or a `subtitle` and `details` (see option-details.js). The list shows both, the trigger
+ *     shows the title, and a single select shows the chosen option's subtitle under the row title. The select stays the source of truth.
  * @param {Element|null} [options.bounds=null]
  * @param {(value: string|string[]) => void} [options.onChange]  Called on every change event of the select.
  * @param {(value: string|string[]) => void} [options.onPick]  Called before write-back, only for a choice made in the picker.
@@ -152,19 +184,47 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
     if (description) description.id ||= uniqueId('sb-select-row-description');
     // The select is hidden from assistive technology, so the trigger carries the select's descriptions.
     // sync() reads them on every run because callers such as the Connections form add some after the row is built.
-    const describedBy = () => [...new Set([...(select.getAttribute('aria-describedby') ?? '').split(/\s+/), description?.id])]
+    const describedBy = () => [...new Set([...(select.getAttribute('aria-describedby') ?? '').split(/\s+/), description?.id, detail?.id])]
         .filter(Boolean).join(' ');
 
     const currentValue = () => (select.multiple ? selectedValues(select) : select.value);
-    const summary = () => {
-        const labels = [...select.selectedOptions].map(optionLabel).filter(Boolean);
+    const selectedItems = () => [...select.selectedOptions]
+        .map(option => mapOption(mapItem, { value: option.value, label: optionLabel(option), disabled: option.disabled }, option));
+    const itemLabel = item => (typeof item.label === 'string' ? item.label.trim() : '');
+    const summary = items => {
+        const labels = items.map(itemLabel).filter(Boolean);
         return (select.multiple ? labels.join(', ') : labels[0]) || noneLabel;
     };
+    // The details of the chosen option sit under the row title, because the trigger itself keeps one line and a
+    // height that every select row shares. A multiple select has no single choice to describe.
+    let detail = null;
+    let detailKey = '';
+    const syncDetail = items => {
+        const item = select.multiple ? null : items[0];
+        const details = item?.details ?? (item?.subtitle ? [[item.subtitle]] : null);
+        const key = details ? JSON.stringify(details) : '';
+        if (key === detailKey) return;
+        detailKey = key;
+        if (!details) {
+            detail?.remove();
+            detail = null;
+            return;
+        }
+        if (!detail) {
+            detail = document.createElement('small');
+            detail.className = 'ds-row-subtitle ds-select-row__detail';
+            detail.id = uniqueId('sb-select-row-detail');
+            row.querySelector('.ds-row-text').append(detail);
+        }
+        detail.replaceChildren(renderDetails(details));
+    };
     const sync = () => {
-        const text = summary();
+        const items = selectedItems();
+        const text = summary(items);
         // Writing an unchanged value still queues a mutation, and some callers re-sync on every panel update.
         if (value.textContent !== text) value.textContent = text;
         if (trigger.disabled !== select.disabled) trigger.disabled = select.disabled;
+        syncDetail(items);
         const ids = describedBy();
         if ((trigger.getAttribute('aria-describedby') ?? '') !== ids) {
             if (ids) trigger.setAttribute('aria-describedby', ids);
@@ -206,9 +266,11 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
         sync();
         onChange?.(currentValue());
     };
-    const unbindChange = onSelectChanges(select, onSelectChange);
+    const changes = onSelectChanges(select, onSelectChange, sync);
     // Upstream fills model lists after connecting and toggles disabled state; follow both.
     const observer = new MutationObserver(() => {
+        // select2 changes the select's class and attributes when it is initialised or destroyed, and its destroy drops the change.select2 listener.
+        changes.rebind();
         sync();
         if (isPickerOpen(trigger)) picker?.refresh(readItems(select, mapItem));
     });
@@ -248,7 +310,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
         },
         destroy() {
             observer.disconnect();
-            unbindChange();
+            changes.unbind();
             if (isPickerOpen(trigger)) closePicker({ animate: false, restoreFocus: false });
             restorePosition(row);
             select.classList.remove('ds-select-row__native');

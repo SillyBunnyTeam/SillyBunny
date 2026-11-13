@@ -360,6 +360,39 @@ for (const width of [1440, 390]) {
             await expect(manager(page).locator('.tag_view_item').first()).toHaveAttribute('id', 'qa-tag-beta');
         });
 
+        test('Delete Tag offers its merge target as a select row and merges into the tag picked there', async ({ page }) => {
+            await prepare(page, width);
+            await openFromList(page);
+            await row(page, fixtureTag).locator('.sb-tag-manager__row-menu').click();
+            await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+            const deleteDialog = page.locator('.sb-dialog-host[role="alertdialog"][open]');
+            const mergeRow = deleteDialog.locator('.ds-select-row[data-sb-editor-field="merge_tag_select"]');
+            const trigger = mergeRow.locator('.ds-select-row__trigger');
+            const picker = page.locator(width <= 450 ? '.sb-picker-sheet' : '.sb-picker');
+            await expect(mergeRow.locator('.ds-row-label')).toHaveText('Select tag to merge into');
+            await expect(trigger.locator('.ds-select-row__value')).toHaveText('--- None ---');
+            await expect(mergeRow.locator('#merge_tag_select')).toHaveAttribute('aria-hidden', 'true');
+            await expect(deleteDialog.locator('.select2-container')).toBeHidden();
+            await page.screenshot({ path: test.info().outputPath(`delete-tag-${width}.png`) });
+            await trigger.click();
+            await expect(picker).toBeVisible();
+            await picker.getByRole('option', { name: 'QA Beta', exact: true }).click();
+            await expect(picker).toBeHidden();
+            await expect(deleteDialog.locator('#merge_tag_select')).toHaveValue('qa-tag-beta');
+            await expect(trigger.locator('.ds-select-row__value')).toHaveText('QA Beta');
+            await trigger.click();
+            await picker.getByRole('option', { name: '--- None ---', exact: true }).click();
+            await expect(picker).toBeHidden();
+            await expect(deleteDialog.locator('#merge_tag_select')).toHaveValue('');
+            await expect(trigger.locator('.ds-select-row__value')).toHaveText('--- None ---');
+            await trigger.click();
+            await picker.getByRole('option', { name: 'QA Beta', exact: true }).click();
+            await expect(picker).toBeHidden();
+            await deleteDialog.getByRole('button', { name: 'Delete', exact: true }).click();
+            await expect(row(page, fixtureTag)).toHaveCount(0);
+            expect(await page.evaluate(async () => (await import('/scripts/tags.js')).tag_map['qa-tag-character.png'])).toEqual(['qa-tag-beta']);
+        });
+
         test('header and row menus retain sort, Backup, Restore, Prune and delete/merge flows', async ({ page }) => {
             await prepare(page, width);
             await openFromList(page);
