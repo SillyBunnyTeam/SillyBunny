@@ -57,15 +57,29 @@
                 <div class="banner-frame" id="banner-stacked-frame"></div>
             </div>
         </div>
+        <div class="fixture-surface" id="status-pages"></div>
     </main>
     <script type="module">
         import { createEntryRow, createPrefGroup } from '/scripts/sillybunny-editor/rows.js';
         import { createSearchEntry } from '/scripts/sillybunny-editor/search-entry.js';
         import { createBanner } from '/scripts/sillybunny-editor/banner.js';
+        import { createStatusPage } from '/scripts/sillybunny-editor/status-page.js';
         for (const name of ['wide', 'start', 'stacked']) {
             const banner = createBanner({ title: 'Offline', actionLabel: 'Reconnect', onActivate: () => {} });
             banner.element.id = `banner-${name}`;
             document.getElementById(`banner-${name}-frame`).append(banner.element);
+        }
+        const pages = {
+            'status-empty': { state: 'empty', title: 'No Documents', description: 'Create a document to see it here.', actions: [{ label: 'New Document', primary: true }] },
+            'status-no-results': { state: 'no-results', title: 'No Results Found', description: 'Try a different search.', compact: true },
+            'status-loading': { state: 'loading', title: 'Loading Documents', delay: 0 },
+            'status-error': { state: 'error', title: 'Documents Failed to Load', description: 'Check the connection.', compact: true, actions: [{ label: 'Try Again', primary: true }] },
+            'status-unavailable': { state: 'unavailable', title: 'Documents Unavailable', description: 'Turn on Documents to use them.', compact: true },
+        };
+        for (const [id, options] of Object.entries(pages)) {
+            const page = createStatusPage(options);
+            page.element.id = id;
+            document.getElementById('status-pages').append(page.element);
         }
         const searches = {
             'search-rest': { label: 'Search settings', placeholder: 'Search...' },

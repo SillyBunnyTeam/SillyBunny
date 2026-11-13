@@ -44,7 +44,7 @@ export function mountCompanionsPage({ host, services, onClose, preparePopup }) {
             groups.forEach(group => group.section.remove());
             groups.clear();
             if (!status) {
-                status = createStatusPage({ icon: 'comments', title: t`Companions Unavailable`, description: t`lorum ipsum` });
+                status = createStatusPage({ state: 'unavailable', icon: 'comments', title: t`Companions Unavailable`, description: t`lorum ipsum` });
                 status.element.querySelector('.sb-status-page__description').dataset.sbCopyPlaceholder = 'true';
                 page.body.append(status.element);
             }

@@ -9,7 +9,7 @@ import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261114e', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-tag-manager.css?v=20261112o', id: 'deferred-tag-manager-css' },
 ];
@@ -310,7 +310,7 @@ export function createTagManager(adapter) {
                 compatClasses: { row: ['ds-entity-row--surface'] },
             }).row;
         });
-        if (!rows.length) rows.push(createStatusPage({ icon: 'users', title: t`No Members`, compact: true }).element);
+        if (!rows.length) rows.push(createStatusPage({ state: 'empty', icon: 'users', title: t`No Members`, compact: true }).element);
         container.replaceChildren(...rows);
     }
 
@@ -486,7 +486,7 @@ export function createTagManager(adapter) {
         const shown = [...list.children].filter(row => !row.hidden).length;
         list.hidden = !shown;
         empty.hidden = Boolean(shown);
-        if (!shown) empty.replaceChildren(createStatusPage({ icon: 'tags', title: query ? t`No results` : t`Create a new tag`, compact: true }).element);
+        if (!shown) empty.replaceChildren(createStatusPage({ state: query ? 'no-results' : 'empty', icon: 'tags', title: query ? t`No results` : t`Create a new tag`, compact: true }).element);
         search.report(shown, state.tags.length);
         sortable?.setDisabled(Boolean(query));
     }

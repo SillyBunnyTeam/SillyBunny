@@ -382,9 +382,12 @@ body.reduced-motion .sb-list-editor__divider::before {
     align-items: center;
     justify-content: center;
     width: 100%;
+    /* libadwaita's statuspage: 36px around and between the icon, the text and the actions (24px in the compact and
+       spinner sets), 12px at the sides and 12px between the title and the description. */
+    --sb-status-page-gap: 36px;
     gap: 0;
     min-width: 0;
-    padding: 64px 24px;
+    padding: var(--sb-status-page-gap) 12px;
     color: var(--sb-shell-text);
     text-align: center;
     box-sizing: border-box;
@@ -395,7 +398,7 @@ body.reduced-motion .sb-list-editor__divider::before {
     font-size: 128px;
     line-height: 1.1;
     opacity: 0.5;
-    margin-block-end: 24px;
+    margin-block-end: var(--sb-status-page-gap);
 }
 
 .sb-status-page__title {
@@ -412,7 +415,8 @@ body.reduced-motion .sb-list-editor__divider::before {
     text-wrap: balance;
 }
 
-.sb-status-page h3.sb-status-page__title {
+/* `:root` and `:not(#chat h3)` lift this reset above the theme's boxed `h3` rule, which carries an id in a `:not()`. */
+:root .sb-status-page h3.sb-status-page__title:not(#chat h3) {
     border: 0;
     border-radius: 0;
     padding: 0;
@@ -425,7 +429,7 @@ body.reduced-motion .sb-list-editor__divider::before {
     width: min(100%, 36ch);
     min-height: 0;
     max-width: 36ch;
-    margin: 0 0 24px;
+    margin: 0;
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-body);
     line-height: 1.55;
@@ -442,8 +446,16 @@ body.reduced-motion .sb-list-editor__divider::before {
     margin: 0;
 }
 
+.sb-status-page__title:last-child {
+    margin-block-end: 0;
+}
+
+.sb-status-page__description + .sb-status-page__actions {
+    margin-block-start: var(--sb-status-page-gap);
+}
+
 .sb-status-page__title + .sb-status-page__actions {
-    margin-block-start: 12px;
+    margin-block-start: calc(var(--sb-status-page-gap) - 12px);
 }
 
 .sb-status-page .sb-status-page__action {
@@ -481,10 +493,13 @@ body.reduced-motion .sb-list-editor__divider::before {
     background: color-mix(in srgb, var(--sb-accent) 80%, var(--sb-shell-text));
 }
 
+.sb-status-page--compact,
+.sb-status-page--spinner {
+    --sb-status-page-gap: 24px;
+}
+
 .sb-status-page--compact {
     justify-content: flex-start;
-    gap: 0;
-    padding-block: 32px;
 }
 
 .sb-status-page--compact .sb-status-page__icon {
@@ -494,6 +509,53 @@ body.reduced-motion .sb-list-editor__divider::before {
 .sb-status-page--compact .sb-status-page__title {
     font-size: var(--sb-type-headline) !important;
     line-height: 1.18 !important;
+}
+
+.sb-status-page[hidden] {
+    display: none;
+}
+
+/* A status page sits open on its surface, never in a card. */
+:root .sb-dialog :is(.ds-pref-group, .ds-entity-list):has(> .sb-status-page) {
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+
+.sb-spinner {
+    --sb-spinner-size: 16px;
+    --sb-spinner-turn: 1.2s;
+    display: inline-block;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: var(--sb-spinner-size);
+    height: var(--sb-spinner-size);
+    border: var(--sb-spinner-stroke, calc(var(--sb-spinner-size) / 8)) solid color-mix(in srgb, currentColor 15%, transparent);
+    border-top-color: currentColor;
+    border-radius: var(--sb-radius-pill);
+    animation: sb-spinner-turn var(--sb-spinner-turn) linear infinite;
+}
+
+.sb-status-page--spinner .sb-spinner {
+    --sb-spinner-size: 64px;
+    --sb-spinner-stroke: 6px;
+    margin-block-end: var(--sb-status-page-gap);
+}
+
+@keyframes sb-spinner-turn {
+    to {
+        transform: rotate(1turn);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-spinner {
+        animation: none;
+    }
+}
+
+body.reduced-motion .sb-spinner {
+    animation: none;
 }
 
 .sb-header-icon-button,
@@ -999,11 +1061,6 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
 .sb-picker__option:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sb-picker__empty {
-    padding: 12px;
-    color: var(--sb-input-placeholder);
 }
 
 .sb-picker__option.is-disabled {

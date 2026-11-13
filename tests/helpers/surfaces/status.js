@@ -230,7 +230,7 @@ const charactersNoResults = status({
 const characterEditorEmpty = status({
     id: 'characters.editor-empty',
     title: 'Character editor: no character selected',
-    component: 'adapted',
+    component: 'shared',
     root: '#sb_character_editor_empty',
     ready: '#sb_character_editor_empty #sb_character_empty_browse',
     async open(page) {
@@ -240,7 +240,7 @@ const characterEditorEmpty = status({
         await reveal(page, '#sb_character_editor_empty');
         await settle(page);
     },
-    sources: [`${SCRIPTS}/sillybunny-tabs.js`],
+    sources: [`${SCRIPTS}/sillybunny-tabs.js`, STATUS_PAGE_SOURCE],
     primaryFlow: true,
 });
 
@@ -252,7 +252,7 @@ const characterEditorEmpty = status({
 const charactersLoading = status({
     id: 'characters.panel-loading',
     title: 'Characters shell: a panel that is still loading',
-    component: 'own',
+    component: 'shared',
     root: '.sb-character-panel-loading:not([hidden])',
     async open(page) {
         await showCharacterView(page, 'characters');
@@ -267,7 +267,7 @@ const charactersLoading = status({
         await page.locator('.sb-character-panel-loading:not([hidden])').waitFor({ state: 'visible' });
         await settle(page);
     },
-    sources: [`${SCRIPTS}/sillybunny-tabs.js`],
+    sources: [`${SCRIPTS}/sillybunny-tabs.js`, STATUS_PAGE_SOURCE],
 });
 
 const importLoading = status({
@@ -910,9 +910,9 @@ const helpNoResults = status({
 const pickerEmpty = status({
     id: 'picker.empty',
     title: 'Shared picker: no items to choose from',
-    component: 'own',
+    component: 'shared',
     overlay: true,
-    root: '.sb-picker__empty',
+    root: '.sb-picker__empty .sb-status-page',
     async open(page) {
         await page.evaluate(async () => {
             const { openPicker } = await import('/scripts/sillybunny-editor/picker.js');
@@ -924,7 +924,7 @@ const pickerEmpty = status({
             document.body.append(trigger);
             openPicker({ trigger, title: 'Audit', items: [], onSelect: () => {} });
         });
-        await page.locator('.sb-picker__empty').waitFor({ state: 'visible' });
+        await page.locator('.sb-picker__empty .sb-status-page').waitFor({ state: 'visible' });
         await settle(page);
     },
     async close(page) {
@@ -934,7 +934,7 @@ const pickerEmpty = status({
         });
         await page.locator('.sb-picker__empty').first().waitFor({ state: 'hidden' });
     },
-    sources: [`${SCRIPTS}/sillybunny-editor/picker.js`],
+    sources: [`${SCRIPTS}/sillybunny-editor/picker.js`, STATUS_PAGE_SOURCE],
 });
 
 const promptsNoResults = status({
@@ -1025,40 +1025,40 @@ const settingsSearchNoMatch = status({
 });
 
 const SERVER_TOOLS_SCRIPT = /\/sillybunny-server-tools(?:-[a-f0-9]{12})?\.js(?:\?[^#]*)?$/;
-const DATA_SECURITY_CALLOUT = '[data-sb-panel="data-security"] .sb-shell-callout';
+const DATA_SECURITY_STATUS = '[data-sb-panel="data-security"] .sb-status-page';
 
 const settingsPanelError = status({
     id: 'settings.panel-load-error',
     title: 'Settings: a page whose script failed to load',
-    component: 'own',
-    root: DATA_SECURITY_CALLOUT,
-    ready: `${DATA_SECURITY_CALLOUT} button`,
-    // The browser's message names the server URL, whose port differs from run to run, and it is a bare text node beside Retry.
-    masks: [DATA_SECURITY_CALLOUT],
+    component: 'shared',
+    root: DATA_SECURITY_STATUS,
+    ready: `${DATA_SECURITY_STATUS}[data-state="error"] button`,
+    // The browser's message names the server URL, whose port differs from run to run.
+    masks: [`${DATA_SECURITY_STATUS} .sb-status-page__description`],
     async open(page) {
         // From `startup-on-demand.e2e.js`: the page script is requested when the page opens, and a failed request shows Retry.
         await page.route(SERVER_TOOLS_SCRIPT, route => route.abort('failed'));
         await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
-        await page.locator(`${DATA_SECURITY_CALLOUT} button`).waitFor({ state: 'visible' });
-        await reveal(page, DATA_SECURITY_CALLOUT);
+        await page.locator(`${DATA_SECURITY_STATUS} button`).waitFor({ state: 'visible' });
+        await reveal(page, DATA_SECURITY_STATUS);
         await settle(page);
     },
-    sources: [`${SCRIPTS}/sillybunny-tabs.js`],
+    sources: [`${SCRIPTS}/sillybunny-tabs.js`, STATUS_PAGE_SOURCE],
 });
 
 const settingsPanelLoading = status({
     id: 'settings.panel-loading',
     title: 'Settings: a page whose script is still loading',
-    component: 'own',
-    root: DATA_SECURITY_CALLOUT,
-    ready: '[data-sb-panel="data-security"][aria-hidden="false"] .sb-shell-callout[role="status"]',
+    component: 'shared',
+    root: DATA_SECURITY_STATUS,
+    ready: '[data-sb-panel="data-security"][aria-hidden="false"] .sb-status-page[data-state="loading"]',
     async open(page) {
         await page.route(SERVER_TOOLS_SCRIPT, () => new Promise(() => {}));
         await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
-        await reveal(page, DATA_SECURITY_CALLOUT);
+        await reveal(page, DATA_SECURITY_STATUS);
         await settle(page);
     },
-    sources: [`${SCRIPTS}/sillybunny-tabs.js`],
+    sources: [`${SCRIPTS}/sillybunny-tabs.js`, STATUS_PAGE_SOURCE],
 });
 
 const samplingUnavailable = status({
@@ -1169,7 +1169,7 @@ const aboutUnknown = status({
 // --- Persona picker and the Conversation workspace -----------------------------------------------------------------------
 
 const PERSONA_PICKER = '#sb-persona-picker';
-const PERSONA_PICKER_EMPTY = `${PERSONA_PICKER} .sb-persona-option-empty`;
+const PERSONA_PICKER_EMPTY = `${PERSONA_PICKER} .sb-persona-option-empty .sb-status-page`;
 const PERSONA_NOTES_EMPTY = `${PERSONA_PICKER} .sb-persona-picker-appendices-empty`;
 
 /**
@@ -1212,13 +1212,13 @@ async function closePersonaMenu(page, target) {
 const personaPickerEmpty = status({
     id: 'persona-picker.empty',
     title: 'Persona bubble menu: no personas defined',
-    component: 'own',
+    component: 'shared',
     overlay: true,
     root: PERSONA_PICKER_EMPTY,
     open: page => openPersonaMenu(page, PERSONA_PICKER_EMPTY, { withoutPersonas: true }),
     close: page => closePersonaMenu(page, PERSONA_PICKER_EMPTY),
     needs: ['character', 'chat'],
-    sources: [`${SCRIPTS}/sillybunny-tabs.js`],
+    sources: [`${SCRIPTS}/sillybunny-tabs.js`, STATUS_PAGE_SOURCE],
 });
 
 const personaPickerNoNotes = status({
@@ -1658,15 +1658,15 @@ const COMPANION_SOURCES = [`${SCRIPTS}/extensions/in-chat-agents/companion/compa
 const companionPanelEmpty = status({
     id: 'companion-panel.empty',
     title: 'Companion panel: no companion agents enabled',
-    component: 'own',
+    component: 'shared',
     overlay: true,
-    root: `${TRACKER_PANEL} .ica--tpanel-body > .ica--cdash-empty`,
+    root: `${TRACKER_PANEL} .ica--tpanel-body > .sb-status-page`,
     async open(page) {
         await loadCompanions(page, null);
-        await openCompanionPanel(page, `${TRACKER_PANEL} .ica--tpanel-body > .ica--cdash-empty`);
+        await openCompanionPanel(page, `${TRACKER_PANEL} .ica--tpanel-body > .sb-status-page`);
     },
     close: closeCompanionPanel,
-    sources: COMPANION_SOURCES,
+    sources: [...COMPANION_SOURCES, STATUS_PAGE_SOURCE],
     owner: 'C',
 });
 

@@ -139,7 +139,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
     });
     const search = searchEntry.input;
     books.group.before(searchEntry.element);
-    const empty = createStatusPage({ icon: 'globe', title: t`-- World Info not found --`, compact: true });
+    const empty = createStatusPage({ state: 'empty', icon: 'globe', title: t`-- World Info not found --`, compact: true });
     empty.element.classList.add('sb-wi-settings-empty');
     books.section.append(empty.element);
     const bookRows = new Map();

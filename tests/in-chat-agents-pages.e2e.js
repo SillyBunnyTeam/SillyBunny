@@ -312,7 +312,7 @@ for (const width of [1440, 390]) {
             await overview.getByRole('button', { name: 'Open Companion Panel', exact: true }).click();
             await expect(overview).toHaveCount(0);
             await expect(page.locator('.ica--tpanel.is-open')).toBeVisible();
-            await expect(page.locator('.ica--tpanel .ica--cdash-empty')).toBeVisible();
+            await expect(page.locator('.ica--tpanel .sb-status-page[data-state="empty"]')).toBeVisible();
             await expectClean(page, driver);
         });
 

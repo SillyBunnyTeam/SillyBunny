@@ -714,18 +714,18 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261114e', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261113t', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
-        { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261114e', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-world-info-editor.css?v=20261113z', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
-        { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261114e', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261113t', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261113z', id: 'deferred-persona-detail-css' },
@@ -733,15 +733,15 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
         { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261112t', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261114e', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
         // SillyBunny: Characters and Groups use the same deferred selection UI — see docs/ui-migration.md.
         { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261112t', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261114e', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261114e', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261112m', id: 'deferred-character-import-css' },
     ],
@@ -6468,23 +6468,41 @@ function showCharacterEditorEmptyState() {
 }
 
 function setCharacterEditorEmptyState(visible) {
-    const emptyState = document.getElementById('sb_character_editor_empty');
+    let emptyState = document.getElementById('sb_character_editor_empty');
 
     if (emptyState instanceof HTMLElement) {
         if (!emptyState.classList.contains('sb-status-page')) {
-            emptyState.classList.add('sb-status-page', 'sb-status-page--compact');
-            emptyState.setAttribute('role', 'status');
-            emptyState.querySelector('.sb-character-editor-empty-icon')?.classList.add('sb-status-page__icon');
-            emptyState.querySelector('.sb-character-editor-empty-copy h3')?.classList.add('sb-status-page__title', 'title-2');
-            emptyState.querySelector('.sb-character-editor-empty-copy p')?.classList.add('sb-status-page__description');
-            emptyState.querySelector('.sb-character-editor-empty-actions')?.classList.add('sb-status-page__actions');
-            emptyState.querySelectorAll('.sb-character-editor-empty-actions .menu_button').forEach(button => button.classList.add('sb-status-page__action'));
-            emptyState.querySelector('#sb_character_empty_browse')?.classList.add('menu_button_primary', 'is-suggested');
+            // The page in the markup is replaced by the shared one, which keeps its id and its two buttons' ids.
+            const page = createStatusPage({
+                state: 'empty',
+                icon: 'address-card',
+                // HUMAN: replace — a title in header capitalisation that names the state, and a description that says what to do next.
+                title: t`No character selected`,
+                description: t`Please pick a character card from the character menu, or create a new character.`,
+                compact: true,
+                actions: [
+                    { id: 'sb_character_empty_browse', label: t`Browse Characters`, primary: true, onActivate: () => { void showCharacterListView(); } },
+                    { id: 'sb_character_empty_create', label: t`Create New Character`, onActivate: createCharacterFromEmptyEditor },
+                ],
+            });
+            page.element.id = emptyState.id;
+            emptyState.replaceWith(page.element);
+            emptyState = page.element;
         }
         emptyState.hidden = !visible;
     }
 
     syncCharacterTitlebarVisibility();
+}
+
+function createCharacterFromEmptyEditor() {
+    globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.('characters');
+    setCharacterEditorEmptyState(false);
+    setCharacterPersonaPanelVisible(false);
+    setCharacterImportPanelVisible(false);
+    setCharacterWorldInfoPanelVisible(false);
+    document.getElementById('rm_button_create')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    syncCharacterShellTabs('editor');
 }
 
 function syncCharacterTitlebarVisibility() {
@@ -6563,6 +6581,7 @@ function hideDeferredCharacterPanel(host, content = host, { preserveLayout = fal
         state.requested = false;
         state.revision++;
         state.status.element.hidden = true;
+        state.status.release();
     }
     if (!preserveLayout) host.hidden = true;
     host.setAttribute('aria-hidden', 'true');
@@ -6573,12 +6592,12 @@ function revealDeferredCharacterPanel(host, content, mount) {
     if (!(host instanceof HTMLElement)) return Promise.resolve(false);
     let state = deferredCharacterPanels.get(host);
     if (!state) {
-        const status = createStatusPage({ icon: 'hourglass', title: t`Loading...` });
-        // Use already-loaded empty-page chrome so deferred editor CSS cannot restyle loading mid-flight.
-        status.element.className = 'sb-character-editor-empty sb-character-panel-loading';
-        status.element.querySelector('i')?.remove();
-        status.element.querySelector('h3')?.removeAttribute('class');
+        // A panel that is switched to shows nothing else while it loads, so this page has no delay: a frame is never blank.
+        // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+        const status = createStatusPage({ state: 'loading', title: t`Loading...`, delay: 0, busy: host });
+        status.element.classList.add('sb-character-panel-loading');
         status.element.hidden = true;
+        status.release();
         host.after(status.element);
         state = { status, revision: 0, requested: false, reveal: null };
         deferredCharacterPanels.set(host, state);
@@ -6587,7 +6606,7 @@ function revealDeferredCharacterPanel(host, content, mount) {
     hideDeferredCharacterPanel(host, content);
     state.requested = true;
     const revision = ++state.revision;
-    state.status.update({ icon: 'hourglass', title: t`Loading...` });
+    state.status.update({ state: 'loading', title: t`Loading...` });
     state.status.element.hidden = false;
     const isCurrent = () => state.requested && state.revision === revision;
     state.reveal = (async () => {
@@ -6597,6 +6616,7 @@ function revealDeferredCharacterPanel(host, content, mount) {
         await controller.prepareReveal?.();
         if (!isCurrent()) return false;
         state.status.element.hidden = true;
+        state.status.release();
         host.hidden = false;
         host.setAttribute('aria-hidden', 'false');
         content?.setAttribute('aria-hidden', 'false');
@@ -6605,7 +6625,8 @@ function revealDeferredCharacterPanel(host, content, mount) {
     })().catch(error => {
         if (isCurrent()) {
             state.requested = false;
-            state.status.update({ icon: 'triangle-exclamation', title: t`Error` });
+            // HUMAN: replace — a title that names the error and a description of what to do next.
+            state.status.update({ state: 'error', title: t`Error` });
         }
         throw error;
     });
@@ -8078,18 +8099,22 @@ function createShellPanel(tabConfig) {
 
 function createOnDemandShellPanel(shellKey, tabConfig, build) {
     const { panel, scroller } = createShellPanel(tabConfig);
-    const status = createElement('div', { className: 'sb-shell-callout', text: 'Loading…', attrs: { role: 'status' } });
-    scroller.append(status);
+    const showStatus = options => scroller.replaceChildren(createStatusPage({ compact: true, ...options }).element);
 
     const showError = error => {
         console.error('[SillyBunny] Could not load panel:', tabConfig.id, error);
-        const retry = createElement('button', { className: 'menu_button', text: 'Retry', attrs: { type: 'button' } });
-        retry.addEventListener('click', () => void lifecycle.activate().catch(showError));
-        status.replaceChildren(document.createTextNode(String(error.message || error)), retry);
+        showStatus({
+            state: 'error',
+            // HUMAN: replace — a title that names what failed to load, in header capitalisation.
+            title: t`Error`,
+            description: String(error.message || error),
+            actions: [{ label: 'Retry', primary: true, onActivate: () => void lifecycle.activate().catch(showError) }],
+        });
     };
     const lifecycle = createDeferredPanel(async () => {
         panel.setAttribute('aria-busy', 'true');
-        status.textContent = 'Loading…';
+        // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+        showStatus({ state: 'loading', title: 'Loading…' });
         try {
             const loaded = await build();
             panel.replaceChildren(...loaded.panel.childNodes);
@@ -13122,26 +13147,6 @@ function injectCharacterDrawerControls() {
         });
     }
 
-    const emptyBrowseButton = document.getElementById('sb_character_empty_browse');
-    if (emptyBrowseButton instanceof HTMLButtonElement && emptyBrowseButton.dataset.sbBound !== 'true') {
-        emptyBrowseButton.dataset.sbBound = 'true';
-        emptyBrowseButton.addEventListener('click', () => { void showCharacterListView(); });
-    }
-
-    const emptyCreateButton = document.getElementById('sb_character_empty_create');
-    if (emptyCreateButton instanceof HTMLButtonElement && emptyCreateButton.dataset.sbBound !== 'true') {
-        emptyCreateButton.dataset.sbBound = 'true';
-        emptyCreateButton.addEventListener('click', () => {
-            globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.('characters');
-            setCharacterEditorEmptyState(false);
-            setCharacterPersonaPanelVisible(false);
-            setCharacterImportPanelVisible(false);
-            setCharacterWorldInfoPanelVisible(false);
-            document.getElementById('rm_button_create')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            syncCharacterShellTabs('editor');
-        });
-    }
-
     ensureCharacterPersonaPanel();
     ensureCharacterWorldInfoPanel();
 
@@ -14173,7 +14178,8 @@ function openPersonaPicker({ focus = true } = {}) {
 
     if (!keys.length) {
         const empty = createElement('div', { className: 'sb-persona-option-empty' });
-        empty.textContent = 'No personas defined';
+        // HUMAN: replace — a title in header capitalisation that names the state, and a description that says what to do next.
+        empty.append(createStatusPage({ state: 'empty', icon: 'user', title: 'No personas defined', compact: true }).element);
         optionsList.appendChild(empty);
     } else {
         for (const avatarId of keys) {

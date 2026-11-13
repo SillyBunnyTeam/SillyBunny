@@ -644,7 +644,7 @@ export function mountWorldInfoEditor(container) {
         entryBox.hidden = !listStatus.hidden;
         if (!state.data) {
             showStatus(listStatus, {
-                icon: 'book-atlas', title: t`--- Pick to Edit ---`, compact: true,
+                state: 'empty', icon: 'book-atlas', title: t`--- Pick to Edit ---`, compact: true,
                 actions: [
                     { label: t`Worlds/Lorebooks`, primary: true, onActivate: () => openBookPicker(bookSwitcher) },
                     { label: t`New`, onActivate: () => run(() => clickTransport('world_create_button')) },
@@ -653,6 +653,7 @@ export function mountWorldInfoEditor(container) {
             });
         } else if (!entries.length) {
             showStatus(listStatus, {
+                state: total ? 'no-results' : 'empty',
                 icon: total ? 'magnifying-glass' : 'book-open',
                 title: total ? t`No Results` : t`No Entries`, compact: true,
                 actions: total ? [] : [{ label: t`New Entry`, primary: true, onActivate: () => run(() => clickTransport('world_popup_new')) }],

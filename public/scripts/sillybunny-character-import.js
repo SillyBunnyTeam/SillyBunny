@@ -214,7 +214,8 @@ export function mountCharacterImport(host) {
         content.setAttribute('aria-busy', 'true');
         choose.disabled = submit.disabled = picker.disabled = true;
         zone.setAttribute('aria-disabled', 'true');
-        results.replaceChildren(createStatusPage({ icon: 'spinner fa-spin', title: t`Loading...`, compact: true }).element);
+        // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+        results.replaceChildren(createStatusPage({ state: 'loading', title: t`Loading...` }).element);
         summary.textContent = '';
         try {
             const items = await runCharacterImport({ ...input, policy: 'stay' });
@@ -224,7 +225,7 @@ export function mountCharacterImport(host) {
             results.replaceChildren(...items.map(renderResult));
         } catch (error) {
             resultsSection.dataset.state = 'error';
-            results.replaceChildren(createStatusPage({ icon: 'triangle-exclamation', title: t`Error`, description: String(error.message), compact: true }).element);
+            results.replaceChildren(createStatusPage({ state: 'error', title: t`Error`, description: String(error.message), compact: true }).element);
         } finally {
             busy = false;
             content.setAttribute('aria-busy', 'false');

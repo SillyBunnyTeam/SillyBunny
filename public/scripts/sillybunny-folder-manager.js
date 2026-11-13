@@ -22,7 +22,7 @@ import {
 } from './sillybunny-folders.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261114e', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-folder-manager.css?v=20261112o', id: 'deferred-folder-manager-css' },
 ];
@@ -332,6 +332,7 @@ export function createFolderManager(scope, adapter) {
         if (!shown) {
             status.hidden = false;
             status.replaceChildren(createStatusPage({
+                state: query ? 'no-results' : 'empty',
                 icon: 'folder-open',
                 title: query ? t`No results` : t`No Folders`,
                 description: query ? '' : scope === 'groups' ? t`Create a folder to sort groups in the list.` : t`Create a folder to sort characters in the list.`,
@@ -345,6 +346,7 @@ export function createFolderManager(scope, adapter) {
         const itemMap = new Map(currentItems().map(item => [String(adapter.getKey(item)), item]));
         const rows = getFolderMembers(scope, folder.id).map(key => itemMap.get(key)).filter(Boolean).map(itemRow);
         if (!rows.length) rows.push(createStatusPage({
+            state: 'empty',
             icon: 'users',
             title: t`No Members`,
             description: scope === 'groups' ? t`Add groups to this folder to list them under it.` : t`Add characters to this folder to list them under it.`,

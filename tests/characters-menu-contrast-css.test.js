@@ -131,6 +131,6 @@ describe('Characters menu contrast and token contracts', () => {
         expect(sheet('tag-manager')).not.toContain('--sb-radius-dialog');
         // The Tag Manager sheet is the shared dialog frame (sillybunny-editor/dialog.js).
         expect(rule(theme, '.sb-dialog-host[data-presentation=\'sheet\'] .sb-dialog')).toContain('border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;');
-        expect(rule(sheet('tabs'), '.sb-character-editor-empty-icon')).toContain('color: var(--sb-muted-fg);');
+        expect(rule(sheet('editor-shell'), '.sb-status-page__icon')).toContain('color: var(--sb-muted-fg);');
     });
 });

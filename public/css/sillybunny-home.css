@@ -1263,19 +1263,6 @@ body.big-avatars .welcomeRecent .chatMessage {
     overflow-wrap: anywhere;
 }
 
-.welcomeRecent .sb-status-page {
-    padding: 24px 16px;
-}
-
-.welcomeRecent .sb-status-page--compact .sb-status-page__icon {
-    margin-block-end: 12px;
-    font-size: 48px;
-}
-
-.welcomeRecent .sb-status-page__description {
-    margin-block-end: 0;
-}
-
 /* ── Menu buttons of the cards ──────────────────────────────────────────── */
 
 .sbHomeRowMenu {

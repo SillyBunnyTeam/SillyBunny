@@ -13,7 +13,8 @@
  *   - `exact` (text, the audit counts): equal.
  * A property with `floor` is satisfied by any size at or above the canonical one.
  * The property `markup` is the alternative of the part's selectors that an instance matched; the first alternative is the
- * canonical one, and a row is made for each alternative that the member uses.
+ * canonical one, and a row is made for each alternative that the member uses. An alternative with `agrees: true` is another
+ * form of the same part that the documents state (the loading form's spinner in place of the icon), so its row agrees.
  *
  * The canonical value of a property is `value` (a number or text, or an object keyed by `fine` and `coarse` for a target size,
  * which the pointer of the page selects) or `token` (a CSS custom property that the page resolves). `forms` gives the value
@@ -304,7 +305,7 @@ export function buildRows({ surface, viewport, rules, measured }) {
                     source: 'census',
                     floor: false,
                     form: null,
-                    agree: alternative === canonicalAlternative,
+                    agree: alternative === canonicalAlternative || Boolean(part.selectors.find(candidate => candidate.id === alternative)?.agrees),
                     selector: selectorOf(alternative),
                     element: null,
                     alternative,

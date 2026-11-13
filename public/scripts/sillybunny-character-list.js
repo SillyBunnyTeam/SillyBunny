@@ -19,8 +19,8 @@ import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261112t', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261114e', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261114e', id: 'deferred-character-list-css' },
 ]);
 const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
 const mountedLists = new WeakMap();
@@ -506,8 +506,8 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     if (!(rowsContainer instanceof HTMLElement)) throw new Error('Character list rows container is missing.');
     const section = node('section', 'sb-character-list');
     section.dataset.view = 'characters';
-    section.setAttribute('aria-busy', 'true');
-    const loading = createStatusPage({ icon: 'spinner fa-spin', title: t`Loading...`, compact: true });
+    // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+    const loading = createStatusPage({ state: 'loading', title: t`Loading...`, busy: section });
     const status = node('div', 'sb-character-list__status');
     status.append(loading.element);
 
@@ -1012,6 +1012,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             const legacyTitle = legacy?.querySelector?.('h1')?.textContent?.trim()
                 || legacy?.find?.('h1')?.text?.()?.trim();
             const empty = createStatusPage({
+                state: 'empty',
                 icon: 'address-card',
                 title: legacyTitle || t`No results`,
                 description: t`There are no items to display.`,
@@ -1023,7 +1024,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             });
             content = empty.element;
         } else if (!model.entities.length && !hasVisibleFolder) {
-            const empty = createStatusPage({ icon: 'magnifying-glass', title: t`No results`, compact: true, actions: [{ label: t`Clear all filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
+            const empty = createStatusPage({ state: 'no-results', title: t`No results`, compact: true, actions: [{ label: t`Clear all filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
             content = empty.element;
         }
         if (revision !== renderRevision) return;
@@ -1340,7 +1341,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             extensionObserver.observe(extensionSlot, { childList: true, subtree: true, characterData: true });
         }
         setOverflow();
-        section.removeAttribute('aria-busy');
+        loading.release();
         loading.element.remove();
         section.dataset.mounted = 'true';
         return {
@@ -1419,7 +1420,8 @@ export async function mountCharacterList(container = document.getElementById('rm
         };
         for (const { element } of originalChildren) element.style.setProperty('display', 'none', 'important');
         const section = node('section', 'sb-character-list sb-character-list--loading');
-        section.append(createStatusPage({ icon: 'spinner fa-spin', title: t`Loading...`, compact: true }).element);
+        // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+        section.append(createStatusPage({ state: 'loading', title: t`Loading...` }).element);
         container.append(section);
         let mounted;
         try {

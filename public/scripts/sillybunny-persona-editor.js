@@ -318,6 +318,7 @@ export function mountPersonaEditor(container) {
         listBox.hidden = !listStatus.hidden;
         if (!entries.length) {
             listStatus.replaceChildren(createStatusPage({
+                state: allIds.length ? 'no-results' : 'empty',
                 icon: allIds.length ? 'magnifying-glass' : 'user',
                 title: allIds.length ? t`No Results` : t`No Personas`, compact: true,
                 actions: allIds.length ? [] : [{ label: t`New`, primary: true, onActivate: () => run(() => shell.selectItem({ kind: 'create' })) }],

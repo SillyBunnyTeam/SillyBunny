@@ -1493,81 +1493,6 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none !important;
 }
 
-.sb-character-editor-empty {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    min-width: 0;
-    min-height: 0;
-    gap: 0;
-    padding: 32px 24px;
-    text-align: center;
-    box-sizing: border-box;
-}
-
-.sb-character-editor-empty[hidden] {
-    display: none !important;
-}
-
-.sb-character-editor-empty-icon {
-    color: var(--sb-muted-fg);
-    font-size: 96px;
-    line-height: 1.1;
-    opacity: 0.5;
-    margin-block-end: 24px;
-}
-
-.sb-character-editor-empty-copy {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: min(100%, 36ch);
-    min-width: 0;
-}
-
-.sb-character-editor-empty-copy h3,
-.sb-character-editor-empty-copy p {
-    margin: 0;
-}
-
-.sb-character-editor-empty-copy h3 {
-    width: min(100%, 36ch);
-    min-height: 0;
-    margin: 0 0 12px;
-    font-size: var(--sb-type-headline);
-    font-weight: 800;
-    line-height: 1.18;
-    overflow-wrap: anywhere;
-    text-wrap: balance;
-}
-
-.sb-character-editor-empty-copy p {
-    width: min(100%, 36ch);
-    min-height: 0;
-    margin: 0 0 24px;
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-body);
-    line-height: 1.55;
-    overflow-wrap: anywhere;
-}
-
-.sb-character-editor-empty-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    max-width: 100%;
-    margin: 0;
-}
-
-.sb-character-editor-empty-actions .sb-status-page__action > i {
-    display: none;
-}
-
 #right-nav-panel.openDrawer[data-menu-type='editor_empty'] > .scrollableInner {
     display: flex;
     flex-direction: column;
@@ -3686,9 +3611,9 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
 }
 
-.sb-chat-history-list-page #select_chat_div > .sb-status-page {
-    flex: 1 1 auto;
-    min-height: 180px;
+.sb-chat-history-list-page #select_chat_div:has(> .sb-status-page) {
+    border: 0;
+    background: none;
 }
 
 .sb-chat-history-list-page .select_chat_block_wrapper + .select_chat_block_wrapper {
@@ -4138,15 +4063,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 
 .sb-persona-option.is-active {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 20%, transparent);
-}
-
-.sb-persona-option-empty {
-    min-height: 40px;
-    display: flex;
-    align-items: center;
-    padding: 5px 8px;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 64%, transparent);
-    font-size: var(--sb-type-control);
 }
 
 .sb-persona-option-avatar {
@@ -10253,7 +10169,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     .sb-mobile-quick-action-reset,
     .sb-compact-mode-option,
     .sb-persona-option,
-    .sb-persona-option-empty,
     .sb-persona-picker-manage,
     .sb-persona-picker-appendix-toggle,
     .sb-model-id-picker-empty,

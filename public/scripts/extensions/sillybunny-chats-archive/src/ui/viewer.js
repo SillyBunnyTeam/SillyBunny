@@ -149,7 +149,8 @@ export async function openViewer(ctx, state, row, ui) {
     state.viewerAbort = controller;
     state.selectedRow = row;
     const { actions, slot } = buildDetail(ctx, state, ui, row);
-    slot.append(createStatusPage({ icon: 'spinner', title: tr(ctx, 'Loading chat...'), compact: true }).element);
+    // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+    slot.append(createStatusPage({ state: 'loading', title: tr(ctx, 'Loading chat...') }).element);
     ui.viewerContent.setAttribute('aria-busy', 'true');
     showViewerPage(ctx, state, ui, row);
 
@@ -193,7 +194,8 @@ export async function openViewer(ctx, state, row, ui) {
         console.error('[Chat Archive] failed to load chat:', error);
         if (state.viewerAbort === controller) {
             const failure = createStatusPage({
-                icon: 'triangle-exclamation',
+                state: 'error',
+                // HUMAN: replace — a title that names the error, with the next step in the description; a sentence with a full stop is not a heading.
                 title: tr(ctx, 'Could not read this chat. Refresh the archive or scan for orphaned files again.'),
                 compact: true,
                 actions: [{ label: tr(ctx, 'Try Again'), primary: true, onActivate: () => void openViewer(ctx, state, row, ui) }],

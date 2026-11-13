@@ -390,7 +390,7 @@ export function openChatHistoryDialog() {
         chatRow.querySelectorAll('.exportRawChatButton, .exportChatButton').forEach(node => node.classList.add('sb-chat-history-legacy-export'));
     };
     const decorateAllRows = () => chatList.querySelectorAll('.select_chat_block_wrapper').forEach(decorateRow);
-    const emptyState = createStatusPage({ icon: 'comments', title: t`No Chats`, description: t`Saved chats appear here.`, compact: true });
+    const emptyState = createStatusPage({ state: 'empty', icon: 'comments', title: t`No Chats`, description: t`Saved chats appear here.`, compact: true });
     let emptyStateMode = null;
     const syncEmptyState = () => {
         const hasRows = chatList.querySelector('.select_chat_block_wrapper') instanceof HTMLElement;
@@ -400,6 +400,7 @@ export function openChatHistoryDialog() {
         if (emptyStateMode !== mode) {
             emptyStateMode = mode;
             emptyState.update({
+                state: searching ? 'no-results' : 'empty',
                 icon: searching ? 'magnifying-glass' : 'comments',
                 title: searching ? t`No results` : t`No Chats`,
                 description: searching ? '' : t`Saved chats appear here.`,

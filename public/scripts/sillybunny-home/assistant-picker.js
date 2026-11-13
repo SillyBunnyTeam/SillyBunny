@@ -34,8 +34,8 @@ function createSelectedMark() {
     return mark;
 }
 
-function createStatus(icon, title) {
-    const status = createStatusPage({ icon, title, compact: true });
+function createStatus(state, icon, title) {
+    const status = createStatusPage({ state, icon, title, compact: true });
     status.element.hidden = true;
     return status;
 }
@@ -128,9 +128,9 @@ export async function openAssistantPickerWindow({ getEntries, getThumbnailUrl, c
     // browsers without scroll anchoring. The first insertion therefore grows with the position of the selected row.
     buildRowsUpTo(Math.max(FIRST_ROWS, selectedIndex + 1 + FIRST_ROWS / 2));
 
-    const emptyLibrary = createStatus('user', t`No Characters Yet`);
+    const emptyLibrary = createStatus('empty', 'user', t`No Characters Yet`);
     emptyLibrary.element.hidden = items.length > 0;
-    const noResults = createStatus('magnifying-glass', t`No results`);
+    const noResults = createStatus('no-results', 'magnifying-glass', t`No results`);
     group.section.hidden = items.length === 0;
 
     function filter(value) {

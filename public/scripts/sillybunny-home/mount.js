@@ -75,6 +75,7 @@ function mountFilteredEmptyState(panel) {
     }
 
     const { element } = createStatusPage({
+        state: 'no-results',
         icon: 'filter',
         title: t`No Matching Chats`,
         description: t`No chats match this filter. Choose All to see every chat.`,

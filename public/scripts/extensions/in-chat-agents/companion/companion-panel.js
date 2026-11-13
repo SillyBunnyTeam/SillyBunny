@@ -3,6 +3,7 @@ import { hideChatMessageRange } from '../../../chats.js';
 import { captureVisibleMessageAnchor, restoreVisibleMessageAnchor } from '../../../chat-render-lifecycle/anchor.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
+import { createStatusPage } from '../../../sillybunny-editor/status-page.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
 import { escapeHtml } from '../../../utils.js';
 import {
@@ -765,6 +766,16 @@ export function buildPanelHtml() {
     `;
 }
 
+/** The panel's own empty state is the shared status page, with the description that `buildPanelHtml` wrote. */
+function mountPanelStatusPage(panel) {
+    const placeholder = panel?.querySelector?.('.ica--tpanel-body > .ica--cdash-empty');
+    if (!placeholder) return;
+    // HUMAN: replace — the title that names the state, in header capitalisation; there was only the description.
+    const { element } = createStatusPage({ state: 'empty', icon: 'user-group', title: 'TODO(copy)', description: placeholder.textContent, compact: true });
+    element.querySelector('.sb-status-page__title').dataset.sbCopyPlaceholder = 'true';
+    placeholder.replaceWith(element);
+}
+
 function renderPanel() {
     const panelElement = $('#ica--tracker-panel');
     const panel = panelElement[0];
@@ -775,6 +786,7 @@ function renderPanel() {
     ]));
 
     panelElement.html(buildPanelHtml());
+    mountPanelStatusPage(panel);
 
     for (const section of panel?.querySelectorAll(PANEL_ANCHOR_OPTIONS.messageSelector) ?? []) {
         const previousHeight = previousHeights.get(section.getAttribute(PANEL_ANCHOR_OPTIONS.keyAttribute));

@@ -231,7 +231,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await waitForCharacterPanelAnimations(page);
 
             const geometry = await page.evaluate(() => {
-                const selectors = ['#right-nav-panel > .scrollableInner', '#sb_character_editor_empty', '.sb-character-editor-empty-copy', '.sb-character-editor-empty-actions'];
+                const selectors = ['#right-nav-panel > .scrollableInner', '#sb_character_editor_empty', '#sb_character_editor_empty .sb-status-page__title', '#sb_character_editor_empty .sb-status-page__actions'];
                 const boxes = Object.fromEntries(selectors.map(selector => {
                     const element = document.querySelector(selector);
                     const rect = element.getBoundingClientRect();
@@ -246,7 +246,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                         paddingBlock: parseFloat(style.paddingBlockStart) + parseFloat(style.paddingBlockEnd),
                     }];
                 }));
-                return { boxes, buttons: [...document.querySelectorAll('.sb-character-editor-empty-actions button')].map(button => {
+                return { boxes, buttons: [...document.querySelectorAll('#sb_character_editor_empty .sb-status-page__actions button')].map(button => {
                     const rect = button.getBoundingClientRect();
                     return { x: rect.x, right: rect.right, width: rect.width };
                 }) };
@@ -256,8 +256,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             expect(status.height).toBeGreaterThanOrEqual(content.height - content.paddingBlock - 1);
             expect(content.scrollWidth).toBeLessThanOrEqual(content.clientWidth);
             expect(status.scrollWidth).toBeLessThanOrEqual(status.clientWidth);
-            expect(geometry.boxes['.sb-character-editor-empty-copy'].width).toBeLessThanOrEqual(status.width);
-            expect(geometry.boxes['.sb-character-editor-empty-actions'].scrollWidth).toBeLessThanOrEqual(geometry.boxes['.sb-character-editor-empty-actions'].clientWidth);
+            expect(geometry.boxes['#sb_character_editor_empty .sb-status-page__title'].width).toBeLessThanOrEqual(status.width);
+            expect(geometry.boxes['#sb_character_editor_empty .sb-status-page__actions'].scrollWidth).toBeLessThanOrEqual(geometry.boxes['#sb_character_editor_empty .sb-status-page__actions'].clientWidth);
             expect(geometry.buttons.every(button => button.x >= status.x && button.right <= status.x + status.width + 1)).toBe(true);
 
             const browse = empty.locator('#sb_character_empty_browse');

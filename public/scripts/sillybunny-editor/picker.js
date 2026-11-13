@@ -4,6 +4,7 @@ import { OVERLAY_SHEET_QUERY } from './breakpoints.js';
 import { animateIn, animateOut, stopMotion, MOTION_FAST, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from '../sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from '../sillybunny-sheet.js';
 import { hostOverlayLayer } from './overlay-host.js';
+import { createStatusPage } from './status-page.js';
 import { detailsToText, renderDetails } from './option-details.js';
 import { bindSheetSwipeClose, createSheetHandle } from './sheet-gestures.js';
 
@@ -284,7 +285,8 @@ function renderOptions(state) {
         const empty = document.createElement('li');
         empty.className = 'sb-picker__empty';
         empty.setAttribute('role', 'presentation');
-        empty.textContent = state.emptyText;
+        // HUMAN: replace — a title that names the state in header capitalisation ("No Results"); the callers supply `emptyText`.
+        empty.append(createStatusPage({ state: state.items.length ? 'no-results' : 'empty', title: state.emptyText, compact: true }).element);
         state.list.append(empty);
         state.input.removeAttribute('aria-activedescendant');
         return;

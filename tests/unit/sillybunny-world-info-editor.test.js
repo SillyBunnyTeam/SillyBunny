@@ -398,17 +398,19 @@ describe('World Info shell', () => {
     });
 
     test('shell is not revealed until both deferred stylesheets resolve', async () => {
-        const resolvers = [];
-        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(() => new Promise(done => { resolvers.push(done); }));
+        // A sheet can be requested more than once: the status page asks for the one that draws it, as the shell does.
+        const resolvers = new Map();
+        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(href => new Promise(done => { resolvers.set(href, [...(resolvers.get(href) ?? []), done]); }));
         mounted = mountWorldInfoEditor(container);
         await settle();
         expect(container.querySelector('.sb-wi-editor').hidden).toBe(true);
         expect(container.classList.contains('sb-wi-editor-mounted')).toBe(false);
-        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledTimes(2);
-        resolvers[0]();
+        expect(resolvers.size).toBe(2);
+        const [first, second] = [...resolvers.values()];
+        first.forEach(done => done());
         await settle();
         expect(container.querySelector('.sb-wi-editor').hidden).toBe(true);
-        resolvers[1]();
+        second.forEach(done => done());
         await settle();
         expect(container.querySelector('.sb-wi-editor').hidden).toBe(false);
         expect(container.classList.contains('sb-wi-editor-mounted')).toBe(true);

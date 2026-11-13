@@ -136,6 +136,71 @@ async function expectSearchEntries(page, isMobile) {
     await page.locator('#search-bar').blur();
 }
 
+const statusStates = { 'status-empty': 'empty', 'status-no-results': 'no-results', 'status-loading': 'loading', 'status-error': 'error', 'status-unavailable': 'unavailable' };
+
+async function expectStatusPages(page, isMobile) {
+    const status = id => page.locator(`#${id}`);
+    const title = id => status(id).locator('.sb-status-page__title');
+    const icon = id => status(id).locator('.sb-status-page__icon');
+    const fontSize = locator => locator.evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+    const headline = parseFloat(await resolved(page, 'font-size', 'var(--sb-type-headline)'));
+    const display = parseFloat(await resolved(page, 'font-size', 'var(--sb-type-display)'));
+
+    for (const [id, state] of Object.entries(statusStates)) {
+        await expect(status(id), `${id} is a status region`).toHaveAttribute('role', 'status');
+        await expect(status(id)).toHaveAttribute('data-state', state);
+        await expect(status(id)).toBeVisible();
+        await expect(title(id), `${id} names its state`).toHaveText(/\S/);
+        await expect(status(id), `${id} is labelled by its title`).toHaveAccessibleName(await title(id).textContent());
+        await expect(status(id), `${id} sits open, never in a card`).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        // The theme paints every `h3` outside a dialog as a boxed heading; a status title is bare text.
+        await expect(title(id), `${id} title is not boxed`).toHaveCSS('border-top-width', '0px');
+        await expect(title(id)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    }
+
+    // The default set is for a view and the compact set for a pane; the loading form is the compact set with a spinner.
+    await expect(icon('status-empty')).toHaveCSS('font-size', '128px');
+    expect(await fontSize(title('status-empty'))).toBeCloseTo(display, 1);
+    for (const id of ['status-no-results', 'status-error', 'status-unavailable']) {
+        await expect(icon(id), `${id} uses the compact icon`).toHaveCSS('font-size', '96px');
+        expect(await fontSize(title(id)), `${id} title is a Headline`).toBeCloseTo(headline, 1);
+        await expect(icon(id)).toHaveAttribute('aria-hidden', 'true');
+        await expect(title(id)).toHaveCSS('font-weight', '800');
+    }
+    await expect(status('status-empty').locator('.fa-inbox')).toHaveCount(1);
+    await expect(status('status-no-results').locator('.fa-magnifying-glass')).toHaveCount(1);
+    await expect(status('status-error').locator('.fa-triangle-exclamation')).toHaveCount(1);
+    await expect(status('status-unavailable').locator('.fa-ban')).toHaveCount(1);
+
+    // Loading is a spinner of 64px with a 6px stroke in place of the icon, and the title in the Headline role.
+    const spinner = status('status-loading').locator('.sb-spinner');
+    await expect(icon('status-loading')).toHaveCount(0);
+    await expect(spinner).toHaveCSS('width', '64px');
+    await expect(spinner).toHaveCSS('height', '64px');
+    await expect(spinner).toHaveCSS('border-top-width', '6px');
+    await expect(spinner).toHaveAttribute('role', 'progressbar');
+    await expect(spinner).toHaveAccessibleName('Loading Documents');
+    expect(await fontSize(title('status-loading'))).toBeCloseTo(headline, 1);
+    await expect(spinner).toHaveCSS('animation-name', 'sb-spinner-turn');
+    await expect(spinner).toHaveCSS('animation-duration', '1.2s');
+    await expect(status('status-loading').locator('button')).toHaveCount(0);
+
+    // The action is the suggested pill, 38px or taller and 44px on touch.
+    for (const id of ['status-empty', 'status-error']) {
+        const action = status(id).locator('.sb-status-page__action');
+        await expect(action).toHaveClass(/is-suggested/);
+        await expect(action).toHaveCSS('border-radius', '999px');
+        expect((await action.boundingBox()).height, `${id} action height`).toBeGreaterThanOrEqual(isMobile ? 44 : 38);
+    }
+    await expect(status('status-no-results').locator('button')).toHaveCount(0);
+
+    // Reduced motion stops the spinner and leaves its still arc.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(spinner).toHaveCSS('animation-name', 'none');
+    await expect(spinner).toHaveCSS('border-top-color', await resolved(page, 'color', 'var(--sb-shell-text)'));
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+}
+
 for (const [name, colors] of Object.entries(themes)) {
     test(`${name} shared controls`, async ({ page, isMobile }, testInfo) => {
         await page.route('**/__foundation', route => route.fulfill({ contentType: 'text/html', body: fixture }));
@@ -157,10 +222,11 @@ for (const [name, colors] of Object.entries(themes)) {
         await expect(page.locator('#secondary')).toBeFocused();
         await expect(page.locator('[disabled]').first()).toBeDisabled();
         await expect(page.locator('.menu_button[aria-disabled]')).toHaveCSS('cursor', 'not-allowed');
-        await expect(page.locator('[aria-busy]')).toHaveCSS('cursor', 'progress');
+        await expect(page.locator('.menu_button[aria-busy]')).toHaveCSS('cursor', 'progress');
 
         await expectEntryRows(page);
         await expectSearchEntries(page, isMobile);
+        await expectStatusPages(page, isMobile);
 
         for (const compact of [false, true]) {
             await page.evaluate(value => document.documentElement.dataset.sbCompactMode = String(value), compact);

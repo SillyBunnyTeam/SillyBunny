@@ -64,10 +64,6 @@
     padding: 24px;
 }
 
-.sb-character-list--loading .sb-status-page {
-    width: min(100%, 320px);
-}
-
 .sb-list-header.sb-character-list__header {
     display: flex;
     align-items: center;

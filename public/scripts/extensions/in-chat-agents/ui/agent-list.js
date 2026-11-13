@@ -618,6 +618,7 @@ export function mountAgentsPanel(column) {
         if (model.visibleKeys.length) empty?.remove();
         else if (!empty) {
             empty = createStatusPage({
+                state: model.savedCount ? 'no-results' : 'empty',
                 icon: model.savedCount ? 'magnifying-glass' : 'puzzle-piece',
                 title: model.savedCount ? t`No Results` : t`No Agents`, compact: true,
                 actions: model.savedCount ? [] : [
@@ -678,7 +679,7 @@ export function mountAgentsPanel(column) {
                 });
                 if (creation?.maker) queueMicrotask(() => pageController?.maker?.());
             } else {
-                const status = createStatusPage({ icon: 'user-group', title: t`Companions Unavailable`, description: t`lorum ipsum`, actions: [{ label: t`Back`, onActivate: onClose }] });
+                const status = createStatusPage({ state: 'unavailable', icon: 'user-group', title: t`Companions Unavailable`, description: t`lorum ipsum`, actions: [{ label: t`Back`, onActivate: onClose }] });
                 status.element.querySelector('.sb-status-page__description').dataset.sbCopyPlaceholder = 'true';
                 host.replaceChildren(status.element);
                 pageController = { destroy: () => status.element.remove() };

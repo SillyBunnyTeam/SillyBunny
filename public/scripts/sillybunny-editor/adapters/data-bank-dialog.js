@@ -87,7 +87,7 @@ export function frameDataBankManager(popup, { onSearch, onClose } = {}) {
     status.setAttribute('aria-live', 'polite');
     status.hidden = true;
     managerRoot.append(status);
-    const emptySearch = createStatusPage({ icon: 'magnifying-glass', title: t`No results`, compact: true });
+    const emptySearch = createStatusPage({ state: 'no-results', title: t`No results`, compact: true });
     emptySearch.element.classList.add('data-bank-empty-search');
     emptySearch.element.hidden = true;
     managerRoot.append(emptySearch.element);

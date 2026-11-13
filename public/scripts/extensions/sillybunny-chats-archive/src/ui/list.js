@@ -118,7 +118,8 @@ function paintList(ctx, state, ui) {
         if (state.rows.length === 0) {
             state.matchingRows = [];
             setCount(ui, '');
-            showStatusPage(ui, { icon: 'spinner', title: tr(ctx, 'Loading chats...') });
+            // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+            showStatusPage(ui, { state: 'loading', title: tr(ctx, 'Loading chats...') });
             return;
         }
     }
@@ -126,7 +127,8 @@ function paintList(ctx, state, ui) {
         state.matchingRows = [];
         setCount(ui, '');
         showStatusPage(ui, {
-            icon: 'triangle-exclamation',
+            state: 'error',
+            // HUMAN: replace — a title that names the error, in header capitalisation and without a full stop.
             title: tr(ctx, 'The chat list could not be loaded.'),
             actions: [{ label: tr(ctx, 'Try Again'), primary: true, onActivate: () => void loadRows(ctx, state, ui) }],
         });
@@ -136,7 +138,12 @@ function paintList(ctx, state, ui) {
     const { rows } = ui.data;
     state.matchingRows = rows;
     if (rows.length === 0) {
-        showStatusPage(ui, { icon: 'comments', title: emptyMessage(ctx, state) });
+        // HUMAN: replace — a title that names the state and a description of what to do next; the sentences with a full stop are not headings.
+        showStatusPage(ui, {
+            state: state.deepRows === null && allRows(state).length === 0 ? 'empty' : 'no-results',
+            icon: 'comments',
+            title: emptyMessage(ctx, state),
+        });
         return;
     }
 
