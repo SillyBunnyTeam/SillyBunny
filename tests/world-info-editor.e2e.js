@@ -773,6 +773,19 @@ test.describe('World Info spin rows on a coarse pointer', () => {
 test.describe('World Info spin rows on a fine pointer', () => {
     test.use({ viewport: { width: 1440, height: 900 } });
 
+    test('a stacked row puts its field right under its title', async ({ page }) => {
+        const entry = await openSpinRows(page);
+        const rows = entry.locator('.ds-row.ds-row--stacked:has(> .ds-row-text)');
+        expect(await rows.count()).toBeGreaterThan(0);
+        // A stacked row is a column, where the title's minimum width must not become its height.
+        const gaps = await rows.evaluateAll(nodes => nodes.filter(node => node.offsetParent).map((node) => {
+            const label = node.querySelector(':scope > .ds-row-text > .ds-row-label').getBoundingClientRect();
+            const field = node.querySelector(':scope > .ds-row-suffix').getBoundingClientRect();
+            return { label: node.querySelector('.ds-row-label').textContent.trim(), gap: field.top - label.bottom };
+        }));
+        for (const { label, gap } of gaps) expect(gap, label).toBeLessThanOrEqual(12);
+    });
+
     test('keep 32px targets 6px apart', async ({ page }) => {
         await openSpinRows(page);
         const rows = await measureSpinRows(page);

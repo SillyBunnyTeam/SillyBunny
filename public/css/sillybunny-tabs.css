@@ -5583,6 +5583,13 @@ body.reduced-motion .sb-search-entry {
     overflow-wrap: anywhere;
 }
 
+/* In a row laid out as a column, the title's minimum width as a basis would become its height. */
+.ds-row:is(.ds-row--stacked, .ds-row-entry--floating) > .ds-row-text,
+#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) > .ds-row-text,
+#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > .ds-row-text {
+    flex-basis: auto;
+}
+
 .ds-row-label {
     margin: 0;
     font-size: var(--sb-type-body);
