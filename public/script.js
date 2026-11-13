@@ -1,5 +1,9 @@
 import {
     showdown,
+    // SillyBunny: libraries for the markdown-it engine, the default for chat Markdown.
+    markdownit,
+    markdownItEmoji,
+    markdownItCjkFriendly,
     moment,
     DOMPurify,
     hljs,
@@ -259,6 +263,8 @@ import {
 import { checkOpenRouterAuth, initSecrets, readSecretState } from './scripts/secrets.js';
 import { markdownExclusionExt } from './scripts/showdown-exclusion.js';
 import { markdownUnderscoreExt } from './scripts/showdown-underscore.js';
+// SillyBunny: markdown-it renders chat Markdown unless the user picks Showdown.
+import { MARKDOWN_ENGINES, createMarkdownItConverter, normalizeMarkdownEngine } from './scripts/markdown-engine.js';
 import { NOTE_MODULE_NAME, getAuthorsNoteDepth, getAuthorsNotePosition, getAuthorsNoteRole, initAuthorsNote, setFloatingPrompt, shouldWIAddPrompt } from './scripts/authors-note.js';
 import { registerPromptManagerMigration } from './scripts/PromptManager.js';
 import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
@@ -865,6 +871,14 @@ async function getClientVersion() {
 }
 
 export function reloadMarkdownProcessor() {
+    // SillyBunny: markdown-it replaces Showdown unless the user picked Showdown; a missing or unknown engine means markdown-it.
+    if (normalizeMarkdownEngine(power_user.markdown_engine) === MARKDOWN_ENGINES.MARKDOWN_IT) {
+        converter = createMarkdownItConverter({ markdownit, markdownItEmoji, markdownItCjkFriendly }, {
+            getNonMarkdownStrings: () => power_user.markdown_escape_strings ? substituteParams(power_user.markdown_escape_strings) : '',
+        });
+        return converter;
+    }
+
     converter = new showdown.Converter({
         emoji: true,
         literalMidWordUnderscores: true,
