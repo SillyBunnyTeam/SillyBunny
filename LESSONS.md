@@ -678,6 +678,19 @@ This is the largest class by a wide margin.
 - **Fixes:** `55244b488`.
 - **Open:** the row dispatches only `change` when a value is picked (`writeValue()` in `select-row.js`), while a native select fires `input` first. `#openrouter_sort_models` listens for `input` (`public/scripts/openai.js`), so a choice made through its row is not saved. `tests/audit/settings-inventory.e2e.js` found it: the fixture records that control as saving nothing.
 
+### Editor header, token readout and leave dialog
+
+- **Breaks:** each explicit-save editor kept its own copy of the header order, the dirty mark, the Cancel icon form, the count and the leave dialog, so the five differed: the group of Back, Cancel and Save moved between editors, three leave dialogs put Discard in the Cancel slot, and a list editor's count sat in a footer.
+- **Files:** `public/scripts/sillybunny-editor/chrome.js` (`mountEditorChrome` orders the header, gives the tooltips and owns `setTokens()`; `createDirtyMark()`, `createTokenReadout()`, `createSummaryRow()`, `attachToLabelRow()`), `sillybunny-editor/leave-dialog.js` (`askLeaveEditor()`, used by `navigation.js` and `list-shell.js`), and the rules in `public/css/sillybunny-character-editor.css`, a blocking sheet.
+- **Guards:**
+  - A control reaches a shared rule only through the shared classes (`sb-editor-icon-button sb-header-icon-button` on Back and the item menu); the editors' `.menu_button:not(.sb-header-icon-button)` rules would otherwise reset it.
+  - The theme sets `margin: 0 !important` on an icon `.menu_button`, so an auto margin on the Expand button never applies. The label row gives the heading `flex: 1 1 auto` instead.
+  - The popup dialog stacks its buttons (`column-reverse`): the order the theme sets (Cancel -1, Discard 0, Save 1) shows as Save on top and Cancel at the bottom. A test reads the computed `order`, not the box positions.
+  - A count that sits in a second row is a second node (`role="group"` with the full text as its name and an `aria-hidden` short value), and CSS shows one of the two; `setTokens()` writes both and reruns the toolbar overflow pass.
+  - `tests/frontend-performance.e2e.js` counts startup requests with no headroom (`STARTUP_RESOURCE_LIMIT`); a new module that startup imports needs the limit raised on purpose.
+- **Tests:** `tests/unit/sillybunny-editor-chrome-navigation.test.js`, `tests/unit/sillybunny-editor-leave-dialog.test.js`, `tests/unit/sillybunny-world-info-entry.test.js`, `tests/unit/sillybunny-persona-detail.test.js`; `tests/persona-editor.e2e.js`, `tests/world-info-editor.e2e.js`, `tests/in-chat-agents-editor.e2e.js`.
+- **Open:** the Prompt editor still has its own header, footer count, Expand and Cancel rules in `sillybunny-prompt-editor.css`.
+
 ### Audit specs, the surface registry and ratchets
 
 - **Where:** the opt-in config `tests/playwright.audit.config.js` runs the specs in `tests/audit/`, which iterate over the surface registry in `tests/helpers/surfaces/` (one file per family, fixtures in `needs/`). The default, Firefox, WebKit and foundation configs do not run them. The config's global setup seeds every fixture on every server of the run, and `seed-guard.js` refuses a server that the run did not start; port 4444 is always refused.

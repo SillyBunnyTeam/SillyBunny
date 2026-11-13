@@ -563,7 +563,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
 #sb-settings-page .sb-wi-entry .sb-wi-entry-title {
     flex: 1 1 112px;
     width: 0;
-    min-width: 112px;
+    min-width: 96px;
     max-width: none;
     height: 38px;
     margin: 0;
@@ -578,32 +578,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     text-overflow: ellipsis;
 }
 
-.sb-wi-entry-dirty {
-    flex: none;
-    color: var(--sb-accent);
-}
-
-.sb-wi-entry-tokens {
-    flex: none;
-    color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.75);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
-
-.sb-wi-entry-footer {
-    display: flex;
-    flex: none;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    padding: 0 12px 10px;
-    gap: 6px;
-    color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.75);
-}
-
-#sb-settings-page .sb-wi-entry .sb-wi-entry-footer .editor_maximize[data-for],
+#sb-settings-page .sb-wi-entry .editor_maximize[data-for],
 #sb-settings-page .sb-wi-entry .sb-wi-dropdown,
 :is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .menu_button {
     display: inline-flex;
@@ -621,7 +596,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     cursor: pointer;
 }
 
-#sb-settings-page .sb-wi-entry .sb-wi-entry-footer .editor_maximize[data-for],
+#sb-settings-page .sb-wi-entry .editor_maximize[data-for],
 :is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .menu_button_icon {
     width: 40px;
     min-width: 40px;
@@ -801,7 +776,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
         min-height: 44px;
     }
 
-    #sb-settings-page .sb-wi-entry .sb-wi-entry-footer .editor_maximize[data-for],
+    #sb-settings-page .sb-wi-entry .editor_maximize[data-for],
     :is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .menu_button_icon {
         min-width: 44px;
     }
@@ -994,46 +969,6 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     .sb-wi-entry-header {
         padding-inline: 4px;
         gap: 2px;
-    }
-
-    #sb-settings-page .sb-wi-entry .sb-wi-entry-cancel {
-        position: relative;
-        width: 40px;
-        min-width: 40px;
-        height: 40px;
-        min-height: 40px;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: inherit;
-        line-height: 1;
-    }
-
-    #sb-settings-page .sb-wi-entry .sb-wi-entry-cancel .sb-editor-action__icon {
-        display: block;
-        line-height: 1;
-    }
-
-    #sb-settings-page .sb-wi-entry .sb-wi-entry-cancel .sb-editor-action__label {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
-    }
-
-    #sb-settings-page .sb-wi-entry .sb-wi-entry-save {
-        padding-inline: 12px;
-    }
-
-    @media (pointer: coarse) {
-        #sb-settings-page .sb-wi-entry .sb-wi-entry-cancel {
-            width: 44px;
-            min-width: 44px;
-            height: 44px;
-            min-height: 44px;
-        }
     }
 }
 

@@ -1,7 +1,7 @@
 import { play, stopMotion, prefersReducedMotion, SPRING_NAVIGATION, MOTION_FAST } from '../sillybunny-motion.js';
-import { Popup, POPUP_TYPE, POPUP_RESULT } from '../popup.js';
 import { t } from '../i18n.js';
 import { LAYOUT_MOBILE_QUERY } from './breakpoints.js';
+import { askLeaveEditor } from './leave-dialog.js';
 
 const DEFAULT_COLLAPSE_AT = 720;
 
@@ -278,29 +278,18 @@ export function createListEditor(config) {
         if (!isDirty()) return true;
         if (busy) return false;
         busy = true;
-        let result;
+        let choice;
         try {
-            const message = document.createElement('p');
-            message.textContent = t`Unsaved changes`;
-            const popup = new Popup(message, POPUP_TYPE.CONFIRM, '', {
-                okButton: t`Save`,
-                cancelButton: t`Cancel`,
-                customButtons: [{ text: t`Discard`, result: 2 }],
-                defaultResult: POPUP_RESULT.NEGATIVE,
-            });
-            // AdwAlertDialog order: Cancel · Discard · Save.
-            popup.cancelButton.style.order = '0';
-            popup.okButton.style.order = '2';
-            result = await popup.show();
+            choice = await askLeaveEditor();
         } finally {
             busy = false;
         }
         if (!isCurrent()) return false;
-        if (result === POPUP_RESULT.AFFIRMATIVE) {
+        if (choice === 'save') {
             const saved = await onSave();
             return isCurrent() && Boolean(saved);
         }
-        if (result !== 2) return false;
+        if (choice !== 'discard') return false;
         onDiscard();
         return true;
     }

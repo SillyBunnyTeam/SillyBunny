@@ -93,7 +93,7 @@
         "public/css/sillybunny-persona-detail.css": {
             "radius-literal": 3,
             "important": 4,
-            "spacing-off-scale": 23
+            "spacing-off-scale": 22
         },
         "public/css/sillybunny-persona-editor.css": {
             "important": 11,
@@ -143,7 +143,7 @@
         },
         "public/css/sillybunny-world-info-editor.css": {
             "important": 15,
-            "spacing-off-scale": 48
+            "spacing-off-scale": 47
         },
         "public/css/spacing-system.css": {
             "breakpoint-off-set": 1,

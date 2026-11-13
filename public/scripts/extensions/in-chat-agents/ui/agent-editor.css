@@ -92,10 +92,6 @@
     min-height: 0;
 }
 
-.ica-agent-prompt-footer {
-    justify-content: flex-end;
-}
-
 .ica-agent-detail .ica-agent-group-actions {
     display: flex;
     align-items: center;

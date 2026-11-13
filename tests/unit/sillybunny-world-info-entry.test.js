@@ -202,7 +202,9 @@ describe('World Info schema form', () => {
         const { host } = mount();
         const bar = host.querySelector('.sb-wi-entry > .sb-wi-properties');
         expect([...bar.children].map(node => node.dataset.sbEditorField)).toEqual(['strategy', 'position', 'depth', 'outletName', 'order', 'probability']);
-        expect(bar.previousElementSibling.classList.contains('sb-wi-property-summary')).toBe(true);
+        // The summary button shares its row with the phone token count.
+        expect(bar.previousElementSibling.classList.contains('sb-editor-summary-row')).toBe(true);
+        expect(bar.previousElementSibling.querySelector(':scope > .sb-wi-property-summary')).not.toBeNull();
         expect(bar.previousElementSibling.previousElementSibling.classList.contains('sb-wi-entry-header')).toBe(true);
         for (const id of ['enabled', 'strategy', 'position', 'depth', 'outletName', 'order', 'probability', 'section-entry', 'section-insertion']) {
             expect(host.querySelector(`.sb-wi-entry-body [data-sb-editor-field="${id}"]`)).toBeNull();
@@ -282,7 +284,10 @@ describe('World Info schema form', () => {
         const first = mount();
         const second = mount({ name: 'Other book' });
         const textarea = control(first.host, 'content');
-        const expand = first.host.querySelector('.sb-wi-entry-footer .editor_maximize');
+        // Expand sits in the label row of the Content group, not in a footer.
+        const expand = first.host.querySelector('.sb-editor-label-row > .editor_maximize');
+        expect(first.host.querySelector('.sb-wi-entry-footer')).toBeNull();
+        expect(expand.closest('[data-sb-editor-field="section-content"]')).not.toBeNull();
         expect(textarea.id).toMatch(/^sb-/);
         expect(textarea.id).not.toBe(control(second.host, 'content').id);
         expect(expand.dataset.for).toBe(textarea.id);
@@ -379,7 +384,7 @@ describe('World Info schema form', () => {
         expect(header.querySelector('.sb-wi-entry-mode-toggle').getAttribute('aria-label')).toBe('Preview');
         expect(row(host, 'content').querySelector('.ds-row-label')).toBeNull();
         expect(control(host, 'content').getAttribute('aria-label')).toBe('translated:Content');
-        expect(host.querySelector('.sb-wi-entry-footer .sb-wi-entry-tokens')).not.toBeNull();
+        expect(header.querySelector(':scope > .sb-wi-entry-tokens')).not.toBeNull();
         header.querySelector('.sb-wi-detail-back').click();
         expect(requestClose).toHaveBeenCalledTimes(1);
         const toggle = header.querySelector('.sb-wi-entry-mode-toggle');
@@ -401,7 +406,34 @@ describe('World Info schema form', () => {
         await jest.advanceTimersByTimeAsync(300);
         finish(99);
         await Promise.resolve();
-        expect(host.querySelector('.sb-wi-entry-tokens').textContent).toBe('12 tokens');
+        expect(host.querySelector('.sb-wi-entry-header > .sb-wi-entry-tokens').textContent).toBe('12 Tokens');
+        expect(host.querySelector('.sb-editor-summary-row > .sb-editor-tokens--row').textContent).toBe('12 Tokens');
+    });
+
+    test('the header holds Back, title, dirty mark, count, Edit/Preview, item menu, Cancel and Save in that order', () => {
+        const { host } = mount({ actions: { sections: () => [] } });
+        const header = host.querySelector('.sb-wi-entry-header');
+        expect([...header.children].map(node => node.className.split(' ').find(name => /^sb-wi-(detail-back|entry-(title|dirty|tokens|modes|mode-toggle|more|cancel|save))$/.test(name)))).toEqual([
+            'sb-wi-detail-back', 'sb-wi-entry-title', 'sb-wi-entry-dirty', 'sb-wi-entry-tokens', 'sb-wi-entry-modes', 'sb-wi-entry-mode-toggle',
+            'sb-wi-entry-more', 'sb-wi-entry-cancel', 'sb-wi-entry-save',
+        ]);
+    });
+
+    test('the item menu is in the header only when the editor gives it actions, and Back and the menu carry the copy placeholder tooltip', () => {
+        expect(mount().host.querySelector('.sb-wi-entry-more').hidden).toBe(true);
+        const sections = jest.fn(() => [{ items: [{ label: 'Duplicate', icon: 'fa-solid fa-copy', onSelect: jest.fn() }] }]);
+        const { host } = mount({ actions: { sections } });
+        const more = host.querySelector('.sb-wi-entry-more');
+        expect(more.hidden).toBe(false);
+        for (const control of [more, host.querySelector('.sb-wi-detail-back')]) {
+            expect(control.title).toBe('TODO(copy)');
+            expect(control.dataset.sbCopyPlaceholder).toBe('true');
+        }
+        expect(host.querySelector('.sb-wi-detail-back').getAttribute('aria-label')).toBe('Back');
+        expect(host.querySelector('.sb-wi-entry-cancel').title).toBe('Cancel');
+        expect(host.querySelector('.sb-wi-entry-save').title).toBe('Save');
+        more.click();
+        expect(sections).toHaveBeenCalledWith(more);
     });
 });
 

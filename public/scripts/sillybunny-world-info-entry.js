@@ -7,7 +7,7 @@ import { getTokenCountAsync } from './tokenizers.js';
 import * as model from './sillybunny-world-info-model.js';
 import { createRow, createSwitchRow, createComboRow, createSpinRow, createEntryRow, createPropertyRow, createExpanderRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
 import { createChipEntry } from './sillybunny-editor/chip-entry.js';
-import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
@@ -61,8 +61,11 @@ function revertUnsavedKeys(data, uid, previous, submitted, keys, setOriginal) {
     model.mirrorKeys(data, uid, reverted, setOriginal);
 }
 
-/** Schema-driven explicit-save detail for one entry in the tracked World Info book. */
-export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose, onSaved = () => {}, onStateChange = () => {} }) {
+/**
+ * Schema-driven explicit-save detail for one entry in the tracked World Info book.
+ * `actions.sections(trigger)` builds the item menu of the header; without it the header has no item menu.
+ */
+export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose, onSaved = () => {}, onStateChange = () => {}, actions = null }) {
     const initialEntry = data?.entries?.[uid];
     if (!initialEntry) throw new RangeError(`World Info entry ${uid} no longer exists`);
     const instanceId = `sb-wi-entry-${++nextEntryId}`;
@@ -92,9 +95,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     const chips = [];
     const root = element('section', 'sb-wi-entry');
     const header = element('header', 'sb-wi-detail-header sb-wi-entry-header');
-    const back = button(t`Back`, 'menu_button_icon sb-wi-detail-back');
+    const back = button(t`Back`, 'menu_button_icon sb-wi-detail-back sb-editor-icon-button sb-header-icon-button');
     back.setAttribute('aria-label', t`Back`);
-    back.title = t`Back`;
     const backIcon = element('i', 'fa-solid fa-chevron-left');
     backIcon.setAttribute('aria-hidden', 'true');
     back.replaceChildren(backIcon);
@@ -103,17 +105,23 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     title.type = 'text';
     title.dataset.sbEditorField = titleField.id;
     title.setAttribute('aria-label', translate(titleField.label, titleField.i18n));
-    const dirtyDot = element('span', 'sb-wi-entry-dirty', '•');
-    dirtyDot.setAttribute('aria-label', t`Unsaved changes`);
-    dirtyDot.hidden = true;
-    const tokens = element('span', 'sb-wi-entry-tokens', `— ${t`tokens`}`);
+    const dirtyDot = createDirtyMark('sb-wi-entry-dirty');
+    const readout = createTokenReadout();
+    readout.classList.add('sb-wi-entry-tokens');
+    const more = button('', 'menu_button_icon sb-wi-entry-more sb-editor-icon-button sb-header-icon-button');
+    more.setAttribute('aria-haspopup', 'menu');
+    more.setAttribute('aria-expanded', 'false');
+    // HUMAN: replace — name of the item menu; the tooltip wording for Back and the item menu is not settled yet.
+    more.setAttribute('aria-label', t`TODO(copy)`);
+    more.append(element('i', 'fa-solid fa-ellipsis-vertical'));
+    more.firstChild.setAttribute('aria-hidden', 'true');
+    more.hidden = !actions;
     const modes = createSegmentedControl(t`Edit / Preview`, [[false, t`Edit`], [true, t`Preview`]], false, setPreview, { compact: true, detachFromForm: true });
     modes.classList.add('sb-wi-entry-modes');
     const modeToggle = button(t`Preview`, 'menu_button_icon sb-wi-entry-mode-toggle');
     modeToggle.addEventListener('click', () => setPreview(!showingPreview));
     const cancel = element('button', 'sb-editor-action sb-editor-action--secondary sb-wi-entry-cancel');
     cancel.type = 'button';
-    cancel.title = t`Cancel`;
     const cancelIcon = element('i', 'fa-solid fa-xmark sb-editor-action__icon');
     cancelIcon.setAttribute('aria-hidden', 'true');
     cancel.append(cancelIcon, element('span', 'sb-editor-action__label', t`Cancel`));
@@ -128,9 +136,11 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     summary.setAttribute('aria-haspopup', 'dialog');
     summary.setAttribute('aria-expanded', 'false');
     summary.addEventListener('click', openProperties);
+    const summaryRow = createSummaryRow(summary);
+    // The chrome puts the readout and the item menu in their places in the header.
     header.append(back, title, dirtyDot, modes, modeToggle, cancel, saveButton);
     propertyContent = createProperties();
-    root.append(header, summary, propertyContent, banner, body);
+    root.append(header, summaryRow, propertyContent, banner, body);
     host.replaceChildren(root);
 
     const storage = createEditorDraftStore({
@@ -384,9 +394,9 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         tokenTimer = setTimeout(async () => {
             try {
                 const count = await getTokenCountAsync(model.readField(draft, 'content'), 0);
-                if (!destroyed && request === tokenRequest) tokens.textContent = `${count} ${t`tokens`}`;
+                if (!destroyed && request === tokenRequest) chrome.setTokens({ total: count });
             } catch {
-                if (!destroyed && request === tokenRequest) tokens.textContent = `? ${t`tokens`}`;
+                if (!destroyed && request === tokenRequest) chrome.setTokens({ total: '?' });
             }
         }, 300);
     }
@@ -465,7 +475,6 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         pane.setAttribute('aria-label', label);
         pane.hidden = true;
         pane.tabIndex = 0;
-        const footer = element('footer', 'sb-wi-entry-footer');
         const expand = button('', 'menu_button_icon editor_maximize sb-wi-entry-expand');
         expand.title = t`Expand the editor`;
         expand.setAttribute('aria-label', t`Expand the editor`);
@@ -473,12 +482,11 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         const expandIcon = element('i', 'fa-solid fa-maximize');
         expandIcon.setAttribute('aria-hidden', 'true');
         expand.append(expandIcon);
-        footer.append(tokens, expand);
         wrapper.append(textarea, pane);
         const row = createRow({ field: field.id, label, stacked: true, suffix: wrapper });
         // The section heading supplies the visible Content caption.
         row.row.querySelector('.ds-row-text').remove();
-        contentField = { textarea, pane, footer, expand };
+        contentField = { textarea, pane, expand };
         return { ...row, setValue: value => { if (textarea.value !== value) textarea.value = value; } };
     }
 
@@ -556,7 +564,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             ? createPrefGroup({ field: `section-${section.id}`, rows: [createExpanderRow({ label: title, field: `expander-${section.id}`, children: rows })] })
             : createPrefGroup({ title, field: `section-${section.id}`, rows });
         body.append(group.section);
-        if (rows.some(row => row.row.dataset.sbEditorField === 'content')) body.append(contentField.footer);
+        // Expand sits at the inline end of the Content label row.
+        if (rows.some(row => row.row.dataset.sbEditorField === 'content')) attachToLabelRow(group.section, contentField.expand);
     }
 
     function renderBanner() {
@@ -779,8 +788,12 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     document.addEventListener('pointerdown', onPointerdown);
     setPreview(false);
     chrome = mountEditorChrome({
-        root, header, content: body, controls: { back, title, dirty: dirtyDot, cancel, save: saveButton },
+        root, header, content: body,
+        controls: { back, title, dirty: dirtyDot, more, modes: [modes, modeToggle], cancel, save: saveButton },
+        tokens: { element: readout, row: { host: summaryRow } },
         onBack: () => requestClose(), onCancel: discard, onSave: () => { void save(); },
+        getActionSections: () => actions?.sections(more) ?? [],
+        actionMenuTitle: () => model.entryTitle(draft, t`Untitled entry`),
         scrollHide: false,
     });
     session = createEditorSession({ captureSnapshot, restoreSnapshot, persist, drafts, offerDraft: showDraftRecoveryToast, onStateChange: renderState });

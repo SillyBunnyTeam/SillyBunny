@@ -456,6 +456,10 @@ function _mountChrome() {
             dirty: document.getElementById('sb_character_editor_dirty'),
             more: document.getElementById('sb_character_editor_more'),
         },
+        tokens: {
+            element: document.getElementById('sb_character_editor_tokens'),
+            row: { host: toolbar, before: document.getElementById('sb_character_editor_quick_edit') },
+        },
         onBack: _handleBack,
         onCancel: () => {
             // Cancel is disabled when clean, so a click is intentional.
@@ -849,32 +853,20 @@ function _bindExportMenu() {
  * extensions that read #result_info working.
  */
 function _syncTokenReadout() {
-    const readout = document.getElementById('sb_character_editor_tokens');
-    const value = document.getElementById('sb_character_editor_tokens_value');
-    const warning = document.getElementById('sb_character_editor_token_warning');
-    if (!readout || !value) return;
+    if (!chrome) return;
 
     const total = document.getElementById('result_info_total_tokens')?.textContent?.trim() ?? '';
     const permanent = document.getElementById('result_info_permanent_tokens')?.textContent?.trim() ?? '';
 
     if (!total || /^calculating/i.test(total) || total === '...') {
-        readout.hidden = true;
+        chrome.setTokens(null);
         return;
     }
 
-    readout.hidden = false;
-    value.textContent = permanent
-        ? `${total} ${t`Tokens`} (${permanent} ${t`Permanent`})`
-        : `${total} ${t`Tokens`}`;
-
     // RA_CountCharTokens() classifies the card by toggling neutral_warning on the
-    // legacy wrapper. Drive the new readout from that single source of truth:
-    // inline display, so it matches how upstream shows/hides its own warning.
-    const warn = document.getElementById('result_info_text')?.classList.contains('neutral_warning') ?? false;
-    readout.classList.toggle('is-over-budget', warn);
-    if (warning instanceof HTMLElement) {
-        warning.style.display = warn ? '' : 'none';
-    }
+    // legacy wrapper. Drive the readout from that single source of truth.
+    const overBudget = document.getElementById('result_info_text')?.classList.contains('neutral_warning') ?? false;
+    chrome.setTokens({ total, permanent, overBudget });
 }
 
 function _bindTokenMirror() {

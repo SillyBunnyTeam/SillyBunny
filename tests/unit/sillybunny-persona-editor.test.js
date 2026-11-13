@@ -110,7 +110,7 @@ const personaStylesheets = [
     { href: 'css/sillybunny-editor-shell.css?v=20261113x', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261113t', id: 'deferred-persona-editor-css' },
-    { href: 'css/sillybunny-persona-detail.css?v=20261113x', id: 'deferred-persona-detail-css' },
+    { href: 'css/sillybunny-persona-detail.css?v=20261113z', id: 'deferred-persona-detail-css' },
 ];
 let container;
 let mounted;

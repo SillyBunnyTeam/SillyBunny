@@ -3,12 +3,9 @@
 // character and group editors cannot drift apart on Ctrl+S, dirty Escape,
 // tab-switch interception, the unsaved-changes dialog, or unload backup.
 
-import { Popup, POPUP_TYPE, POPUP_RESULT } from '../popup.js';
 import { isActionMenuOpen } from '../sillybunny-action-menu.js';
 import { isPickerOpen } from './picker.js';
-import { t } from '../i18n.js';
-
-const DISCARD_RESULT = 2;
+import { askLeaveEditor } from './leave-dialog.js';
 
 /**
  * @typedef {object} EditorRegistration
@@ -69,26 +66,15 @@ export async function confirmEditorLeave(registration) {
     if (promptOpen) return false;
 
     promptOpen = true;
-    let result;
+    let choice;
     try {
-        const message = document.createElement('p');
-        message.textContent = t`Unsaved changes`;
-        const popup = new Popup(message, POPUP_TYPE.CONFIRM, '', {
-            okButton: t`Save`,
-            cancelButton: t`Cancel`,
-            customButtons: [{ text: t`Discard`, result: DISCARD_RESULT, classes: ['sb-editor-discard'] }],
-            defaultResult: POPUP_RESULT.NEGATIVE,
-        });
-        // AdwAlertDialog order: Cancel (start) · Discard · Save (end). The theme
-        // already sets .popup-button-cancel { order: -1 }, so only Save moves.
-        popup.okButton.style.order = '2';
-        result = await popup.show();
+        choice = await askLeaveEditor();
     } finally {
         promptOpen = false;
     }
 
-    if (result === POPUP_RESULT.AFFIRMATIVE) return session.save();
-    if (result === DISCARD_RESULT) {
+    if (choice === 'save') return session.save();
+    if (choice === 'discard') {
         discardEditorChanges(registration);
         return true;
     }

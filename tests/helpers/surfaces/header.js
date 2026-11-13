@@ -641,7 +641,7 @@ export const surfaces = [
         // The header is shared with the form of a new character, so the dirty state also names the menu type of an existing one.
         dirtyState: { rename: '#sb_character_editor_title_button', dirty: '#sb_character_editor_dirty:not([hidden])', title: '#sb_character_editor_title', only: '#right-nav-panel[data-menu-type="character_edit"]' },
         // The title of the top bar names the open chat once that chat has loaded, which is before the capture in some boots and after it in others.
-        masks: ['#sb_character_editor_header .sb-editor-tokens', '#sb-topbar-title'],
+        masks: ['#sb_character_editor_header .sb-editor-tokens', '#sb_character_editor_toolbar .sb-editor-tokens--row', '#sb-topbar-title'],
         extraStates: [{
             id: 'create-mode',
             ready: [withText('#sb_character_editor_title', 'Create New Character'), '#right-nav-panel[data-menu-type="create"]'],
@@ -670,7 +670,7 @@ export const surfaces = [
         open: openWorldInfoEntry,
         cancel: '#WorldInfo .sb-wi-entry .sb-wi-entry-cancel',
         dirtyState: { field: '#WorldInfo .sb-wi-entry .sb-wi-entry-title', dirty: '#WorldInfo .sb-wi-entry .sb-wi-entry-dirty:not([hidden])' },
-        masks: ['#WorldInfo .sb-wi-entry .sb-wi-entry-tokens'],
+        masks: ['#WorldInfo .sb-wi-entry .sb-wi-entry-tokens', '#WorldInfo .sb-wi-entry .sb-editor-tokens--row'],
         needs: ['lorebook'],
         sources: [`${SCRIPTS}/sillybunny-world-info-entry.js`, `${SCRIPTS}/sillybunny-editor/chrome.js`, `${CSS}/sillybunny-world-info-editor.css`],
     }),

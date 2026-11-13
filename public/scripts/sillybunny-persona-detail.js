@@ -14,7 +14,7 @@ import {
 import * as model from './sillybunny-persona-model.js';
 import { createRow, createSwitchRow, createEntryRow, createPropertyRow, createExpanderRow, createButtonRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
 import { openPicker } from './sillybunny-editor/picker.js';
-import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { createEntityRow } from './sillybunny-editor/entity-row.js';
@@ -113,7 +113,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     const root = element('section', 'sb-persona-entry');
     root.tabIndex = -1;
     const header = element('header', 'sb-persona-detail-header sb-persona-entry-header');
-    const back = iconButton(t`Back`, 'chevron-left', 'sb-persona-detail-back');
+    const back = iconButton(t`Back`, 'chevron-left', 'sb-persona-detail-back sb-editor-icon-button sb-header-icon-button');
     const name = element('input', 'sb-persona-entry-name');
     name.type = 'text';
     name.required = true;
@@ -121,21 +121,20 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     name.dataset.sbEditorField = 'name';
     name.setAttribute('aria-label', t`Name`);
     name.value = draft.name;
-    const dirtyDot = element('span', 'sb-persona-entry-dirty', '•');
-    dirtyDot.setAttribute('aria-label', t`Unsaved changes`);
-    dirtyDot.hidden = true;
+    const dirtyDot = createDirtyMark('sb-persona-entry-dirty');
+    const readout = createTokenReadout();
+    readout.classList.add('sb-persona-entry-tokens');
     const modes = createSegmentedControl(t`Edit / Preview`, [[false, t`Edit`], [true, t`Preview`]], false, setPreview, { compact: true, detachFromForm: true });
     modes.classList.add('sb-persona-entry-modes');
     const modeToggle = iconButton(t`Preview`, 'eye', 'sb-persona-entry-mode-toggle');
     modeToggle.addEventListener('click', () => setPreview(!showingPreview));
-    const more = iconButton(t`More...`, 'ellipsis-vertical', 'sb-persona-entry-more');
+    const more = iconButton(t`More...`, 'ellipsis-vertical', 'sb-persona-entry-more sb-editor-icon-button sb-header-icon-button');
     more.setAttribute('aria-haspopup', 'menu');
     more.setAttribute('aria-expanded', 'false');
     const actions = element('div', 'sb-persona-entry-actions');
     actions.append(more);
     const cancel = element('button', 'sb-editor-action sb-editor-action--secondary sb-persona-entry-cancel');
     cancel.type = 'button';
-    cancel.title = t`Cancel`;
     cancel.setAttribute('aria-label', t`Cancel`);
     const cancelIcon = icon('xmark');
     cancelIcon.classList.add('sb-editor-action__icon');
@@ -148,6 +147,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     summary.setAttribute('aria-haspopup', 'dialog');
     summary.setAttribute('aria-expanded', 'false');
     summary.addEventListener('click', openProperties);
+    const summaryRow = createSummaryRow(summary);
     const banner = element('div', 'sb-persona-entry-banner');
     banner.setAttribute('role', 'status');
     banner.hidden = true;
@@ -158,7 +158,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         { id: 'role', label: t`Role`, options: model.ROLE_OPTIONS },
     ];
     propertyContent = createProperties();
-    root.append(header, summary, propertyContent, banner, body);
+    root.append(header, summaryRow, propertyContent, banner, body);
     host.replaceChildren(root);
 
     const storage = createEditorDraftStore({ keyFor: personaDraftKey });
@@ -222,12 +222,10 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     contentRow.row.querySelector('.ds-row-text').remove();
     const descriptionSection = createPrefGroup({ title: t`Persona Description`, field: 'section-description', rows: [contentRow] });
     descriptionSection.section.dataset.sbSection = 'description';
-    const footer = element('footer', 'sb-persona-entry-footer');
-    const tokens = element('span', 'sb-persona-entry-tokens', `— ${t`tokens`}`);
     const expand = iconButton(t`Expand the editor`, 'maximize', 'editor_maximize sb-persona-entry-expand');
     expand.dataset.for = description.id;
-    footer.append(tokens, expand);
-    body.append(descriptionSection.section, footer);
+    attachToLabelRow(descriptionSection.section, expand);
+    body.append(descriptionSection.section);
 
     const addNote = createButtonRow({ label: t`Add Scenario Note`, field: 'appendix-add', icon: 'plus', onActivate: () => addAppendix() });
     const importNote = createButtonRow({ label: t`Import another persona as a scenario note`, field: 'appendix-import', icon: 'file-import', onActivate: () => openImportPicker() });
@@ -296,9 +294,8 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         if (destroyed) return;
         const saving = state.saving || rescueSave !== null;
         const { ok: valid, errors } = model.validateDraft(draft);
-        chrome.render({ mode: currentMode, title: draft.name, dirty: state.dirty, saving, canCreate: valid });
         // Unlike character creation, this editor always calls its primary action Save.
-        saveButton.textContent = t`Save`;
+        chrome.render({ mode: currentMode, title: draft.name, dirty: state.dirty, saving, canCreate: valid, saveLabel: t`Save` });
         saveButton.disabled ||= missing || !valid;
         cancel.disabled ||= saving;
         name.setAttribute('aria-invalid', String(Boolean(errors.name)));
@@ -328,9 +325,9 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         tokenTimer = setTimeout(async () => {
             try {
                 const count = await getTokenCountAsync(text, 0);
-                if (!destroyed && request === tokenRequest) tokens.textContent = `${count} ${t`tokens`}`;
+                if (!destroyed && request === tokenRequest) chrome.setTokens({ total: count });
             } catch {
-                if (!destroyed && request === tokenRequest) tokens.textContent = `? ${t`tokens`}`;
+                if (!destroyed && request === tokenRequest) chrome.setTokens({ total: '?' });
             }
         }, 300);
     }
@@ -977,7 +974,9 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     window.addEventListener('pagehide', flushDraft);
     document.addEventListener('pointerdown', onPointerdown);
     chrome = mountEditorChrome({
-        root, header, content: body, controls: { back, title: name, dirty: dirtyDot, more, cancel, save: saveButton },
+        root, header, content: body,
+        controls: { back, title: name, dirty: dirtyDot, more, modes: [modes, modeToggle], cancel, save: saveButton },
+        tokens: { element: readout, row: { host: summaryRow } },
         onBack: () => requestClose(), onCancel: discard, onSave: () => { void save(); },
         getActionSections: actionSections, actionMenuTitle: () => draft.name, scrollHide: false,
     });

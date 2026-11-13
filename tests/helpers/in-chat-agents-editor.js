@@ -420,7 +420,9 @@ export async function samplePropertyGeometry(root, categoryLabel, segmentedLabel
         const summary = root.querySelector('.sb-prompt-property-summary');
         const output = {};
         if (visible(summary)) {
-            output.summary = read(summary, ['height', 'min-height', 'padding', 'border-bottom-width', 'font-size', 'font-weight']);
+            output.summary = read(summary, ['height', 'min-height', 'padding', 'font-size', 'font-weight']);
+            // The rule under the summary belongs to its row, which also holds the token count.
+            output.summary['border-bottom-width'] = read(summary.closest('.sb-editor-summary-row') ?? summary, ['border-bottom-width'])['border-bottom-width'];
         }
         if (visible(bar)) {
             const property = label => [...bar.querySelectorAll('.sb-prompt-property')]

@@ -31,7 +31,7 @@ import {
 import { mountWorldInfoSettings } from './sillybunny-world-info-settings.js';
 import { mountWorldInfoEntry, worldInfoDraftKey } from './sillybunny-world-info-entry.js';
 
-const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261113x', id: 'deferred-world-info-editor-css' };
+const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261113z', id: 'deferred-world-info-editor-css' };
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
 
@@ -545,8 +545,10 @@ export function mountWorldInfoEditor(container) {
         });
     }
 
-    function openEntryMenu(trigger, uid) {
+    /** The entry's menu as item arrays, shared by its row and the header of its editor. `focus` names where focus goes after a move. */
+    function entryMenuSections(trigger, uid, focus = () => rows.get(`entry:${uid}`)?.row ?? null) {
         const entry = state.data.entries[uid];
+        if (!entry) return [];
         const title = entryTitle(entry, t`Untitled entry`);
         const actions = [
             menuItem(t`Duplicate`, 'copy', () => duplicateEntry(uid)),
@@ -560,9 +562,14 @@ export function mountWorldInfoEditor(container) {
             name: title,
             move: to => moveEntryBy(uid, to - index),
             onError: error => globalThis.toastr?.error(error.message),
-            focus: () => rows.get(`entry:${uid}`)?.row ?? null,
+            focus,
         });
-        menu(trigger, title, [actions, moves, [menuItem(t`Delete`, 'trash', () => deleteEntry(uid), true)]]);
+        return [actions, moves, [menuItem(t`Delete`, 'trash', () => deleteEntry(uid), true)]];
+    }
+
+    function openEntryMenu(trigger, uid) {
+        const entry = state.data.entries[uid];
+        menu(trigger, entryTitle(entry, t`Untitled entry`), entryMenuSections(trigger, uid));
     }
 
     function makeEntryRow(entry) {
@@ -699,6 +706,8 @@ export function mountWorldInfoEditor(container) {
         activeController = mountWorldInfoEntry({
             host: detail, name: state.name, data: state.data, uid: item.uid, deps,
             requestClose: () => shell.deselectItem(),
+            // The header menu offers what the entry's row menu does.
+            actions: { sections: trigger => entryMenuSections(trigger, item.uid, () => trigger).map(items => ({ items })) },
             // "Save as new entry" commits under a new UID; navigating to it reselects the replacement.
             onSaved: ({ uid } = {}) => run(() => refreshWorldInfoEditor(uid !== undefined && uid !== item.uid ? uid : navigation_option.previous, false)),
             onStateChange: ({ dirty, saving }) => {

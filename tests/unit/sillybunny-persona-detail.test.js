@@ -266,22 +266,39 @@ describe('Persona detail structure and explicit content edits', () => {
         const { host, controller } = mount();
         const header = host.querySelector('.sb-persona-entry-header');
         expect([...header.children].map(node => node.className)).toEqual([
-            'menu_button menu_button_icon sb-persona-detail-back', 'sb-persona-entry-name', 'sb-persona-entry-dirty',
+            'menu_button menu_button_icon sb-persona-detail-back sb-editor-icon-button sb-header-icon-button', 'sb-persona-entry-name',
+            'sb-editor-dirty sb-persona-entry-dirty', 'sb-editor-tokens sb-persona-entry-tokens',
             expect.stringContaining('sb-persona-entry-modes'), 'menu_button menu_button_icon sb-persona-entry-mode-toggle',
             'sb-persona-entry-actions', 'sb-editor-action sb-editor-action--secondary sb-persona-entry-cancel',
             'sb-editor-action sb-editor-action--primary sb-persona-entry-save',
         ]);
         expect(controller.focusTarget()).toBe(field(host, 'name'));
         expect([...host.querySelectorAll('[data-sb-section]')].map(node => node.dataset.sbSection)).toEqual(['identity', 'description', 'notes', 'connections', 'lorebook']);
-        expect(host.querySelector('.sb-persona-properties').previousElementSibling.className).toContain('property-summary');
+        const summaryRow = host.querySelector('.sb-persona-properties').previousElementSibling;
+        expect(summaryRow.className).toBe('sb-editor-summary-row');
+        expect(summaryRow.querySelector(':scope > .sb-persona-property-summary')).not.toBeNull();
         const description = field(host, 'description');
         expect(description.hasAttribute('data-macros')).toBe(true);
         expect(host.querySelector('.editor_maximize').dataset.for).toBe(description.id);
         expect(host.querySelector('.editor_maximize').title).toBe('Expand the editor');
+        expect(host.querySelector('.sb-editor-label-row > .editor_maximize')).not.toBeNull();
+        expect(host.querySelector('.sb-persona-entry-footer')).toBeNull();
         const other = mount({ avatarId: 'other.png' });
         expect(field(other.host, 'description').id).not.toBe(description.id);
         expect(host.querySelector('.ds-row-expander').open).toBe(false);
         expect(controller.isDirty()).toBe(false);
+    });
+
+    test('the header count follows the effective description and the summary row repeats it for a phone', async () => {
+        const { host } = mount();
+        await jest.advanceTimersByTimeAsync(300);
+        expect(host.querySelector('.sb-persona-entry-header > .sb-persona-entry-tokens').textContent).toBe('12 Tokens');
+        expect(host.querySelector('.sb-editor-summary-row > .sb-editor-tokens--row').textContent).toBe('12 Tokens');
+        const more = host.querySelector('.sb-persona-entry-more');
+        expect(more.title).toBe('TODO(copy)');
+        expect(more.getAttribute('aria-label')).toBe('More...');
+        expect(host.querySelector('.sb-persona-entry-cancel').title).toBe('Cancel');
+        expect(host.querySelector('.sb-persona-entry-save').title).toBe('Save');
     });
 
     test('name/title/description stay detached until Save, and unknown keys survive', async () => {

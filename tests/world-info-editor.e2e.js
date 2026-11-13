@@ -227,8 +227,9 @@ test.describe('World Info editor', () => {
         await row(editor, 'Alpha').click();
         const entry = editor.locator('.sb-wi-entry');
         const textarea = entry.locator('.sb-wi-entry-textarea');
-        const expand = entry.locator('.sb-wi-entry-footer .editor_maximize');
+        const expand = entry.locator('.sb-editor-label-row > .editor_maximize');
         await expect(expand).toHaveAttribute('data-for', await textarea.getAttribute('id'));
+        await expect(entry.locator('.sb-wi-entry-footer')).toHaveCount(0);
         await expect(expand.locator('.fa-solid.fa-maximize')).toHaveCount(1);
         const minHeight = await textarea.evaluate(node => parseFloat(getComputedStyle(node).minHeight));
         expect(minHeight).toBeGreaterThanOrEqual(320);
@@ -394,7 +395,7 @@ test.describe('World Info editor on mobile', () => {
         await expect(entry.locator('.sb-wi-entry-preview')).toHaveText('Alpha content');
         await expect(entry.locator('.sb-wi-entry-textarea')).toBeHidden();
         await toggle.click();
-        await entry.locator('.sb-wi-entry-footer').scrollIntoViewIfNeeded();
+        await entry.locator('.sb-wi-entry-body > *').last().scrollIntoViewIfNeeded();
         await expect(entry.locator('.sb-wi-entry-header')).not.toHaveClass(/sb-editor-chrome-hidden/);
         await expect(entry.locator('.sb-wi-detail-back')).toBeInViewport();
         await expect(toggle).toBeInViewport();

@@ -1453,7 +1453,8 @@ for (const width of [1440, 390]) {
             const agentLayoutDirty = await headerLayout(editor.detail);
             expect(await editor.prompt.evaluate(node => node.closest('.ds-pref-group'))).toBeNull();
             await expect(editor.detail.locator('.ica-agent-prompt-content .ds-row-text')).toHaveCount(0);
-            await expect(editor.detail.locator('.sb-persona-entry-footer .editor_maximize')).toHaveCount(1);
+            await expect(editor.detail.locator('.sb-editor-label-row > .editor_maximize')).toHaveCount(1);
+            await expect(editor.detail.locator('.sb-persona-entry-footer')).toHaveCount(0);
             const geometry = await editor.detail.locator('header').evaluate(header => {
                 const controls = [...header.querySelectorAll('input:not([type="radio"]), button')]
                     .filter(node => node.getClientRects().length);

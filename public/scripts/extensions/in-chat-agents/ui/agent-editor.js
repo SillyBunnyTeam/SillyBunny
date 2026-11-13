@@ -14,7 +14,8 @@ import { createToggleRow } from '../../../sillybunny-editor/toggle-row.js';
 import { LAYOUT_MOBILE_QUERY } from '../../../sillybunny-editor/breakpoints.js';
 import { createSelectRow, createProfileRow } from '../../../sillybunny-editor/select-row.js';
 import { createChipEntry } from '../../../sillybunny-editor/chip-entry.js';
-import { mountEditorChrome, showDraftRecoveryToast } from '../../../sillybunny-editor/chrome.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow, showDraftRecoveryToast } from '../../../sillybunny-editor/chrome.js';
+import { getTokenCountAsync } from '../../../tokenizers.js';
 import { confirmEditorLeave } from '../../../sillybunny-editor/navigation.js';
 import { confirmDestructiveAction } from '../../../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../../../sillybunny-action-menu.js';
@@ -67,7 +68,7 @@ export function mountAgentDetail({
     const root = element('section', 'sb-persona-entry ica-agent-detail');
     root.tabIndex = -1;
     const header = element('header', 'sb-persona-detail-header sb-persona-entry-header');
-    const back = button(t`Back`, 'chevron-left', 'sb-persona-detail-back');
+    const back = button(t`Back`, 'chevron-left', 'sb-persona-detail-back sb-editor-icon-button sb-header-icon-button');
     const title = element('input', 'sb-persona-entry-name');
     title.type = 'text';
     title.autocomplete = 'off';
@@ -75,9 +76,9 @@ export function mountAgentDetail({
     title.setAttribute('aria-label', t`Name`);
     title.value = initial.name;
     title.addEventListener('input', () => update('name', title.value));
-    const dirty = element('span', 'sb-persona-entry-dirty', '•');
-    dirty.hidden = true;
-    dirty.setAttribute('aria-label', t`Unsaved changes`);
+    const dirty = createDirtyMark('sb-persona-entry-dirty');
+    const readout = createTokenReadout();
+    readout.classList.add('sb-persona-entry-tokens');
     const modes = createSegmentedControl(
         t`Edit / Preview`,
         [[false, t`Edit`], [true, t`Preview`]],
@@ -89,13 +90,12 @@ export function mountAgentDetail({
     const modeToggle = button(t`Preview`, 'eye', 'sb-persona-entry-mode-toggle');
     modeToggle.addEventListener('click', () => setPreview(!showingPreview));
     const jump = button(t`Sections`, 'list');
-    const more = button(t`More…`, 'ellipsis-vertical', 'sb-persona-entry-more');
+    const more = button(t`More…`, 'ellipsis-vertical', 'sb-persona-entry-more sb-editor-icon-button sb-header-icon-button');
     more.addEventListener('click', () => preparePopup(more), { capture: true });
     const actions = element('div', 'sb-persona-entry-actions');
     actions.append(jump, more);
     const cancel = element('button', 'sb-editor-action sb-editor-action--secondary sb-persona-entry-cancel');
     cancel.type = 'button';
-    cancel.title = t`Cancel`;
     cancel.setAttribute('aria-label', t`Cancel`);
     const cancelIcon = element('i', 'fa-solid fa-xmark sb-editor-action__icon');
     cancelIcon.setAttribute('aria-hidden', 'true');
@@ -116,6 +116,7 @@ export function mountAgentDetail({
     saveError.hidden = true;
     saveError.setAttribute('role', 'alert');
     body.append(saveError);
+    const summaryRow = createSummaryRow(properties.element.querySelector('.ica-agent-property-summary'));
     root.append(header, properties.element, body);
     host.replaceChildren(root);
     const helpers = createAgentEditorDialogs({
@@ -367,11 +368,9 @@ export function mountAgentDetail({
     preview.tabIndex = 0;
     preview.hidden = true;
     promptView.control.parentElement.append(preview);
-    const promptFooter = element('footer', 'sb-persona-entry-footer ica-agent-prompt-footer');
     const expand = button(t`Expand the editor`, 'maximize', 'editor_maximize sb-persona-entry-expand');
     expand.dataset.for = promptView.control.id;
-    promptFooter.append(expand);
-    prompt.section.append(promptFooter);
+    attachToLabelRow(prompt.section, expand);
     let textareaViewportFrame = 0;
     const keepFocusedTextareaVisible = () => {
         cancelAnimationFrame(textareaViewportFrame);
@@ -656,6 +655,25 @@ export function mountAgentDetail({
             regexList.append(view.row);
         });
     }
+    let tokenTimer = 0;
+    let tokenRequest = 0;
+    let countedPrompt = null;
+    // The header readout counts the prompt, as the agent's list row does; it recounts only when the prompt changed.
+    function scheduleTokens(prompt) {
+        const text = prompt || '';
+        if (text === countedPrompt) return;
+        countedPrompt = text;
+        clearTimeout(tokenTimer);
+        const request = ++tokenRequest;
+        tokenTimer = setTimeout(async () => {
+            try {
+                const count = await getTokenCountAsync(text, 0);
+                if (!destroyed && request === tokenRequest) chrome.setTokens({ total: count });
+            } catch {
+                if (!destroyed && request === tokenRequest) chrome.setTokens({ total: '?' });
+            }
+        }, 300);
+    }
     function render(state) {
         if (destroyed || !chrome) return;
         for (const [view, parse, library, selected] of [
@@ -708,10 +726,11 @@ export function mountAgentDetail({
             ...state,
             title: state.fields.name || t`New Agent`,
             canCreate: true,
+            saveLabel: t`Save`,
         });
         cancel.disabled ||= state.saving;
         root.setAttribute('aria-busy', String(state.saving));
-        save.textContent = t`Save`;
+        scheduleTokens(state.fields.prompt);
         scheduleHeaderActions();
         onStateChange(state);
     }
@@ -744,9 +763,11 @@ export function mountAgentDetail({
             title,
             dirty,
             more,
+            modes: [modes, modeToggle],
             cancel,
             save,
         },
+        tokens: { element: readout, row: { host: summaryRow } },
         onBack: () => {
             void requestClose();
         },
@@ -870,6 +891,8 @@ export function mountAgentDetail({
         maker: () => run(async () => apply(await helpers.maker(fields()))),
         destroy() {
             destroyed = true;
+            clearTimeout(tokenTimer);
+            tokenRequest++;
             headerResize.disconnect();
             cancelAnimationFrame(headerFrame);
             cancelAnimationFrame(textareaViewportFrame);

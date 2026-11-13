@@ -218,7 +218,23 @@ test.describe('Persona editor', () => {
         // The Cancel popup keeps [open] while it closes, and the second Back opens another guard before that ends.
         const dialog = page.locator('dialog.popup[open]:not([closing])');
         await expect(dialog).toBeVisible();
-        for (const label of ['Cancel', 'Discard', 'Save']) await expect(dialog.getByText(label, { exact: true })).toBeVisible();
+        // Cancel · Discard · Save in the order the dialog lays them out (the popup stacks them on a narrow dialog); Discard is
+        // the one in the destructive colour.
+        const buttons = await dialog.locator('.popup-controls > .menu_button').evaluateAll(nodes => nodes
+            .filter(node => node.getClientRects().length)
+            .map((node, index) => ({
+                text: node.textContent.trim(), order: Number(getComputedStyle(node).order), index, red: node.classList.contains('sb-editor-discard'),
+            })));
+        expect(buttons.toSorted((a, b) => a.order - b.order || a.index - b.index).map(button => button.text)).toEqual(['Cancel', 'Discard', 'Save']);
+        expect(buttons.filter(button => button.red).map(button => button.text)).toEqual(['Discard']);
+        await expect(dialog.locator('.sb-editor-discard')).toHaveCSS('color', await page.evaluate(() => {
+            const probe = document.createElement('span');
+            probe.style.color = 'var(--sb-color-danger)';
+            document.body.append(probe);
+            const color = getComputedStyle(probe).color;
+            probe.remove();
+            return color;
+        }));
         await dialog.getByText('Cancel', { exact: true }).click();
         await expect(description).toHaveValue('Unsaved guarded persona description');
         await entry.getByRole('button', { name: 'Back', exact: true }).click();

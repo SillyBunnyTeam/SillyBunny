@@ -32,7 +32,10 @@ await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
     }),
 }));
 
-const { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } = await import('../../public/scripts/sillybunny-editor/chrome.js');
+const {
+    mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow,
+    showDraftRecoveryToast, dismissDraftRecoveryToast,
+} = await import('../../public/scripts/sillybunny-editor/chrome.js');
 const { registerEditorNavigation, characterTabGuardSelector, CHARACTER_TAB_GUARD_SELECTOR } = await import('../../public/scripts/sillybunny-editor/navigation.js');
 
 function makeMedia() {
@@ -164,6 +167,181 @@ describe('mountEditorChrome header-only mode', () => {
         expect(commit).not.toHaveBeenCalled();
         expect(document.activeElement).toBe(titleButton);
         chrome.dispose();
+    });
+});
+
+describe('mountEditorChrome shared header', () => {
+    const names = header => [...header.children].map(node => node.dataset.slot);
+    const make = (tag, slot) => {
+        const node = document.createElement(tag);
+        node.dataset.slot = slot;
+        return node;
+    };
+
+    function slotted(extra = {}) {
+        const root = document.createElement('div');
+        const header = document.createElement('header');
+        const content = document.createElement('div');
+        const controls = {
+            back: make('button', 'back'), title: make('input', 'title'), dirty: make('span', 'dirty'),
+            more: make('button', 'more'), cancel: make('button', 'cancel'), save: make('button', 'save'),
+            ...extra.controls,
+        };
+        // Appended in the order an editor with a toolbar menu or a late readout would have built them.
+        header.append(controls.save, controls.cancel, controls.title, controls.dirty, controls.back);
+        for (const node of [...(controls.modes ?? []), ...(extra.inHeader ?? [])]) header.append(node);
+        root.append(header, content);
+        document.body.append(root);
+        const toolbar = extra.toolbar ?? null;
+        if (toolbar) root.append(toolbar);
+        const handlers = { onBack: jest.fn(), onCancel: jest.fn(), onSave: jest.fn() };
+        const chrome = mountEditorChrome({ root, header, content, toolbar, ...handlers, ...extra, controls });
+        return { chrome, root, header, controls, toolbar };
+    }
+
+    test('orders the header Back, title, dirty mark, count, Edit/Preview, item menu, Cancel, Save and moves a toolbar menu into it', () => {
+        makeMedia();
+        const modes = ['modes', 'toggle'].map(slot => make('div', slot));
+        const toolbar = document.createElement('div');
+        const more = make('button', 'more');
+        toolbar.append(more);
+        const readout = createTokenReadout();
+        readout.dataset.slot = 'tokens';
+        const { header } = slotted({ toolbar, tokens: { element: readout }, controls: { modes, more } });
+        expect(names(header)).toEqual(['back', 'title', 'dirty', 'tokens', 'modes', 'toggle', 'more', 'cancel', 'save']);
+        expect(toolbar.contains(more)).toBe(false);
+    });
+
+    test('keeps a wrapper that holds the item menu in the menu place', () => {
+        makeMedia();
+        const wrapper = make('div', 'actions');
+        const more = document.createElement('button');
+        wrapper.append(document.createElement('button'), more);
+        const { header } = slotted({ controls: { more }, inHeader: [wrapper] });
+        expect(names(header)).toEqual(['back', 'title', 'dirty', 'actions', 'cancel', 'save']);
+        expect(wrapper.contains(more)).toBe(true);
+    });
+
+    test('tooltips: Cancel and Save say their word, Back and the item menu carry the copy placeholder', () => {
+        makeMedia();
+        const { chrome, controls } = slotted();
+        chrome.render({ mode: 'edit', dirty: true, title: 'Entry' });
+        expect(controls.cancel.title).toBe('Cancel');
+        expect(controls.save.title).toBe('Save');
+        chrome.render({ mode: 'create', dirty: true, title: 'Entry' });
+        expect(controls.save.title).toBe('Create');
+        chrome.render({ mode: 'create', dirty: true, title: 'Entry', saveLabel: 'Save' });
+        expect(controls.save.textContent).toBe('Save');
+        expect(controls.save.title).toBe('Save');
+        for (const control of [controls.back, controls.more]) {
+            expect(control.title).toBe('TODO(copy)');
+            expect(control.dataset.sbCopyPlaceholder).toBe('true');
+        }
+    });
+
+    test('keeps the accessible names that the editors set', () => {
+        makeMedia();
+        const back = document.createElement('button');
+        back.setAttribute('aria-label', 'Back to groups');
+        back.className = 'sb-editor-icon-button';
+        back.title = 'Back to groups';
+        const { controls } = slotted({ controls: { back } });
+        expect(controls.back.getAttribute('aria-label')).toBe('Back to groups');
+    });
+
+    test('the readout shows the full count in the header and the short count, with the full one in its name, in the row', () => {
+        makeMedia();
+        const row = document.createElement('div');
+        const readout = createTokenReadout({ warning: { href: 'https://example.test/limits', title: 'About limits' } });
+        const { chrome } = slotted({ tokens: { element: readout, row: { host: row } } });
+        const phone = row.querySelector('.sb-editor-tokens--row');
+        expect(readout.hidden).toBe(true);
+        expect(phone.hidden).toBe(true);
+
+        chrome.setTokens({ total: 79, permanent: 46 });
+        expect(readout.hidden).toBe(false);
+        expect(readout.querySelector('.sb-editor-tokens__value').textContent).toBe('79 Tokens (46 Permanent)');
+        expect(phone.hidden).toBe(false);
+        expect(phone.querySelector('.sb-editor-tokens__value').textContent).toBe('79 Tokens');
+        expect(phone.getAttribute('aria-label')).toBe('79 Tokens (46 Permanent)');
+        expect(phone.querySelector('.sb-editor-tokens__value').getAttribute('aria-hidden')).toBe('true');
+        expect(phone.classList.contains('is-over-budget')).toBe(false);
+        expect(readout.querySelector('.sb-editor-tokens__warning').style.display).toBe('none');
+
+        chrome.setTokens({ total: 5000, overBudget: true });
+        expect(readout.classList.contains('is-over-budget')).toBe(true);
+        expect(phone.classList.contains('is-over-budget')).toBe(true);
+        expect(phone.getAttribute('aria-label')).toBe('5000 Tokens');
+        // The context warning goes with the count and keeps the link of the header's.
+        expect(phone.querySelector('.sb-editor-tokens__warning').getAttribute('href')).toBe('https://example.test/limits');
+        expect(phone.querySelector('.sb-editor-tokens__warning').style.display).toBe('');
+        expect(phone.querySelector('[id]')).toBeNull();
+
+        chrome.setTokens(null);
+        expect(readout.hidden).toBe(true);
+        expect(phone.hidden).toBe(true);
+    });
+
+    test('an editor that gives no readout has none, and a header-built readout is placed after the dirty mark', () => {
+        makeMedia();
+        const { chrome, header } = slotted();
+        expect(() => chrome.setTokens({ total: 1 })).not.toThrow();
+        expect(header.querySelector('.sb-editor-tokens')).toBeNull();
+        const built = slotted({ tokens: {} });
+        expect(names(built.header)).toEqual(['back', 'title', 'dirty', undefined, 'more', 'cancel', 'save']);
+        expect(built.header.children[3].classList.contains('sb-editor-tokens')).toBe(true);
+    });
+
+    test('a changed count reruns the toolbar overflow pass', () => {
+        makeMedia();
+        const toolbar = document.createElement('div');
+        const candidate = document.createElement('button');
+        candidate.id = 'overflow_candidate';
+        candidate.title = 'Duplicate';
+        candidate.getBoundingClientRect = () => ({ width: 40 });
+        toolbar.append(candidate);
+        const row = toolbar;
+        // The toolbar fits until the count is long enough to push it over.
+        let width = 100;
+        Object.defineProperty(toolbar, 'clientWidth', { get: () => 120 });
+        Object.defineProperty(toolbar, 'scrollWidth', { get: () => width });
+        const { chrome } = slotted({
+            toolbar, overflowCandidates: ['#overflow_candidate'],
+            tokens: { element: createTokenReadout(), row: { host: row } },
+        });
+        chrome.scheduleOverflow();
+        expect(candidate.classList.contains('sb-editor-toolbar-collapsed')).toBe(false);
+        width = 180;
+        chrome.setTokens({ total: 79, permanent: 46 });
+        expect(candidate.classList.contains('sb-editor-toolbar-collapsed')).toBe(true);
+        width = 100;
+        chrome.setTokens({ total: 1 });
+        expect(candidate.classList.contains('sb-editor-toolbar-collapsed')).toBe(false);
+    });
+
+    test('the dirty mark is the shared dot named by its label, and the summary row and label row helpers place their parts', () => {
+        const mark = createDirtyMark('sb-test-dirty');
+        expect(mark.hidden).toBe(true);
+        expect(mark.className).toBe('sb-editor-dirty sb-test-dirty');
+        expect(mark.querySelector('.sb-editor-dirty-dot').getAttribute('aria-hidden')).toBe('true');
+        expect(mark.getAttribute('aria-label')).toBe('Unsaved changes');
+
+        const host = document.createElement('div');
+        const summary = document.createElement('button');
+        host.append(summary);
+        const row = createSummaryRow(summary);
+        expect(host.firstElementChild).toBe(row);
+        expect(row.firstElementChild).toBe(summary);
+        expect(summary.classList.contains('sb-editor-summary')).toBe(true);
+
+        const section = document.createElement('section');
+        const labelRow = Object.assign(document.createElement('div'), { className: 'ds-pref-group-header' });
+        section.append(labelRow);
+        const expand = document.createElement('button');
+        expect(attachToLabelRow(section, expand)).toBe(true);
+        expect(labelRow.classList.contains('sb-editor-label-row')).toBe(true);
+        expect(labelRow.lastElementChild).toBe(expand);
+        expect(attachToLabelRow(document.createElement('section'), expand)).toBe(false);
     });
 });
 

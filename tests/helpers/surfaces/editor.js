@@ -36,6 +36,11 @@ const EXPANDED = 'dialog.popup[open]:has(.maximized_textarea)';
 const LEAVE = 'dialog.popup[open]:has(.popup-button-cancel)';
 const LEAVE_READY = ['dialog.popup[open] .popup-button-cancel', 'dialog.popup[open] :text-is("Discard")'];
 
+// The character editor's count moves from the header to the toolbar's second row at 620px and narrower.
+const PHONE_READOUT_WIDTH = 620;
+const PHONE_READOUT_OVER_BUDGET = '#sb_character_editor_toolbar .sb-editor-tokens--row.is-over-budget';
+const isPhoneReadout = ctx => Number(String(ctx?.viewport ?? '1440x900').split('x')[0]) <= PHONE_READOUT_WIDTH;
+
 /** The text that pushes a character card over the half of the context that the token readout warns at. */
 const OVER_BUDGET = 'The audit repeats this sentence to pass the context warning of the token readout. '.repeat(500);
 
@@ -525,13 +530,16 @@ export const surfaces = [
             dirtyState({ make: makeCharacterDirty, dirty: CHARACTER.dirty }),
             {
                 id: 'token-warning',
-                ready: ['#sb_character_editor_tokens.is-over-budget', '#sb_character_editor_token_warning'],
+                ready: ctx => (isPhoneReadout(ctx)
+                    ? [PHONE_READOUT_OVER_BUDGET, `${PHONE_READOUT_OVER_BUDGET} .sb-editor-tokens__warning`]
+                    : ['#sb_character_editor_tokens.is-over-budget', '#sb_character_editor_token_warning']),
                 async open(page) {
                     await page.locator('#description_textarea').fill(OVER_BUDGET);
                     // Filling scrolls the field into view, which hides the header on a phone; the readout is in that header.
                     await page.locator('#sb_character_editor_tokens.is-over-budget').waitFor({ state: 'attached', timeout: 30_000 });
                     await scrollToTop(page, CHARACTER.scroller);
-                    await shown(page, '#sb_character_editor_tokens.is-over-budget');
+                    await shown(page, isPhoneReadout({ viewport: `${page.viewportSize().width}x${page.viewportSize().height}` })
+                        ? PHONE_READOUT_OVER_BUDGET : '#sb_character_editor_tokens.is-over-budget');
                 },
             },
             leaveState({
@@ -550,7 +558,7 @@ export const surfaces = [
                 open: page => openCharacterEditor(page, LONG_NAMED_CHARACTER),
             },
         ],
-        masks: ['#sb_character_editor_tokens', '#form_create .extension_token_counter', '#sb-topbar-title'],
+        masks: ['#sb_character_editor_tokens', '#sb_character_editor_toolbar .sb-editor-tokens--row', '#form_create .extension_token_counter', '#sb-topbar-title'],
         needs: ['character', 'characters-many'],
         sources: [`${SCRIPTS}/sillybunny-character-editor.js`, `${SCRIPTS}/sillybunny-editor/chrome.js`, `${CSS}/sillybunny-character-editor.css`],
         primaryFlow: true,
@@ -623,7 +631,7 @@ export const surfaces = [
                 leave: page => leaveDirtyDetail(page, { back: WORLD_INFO.back, otherRow: '#WorldInfo .sb-wi-editor .sb-wi-row', exceptText: FIXTURES['lorebook-entries'].kinds.keyed }),
             }),
         ],
-        masks: ['#WorldInfo .sb-wi-entry .sb-wi-entry-tokens'],
+        masks: ['#WorldInfo .sb-wi-entry .sb-wi-entry-tokens', '#WorldInfo .sb-wi-entry .sb-editor-tokens--row'],
         needs: ['lorebook-entries'],
         sources: [`${SCRIPTS}/sillybunny-world-info-entry.js`, `${SCRIPTS}/sillybunny-world-info-model.js`, `${CSS}/sillybunny-world-info-editor.css`],
         primaryFlow: true,
@@ -681,7 +689,7 @@ export const surfaces = [
                 leave: page => leaveDirtyDetail(page, { back: PERSONA.back, otherRow: `#PersonaManagement .sb-persona-row:not([data-avatar-id="${FIXTURES.persona.avatar}"])` }),
             }),
         ],
-        masks: ['#PersonaManagement .sb-persona-entry-tokens'],
+        masks: ['#PersonaManagement .sb-persona-entry-tokens', '#PersonaManagement .sb-editor-tokens--row'],
         needs: ['persona', 'persona-appendices'],
         sources: [`${SCRIPTS}/sillybunny-persona-detail.js`, `${CSS}/sillybunny-persona-detail.css`],
         primaryFlow: true,

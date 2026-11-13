@@ -100,8 +100,9 @@
 
 /* The header toggles visibility with the `hidden` attribute, but the flex
    display declarations below would beat the UA [hidden] rule on specificity.
-   Restore the attribute's meaning for the header's own status elements. */
-.sb-editor-header > :is(.sb-editor-dirty, .sb-editor-tokens)[hidden] {
+   Restore the attribute's meaning for the status elements wherever they sit:
+   in a header, a toolbar or a summary row. */
+:is(.sb-editor-dirty, .sb-editor-tokens)[hidden] {
     display: none !important;
 }
 
@@ -118,6 +119,12 @@
     border-bottom: 0;
     flex-shrink: 0;
     min-height: 52px;
+}
+
+/* Every explicit-save editor header is a size container, so the Cancel icon form below is one rule at one width.
+   Inline-size containment keeps the header as wide as its parent whatever the children ask for. */
+:is(.sb-editor-header, .sb-wi-entry-header, .sb-persona-entry-header) {
+    container: sb-editor-header / inline-size;
 }
 
 /* Header icon geometry stays local because editor controls are smaller than shell controls. */
@@ -149,6 +156,7 @@
 .sb-editor-title-button {
     flex: 1 1 auto;
     min-width: 0;
+    min-height: var(--sb-control-icon-physical-size, 36px);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -278,6 +286,16 @@
     text-overflow: ellipsis;
 }
 
+/* The phone form of the readout: the short count as a dimmed Caption in the second row, at its inline end. It stays
+   hidden until an editor's narrow layout shows it, so one count is on screen at a time. */
+.sb-editor-tokens--row {
+    display: none;
+    padding: 0 8px;
+    font-size: var(--sb-type-caption, 12px);
+    font-weight: 400;
+    line-height: 1.4;
+}
+
 /* Shared editor header actions (character, group, Prompt Editor, World Info).
    Save is the suggested action; Cancel is outlined and enabled only while dirty.
    The doubled class outranks the editors' scoped `.menu_button` resets. */
@@ -352,6 +370,47 @@
     outline: 2px solid var(--sb-focus-ring-color);
     outline-offset: 1px;
     box-shadow: none;
+}
+
+/* Cancel takes its icon form where the header is narrow, the same in every editor; the label stays in the accessible
+   name. The editors' own header rules no longer repeat this. */
+@container sb-editor-header (width < 440px) {
+    .sb-editor-action.sb-editor-action--secondary.sb-editor-action--secondary {
+        position: relative;
+        width: var(--sb-control-icon-physical-size, 36px);
+        min-width: var(--sb-control-icon-physical-size, 36px);
+        height: var(--sb-control-icon-physical-size, 36px);
+        padding: 0;
+        border: 0;
+        color: inherit;
+        line-height: 1;
+    }
+
+    .sb-editor-action--secondary .sb-editor-action__icon {
+        display: block;
+        line-height: 1;
+    }
+
+    .sb-editor-action--secondary .sb-editor-action__label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .sb-editor-action.sb-editor-action--primary.sb-editor-action--primary {
+        padding-inline: 12px;
+    }
+
+    @media (pointer: coarse) {
+        .sb-editor-action.sb-editor-action--secondary.sb-editor-action--secondary {
+            width: 44px;
+            min-width: 44px;
+            height: 44px;
+        }
+    }
 }
 
 /* Toolbar — horizontal action buttons
@@ -437,11 +496,6 @@
     min-width: 0;
 }
 
-#sb_character_editor_more {
-    flex: 0 0 auto;
-    margin-inline-start: 4px;
-}
-
 /* Upstream #char-management-dropdown styling is obsolete now the select is a
    hidden transport; the visible menu above replaces it. */
 .sb-editor-toolbar :is(#char-management-dropdown, #group-chat-lorebook-dropdown) {
@@ -523,6 +577,53 @@
     padding: 4px 10px;
     min-height: 32px;
     font-size: var(--sb-type-meta, 13px);
+}
+
+/* List-content editors: the label row of a multi-line field is its group header, with Expand at the inline end. The
+   group header is a one-trailing-cell grid on the settings page, so the row names its own layout. */
+#sb-settings-page .ds-pref-group-header.sb-editor-label-row.sb-editor-label-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 9px;
+}
+
+/* The heading takes the row, which puts Expand at the inline end. An auto margin on the button would lose to the theme's
+   !important margin on icon buttons. */
+.sb-editor-label-row > .ds-pref-group-heading {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* List-content editors, collapsed to one pane: the property summary shows in each editor's own sheet, and the token
+   count sits in the same row, outside the summary button. The header gives the count up, so the title keeps its room. */
+.sb-editor-summary-row {
+    display: contents;
+}
+
+.sb-list-editor[data-collapsed='true'] :is(.sb-wi-entry-header, .sb-persona-entry-header) > .sb-editor-tokens {
+    display: none;
+}
+
+.sb-list-editor[data-collapsed='true'] .sb-editor-summary-row {
+    display: flex;
+    flex: none;
+    align-items: center;
+    border-bottom: var(--sb-headerbar-shade);
+}
+
+#sb-settings-page .sb-list-editor[data-collapsed='true'] .sb-editor-summary-row > .sb-editor-summary.sb-editor-summary {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    border-bottom: 0;
+}
+
+.sb-list-editor[data-collapsed='true'] .sb-editor-summary-row > .sb-editor-tokens--row:not([hidden]) {
+    display: inline-flex;
+    flex: 0 0 auto;
+    padding-inline: 0 12px;
+    white-space: nowrap;
 }
 
 .ds-inline-controls {
@@ -1079,14 +1180,15 @@ body.reduced-motion :is(
         padding: 10px 12px;
     }
 
-    /* On a narrow header the token text is the first thing to go; the warning
-       icon stays so an over-budget card is still flagged. */
-    .sb-editor-tokens__value {
+    /* The readout leaves the header for the toolbar row, at its inline end before the trailing control, so the
+       title keeps its room. The context warning moves with the count. */
+    .sb-editor-header > .sb-editor-tokens {
         display: none;
     }
 
-    .sb-editor-tokens.is-over-budget .sb-editor-tokens__value {
-        display: block;
+    .sb-editor-toolbar > .sb-editor-tokens--row:not([hidden]) {
+        display: inline-flex;
+        flex: 0 0 auto;
     }
 }
 

@@ -1,7 +1,8 @@
 // SillyBunny: shared header and toolbar chrome for the scrolling-sheet editors.
-// Owns header button wiring, Save/Cancel/dirty presentation, inline title
+// Owns the header order, header button wiring and tooltips, Save/Cancel/dirty
+// presentation, the token readout and its phone placement, inline title
 // rename, toolbar overflow into the More menu, mobile scroll-hide, and the
-// draft-recovery toast. Menu contents, token readouts, and any entity logic
+// draft-recovery toast. Menu contents, token counts, and any entity logic
 // stay with each editor.
 
 /* global moment */
@@ -21,7 +22,92 @@ import { animateIn, animateOut, MOTION_EASE_OUT_QUAD, MOTION_FAST, prefersReduce
  * @property {boolean} [saving]
  * @property {string} title
  * @property {boolean} [canCreate]  Create mode only: whether Create is allowed (default true).
+ * @property {string} [saveLabel]  Replaces the Create/Save label, for an editor whose primary action is always Save.
  */
+
+/**
+ * @typedef {object} TokenCount
+ * @property {string|number} total
+ * @property {string|number} [permanent]  The part of the total that is always sent; shown in the header form only.
+ * @property {boolean} [overBudget]  Shows the context warning on the readout.
+ */
+
+/**
+ * The unsaved mark every editor header shows: an 8px accent dot, announced as "Unsaved changes".
+ * @param {string} [className]  The editor's own class, kept so existing queries still find it.
+ * @returns {HTMLSpanElement}
+ */
+export function createDirtyMark(className = '') {
+    const mark = document.createElement('span');
+    mark.className = `sb-editor-dirty ${className}`.trim();
+    mark.setAttribute('role', 'status');
+    mark.setAttribute('aria-live', 'polite');
+    mark.setAttribute('aria-label', t`Unsaved changes`);
+    mark.hidden = true;
+    const dot = document.createElement('span');
+    dot.className = 'sb-editor-dirty-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    mark.append(dot);
+    return mark;
+}
+
+/**
+ * The header's token readout for an editor that has none in its markup: the value and, when `warning` is given, the
+ * context-warning link the character editor carries.
+ * @param {{ warning?: { href: string, title: string }|null }} [options]
+ * @returns {HTMLSpanElement}
+ */
+export function createTokenReadout({ warning = null } = {}) {
+    const readout = document.createElement('span');
+    readout.className = 'sb-editor-tokens';
+    readout.title = t`Token counts may be inaccurate and provided just for reference.`;
+    readout.hidden = true;
+    if (warning) {
+        const link = document.createElement('a');
+        link.className = 'sb-editor-tokens__warning';
+        link.href = warning.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.title = warning.title;
+        const glyph = document.createElement('i');
+        glyph.className = 'fa-solid fa-triangle-exclamation';
+        glyph.setAttribute('aria-hidden', 'true');
+        link.append(glyph);
+        readout.append(link);
+    }
+    const value = document.createElement('span');
+    value.className = 'sb-editor-tokens__value';
+    readout.append(value);
+    return readout;
+}
+
+/**
+ * Wraps a property-summary button in the row that also holds the phone token count, in place when it is mounted.
+ * @param {HTMLElement} summary
+ * @returns {HTMLDivElement}
+ */
+export function createSummaryRow(summary) {
+    const row = document.createElement('div');
+    row.className = 'sb-editor-summary-row';
+    summary.classList.add('sb-editor-summary');
+    summary.replaceWith?.(row);
+    row.append(summary);
+    return row;
+}
+
+/**
+ * Puts a field's control at the inline end of its label row: the group header that holds the field's heading.
+ * @param {HTMLElement} section  The group's `.sb-editor-section`.
+ * @param {HTMLElement} control
+ * @returns {boolean} False when the group has no heading row.
+ */
+export function attachToLabelRow(section, control) {
+    const row = section.querySelector('.ds-pref-group-header');
+    if (!row) return false;
+    row.classList.add('sb-editor-label-row');
+    row.append(control);
+    return true;
+}
 
 /**
  * @param {object} config
@@ -30,7 +116,13 @@ import { animateIn, animateOut, MOTION_EASE_OUT_QUAD, MOTION_FAST, prefersReduce
  * @param {HTMLElement|null} [config.toolbar]  Optional; header-only editors (list detail panes) omit it.
  * @param {HTMLElement} config.content  The scrolling sheet body.
  * @param {{ back: HTMLElement, cancel: HTMLButtonElement, save: HTMLButtonElement, title: HTMLElement,
- *     titleButton?: HTMLButtonElement|null, dirty: HTMLElement, more?: HTMLElement|null }} config.controls
+ *     titleButton?: HTMLButtonElement|null, dirty: HTMLElement, more?: HTMLElement|null,
+ *     modes?: HTMLElement[] }} config.controls
+ *     `more` is the item menu; it is moved into the header when it is not there. `modes` are the Edit/Preview controls.
+ *     The header is reordered to Back, title, dirty mark, token readout, Edit/Preview, item menu, Cancel, Save.
+ * @param {{ element?: HTMLElement|null, row?: { host: HTMLElement, before?: Element|null }|null }|null} [config.tokens]
+ *     The editor shows a token readout: `element` is its header node (one is built when absent), and `row` is where the
+ *     phone form goes, as a dimmed Caption in the second row. Omit it for an editor that counts nothing.
  * @param {(event: Event) => void} config.onBack
  * @param {() => void} config.onCancel
  * @param {() => void} config.onSave
@@ -41,7 +133,7 @@ import { animateIn, animateOut, MOTION_EASE_OUT_QUAD, MOTION_FAST, prefersReduce
  * @param {string|(() => string)} [config.actionMenuTitle]  A function defers translation to menu-open time.
  * @param {() => boolean} [config.isActive]  Skips layout work while the editor is off screen.
  * @param {boolean} [config.scrollHide=true]  Hide the chrome on mobile while scrolling down.
- * @returns {{ render: (state: ChromeState) => void, scheduleOverflow: () => void, reset: () => void, dispose: () => void }}
+ * @returns {{ render: (state: ChromeState) => void, setTokens: (count: TokenCount|null) => void, scheduleOverflow: () => void, reset: () => void, dispose: () => void }}
  *     Call `dispose()` before discarding chrome whose header is rebuilt (e.g. per-entry detail panes).
  */
 export function mountEditorChrome(config) {
@@ -51,6 +143,7 @@ export function mountEditorChrome(config) {
         toolbar = null,
         content,
         controls,
+        tokens: tokenConfig = null,
         onBack,
         onCancel,
         onSave,
@@ -81,6 +174,53 @@ export function mountEditorChrome(config) {
     }
     for (const button of root.querySelectorAll('[data-sb-avatar-input]')) {
         button.addEventListener('click', () => document.getElementById(button.dataset.sbAvatarInput)?.click(), { signal });
+    }
+
+    // Back and the item menu have no tooltip wording that fits every editor yet; Cancel and Save do. Accessible names stay
+    // with each editor's own aria-label.
+    for (const control of [controls.back, controls.more]) {
+        if (!control) continue;
+        control.title = t`TODO(copy)`;
+        control.dataset.sbCopyPlaceholder = 'true';
+    }
+    controls.cancel.title = t`Cancel`;
+
+    const readout = tokenConfig ? (tokenConfig.element ?? createTokenReadout()) : null;
+    const readoutValue = readout?.querySelector('.sb-editor-tokens__value') ?? null;
+    const readoutWarning = readout?.querySelector('.sb-editor-tokens__warning') ?? null;
+    /** The phone form of the readout: the short count, with the full count in its accessible name. */
+    let rowReadout = null;
+    let rowValue = null;
+    let rowWarning = null;
+    if (readout && tokenConfig?.row?.host) {
+        rowReadout = document.createElement('span');
+        rowReadout.className = 'sb-editor-tokens sb-editor-tokens--row';
+        rowReadout.title = readout.title;
+        rowReadout.setAttribute('role', 'group');
+        rowReadout.hidden = true;
+        if (readoutWarning) {
+            rowWarning = /** @type {HTMLElement} */ (readoutWarning.cloneNode(true));
+            rowWarning.removeAttribute('id');
+            rowReadout.append(rowWarning);
+        }
+        rowValue = document.createElement('span');
+        rowValue.className = 'sb-editor-tokens__value';
+        rowValue.setAttribute('aria-hidden', 'true');
+        rowReadout.append(rowValue);
+        tokenConfig.row.host.insertBefore(rowReadout, tokenConfig.row.before ?? null);
+    }
+
+    // The header order lives here: Back, title, unsaved mark, token readout, Edit/Preview, item menu, Cancel, Save.
+    if (controls.more && !header.contains(controls.more)) header.append(controls.more);
+    if (readout && !header.contains(readout)) header.append(readout);
+    const headerChild = (node) => {
+        let child = node ?? null;
+        while (child && child.parentElement !== header) child = child.parentElement;
+        return child;
+    };
+    for (const node of [controls.back, controls.titleButton ?? controls.title, controls.dirty, readout, ...(controls.modes ?? []), controls.more, controls.cancel, controls.save]) {
+        const child = headerChild(node);
+        if (child) header.append(child);
     }
 
     /** @type {Array<{ label: string, icon: string, element: HTMLElement }>} */
@@ -120,7 +260,8 @@ export function mountEditorChrome(config) {
             controls.titleButton.classList.toggle('is-static', !canRename);
         }
 
-        controls.save.textContent = isCreate ? t`Create` : t`Save`;
+        controls.save.textContent = state.saveLabel ?? (isCreate ? t`Create` : t`Save`);
+        controls.save.title = controls.save.textContent;
         controls.save.disabled = Boolean(state.saving)
             || (isCreate ? state.canCreate === false : !state.dirty);
         controls.cancel.disabled = !state.dirty;
@@ -146,6 +287,31 @@ export function mountEditorChrome(config) {
                 { duration: MOTION_FAST, easing: MOTION_EASE_OUT_QUAD },
             );
         }
+    }
+
+    /**
+     * Shows the item's token count in the header readout and, when the editor gave a second-row host, in its phone
+     * form. CSS decides which one is visible. The count can change the toolbar's width, so the overflow pass reruns.
+     * @param {TokenCount|null} count  `null`, or an empty total, hides the readout.
+     */
+    function setTokens(count) {
+        if (!readout) return;
+        const total = count ? String(count.total ?? '').trim() : '';
+        const visible = total !== '';
+        readout.hidden = !visible;
+        if (rowReadout) rowReadout.hidden = !visible;
+        if (visible) {
+            const permanent = String(count.permanent ?? '').trim();
+            const brief = `${total} ${t`Tokens`}`;
+            const full = permanent ? `${brief} (${permanent} ${t`Permanent`})` : brief;
+            const overBudget = Boolean(count.overBudget);
+            if (readoutValue) readoutValue.textContent = full;
+            if (rowValue) rowValue.textContent = brief;
+            rowReadout?.setAttribute('aria-label', full);
+            for (const node of [readout, rowReadout]) node?.classList.toggle('is-over-budget', overBudget);
+            for (const link of [readoutWarning, rowWarning]) if (link instanceof HTMLElement) link.style.display = overBudget ? '' : 'none';
+        }
+        if (toolbar) scheduleOverflow();
     }
 
     // ------------------------------------------------------------------
@@ -335,10 +501,12 @@ export function mountEditorChrome(config) {
         mobile.removeEventListener('change', showChrome);
         resizeObserver?.disconnect();
         resizeObserver = null;
+        rowReadout?.remove();
     }
 
     return {
         render,
+        setTokens,
         scheduleOverflow,
         /**
          * Reveal the header and toolbar; call when a session opens.
