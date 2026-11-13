@@ -78,7 +78,7 @@ export function prepareEnvironment() {
 
     process.chdir(repoRoot);
     setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
-    // The character disk cache writes under the data root on a timer, so it would change the hashed tree.
+    // The character index writes _cache/characters.sqlite under the data root when it reads a card, so it would change the hashed tree.
     process.env.SILLYTAVERN_PERFORMANCE_USEDISKCACHE = 'false';
     // A throttled chat backup fires on a timer after a burst of saves, so it would land during a later request.
     process.env.SILLYTAVERN_BACKUPS_CHAT_THROTTLEINTERVAL = '1';
