@@ -60,6 +60,7 @@ function prefersReducedMotion() {
  * @property {string} [icon] a Font Awesome class for the row's leading glyph
  * @property {{id: string, title: string}} [group] the titled group the row is listed under
  * @property {string} [value] trailing text, for a row that reports a current setting
+ * @property {boolean} [builtIn] whether the section is one SillyBunny ships, so its page gets the shared rows
  * @property {() => (HTMLElement|null)} [source] the section to move into the detail page on open
  * @property {() => void} [onOpen] run before the slide, to drive the control the row stands for
  * @property {() => boolean} [isAvailable] whether the row should be shown at all

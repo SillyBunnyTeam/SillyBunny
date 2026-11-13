@@ -36,6 +36,9 @@
  */
 
 import { formatSettingsMacroExamples } from './sillybunny-settings-macros.js';
+import { t } from './i18n.js';
+import { createEntryRow, createSpinRow } from './sillybunny-editor/rows.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
 
 /**
  * Placeholder description, used where a section has no copy of its own.
@@ -47,8 +50,12 @@ const SB_PLACEHOLDER_DESCRIPTION = 'lorum ipsum';
 
 const SB_CUSTOMIZE_TABS = new Set(['appearance', 'interface', 'messages', 'data-security', 'logs', 'console-logs']);
 
-/** @param {HTMLElement} row @returns {HTMLElement} */
-function createRowSubtitle(row) {
+/**
+ * @param {HTMLElement} row
+ * @param {{placeholder?: boolean}} [options] `placeholder: false` returns null instead of copy that still needs writing
+ * @returns {HTMLElement|null}
+ */
+function createRowSubtitle(row, { placeholder = true } = {}) {
     let existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, .sb-topbar-label-option-copy > small, .sb-compact-mode-copy > small, .sb-mobile-nav-choice-copy > small, label small + small');
     // These rows already own live help beside the label. Keep that node (and its dynamic
     // provider/preset updates) instead of promoting a redundant title or a status-icon tooltip.
@@ -67,7 +74,9 @@ function createRowSubtitle(row) {
     const tooltipSelector = ':is([title], [data-sttt--title]):not(input, select, button, a, .menu_button, [data-cc-toggle], [data-cc-toggle] *)';
     const source = (row.matches(tooltipSelector) ? row : row.querySelector(tooltipSelector))
         ?? row.querySelector('select[title], select[data-sttt--title], textarea[title], textarea[data-sttt--title]');
-    subtitle.textContent = (source?.getAttribute('title') || source?.getAttribute('data-sttt--title'))?.trim() || SB_PLACEHOLDER_DESCRIPTION;
+    const sourceText = (source?.getAttribute('title') || source?.getAttribute('data-sttt--title'))?.trim();
+    if (!sourceText && !placeholder) return null;
+    subtitle.textContent = sourceText || SB_PLACEHOLDER_DESCRIPTION;
     if (subtitle.textContent === SB_PLACEHOLDER_DESCRIPTION) {
         subtitle.dataset.sbCopyPlaceholder = 'true';
     } else {
@@ -95,7 +104,10 @@ function removePresentClasses(element, ...tokens) {
     if (present.length) element.classList.remove(...present);
 }
 
-/** @param {HTMLLabelElement} label @param {{subtitles?: boolean}} [options] */
+/**
+ * `subtitles` is `false` for none, `true` for the tooltip or a copy placeholder, and `'titled'` for the tooltip only.
+ * @param {HTMLLabelElement} label @param {{subtitles?: boolean|'titled'}} [options]
+ */
 function normalizeCustomizeSwitch(label, { subtitles = true } = {}) {
     const input = label.querySelector('input[type="checkbox"]');
     if (!(input instanceof HTMLInputElement)) return;
@@ -115,7 +127,7 @@ function normalizeCustomizeSwitch(label, { subtitles = true } = {}) {
         title.id = `sb-setting-${input.id}-label`;
         input.setAttribute('aria-labelledby', title.id);
     }
-    const subtitle = subtitles ? createRowSubtitle(label) : null;
+    const subtitle = subtitles ? createRowSubtitle(label, { placeholder: subtitles !== 'titled' }) : null;
     for (const marker of label.querySelectorAll('.fa-circle-info:not(a .fa-circle-info)')) marker.remove();
     const suffix = document.createElement('span');
     suffix.className = 'ds-row-suffix';
@@ -144,7 +156,7 @@ function normalizeSwitchRowWrappers(scope) {
     }
 }
 
-/** @param {HTMLElement} row @param {HTMLElement} control @param {{subtitles?: boolean}} [options] */
+/** @param {HTMLElement} row @param {HTMLElement} control @param {{subtitles?: boolean|'titled'}} [options] */
 function normalizeCustomizeField(row, control, { subtitles = true } = {}) {
     if (row.classList.contains('ds-row') || row.querySelector('.ds-row, .checkbox_label')) return;
     const title = row.querySelector(':scope > label, :scope > small, :scope > span, :scope > .range-block-title, :scope > h4');
@@ -154,7 +166,7 @@ function normalizeCustomizeField(row, control, { subtitles = true } = {}) {
     text.className = 'ds-row-text';
     const suffix = document.createElement('div');
     suffix.className = 'ds-row-suffix';
-    const subtitle = subtitles ? createRowSubtitle(row) : null;
+    const subtitle = subtitles ? createRowSubtitle(row, { placeholder: subtitles !== 'titled' }) : null;
     // Tooltip info markers have become visible copy; actionable help links keep their handlers.
     for (const marker of title.querySelectorAll('.fa-circle-info')) marker.remove();
     addMissingClasses(title, 'ds-row-label');
@@ -184,28 +196,39 @@ function normalizeCustomizeField(row, control, { subtitles = true } = {}) {
     }
 }
 
-/** Normalize explicitly owned Backend controls without restructuring provider forms or prompt editors. */
-export function normalizeBackendSettingsRows(scope, { fields = true } = {}) {
+const SB_ROW_FIELD_SELECTOR = 'select, input[type="range"], input[type="number"], input[type="text"], textarea';
+
+/**
+ * Normalize explicitly owned Backend controls without restructuring provider forms or prompt editors.
+ *
+ * `labels` and `controls` narrow which switch labels and field controls become rows, `subtitles` is
+ * passed to the row builders (see `normalizeCustomizeSwitch`), and `skip` names areas a page lays out
+ * itself.
+ * @param {HTMLElement} scope
+ * @param {{fields?: boolean, labels?: string, controls?: string, subtitles?: boolean|'titled', skip?: string}} [options]
+ */
+export function normalizeBackendSettingsRows(scope, { fields = true, labels = '.checkbox_label', controls = SB_ROW_FIELD_SELECTOR, subtitles = true, skip = '' } = {}) {
     if (!(scope instanceof HTMLElement)) return;
-    for (const label of scope.querySelectorAll('.checkbox_label')) {
-        if (!(label instanceof HTMLLabelElement) || label.closest('#completion_prompt_manager')) continue;
+    for (const label of scope.querySelectorAll(labels)) {
+        if (!(label instanceof HTMLLabelElement) || label.closest('#completion_prompt_manager') || (skip && label.closest(skip))) continue;
         const input = label.querySelector('input[type="checkbox"]');
         // Icon actions such as Banned Tokens use a hidden checkbox as state, not as a visible switch.
         if (input instanceof HTMLInputElement && input.style.display === 'none' && label.querySelector('.menu_button')) continue;
-        normalizeCustomizeSwitch(label);
+        normalizeCustomizeSwitch(label, { subtitles });
     }
     normalizeSwitchRowWrappers(scope);
     bindSettingsSwitchKeyboard(scope);
     if (!fields) return;
-    for (const control of scope.querySelectorAll('select, input[type="range"], input[type="number"], input[type="text"], textarea')) {
-        if (!(control instanceof HTMLElement) || control.closest('.ds-row, #completion_prompt_manager, form, .sb-non-chat-preset-row')) continue;
+    const skipped = `.ds-row, #completion_prompt_manager, form, .sb-non-chat-preset-row${skip ? `, ${skip}` : ''}`;
+    for (const control of scope.querySelectorAll(controls)) {
+        if (!(control instanceof HTMLElement) || control.closest(skipped)) continue;
         let row = control.parentElement;
         for (let depth = 0; depth < 3 && row && !row.querySelector(':scope > label, :scope > small, :scope > span, :scope > .range-block-title, :scope > h4'); depth++) {
             if (!row.parentElement || row.parentElement.matches('.ds-pref-group, .sb-sampling-control-card')) break;
             row = row.parentElement;
         }
         if (!(row instanceof HTMLElement) || row.querySelectorAll('input[type="range"]').length > 1) continue;
-        normalizeCustomizeField(row, control);
+        normalizeCustomizeField(row, control, { subtitles });
     }
     bindCustomizeSliderCounters(scope);
 }
@@ -1216,5 +1239,355 @@ export function normalizeSettingsDetail(scope, options = {}) {
         report.pills += form.childElementCount;
     }
 
+    // Only the extensions SillyBunny ships get rows; the caller decides, and a third-party page keeps
+    // the markup it was authored with.
+    if (options.builtIn === true) {
+        watchExtensionSettings(scope);
+    }
+
     return report;
+}
+
+/** Input types an adopted entry row takes; password and number inputs have their own rows. */
+const SB_EXT_ENTRY_TYPES = new Set(['text', 'url', 'search', 'email', 'tel']);
+
+/** Controls that are already part of a row, or that a panel presents itself. */
+const SB_EXT_DONE_SELECTOR = '.ds-row, .ds-select-row, .ds-row-entry--floating, [data-sb-presentation="manual"]';
+
+/** Elements that can carry the text of a label when no `label` names the control. */
+const SB_EXT_TITLE_SELECTOR = 'label, small, span, b, strong, h4, h5, .range-block-title';
+
+/** Anything a title element must not hold, because retiring it would hide a control or a link. */
+const SB_EXT_FOREIGN_SELECTOR = 'input, select, textarea, button, .menu_button, a, [role="button"]';
+
+/** Buttons that sit beside a field, such as Connect or a refresh icon. */
+const SB_EXT_ACTION_SELECTOR = 'button, .menu_button, .right_menu_button, input[type="submit"], input[type="button"]';
+
+/** A form control, or an element that holds one. */
+const SB_EXT_FIELD_SELECTOR = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea';
+
+const SB_EXT_MAX_TITLE_LENGTH = 90;
+
+/** Plain labels that wrap a checkbox and its text are switches too, where the extension did not use `checkbox_label`. */
+const SB_EXT_SWITCH_LABELS = '.checkbox_label, label:has(> input[type="checkbox"])';
+
+/**
+ * Areas of an extension's page that the extension builds and lays out from script, per container.
+ * `left` is left as the extension draws it, because it rebuilds those rows on its own schedule and
+ * styles their parts by position. `entriesOnly` is a page of rows that each provider lays out with a
+ * stylesheet of its own: there only the text fields are adopted, because a floating row sits in any
+ * of those layouts and the other rows would fight them.
+ * @type {ReadonlyMap<string, {left?: string, entriesOnly?: string}>}
+ */
+const SB_EXT_AREAS = new Map([
+    ['qr_container', { left: '#qr--global, #qr--chat, #qr--character, #qr--editor' }],
+    ['tts_container', { entriesOnly: '#tts_provider_settings' }],
+]);
+
+/**
+ * Fields the extension finds by position or shows and hides itself, so a row around them would break
+ * its code. Each is left as authored, with the reason.
+ * @type {ReadonlyMap<string, string>}
+ */
+const SB_EXT_LEFT_FIELDS = new Map([
+    ['deepl_api_endpoint', 'the extension shows and hides the field itself'],
+]);
+
+/** @type {WeakMap<HTMLElement, {sync?: () => void}>} */
+const sbExtensionControllers = new WeakMap();
+
+/** @type {WeakMap<HTMLElement, MutationObserver>} */
+const sbExtensionObservers = new WeakMap();
+
+/** @param {string} text */
+function normalizeFieldTitle(text) {
+    return text.replace(/\s+/g, ' ').trim().replace(/\s*[:：]\s*$/, '');
+}
+
+/**
+ * The text a label shows for a control, without the controls, icons and help links inside it.
+ * @param {Node} node
+ * @returns {string}
+ */
+function readOwnLabelText(node) {
+    let text = '';
+    for (const child of node.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+            text += child.nodeValue ?? '';
+        } else if (child instanceof HTMLElement && !child.matches('input, select, textarea, button, .menu_button, a, i, svg, script, style, .sr-only')) {
+            text += readOwnLabelText(child);
+        }
+    }
+    return text;
+}
+
+/** @param {HTMLElement} control @param {HTMLElement} node */
+function distanceToAncestor(control, node) {
+    let steps = 0;
+    for (let ancestor = control.parentElement; ancestor; ancestor = ancestor.parentElement, steps++) {
+        if (ancestor.contains(node)) return steps;
+    }
+    return Infinity;
+}
+
+/**
+ * The element right before a control whose text names it, when no `label` does.
+ *
+ * Only an element counts: text that sits loose in the wrapper cannot be retired once the row repeats
+ * it, so a control behind such text reads as unlabelled rather than gaining a second title.
+ *
+ * @param {HTMLElement} control
+ * @returns {HTMLElement|null}
+ */
+function findPrecedingTitle(control) {
+    for (let node = control, depth = 0; node.parentElement && depth < 3; node = node.parentElement, depth++) {
+        for (let sibling = node.previousSibling; sibling; sibling = sibling.previousSibling) {
+            if (sibling.nodeType === Node.COMMENT_NODE) continue;
+            if (sibling.nodeType === Node.TEXT_NODE) {
+                if (sibling.nodeValue?.trim()) return null;
+                continue;
+            }
+            if (!(sibling instanceof HTMLElement) || sibling.matches('script, style, br')) continue;
+            if (sibling.matches('hr, .ds-row') || sibling.matches(SB_EXT_FOREIGN_SELECTOR) || sibling.querySelector(SB_EXT_FOREIGN_SELECTOR)) return null;
+            if (!sibling.matches(SB_EXT_TITLE_SELECTOR)) return null;
+            const text = normalizeFieldTitle(readOwnLabelText(sibling));
+            return text && text.length <= SB_EXT_MAX_TITLE_LENGTH ? sibling : null;
+        }
+        // A wrapper that holds other fields would hand this control the title of a neighbour.
+        if (node.parentElement.querySelectorAll(SB_EXT_FIELD_SELECTOR).length > 1) return null;
+    }
+    return null;
+}
+
+/**
+ * What names a control: a `label` that points at it or wraps it, its `aria-label`, the text right
+ * before it, and last its placeholder.
+ *
+ * @param {HTMLElement} control
+ * @returns {{title: string, nodes: HTMLElement[], source: 'label'|'wrapping-label'|'aria-label'|'preceding'|'placeholder'}|null}
+ *   `nodes` are the elements whose text the title repeats; the caller retires them once it shows the title.
+ */
+export function resolveFieldLabel(control) {
+    const labels = [...(/** @type {HTMLInputElement} */ (control).labels ?? [])]
+        .filter(label => label instanceof HTMLElement)
+        .sort((a, b) => distanceToAncestor(control, a) - distanceToAncestor(control, b));
+    for (const label of labels) {
+        const title = normalizeFieldTitle(readOwnLabelText(label));
+        if (title) return { title, nodes: [label], source: label.contains(control) ? 'wrapping-label' : 'label' };
+    }
+
+    const ariaLabel = normalizeFieldTitle(control.getAttribute('aria-label') ?? '');
+    if (ariaLabel) return { title: ariaLabel, nodes: [], source: 'aria-label' };
+
+    const preceding = findPrecedingTitle(control);
+    if (preceding) return { title: normalizeFieldTitle(readOwnLabelText(preceding)), nodes: [preceding], source: 'preceding' };
+
+    const placeholder = normalizeFieldTitle(control.getAttribute('placeholder') ?? '');
+    if (placeholder) return { title: placeholder, nodes: [], source: 'placeholder' };
+
+    return null;
+}
+
+/**
+ * Hides a label whose text the row now shows. It stays in the document for whatever looks it up, and
+ * leaves the control's label list, so the field is named once.
+ * @param {HTMLElement} label
+ */
+function retireLabel(label) {
+    if (label instanceof HTMLLabelElement && label.htmlFor) {
+        label.dataset.sbAdoptedFor = label.htmlFor;
+        label.removeAttribute('for');
+    }
+    label.dataset.sbAdoptedLabel = 'true';
+    label.classList.add('sb-legacy-search-hidden');
+}
+
+/** The translation key a label carries, when the row can carry the same one. */
+function readLabelI18nKey(label) {
+    const holder = label.dataset.i18n ? label : label.querySelector(':scope > [data-i18n]');
+    const key = holder instanceof HTMLElement ? holder.dataset.i18n : '';
+    return key && !key.includes('[') ? key : '';
+}
+
+/**
+ * The action buttons that belong to a field: the ones in its label (a refresh icon) and the ones beside
+ * it in a wrapper that holds nothing else but its title. They travel into the row's trailing slot, so
+ * the field and its Connect button read as one row.
+ *
+ * @param {HTMLElement} control
+ * @param {HTMLElement[]} titles the elements that name the control
+ * @returns {{actions: HTMLElement[], bars: HTMLElement[]}} the buttons, and the title bars that hold nothing else afterwards
+ */
+function findTrailingActions(control, titles) {
+    const actions = titles.flatMap(title => [...title.querySelectorAll(SB_EXT_ACTION_SELECTOR)]);
+    const wrapper = control.parentElement;
+    if (!(wrapper instanceof HTMLElement) || wrapper.closest('label')) return { actions, bars: [] };
+    // A title bar holds the label and a button such as Refresh; once the row shows both, the bar is empty.
+    const bars = titles.map(title => title.parentElement).filter(bar => bar instanceof HTMLElement && bar !== wrapper && !bar.contains(control)
+        && [...bar.children].every(node => titles.includes(/** @type {HTMLElement} */ (node)) || node.matches(SB_EXT_ACTION_SELECTOR)));
+    for (const bar of bars) actions.push(...[...bar.children].filter(node => node.matches(SB_EXT_ACTION_SELECTOR)));
+    const siblings = [...wrapper.children].filter(node => node !== control && !node.matches('.select2-container') && !titles.includes(/** @type {HTMLElement} */ (node)));
+    if (siblings.length > 0 && siblings.every(node => node.matches(SB_EXT_ACTION_SELECTOR))) actions.push(...siblings);
+    return { actions: /** @type {HTMLElement[]} */ (actions), bars: /** @type {HTMLElement[]} */ (bars) };
+}
+
+/**
+ * Whether a number input is a row of its own. A number that sits right beside another field (the depth
+ * of an in-chat position, a slider's counter) is one part of a bigger row and keeps that row.
+ * @param {HTMLElement} control
+ */
+function isStandaloneNumber(control) {
+    if (control.dataset.for || control.closest('.range-block-counter, .ds-row-slider')) return false;
+    return [control.previousElementSibling, control.nextElementSibling]
+        .every(sibling => !(sibling instanceof HTMLElement) || sibling.matches(SB_EXT_ACTION_SELECTOR) || !(sibling.matches(SB_EXT_FIELD_SELECTOR) || sibling.querySelector(SB_EXT_FIELD_SELECTOR)));
+}
+
+/**
+ * Gives one control the row that fits it, inside the wrapper the extension put it in.
+ *
+ * @param {HTMLInputElement|HTMLSelectElement} control
+ * @param {'entry'|'select'|'spin'} kind
+ * @param {{title: string, nodes: HTMLElement[], source: string}} found
+ * @returns {boolean}
+ */
+function adoptExtensionField(control, kind, found) {
+    const field = control.id || control.name || 'extension-field';
+    const marker = document.createComment('sb-adopt');
+    control.before(marker);
+
+    const { actions, bars } = findTrailingActions(control, found.nodes);
+    let row;
+    if (kind === 'select') {
+        row = createSelectRow({
+            select: /** @type {HTMLSelectElement} */ (control),
+            label: found.title,
+            field,
+            noneLabel: control.dataset.placeholder ?? '',
+            searchLabel: t`Search`,
+            emptyText: t`No results`,
+            suffix: actions,
+        });
+    } else if (kind === 'spin') {
+        row = createSpinRow({ label: found.title, field, input: /** @type {HTMLInputElement} */ (control), normalize: false });
+        // Numeric keypads of some phones have no decimal point, so a fractional step asks for the decimal one.
+        if (!Number.isInteger(Number(control.getAttribute('step') || 1))) /** @type {HTMLInputElement} */ (control).inputMode = 'decimal';
+        row.row.querySelector('.ds-row-suffix')?.append(...actions);
+    } else {
+        row = createEntryRow({ label: found.title, field, input: /** @type {HTMLInputElement} */ (control), floating: true, suffix: actions });
+        // The placeholder was the title, so repeating it as the accessible description adds nothing.
+        if (found.source === 'placeholder' && control.getAttribute('aria-description') === found.title) control.removeAttribute('aria-description');
+    }
+
+    marker.replaceWith(row.row);
+    sbExtensionControllers.set(control, row);
+    const key = found.nodes[0] ? readLabelI18nKey(found.nodes[0]) : '';
+    const caption = row.row.querySelector('.ds-row-label');
+    if (key && caption instanceof HTMLElement) caption.dataset.i18n = key;
+    for (const node of found.nodes) retireLabel(node);
+    for (const bar of bars) bar.classList.add('sb-legacy-search-hidden');
+    return true;
+}
+
+/**
+ * Presents the settings of one built-in extension with the shared rows: switch and slider rows from the
+ * row pass the other settings pages use, and select, spin and floating entry rows around the fields
+ * that have a label. A control keeps its node, id, value and listeners, and a row stays inside the
+ * wrapper the extension drew; the extension's own save path is the one it always had.
+ *
+ * Idempotent, because it runs again whenever the extension rebuilds part of its page.
+ *
+ * @param {HTMLElement} scope the extension's container
+ * @returns {{selects: number, numbers: number, entries: number, left: {id: string, type: string, reason: string}[]}}
+ */
+export function normalizeExtensionSettings(scope) {
+    const report = { selects: 0, numbers: 0, entries: 0, left: [] };
+    if (!(scope instanceof HTMLElement)) return report;
+
+    // Switches come from the row pass of the other pages; a tooltip becomes the subtitle and a row
+    // without one stays a title, because this page has no copy to put under it.
+    const { left: leftAreas = '', entriesOnly = '' } = SB_EXT_AREAS.get(scope.id) ?? {};
+    normalizeBackendSettingsRows(scope, {
+        labels: SB_EXT_SWITCH_LABELS,
+        controls: 'input[type="range"]',
+        subtitles: 'titled',
+        skip: [leftAreas, entriesOnly].filter(Boolean).join(', '),
+    });
+
+    for (const control of scope.querySelectorAll('select, input')) {
+        if (!(control instanceof HTMLSelectElement || control instanceof HTMLInputElement)) continue;
+        if (control.closest('.ds-select-row')) {
+            sbExtensionControllers.get(control)?.sync?.();
+            continue;
+        }
+        if (control.closest(SB_EXT_DONE_SELECTOR) || control.matches('[hidden], .displayNone, .hidden')) continue;
+        if (leftAreas && control.closest(leftAreas)) continue;
+
+        const kind = control instanceof HTMLSelectElement
+            ? (control.size > 1 ? null : 'select')
+            : control.type === 'number' ? 'spin' : SB_EXT_ENTRY_TYPES.has(control.type) ? 'entry' : null;
+        if (!kind) continue;
+        if (kind === 'spin' && (control.dataset.for || control.closest('.range-block-counter'))) continue;
+
+        const leave = reason => report.left.push({ id: control.id, type: kind, reason });
+        if (SB_EXT_LEFT_FIELDS.has(control.id)) {
+            leave(SB_EXT_LEFT_FIELDS.get(control.id));
+            continue;
+        }
+        if (kind !== 'entry' && entriesOnly && control.closest(entriesOnly)) {
+            leave('laid out by the provider');
+            continue;
+        }
+        if (control.closest('label')) {
+            leave('inside a label');
+            continue;
+        }
+        if (kind === 'spin' && !isStandaloneNumber(control)) {
+            leave('beside other controls');
+            continue;
+        }
+        const found = resolveFieldLabel(control);
+        if (!found) {
+            leave('no label or placeholder');
+            continue;
+        }
+        // A refresh icon in the label travels with the field; any other control or link would be hidden with it.
+        if (found.nodes.some(node => [...node.querySelectorAll(SB_EXT_FOREIGN_SELECTOR)].some(inner => !inner.matches(SB_EXT_ACTION_SELECTOR)))) {
+            leave('its label holds a control or a link');
+            continue;
+        }
+
+        adoptExtensionField(control, kind, found);
+        report[kind === 'select' ? 'selects' : kind === 'spin' ? 'numbers' : 'entries']++;
+    }
+
+    return report;
+}
+
+/**
+ * Presents a built-in extension's settings now and again each time the extension adds markup to them,
+ * as the Text-to-speech page does when another provider is picked.
+ *
+ * The observer reads only its own batch of changes: the rows this pass inserts are dropped from the
+ * queue, so a pass never schedules another.
+ *
+ * @param {HTMLElement} scope
+ */
+export function watchExtensionSettings(scope) {
+    const present = () => {
+        normalizeExtensionSettings(scope);
+        observer?.takeRecords();
+    };
+    let observer = sbExtensionObservers.get(scope);
+    if (observer) {
+        present();
+        return;
+    }
+
+    observer = new MutationObserver(records => {
+        const added = records.some(record => [...record.addedNodes].some(node => node instanceof HTMLElement));
+        if (added) present();
+    });
+    sbExtensionObservers.set(scope, observer);
+    present();
+    observer.observe(scope, { childList: true, subtree: true });
 }

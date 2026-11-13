@@ -1422,6 +1422,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-12, UI polish sweep. |
 | Owner | `TODO(copy)` |
 
+### `public/css/extensions-panel.css` - built-in extension settings rows
+| Field | Value |
+| --- | --- |
+| File | `public/css/extensions-panel.css` |
+| Area | The settings pages of built-in extensions, after the shared rows adopt their controls. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `normalizeExtensionSettings` and `watchExtensionSettings` in `public/scripts/sillybunny-settings-presentation.js`, reached only for containers that `isBuiltInExtensionContainer` (`sillybunny-settings-subpage-descriptors.js`) allows. |
+| Adapter shape | Three rules, each marked `SillyBunny:`: adopted rows that upstream lays out side by side wrap; a button moved into a row's suffix does not wrap; the empty TTS status line takes no space. Third-party extension settings are never adopted. |
+| Protecting tests | `tests/unit/sillybunny-extension-settings.test.js`; `tests/extension-settings-rows.e2e.js`. |
+| Validation | 2026-11-14: root and tests lint, the full unit run, the e2e specs that name the changed classes. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-14, UI polish sweep (task 2.10). |
+| Owner | `TODO(copy)` |
+
 ### `public/css/extensions-panel.css` - extension toggle column
 | Field | Value |
 | --- | --- |

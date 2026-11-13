@@ -250,6 +250,23 @@ input.extension_missing[type="checkbox"] {
     display: none;
 }
 
+/* SillyBunny: rows the extension settings pass puts side by side wrap with their row instead of squeezing into narrow columns. */
+.sb-subpage-detail-content .flex-container:not(.flexFlowColumn):is(:has(> .ds-row), :has(> * > .ds-row)) > :not(:is(button, .menu_button, .right_menu_button)) {
+    flex-grow: 1;
+    min-width: min(14em, 100%);
+}
+
+/* SillyBunny: a button that moves into a row's trailing slot keeps its label on one line. */
+.sb-subpage-detail-content .ds-row-suffix > :is(button, .menu_button, input[type="submit"]):not(.ds-select-row__trigger) {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* SillyBunny: the provider status line is empty until a provider reports; as a row it would be a blank strip. */
+#tts_status:empty {
+    display: none;
+}
+
 /* SillyBunny: keep the Regex creation actions in one compact, wrapping toolbar on detail pages. */
 .sb-subpage-detail-content .regex_settings .inline-drawer-content > .flex-container:first-child {
     display: flex;

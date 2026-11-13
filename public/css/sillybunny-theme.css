@@ -5667,7 +5667,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 #CharacterHandlingToggles .checkbox_label,
 #MiscellaneousToggles .checkbox_label,
 #STscriptToggles .checkbox_label,
-.vectors_settings .checkbox_label,
 #tts_container .checkbox_label {
     padding: var(--sb-settings-card-padding);
     border-radius: var(--sb-radius-md);
@@ -5677,7 +5676,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 #STscriptToggles .checkbox_label > span,
-.vectors_settings .checkbox_label > span,
 #tts_container .checkbox_label > span {
     flex: 1 1 auto;
 }

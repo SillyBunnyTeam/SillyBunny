@@ -43,6 +43,36 @@ const SB_SYSTEM_EXTENSION_DESCRIPTIONS = new Map([
     ['vectors_container', 'Find relevant messages, file passages, and lorebook entries for the AI\'s prompt.'],
 ]);
 
+/**
+ * The containers of the extensions SillyBunny ships as its own, whose settings pages get the shared rows.
+ *
+ * It is a list of ids and not "everything with a description": Bunny Preset Tools and Chat Completion Tabs
+ * ship in the `third-party` folder and Quick Image Gen is vendored, so all three keep the markup they were
+ * authored with, and an extension the user installs is never in it. Pathfinder (`in-chat-agents`) draws
+ * its whole page itself, with mode cards, numbered steps and its own stylesheet, so it is not listed.
+ */
+const SB_BUILT_IN_EXTENSION_CONTAINERS = new Set([
+    'sbdbg-settings',
+    'expressions_container',
+    'translation_container',
+    'extension_settings_guided-generations',
+    'caption_container',
+    'sd_container',
+    'qr_container',
+    'regex_container',
+    'summarize_container',
+    'tts_container',
+    'vectors_container',
+]);
+
+/**
+ * @param {string} containerId
+ * @returns {boolean}
+ */
+export function isBuiltInExtensionContainer(containerId) {
+    return SB_BUILT_IN_EXTENSION_CONTAINERS.has(containerId);
+}
+
 /** The Extensions list's groups, in the order they are shown. */
 const SB_EXTENSION_GROUPS = Object.freeze({
     system: Object.freeze({ id: 'system', title: 'System Extensions' }),
@@ -112,6 +142,7 @@ function collectExtensionRows(body) {
             descriptionKey: description,
             group: description ? SB_EXTENSION_GROUPS.system : SB_EXTENSION_GROUPS.user,
             icon: 'fa-puzzle-piece',
+            builtIn: isBuiltInExtensionContainer(container.id),
             source: () => container,
             isAvailable: () => !isContainerEmpty(container),
         });

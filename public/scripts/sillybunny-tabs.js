@@ -229,7 +229,7 @@ function installSettingsSubpage(shellKey, tabId) {
         // The detail page gets the same presentation pass a normal panel gets, but scoped to the
         // section that was moved: these panels are skipped by the whole-panel pass, and their
         // sections are only readable as the pass reads them once the section is in its own page.
-        onContent: (content, row) => normalizeSettingsDetail(content, { name: tabId, rowLabel: row.label }),
+        onContent: (content, row) => normalizeSettingsDetail(content, { name: tabId, rowLabel: row.label, builtIn: row.builtIn === true }),
     });
     stack.setRows(built.rows);
     sbSubpageStacks.set(key, stack);
@@ -750,7 +750,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/macros.css', id: 'deferred-macros-css' },
     ],
     'right:extensions': [
-        { href: 'css/extensions-panel.css?v=20261112j', id: 'deferred-extensions-panel-css' },
+        { href: 'css/extensions-panel.css?v=20261114o', id: 'deferred-extensions-panel-css' },
     ],
 });
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';
