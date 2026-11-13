@@ -3,12 +3,16 @@ import { createPromptEditorModel, PROMPT_EDITOR_UTILITY_FIELDS as UTILITY_FIELDS
 import { promptManager } from './openai.js';
 import { openActionMenu, closeActionMenu } from './sillybunny-action-menu.js';
 import { blockUpstreamDrawerClose } from './sillybunny-sheet.js';
-import { play, stopMotion, animateOut, MOTION_FAST, MOTION_SURFACE, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
+import { play, stopMotion, MOTION_FAST, MOTION_SURFACE, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
 import { Popup, POPUP_RESULT } from './popup.js';
 import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
 import { t, translate } from './i18n.js';
 import { createSegmentedControl } from './sillybunny-segmented-control.js';
 import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list-shell.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { createEditorSession } from './sillybunny-editor/session.js';
+import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
+import { getCurrentUserHandle } from './user.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
@@ -29,19 +33,26 @@ function element(tag, className = '', text = '') {
     return node;
 }
 
-// Header Save/Cancel use the shared editor action style (sillybunny-character-editor.css), not .menu_button.
-function actionButton(label, action, className, glyph = null) {
+// Header Save/Cancel use the shared editor action style (sillybunny-character-editor.css), not .menu_button. The shared
+// chrome binds their clicks and names their tooltips.
+function actionButton(label, className, glyph = null) {
     const node = element('button', `sb-editor-action ${className}`);
     node.type = 'button';
     if (glyph) {
-        node.title = label;
+        node.setAttribute('aria-label', label);
         node.append(icon(glyph), element('span', 'sb-editor-action__label', label));
         node.firstChild.classList.add('sb-editor-action__icon');
     } else node.textContent = label;
-    node.addEventListener('click', event => {
-        event.stopPropagation();
-        void action(node, event);
-    });
+    return node;
+}
+
+// Back, the item menu and the Edit/Preview toggle share the header icon button shape of every editor.
+function headerIconButton(label, glyph, className = '') {
+    const node = element('button', `sb-editor-icon-button sb-header-icon-button ${className}`.trim());
+    node.type = 'button';
+    node.setAttribute('aria-label', label);
+    node.title = label;
+    node.append(icon(glyph));
     return node;
 }
 
@@ -49,6 +60,24 @@ function icon(name) {
     const node = element('i', `fa-solid fa-${name}`);
     node.setAttribute('aria-hidden', 'true');
     return node;
+}
+
+/**
+ * Storage key of an unsaved prompt editor draft. The entity is `<kind>:<identifier>`; a new prompt has no identifier
+ * that survives a reload, so every new prompt shares `<kind>:new`.
+ * @param {string} entity
+ */
+export function promptDraftKey(entity) {
+    return `sb-prompt-editor-draft-${getCurrentUserHandle() || 'default'}-${encodeURIComponent(entity)}`;
+}
+
+function isStoredPromptDraft(kind, value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    if (typeof value.identifier !== 'string' || typeof value.name !== 'string') return false;
+    if (kind === 'text-completion') {
+        return [value.values, value.propertyValues].every(group => group && typeof group === 'object' && !Array.isArray(group));
+    }
+    return value.content === undefined || typeof value.content === 'string';
 }
 
 function button(label, glyph, action, className = '') {
@@ -103,8 +132,12 @@ export function initializePromptEditor(column) {
 
     let state = null;
     let draft = null;
-    let baseline = '';
     let draftScope = '';
+    // A new prompt counts as unsaved from the moment it opens, so Save is available before the first edit.
+    let unsaved = false;
+    let chrome = null;
+    // The last counted total of the open draft; the header and phone readouts are rebuilt with every render.
+    let tokenCount = null;
     let kind = 'prompt';
     let mode = 'edit';
     let filter = '';
@@ -119,9 +152,6 @@ export function initializePromptEditor(column) {
     let listTokenTimer = null;
     let tokenRequest = 0;
     let toastTimer = null;
-    let actions = [];
-    let menuTrigger = null;
-    let observedHeader = null;
     let replayingChange = false;
     let stylesReady = false;
     let tokenizerKey = '';
@@ -130,11 +160,45 @@ export function initializePromptEditor(column) {
     const listGroups = new Map();
     const mobile = matchMedia(LAYOUT_MOBILE_QUERY);
 
-    const dirty = () => Boolean(draft) && JSON.stringify(draft) !== baseline;
+    const dirty = () => Boolean(draft) && (unsaved || session.isDirty());
     const textCompletionView = () => state?.type === 'text-completions';
     const promptFor = id => state.prompts.find(prompt => prompt.identifier === id);
     const rowFor = id => id == null ? null : listBody.querySelector(`[data-prompt-id="${CSS.escape(id)}"]`);
     const selectedId = () => draft?.identifier;
+
+    // The session owns the saved baseline, the dirty comparison and the backup of an unsaved draft.
+    // A backup is written every five seconds while the draft differs from the saved prompt and on pagehide. It is
+    // dropped by Save, Cancel, Discard and by closing a draft that has nothing left to keep.
+    const entityKey = () => `${kind}:${unsaved ? 'new' : draft.identifier}`;
+    const draftOwner = () => `prompt:${session.context?.entityId}`;
+    const baselineFingerprint = () => unsaved ? '' : JSON.stringify(session.readBaseline());
+    const draftStore = createEditorDraftStore({ keyFor: promptDraftKey });
+    // The shared envelope stays as it is; the payload carries the preset scope and a fingerprint of the saved prompt,
+    // so a backup is only offered over the prompt it was made from.
+    const drafts = {
+        read(entity) {
+            const stored = draftStore.read(entity);
+            if (!stored) return null;
+            const payload = stored.snapshot;
+            const sameEntity = unsaved || payload.draft?.identifier === draft?.identifier;
+            if (payload.scope !== draftScope || payload.fingerprint !== baselineFingerprint() || !sameEntity || !isStoredPromptDraft(kind, payload.draft)) {
+                draftStore.remove(entity);
+                return null;
+            }
+            return { ...stored, snapshot: payload.draft };
+        },
+        write(entity, snapshot) {
+            draftStore.write(entity, { scope: draftScope, fingerprint: baselineFingerprint(), draft: snapshot });
+        },
+        remove: entity => draftStore.remove(entity),
+    };
+    const session = createEditorSession({
+        captureSnapshot: () => draft ? structuredClone(draft) : {},
+        restoreSnapshot,
+        drafts,
+        onStateChange: () => renderState(),
+        offerDraft: (stored, actions) => showDraftRecoveryToast(stored, actions, draftOwner()),
+    });
 
     // Assigned below; renderList returns early until synchronize() has produced state.
     let shell = null;
@@ -155,6 +219,7 @@ export function initializePromptEditor(column) {
         onDiscard: discardDraft,
         onDeselect: () => {
             closeOverlays();
+            endSession();
             draft = null;
         },
         findRow: rowFor,
@@ -341,7 +406,7 @@ export function initializePromptEditor(column) {
             if (save) run(() => model.rename(prompt.identifier, input.value, expectedScope));
             if (draft?.identifier === prompt.identifier && save) {
                 draft.name = input.value;
-                baseline = JSON.stringify(draft);
+                session.rebase();
                 renderEditor();
             }
             synchronize();
@@ -694,7 +759,9 @@ export function initializePromptEditor(column) {
         }
         draft = structuredClone(live);
         draftScope = state.scope;
-        baseline = JSON.stringify(draft);
+        unsaved = false;
+        drafts.remove(session.context?.entityId ?? entityKey());
+        session.rebase();
         renderEditor();
     }
 
@@ -711,34 +778,23 @@ export function initializePromptEditor(column) {
             if (run(() => model.saveUtility(draft, draftScope)) === false) return false;
         }
         if (kind === 'text-completion' && run(() => model.saveTextCompletion(draft, draftScope)) === false) return false;
-        baseline = JSON.stringify(draft);
-        updateDirty();
+        unsaved = false;
+        session.markSaved({ entityId: entityKey() });
         synchronize();
         status.textContent = t`Saved`;
         return true;
     }
 
     function markDirty() {
-        updateDirty();
+        session.changed({ immediate: true });
         if (kind !== 'text-completion') scheduleTokens();
     }
 
-    function updateDirty() {
-        const dot = editor.querySelector('.sb-prompt-dirty');
-        const saveButton = editor.querySelector('.sb-prompt-save');
-        const cancelButton = editor.querySelector('.sb-prompt-cancel');
-        if (!dot || !saveButton) return;
-        const isDirty = dirty();
-        const changed = dot.hidden === isDirty;
-        const disabled = !isDirty || (kind === 'prompt' && !model.permissions(draft).edit);
-        if (saveButton.disabled !== disabled) saveButton.disabled = disabled;
-        if (cancelButton && cancelButton.disabled === isDirty) cancelButton.disabled = !isDirty;
-        if (!changed) return;
-        if (isDirty) {
-            dot.hidden = false;
-            play(dot, [{ opacity: 0, transform: 'scale(0.7)' }, { opacity: 1, transform: 'none' }], { duration: MOTION_FAST });
-        } else animateOut(dot, [{ opacity: 1 }, { opacity: 0 }], () => dot.hidden = true, { duration: MOTION_POPOVER_CLOSE, onEnd: scheduleLayout });
-        scheduleLayout();
+    // Presents the dirty state in the header; the session calls it after every change of the baseline or the draft.
+    function renderState() {
+        if (!draft || !chrome) return;
+        chrome.render({ mode: 'edit', title: draft.name, dirty: dirty(), saveLabel: t`Save` });
+        if (kind === 'prompt' && !model.permissions(draft).edit) editor.querySelector('.sb-prompt-save').disabled = true;
     }
 
     async function openPrompt(prompt, requestedMode = null) {
@@ -768,21 +824,38 @@ export function initializePromptEditor(column) {
     async function openDraft(value, nextKind, nextMode, isNew = false) {
         shell.cancelNavigation();
         closeOverlays();
+        // The previous draft is settled; its backup must not take the new draft's values while this one renders.
+        session.close();
+        dismissDraftRecoveryToast();
         draft = structuredClone(value);
         kind = nextKind;
         mode = nextMode;
         draftScope = state.scope;
-        baseline = isNew ? '' : JSON.stringify(draft);
+        unsaved = isNew;
+        tokenCount = null;
         renderList();
         // Callers ran the leave guard; force re-renders the same prompt in a new mode.
-        await shell.selectItem(draft.identifier, { guard: false, force: true });
+        const shown = await shell.selectItem(draft.identifier, { guard: false, force: true });
+        // The baseline is the draft as it stands once the editor is on screen; a stored backup is offered from here.
+        if (shown && draft) session.open({ mode: 'edit', entityId: entityKey() });
     }
 
     function closeEditor() {
         return shell.deselectItem();
     }
 
+    // Ends the session of a draft that is clean or already settled by the leave guard, and drops its backup.
+    function endSession() {
+        if (session.isOpen()) drafts.remove(session.context.entityId);
+        dismissDraftRecoveryToast(draftOwner());
+        session.close();
+        unsaved = false;
+        chrome?.dispose();
+        chrome = null;
+    }
+
     function closeNow() {
+        endSession();
         draft = null;
         closeOverlays();
         shell.deselectNow();
@@ -1062,55 +1135,102 @@ export function initializePromptEditor(column) {
         play(editor.querySelector('.sb-prompt-content'), [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
     }
 
+    function restoreSnapshot(snapshot) {
+        draft = structuredClone(snapshot);
+        renderEditor();
+    }
+
+    // The header item menu: the actions the editor had as inline buttons and in its phone menu, in sections.
+    function actionSections() {
+        const permission = kind === 'prompt' ? model.permissions(draft) : {};
+        const persisted = kind === 'prompt' && (Boolean(promptFor(draft.identifier)) || draft.runtime);
+        return [
+            [
+                persisted && menuItem(t`Inspect`, 'list-check', () => setMode('inspect')),
+                persisted && !draft.marker && menuItem(t`Send to agents`, 'robot', () => model.sendToAgents(draft.identifier)),
+            ],
+            [
+                kind === 'utility' && model.canRestoreUtility(draft.identifier) && menuItem(t`Restore default`, 'rotate-left', () => restoreUtility(draft.identifier)),
+                permission.reset && menuItem(t`Reset to default`, 'rotate-left', () => { draft = model.resetDraft(draft); renderEditor(); markDirty(); }),
+            ],
+            [
+                permission.remove && state.order.some(entry => entry.identifier === draft.identifier) && menuItem(t`Remove from list`, 'minus', () => remove(draft.identifier)),
+                persisted && permission.delete && menuItem(t`Delete`, 'trash', () => deletePrompt(draft.identifier), true),
+            ],
+        ].map(items => ({ items: items.filter(Boolean) })).filter(section => section.items.length);
+    }
+
+    function knownTokens() {
+        if (kind === 'text-completion') return null;
+        const total = tokenCount ?? state.counts?.[draft.identifier];
+        return total === undefined || total === null ? null : { total };
+    }
+
+    // The label row of the content field: its name, with Expand at the inline end while the field can be edited.
+    function contentField(textarea, body) {
+        const field = element('div', 'sb-prompt-content-field');
+        const labelRow = element('div', 'sb-prompt-label-row ds-row-textarea__label-row sb-editor-label-row');
+        const label = element(textarea ? 'label' : 'span', 'sb-prompt-field-label ds-row-textarea__label', t`Prompt content`);
+        if (textarea) label.htmlFor = textarea.id;
+        labelRow.append(label);
+        field.append(labelRow, body);
+        if (textarea) {
+            const expand = headerIconButton(t`Expand the editor`, 'maximize', 'editor_maximize ds-row-textarea__expand sb-prompt-expand');
+            expand.dataset.for = textarea.id;
+            attachToLabelRow(field, expand);
+        }
+        return field;
+    }
+
     function renderEditor() {
         if (!draft) return;
         closePopover(false);
+        chrome?.dispose();
         editor.hidden = false;
         editor.inert = false;
         editor.dataset.disabled = String(kind === 'text-completion' && draft.disabled);
         editor.replaceChildren();
         const header = element('header', 'sb-prompt-detail-header');
-        header.append(button(t`Back to prompt list`, 'chevron-left', closeEditor));
+        const back = headerIconButton(t`Back to prompt list`, 'chevron-left', 'sb-prompt-back');
         const title = element('input', 'sb-prompt-title');
         title.id = 'sb-prompt-form_name';
         title.value = draft.name;
         title.readOnly = kind !== 'prompt' || !model.permissions(draft).rename;
         title.setAttribute('aria-label', t`Prompt name`);
         title.addEventListener('input', () => { draft.name = title.value; markDirty(); });
-        const dot = element('span', 'sb-prompt-dirty', '•');
-        dot.setAttribute('aria-label', t`Unsaved changes`);
-        dot.hidden = !dirty();
-        header.append(title, dot);
-        const modes = segmented(t`Editor mode`, [['edit', t`Edit`], ['preview', t`Preview`]], mode, setMode);
+        const dirtyMark = createDirtyMark('sb-prompt-dirty');
+        // A header rebuilt over unsaved edits shows its mark at once instead of animating it in again.
+        dirtyMark.hidden = !dirty();
+        const readout = createTokenReadout();
+        readout.classList.add('sb-prompt-tokens');
+        const modes = segmented(t`Edit / Preview`, [['edit', t`Edit`], ['preview', t`Preview`]], mode, setMode);
         modes.classList.add('sb-prompt-modes');
-        header.append(modes, button(mode === 'edit' ? t`Preview prompt` : t`Edit prompt`, mode === 'edit' ? 'eye' : 'pen', () => setMode(mode === 'edit' ? 'preview' : 'edit'), 'sb-prompt-mode-toggle'));
-        const actionGroup = element('div', 'sb-prompt-actions');
-        const permission = kind === 'prompt' ? model.permissions(draft) : {};
-        const persisted = kind === 'prompt' && (Boolean(promptFor(draft.identifier)) || draft.runtime);
-        const items = [
-            kind === 'utility' && model.canRestoreUtility(draft.identifier) && { label: t`Restore default`, glyph: 'rotate-left', action: () => restoreUtility(draft.identifier) },
-            persisted && { label: t`Inspect`, glyph: 'list-check', action: () => setMode('inspect') },
-            persisted && !draft.marker && { label: t`Send to agents`, glyph: 'robot', action: () => model.sendToAgents(draft.identifier) },
-            permission.remove && state.order.some(entry => entry.identifier === draft.identifier) && { label: t`Remove from list`, glyph: 'minus', action: () => remove(draft.identifier) },
-            persisted && permission.delete && { label: t`Delete`, glyph: 'trash', action: () => deletePrompt(draft.identifier), danger: true },
-            permission.reset && { label: t`Reset to default`, glyph: 'rotate-left', action: () => { draft = model.resetDraft(draft); renderEditor(); markDirty(); } },
-        ].filter(Boolean);
-        actions = items.map(item => {
-            const control = button(item.label, item.glyph, () => run(item.action), item.danger ? 'is-destructive' : '');
-            actionGroup.append(control);
-            return { ...item, control };
-        });
-        menuTrigger = button(t`More prompt actions`, 'ellipsis-vertical', trigger => menu(trigger, draft.name, [actions.filter(item => item.control.hidden).map(item => menuItem(item.label, item.glyph, item.action, item.danger))]));
-        menuTrigger.setAttribute('aria-haspopup', 'menu');
-        menuTrigger.setAttribute('aria-expanded', 'false');
-        actionGroup.append(menuTrigger);
-        header.append(actionGroup, actionButton(t`Cancel`, cancelEdits, 'sb-editor-action--secondary sb-prompt-cancel', 'xmark'), actionButton(t`Save`, save, 'sb-editor-action--primary sb-prompt-save'));
+        const modeToggle = headerIconButton(mode === 'edit' ? t`Preview` : t`Edit`, mode === 'edit' ? 'eye' : 'pen', 'sb-prompt-mode-toggle');
+        modeToggle.setAttribute('aria-pressed', String(mode === 'preview'));
+        modeToggle.addEventListener('click', () => setMode(mode === 'edit' ? 'preview' : 'edit'));
+        const more = headerIconButton(t`Prompt Actions`, 'ellipsis-vertical', 'sb-prompt-more');
+        more.setAttribute('aria-haspopup', 'menu');
+        more.setAttribute('aria-expanded', 'false');
+        more.hidden = !actionSections().length;
+        const cancel = actionButton(t`Cancel`, 'sb-editor-action--secondary sb-prompt-cancel', 'xmark');
+        const saveButton = actionButton(t`Save`, 'sb-editor-action--primary sb-prompt-save');
+        for (const control of [back, modeToggle, more, cancel, saveButton]) control.addEventListener('click', event => event.stopPropagation());
+        // The chrome puts the readout and the item menu in their places in the header.
+        header.append(back, title, dirtyMark, modes, modeToggle, cancel, saveButton);
         editor.append(header);
-        if ((kind === 'prompt' && permission.edit || kind === 'text-completion' && draft.properties?.length) && mode !== 'inspect') {
+        const permission = kind === 'prompt' ? model.permissions(draft) : {};
+        const hasProperties = (kind === 'prompt' && permission.edit || kind === 'text-completion' && draft.properties?.length) && mode !== 'inspect';
+        // The phone count sits in the row of the property summary; an item without properties keeps the row for it alone.
+        let summaryRow = null;
+        if (hasProperties) {
             const summary = button('', null, openProperties, 'sb-prompt-property-summary');
             summary.setAttribute('aria-label', t`Prompt properties`);
-            editor.append(summary, properties());
+            summaryRow = createSummaryRow(summary);
+            editor.append(summaryRow, properties());
             refreshSummary();
+        } else if (kind !== 'text-completion') {
+            summaryRow = createSummaryRow();
+            editor.append(summaryRow);
         }
         const content = element('div', 'sb-prompt-content');
         if (mode === 'inspect') {
@@ -1127,7 +1247,7 @@ export function initializePromptEditor(column) {
         } else if (mode === 'preview' && kind !== 'text-completion') {
             const block = element('pre', 'sb-prompt-preview', kind === 'prompt' ? run(() => model.preview(draft)) || t`(Empty prompt)` : draft.content);
             block.tabIndex = 0;
-            content.append(block);
+            content.append(contentField(null, block));
         } else if (kind === 'text-completion') {
             for (const field of draft.fields) {
                 const label = translate(field.name);
@@ -1179,26 +1299,31 @@ export function initializePromptEditor(column) {
             textarea.spellcheck = false;
             // The legacy expanded editor writes back with jQuery .trigger('input').
             $(textarea).on('input', () => { draft.content = textarea.value; markDirty(); });
-            content.append(textarea);
+            content.append(contentField(textarea, textarea));
         }
+        editor.append(content);
         const footer = element('footer', 'sb-prompt-footer');
-        footer.append(element('span', 'sb-prompt-token-footer', kind === 'text-completion' ? '' : `${state.counts[draft.identifier] ?? '-'} ${t`tokens`}`));
         if (kind === 'text-completion' && draft.disabled) footer.append(element('span', '', t`Disabled`));
         if (state.sources?.[draft.identifier]) footer.append(element('span', '', `${t`Source`}: ${state.sources[draft.identifier]}`));
-        if (mode === 'edit' && kind !== 'text-completion') {
-            const expand = element('button', 'menu_button menu_button_icon editor_maximize sb-prompt-expand');
-            expand.type = 'button';
-            expand.title = t`Expand the editor`;
-            expand.setAttribute('aria-label', t`Expand the editor`);
-            expand.dataset.for = 'sb-prompt-form_prompt';
-            expand.append(icon('maximize'));
-            footer.append(expand);
-        }
-        editor.append(content, footer);
-        updateDirty();
-        if (observedHeader) resizeObserver.unobserve(observedHeader);
-        observedHeader = header;
-        resizeObserver.observe(header);
+        if (footer.childElementCount) editor.append(footer);
+        chrome = mountEditorChrome({
+            root: editor, header, content,
+            controls: { back, title, dirty: dirtyMark, more, modes: [modes, modeToggle], cancel, save: saveButton },
+            tokens: summaryRow && kind !== 'text-completion' ? { element: readout, row: { host: summaryRow } } : null,
+            itemMenuLabel: t`Prompt Actions`,
+            onBack: () => { void closeEditor(); },
+            onCancel: cancelEdits,
+            onSave: () => { save(); },
+            getActionSections: actionSections,
+            actionMenuTitle: () => draft.name,
+            scrollHide: false,
+        });
+        // The editor's menus are part of its edit surface for the preset autosave (see sillybunny-preset-autosave.js).
+        more.addEventListener('click', () => {
+            document.querySelectorAll('.sb-action-menu, .sb-action-sheet').forEach(node => node.dataset.sbPromptMenu = 'true');
+        });
+        renderState();
+        chrome.setTokens(knownTokens());
         scheduleLayout();
         scheduleTokens();
     }
@@ -1213,42 +1338,13 @@ export function initializePromptEditor(column) {
             try {
                 const count = await countContent(draft.content || '');
                 if (request !== tokenRequest || !draft) return;
-                const footer = editor.querySelector('.sb-prompt-token-footer');
-                if (footer) footer.textContent = `${count} ${t`tokens`}`;
+                tokenCount = count;
             } catch {
                 if (request !== tokenRequest) return;
-                const footer = editor.querySelector('.sb-prompt-token-footer');
-                if (footer) footer.textContent = `? ${t`tokens`}`;
+                tokenCount = '?';
             }
+            chrome?.setTokens(knownTokens());
         }, 300);
-    }
-
-    function measureActions() {
-        const header = editor.querySelector('.sb-prompt-detail-header');
-        if (!header || !draft || shell.isNavigating) return;
-        const title = header.querySelector('.sb-prompt-title');
-        const group = header.querySelector('.sb-prompt-actions');
-        const fixed = [...header.children].filter(node => node !== title && node !== group && getComputedStyle(node).display !== 'none');
-        const style = getComputedStyle(header);
-        const fixedWidth = fixed.reduce((sum, node) => sum + node.getBoundingClientRect().width, 0);
-        const available = header.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - fixedWidth - (parseFloat(getComputedStyle(title).minWidth) || 96) - (fixed.length + 2) * (parseFloat(style.gap) || 0);
-        let count = mobile.matches ? 0 : actions.length;
-        while (count > 0 && count * 42 + (count < actions.length ? 40 : 0) > available) count--;
-        const active = document.activeElement;
-        const focusWillHide = actions.some((item, index) => item.control === active && index >= count)
-            || active === menuTrigger && count === actions.length;
-        return { count, title, group, focusWillHide };
-    }
-
-    function updateActions(measurement) {
-        if (!measurement) return;
-        const { count, title, group, focusWillHide } = measurement;
-        actions.forEach((item, index) => {
-            if (item.control.hidden !== (index >= count)) item.control.hidden = index >= count;
-        });
-        if (menuTrigger.hidden !== (count === actions.length)) menuTrigger.hidden = count === actions.length;
-        if (group.hidden !== (actions.length === 0)) group.hidden = actions.length === 0;
-        if (focusWillHide) title.focus({ preventScroll: true });
     }
 
     function scheduleLayout() {
@@ -1263,16 +1359,15 @@ export function initializePromptEditor(column) {
         const headerHidden = column.classList.contains('sb-prompt-hide-header');
         const revealHeader = !hideCollapsed && headerHidden && (headerMeasuredWidth !== width || headerMeasuredText !== headerText || !draft);
         const fits = !headerHidden && card && [...card.querySelectorAll('.sb-backend-title-row, .sb-editor-meta')].every(node => node.scrollWidth <= node.clientWidth + 1);
-        return { headerText, headerHidden, revealHeader, fits, actionLayout: measureActions() };
+        return { headerText, headerHidden, revealHeader, fits };
     }
 
-    function applyShellLayout({ headerText, headerHidden, revealHeader, fits, actionLayout }, { width, collapsed }) {
+    function applyShellLayout({ headerText, headerHidden, revealHeader, fits }, { width, collapsed }) {
         if (column.classList.contains('sb-prompt-detail-open') !== Boolean(draft)) column.classList.toggle('sb-prompt-detail-open', Boolean(draft));
         const hideHeader = !revealHeader && Boolean(draft) && (collapsed || !fits);
         if (headerHidden !== hideHeader) column.classList.toggle('sb-prompt-hide-header', hideHeader);
         headerMeasuredWidth = width;
         headerMeasuredText = headerText;
-        updateActions(actionLayout);
         // A previously collapsed header must become measurable before checking its overflow.
         if (revealHeader) scheduleLayout();
     }
@@ -1315,15 +1410,15 @@ export function initializePromptEditor(column) {
             // The legacy popup sits outside this column. Finding the column with a body-wide :has() made every DOM change re-check the document.
             document.getElementById('completion_prompt_manager_popup')?.setAttribute('data-sb-prompt-owned', '');
         }
-        if (draft && !dirty()) {
+        if (draft && session.isOpen() && !dirty()) {
             const live = kind === 'prompt'
                 ? promptFor(draft.identifier)
                 : kind === 'text-completion' ? model.readTextCompletionEntry(draft.identifier) : { ...draft, content: model.readUtility(draft.identifier) };
             if (!live && !draft.runtime) closeNow();
-            else if (live && JSON.stringify(live) !== baseline) {
+            else if (live && JSON.stringify(live) !== JSON.stringify(session.readBaseline())) {
                 draft = structuredClone(live);
-                baseline = JSON.stringify(draft);
                 draftScope = state.scope;
+                session.rebase();
                 renderEditor();
             }
         }
@@ -1376,11 +1471,10 @@ export function initializePromptEditor(column) {
     document.addEventListener('sb:prompt-manager-rendered', scheduleSynchronize);
     document.getElementById('main_api')?.addEventListener('change', scheduleSynchronize);
     eventSource.on(event_types.APP_READY, synchronize);
-    // The shell observes its root; this observer re-measures header actions when the header resizes.
-    const resizeObserver = new ResizeObserver(scheduleLayout);
+    window.addEventListener('pagehide', () => session.flushDraft());
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261113t', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261114p', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

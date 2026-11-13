@@ -487,12 +487,10 @@ export const surfaces = [
         id: 'prompt-editor.detail',
         title: 'Prompt editor more menu',
         needs: [],
-        // Up to 768px wide the header folds every action into the menu; a wider pane folds them only by its measured width.
-        viewports: NARROW_VIEWPORTS,
         sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, ACTION_MENU],
         async open(page) {
             await openPromptDetail(page);
-            await openFrom(page, '.sb-prompt-detail button[aria-label="More prompt actions"]');
+            await openFrom(page, '.sb-prompt-detail button[aria-label="Prompt Actions"]');
         },
     }),
     menu({

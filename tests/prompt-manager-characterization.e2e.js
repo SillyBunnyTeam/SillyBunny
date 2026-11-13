@@ -218,9 +218,7 @@ function promptEditorDriver(page) {
         await page.getByRole('menuitem', { name: label, exact: true }).click();
     };
     const editorAction = async label => {
-        const direct = editor.getByRole('button', { name: label, exact: true });
-        if (await direct.isVisible()) return direct.click();
-        await editor.getByRole('button', { name: 'More prompt actions', exact: true }).click();
+        await editor.getByRole('button', { name: 'Prompt Actions', exact: true }).click();
         await page.getByRole('menuitem', { name: label, exact: true }).click();
     };
 
@@ -233,6 +231,7 @@ function promptEditorDriver(page) {
 
     const driver = {
         row,
+        editorAction,
 
         async open() {
             const hostname = new URL(BASE_URL).hostname;
@@ -329,7 +328,7 @@ function promptEditorDriver(page) {
             if (await content.count()) return;
             const segment = editor.locator('.sb-prompt-modes label').filter({ hasText: mode === 'preview' ? 'Preview' : 'Edit' });
             if (await segment.isVisible()) await segment.click();
-            else await editor.getByRole('button', { name: mode === 'preview' ? 'Preview prompt' : 'Edit prompt', exact: true }).click();
+            else await editor.getByRole('button', { name: mode === 'preview' ? 'Preview' : 'Edit', exact: true }).click();
         },
 
         async resetToDefault() {
@@ -511,7 +510,7 @@ test.describe('Prompt Manager characterization', () => {
         const { store, ui, baseline } = await setup(page);
         await ui.openEditor('sbFixtureRelative');
         const textarea = page.locator(`${FORM}_prompt`);
-        const expand = page.locator('.sb-prompt-footer .editor_maximize');
+        const expand = page.locator('.sb-prompt-label-row > .editor_maximize');
         await expect(expand).toHaveAttribute('data-for', 'sb-prompt-form_prompt');
         await expect(expand.locator('.fa-solid.fa-maximize')).toHaveCount(1);
         await expand.click();
@@ -534,6 +533,23 @@ test.describe('Prompt Manager characterization', () => {
         await ui.fill({ content: promptFor(baseline, 'sbFixtureRelative').content });
         await ui.save();
         await waitForSavedOai(store, oai => promptFor(oai, 'sbFixtureRelative')?.content === 'Relative fixture content');
+    });
+
+    test('the header follows the shared editor order: item menu, count and Expand replace the inline buttons and the footer', async ({ page }) => {
+        const { ui } = await setup(page);
+        const editor = page.locator('.sb-prompt-detail');
+        await ui.openEditor('sbFixtureRelative');
+        await page.locator(`${FORM}_prompt`).fill('Changed for the header');
+        await expect(editor.locator('.sb-prompt-dirty')).toBeVisible();
+        await expect(editor.locator('.sb-prompt-tokens')).toHaveText(/^\d+ Tokens$/);
+        const order = ['.sb-prompt-back', '.sb-prompt-title', '.sb-prompt-dirty', '.sb-prompt-tokens', '.sb-prompt-modes', '.sb-prompt-more', '.sb-prompt-cancel', '.sb-prompt-save'];
+        const lefts = await Promise.all(order.map(async selector => (await editor.locator(selector).boundingBox()).x));
+        expect(lefts).toEqual([...lefts].sort((a, b) => a - b));
+        await expect(editor.getByRole('button', { name: 'Inspect', exact: true })).toHaveCount(0);
+        await expect(editor.locator('.sb-prompt-token-footer')).toHaveCount(0);
+        await expect(editor.locator('.sb-prompt-label-row > .editor_maximize')).toHaveCount(1);
+        await editor.getByRole('button', { name: 'Prompt Actions', exact: true }).click();
+        await expect(page.getByRole('menuitem')).toHaveText(['Inspect', 'Send to agents', 'Remove from list', 'Delete']);
     });
 
     test('reset to default fills the form and only persists on save', async ({ page }) => {
@@ -817,13 +833,13 @@ test.describe('Prompt Manager characterization', () => {
     });
 
     test('utility prompt edits and restores use the existing setting handlers', async ({ page }) => {
-        const { store, baseline } = await setup(page);
+        const { store, baseline, ui } = await setup(page);
         const row = page.locator('[data-prompt-id="scenario_format_textarea"]');
         await row.locator('.sb-prompt-row-name').click();
         await page.locator(`${FORM}_prompt`).fill('Changed utility content');
         await page.getByRole('button', { name: 'Save', exact: true }).click();
         await waitForSavedOai(store, oai => oai.scenario_format === 'Changed utility content');
-        await page.getByRole('button', { name: 'Restore default', exact: true }).click();
+        await ui.editorAction('Restore default');
         await waitForSavedOai(store, oai => oai.scenario_format === '{{scenario}}');
         expect((await readLiveOai(page)).prompts).toEqual(baseline.prompts);
         expect((await readLiveOai(page)).prompt_order).toEqual(baseline.prompt_order);
@@ -954,11 +970,11 @@ test.describe('Prompt Manager characterization', () => {
         const { ui, baseline } = await setup(page);
         await ui.openEditor('sbFixtureRelative');
         await ui.fill({ content: 'Before{{newline}}After' });
-        await page.getByRole('group', { name: 'Editor mode', exact: true }).getByRole('radio', { name: 'Preview', exact: true }).check();
+        await page.getByRole('group', { name: 'Edit / Preview', exact: true }).getByRole('radio', { name: 'Preview', exact: true }).check();
         await expect(page.locator('.sb-prompt-preview')).toHaveText('Before\nAfter');
         await expect(page.locator('.sb-prompt-textarea')).toHaveCount(0);
         expect((await readLiveOai(page)).prompts).toEqual(baseline.prompts);
-        await page.getByRole('group', { name: 'Editor mode', exact: true }).getByRole('radio', { name: 'Edit', exact: true }).check();
+        await page.getByRole('group', { name: 'Edit / Preview', exact: true }).getByRole('radio', { name: 'Edit', exact: true }).check();
         await expect(page.locator(`${FORM}_prompt`)).toHaveValue('Before{{newline}}After');
     });
 
@@ -971,7 +987,7 @@ test.describe('Prompt Manager characterization', () => {
             return message.getTokens();
         });
         await ui.openEditor('main');
-        await page.getByRole('button', { name: 'Inspect', exact: true }).click();
+        await ui.editorAction('Inspect');
         const message = page.locator('.sb-prompt-inspect-message');
         await expect(message.locator('summary')).toContainText(`system · ${count} tokens`);
         await message.locator('summary').click();

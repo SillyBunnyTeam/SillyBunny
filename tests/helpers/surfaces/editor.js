@@ -21,7 +21,6 @@ import {
     MENU_ROOT, appendToField, clearOverlays, closePopups, closeSheets, discardEdits, gone, leaveDetail, leaveDirtyDetail, renameInHeader,
     scrollSectionIntoView, scrollToTop, settleOverlay, settled, shown, showPreview,
 } from './editor-steps.js';
-import { MOBILE_LAYOUT_VIEWPORTS } from './panel-steps.js';
 import { expandAll, openCharactersTab, openSettingsTab, selectBackend, settle } from './steps.js';
 
 const SCRIPTS = 'public/scripts';
@@ -705,16 +704,12 @@ export const surfaces = [
         open: openPromptDetail,
         states: [
             {
-                // The header lists the prompt's actions as buttons and keeps More for the ones that do not fit, so a wide
-                // pane has no item menu; it exists where the actions collapse into it.
+                // The item menu is in the header at every width, as in every editor.
                 id: 'item-menu',
-                // `measureActions` keeps no action button up to a width of 768px, so More exists on the mobile layout; wider panes keep
-                // them as long as they fit.
-                viewports: MOBILE_LAYOUT_VIEWPORTS,
                 root: MENU_ROOT,
                 ready: MENU_ROOT,
                 async open(page) {
-                    await page.locator('.sb-prompt-detail').getByRole('button', { name: 'More prompt actions', exact: true }).click();
+                    await page.locator('.sb-prompt-detail').getByRole('button', { name: 'Prompt Actions', exact: true }).click();
                     await settleOverlay(page, MENU_ROOT);
                 },
             },
@@ -737,7 +732,7 @@ export const surfaces = [
                 leave: page => leaveDirtyDetail(page, { back: PROMPT.back, otherRow: '.sb-prompt-row:not([data-prompt-id="main"])' }),
             }),
         ],
-        masks: ['.sb-prompt-detail .sb-prompt-token-footer'],
+        masks: ['.sb-prompt-detail .sb-prompt-tokens', '.sb-prompt-detail .sb-editor-tokens--row'],
         needs: [],
         sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, `${CSS}/sillybunny-prompt-editor.css`],
         primaryFlow: true,

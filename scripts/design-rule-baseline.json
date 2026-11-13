@@ -102,7 +102,7 @@
         },
         "public/css/sillybunny-prompt-editor.css": {
             "important": 19,
-            "spacing-off-scale": 36
+            "spacing-off-scale": 35
         },
         "public/css/sillybunny-side-panel.css": {
             "shadow-literal": 1,

@@ -781,17 +781,24 @@ export function mountAgentsPanel(column) {
         async connect() {
             if (!adapter || destroyed) return;
             await loadListEditorStyles();
+            // The sheets share selectors of equal specificity, so they must sit in this order; a sheet that another
+            // surface already loaded earlier is moved after its predecessor.
+            let previous = null;
             for (const href of [
                 'css/sillybunny-persona-detail.css?v=20261114l',
-                'css/sillybunny-prompt-editor.css',
+                'css/sillybunny-prompt-editor.css?v=20261114p',
                 'scripts/extensions/in-chat-agents/ui/agent-editor.css',
             ]) {
-                if (!document.querySelector(`link[href="${href}"]`)) {
-                    const link = document.createElement('link');
+                let link = document.querySelector(`link[href="${href}"]`);
+                if (!link) {
+                    link = document.createElement('link');
                     link.rel = 'stylesheet';
                     link.href = href;
                     document.head.append(link);
+                } else if (previous && previous.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_PRECEDING) {
+                    document.head.append(link);
                 }
+                previous = link;
             }
             if (destroyed) return;
             shell.root.hidden = false;

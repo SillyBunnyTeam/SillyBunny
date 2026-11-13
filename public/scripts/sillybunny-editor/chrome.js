@@ -83,12 +83,13 @@ export function createTokenReadout({ warning = null } = {}) {
 
 /**
  * Wraps a property-summary button in the row that also holds the phone token count, in place when it is mounted.
- * @param {HTMLElement} summary
+ * @param {HTMLElement|null} [summary]  Omitted for an item that has no properties but still has a count.
  * @returns {HTMLDivElement}
  */
-export function createSummaryRow(summary) {
+export function createSummaryRow(summary = null) {
     const row = document.createElement('div');
     row.className = 'sb-editor-summary-row';
+    if (!summary) return row;
     summary.classList.add('sb-editor-summary');
     summary.replaceWith?.(row);
     row.append(summary);
