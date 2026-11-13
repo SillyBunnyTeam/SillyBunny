@@ -233,10 +233,10 @@ describe('mountEditorChrome shared header', () => {
         chrome.render({ mode: 'create', dirty: true, title: 'Entry', saveLabel: 'Save' });
         expect(controls.save.textContent).toBe('Save');
         expect(controls.save.title).toBe('Save');
-        for (const control of [controls.back, controls.more]) {
-            expect(control.title).toBe('TODO(copy)');
-            expect(control.dataset.sbCopyPlaceholder).toBe('true');
-        }
+        expect(controls.back.title).toBe('Back');
+        expect(controls.back.dataset.sbCopyPlaceholder).toBeUndefined();
+        expect(controls.more.title).toBe('TODO(copy)');
+        expect(controls.more.dataset.sbCopyPlaceholder).toBe('true');
     });
 
     test('keeps the accessible names that the editors set', () => {

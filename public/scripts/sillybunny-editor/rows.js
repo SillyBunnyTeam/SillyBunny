@@ -293,8 +293,8 @@ function numberAttribute(input, name) {
     return Number.isFinite(value) ? value : undefined;
 }
 
-// Not yet worded: both buttons carry the copy placeholder. rows.js takes no i18n import (its callers pass translated labels).
-const SPIN_BUTTON_LABEL = 'TODO(copy)';
+// Named after GTK's value-decrease and value-increase icons. rows.js takes no i18n import, so these stay untranslated.
+const SPIN_BUTTON_LABELS = Object.freeze({ down: 'Decrease', up: 'Increase' });
 
 /** The step of the buttons is the input's `step`; `any`, a missing or a non-positive step steps by 1. */
 function spinStep(control) {
@@ -323,9 +323,8 @@ function createSpinButtons(control, row) {
     const button = (direction, icon) => {
         const node = element('button', `ds-spin-btn ds-spin-btn--${direction}`);
         node.type = 'button';
-        node.setAttribute('aria-label', SPIN_BUTTON_LABEL);
-        node.title = SPIN_BUTTON_LABEL;
-        node.dataset.sbCopyPlaceholder = 'true';
+        node.setAttribute('aria-label', SPIN_BUTTON_LABELS[direction]);
+        node.title = SPIN_BUTTON_LABELS[direction];
         const glyph = element('i', `fa-solid ${icon}`);
         glyph.setAttribute('aria-hidden', 'true');
         node.append(glyph);

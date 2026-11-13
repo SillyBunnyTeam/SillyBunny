@@ -92,6 +92,7 @@ export function initializePromptEditor(column) {
     const subtitle = element('span', 'sb-prompt-list-subtitle');
     titles.append(element('h2', '', t`Prompts`), subtitle);
     const searchEntry = createSearchEntry({
+        clearLabel: t`Clear Entry`,
         variant: 'bar', className: 'sb-prompt-search-field', inputClassName: 'sb-prompt-search',
         placeholder: t`Search...`, label: t`Search prompts`, clearOnEscape: false,
     });

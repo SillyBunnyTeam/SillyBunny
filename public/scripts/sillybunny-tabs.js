@@ -15274,7 +15274,7 @@ function initSettingsPageClose() {
     if (searchInput instanceof HTMLInputElement && searchInput.dataset.sbBound !== 'true') {
         searchInput.dataset.sbBound = 'true';
         // Escape clears the query before it can close the page; the clear button and Escape both send `input`.
-        createSearchEntry({ input: searchInput, variant: 'bar' });
+        createSearchEntry({ input: searchInput, variant: 'bar', clearLabel: t`Clear Entry` });
         searchInput.addEventListener('input', () => void filterSettingsSidebarTabs(searchInput.value));
         searchInput.addEventListener('keydown', event => {
             if (event.key === 'Enter') {

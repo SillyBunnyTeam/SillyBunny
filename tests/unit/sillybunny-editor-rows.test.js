@@ -572,12 +572,12 @@ describe('createSpinRow buttons', () => {
         const suffix = result.row.querySelector('.ds-row-suffix');
         expect([...suffix.children]).toEqual([result.control, down, up]);
         expect(result.row.classList.contains('ds-row--spin')).toBe(true);
-        for (const [button, icon] of [[down, 'fa-minus'], [up, 'fa-plus']]) {
+        for (const [button, icon, name] of [[down, 'fa-minus', 'Decrease'], [up, 'fa-plus', 'Increase']]) {
             expect(button.tagName).toBe('BUTTON');
             expect(button.type).toBe('button');
-            expect(button.getAttribute('aria-label')).toBe('TODO(copy)');
-            expect(button.title).toBe('TODO(copy)');
-            expect(button.dataset.sbCopyPlaceholder).toBe('true');
+            expect(button.getAttribute('aria-label')).toBe(name);
+            expect(button.title).toBe(name);
+            expect(button.dataset.sbCopyPlaceholder).toBeUndefined();
             const glyph = button.querySelector('i');
             expect(glyph.classList.contains(icon)).toBe(true);
             expect(glyph.getAttribute('aria-hidden')).toBe('true');

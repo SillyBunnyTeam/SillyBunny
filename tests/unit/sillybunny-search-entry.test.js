@@ -62,15 +62,15 @@ describe('createSearchEntry structure', () => {
 });
 
 describe('clear button', () => {
-    test('has an accessible name and a tooltip; the default is a copy placeholder', () => {
+    test('has an accessible name and a tooltip; the default is GtkSearchEntry\'s', () => {
         const entry = make();
         expect(entry.clearButton.type).toBe('button');
-        expect(entry.clearButton.getAttribute('aria-label')).toBe('TODO(copy)');
-        expect(entry.clearButton.title).toBe('TODO(copy)');
-        expect(entry.clearButton.dataset.sbCopyPlaceholder).toBe('true');
+        expect(entry.clearButton.getAttribute('aria-label')).toBe('Clear Entry');
+        expect(entry.clearButton.title).toBe('Clear Entry');
+        expect(entry.clearButton.dataset.sbCopyPlaceholder).toBeUndefined();
     });
 
-    test('a supplied label names the button and drops the placeholder mark', () => {
+    test('a supplied label names the button', () => {
         const entry = make({ clearLabel: 'Clear search' });
         expect(entry.clearButton.getAttribute('aria-label')).toBe('Clear search');
         expect(entry.clearButton.title).toBe('Clear search');

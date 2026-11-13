@@ -176,12 +176,12 @@ export function mountEditorChrome(config) {
         button.addEventListener('click', () => document.getElementById(button.dataset.sbAvatarInput)?.click(), { signal });
     }
 
-    // Back and the item menu have no tooltip wording that fits every editor yet; Cancel and Save do. Accessible names stay
-    // with each editor's own aria-label.
-    for (const control of [controls.back, controls.more]) {
-        if (!control) continue;
-        control.title = t`TODO(copy)`;
-        control.dataset.sbCopyPlaceholder = 'true';
+    // Back's tooltip is libadwaita's back button fallback. The item menu has no wording that fits every editor yet.
+    // Accessible names stay with each editor's own aria-label.
+    if (controls.back) controls.back.title = t`Back`;
+    if (controls.more) {
+        controls.more.title = t`TODO(copy)`;
+        controls.more.dataset.sbCopyPlaceholder = 'true';
     }
     controls.cancel.title = t`Cancel`;
 

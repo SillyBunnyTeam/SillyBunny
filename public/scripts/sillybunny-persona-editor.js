@@ -133,6 +133,7 @@ export function mountPersonaEditor(container) {
     listHeader.append(titles, spacer, searchButton, newButton, sortButton, listMenu);
 
     const searchEntry = createSearchEntry({
+        clearLabel: t`Clear Entry`,
         variant: 'bar', className: 'sb-persona-search-field', inputClassName: 'sb-persona-search',
         placeholder: t`Search...`, label: t`Search`, clearOnEscape: false,
     });

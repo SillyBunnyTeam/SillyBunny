@@ -210,6 +210,7 @@ export function mountWorldInfoEditor(container) {
     const selectionHeader = element('header', 'sb-wi-selection-header');
     const selectionBar = element('div', 'sb-wi-selection-bar');
     const searchEntry = createSearchEntry({
+        clearLabel: t`Clear Entry`,
         variant: 'bar', className: 'sb-wi-search-field', inputClassName: 'sb-wi-search',
         placeholder: t`Search...`, label: t`Search`, clearOnEscape: false,
     });

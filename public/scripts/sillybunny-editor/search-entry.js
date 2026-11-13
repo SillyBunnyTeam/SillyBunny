@@ -61,13 +61,13 @@ export function createSearchEntry({
     glyph.className = 'fa-solid fa-magnifying-glass sb-search-entry__icon';
     glyph.setAttribute('aria-hidden', 'true');
 
-    const text = clearLabel || 'TODO(copy)';
+    // GtkSearchEntry's tooltip for its clear icon.
+    const text = clearLabel || 'Clear Entry';
     const clearButton = document.createElement('button');
     clearButton.type = 'button';
     clearButton.className = 'sb-search-entry__clear';
     clearButton.setAttribute('aria-label', text);
     clearButton.title = text;
-    if (!clearLabel) clearButton.dataset.sbCopyPlaceholder = 'true';
     const cross = document.createElement('i');
     cross.className = 'fa-solid fa-xmark';
     cross.setAttribute('aria-hidden', 'true');

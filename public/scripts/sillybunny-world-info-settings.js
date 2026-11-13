@@ -132,6 +132,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
     const books = createPrefGroup({ title: t`Active World(s) for all chats`, field: 'active-worlds' });
     books.section.classList.add('sb-wi-settings-books');
     const searchEntry = createSearchEntry({
+        clearLabel: t`Clear Entry`,
         className: 'sb-wi-settings-search-field', inputClassName: 'sb-wi-settings-search',
         placeholder: t`Search...`, label: t`Search...`, debounce: 300,
         onInput: () => { if (!destroyed) filterBooks(); },
