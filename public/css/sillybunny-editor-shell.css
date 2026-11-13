@@ -29,14 +29,15 @@
     display: none !important;
 }
 
+/* Banner (AdwBanner). Sizes follow adw-banner.c; banner.js chooses data-layout. Without it the title starts at the edge. */
 .sb-banner {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 8px 12px;
+    gap: 6px;
+    padding: 6px;
     color: var(--SmartThemeBodyColor);
-    background: var(--sb-layer-headerbar);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, var(--sb-layer-window));
 }
 
 .sb-banner[hidden] {
@@ -55,6 +56,52 @@
     width: auto;
     min-width: max-content;
     white-space: nowrap;
+}
+
+.sb-banner > .sb-banner__title {
+    display: -webkit-box;
+    flex: 1 1 auto;
+    padding-inline-start: 6px;
+    font-weight: 700;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+}
+
+.sb-banner > .sb-banner__action {
+    min-width: 84px;
+}
+
+.sb-banner[data-layout] > .sb-banner__title {
+    padding-inline-start: 0;
+    text-align: center;
+}
+
+.sb-banner[data-layout='centered'] {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    column-gap: 36px;
+}
+
+.sb-banner[data-layout='centered'] > .sb-banner__title {
+    grid-column: 2;
+}
+
+.sb-banner[data-layout='centered'] > .sb-banner__action {
+    grid-column: 3;
+    justify-self: end;
+}
+
+.sb-banner[data-layout='stacked'] {
+    flex-direction: column;
+    justify-content: center;
+    gap: 9px;
+}
+
+.sb-banner[data-layout='stacked'] > .sb-banner__action {
+    min-width: 160px;
+    max-width: 100%;
 }
 
 /* --- Sidebar --- */

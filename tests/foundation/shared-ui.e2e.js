@@ -184,6 +184,79 @@ for (const [name, colors] of Object.entries(themes)) {
     });
 }
 
+test('banner: one title and one button, placed by the space, revealed with the transition', async ({ page, isMobile }) => {
+    await page.route('**/__foundation', route => route.fulfill({ contentType: 'text/html', body: fixture }));
+    await page.goto('/__foundation');
+    await page.evaluate(() => document.fonts.ready);
+    const box = selector => page.locator(selector).boundingBox();
+    const parts = id => ({ frame: `#${id}-frame`, banner: `#${id}`, title: `#${id} .sb-banner__title`, action: `#${id} .sb-banner__action` });
+
+    const wide = parts('banner-wide');
+    await expect(page.locator(wide.banner)).toHaveAttribute('data-layout', 'centered');
+    const [frame, title, action] = await Promise.all([box(wide.frame), box(wide.title), box(wide.action)]);
+    expect(title.x + title.width / 2, 'a centred title sits in the middle of the strip').toBeCloseTo(frame.x + frame.width / 2, 0);
+    expect(frame.x + frame.width - (action.x + action.width), 'the button is 6px from the end edge').toBeCloseTo(6, 0);
+    expect(action.x - (title.x + title.width), 'the title keeps 36px from the button').toBeGreaterThanOrEqual(36 - 0.5);
+    expect(action.width, 'the button is at least 84px wide beside the title').toBeGreaterThanOrEqual(84 - 0.5);
+    await expect(page.locator(wide.banner)).toHaveCSS('padding-top', '6px');
+    await expect(page.locator(wide.banner)).toHaveCSS('background-color', await resolved(page, 'background-color', 'color-mix(in srgb, var(--SmartThemeBodyColor) 10%, var(--sb-layer-window))'));
+    await expect(page.locator(wide.title)).toHaveCSS('font-weight', '700');
+    await expect(page.locator(wide.banner)).toHaveAttribute('role', 'status');
+    await expect(page.locator(`${wide.banner} button`)).toHaveCount(1);
+    await expect(page.locator(wide.action)).toHaveClass('menu_button sb-banner__action');
+    await expect(page.locator(wide.action)).toHaveAccessibleName('Reconnect');
+    expect((await box(wide.action)).height, 'the button is 44px tall on touch').toBeGreaterThanOrEqual((isMobile ? 44 : 0) - 0.5);
+
+    const start = parts('banner-start');
+    await expect(page.locator(start.banner)).not.toHaveAttribute('data-layout', /.+/);
+    const [startFrame, startTitle, startAction] = await Promise.all([box(start.frame), box(start.title), box(start.action)]);
+    expect(startTitle.x - startFrame.x, 'an edge-aligned title starts after the 6px padding').toBeCloseTo(6, 0);
+    await expect(page.locator(start.title)).toHaveCSS('padding-inline-start', '6px');
+    expect(startFrame.x + startFrame.width - (startAction.x + startAction.width)).toBeCloseTo(6, 0);
+    expect(startAction.x - (startTitle.x + startTitle.width), 'parts are at least 6px apart').toBeGreaterThanOrEqual(6 - 0.5);
+
+    const stacked = parts('banner-stacked');
+    await expect(page.locator(stacked.banner)).toHaveAttribute('data-layout', 'stacked');
+    const [stackedFrame, stackedTitle, stackedAction] = await Promise.all([box(stacked.frame), box(stacked.title), box(stacked.action)]);
+    expect(stackedAction.y - (stackedTitle.y + stackedTitle.height), 'a stacked button is 9px below the title').toBeCloseTo(9, 0);
+    expect(stackedAction.width, 'a stacked button is at least 160px wide, or the strip without its padding').toBeGreaterThanOrEqual(Math.min(160, stackedFrame.width - 12) - 0.5);
+    expect(stackedAction.x + stackedAction.width / 2, 'a stacked button is centred').toBeCloseTo(stackedFrame.x + stackedFrame.width / 2, 0);
+
+    // The space changes the layout while the strip is shown.
+    await page.locator(wide.frame).evaluate(node => { node.style.width = '140px'; });
+    await expect(page.locator(wide.banner)).toHaveAttribute('data-layout', 'stacked');
+    await page.locator(wide.frame).evaluate(node => { node.style.width = ''; });
+    await expect(page.locator(wide.banner)).toHaveAttribute('data-layout', 'centered');
+
+    // Hidden until the state applies; the reveal transition runs unless motion is reduced.
+    await page.evaluate(async () => {
+        const { createBanner } = await import('/scripts/sillybunny-editor/banner.js');
+        const banner = createBanner({ title: 'Needs an update', actionLabel: 'Update', onActivate: () => {}, revealed: false });
+        banner.element.id = 'banner-late';
+        document.getElementById('banner-wide-frame').append(banner.element);
+        window.lateBanner = banner;
+    });
+    await expect(page.locator('#banner-late')).toBeHidden();
+    const motion = method => page.evaluate(name => {
+        window.lateBanner[name]();
+        const running = window.lateBanner.element.getAnimations();
+        return { count: running.length, duration: running[0]?.effect.getTiming().duration ?? null };
+    }, method);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect((await motion('show')).count, 'no reveal motion when motion is reduced').toBe(0);
+    await expect(page.locator('#banner-late')).toBeVisible();
+    expect((await motion('hide')).count, 'no hide motion when motion is reduced').toBe(0);
+    await expect(page.locator('#banner-late')).toBeHidden();
+
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    expect(await motion('show'), 'the reveal runs the reveal transition').toEqual({ count: 1, duration: 250 });
+    await expect(page.locator('#banner-late')).toBeVisible();
+    await expect.poll(() => page.locator('#banner-late').evaluate(node => node.getAnimations().length)).toBe(0);
+    expect(await motion('hide'), 'the hide runs the reveal transition').toEqual({ count: 1, duration: 250 });
+    await expect(page.locator('#banner-late')).toBeHidden();
+});
+
 test('application shell baseline and reduced motion', async ({ page }, testInfo) => {
     await page.route('**/api/settings/save', route => route.fulfill({ json: {} }));
     await page.goto('/');

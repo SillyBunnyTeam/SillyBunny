@@ -45,7 +45,7 @@
         "public/css/sillybunny-editor-shell.css": {
             "radius-literal": 2,
             "important": 10,
-            "spacing-off-scale": 31,
+            "spacing-off-scale": 30,
             "spacing-off-scale-fallback": 1
         },
         "public/css/sillybunny-entity-list.css": {

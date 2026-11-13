@@ -714,18 +714,18 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261113x', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261113t', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
-        { href: 'css/sillybunny-editor-shell.css?v=20261113x', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-world-info-editor.css?v=20261113z', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
-        { href: 'css/sillybunny-editor-shell.css?v=20261113x', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261113t', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261113z', id: 'deferred-persona-detail-css' },
@@ -741,7 +741,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-character-list.css?v=20261112t', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261113x', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261112m', id: 'deferred-character-import-css' },
     ],

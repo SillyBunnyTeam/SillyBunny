@@ -5,7 +5,7 @@ import { askLeaveEditor } from './leave-dialog.js';
 
 const DEFAULT_COLLAPSE_AT = 720;
 
-export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261113x', id: 'deferred-editor-shell-css' };
+export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261114d', id: 'deferred-editor-shell-css' };
 
 /**
  * Loads the deferred shell stylesheet. Consumers await it before revealing the shell.
