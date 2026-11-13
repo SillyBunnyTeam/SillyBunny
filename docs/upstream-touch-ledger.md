@@ -1422,6 +1422,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-13, UI polish sweep (task 2.6). |
 | Owner | `TODO(copy)` |
 
+### `public/index.html` - settings sidebar search row
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Settings sidebar search row. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-editor/search-entry.js`, which wraps the bare input at startup. |
+| Adapter shape | Inside the `SillyBunny:`-marked settings page block, the input `#sb-settings-search-input` keeps its id and listeners; its label wrapper and icon are removed, because the search entry component builds them. |
+| Protecting tests | `tests/sillybunny-backend-settings.e2e.js`, `tests/foundation/shared-ui.e2e.js`, `tests/unit/sillybunny-search-entry.test.js`. |
+| Validation | 2026-11-13: root and tests lint, the full unit run, the foundation config, the e2e specs that name the changed classes. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-13, UI polish sweep (task 2.2). |
+| Owner | `TODO(copy)` |
+
 ### Frontend identity, localization, and static boot assets
 | Field | Value |
 | --- | --- |

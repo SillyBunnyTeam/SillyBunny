@@ -78,6 +78,64 @@ async function expectEntryRows(page) {
     await expect(page.locator('.ds-row-entry--floating:has(#entry-password) .ds-row-entry__reveal')).toHaveCount(0);
 }
 
+const searchIds = ['search-rest', 'search-filled', 'search-bar'];
+
+async function expectSearchEntries(page, isMobile) {
+    const entry = id => page.locator(`.sb-search-entry:has(#${id})`);
+    const clear = id => entry(id).locator('.sb-search-entry__clear');
+
+    for (const compact of [false, true]) {
+        await page.evaluate(value => document.documentElement.dataset.sbCompactMode = String(value), compact);
+        const field = parseFloat(await resolved(page, 'height', 'var(--sb-field-min-height)'));
+        const control = parseFloat(await resolved(page, 'height', 'var(--sb-control-min-height)'));
+        for (const id of ['search-rest', 'search-filled']) {
+            expect((await entry(id).boundingBox()).height, `${id} takes its height from --sb-field-min-height (compact ${compact})`).toBeCloseTo(field, 0);
+        }
+        expect((await entry('search-bar').boundingBox()).height, `a bar entry takes its height from --sb-control-min-height (compact ${compact})`).toBeCloseTo(control, 0);
+        if (isMobile) {
+            const target = await clear('search-filled').boundingBox();
+            expect(target.width, `the clear button is 44px wide on touch (compact ${compact})`).toBeGreaterThanOrEqual(44);
+            expect(target.height, `the clear button is 44px tall on touch (compact ${compact})`).toBeGreaterThanOrEqual(44);
+        }
+    }
+    await page.evaluate(() => delete document.documentElement.dataset.sbCompactMode);
+
+    const radius = await resolved(page, 'border-top-left-radius', 'var(--sb-radius-control)');
+    for (const id of searchIds) await expect(entry(id)).toHaveCSS('border-top-left-radius', radius);
+    await expect(entry('search-rest')).toHaveCSS('background-color', await resolved(page, 'background-color', 'var(--sb-input-bg)'));
+    await expect(entry('search-rest')).toHaveCSS('border-top-color', await resolved(page, 'border-top-color', 'var(--sb-input-border)'));
+    await expect(entry('search-bar')).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+
+    await expect(clear('search-rest')).toBeHidden();
+    await expect(clear('search-filled')).toBeVisible();
+    await expect(clear('search-filled')).toHaveAccessibleName('Clear');
+    await expect(clear('search-filled')).toHaveAttribute('title', 'Clear');
+    await expect(page.locator('#search-rest')).toHaveAccessibleName('Search settings');
+
+    await page.locator('#search-rest').fill('abc');
+    await expect(clear('search-rest')).toBeVisible();
+    await page.locator('#search-rest').press('Escape');
+    await expect(page.locator('#search-rest')).toHaveValue('');
+    await expect(page.locator('#search-rest')).toBeFocused();
+    await expect(clear('search-rest')).toBeHidden();
+
+    await page.locator('#search-rest').fill('abc');
+    await clear('search-rest').click();
+    await expect(page.locator('#search-rest')).toHaveValue('');
+    await expect(page.locator('#search-rest')).toBeFocused();
+    await expect(clear('search-rest')).toBeHidden();
+
+    await page.locator('#search-rest').focus();
+    await expect(entry('search-rest')).toHaveCSS('border-top-color', await resolved(page, 'border-top-color', 'var(--sb-entry-focus-border)'));
+    await expect(entry('search-rest')).toHaveCSS('box-shadow', await resolved(page, 'box-shadow', 'var(--sb-entry-focus-ring)'));
+    await expect(page.locator('#search-rest')).toHaveCSS('box-shadow', 'none');
+    await expect(page.locator('#search-rest')).toHaveCSS('border-top-width', '0px');
+    await page.locator('#search-bar').focus();
+    await expect(entry('search-bar')).toHaveCSS('box-shadow', await resolved(page, 'box-shadow', 'var(--sb-focus-ring-inset)'));
+    await expect(page.locator('#search-bar')).toHaveCSS('box-shadow', 'none');
+    await page.locator('#search-bar').blur();
+}
+
 for (const [name, colors] of Object.entries(themes)) {
     test(`${name} shared controls`, async ({ page, isMobile }, testInfo) => {
         await page.route('**/__foundation', route => route.fulfill({ contentType: 'text/html', body: fixture }));
@@ -102,6 +160,7 @@ for (const [name, colors] of Object.entries(themes)) {
         await expect(page.locator('[aria-busy]')).toHaveCSS('cursor', 'progress');
 
         await expectEntryRows(page);
+        await expectSearchEntries(page, isMobile);
 
         for (const compact of [false, true]) {
             await page.evaluate(value => document.documentElement.dataset.sbCompactMode = String(value), compact);

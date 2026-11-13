@@ -13,6 +13,7 @@ import { isPickerOpen } from './sillybunny-editor/picker.js';
 import { createListEditor, LIST_EDITOR_STYLESHEET } from './sillybunny-editor/list-shell.js';
 import { reconcileRows, rowEntry, bindListKeyboard } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
+import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
@@ -23,7 +24,7 @@ import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail
 
 const STYLESHEETS = [
     { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261112l', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261113t', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261112l', id: 'deferred-persona-detail-css' },
 ];
 const mountedEditors = new WeakMap();
@@ -131,13 +132,13 @@ export function mountPersonaEditor(container) {
     }
     listHeader.append(titles, spacer, searchButton, newButton, sortButton, listMenu);
 
-    const searchField = element('label', 'sb-persona-search-field');
+    const searchEntry = createSearchEntry({
+        variant: 'bar', className: 'sb-persona-search-field', inputClassName: 'sb-persona-search',
+        placeholder: t`Search...`, label: t`Search`, clearOnEscape: false,
+    });
+    const searchField = searchEntry.element;
+    const searchInput = searchEntry.input;
     searchField.hidden = true;
-    const searchInput = element('input', 'sb-persona-search');
-    searchInput.type = 'search';
-    searchInput.placeholder = t`Search...`;
-    searchInput.setAttribute('aria-label', t`Search`);
-    searchField.append(icon('magnifying-glass'), searchInput);
     const listBody = element('div', 'sb-persona-list-body');
     const heading = element('h3', 'sb-persona-list-heading', t`Your Persona`);
     heading.tabIndex = -1;
@@ -150,7 +151,7 @@ export function mountPersonaEditor(container) {
     searchStatus.setAttribute('aria-live', 'polite');
     const searchControl = createListSearch({
         field: searchField, input: searchInput, trigger: searchButton, scope: listContent,
-        status: searchStatus, scroller: listBody, debounce: 300, heightProperty: '--sb-persona-search-height',
+        status: searchStatus, scroller: listBody, debounce: 300,
         onChange: () => {
             heldOrder = null;
             updateDisplayEntries();

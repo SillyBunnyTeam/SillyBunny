@@ -212,41 +212,6 @@
     font-weight: 400;
 }
 
-.sb-wi-search-field {
-    --sb-wi-search-height: 40px;
-    display: flex;
-    align-items: center;
-    flex: none;
-    gap: 8px;
-    height: var(--sb-wi-search-height);
-    margin: 8px;
-    padding-inline: 10px;
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-control);
-    background: var(--sb-flat-hover-bg);
-    color: var(--sb-muted-fg);
-}
-
-.sb-wi-search-field:focus-within {
-    border-color: var(--sb-entry-focus-border);
-    box-shadow: var(--sb-entry-focus-ring);
-}
-
-#WorldInfo .sb-wi-editor .sb-wi-search {
-    flex: 1;
-    width: 0;
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--sb-shell-text);
-    font-family: inherit;
-    font-size: var(--sb-type-control);
-    box-shadow: none;
-}
-
 .sb-wi-list-body {
     flex: 1 1 0;
     min-height: 0;
@@ -435,11 +400,6 @@
         min-width: 44px;
         min-height: 44px;
     }
-
-    .sb-wi-search-field {
-        --sb-wi-search-height: 44px;
-    }
-
 }
 
 @media (max-width: 768px) {
@@ -528,22 +488,8 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     margin-bottom: 0;
 }
 
-.sb-wi-settings-search-field {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.sb-wi-settings .sb-search-entry {
     margin: 0 0 8px;
-    color: var(--sb-input-placeholder);
-}
-
-#sb-settings-page .sb-wi-settings .sb-wi-settings-search {
-    flex: 1;
-    width: 100%;
-    min-width: 0;
-    min-height: 36px;
-    margin: 0;
-    font-family: inherit;
-    font-size: var(--sb-type-control);
 }
 
 .sb-wi-settings .sb-wi-settings-slider > .ds-row-suffix {
@@ -611,7 +557,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
         height: 44px;
     }
 
-    #sb-settings-page .sb-wi-settings :is(.sb-wi-settings-search, .ds-row-suffix > input[type='number'], .ds-row-suffix > input[type='range'], .ds-row-suffix > select) {
+    #sb-settings-page .sb-wi-settings :is(.ds-row-suffix > input[type='number'], .ds-row-suffix > input[type='range'], .ds-row-suffix > select) {
         min-height: 44px;
     }
 }

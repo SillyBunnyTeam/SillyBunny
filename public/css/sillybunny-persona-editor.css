@@ -153,41 +153,6 @@
     font-weight: 400;
 }
 
-.sb-persona-search-field {
-    --sb-persona-search-height: 40px;
-    display: flex;
-    align-items: center;
-    flex: none;
-    gap: 8px;
-    height: var(--sb-persona-search-height);
-    margin: 8px;
-    padding-inline: 10px;
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-control);
-    background: var(--sb-flat-hover-bg);
-    color: var(--sb-muted-fg);
-}
-
-.sb-persona-search-field:focus-within {
-    border-color: var(--sb-entry-focus-border);
-    box-shadow: var(--sb-entry-focus-ring);
-}
-
-#PersonaManagement .sb-persona-editor .sb-persona-search {
-    flex: 1;
-    width: 0;
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--sb-shell-text);
-    font-family: inherit;
-    font-size: var(--sb-type-control);
-    box-shadow: none;
-}
-
 .sb-persona-list-body {
     flex: 1 1 0;
     min-height: 0;
@@ -261,10 +226,6 @@
     #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button) {
         min-width: 44px;
         min-height: 44px;
-    }
-
-    .sb-persona-search-field {
-        --sb-persona-search-height: 44px;
     }
 }
 

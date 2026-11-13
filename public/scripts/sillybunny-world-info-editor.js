@@ -16,6 +16,7 @@ import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
+import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
@@ -30,7 +31,7 @@ import {
 import { mountWorldInfoSettings } from './sillybunny-world-info-settings.js';
 import { mountWorldInfoEntry, worldInfoDraftKey } from './sillybunny-world-info-entry.js';
 
-const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261112l', id: 'deferred-world-info-editor-css' };
+const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261113t', id: 'deferred-world-info-editor-css' };
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
 
@@ -208,14 +209,14 @@ export function mountWorldInfoEditor(container) {
     listHeader.append(bookSwitcher, headerSpacer, searchButton, newEntryButton, filterButton, bookActions);
     const selectionHeader = element('header', 'sb-wi-selection-header');
     const selectionBar = element('div', 'sb-wi-selection-bar');
-    const searchField = element('label', 'sb-wi-search-field');
+    const searchEntry = createSearchEntry({
+        variant: 'bar', className: 'sb-wi-search-field', inputClassName: 'sb-wi-search',
+        placeholder: t`Search...`, label: t`Search`, clearOnEscape: false,
+    });
+    const searchField = searchEntry.element;
+    const searchInput = searchEntry.input;
     searchField.hidden = true;
-    const searchInput = element('input', 'sb-wi-search');
-    searchInput.type = 'search';
     searchInput.value = transport('world_info_search')?.value ?? '';
-    searchInput.placeholder = t`Search...`;
-    searchInput.setAttribute('aria-label', t`Search`);
-    searchField.append(icon('magnifying-glass'), searchInput);
 
     const listBody = element('div', 'sb-wi-list-body');
     const entriesHeading = element('h3', 'sb-wi-list-heading', t`Lorebook entries`);
@@ -237,7 +238,6 @@ export function mountWorldInfoEditor(container) {
         status: searchStatus,
         scroller: listBody,
         debounce: 300,
-        heightProperty: '--sb-wi-search-height',
         onChange: query => {
             heldOrder = null;
             if (transport('world_info_search')) transport('world_info_search').value = query;

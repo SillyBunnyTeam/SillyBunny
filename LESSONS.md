@@ -657,6 +657,16 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/unit/sillybunny-reorder-menu.test.js`; the adopters' unit tests and `tests/prompt-manager-characterization.e2e.js`, `tests/in-chat-agents-list.e2e.js`, `tests/group-editor-member-lists.e2e.js`, `tests/tag-manager.e2e.js`.
 - **Open:** the labels follow the Capitalisation Rule (`Move Up`, `Move Down`), and the locale files hold only `Move up` and `Move down`, so group, tag and World Info menus show the English labels in other languages (finding F-269).
 
+### Search entries
+
+- **Breaks:** a bare input inside a wrapper that draws the field takes the focus border and ring that every text input gets from upstream and from the shell roots in `sillybunny-theme.css` (`:is(.sb-shell-root, …) … :focus:not([disabled]):not([readonly])`, specificity 0,5,1), so a second ring appears inside the wrapper's.
+- **Files:** `public/scripts/sillybunny-editor/search-entry.js`; the `.sb-search-entry` rules in `public/css/sillybunny-tabs.css`.
+- **Guards:**
+  - The wrapper draws the field and its focus (`:focus-within`); the inner input's rule (`.sb-search-entry > input.sb-search-entry__input[type='search']`) outranks the shell focus rules and sets no border or shadow.
+  - The entry has a height, not a minimum, because `createListSearch` animates the height when it reveals a list's search bar; `list-search.js` measures the field when the height is a token.
+  - The clear button shows through `:has(> input:placeholder-shown)`, so the component gives an input without a placeholder a single space as one; a value cleared by a script hides the button too.
+- **Tests:** `tests/unit/sillybunny-search-entry.test.js`; `tests/foundation/shared-ui.e2e.js` (search entries).
+
 ### Select rows and the shared picker
 
 - **Breaks:** a select row that replaces select2 loses what select2 showed or did: the details of a model, the placeholder of an empty select, the removal of a saved option that is no longer offered.

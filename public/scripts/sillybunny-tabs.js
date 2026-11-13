@@ -31,6 +31,7 @@ import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProt
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
 import { createRow } from './sillybunny-editor/rows.js';
+import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { createProfileRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {
@@ -714,19 +715,19 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
         { href: 'css/sillybunny-editor-shell.css?v=20261112o', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261112q', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261113t', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
         { href: 'css/sillybunny-editor-shell.css?v=20261112o', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-world-info-editor.css?v=20261112l', id: 'deferred-world-info-editor-css' },
+        { href: 'css/sillybunny-world-info-editor.css?v=20261113t', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
         { href: 'css/sillybunny-editor-shell.css?v=20261112o', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-persona-editor.css?v=20261112l', id: 'deferred-persona-editor-css' },
+        { href: 'css/sillybunny-persona-editor.css?v=20261113t', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261112l', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
@@ -15272,14 +15273,11 @@ function initSettingsPageClose() {
     const searchInput = document.getElementById('sb-settings-search-input');
     if (searchInput instanceof HTMLInputElement && searchInput.dataset.sbBound !== 'true') {
         searchInput.dataset.sbBound = 'true';
+        // Escape clears the query before it can close the page; the clear button and Escape both send `input`.
+        createSearchEntry({ input: searchInput, variant: 'bar' });
         searchInput.addEventListener('input', () => void filterSettingsSidebarTabs(searchInput.value));
         searchInput.addEventListener('keydown', event => {
-            if (event.key === 'Escape' && searchInput.value) {
-                event.preventDefault();
-                event.stopPropagation();
-                searchInput.value = '';
-                void filterSettingsSidebarTabs('');
-            } else if (event.key === 'Enter') {
+            if (event.key === 'Enter') {
                 event.preventDefault();
                 const firstMatch = document.querySelector('.sb-settings-tab:not(.sb-settings-tab--filtered)');
                 firstMatch?.click();

@@ -98,12 +98,11 @@
         "public/css/sillybunny-persona-editor.css": {
             "important": 11,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 20
+            "spacing-off-scale": 17
         },
         "public/css/sillybunny-prompt-editor.css": {
-            "shadow-literal": 1,
-            "important": 21,
-            "spacing-off-scale": 39
+            "important": 19,
+            "spacing-off-scale": 36
         },
         "public/css/sillybunny-side-panel.css": {
             "shadow-literal": 1,
@@ -112,13 +111,13 @@
         },
         "public/css/sillybunny-tabs.css": {
             "radius-literal": 10,
-            "shadow-literal": 8,
+            "shadow-literal": 7,
             "duration-literal": 1,
             "important": 283,
             "breakpoint-off-set": 12,
             "breakpoint-1000": 2,
             "focus-outline": 1,
-            "spacing-off-scale": 309,
+            "spacing-off-scale": 308,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-tag-manager.css": {
@@ -144,7 +143,7 @@
         },
         "public/css/sillybunny-world-info-editor.css": {
             "important": 15,
-            "spacing-off-scale": 52
+            "spacing-off-scale": 48
         },
         "public/css/spacing-system.css": {
             "breakpoint-off-set": 1,

@@ -13,6 +13,7 @@ import { openDialog } from './sillybunny-editor/dialog.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
+import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { announceReorder, reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
 
@@ -90,14 +91,13 @@ export function initializePromptEditor(column) {
     const titles = element('div', 'sb-prompt-list-titles');
     const subtitle = element('span', 'sb-prompt-list-subtitle');
     titles.append(element('h2', '', t`Prompts`), subtitle);
-    const searchField = element('label', 'sb-prompt-search-field');
+    const searchEntry = createSearchEntry({
+        variant: 'bar', className: 'sb-prompt-search-field', inputClassName: 'sb-prompt-search',
+        placeholder: t`Search...`, label: t`Search prompts`, clearOnEscape: false,
+    });
+    const searchField = searchEntry.element;
+    const search = searchEntry.input;
     searchField.hidden = true;
-    const searchIcon = icon('magnifying-glass');
-    const search = element('input', 'sb-prompt-search');
-    search.type = 'search';
-    search.placeholder = t`Search...`;
-    search.setAttribute('aria-label', t`Search prompts`);
-    searchField.append(searchIcon, search);
     const listBody = element('div', 'sb-prompt-list-body');
 
     let state = null;
@@ -676,7 +676,6 @@ export function initializePromptEditor(column) {
         scope: list,
         scroller: listBody,
         status,
-        heightProperty: '--sb-prompt-search-height',
         typeToSearchSelector: '.sb-prompt-row',
         onChange: query => {
             filter = query;
@@ -1380,7 +1379,7 @@ export function initializePromptEditor(column) {
     const resizeObserver = new ResizeObserver(scheduleLayout);
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261112q', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261113t', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

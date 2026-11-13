@@ -17,7 +17,7 @@ import { t } from '../i18n.js';
  * @param {HTMLElement} [options.status]     Polite live region for result announcements.
  * @param {(query: string) => void} options.onChange
  * @param {number} [options.debounce=0]      Milliseconds; 0 filters synchronously on every input.
- * @param {string} [options.heightProperty]  Custom property holding the revealed field height.
+ * @param {string} [options.heightProperty]  Custom property holding the revealed field height in px; omitted, the shown field is measured.
  * @param {boolean} [options.shortcuts=true] Enables Ctrl/Cmd+F and type-to-search inside `scope`.
  * @param {boolean} [options.escapeClearsFirst=false] Keeps an open search visible for one Escape after clearing its query.
  * @param {string} [options.typeToSearchSelector='[data-sb-list-key]'] Focus target filter for type-to-search.
@@ -68,8 +68,9 @@ export function createListSearch({
     }
 
     function revealedHeight() {
-        const value = heightProperty ? parseFloat(getComputedStyle(field).getPropertyValue(heightProperty)) : 0;
-        return `${value || 40}px`;
+        const declared = heightProperty ? parseFloat(getComputedStyle(field).getPropertyValue(heightProperty)) : 0;
+        // A height that comes from a token expression does not parse, so the shown field is measured instead.
+        return `${declared || field.getBoundingClientRect().height || 40}px`;
     }
 
     function syncTrigger() {

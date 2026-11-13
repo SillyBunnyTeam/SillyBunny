@@ -5045,50 +5045,146 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     }
 }
 
-.sb-settings-search-field {
+/* Search entry (sillybunny-editor/search-entry.js). The wrapper draws the field and its focus ring; the input inside
+   is bare. The field variant is a standalone text field; the bar variant is the borderless raised field of a bar. */
+.sb-search-entry {
+    --sb-search-entry-height: var(--sb-field-min-height);
+    box-sizing: border-box;
     display: flex;
+    flex: none;
     align-items: center;
-    gap: 8px;
-    padding: 0 10px;
-    height: max(var(--sb-density-floor), calc(36px - 4px * var(--sb-density-t)));
+    gap: 6px;
+    /* A height, not a minimum: createListSearch animates it when it reveals the entry. */
+    height: var(--sb-search-entry-height);
+    padding-inline: var(--sb-field-padding-x);
+    border: 1px solid var(--sb-input-border);
     border-radius: var(--sb-radius-control);
-    background: var(--sb-flat-hover-bg);
-    border: 1px solid var(--sb-shell-border);
+    background: var(--sb-input-bg);
+    color: var(--sb-shell-text);
     cursor: text;
     transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-.sb-settings-search-field:focus-within {
-    border-color: var(--color-primary, var(--sb-accent));
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 40%, transparent);
-}
-
-.sb-settings-search-field .fa-magnifying-glass {
-    font-size: 12px;
-    color: var(--sb-shell-text-secondary);
-    flex-shrink: 0;
-}
-
-#sb-settings-search-input {
-    flex: 1;
-    background: transparent;
-    border: 0;
-    padding: 0;
-    font-size: var(--sb-type-control);
-    color: var(--sb-shell-text);
-    outline: none;
-    min-width: 0;
-}
-
-/* Suppress the upstream text_pole:focus ring — the parent label provides focus feedback via focus-within. */
-#sb-settings-search-input.text_pole:focus {
-    box-shadow: none;
+.sb-search-entry[data-variant='bar'] {
+    --sb-search-entry-height: var(--sb-control-min-height);
+    margin: 8px;
     border-color: transparent;
-    background-color: transparent;
+    background: var(--sb-raised-bg);
 }
 
-#sb-settings-search-input::placeholder {
-    color: var(--sb-shell-text-secondary);
+#sb-settings-search-row .sb-search-entry[data-variant='bar'] {
+    margin: 0;
+}
+
+.sb-search-entry[hidden] {
+    display: none;
+}
+
+.sb-search-entry:focus-within {
+    border-color: var(--sb-entry-focus-border);
+    box-shadow: var(--sb-entry-focus-ring);
+}
+
+.sb-search-entry[data-variant='bar']:focus-within {
+    border-color: transparent;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-search-entry:has(> input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (prefers-contrast: more) {
+    .sb-search-entry[data-variant='bar'] {
+        border-color: var(--sb-input-border);
+    }
+}
+
+.sb-search-entry > .sb-search-entry__icon {
+    flex: none;
+    color: var(--sb-muted-fg);
+    font-size: 0.9em;
+}
+
+/* The specificity outranks the focus rules that every text input takes from upstream and the shell roots. */
+.sb-search-entry > input.sb-search-entry__input[type='search'] {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    box-shadow: none;
+    color: var(--sb-shell-text);
+    font: inherit;
+    font-size: var(--sb-type-control);
+    line-height: 1.3;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.sb-search-entry > input.sb-search-entry__input[type='search']:is(:focus, :focus-visible):not([disabled]):not([readonly]) {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+}
+
+.sb-search-entry > input.sb-search-entry__input::placeholder {
+    color: var(--sb-input-placeholder);
+    opacity: 1;
+}
+
+.sb-search-entry > input.sb-search-entry__input::-webkit-search-cancel-button {
+    display: none;
+    -webkit-appearance: none;
+}
+
+.sb-search-entry > .sb-search-entry__clear {
+    flex: none;
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--sb-icon-control-size);
+    margin-block: -1px;
+    margin-inline-end: -6px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font-size: 0.9em;
+    cursor: pointer;
+}
+
+.sb-search-entry:has(> input:placeholder-shown) > .sb-search-entry__clear {
+    display: none;
+}
+
+@media (hover: hover) {
+    .sb-search-entry > .sb-search-entry__clear:hover {
+        background: var(--sb-flat-hover-bg);
+        color: var(--sb-shell-text);
+    }
+}
+
+.sb-search-entry > .sb-search-entry__clear:active {
+    background: var(--sb-flat-active-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-search-entry {
+        transition: none;
+    }
+}
+
+body.reduced-motion .sb-search-entry {
+    transition: none;
 }
 
 #sb-settings-tab-list {
@@ -5409,10 +5505,6 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 :root[data-sb-compact-mode='true'] #sb-settings-search-row.is-expanded {
     max-height: 60px;
     padding: 8px 8px 6px;
-}
-
-:root[data-sb-compact-mode='true'] .sb-settings-search-field {
-    padding: 0 8px;
 }
 
 /* ── Topbar search and mode buttons ─────────────────────────────────────── */
@@ -10089,7 +10181,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     .sb-persona-picker-appendix-toggle,
     .sb-model-id-picker-empty,
     .sb-model-id-picker-option,
-    .sb-settings-search-field,
     :is(.sb-thumbnail-card .sb-server-action, .sb-import-action-row .sb-server-action, .sb-import-pane .ds-row-suffix > .sb-server-action),
     :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets .menu_button,
     .sb-chat-history-cleanup-actions .menu_button,

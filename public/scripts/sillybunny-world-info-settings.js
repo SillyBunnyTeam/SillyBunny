@@ -2,6 +2,7 @@ import { eventSource, event_types } from './events.js';
 import { t } from './i18n.js';
 import { world_names } from './world-info.js';
 import { createPrefGroup, createRow, releaseRowIds } from './sillybunny-editor/rows.js';
+import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 
 const PRESENTATION_ATTRIBUTES = ['class', 'role', 'aria-checked', 'aria-labelledby', 'aria-describedby', 'disabled'];
@@ -105,7 +106,6 @@ export function mountWorldInfoSettings({ host, onClose }) {
     const originalDisabled = new Map(origins.map(({ control, disabled }) => [control, disabled]));
     const listeners = [];
     let destroyed = false;
-    let searchTimer = 0;
     const listen = (target, type, handler, disposers = listeners) => {
         target.addEventListener(type, handler);
         disposers.push(() => target.removeEventListener(type, handler));
@@ -131,23 +131,19 @@ export function mountWorldInfoSettings({ host, onClose }) {
 
     const books = createPrefGroup({ title: t`Active World(s) for all chats`, field: 'active-worlds' });
     books.section.classList.add('sb-wi-settings-books');
-    const searchField = element('label', 'sb-wi-settings-search-field');
-    const searchIcon = element('i', 'fa-solid fa-magnifying-glass');
-    searchIcon.setAttribute('aria-hidden', 'true');
-    const search = element('input', 'text_pole sb-wi-settings-search');
-    search.type = 'search';
-    search.placeholder = t`Search...`;
-    search.setAttribute('aria-label', t`Search...`);
-    searchField.append(searchIcon, search);
-    books.group.before(searchField);
+    const searchEntry = createSearchEntry({
+        className: 'sb-wi-settings-search-field', inputClassName: 'sb-wi-settings-search',
+        placeholder: t`Search...`, label: t`Search...`, debounce: 300,
+        onInput: () => { if (!destroyed) filterBooks(); },
+    });
+    const search = searchEntry.input;
+    books.group.before(searchEntry.element);
     const empty = createStatusPage({ icon: 'globe', title: t`-- World Info not found --`, compact: true });
     empty.element.classList.add('sb-wi-settings-empty');
     books.section.append(empty.element);
     const bookRows = new Map();
 
     function filterBooks() {
-        clearTimeout(searchTimer);
-        searchTimer = 0;
         const query = search.value.trim().toLocaleLowerCase();
         let shown = 0;
         for (const { row, name } of bookRows.values()) {
@@ -247,16 +243,6 @@ export function mountWorldInfoSettings({ host, onClose }) {
         switchRows.forEach(row => row.refresh());
     }
 
-    listen(search, 'input', () => {
-        clearTimeout(searchTimer);
-        if (!search.value) {
-            filterBooks();
-            return;
-        }
-        searchTimer = setTimeout(() => {
-            if (!destroyed) filterBooks();
-        }, 300);
-    });
     listen(activeSelect, 'change', refreshSettings);
     listen(minimum.range, 'input', refreshDependencies);
     listen(recursion.range, 'input', refreshDependencies);
@@ -277,7 +263,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
         destroy() {
             if (destroyed) return;
             destroyed = true;
-            clearTimeout(searchTimer);
+            searchEntry.destroy();
             observer.disconnect();
             eventSource.removeListener(event_types.WORLDINFO_SETTINGS_UPDATED, refreshSettings);
             listeners.forEach(dispose => dispose());

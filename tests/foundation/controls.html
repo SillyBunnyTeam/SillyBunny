@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="/webfonts/AdwaitaSans/stylesheet.css">
+    <link rel="stylesheet" href="/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/css/solid.min.css">
     <link rel="stylesheet" href="/style.css">
     <link rel="stylesheet" href="/css/mobile-styles.css" media="(max-width: 768px)">
     <link rel="stylesheet" href="/css/sillybunny-theme.css">
@@ -41,9 +43,21 @@
             <label class="checkbox_label"><input type="checkbox">Default</label>
         </div>
         <div class="fixture-surface" id="entry-rows"></div>
+        <div class="fixture-surface" id="search-entries"></div>
     </main>
     <script type="module">
         import { createEntryRow, createPrefGroup } from '/scripts/sillybunny-editor/rows.js';
+        import { createSearchEntry } from '/scripts/sillybunny-editor/search-entry.js';
+        const searches = {
+            'search-rest': { label: 'Search settings', placeholder: 'Search...' },
+            'search-filled': { label: 'Search prompts', placeholder: 'Search...', value: 'lore' },
+            'search-bar': { label: 'Search personas', placeholder: 'Search...', variant: 'bar' },
+        };
+        for (const [id, { value = '', ...options }] of Object.entries(searches)) {
+            const entry = createSearchEntry({ id, clearLabel: 'Clear', ...options });
+            entry.input.value = value;
+            document.getElementById('search-entries').append(entry.element);
+        }
         const entries = {
             'entry-rest': { label: 'Name', field: 'rest' },
             'entry-filled': { label: 'Name', field: 'filled', value: 'Alex' },

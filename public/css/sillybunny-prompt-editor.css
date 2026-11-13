@@ -163,47 +163,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     font-size: calc(var(--mainFontSize) * 0.75);
 }
 
-.sb-prompt-search-field {
-    --sb-prompt-search-height: max(var(--sb-density-floor), calc(40px - 4px * var(--sb-density-t)));
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 10px;
-    height: var(--sb-prompt-search-height);
-    margin: 8px;
-    border-radius: var(--sb-radius-control);
-    background: var(--sb-flat-hover-bg);
-    border: 1px solid var(--sb-shell-border);
-    cursor: text;
-    transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
-}
-
-.sb-prompt-search-field:focus-within {
-    border-color: var(--color-primary, var(--sb-accent));
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 40%, transparent);
-}
-
-.sb-prompt-search-field .fa-magnifying-glass {
-    font-size: 12px;
-    color: var(--sb-shell-text-secondary);
-    flex-shrink: 0;
-}
-
-#sb-settings-page .sb-prompt-editor .sb-prompt-search {
-    flex: 1;
-    background: transparent;
-    border: 0;
-    padding: 0;
-    font-size: var(--sb-type-control);
-    color: var(--sb-shell-text);
-    outline: none;
-    min-width: 0;
-}
-
-#sb-settings-page .sb-prompt-editor .sb-prompt-search::placeholder {
-    color: var(--sb-shell-text-secondary);
-}
-
 .sb-prompt-list-body {
     flex: 1;
     min-height: 0;
@@ -848,11 +807,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     outline: none;
     border-color: var(--sb-composer-focus-border) !important;
     box-shadow: var(--sb-composer-focus-ring) !important;
-}
-
-#sb-settings-page .sb-prompt-editor .sb-prompt-search:is(:focus, :focus-visible) {
-    border: 0 !important;
-    box-shadow: none !important;
 }
 
 :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-boolean-radio-option > input:focus-visible + span {

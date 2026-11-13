@@ -212,11 +212,12 @@ test('mobile send button uses the shared Roleplay composer sizes', async ({ page
 
     await seedConversation(page);
     // Roleplay's #send_but is not rendered on this seeded page, so compare against its measured
-    // sizes (44px/16px, compact 38px/14px), which come from the same --sb-mobile-composer-action-* tokens.
+    // sizes (44px/16px; compact keeps the 44px touch floor with a 14px icon), which come from the same
+    // --sb-mobile-composer-action-* tokens.
     const conversation = await measureSend('#sb_conversation_send');
     expect(conversation).toEqual({
         default: { width: 44, height: 44, icon: '16px' },
-        compact: { width: 38, height: 38, icon: '14px' },
+        compact: { width: 44, height: 44, icon: '14px' },
     });
 
 });
