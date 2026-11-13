@@ -22,6 +22,7 @@ import { stripSpeakerPrefix } from './partners.js';
 import { getSpeakerPrefixMatch } from './partners-utils.js';
 import { getConnectionProfiles } from './personas.js';
 import { buildConversationPromptMessages, buildConversationSystemPrompt } from './prompt.js';
+import { getActiveApiResponseLength } from './response-length.js';
 import { formatPromptText } from './shared-helpers.js';
 import { clamp, getConversationReplyMaxTokens, getConversationRuntimeStatusKey, parseDurationToMs } from './schedule.js';
 import { runtimeStatusOverrides } from './state.js';
@@ -99,6 +100,8 @@ export async function generateConversationRaw(options, settings) {
             }
         }
     }
+
+    options = { ...options, responseLength: await getActiveApiResponseLength(options.responseLength) };
 
     return generateRaw(options);
 }
