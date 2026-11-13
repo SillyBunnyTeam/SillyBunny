@@ -22,9 +22,9 @@ const computed = (page, selector, properties) => page.locator(selector).evaluate
 );
 
 test.describe('Shell panel button sizes on a coarse pointer', () => {
-    test('a button row keeps its 44px touch target', async ({ page }) => {
+    test('a button row takes the 50px row minimum, which clears the 44px touch target', async ({ page }) => {
         expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
-        expect(await computed(page, '.sb-shell-panel-scroller #customize_additional_parameters.ds-button-row', ['minHeight'])).toEqual([{ minHeight: '44px' }]);
+        expect(await computed(page, '.sb-shell-panel-scroller #customize_additional_parameters.ds-button-row', ['minHeight'])).toEqual([{ minHeight: '50px' }]);
     });
 
     test('icon-only buttons keep the size from mobile-styles.css', async ({ page }) => {

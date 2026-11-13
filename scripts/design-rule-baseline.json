@@ -6,7 +6,7 @@
             "important": 12,
             "breakpoint-off-set": 2,
             "breakpoint-1000": 1,
-            "spacing-off-scale": 54
+            "spacing-off-scale": 52
         },
         "public/css/sillybunny-character-import.css": {
             "important": 2,
@@ -45,7 +45,7 @@
         "public/css/sillybunny-editor-shell.css": {
             "radius-literal": 2,
             "important": 10,
-            "spacing-off-scale": 33,
+            "spacing-off-scale": 31,
             "spacing-off-scale-fallback": 1
         },
         "public/css/sillybunny-entity-list.css": {
@@ -82,7 +82,7 @@
             "radius-literal": 1,
             "shadow-literal": 2,
             "important": 317,
-            "spacing-off-scale": 88,
+            "spacing-off-scale": 85,
             "spacing-off-scale-fallback": 3
         },
         "public/css/sillybunny-paper-theme.css": {
@@ -117,7 +117,7 @@
             "breakpoint-off-set": 12,
             "breakpoint-1000": 2,
             "focus-outline": 1,
-            "spacing-off-scale": 308,
+            "spacing-off-scale": 239,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-tag-manager.css": {
@@ -133,7 +133,7 @@
             "hover-ungated": 6,
             "breakpoint-off-set": 4,
             "focus-outline": 1,
-            "spacing-off-scale": 255,
+            "spacing-off-scale": 254,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-windows.css": {

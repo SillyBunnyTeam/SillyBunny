@@ -1,5 +1,6 @@
 /**
- * Settings pages: a bold heading above a boxed list (`AdwPreferencesGroup`), rows of `6px 16px` with a 44px minimum, and the
+ * Settings pages: a bold heading above a boxed list (`AdwPreferencesGroup`), rows of `6px 12px` with a 50px minimum and 6px between
+ * their parts, and the
  * shared libadwaita audit (`auditLibadwaita`) that runs on the root as the `libadwaita-audit` part. The value of each audit
  * rule is the number of records that fail it outside the audit's own allow-list; the entries of that list that hide a failing
  * record are in the census.
@@ -26,6 +27,12 @@ export const GROUP_HEADING = [
     { property: 'fontSize', token: '--sb-type-body', source: 'DESIGN.md' },
     { property: 'fontWeight', value: '700', source: 'DESIGN.md' },
     { property: 'textTransform', value: 'none', source: 'DESIGN.json' },
+];
+
+/** The description under a group heading: the Caption role at regular weight (DESIGN.md Typography). */
+export const GROUP_DESCRIPTION = [
+    { property: 'fontSize', token: '--sb-type-caption', source: 'DESIGN.md' },
+    { property: 'fontWeight', value: '400', source: 'DESIGN.md' },
 ];
 
 /**
@@ -105,11 +112,16 @@ export const rules = {
                 { id: 'own', selector: '.sb-conversation-pref-row' },
             ],
             properties: [
-                { property: 'minHeight', value: 44, source: 'DESIGN.json' },
-                { property: 'paddingTop', value: 6, source: 'DESIGN.json' },
-                { property: 'paddingInlineStart', value: 16, source: 'DESIGN.json' },
-                { property: 'columnGap', value: 12, ifDisplay: IF_FLEX, source: 'DESIGN.json' },
+                { property: 'minHeight', value: 50, source: 'DESIGN.md' },
+                { property: 'paddingTop', value: 6, source: 'DESIGN.md' },
+                { property: 'paddingInlineStart', value: 12, source: 'DESIGN.md' },
+                { property: 'columnGap', value: 6, ifDisplay: IF_FLEX, source: 'DESIGN.md' },
             ],
+        },
+        {
+            id: 'group-description',
+            selectors: [{ id: 'ds-subtitle', selector: '.ds-pref-group-subtitle' }],
+            properties: GROUP_DESCRIPTION,
         },
         {
             id: 'row-title',

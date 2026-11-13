@@ -313,7 +313,7 @@ test('Connections headers use Customize category typography and subtitles', asyn
         const subtitle = getComputedStyle(header.querySelector('.ds-pref-group-subtitle'));
         return { size: title.fontSize, weight: title.fontWeight, margin: title.margin, padding: title.padding, subtitleWeight: subtitle.fontWeight, gap: getComputedStyle(header).rowGap, boxGap: getComputedStyle(header).marginBottom };
     }));
-    expect(metrics).toEqual(Array(3).fill({ size: '15px', weight: '700', margin: '0px', padding: '0px', subtitleWeight: '700', gap: '2px', boxGap: '8px' }));
+    expect(metrics).toEqual(Array(3).fill({ size: '15px', weight: '700', margin: '0px', padding: '0px', subtitleWeight: '400', gap: '6px', boxGap: '6px' }));
 });
 
 test('provider groups classify whole units in order without changing gate signatures', async ({ page }) => {
@@ -356,7 +356,7 @@ test('whole Vertex form headings retain the shared row inset', async ({ page }) 
         const row = form.querySelector('.ds-row');
         return heading.getBoundingClientRect().left + parseFloat(getComputedStyle(heading).paddingLeft) - row.getBoundingClientRect().left;
     });
-    expect(inset).toBe(16);
+    expect(inset).toBe(12);
 });
 
 test('source switches hide empty groups and restore them from their own displayed units', async ({ page }) => {

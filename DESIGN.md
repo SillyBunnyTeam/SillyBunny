@@ -188,7 +188,7 @@ components:
   select-mirror-row:
     backgroundColor: "transparent; whole-row flat hover and active fills"
     textColor: "{colors.foreground}"
-    padding: "6px 16px"
+    padding: "6px 12px"
   list-row:
     backgroundColor: "color-mix(in srgb, {colors.foreground} 8%, transparent); View in light tone; neutral hover and selection fills"
     textColor: "{colors.foreground}"

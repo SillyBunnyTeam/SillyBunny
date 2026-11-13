@@ -31,7 +31,7 @@ export function auditPromptingLayout(root) {
             const elementStyle = getComputedStyle(element);
             const contentPadding = element.matches('input, select, textarea') ? 0 : parseFloat(elementStyle.paddingLeft) + parseFloat(elementStyle.borderLeftWidth);
             const inset = element.getBoundingClientRect().left + contentPadding - left;
-            add(element, 'content-inset', { inset }, Math.abs(inset - 16) <= 1);
+            add(element, 'content-inset', { inset }, Math.abs(inset - 12) <= 1);
         }
         for (const row of body.querySelectorAll('.ds-row')) {
             if (!visible(row)) continue;

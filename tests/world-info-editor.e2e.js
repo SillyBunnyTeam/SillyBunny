@@ -763,6 +763,14 @@ test.describe('World Info spin rows on a fine pointer', () => {
     test('keep 32px targets 6px apart', async ({ page }) => {
         await openSpinRows(page);
         const rows = await measureSpinRows(page);
+        const rowMinimum = await page.evaluate(() => {
+            const probe = document.createElement('div');
+            probe.style.height = 'var(--sb-density-row-min-height)';
+            document.body.append(probe);
+            const height = probe.getBoundingClientRect().height;
+            probe.remove();
+            return height;
+        });
         expect(rows.length).toBeGreaterThanOrEqual(4);
         for (const spin of rows) {
             expect(spin.down.width, spin.title).toBeGreaterThanOrEqual(32);
@@ -772,7 +780,7 @@ test.describe('World Info spin rows on a fine pointer', () => {
             expect(spin.boxGap, spin.title).toBeGreaterThanOrEqual(0);
             expect(spin.drawnGap, spin.title).toBeCloseTo(6, 0);
             expect(spin.valueWidth, spin.title).toBeGreaterThanOrEqual(spin.placeholderWidth);
-            expect(spin.rowHeight, spin.title).toBeLessThanOrEqual(44.5);
+            expect(spin.rowHeight, `${spin.title} stays one line at the row minimum`).toBeLessThanOrEqual(rowMinimum + 0.5);
         }
     });
 

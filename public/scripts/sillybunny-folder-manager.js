@@ -22,7 +22,7 @@ import {
 } from './sillybunny-folders.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261113w', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261113x', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-folder-manager.css?v=20261112o', id: 'deferred-folder-manager-css' },
 ];

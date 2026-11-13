@@ -90,7 +90,6 @@
     --sb-shell-space-2xl: calc(48px * var(--sb-density-scale));
     --sb-shell-panel-padding-block: clamp(var(--sb-shell-space-md), 2.2vh, var(--sb-shell-space-lg));
     --sb-shell-panel-padding-inline: clamp(var(--sb-shell-space-lg), 3vw, var(--sb-shell-space-xl));
-    --sb-shell-section-gap: var(--sb-shell-space-lg);
     --sb-shell-card-gap: var(--sb-shell-space-md);
 }
 
@@ -114,7 +113,6 @@
     --sb-mobile-toggle-size-base: 44px;
     --sb-home-toggle-min-width-base: 78px;
     --sb-shell-panel-bottom-padding: clamp(30px, 4vh, 52px);
-    --sb-shell-section-gap: var(--sb-shell-space-md);
     --sb-shell-card-gap: var(--sb-shell-space-sm);
 }
 
@@ -1927,10 +1925,17 @@ body:not(.movingUI) .drawer-content.maximized {
     padding: var(--sb-shell-space-sm) var(--sb-shell-space-md) 0;
 }
 
+/* A settings page pads its content as a libadwaita preferences page does: more above than at the sides,
+   at every width. The bottom padding stays with the panel (safe area, software keyboard). */
+#sb-settings-page :is(.sb-shell-panel-scroller, .sb-subpage-list, .sb-subpage-detail) {
+    padding-block-start: var(--sb-settings-inset-top);
+    padding-inline: var(--sb-settings-inset);
+}
+
 .sb-shell-column {
     display: flex;
     flex-direction: column;
-    gap: var(--sb-shell-section-gap);
+    gap: var(--sb-settings-group-gap);
 }
 
 /* Customize tab content. Each Customize tab has its own container, so the layout of the tab
@@ -1939,7 +1944,7 @@ body:not(.movingUI) .drawer-content.maximized {
 .sb-shell-root-right .sb-settings-tab-content {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--sb-shell-section-gap);
+    gap: var(--sb-settings-group-gap);
 }
 
 .sb-shell-root-right .sb-settings-tab-content > * {
@@ -5532,19 +5537,21 @@ body.reduced-motion .sb-search-entry {
     margin-bottom: 0;
 }
 
+/* The group heading is the Title role (Body at 700), the description the Caption role (400), and the
+   block sits one heading gap above its box; none of the two carries an icon. */
 .ds-pref-group-heading {
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-body);
     font-weight: 700;
-    color: var(--sb-shell-text-secondary);
+    color: var(--sb-shell-text);
     text-transform: none;
     letter-spacing: 0;
-    padding: 10px 16px 4px;
+    padding: 10px var(--sb-density-row-padding-inline) 4px;
 }
 
 .ds-pref-group-subtitle {
     display: block;
-    padding: 0 16px 8px;
-    font-size: var(--sb-type-meta);
+    padding: 0 var(--sb-density-row-padding-inline) 8px;
+    font-size: var(--sb-type-caption);
     font-weight: 400;
     color: var(--sb-input-placeholder, color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent));
     line-height: 1.4;
@@ -5553,25 +5560,24 @@ body.reduced-motion .sb-search-entry {
 .ds-pref-group-header {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sb-settings-heading-gap);
     padding: 0 4px;
-    margin: 0 0 8px;
+    margin: 0 0 var(--sb-settings-heading-gap);
     font-weight: 700;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 2px 12px;
+    gap: var(--sb-settings-heading-gap);
     padding: 0 4px;
-    margin: 0 0 8px;
+    margin: 0 0 var(--sb-settings-heading-gap);
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group-header > :is(.ds-pref-group-heading, .ds-pref-group-subtitle) {
     grid-column: 1;
     margin: 0;
     padding: 0;
-    font-weight: 700;
     text-align: start;
 }
 
@@ -5587,7 +5593,8 @@ body.reduced-motion .sb-search-entry {
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group-header > .ds-pref-group-subtitle {
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
+    font-weight: 400;
     line-height: 1.4;
     color: var(--sb-muted-fg);
 }
@@ -5624,12 +5631,14 @@ body.reduced-motion .sb-search-entry {
 /* SillyBunny: rows own their separator and inset; text wraps without compressing the suffix. */
 .ds-row {
     display: flex;
+    /* The control stays beside the title; it wraps under it only when both no longer fit (--sb-row-title-min). */
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: var(--sb-density-row-gap);
     min-width: 0;
     min-height: var(--sb-density-row-min-height);
     margin: 0;
-    padding: var(--sb-density-row-padding-block) 16px;
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
     border: 0;
     border-bottom: 1px solid var(--sb-shell-border);
     background: transparent;
@@ -5639,19 +5648,20 @@ body.reduced-motion .sb-search-entry {
     box-sizing: border-box;
 }
 
-.ds-row:has(.ds-row-subtitle) {
-    min-height: calc(var(--sb-density-row-min-height) + 8px);
-}
-
 .ds-pref-group > :is(.ds-row, .ds-row-expander):last-child {
     border-bottom: 0;
+}
+
+/* The title and version of an extension row ellipsize on one line, so the row never wraps. */
+.extensions_info .extension_block.ds-row {
+    flex-wrap: nowrap;
 }
 
 .ds-row-text {
     display: flex;
     flex-direction: column;
-    flex: 1 1 0;
-    gap: 2px;
+    flex: 1 1 var(--sb-row-title-min);
+    gap: var(--sb-density-row-text-gap);
     min-width: 0;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -5677,7 +5687,7 @@ body.reduced-motion .sb-search-entry {
     display: flex;
     align-items: center;
     flex: 0 0 auto;
-    gap: 12px;
+    gap: var(--sb-density-row-gap);
     min-width: 0;
     max-width: 100%;
 }
@@ -5694,7 +5704,8 @@ body.reduced-motion .sb-search-entry {
     --sb-spin-draw: 30px;
     --sb-spin-hit: 32px;
     --sb-spin-gap: 6px;
-    --sb-spin-number-min: max(3.5em, calc(var(--sb-spin-chars, 0) * 0.55 * var(--sb-type-caption)));
+    /* A short placeholder ("Use global setting") is kept whole; a long one, help text in a placeholder, is cut. */
+    --sb-spin-number-min: min(10em, max(3.5em, calc(var(--sb-spin-chars, 0) * 0.55 * var(--sb-type-caption))));
     --sb-spin-overhang: calc((var(--sb-spin-hit) - var(--sb-spin-draw)) / 2);
     --sb-spin-before-minus: max(0px, calc(6px - var(--sb-spin-overhang)));
     --sb-spin-between: calc(var(--sb-spin-gap) - 2 * var(--sb-spin-overhang));
@@ -5707,8 +5718,11 @@ body.reduced-motion .sb-search-entry {
     }
 }
 
+/* The title starts from the shared minimum, so a long title wraps its own lines before the row wraps; it takes the
+   free width up to its own, and the number the rest. */
 .ds-row.ds-row--spin > .ds-row-text {
-    flex: 0 1 auto;
+    flex: 100 1 var(--sb-row-title-min);
+    max-width: max-content;
 }
 
 .ds-row.ds-row--spin > .ds-row-suffix {
@@ -5854,6 +5868,7 @@ body.reduced-motion .sb-search-entry {
    focus or when filled. CSS alone tracks the state, so programmatic .val() writes float it too. */
 .ds-row.ds-row-entry--floating {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
     gap: 0;
     padding-block: 6px;
@@ -5996,7 +6011,7 @@ body.reduced-motion .sb-search-entry {
     width: 100%;
     min-width: 0;
     margin-block-start: 6px;
-    padding: 0 12px 8px;
+    padding: 0 var(--sb-density-row-padding-inline) 8px;
     box-sizing: border-box;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -6292,23 +6307,24 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 }
 
 .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline) > :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image'])) {
-    flex: 1 1 190px;
+    flex: 1 1 var(--sb-row-control-min);
     min-width: 0;
 }
 
 .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) > :is(label:not(.checkbox_label), small, span:not(.select2)) {
-    flex: 0 1 180px;
-    min-width: min(180px, 100%);
+    flex: 0 1 var(--sb-row-title-min);
+    min-width: min(var(--sb-row-title-min), 100%);
     white-space: normal;
     overflow-wrap: anywhere;
 }
 
 .ds-row:has(> .ds-row-suffix > .ds-control-flex) > .ds-row-text {
-    flex: 0 1 180px;
+    flex: 1 1 var(--sb-row-title-min);
+    max-width: 180px;
 }
 
 .ds-row:has(> .ds-row-suffix > .ds-control-flex) > .ds-row-suffix {
-    flex: 1 1 190px;
+    flex: 1 1 var(--sb-row-control-min);
 }
 
 :is(.ds-row-switch, .ds-row-check) {
@@ -6339,26 +6355,25 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
     background: var(--sb-flat-active-bg);
 }
 
+/* A slider's range and number field stay together; they move under the title as one. */
 .ds-row-slider > .ds-row-text {
-    flex: 1 1 180px;
+    flex: 1 1 var(--sb-row-title-min);
 }
 
 .ds-row-slider > .ds-row-suffix {
-    flex: 1 1 320px;
+    flex: 1 1 var(--sb-row-control-min);
 }
 
-@media screen and (min-width: 621px) {
-    #sb-interface-content .sb-interface-select-group > .ds-row-text {
-        flex: 1 1 180px;
-    }
+#sb-interface-content .sb-interface-select-group > .ds-row-text {
+    flex: 1 1 var(--sb-row-title-min);
+}
 
-    #sb-interface-content .sb-interface-select-group > .ds-row-suffix {
-        flex: 1 1 320px;
-    }
+#sb-interface-content .sb-interface-select-group > .ds-row-suffix {
+    flex: 1 1 var(--sb-row-control-min);
 }
 
 .ds-row-slider > .ds-row-suffix > input[type='range'] {
-    flex: 1 1 190px;
+    flex: 1 1 4em;
     width: 100%;
     min-width: 0;
     margin: 0;
@@ -6533,23 +6548,14 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     display: flex;
     align-items: center;
     flex-direction: row;
-    gap: 12px;
 }
 
 #sb-settings-page .sb-sampling-panel .ds-row-slider .ds-row-label {
     display: block;
 }
 
-#sb-settings-page .sb-sampling-panel .ds-row-slider > .ds-row-text {
-    flex: 1 1 180px;
-}
-
-#sb-settings-page .sb-sampling-panel .ds-row-slider > .ds-row-suffix {
-    flex: 1 1 320px;
-}
-
 #sb-settings-page .sb-sampling-panel .ds-row-suffix input[type='range'] {
-    flex: 1 1 140px;
+    flex: 1 1 4em;
     width: 100%;
     min-width: 0;
     margin: 0;
@@ -6564,24 +6570,12 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-transmission {
     margin: 0;
-    padding: 8px 16px;
+    padding: 8px var(--sb-density-row-padding-inline);
     border-top: 0;
 }
 
-@media screen and (min-width: 621px) {
-    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row {
-        min-height: 36px;
-        padding: 4px 16px;
-    }
-
-    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row:has(.ds-row-subtitle) {
-        min-height: 44px;
-    }
-
-    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-transmission {
-        padding: 4px 16px;
-    }
-
+/* The thin trough stays while the interactive area grows beyond the legacy 4px height. */
+@media (pointer: fine) {
     #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(button, select, input:not([type='checkbox'], [type='radio'], [type='hidden'], [type='file']), .menu_button) {
         min-height: 32px;
     }
@@ -6590,7 +6584,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
         align-items: center;
     }
 
-    /* Keep the thin trough while enlarging its interactive area beyond the legacy 4px height. */
     #sb-settings-page .sb-sampling-panel input[type='range'] {
         background: linear-gradient(color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent) 0 0) center / 100% 4px no-repeat !important;
     }
@@ -6620,7 +6613,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 /* Legacy sampler grids also match migrated rows; the live rows own their layout and insets. */
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card .ds-row {
     display: flex;
-    gap: 12px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card .ds-row-label {
@@ -6651,7 +6643,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 #sb-settings-page .sb-prompting-panel #range_block_openai {
     display: flex;
     flex-direction: column;
-    gap: var(--sb-shell-section-gap);
+    gap: var(--sb-settings-group-gap);
     min-width: 0;
     width: 100%;
 }
@@ -6698,6 +6690,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
 }
 
@@ -6708,10 +6701,6 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row-suffix > :is(textarea, div:has(textarea)) {
     width: 100%;
-}
-
-#sb-settings-page .sb-prompting-panel .ds-row-label {
-    font-size: var(--sb-type-control);
 }
 
 #sb-settings-page .sb-editor-panel .ds-row {
@@ -6772,7 +6761,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body :is(.sb-settings-flat-header, .quick_context_size_container, .toggle-description:where(:not(.ds-row-subtitle)), .range-block:where(:not(.ds-row, .sb-settings-row-wrapper)):where(:not(:has(.ds-row, .toggle-description)))) {
-    padding-inline: 16px;
+    padding-inline: var(--sb-density-row-padding-inline);
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .range-block:not(.ds-row):has(.ds-row, .toggle-description) {
@@ -6804,7 +6793,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-row-with-help > :is(.toggle-description, .notes, p, small) {
     margin: 0;
-    padding: 0 16px 8px;
+    padding: 0 var(--sb-density-row-padding-inline) 8px;
     border: 0;
     box-sizing: border-box;
 }
@@ -6818,7 +6807,7 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .sb-setting-inline-help:where(:not(.ds-row)) {
-    padding-inline: 16px;
+    padding-inline: var(--sb-density-row-padding-inline);
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets, #openai_api-presets) > div:where(:not(.ds-row, .sb-non-chat-preset-row)) {
@@ -6879,14 +6868,14 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-group > .sb-settings-flat-header,
 #sb-settings-page .sb-prompting-panel .sb-prompting-group > .sb-settings-flat-header {
-    margin-bottom: 8px;
+    margin-bottom: var(--sb-settings-heading-gap);
 }
 
 /* The container owns category spacing so hidden groups leave no gaps or leading margins. */
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-section,
-#sb-settings-page .sb-settings-mounted-shell #AdvancedFormatting,
+#sb-settings-page .sb-settings-mounted-shell :is(#AdvancedFormatting, #Backgrounds),
 #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) #range_block_openai {
-    row-gap: 24px;
+    row-gap: var(--sb-settings-group-gap);
 }
 
 #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) #range_block_openai[style*='display: block']:not([hidden]) {
@@ -6898,7 +6887,18 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
     padding-block-end: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell #AdvancedFormatting.sb-managed {
+/* Upstream wrappers that hold no box at the active backend would add a second group gap above and below themselves.
+   The Chat Completions groups are moved out of #openai_settings, and Backend sets its display inline; it stays shown
+   while a control is left in it, such as one an extension adds. */
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) #respective-ranges-and-temps {
+    display: contents;
+}
+
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) #advanced-ai-config-block > #openai_settings:not(:has(:is(input, select, textarea, button))) {
+    display: none !important;
+}
+
+#sb-settings-page .sb-settings-mounted-shell :is(#AdvancedFormatting, #Backgrounds).sb-managed {
     /* The embedded drawer reset uses display:block!important, which disables category gaps. */
     display: flex !important;
     flex-direction: column;
@@ -6906,13 +6906,12 @@ body.reduced-motion .ds-row-expander > summary.ds-row::after {
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel:not(.sb-editor-panel) #ai_response_configuration {
     /* The source container retains flexNoGap, whose gap reset is important. */
-    row-gap: 24px !important;
+    row-gap: var(--sb-settings-group-gap) !important;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel .sb-prompting-group-body .ds-row {
     width: 100%;
     margin: 0;
-    padding: 6px 16px;
     border-top: 0;
     border-radius: 0;
 }
@@ -6976,7 +6975,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel #sb-preset-linking :is(.sb-prompting-row-with-help > strong.toggle-description, #model_sampling_profiles_container > .toggle-description) {
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
     font-weight: 400;
     line-height: 1.4;
     color: var(--sb-input-placeholder);
@@ -7066,19 +7065,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 #sb-settings-page #AdvancedFormatting > .sb-formatting-group[hidden],
 #sb-settings-page [data-sb-emptied-by-order] {
     display: none !important;
-}
-
-@media screen and (max-width: 620px) {
-    #sb-settings-page .sb-sampling-panel .ds-row-slider {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    #sb-settings-page .sb-sampling-panel .ds-row-slider > :is(.ds-row-text, .ds-row-suffix) {
-        flex-basis: auto;
-        width: 100%;
-    }
-
 }
 
 /* Expander rows: new visual layer on top of existing .inline-drawer machinery */
@@ -7198,10 +7184,11 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 .sb-settings-mounted-shell .sb-settings-flat-section {
     display: flex;
     flex-direction: column;
+    gap: var(--sb-settings-heading-gap);
     width: 100%;
-    border-top: 1px solid var(--sb-shell-border);
+    border-top: 0;
     margin: 0;
-    padding: 0 0 8px;
+    padding: 0;
 }
 
 /* SillyBunny: flat-section headers use the same compact two-line anatomy as Messages category
@@ -7233,13 +7220,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     font-size: var(--sb-type-meta);
     line-height: 1.4;
     color: var(--sb-shell-text-secondary);
-}
-
-/* Category spacing is owned by the section margin and the preference pill. The legacy drawer
-   separator is not part of the Messages reference anatomy, so do not draw a rule above migrated
-   top-level categories. */
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-section-top {
-    border-top: 0;
 }
 
 /* A flattened section is a heading in the enclosing body's flow, not a card of its own: it must
@@ -7294,7 +7274,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header > .sb-settings-category-heading {
-    gap: 2px;
+    gap: var(--sb-settings-heading-gap);
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header .sb-settings-category-heading :is(b, strong, h3, h4, .sb-settings-category-title),
@@ -7311,11 +7291,12 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-flat-header .sb-settings-category-heading :is(small, .ds-row-subtitle),
 #right-nav-panel :is(#form_create, #rm_group_chats_block) .ds-pref-group-header > .ds-pref-group-subtitle {
-    /* The 2px gap above is the whole separation; the group-meta rule adds its own top margin. */
+    /* The gap above is the whole separation; the group-meta rule adds its own top margin. */
     margin: 0;
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
+    font-weight: 400;
     line-height: 1.4;
-    color: var(--sb-shell-text-secondary);
+    color: var(--sb-muted-fg);
     opacity: 1;
 }
 
@@ -7356,13 +7337,13 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 /* Legacy collapsible expanders are a separate interaction pattern from the flat category headers;
    keep their row metric and disclosure affordance intact. */
 #sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) {
-    min-height: 52px;
-    padding: 10px 16px;
-    gap: 12px;
+    min-height: var(--sb-density-row-min-height);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
+    gap: var(--sb-density-row-gap);
 }
 
 #sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container {
-    gap: 2px;
+    gap: var(--sb-density-row-text-gap);
 }
 
 #sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container > b {
@@ -7373,20 +7354,20 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page .sb-settings-mounted-shell .inline-drawer-header:has(> .flex-container > small) > .flex-container > small {
     margin: 0;
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
     line-height: 1.4;
     color: var(--sb-shell-text-secondary);
 }
 
 /* Rows lifted out of a flattened drawer lose the spacing the enclosing expander used to draw, so
-   they get the grouped row metric back: 44px tall, 16px inset, separator between rows. */
+   they get the grouped row metric back: the row height and inset, and a separator between rows. */
 .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:not(.ds-row),
 .sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.ds-row, .ds-pref-group, .sb-settings-row-wrapper) {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    min-height: 44px;
+    gap: var(--sb-density-row-gap);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
+    min-height: var(--sb-density-row-min-height);
     margin: 0;
     cursor: pointer;
     transition: background-color var(--sb-transition-fast);
@@ -7425,23 +7406,37 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 /* Loose label-and-field pairs (a bare `small` above its input) are the one shape the flatten
-   cannot turn into a row, so they are inset to the same 16px and separated from what precedes. */
+   cannot turn into a row, so they read as the description of the group they head. */
+.sb-settings-mounted-shell .sb-settings-flat-section > small,
+.sb-settings-mounted-shell .sb-settings-subdrawer-toolbar small {
+    font-size: var(--sb-type-caption);
+    font-weight: 400;
+    color: var(--sb-muted-fg);
+}
+
 .sb-settings-mounted-shell .sb-settings-flat-section > small {
-    padding: 8px 16px 4px;
-    font-size: var(--sb-type-control);
-    color: var(--SmartThemeBodyColor);
+    padding: 0 4px;
+}
+
+.sb-settings-mounted-shell .sb-settings-flat-section > .sb-settings-subdrawer-toolbar {
+    margin-bottom: 0;
+}
+
+/* The heading gap spaces the parts of one group; a block that follows a box in the same section is a group of its own. */
+.sb-settings-mounted-shell .sb-settings-flat-section > .ds-pref-group + * {
+    margin-top: calc(var(--sb-settings-group-gap) - var(--sb-settings-heading-gap));
 }
 
 .sb-settings-mounted-shell .sb-settings-flat-section > input.text_pole,
 .sb-settings-mounted-shell .sb-settings-flat-section > select {
-    margin: 0 16px;
+    margin: 0 var(--sb-density-row-padding-inline);
     width: auto;
     flex: 0 0 auto;
 }
 
 .sb-settings-mounted-shell .sb-settings-flat-section > .auto_swipe,
 .sb-settings-mounted-shell .sb-settings-flat-section > .auto_continue_settings_block {
-    padding: 0 16px;
+    padding: 0 var(--sb-density-row-padding-inline);
     margin: 0;
 }
 
@@ -7465,9 +7460,9 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 .sb-settings-mounted-shell .sb-settings-subdrawer-body > .flex-container > .checkbox_label:not(.ds-row) {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    min-height: 44px;
+    gap: var(--sb-density-row-gap);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
+    min-height: var(--sb-density-row-min-height);
     margin: 0;
     cursor: pointer;
     transition: background-color var(--sb-transition-fast);
@@ -7491,9 +7486,9 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 .sb-settings-mounted-shell .ds-pref-group .checkbox_label:not(.ds-row) {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    min-height: 44px;
+    gap: var(--sb-density-row-gap);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
+    min-height: var(--sb-density-row-min-height);
     margin: 0;
     border-top: 1px solid var(--sb-shell-border);
     cursor: pointer;
@@ -7540,9 +7535,9 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 /* Flex-container select rows get action-row spacing */
 .sb-settings-mounted-shell .ds-pref-group .flex-container.alignitemscenter:not(.ds-row, .sb-settings-row-wrapper, :has(.ds-row)),
 .sb-settings-mounted-shell .ds-pref-group .flex-container.alignItemsBaseline:not(.ds-row, .sb-settings-row-wrapper, :has(.ds-row)) {
-    padding: 10px 16px;
-    min-height: 48px;
-    gap: 12px;
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
+    min-height: var(--sb-density-row-min-height);
+    gap: var(--sb-density-row-gap);
     border-top: 1px solid var(--sb-shell-border);
 }
 
@@ -7585,11 +7580,11 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     color: var(--sb-shell-text);
 }
 
-/* Inside a boxed group the title is the group's first row: same 16px inset as the rows under it. */
+/* Inside a boxed group the title is the group's first row: same inset as the rows under it. */
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :is(h3, h4) {
     justify-content: flex-start;
     margin: 0;
-    padding: 12px 16px 4px;
+    padding: 12px var(--sb-density-row-padding-inline) 4px;
     text-align: start;
     /* Drop the global boxed h3 / #user-settings-block h4 fill; a sub-heading is text inside the group. */
     border: 0;
@@ -7624,7 +7619,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page #Backgrounds #bpt-animated-bg-panel {
-    gap: 8px;
+    gap: var(--sb-settings-heading-gap);
     padding: 0;
     margin: 0;
     border: 0;
@@ -7642,7 +7637,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page #Backgrounds .bpt-animated-bg-note {
     margin: 0;
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
     font-weight: 400;
     line-height: 1.4;
     color: var(--sb-shell-text-secondary);
@@ -7657,8 +7652,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page #Backgrounds .bpt-animated-bg-url-row {
     flex-wrap: nowrap;
-    gap: 8px;
-    padding: 10px 16px;
+    gap: var(--sb-density-row-gap);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
 }
 
 #sb-settings-page #Backgrounds .bpt-animated-bg-url-row input {
@@ -7669,6 +7664,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page #Backgrounds .bpt-animated-bg-volume {
     display: flex;
+    gap: var(--sb-density-row-gap);
     min-width: 0;
 }
 
@@ -7874,11 +7870,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
         flex-basis: auto;
         width: 100%;
     }
-
-    #sb-settings-page #Backgrounds .bpt-animated-bg-volume > .ds-row-suffix {
-        flex-basis: auto;
-        width: 100%;
-    }
 }
 
 /* Named sub-categories, as libadwaita preference groups: a title and a description line above
@@ -7888,7 +7879,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sb-settings-heading-gap);
     margin: 0;
     padding: 0;
     border-top: 0;
@@ -7902,7 +7893,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading {
-    gap: 2px;
+    gap: var(--sb-settings-heading-gap);
     min-width: 0;
 }
 
@@ -7923,9 +7914,10 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading > small {
     margin: 0;
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
+    font-weight: 400;
     line-height: 1.4;
-    color: var(--sb-shell-text-secondary);
+    color: var(--sb-muted-fg);
     opacity: 1;
 }
 
@@ -7936,7 +7928,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     margin: 0;
 }
 
-/* Rows in a boxed list share the 16px inset and a hairline between them. Checkbox and baseline rows
+/* Rows in a boxed list share the row inset and a hairline between them. Checkbox and baseline rows
    already get that metric from the `.ds-pref-group` rules above; every other row shape (a stacked
    label and field, a slider column, an info block) gets the same inset here, so a list reads as
    one column of rows whatever the markup under it. A group is one boxed list, so the rows inside
@@ -7961,10 +7953,10 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.checkbox_label, .flex-container.alignitemscenter, .flex-container.alignItemsBaseline, .sb-settings-flat-section, .ds-row, .ds-row-expander, .ds-entity-list__rows, .ds-entity-list__footer, .sb-sampling-control-card, .sb-settings-row-wrapper, :has(.ds-row, .ds-row-expander, .ds-pref-group)) {
-    padding: 10px 16px;
+    padding: 10px var(--sb-density-row-padding-inline);
 }
 
-/* A wrapper that holds rows draws nothing of its own: the rows inside own the 16px inset and the
+/* A wrapper that holds rows draws nothing of its own: the rows inside own the row inset and the
    separators, so a padded or gapped wrapper insets them twice and breaks the separator line
    (Quick Access, AutoComplete, MovingUI). Rows stack, and any loose label, note, or button strip
    beside them takes the row inset itself. Buttons take it as margin so they keep their size. */
@@ -7977,12 +7969,12 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .sb-prompting-row-with-help, .sb-custom-stopping-strings) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .sb-sampling-transmission, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
-    padding: 10px 16px;
+    padding: 10px var(--sb-density-row-padding-inline);
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :is(label, small, span):not(.ds-row, .checkbox_label) {
     display: block;
-    padding: 10px 16px 0;
+    padding: 10px var(--sb-density-row-padding-inline) 0;
 }
 
 /* The first row after a loose heading owns the gap the heading opened. */
@@ -7992,13 +7984,13 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :is(.menu_button, button):not(.ds-row) {
     align-self: flex-start;
-    margin: 10px 16px;
+    margin: 10px var(--sb-density-row-padding-inline);
 }
 
 /* A subsection heading inside a group is a group heading, not a section header. The generic
    mounted-shell heading rule zeroes the inline padding, which put these flush against the border. */
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-flat-section > .sb-settings-flat-header, .ds-pref-group-heading) {
-    padding: 10px 16px 4px;
+    padding: 10px var(--sb-density-row-padding-inline) 4px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-transmission > .flex-container {
@@ -8011,7 +8003,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     justify-content: flex-end;
     min-height: 0;
     gap: 8px;
-    padding: 0 16px 8px;
+    padding: 0 var(--sb-density-row-padding-inline) 8px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-sampler-tools-card > .flex-container > small.flex-container {
@@ -8030,8 +8022,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row.sb-sampling-help-row {
     flex-wrap: wrap;
     row-gap: 4px;
-    min-height: 44px;
-    padding: 6px 16px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-help-row > .ds-row-text {
@@ -8127,7 +8117,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page #sb-openai-names label:has(> input[name='character_names']) > small {
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
     line-height: 1.4;
     color: var(--sb-input-placeholder);
 }
@@ -8140,15 +8130,15 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group .sb-custom-stopping-strings > h4 {
     margin: 0;
-    padding: 12px 16px 4px;
+    padding: 12px var(--sb-density-row-padding-inline) 4px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-custom-stopping-strings > div:has(> small) {
-    padding: 0 16px 8px;
+    padding: 0 var(--sb-density-row-padding-inline) 8px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-custom-stopping-strings > div:has(> textarea) {
-    padding: 0 16px 12px;
+    padding: 0 var(--sb-density-row-padding-inline) 12px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > * + * {
@@ -8158,12 +8148,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 /* Migrated rows own their geometry and bottom separators. Legacy group rules above otherwise
    add a second separator and inset the expander body, including its already-inset child rows. */
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > .ds-row {
-    padding: 6px 16px;
     border-top: 0;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .ds-row:has(.ds-row-subtitle) {
-    min-height: 52px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > .ds-row-expander {
@@ -8190,7 +8175,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     flex: 0 0 auto;
     flex-direction: row;
     width: 100%;
-    gap: 12px;
     border-radius: 0;
     box-shadow: none;
 }
@@ -8208,14 +8192,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     flex-wrap: nowrap;
     align-items: center;
     width: 100%;
-    min-height: 44px;
     margin: 0;
-    padding: 6px 16px;
-    gap: 12px;
-}
-
-#sb-settings-page .ds-row-switch:has(.ds-row-subtitle) {
-    min-height: 52px;
 }
 
 .ds-row-switch > .ds-row-suffix,
@@ -8257,10 +8234,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page :is(#UI-language-block, #account_controls).ds-row {
     flex: 0 0 auto;
-    flex-wrap: nowrap;
     min-width: 0;
-    padding: 6px 16px;
-    gap: 12px;
 }
 
 #sb-settings-page #user-settings-utility-actions {
@@ -8278,7 +8252,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 #sb-settings-page #color-picker-block {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--sb-settings-group-gap);
     padding: 0;
 }
 
@@ -8325,8 +8299,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section-heading {
-    padding-inline: 16px;
-    gap: 2px;
+    padding-inline: var(--sb-density-row-padding-inline);
+    gap: var(--sb-density-row-text-gap);
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section-heading > strong {
@@ -8336,7 +8310,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section-heading > small {
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
     line-height: 1.4;
     opacity: 1;
 }
@@ -8349,7 +8323,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 #sb-settings-page .sb-settings-mounted-shell :is(.sb-topbar-label-option, .sb-compact-mode-option, .sb-mobile-nav-choice, .sb-topbar-custom-text-field).ds-row {
     flex-direction: row;
     width: 100%;
-    gap: 12px;
+    min-height: var(--sb-density-row-min-height);
     justify-content: flex-start;
     border: 0;
     border-radius: 0;
@@ -8380,8 +8354,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group .sb-theme-slider-group.sb-mobile-quick-actions-group {
-    gap: 12px;
-    padding: 10px 16px;
+    gap: var(--sb-density-row-gap);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
 }
 
 #sb-settings-page :is(#sb-desktop-settings-outlet, #sb-mobile-settings-outlet) {
@@ -8407,7 +8381,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-mobile-nav-settings-header {
-    padding: 12px 16px 6px;
+    padding: 12px var(--sb-density-row-padding-inline) 6px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-mobile-nav-settings-header > strong {
@@ -8497,14 +8471,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 /* Server Tools uses the same named category and boxed-list primitives as the other Backend tabs.
    The controls are still created on demand so their existing refs and handlers remain untouched. */
-#sb-settings-page .sb-server-column > .sb-settings-category {
-    margin-bottom: 24px;
-}
-
-#sb-settings-page .sb-server-column > .sb-settings-category:last-child {
-    margin-bottom: 0;
-}
-
 #sb-settings-page .sb-server-column .sb-server-grid {
     display: flex;
     flex-direction: column;
@@ -8513,8 +8479,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page .sb-server-column .sb-server-stat {
     display: flex;
-    min-height: 44px;
-    padding: 6px 16px;
+    min-height: var(--sb-density-row-min-height);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
     border: 0;
     border-bottom: 1px solid var(--sb-shell-border);
     border-radius: 0;
@@ -8532,8 +8498,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page .sb-server-column .sb-server-actions {
     display: flex;
-    min-height: 52px;
-    padding-block: 8px;
 }
 
 #sb-settings-page .sb-server-column .sb-server-actions > .ds-row-suffix {
@@ -8552,8 +8516,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-server-column .sb-thumbnail-size-row {
-    min-height: 44px;
-    padding: 6px 16px;
+    min-height: var(--sb-density-row-min-height);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
 }
 
 #sb-settings-page .sb-server-column .sb-thumbnail-dimensions {
@@ -8651,8 +8615,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 .ds-pref-group > .flex-container.alignitemscenter,
 .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) {
-    flex-wrap: nowrap;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: var(--sb-density-row-gap);
     min-width: 0;
 }
 
@@ -8664,52 +8628,12 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 @media screen and (max-width: 620px) {
-    #sb-settings-page .sb-settings-mounted-shell .ds-row:is(.ds-row-slider, .ds-row-actions, .sb-import-pane),
-    #sb-settings-page .sb-settings-mounted-shell .ds-row:not(.ds-row--spin):has(> .ds-row-suffix > input[type='number']),
-    #sb-settings-page .sb-settings-mounted-shell .ds-row:has(> .ds-row-suffix > .ds-control-flex),
-    #sb-settings-page .ds-row:has(> .ds-row-suffix > textarea) {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    #sb-settings-page .ds-row:is(.ds-row-actions, .sb-import-pane) > :is(.ds-row-text, .ds-row-suffix),
-    #sb-settings-page .ds-row:not(.ds-row--spin):has(> .ds-row-suffix > input[type='number']) > :is(.ds-row-text, .ds-row-suffix),
-    #sb-settings-page .ds-row:has(> .ds-row-suffix > textarea) > :is(.ds-row-text, .ds-row-suffix) {
-        flex-basis: auto;
-        width: 100%;
-    }
-
-    #sb-settings-page .sb-console-log-actions,
-    #sb-settings-page .ds-row-actions > .ds-row-suffix {
+    #sb-settings-page .sb-console-log-actions {
         justify-content: flex-start;
     }
 
     #sb-settings-page .sb-console-log-output {
         min-height: 260px;
-    }
-
-    .ds-row-slider,
-    .ds-row:has(> .ds-row-suffix > .ds-control-flex),
-    .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(label:not(.checkbox_label), small, span:not(.select2))):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .ds-row-slider > :is(.ds-row-text, .ds-row-suffix),
-    .ds-row:has(> .ds-row-suffix > .ds-control-flex) > :is(.ds-row-text, .ds-row-suffix),
-    .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(label:not(.checkbox_label), small, span:not(.select2))):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) > :is(label:not(.checkbox_label), small, span:not(.select2), select, textarea, input) {
-        flex-basis: auto;
-        width: 100%;
-        min-width: 0;
-    }
-
-    .ds-row-suffix > .ds-control-flex {
-        width: 100%;
-    }
-
-    .sb-settings-mounted-shell .ds-row-suffix > .ds-control-flex.widthNatural,
-    .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(label:not(.checkbox_label), small, span:not(.select2))) > :is(select, textarea, input).widthNatural {
-        width: 100% !important;
     }
 }
 
@@ -8771,7 +8695,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
    they are the two largest clusters of off-token text in the settings page. Give the element its
    own token; rules below that size a specific `<small>` still win on specificity. */
 .sb-settings-mounted-shell small {
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
 }
 
 /* ── Mobile settings layout ─────────────────────────────────────────────── */
@@ -9034,7 +8958,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 .sb-subpage-heading-description {
-    font-size: var(--sb-type-meta);
+    font-size: var(--sb-type-caption);
     line-height: 1.4;
     color: var(--sb-shell-text-secondary);
 }
@@ -9042,7 +8966,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 .sb-subpage-list-body {
     display: flex;
     flex-direction: column;
-    gap: var(--sb-shell-section-gap);
+    gap: var(--sb-settings-group-gap);
     flex: 0 0 auto;
 }
 
@@ -9402,7 +9326,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     --sb-connections-icon-size: 32px;
     display: flex;
     flex-direction: column;
-    gap: var(--sb-shell-section-gap);
+    gap: var(--sb-settings-group-gap);
     min-width: 0;
 }
 
@@ -9637,9 +9561,9 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle {
-    min-height: 44px;
+    min-height: var(--sb-density-row-min-height);
     margin: 0;
-    padding: 6px 16px;
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
     border-bottom: 0;
     cursor: pointer;
 }
@@ -9709,7 +9633,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     justify-content: center;
     width: 100%;
     margin: 0;
-    min-height: 44px;
+    min-height: var(--sb-density-row-min-height);
     border: 0;
     border-radius: 0;
     background: none;
@@ -9746,7 +9670,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     gap: 8px;
     width: 100%;
     min-width: 0;
-    min-height: 44px;
+    min-height: var(--sb-density-row-min-height);
     padding: 0;
     border: 0;
     border-radius: 0;
@@ -9818,7 +9742,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     flex-wrap: wrap;
     align-items: center;
     gap: 0;
-    min-height: 44px;
+    min-height: var(--sb-density-row-min-height);
     padding: 0;
 }
 
@@ -9876,7 +9800,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
 .sb-connections-provider > div {
     display: flex;
     flex-direction: column;
-    gap: var(--sb-shell-section-gap);
+    gap: var(--sb-settings-group-gap);
 }
 
 #sb-settings-page .sb-connections-panel [data-sb-connections-group] {
@@ -9916,11 +9840,11 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
 }
 
 #sb-settings-page .sb-connections-panel .sb-connections-unit > :not(.ds-row, .inline-drawer, .sb-connections-status-extra, :has(.ds-row, .checkbox_label)) {
-    padding: 10px 16px;
+    padding: 10px var(--sb-density-row-padding-inline);
 }
 
 #sb-settings-page .sb-connections-panel .sb-connections-unit > .checkbox_label {
-    padding: 6px 16px;
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
 }
 
 /* The unit already supplies the row inset; the status row keeps only its vertical padding. */
@@ -9935,7 +9859,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
 }
 
 #sb-settings-page .sb-connections-panel #vertexai_form h4 {
-    padding-inline: 16px;
+    padding-inline: var(--sb-density-row-padding-inline);
 }
 
 [data-sb-connections-panel] .sb-connections-provider .text_pole {
@@ -9988,9 +9912,9 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
 #sb-settings-page .sb-connections-panel .sb-connections-status-extra > .openrouter_authorize {
     flex: 1 1 100%;
     width: 100%;
-    min-height: 44px;
+    min-height: var(--sb-density-row-min-height);
     margin: 0;
-    padding: 6px 16px;
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -10340,7 +10264,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     #sb-settings-page .sb-action-btn,
     #sb-settings-page .ds-button,
     #sb-settings-page .ds-row-suffix :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, select),
-    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(.ds-row, button, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), .menu_button),
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(button, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), .menu_button),
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_selected_ch {
         min-height: 44px;
     }

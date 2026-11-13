@@ -47,7 +47,7 @@ describe('core message transparency wiring', () => {
         expect(chatStylesSource).toContain('backdrop-filter: blur(calc(var(--sheldBlurStrength, 0) * 1px));');
         expect(backgroundsSource).toContain('opacity: var(--customCSS-bg-opacity, 1);');
         expect(backgroundsSource).toContain('filter: blur(calc(var(--customCSS-bg-blur, 0) * 1px));');
-        expect(styleSource).toContain('@import url(css/backgrounds.css?v=20260606a);');
+        expect(styleSource).toContain('@import url(css/backgrounds.css?v=20261113x);');
     });
 
     test('keeps zero-strength theme blur and Fast UI free of backdrop-filter layers', () => {

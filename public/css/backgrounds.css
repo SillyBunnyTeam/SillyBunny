@@ -675,21 +675,7 @@ body.sb-bg-blur #bg_custom {
 }
 
 @media screen and (max-width: 620px) {
-    .bg-header-row-1.ds-row {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .bg-header-row-1 > :is(.ds-row-text, .ds-row-suffix) {
-        flex-basis: auto;
-        width: 100%;
-    }
-
-    #background_fitting {
-        flex-basis: 100%;
-        width: 100%;
-    }
-
+    /* SillyBunny: the Background Fitting row wraps by content (`.ds-row` in sillybunny-tabs.css), so no width rule stacks it. */
     .bg-header-row-2 {
         flex-wrap: wrap;
     }

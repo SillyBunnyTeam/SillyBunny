@@ -16,8 +16,8 @@ const READS = new Set([
     '/api/presets/list', '/api/in-chat-agents/groups/list', '/api/chats/search',
 ]);
 const selectionLayout = {
-    1440: { titleX: 84.90625, descriptionRight: 1102, truncated: false },
-    390: { titleX: 72, descriptionRight: 314, truncated: true },
+    1440: { titleX: 84.90625, descriptionRight: 1142, truncated: false },
+    390: { titleX: 72, descriptionRight: 318, truncated: true },
 };
 
 async function openAgents(page, baseURL, width = 1440, { withChat = false } = {}) {

@@ -487,11 +487,6 @@
     #sb-settings-page .sb-persona-entry .sb-persona-entry-name {
         min-width: 96px;
     }
-
-    #sb-settings-page .sb-persona-entry [data-sb-editor-field='lorebook'] {
-        flex-direction: column;
-        align-items: stretch;
-    }
 }
 
 @container sb-list-editor-detail (width < 440px) {

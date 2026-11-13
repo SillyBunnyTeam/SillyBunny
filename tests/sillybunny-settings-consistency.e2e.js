@@ -239,8 +239,8 @@ async function expectSwitchSemantics(panel) {
     expect(failures).toEqual([]);
 }
 
-async function expectSwitchGeometry(panel, compactSampling = false) {
-    const failures = await panel.locator('input[type="checkbox"]:visible').evaluateAll((inputs, { compact, allowlist }) => inputs.flatMap(input => {
+async function expectSwitchGeometry(panel) {
+    const failures = await panel.locator('input[type="checkbox"]:visible').evaluateAll((inputs, allowlist) => inputs.flatMap(input => {
         if (allowlist.some(selector => input.closest(selector))) return [];
         const agentTarget = input.closest('.ica-agent-switch-target');
         if (agentTarget) {
@@ -262,16 +262,14 @@ async function expectSwitchGeometry(panel, compactSampling = false) {
         const style = getComputedStyle(row);
         const rowRect = row.getBoundingClientRect();
         const switchRect = input.getBoundingClientRect();
-        const subtitle = Boolean(row.querySelector('.ds-row-subtitle, .sb-prompt-row-subtitle'));
-        const samplingRow = compact && Boolean(input.closest('.sb-sampling-group'));
-        const minimumHeight = samplingRow ? (subtitle ? 44 : 36) : (subtitle ? 52 : 44);
+        const minimumHeight = document.documentElement.dataset.sbCompactMode === 'true' ? 46 : 50;
         const metrics = {
             minHeight: parseFloat(style.minHeight) >= minimumHeight,
             actualHeight: rowRect.height >= minimumHeight,
             centered: Math.abs(switchRect.top + switchRect.height / 2 - rowRect.top - rowRect.height / 2) <= 1,
         };
         return Object.entries(metrics).filter(([, pass]) => !pass).map(([metric]) => `${name}: ${metric}`);
-    }), { compact: compactSampling, allowlist: Object.keys(SWITCH_SEMANTICS_ALLOWLIST) });
+    }), Object.keys(SWITCH_SEMANTICS_ALLOWLIST));
     expect(failures).toEqual([]);
 }
 
@@ -282,8 +280,8 @@ function getPromptingGroupTitles(prompting) {
     }));
 }
 
-async function readBackendCategorySpacing(panel, groupSelector) {
-    return panel.evaluate((root, selector) => {
+async function readBackendCategorySpacing(panel, groupSelector, expectedBetween) {
+    return panel.evaluate((root, { selector, expectedBetween }) => {
         const visible = element => element instanceof HTMLElement && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden';
         const groups = [...root.querySelectorAll(selector)].filter(visible);
         const failures = [];
@@ -297,7 +295,7 @@ async function readBackendCategorySpacing(panel, groupSelector) {
                 continue;
             }
             const insideGap = body.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
-            if (Math.abs(insideGap - 8) > 1) failures.push(`${name}: header-to-body gap ${insideGap}px`);
+            if (Math.abs(insideGap - 6) > 1) failures.push(`${name}: header-to-body gap ${insideGap}px`);
             let previous = group.previousElementSibling;
             while (previous && !visible(previous)) previous = previous.previousElementSibling;
             // Navigation actions and wrapper boundaries are not consecutive categories.
@@ -309,13 +307,13 @@ async function readBackendCategorySpacing(panel, groupSelector) {
                 }
                 boundaries++;
                 const betweenGap = header.getBoundingClientRect().top - previousBody.getBoundingClientRect().bottom;
-                if (Math.abs(betweenGap - 24) > 1) failures.push(`${name}: between-category gap ${betweenGap}px`);
+                if (Math.abs(betweenGap - expectedBetween) > 1) failures.push(`${name}: between-category gap ${betweenGap}px`);
             } else if (parseFloat(getComputedStyle(group).marginTop) !== 0) {
                 failures.push(`${name}: first or separated category has a leading margin`);
             }
         }
         return { groups: groups.length, boundaries, failures };
-    }, groupSelector);
+    }, { selector: groupSelector, expectedBetween });
 }
 
 async function snapshotFormattingControls(page) {
@@ -373,7 +371,7 @@ test.describe('Settings switch-row consistency', () => {
             for (const tab of ['sampling', 'prompting', 'editor', 'context']) {
                 const panel = await openSettingsTab(page, tab);
                 await expectSwitchSemantics(panel);
-                await expectSwitchGeometry(panel, tab === 'sampling');
+                await expectSwitchGeometry(panel);
             }
         }
     });
@@ -407,6 +405,7 @@ test.describe('Settings header consistency', () => {
                     lineHeight: style.lineHeight === expected.lineHeight,
                     letterSpacing: style.letterSpacing === expected.letterSpacing,
                     color: style.color === expected.color,
+                    noIcon: !header.querySelector('.sb-settings-category-title i[class*="fa-"]:not(:is(button, .menu_button) *)'),
                 };
                 return Object.entries(metrics).filter(([, pass]) => !pass)
                     .map(([metric]) => `${title.textContent.trim() || 'unnamed'}: ${metric}`);
@@ -558,7 +557,7 @@ test.describe('Prompting and Sampling consistency', () => {
         }
     });
 
-    test('Backend categories keep 24px boundaries and 8px internal gaps across layouts', async ({ page }) => {
+    test('Backend categories keep 24px boundaries (18px compact) and 6px internal gaps across layouts', async ({ page }) => {
         test.setTimeout(120000);
         for (const width of [1440, 390]) {
             await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
@@ -572,8 +571,9 @@ test.describe('Prompting and Sampling consistency', () => {
                         ['context', '#AdvancedFormatting > .sb-formatting-group'],
                     ]) {
                         const panel = await openSettingsTab(page, tab);
-                        await expect.poll(async () => (await readBackendCategorySpacing(panel, selector)).failures).toEqual([]);
-                        const metrics = await readBackendCategorySpacing(panel, selector);
+                        const expectedBetween = [24, 18][Number(compact)];
+                        await expect.poll(async () => (await readBackendCategorySpacing(panel, selector, expectedBetween)).failures).toEqual([]);
+                        const metrics = await readBackendCategorySpacing(panel, selector, expectedBetween);
                         expect(metrics.groups).toBeGreaterThan(1);
                         expect(metrics.boundaries).toBeGreaterThan(0);
                     }
@@ -601,7 +601,7 @@ test.describe('Prompting and Sampling consistency', () => {
         expect(after).toEqual(before);
     });
 
-    test('Sampling is a full-width single column with compact rows at 1920×1080', async ({ page }) => {
+    test('Sampling is a full-width single column with the shared rows at 1920×1080', async ({ page }) => {
         await page.setViewportSize({ width: 1920, height: 1080 });
         await switchBackend(page, 'textgenerationwebui');
         const sampling = await openSettingsTab(page, 'sampling');
@@ -623,8 +623,7 @@ test.describe('Prompting and Sampling consistency', () => {
         expect(nonFullWidthCards).toEqual([]);
 
         const incorrectRows = await sampling.locator('.sb-sampling-group:visible .ds-row:visible').evaluateAll(rows => rows.flatMap(row => {
-            const subtitle = Boolean(row.querySelector('.ds-row-subtitle'));
-            const expectedMinimum = subtitle ? 44 : 36;
+            const expectedMinimum = 50;
             const style = getComputedStyle(row);
             return parseFloat(style.minHeight) >= expectedMinimum && parseFloat(style.height) >= expectedMinimum
                 ? [] : [`${row.id || row.className}: expected ${expectedMinimum}px, got ${style.minHeight}/${style.height}`];

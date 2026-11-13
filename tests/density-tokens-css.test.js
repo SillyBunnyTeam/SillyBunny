@@ -23,8 +23,15 @@ const SHEETS = [
 const TOKENS = [
     ['--sb-control-min-height', 38, 44, 32, 44],
     ['--sb-field-min-height', 46, 44, 40, 44],
-    ['--sb-density-row-min-height', 44, 44, 40, 44],
+    ['--sb-density-row-min-height', 50, 50, 46, 46],
     ['--sb-density-row-padding-block', 6, 6, 6, 6],
+    ['--sb-density-row-padding-inline', 12, 12, 12, 12],
+    ['--sb-density-row-gap', 6, 6, 6, 6],
+    ['--sb-density-row-text-gap', 3, 3, 3, 3],
+    ['--sb-settings-group-gap', 24, 24, 18, 18],
+    ['--sb-settings-heading-gap', 6, 6, 6, 6],
+    ['--sb-settings-inset', 12, 12, 9, 9],
+    ['--sb-settings-inset-top', 24, 24, 18, 18],
     ['--sb-density-container-padding', 12, 12, 9, 9],
     ['--sb-row-gap', 10, 10, 8, 8],
 ];

@@ -310,7 +310,7 @@ body.reduced-motion .sb-list-editor__divider::before {
 
 .ds-row.ds-button-row {
     justify-content: center;
-    gap: 8px;
+    gap: var(--sb-density-row-gap);
     text-align: center;
 }
 
@@ -540,7 +540,10 @@ body.reduced-motion .sb-list-editor__divider::before {
 
 @media (pointer: coarse) {
     .ds-row--activatable,
-    .ds-row.ds-button-row,
+    .ds-row.ds-button-row {
+        min-height: var(--sb-density-row-min-height);
+    }
+
     .ds-row-entry input,
     .sb-status-page .sb-status-page__action {
         min-height: 44px;
@@ -1261,9 +1264,10 @@ body.reduced-motion [data-selection-mode='true'] button.menu_button.sb-selection
 .ds-row.ds-row--stacked,
 #sb-settings-page .sb-settings-mounted-shell :is(.ds-pref-group, .sb-settings-flat-section) > .ds-row.ds-row--stacked {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: stretch;
-    gap: 6px;
-    padding-block: 10px;
+    gap: var(--sb-density-row-gap);
+    padding-block: var(--sb-density-row-padding-block);
 }
 
 .ds-row.ds-row--stacked > .ds-row-suffix {

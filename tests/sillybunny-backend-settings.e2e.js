@@ -79,8 +79,8 @@ async function expectNoOverflow(panel) {
     await expect.poll(() => panel.locator('.sb-shell-panel-scroller').evaluate(scroller => scroller.scrollWidth - scroller.clientWidth)).toBeLessThanOrEqual(1);
 }
 
-async function expectSwitchGeometry(root, compactSampling = false) {
-    const readFailures = () => root.locator('input[type="checkbox"]:visible').evaluateAll((inputs, compactSampling) => inputs.flatMap(input => {
+async function expectSwitchGeometry(root) {
+    const readFailures = () => root.locator('input[type="checkbox"]:visible').evaluateAll(inputs => inputs.flatMap(input => {
         const row = input.closest('.ds-row-switch');
         const id = input.id || input.dataset.name || input.getAttribute('aria-label');
         if (!row) return [`${id}: missing switch row`];
@@ -89,15 +89,15 @@ async function expectSwitchGeometry(root, compactSampling = false) {
         const switchRect = input.getBoundingClientRect();
         const suffix = input.closest('.ds-row-suffix');
         const metrics = {
-            padding: style.padding === (compactSampling ? '4px 16px' : '6px 16px'),
-            gap: style.gap === '12px',
-            minHeight: parseFloat(style.minHeight) === (row.querySelector('.ds-row-subtitle') ? (compactSampling ? 44 : 52) : (compactSampling ? 36 : 44)),
+            padding: style.padding === '6px 12px',
+            gap: style.gap === '6px',
+            minHeight: parseFloat(style.minHeight) === 50,
             suffixWidth: suffix && Math.abs(suffix.getBoundingClientRect().width - 46) <= 1,
-            rightInset: Math.abs(rowRect.right - switchRect.right - parseFloat(style.borderRightWidth) - 16) <= 1,
+            rightInset: Math.abs(rowRect.right - switchRect.right - parseFloat(style.borderRightWidth) - 12) <= 1,
             centered: Math.abs(switchRect.top + switchRect.height / 2 - rowRect.top - rowRect.height / 2) <= 1,
         };
         return Object.entries(metrics).filter(([, pass]) => !pass).map(([metric]) => `${id}: ${metric}`);
-    }), compactSampling);
+    }));
     await expect.poll(readFailures, { timeout: 5000 }).toEqual([]);
 }
 
@@ -315,7 +315,7 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await expectSamplingTaxonomy(sampling, api);
                 await expectNoOverflow(sampling);
                 await sampling.locator('details').evaluateAll(details => details.forEach(detail => { detail.open = true; }));
-                await expectSwitchGeometry(sampling, width > 620);
+                await expectSwitchGeometry(sampling);
             }
             for (const tab of ['appearance', 'interface', 'messages', 'data-security']) {
                 const panel = await openPanel(page, tab, 'right');
@@ -330,7 +330,7 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
     }
 }
 
-test('Sampling uses compact full-width rows at desktop and mobile widths', async ({ page, baseURL }) => {
+test('Sampling uses the shared full-width rows at desktop and mobile widths', async ({ page, baseURL }) => {
     test.setTimeout(120000);
     await loadSettings(page, baseURL);
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -355,27 +355,12 @@ test('Sampling uses compact full-width rows at desktop and mobile widths', async
     }))).toBe(true);
     await expectSingleColumn();
     const rows = sampling.locator('.sb-sampling-group:visible .ds-row:visible');
-    const compactHeights = await rows.evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
-    const previousGeometry = await page.addStyleTag({ content: `
-        #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row {
-            min-height: 44px;
-            padding: 6px 16px;
-        }
-        #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row:has(.ds-row-subtitle) {
-            min-height: 52px;
-        }
-    ` });
-    const previousHeights = await rows.evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
-    await previousGeometry.evaluate(style => style.remove());
-    expect(compactHeights.length).toBeGreaterThan(0);
-    expect(compactHeights.every((height, index) => height >= 32 && height <= previousHeights[index] + 1)).toBe(true);
+    const rowHeights = await rows.evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
+    expect(rowHeights.length).toBeGreaterThan(0);
+    expect(rowHeights.every(height => height + 1 >= 50)).toBe(true);
     await expect.poll(() => rows.evaluateAll(rows => rows.every(row => {
         const style = getComputedStyle(row);
-        if (row.classList.contains('sb-sampling-help-row')) {
-            return style.padding === '6px 16px' && parseFloat(style.minHeight) === 44;
-        }
-        return style.padding === '4px 16px'
-            && parseFloat(style.minHeight) === (row.querySelector('.ds-row-subtitle') ? 44 : 36);
+        return style.padding === '6px 12px' && parseFloat(style.minHeight) === 50;
     }))).toBe(true);
     for (const selector of ['#dryBlock', '#xtc_block']) {
         const expander = sampling.locator(`details[data-sb-sampling-control="${selector}"]`);
@@ -385,7 +370,7 @@ test('Sampling uses compact full-width rows at desktop and mobile widths', async
         await expect.poll(() => expander.locator('.ds-row-expander-content .ds-row:visible').evaluateAll(rows => rows.every(row => {
             const rect = row.getBoundingClientRect();
             const text = row.querySelector('.ds-row-text')?.getBoundingClientRect();
-            return text && Math.abs(text.left - rect.left - 16) <= 1 && getComputedStyle(row).display === 'flex';
+            return text && Math.abs(text.left - rect.left - 12) <= 1 && getComputedStyle(row).display === 'flex';
         }))).toBe(true);
     }
     const expectCleanSeparators = async () => expect.poll(() => preferenceGroups.evaluateAll(groups => groups.flatMap(group => {

@@ -527,19 +527,6 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     background: var(--sb-flat-active-bg);
 }
 
-@container sb-list-editor-detail (width < 560px) {
-    #sb-settings-page .sb-settings-mounted-shell .sb-wi-settings .ds-pref-group > .ds-row:has(> .ds-row-suffix > :is(input[type='range'], select)) {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 6px;
-    }
-
-    .sb-wi-settings .ds-row:has(> .ds-row-suffix > :is(input[type='range'], select)) > :is(.ds-row-text, .ds-row-suffix) {
-        flex: 0 0 auto;
-        width: 100%;
-    }
-}
-
 @media (max-width: 768px) {
     .sb-wi-settings > .sb-wi-detail-header {
         padding-inline: 4px;

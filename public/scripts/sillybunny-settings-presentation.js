@@ -437,6 +437,9 @@ const SB_TITLE_SELECTORS = Object.freeze([
     ':scope > strong',
 ]);
 
+/** The decorative icon an authored drawer header puts before its title. */
+const SB_HEADING_ICON_SELECTOR = ':scope > :is(b, strong) > i[class*="fa-"]:first-child, :scope > .flex-container > :is(b, strong) > i[class*="fa-"]:first-child';
+
 /** Things a section title is never taken from: description lines and the controls beside them. */
 const SB_TITLE_EXCLUDE_SELECTOR = 'small, .menu_button, button, select, input, textarea, label';
 
@@ -768,6 +771,9 @@ function ensureDescription(section, heading, promoteTooltip) {
     if (titleElement !== header && titleElement instanceof HTMLElement) {
         titleElement.classList.add('sb-settings-category-title');
     }
+
+    // A group heading carries no icon, but the authored drawer headers in index.html lead with one.
+    for (const icon of header.querySelectorAll(SB_HEADING_ICON_SELECTOR)) icon.remove();
 
     if (promoteTooltip && !header.querySelector(':scope > .sb-settings-category-heading')) {
         const title = titleElement;

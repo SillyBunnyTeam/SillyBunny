@@ -78,6 +78,9 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
 
     const context = getAuditContext(root);
     const records = [];
+    const isCompactMode = root.ownerDocument.documentElement.dataset.sbCompactMode === 'true';
+    const expectedInset = 12;
+    const minimumHeight = isCompactMode ? 46 : 50;
     const groups = [
         ...(root.matches('.ds-pref-group') ? [root] : []),
         ...root.querySelectorAll('.ds-pref-group'),
@@ -152,13 +155,13 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
             const isControl = element.matches('input, select, textarea');
             const contentPadding = isControl ? 0 : parseFloat(style.paddingLeft || '0') + parseFloat(style.borderLeftWidth || '0');
             const inset = element.getBoundingClientRect().left + contentPadding - groupLeft;
-            addRecord(element, 'content-inset', { inset, expected: 16 }, Math.abs(inset - 16) <= 1);
+            addRecord(element, 'content-inset', { inset, expected: expectedInset }, Math.abs(inset - expectedInset) <= 1);
         }
 
         for (const suffix of group.querySelectorAll('.ds-row > .ds-row-suffix')) {
             if (!isVisible(suffix)) continue;
             const rightInset = groupRight - suffix.getBoundingClientRect().right;
-            addRecord(suffix, 'content-inset', { rightInset, expected: 16 }, Math.abs(rightInset - 16) <= 1);
+            addRecord(suffix, 'content-inset', { rightInset, expected: expectedInset }, Math.abs(rightInset - expectedInset) <= 1);
         }
 
         const rows = [...group.querySelectorAll('.ds-row')].filter(isVisible);
@@ -178,15 +181,13 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
                 borderBottomWidth: bottomWidth,
             }, Math.abs(leftInset) <= 1 && Math.abs(rightInset) <= 1);
 
-            const isCompactSampling = Boolean(row.closest('.sb-sampling-panel'));
-            const minimumHeight = isCompactSampling ? 36 : 44;
             const actualHeight = rect.height;
             const geometryPass = parseFloat(rowStyle.minHeight) + 1 >= minimumHeight && actualHeight + 1 >= minimumHeight;
             addRecord(row, 'row-geometry', {
                 minHeight: parseFloat(rowStyle.minHeight),
                 actualHeight,
                 expectedMinimum: minimumHeight,
-                compactSampling: isCompactSampling,
+                compact: isCompactMode,
             }, geometryPass);
 
             const verticalControls = [
@@ -416,8 +417,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#MovingUI-presets-block', rule: 'content-inset', reason: 'Moving UI presets block uses bespoke two-row layout; inset check does not apply' },
     // SillyBunny: Connections tab uses fully bespoke provider-slot layout with no .ds-row elements; cross-tab parity cannot derive a signature.
     { selector: '[data-sb-panel="connections"]', rule: 'cross-tab-parity', reason: 'Connections uses bespoke provider-slot layout; no .ds-row elements for signature derivation' },
-    // SillyBunny: Sampling uses intentionally compact rows (44px vs 52px standard); parity against other backend tabs is expected to differ.
-    { selector: '[data-sb-panel="sampling"]', rule: 'cross-tab-parity', reason: 'Sampling panel uses compact 44px rows by design; parity with 52px standard rows is intentional' },
     // SillyBunny: tab root containers and structural mount points — row-edges and content-inset expect full-bleed .ds-row anatomy but these containers add their own wrapper padding.
     { selector: '#sb-appearance-content', rule: 'row-edges', reason: 'Tab root container with wrapper padding; row-edge inset check does not apply' },
     { selector: '#sb-appearance-content', rule: 'content-inset', reason: 'Tab root container with wrapper padding; content-inset check does not apply' },
@@ -435,7 +434,7 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#GoogleFont-block', rule: 'row-edges', reason: 'Font picker sub-drawer adds container padding; row-edge check does not apply' },
     { selector: '#GoogleFont-block', rule: 'content-inset', reason: 'Font picker sub-drawer adds container padding; content is double-inset by design' },
     // SillyBunny: upstream sampling blocks with non-standard padding.
-    { selector: '#logit_bias_block_ooba', rule: 'content-inset', reason: 'Upstream logit-bias block uses 12px container padding rather than the standard 16px' },
+    { selector: '#logit_bias_block_ooba', rule: 'content-inset', reason: 'Upstream logit-bias block adds its own container padding on top of the row inset' },
     { selector: '#sampler_priority_block_ooba', rule: 'row-edges', reason: 'Upstream sampler priority block; rows are arranged in a drag-sortable list, not full-bleed .ds-row anatomy' },
     { selector: '#sampler_priority_block_ooba', rule: 'content-inset', reason: 'Upstream sampler priority block; inset measurement is not meaningful for a sortable list' },
     { selector: ':is(#sampler_order_block_kcpp, #sampler_order_block_lcpp, [name="KoboldSamplerOrderBlock"])', rule: 'content-inset', reason: 'Upstream sampler order block; centred title and description above a drag-sortable list' },

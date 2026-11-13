@@ -35,8 +35,9 @@ export const rules = {
         {
             id: 'entry',
             selectors: [
-                { id: 'text-pole', selector: 'input.text_pole:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])' },
-                { id: 'own', selector: 'input[type="text"], input:not([type])' },
+                // The number of a spin row is part of the row, which draws the field (DESIGN.md Spin row).
+                { id: 'text-pole', selector: 'input.text_pole:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.ds-row--spin input.ds-spin)' },
+                { id: 'own', selector: ':is(input[type="text"], input:not([type])):not(.ds-row--spin input.ds-spin)' },
             ],
             properties: [
                 { property: 'offsetHeight', token: '--sb-field-min-height', source: 'DESIGN.md' },

@@ -977,7 +977,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     }
 
     .sb-shell-panel-scroller {
-        padding: 12px 14px var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px)));
+        padding-bottom: var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px)));
     }
 
     .sb-brand-title,
@@ -1008,14 +1008,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         block-size: 24px;
         flex-basis: 24px;
         font-size: inherit;
-    }
-
-    .sb-shell-column {
-        gap: 14px;
-    }
-
-    .sb-shell-root-right .sb-settings-tab-content {
-        gap: 16px;
     }
 
     .sb-shell-callout,

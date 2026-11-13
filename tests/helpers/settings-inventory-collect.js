@@ -196,10 +196,11 @@ export function installInventoryApi({ secretNames = [], saveDelay = 1000 } = {})
         if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) {
             return false;
         }
-        const rect = el.getBoundingClientRect();
-        if (rect.width < 1 || rect.height < 1) {
+        const own = el.getBoundingClientRect();
+        if (own.width < 1 || own.height < 1) {
             return false;
         }
+        let rect = { left: own.left, right: own.right, top: own.top, bottom: own.bottom };
         for (let node = el.parentElement; node && node !== document.documentElement; node = node.parentElement) {
             const parentStyle = getComputedStyle(node);
             if (parentStyle.display === 'none' || parentStyle.visibility === 'hidden' || Number(parentStyle.opacity) === 0) {
@@ -208,12 +209,23 @@ export function installInventoryApi({ secretNames = [], saveDelay = 1000 } = {})
             // Only an axis that clips cuts the element off; a scroller (`auto`) brings it into view.
             const clipsX = /^(?:hidden|clip)$/.test(parentStyle.overflowX);
             const clipsY = /^(?:hidden|clip)$/.test(parentStyle.overflowY);
+            const box = node.getBoundingClientRect();
             if (clipsX || clipsY) {
-                const box = node.getBoundingClientRect();
                 if ((clipsX && (box.width < 1 || rect.right <= box.left || rect.left >= box.right))
                     || (clipsY && (box.height < 1 || rect.bottom <= box.top || rect.top >= box.bottom))) {
                     return false;
                 }
+            }
+            // Beyond a scroller the element stands where the scroller shows it, so a taller page is not cut off by the frame around it.
+            const scrollsX = /^(?:auto|scroll)$/.test(parentStyle.overflowX);
+            const scrollsY = /^(?:auto|scroll)$/.test(parentStyle.overflowY);
+            if (scrollsX || scrollsY) {
+                rect = {
+                    left: scrollsX ? box.left : rect.left,
+                    right: scrollsX ? box.right : rect.right,
+                    top: scrollsY ? box.top : rect.top,
+                    bottom: scrollsY ? box.bottom : rect.bottom,
+                };
             }
             if (node === root) {
                 break;

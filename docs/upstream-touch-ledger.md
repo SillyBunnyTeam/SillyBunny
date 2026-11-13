@@ -725,6 +725,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-06-06 Bug 1 transparency migration. |
 | Owner | Refactor integrator. |
 
+### `public/css/backgrounds.css` - Backgrounds settings rows
+| Field | Value |
+| --- | --- |
+| File | `public/css/backgrounds.css` |
+| Area | The Backgrounds settings page header rows (Background Fitting). |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The shared `.ds-row` rules in `public/css/sillybunny-tabs.css`, where a row's control moves under its title only when both do not fit (`--sb-row-title-min`). |
+| Adapter shape | The `@media screen and (max-width: 620px)` block no longer stacks `.bg-header-row-1.ds-row` or widens `#background_fitting`; a `SillyBunny:` comment marks the place. The rest of the block is upstream's. |
+| Protecting tests | `tests/sillybunny-settings-consistency.e2e.js`, `tests/sillybunny-backend-settings.e2e.js`. |
+| Validation | 2026-11-13: root and tests lint, the full unit run, the e2e specs that name the changed classes. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-13, UI polish sweep (task 2.9). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/sillybunny-tabs.js` - menu layout and character drawer (fork seam reference)
 | Field | Value |
 | --- | --- |

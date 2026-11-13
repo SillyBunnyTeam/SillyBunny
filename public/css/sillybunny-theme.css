@@ -78,9 +78,22 @@
     --sb-density-floor: 32px;
     --sb-control-min-height: max(var(--sb-density-floor), calc(38px - 6px * var(--sb-density-t)));
     --sb-field-min-height: max(var(--sb-density-floor), calc(46px - 6px * var(--sb-density-t)));
-    /* A row is a target, so compact keeps its 44px; only a row that is not a target may shrink. */
-    --sb-density-row-min-height: max(var(--sb-density-floor), calc(44px - 4px * var(--sb-density-t)));
+    /* A row is a target, so compact keeps the floor; only a row that is not a target may shrink. */
+    --sb-density-row-min-height: max(var(--sb-density-floor), calc(50px - 4px * var(--sb-density-t)));
     --sb-density-row-padding-block: 6px;
+    --sb-density-row-padding-inline: 12px;
+    /* Between the parts of a row (text and control), and between the lines of a group's heading block. */
+    --sb-density-row-gap: 6px;
+    --sb-density-row-text-gap: 3px;
+    /* A row's control stays beside its title until both no longer fit: the title gets at least the first
+       size and a range, select or field the second, in units of the row's own text size. */
+    --sb-row-title-min: 7em;
+    --sb-row-control-min: 10em;
+    /* A settings page: groups apart, the heading block above its box, and the page's own padding. */
+    --sb-settings-group-gap: calc(24px - 6px * var(--sb-density-t));
+    --sb-settings-heading-gap: 6px;
+    --sb-settings-inset: var(--sb-density-container-padding);
+    --sb-settings-inset-top: calc(24px - 6px * var(--sb-density-t));
     --sb-density-container-padding: calc(12px - 3px * var(--sb-density-t));
     --sb-row-gap: calc(10px - 2px * var(--sb-density-t));
     --sb-section-gap: calc(14px - 4px * var(--sb-density-t));
@@ -3560,7 +3573,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     margin: 0;
 }
 
-.sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers] {
+.sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers]:not(.ds-row) {
     display: flex;
     flex-direction: column;
     gap: 5px;
@@ -3738,7 +3751,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 @media screen and (max-width: 768px) {
-    .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers] {
+    .sb-sampling-control-card.sb-sampling-textgen-card:not(.sb-sampling-large-card):not(.sb-sampling-multi-card) > [data-tg-samplers]:not(.ds-row) {
         display: flex;
         flex-direction: column;
         gap: 5px;
@@ -4455,9 +4468,9 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     gap: 8px;
 }
 
-#openai_api .range-block,
-#openai_settings .range-block,
-#range_block_openai .range-block {
+#openai_api .range-block:not(.ds-row),
+#openai_settings .range-block:not(.ds-row),
+#range_block_openai .range-block:not(.ds-row) {
     align-items: stretch;
     justify-content: flex-start;
     gap: 10px;
@@ -4790,9 +4803,9 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         grid-template-columns: 1fr;
     }
 
-    #openai_api .checkbox_label,
-    #openai_settings .checkbox_label,
-    #range_block_openai .checkbox_label {
+    #openai_api .checkbox_label:not(.ds-row),
+    #openai_settings .checkbox_label:not(.ds-row),
+    #range_block_openai .checkbox_label:not(.ds-row) {
         min-height: var(--sb-control-min-height);
         padding-block: 2px;
     }
@@ -4802,7 +4815,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     #range_block_openai .oneline-dropdown {
         grid-template-columns: minmax(0, 1fr);
         align-items: stretch;
-        gap: 8px;
+        gap: var(--sb-density-row-gap);
     }
 
     #openai_settings .oneline-dropdown > label,
@@ -4871,7 +4884,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 #AdvancedFormatting .sb-reasoning-toggle-grid .checkbox_label,
 #AdvancedFormatting .sb-reasoning-meta-row .checkbox_label,
 #AdvancedFormatting .sb-reasoning-max-field {
-    min-height: 0;
+    min-height: var(--sb-density-row-min-height);
     padding: 12px 14px;
     border-radius: var(--sb-radius-md);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
@@ -7367,6 +7380,18 @@ dialog.popup.sb-dialog.sb-icon-picker {
 /* Select2 remains initialized beside the source select; the shared picker owns presentation. */
 .sb-dialog .ds-select-row .select2-container {
     display: none !important;
+}
+
+/* The height of a dialog decides where its art stands on the device pixel grid, and the art is only even at the heights
+   its rows gave it (44px minimum, 52px with a subtitle, 16px inset, 12px gap). */
+.sb-dialog:has(.sbArtFigure) {
+    --sb-density-row-min-height: max(var(--sb-density-floor), calc(44px - 4px * var(--sb-density-t)));
+    --sb-density-row-padding-inline: 16px;
+    --sb-density-row-gap: 12px;
+}
+
+.sb-dialog:has(.sbArtFigure) .ds-row:has(.ds-row-subtitle) {
+    min-height: calc(var(--sb-density-row-min-height) + 8px);
 }
 
 /* Adopted rows retain caller selectors without inheriting generic checkbox-label spacing. */
