@@ -14417,6 +14417,19 @@ function addPersonaOption(picker, avatarId, name, title, isActive, context) {
     picker.appendChild(option);
 }
 
+/**
+ * The upstream Options button (☰) is a bare `div`: it gets a button role, a name and a tooltip, and its sheet on a phone
+ * takes the same name.
+ */
+function nameChatActionsButton() {
+    const button = document.getElementById('options_button');
+    if (!(button instanceof HTMLElement)) return;
+    const label = t`Chat Actions`;
+    if (!button.hasAttribute('role')) button.setAttribute('role', 'button');
+    button.setAttribute('aria-label', label);
+    button.title = label;
+}
+
 function initAll() {
     if (sbState.initialized) {
         return;
@@ -14483,6 +14496,7 @@ function initAll() {
     setDesktopButtonScale(sbState.desktopButtonScale, { persist: false });
     setMobileButtonScale(sbState.mobileButtonScale, { persist: false });
     bindComposerControlPlacement();
+    nameChatActionsButton();
     adoptComposerMenus();
     initChatAvatarVariables();
     buildTopBar();

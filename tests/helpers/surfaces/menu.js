@@ -933,13 +933,13 @@ export const surfaces = [
     }),
     ...[
         ['more', 'Agent editor More menu', menuItemWith('Duplicate'), async page => {
-            await openFrom(page, '.ica-agent-detail button[aria-label="More…"]');
+            await openFrom(page, '.ica-agent-detail button[aria-label="Agent Actions"]');
         }],
         ['sections', 'Agent editor Sections menu', menuItemWith('Conditions'), async page => {
             if (await page.locator('.ica-agent-detail button[aria-label="Sections"]').filter({ visible: true }).count()) {
                 await openFrom(page, '.ica-agent-detail button[aria-label="Sections"]');
             } else {
-                await openFrom(page, '.ica-agent-detail button[aria-label="More…"]');
+                await openFrom(page, '.ica-agent-detail button[aria-label="Agent Actions"]');
                 await chooseItem(page, 'Sections');
             }
         }],

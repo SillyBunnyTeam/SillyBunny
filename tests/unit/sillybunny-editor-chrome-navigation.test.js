@@ -222,9 +222,9 @@ describe('mountEditorChrome shared header', () => {
         expect(wrapper.contains(more)).toBe(true);
     });
 
-    test('tooltips: Cancel and Save say their word, Back and the item menu carry the copy placeholder', () => {
+    test('tooltips: Cancel and Save say their word, Back says Back, and the item menu takes the label the editor gives it', () => {
         makeMedia();
-        const { chrome, controls } = slotted();
+        const { chrome, controls } = slotted({ itemMenuLabel: 'Entry Actions' });
         chrome.render({ mode: 'edit', dirty: true, title: 'Entry' });
         expect(controls.cancel.title).toBe('Cancel');
         expect(controls.save.title).toBe('Save');
@@ -235,8 +235,9 @@ describe('mountEditorChrome shared header', () => {
         expect(controls.save.title).toBe('Save');
         expect(controls.back.title).toBe('Back');
         expect(controls.back.dataset.sbCopyPlaceholder).toBeUndefined();
-        expect(controls.more.title).toBe('TODO(copy)');
-        expect(controls.more.dataset.sbCopyPlaceholder).toBe('true');
+        expect(controls.more.title).toBe('Entry Actions');
+        expect(controls.more.getAttribute('aria-label')).toBe('Entry Actions');
+        expect(controls.more.dataset.sbCopyPlaceholder).toBeUndefined();
     });
 
     test('keeps the accessible names that the editors set', () => {

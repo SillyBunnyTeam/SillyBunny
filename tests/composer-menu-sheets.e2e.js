@@ -9,9 +9,9 @@ import { DESKTOP, PHONE, bootMiscWithChat } from './helpers/dialog-accessibility
  * goes in and comes back to the trigger.
  */
 
-const SHOTS = '/tmp/opencode/ui-sweep-a2';
+const SHOTS = '/tmp/opencode/composer-menu-sheets';
 const MENUS = [
-    { name: 'Options menu', node: '#options', trigger: '#options_button', row: '#options .options-content a:visible', title: null },
+    { name: 'Options menu', node: '#options', trigger: '#options_button', row: '#options .options-content a:visible', title: 'Chat Actions' },
     { name: 'wand menu', node: '#extensionsMenu', trigger: '#extensionsMenuButton', row: '#extensionsMenu > .extension_container > div:visible, #extensionsMenu > .list-group-item:visible', title: 'Extensions' },
 ];
 
@@ -69,6 +69,11 @@ test.describe('on a phone', () => {
         test(`the ${menu.name} is a bottom sheet with a handle and a scrim, and Escape closes it and returns the focus`, async ({ page, baseURL }) => {
             mkdirSync(SHOTS, { recursive: true });
             await boot(page, baseURL, PHONE);
+            if (menu.trigger === '#options_button') {
+                await expect(page.locator(menu.trigger)).toHaveRole('button');
+                await expect(page.locator(menu.trigger)).toHaveAccessibleName('Chat Actions');
+                await expect(page.locator(menu.trigger)).toHaveAttribute('title', 'Chat Actions');
+            }
             await openMenu(page, menu);
             await waitForFocusIn(page, menu);
 

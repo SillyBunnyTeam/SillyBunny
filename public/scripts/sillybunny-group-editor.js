@@ -374,6 +374,7 @@ function _mountChrome() {
             dirty: document.getElementById('sb_group_editor_dirty'),
             more: document.getElementById('sb_group_editor_more'),
         },
+        itemMenuLabel: t`Group Actions`,
         onBack: _handleBack,
         onCancel: () => {
             // Cancel is disabled when clean, so a click is intentional.

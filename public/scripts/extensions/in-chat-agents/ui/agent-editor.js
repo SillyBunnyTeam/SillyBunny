@@ -90,7 +90,7 @@ export function mountAgentDetail({
     const modeToggle = button(t`Preview`, 'eye', 'sb-persona-entry-mode-toggle');
     modeToggle.addEventListener('click', () => setPreview(!showingPreview));
     const jump = button(t`Sections`, 'list');
-    const more = button(t`More…`, 'ellipsis-vertical', 'sb-persona-entry-more sb-editor-icon-button sb-header-icon-button');
+    const more = button(t`Agent Actions`, 'ellipsis-vertical', 'sb-persona-entry-more sb-editor-icon-button sb-header-icon-button');
     more.addEventListener('click', () => preparePopup(more), { capture: true });
     const actions = element('div', 'sb-persona-entry-actions');
     actions.append(jump, more);
@@ -768,6 +768,7 @@ export function mountAgentDetail({
             save,
         },
         tokens: { element: readout, row: { host: summaryRow } },
+        itemMenuLabel: t`Agent Actions`,
         onBack: () => {
             void requestClose();
         },

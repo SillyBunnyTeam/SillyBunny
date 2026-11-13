@@ -460,6 +460,7 @@ function _mountChrome() {
             element: document.getElementById('sb_character_editor_tokens'),
             row: { host: toolbar, before: document.getElementById('sb_character_editor_quick_edit') },
         },
+        itemMenuLabel: t`Character Actions`,
         onBack: _handleBack,
         onCancel: () => {
             // Cancel is disabled when clean, so a click is intentional.

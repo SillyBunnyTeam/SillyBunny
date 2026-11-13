@@ -85,7 +85,7 @@ test('q56 dropdown sweep toggles each trigger closed on its second pointer click
             await check(trigger, `${label} row`, row.locator('.ds-row-label'));
         }
         if (id === 'pre') {
-            for (const label of ['More…', 'Sections', 'Connection Profile', 'Category']) {
+            for (const label of ['Agent Actions', 'Sections', 'Connection Profile', 'Category']) {
                 const trigger = editor.detail.getByRole('button', { name: label, exact: true });
                 await check(trigger, label);
             }
@@ -470,7 +470,7 @@ test('round2 every ordered header popup pair replaces the previous surface', asy
         add: () => activate(editor.root.getByRole('button', { name: 'Add Agent', exact: true })),
         listMore: () => activate(editor.root.getByRole('button', { name: 'Agents Menu', exact: true })),
         filter: () => activate(editor.root.getByRole('button', { name: 'Filter Agents', exact: true })),
-        more: () => activate(editor.detail.getByRole('button', { name: 'More…', exact: true })),
+        more: () => activate(editor.detail.getByRole('button', { name: 'Agent Actions', exact: true })),
         sections: () => activate(editor.detail.getByRole('button', { name: 'Sections', exact: true })),
         category: () => activate(editor.detail.getByRole('button', { name: 'Category', exact: true })),
         picker: async () => {
@@ -509,7 +509,7 @@ test('round2 More survives saved, switched, preview, helper, template and create
     const editor = await setup(page, baseURL, 1440);
     const trace = [];
     async function check(state) {
-        const more = editor.detail.getByRole('button', { name: 'More…', exact: true });
+        const more = editor.detail.getByRole('button', { name: 'Agent Actions', exact: true });
         await expect(more, state).toBeVisible();
         const sample = () => more.evaluate(node => {
             const rect = node.getBoundingClientRect();
@@ -681,7 +681,7 @@ for (const width of [1440, 768, 390, 360]) {
                         await activateAgentEditorAction(page, editor.detail, 'Sections');
                         await expectAgentMenuIcons(page);
                         await page.keyboard.press('Escape');
-                        await editor.detail.getByRole('button', { name: 'More…', exact: true }).click();
+                        await editor.detail.getByRole('button', { name: 'Agent Actions', exact: true }).click();
                         await expectAgentMenuIcons(page);
                         await page.keyboard.press('Escape');
                         const overflow = await editor.detail.evaluate(node => ({
@@ -1177,7 +1177,7 @@ for (const width of [1440, 390]) {
             const dialog = page.locator('dialog[open]');
             const more = async action => {
                 await editor.detail.getByRole('button', {
-                    name: 'More…',
+                    name: 'Agent Actions',
                     exact: true,
                 }).click();
                 await page.getByRole('menuitem', {
@@ -1438,9 +1438,10 @@ for (const width of [1440, 390]) {
                     }];
                     if (node.matches('.sb-persona-entry-dirty')) return [{ kind: 'dirty' }];
                     const buttons = node.matches('button') ? [node] : [...node.querySelectorAll('button')].filter(visible);
+                    // The item menu is named by what it holds (Agent Actions, Persona Actions), so only its place is compared.
                     return buttons.map(button => ({
                         kind: 'button',
-                        label: (button.getAttribute('aria-label') || button.textContent.trim()).replaceAll('...', '…'),
+                        label: button.matches('.sb-persona-entry-more') ? 'item menu' : (button.getAttribute('aria-label') || button.textContent.trim()).replaceAll('...', '…'),
                     }));
                 }).filter(control => !['Sections', 'Preview Prompt in Context', 'Refine…'].includes(control.label));
             });
@@ -1527,8 +1528,8 @@ for (const width of [1440, 390]) {
             const agentGeometry = await samplePropertyGeometry(editor.detail, 'Category', 'Stage', 'Pin', 'Execution');
             const tasks = ['Sections', 'Preview Prompt in Context', 'Refine…'];
             const headerTasks = editor.detail.locator('.sb-persona-entry-actions > button:visible');
-            const desktopLabels = [...tasks, 'More…'];
-            const labelsByWidth = { 1440: desktopLabels, 390: ['More…'] };
+            const desktopLabels = [...tasks, 'Agent Actions'];
+            const labelsByWidth = { 1440: desktopLabels, 390: ['Agent Actions'] };
             await expect.poll(() => headerTasks.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))))
                 .toEqual(labelsByWidth[width]);
             const previewIcon = editor.detail.locator('[aria-label="Preview Prompt in Context"] > i');

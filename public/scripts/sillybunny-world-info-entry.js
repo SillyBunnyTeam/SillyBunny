@@ -111,8 +111,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     const more = button('', 'menu_button_icon sb-wi-entry-more sb-editor-icon-button sb-header-icon-button');
     more.setAttribute('aria-haspopup', 'menu');
     more.setAttribute('aria-expanded', 'false');
-    // HUMAN: replace — name of the item menu; the tooltip wording for Back and the item menu is not settled yet.
-    more.setAttribute('aria-label', t`TODO(copy)`);
+    more.setAttribute('aria-label', t`Entry Actions`);
     more.append(element('i', 'fa-solid fa-ellipsis-vertical'));
     more.firstChild.setAttribute('aria-hidden', 'true');
     more.hidden = !actions;
@@ -791,6 +790,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         root, header, content: body,
         controls: { back, title, dirty: dirtyDot, more, modes: [modes, modeToggle], cancel, save: saveButton },
         tokens: { element: readout, row: { host: summaryRow } },
+        itemMenuLabel: t`Entry Actions`,
         onBack: () => requestClose(), onCancel: discard, onSave: () => { void save(); },
         getActionSections: () => actions?.sections(more) ?? [],
         actionMenuTitle: () => model.entryTitle(draft, t`Untitled entry`),

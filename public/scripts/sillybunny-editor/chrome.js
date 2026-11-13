@@ -131,6 +131,8 @@ export function attachToLabelRow(section, control) {
  * @param {string[]} [config.overflowCandidates]  Toolbar selectors that may collapse into More, most expendable first.
  * @param {() => ActionSection[]} [config.getActionSections]  More-menu contents, built on every open.
  * @param {string|(() => string)} [config.actionMenuTitle]  A function defers translation to menu-open time.
+ * @param {string} [config.itemMenuLabel]  Tooltip and accessible name of the item menu button, named by what it holds
+ *     ("Character Actions").
  * @param {() => boolean} [config.isActive]  Skips layout work while the editor is off screen.
  * @param {boolean} [config.scrollHide=true]  Hide the chrome on mobile while scrolling down.
  * @returns {{ render: (state: ChromeState) => void, setTokens: (count: TokenCount|null) => void, scheduleOverflow: () => void, reset: () => void, dispose: () => void }}
@@ -151,6 +153,7 @@ export function mountEditorChrome(config) {
         overflowCandidates = [],
         getActionSections = () => [],
         actionMenuTitle = '',
+        itemMenuLabel = '',
         isActive = () => true,
         scrollHide = true,
     } = config;
@@ -176,12 +179,11 @@ export function mountEditorChrome(config) {
         button.addEventListener('click', () => document.getElementById(button.dataset.sbAvatarInput)?.click(), { signal });
     }
 
-    // Back's tooltip is libadwaita's back button fallback. The item menu has no wording that fits every editor yet.
-    // Accessible names stay with each editor's own aria-label.
+    // Back's tooltip is libadwaita's back button fallback; Back keeps each editor's own accessible name.
     if (controls.back) controls.back.title = t`Back`;
-    if (controls.more) {
-        controls.more.title = t`TODO(copy)`;
-        controls.more.dataset.sbCopyPlaceholder = 'true';
+    if (controls.more && itemMenuLabel) {
+        controls.more.title = itemMenuLabel;
+        controls.more.setAttribute('aria-label', itemMenuLabel);
     }
     controls.cancel.title = t`Cancel`;
 

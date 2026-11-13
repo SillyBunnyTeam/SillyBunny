@@ -295,8 +295,8 @@ describe('Persona detail structure and explicit content edits', () => {
         expect(host.querySelector('.sb-persona-entry-header > .sb-persona-entry-tokens').textContent).toBe('12 Tokens');
         expect(host.querySelector('.sb-editor-summary-row > .sb-editor-tokens--row').textContent).toBe('12 Tokens');
         const more = host.querySelector('.sb-persona-entry-more');
-        expect(more.title).toBe('TODO(copy)');
-        expect(more.getAttribute('aria-label')).toBe('More...');
+        expect(more.title).toBe('Persona Actions');
+        expect(more.getAttribute('aria-label')).toBe('Persona Actions');
         expect(host.querySelector('.sb-persona-entry-cancel').title).toBe('Cancel');
         expect(host.querySelector('.sb-persona-entry-save').title).toBe('Save');
     });

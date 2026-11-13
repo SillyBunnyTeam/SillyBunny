@@ -419,14 +419,15 @@ describe('World Info schema form', () => {
         ]);
     });
 
-    test('the item menu is in the header only when the editor gives it actions, Back has its tooltip and the menu the copy placeholder', () => {
+    test('the item menu is in the header only when the editor gives it actions, and Back and the menu are named', () => {
         expect(mount().host.querySelector('.sb-wi-entry-more').hidden).toBe(true);
         const sections = jest.fn(() => [{ items: [{ label: 'Duplicate', icon: 'fa-solid fa-copy', onSelect: jest.fn() }] }]);
         const { host } = mount({ actions: { sections } });
         const more = host.querySelector('.sb-wi-entry-more');
         expect(more.hidden).toBe(false);
-        expect(more.title).toBe('TODO(copy)');
-        expect(more.dataset.sbCopyPlaceholder).toBe('true');
+        expect(more.title).toBe('Entry Actions');
+        expect(more.getAttribute('aria-label')).toBe('Entry Actions');
+        expect(more.dataset.sbCopyPlaceholder).toBeUndefined();
         expect(host.querySelector('.sb-wi-detail-back').title).toBe('Back');
         expect(host.querySelector('.sb-wi-detail-back').getAttribute('aria-label')).toBe('Back');
         expect(host.querySelector('.sb-wi-entry-cancel').title).toBe('Cancel');

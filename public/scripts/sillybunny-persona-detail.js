@@ -128,7 +128,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     modes.classList.add('sb-persona-entry-modes');
     const modeToggle = iconButton(t`Preview`, 'eye', 'sb-persona-entry-mode-toggle');
     modeToggle.addEventListener('click', () => setPreview(!showingPreview));
-    const more = iconButton(t`More...`, 'ellipsis-vertical', 'sb-persona-entry-more sb-editor-icon-button sb-header-icon-button');
+    const more = iconButton(t`Persona Actions`, 'ellipsis-vertical', 'sb-persona-entry-more sb-editor-icon-button sb-header-icon-button');
     more.setAttribute('aria-haspopup', 'menu');
     more.setAttribute('aria-expanded', 'false');
     const actions = element('div', 'sb-persona-entry-actions');
@@ -975,6 +975,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         root, header, content: body,
         controls: { back, title: name, dirty: dirtyDot, more, modes: [modes, modeToggle], cancel, save: saveButton },
         tokens: { element: readout, row: { host: summaryRow } },
+        itemMenuLabel: t`Persona Actions`,
         onBack: () => requestClose(), onCancel: discard, onSave: () => { void save(); },
         getActionSections: actionSections, actionMenuTitle: () => draft.name, scrollHide: false,
     });

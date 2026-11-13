@@ -287,7 +287,7 @@ export async function activatePromptAction(page, detail, label) {
 export async function activateAgentEditorAction(page, detail, label) {
     const direct = detail.getByRole('button', { name: label, exact: true });
     if (await direct.isVisible()) return direct.click();
-    await detail.getByRole('button', { name: 'More…', exact: true }).click();
+    await detail.getByRole('button', { name: 'Agent Actions', exact: true }).click();
     await page.getByRole('menuitem', { name: label, exact: true }).click();
 }
 

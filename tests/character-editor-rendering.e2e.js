@@ -330,11 +330,17 @@ test('opening an alternate greeting row reveals its content with motion', async 
     await toggle.click();
     await expect(row.locator('.ds-row-expander-content')).toBeHidden();
     await expect.poll(() => countEditorAnimations(page)).toBe(0);
+    // Record the reveal when it starts: a poll for a running 250ms animation misses it on a busy machine.
+    await row.evaluate(node => {
+        const animate = Element.prototype.animate;
+        globalThis.sbGreetingRevealAnimated = false;
+        Element.prototype.animate = function (...args) {
+            if (this === node || node.contains(this)) globalThis.sbGreetingRevealAnimated = true;
+            return animate.apply(this, args);
+        };
+    });
     await toggle.click();
-    await expect.poll(() => row.evaluate(node => document.getAnimations().some(animation => {
-        const target = animation.effect?.target;
-        return target === node || (target instanceof Node && node.contains(target));
-    }))).toBe(true);
+    await expect.poll(() => page.evaluate(() => globalThis.sbGreetingRevealAnimated)).toBe(true);
 });
 
 test('opening an alternate greeting row skips motion with reduced motion', async ({ page }) => {

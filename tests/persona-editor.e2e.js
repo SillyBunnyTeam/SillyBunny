@@ -178,7 +178,7 @@ test.describe('Persona editor', () => {
         await expect(header.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue(persona.name);
         await expect(header.getByRole('radio', { name: 'Edit', exact: true })).toBeChecked();
         await expect(header.getByRole('radio', { name: 'Preview', exact: true })).not.toBeChecked();
-        await expect(header.getByRole('button', { name: 'More...', exact: true })).toBeVisible();
+        await expect(header.getByRole('button', { name: 'Persona Actions', exact: true })).toBeVisible();
         await expect(header.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
         const save = header.getByRole('button', { name: 'Save', exact: true });
         await expect(save).toBeDisabled();
