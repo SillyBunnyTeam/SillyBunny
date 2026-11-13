@@ -1382,58 +1382,21 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
 }
 
 .ica-agents-search {
-    --ica-agents-search-height: 40px;
     display: flex;
     align-items: center;
     gap: 8px;
     flex: none;
-    height: var(--ica-agents-search-height);
     margin: 8px;
 }
 
-.ica-agents-search-field {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+/* The entry takes the height of the filter button beside it when that is taller. */
+.ica-agents-search > .sb-search-entry[data-variant='bar'] {
     flex: 1;
+    align-self: stretch;
     min-width: 0;
-    height: 100%;
-    padding: 0 10px;
-    border-radius: var(--sb-radius-control);
-    background: var(--sb-flat-hover-bg);
-    border: 1px solid var(--sb-shell-border);
-    cursor: text;
-}
-
-/* Focus ring and glyph match the World Info search field (`.sb-wi-search-field`). */
-.ica-agents-search-field:focus-within {
-    border-color: var(--sb-entry-focus-border);
-    box-shadow: var(--sb-entry-focus-ring);
-}
-
-.ica-agents-search .fa-magnifying-glass {
-    color: var(--sb-muted-fg);
-    flex-shrink: 0;
-}
-
-#sb-settings-page .ica-agents-editor .ica-agents-search-input {
-    min-width: 0;
-    flex: 1;
-    background: transparent;
-    border: 0;
-    padding: 0;
-    font-size: var(--sb-type-control);
-    color: var(--sb-shell-text);
-    outline: none;
-}
-
-#sb-settings-page .ica-agents-editor .ica-agents-search-input::placeholder {
-    color: var(--sb-shell-text-secondary);
-}
-
-#sb-settings-page .ica-agents-editor .ica-agents-search-input:is(:focus, :focus-visible) {
-    border: 0 !important;
-    box-shadow: none !important;
+    height: auto;
+    min-height: var(--sb-search-entry-height);
+    margin: 0;
 }
 
 /* Row boxes match the prompt editor's `.sb-prompt-box` (libadwaita card fill). */
@@ -1705,10 +1668,6 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
 }
 
 @media (pointer: coarse), (any-pointer: coarse) {
-    .ica-agents-search {
-        --ica-agents-search-height: 44px;
-    }
-
     .ica-agent-switch-target {
         min-width: 44px;
         min-height: 44px;

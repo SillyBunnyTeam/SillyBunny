@@ -283,6 +283,37 @@ test('search header toggle, Ctrl+F, type-to-search and Escape follow the prompt 
 });
 
 for (const width of [1440, 390]) {
+    test(`${width}px search entry shows Clear Entry only with text, clears and keeps the bar open, and Escape then closes it`, async ({ page, baseURL }) => {
+        const { root, saves } = await openAgents(page, baseURL, width);
+        const trigger = root.getByRole('button', { name: 'Search Agents', exact: true });
+        const search = root.getByRole('searchbox', { name: 'Search Agents', exact: true });
+        const entry = root.locator('.ica-agents-search > .sb-search-entry[data-variant="bar"]');
+        const clear = entry.getByRole('button', { name: 'Clear Entry', exact: true });
+        await trigger.click();
+        await expect(entry).toBeVisible();
+        await expect(entry.locator('input.ica-agents-search-input')).toHaveCount(1);
+        await expect(clear).toBeHidden();
+        await search.fill('Bravo');
+        await expect(clear).toBeVisible();
+        await expect(clear).toHaveAttribute('title', 'Clear Entry');
+        await expect(root.locator('.ica-agent-row')).toHaveCount(1);
+        await clear.click();
+        await expect(search).toHaveValue('');
+        await expect(search).toBeFocused();
+        await expect(clear).toBeHidden();
+        await expect(entry).toBeVisible();
+        await expect(root.locator('.ica-agent-row')).toHaveCount(4);
+        await search.fill('Bravo');
+        await expect(root.locator('.ica-agent-row')).toHaveCount(1);
+        await page.keyboard.press('Escape');
+        await expect(search).toBeHidden();
+        await expect(trigger).toBeFocused();
+        await expect(root.locator('.ica-agent-row')).toHaveCount(4);
+        expect(saves()).toHaveLength(0);
+    });
+}
+
+for (const width of [1440, 390]) {
     test(`${width}px filters live beside search and remain visibly active when search closes`, async ({ page, baseURL }) => {
         const { root, saves } = await openAgents(page, baseURL, width);
         const trigger = root.getByRole('button', { name: 'Search Agents', exact: true });
@@ -801,7 +832,7 @@ test('390px coarse controls meet 44px and interim pages keep shell and in-pane B
         const { root } = await openAgents(page, baseURL, 390);
         await root.getByRole('button', { name: 'Search Agents', exact: true }).click();
         await expect(root.getByRole('button', { name: 'Filter Agents', exact: true })).toBeVisible();
-        const targets = root.locator('.sb-list-header__button:visible, .ica-agents-search button, .ica-agent-row .ds-entity-row__button, .ica-agent-grip');
+        const targets = root.locator('.sb-list-header__button:visible, .ica-agents-search button:visible, .ica-agent-row .ds-entity-row__button, .ica-agent-grip');
         for (const target of await targets.all()) {
             const box = await target.boundingBox();
             expect(box.width).toBeGreaterThanOrEqual(44);
@@ -812,6 +843,12 @@ test('390px coarse controls meet 44px and interim pages keep shell and in-pane B
             expect(box.width).toBeGreaterThanOrEqual(44);
             expect(box.height).toBeGreaterThanOrEqual(44);
         }
+        const searchBox = root.getByRole('searchbox', { name: 'Search Agents', exact: true });
+        await searchBox.fill('Bravo');
+        const clearBox = await root.getByRole('button', { name: 'Clear Entry', exact: true }).boundingBox();
+        expect(clearBox.width).toBeGreaterThanOrEqual(44);
+        expect(clearBox.height).toBeGreaterThanOrEqual(44);
+        await searchBox.fill('');
         const switchTarget = root.locator('[data-sb-list-key="agent:qa-bravo"] .ica-agent-switch-target');
         await switchTarget.click({ position: { x: 1, y: 1 } });
         await expect(switchTarget.getByRole('switch')).toBeChecked();

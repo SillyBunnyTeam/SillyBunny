@@ -158,9 +158,9 @@
         "public/scripts/extensions/in-chat-agents/style.css": {
             "radius-literal": 1,
             "duration-literal": 1,
-            "important": 7,
+            "important": 5,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 98
+            "spacing-off-scale": 96
         },
         "public/scripts/extensions/in-chat-agents/ui/agent-editor.css": {
             "important": 3,

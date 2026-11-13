@@ -3,6 +3,7 @@ import { createEntityRow } from '../../../sillybunny-editor/entity-row.js';
 import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from '../../../sillybunny-editor/list-rows.js';
 import { createListHeader } from '../../../sillybunny-editor/list-header.js';
 import { createListSearch } from '../../../sillybunny-editor/list-search.js';
+import { createSearchEntry } from '../../../sillybunny-editor/search-entry.js';
 import { createStatusPage } from '../../../sillybunny-editor/status-page.js';
 import { createBanner } from '../../../sillybunny-editor/banner.js';
 import { createSelectionMode } from '../../../sillybunny-editor/selection-mode.js';
@@ -189,13 +190,16 @@ export function mountAgentsPanel(column) {
     const body = element('div', 'ica-agents-body');
     const searchField = element('div', 'ica-agents-search');
     searchField.hidden = true;
-    const searchEntry = element('label', 'ica-agents-search-field');
-    const searchIcon = element('i', 'fa-solid fa-magnifying-glass');
-    searchIcon.setAttribute('aria-hidden', 'true');
-    const input = element('input', 'ica-agents-search-input');
-    input.type = 'search';
-    input.placeholder = t`Search Agents…`;
-    input.setAttribute('aria-label', t`Search Agents`);
+    const searchEntry = createSearchEntry({
+        variant: 'bar',
+        className: 'ica-agents-search-field',
+        inputClassName: 'ica-agents-search-input',
+        placeholder: t`Search Agents…`,
+        label: t`Search Agents`,
+        clearLabel: t`Clear Entry`,
+        clearOnEscape: false,
+    });
+    const input = searchEntry.input;
     const run = operation => Promise.resolve().then(operation).catch(error => globalThis.toastr?.error(error.message));
     const refreshSoon = () => {
         if (frame || destroyed) return;
@@ -297,9 +301,8 @@ export function mountAgentsPanel(column) {
     filterIcon.setAttribute('aria-hidden', 'true');
     filterButton.append(filterIcon);
     filterButton.addEventListener('click', () => showMenu(filterButton, filterSections(), t`Filter Agents`));
-    searchEntry.append(searchIcon, input);
-    searchField.append(searchEntry, filterButton);
-    const search = createListSearch({ field: searchField, input, trigger: header.button('search'), scope: list, scroller: body, heightProperty: '--ica-agents-search-height', onChange: refreshSoon });
+    searchField.append(searchEntry.element, filterButton);
+    const search = createListSearch({ field: searchField, input, trigger: header.button('search'), scope: list, scroller: body, onChange: refreshSoon });
     let searchPointerActive = false;
     let pendingSearchBlur = null;
     let searchBlurFrame = 0;
@@ -820,7 +823,7 @@ export function mountAgentsPanel(column) {
             if (isActionMenuOpen() && shell.root.contains(document.activeElement)) closeActionMenu({ animate: false });
             pageController?.destroy();
             groups.forEach(group => group.sortable?.destroy());
-            unregisterNavigation(); unbindRows(); selection.destroy(); input.removeEventListener('blur', closeEmptySearchOnBlur); search.destroy(); header.destroy(); banner.destroy(); shell.destroy();
+            unregisterNavigation(); unbindRows(); selection.destroy(); input.removeEventListener('blur', closeEmptySearchOnBlur); search.destroy(); searchEntry.destroy(); header.destroy(); banner.destroy(); shell.destroy();
             controllers.delete(controller);
             mounts.delete(column);
         },
