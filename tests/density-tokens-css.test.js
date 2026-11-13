@@ -173,6 +173,38 @@ describe('density tokens', () => {
     });
 });
 
+/** Tokens that several sheets read without a fallback but that are set on the element they style, not at the root. */
+const SCOPED_SHARED_TOKENS = {
+    '--sb-search-entry-height': 'declared on .sb-search-entry, the element that reads it',
+    '--sb-mobile-composer-input-height': 'declared inside the phone media rules that read it',
+};
+
+describe('shared tokens', () => {
+    test('a token that two or more sheets read without a fallback is declared at the root', () => {
+        const withoutComments = css => css.replace(/\/\*[\s\S]*?\*\//g, '');
+        const atRoot = new Set();
+        for (const file of ['public/style.css', 'public/css/sillybunny-theme.css', 'public/css/sillybunny-tabs.css']) {
+            for (const [, body] of withoutComments(read(file)).matchAll(/^:root\s*\{([^}]*)\}/gm)) {
+                for (const [, name] of body.matchAll(/(--sb-[\w-]+)\s*:/g)) atRoot.add(name);
+            }
+        }
+        const readers = new Map();
+        for (const file of SHEETS) {
+            for (const [, name] of withoutComments(read(file)).matchAll(/var\(\s*(--sb-[\w-]+)\s*\)/g)) {
+                readers.set(name, (readers.get(name) ?? new Set()).add(file));
+            }
+        }
+        // A token that a shared rule reads is unset wherever no ancestor declares it, and the property falls back to its
+        // initial value: an undeclared radius draws square corners.
+        const undeclared = [...readers].filter(([name, files]) => files.size > 1 && !atRoot.has(name) && !(name in SCOPED_SHARED_TOKENS));
+        expect(undeclared.map(([name, files]) => `${name}: ${[...files].join(', ')}`)).toEqual([]);
+    });
+
+    test('icon controls take the control radius', () => {
+        expect(rootBlock['--sb-icon-control-radius']).toBe('var(--sb-radius-control)');
+    });
+});
+
 describe('compact rules in the SillyBunny sheets', () => {
     const rules = SHEETS.flatMap(file => [...read(file).matchAll(/([^{}]*data-sb-compact-mode[^{}]*)\{([^{}]*)\}/g)].map(([, selector, body]) => ({
         file: path.basename(file),

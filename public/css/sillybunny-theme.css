@@ -100,6 +100,7 @@
     --sb-select-arrow-space: calc(38px - 4px * var(--sb-density-t));
     --sb-select-arrow-inset: calc(14px - 2px * var(--sb-density-t));
     --sb-icon-control-size: max(var(--sb-density-floor), calc(2rem - 0.15rem * var(--sb-density-t)));
+    --sb-icon-control-radius: var(--sb-radius-control);
     --sb-inline-drawer-icon-size: max(var(--sb-density-floor), calc(2rem - 0.15rem * var(--sb-density-t)));
     --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
     --sb-field-padding-x: 12px;
