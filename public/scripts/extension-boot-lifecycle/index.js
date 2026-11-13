@@ -205,6 +205,31 @@ export function resolveExtensionActivationState({
 }
 
 /**
+ * Builds the URL of a template, stylesheet, manifest or locale file in an extension folder.
+ * The version query makes the browser fetch the file again after an update.
+ * @param {string} name Extension id.
+ * @param {string} assetPath Path of the file in the extension folder.
+ * @param {string} [version] Client version.
+ * @returns {string} URL with a version query.
+ */
+export function buildExtensionAssetUrl(name, assetPath, version) {
+    return `/scripts/extensions/${name}/${assetPath}?v=${encodeURIComponent(version || 'dev')}`;
+}
+
+/**
+ * Builds the URL of a JavaScript module in an extension folder.
+ * The URL has no query. The browser keeps one module instance for each full URL, and an
+ * extension imports its own entry module by the bare path, so a query gives it two instances.
+ * The server revalidates every JavaScript file, so an update still reaches the browser.
+ * @param {string} name Extension id.
+ * @param {string} modulePath Path of the module in the extension folder.
+ * @returns {string} URL without a query.
+ */
+export function buildExtensionModuleUrl(name, modulePath) {
+    return `/scripts/extensions/${name}/${modulePath}`;
+}
+
+/**
  * Creates the compatibility-facing extension boot lifecycle seam.
  * Runtime call sites should depend on this shape instead of individual helpers.
  * @returns {object}

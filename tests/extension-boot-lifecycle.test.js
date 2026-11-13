@@ -1,6 +1,8 @@
 import { describe, expect, test } from '@jest/globals';
 
 import {
+    buildExtensionAssetUrl,
+    buildExtensionModuleUrl,
     createExtensionBootLifecycle,
     EXTENSION_BOOT_ACTIVATION_ACTION,
     normalizeExtensionBootId,
@@ -34,6 +36,23 @@ describe('extension boot lifecycle helper', () => {
             isDuplicate: true,
             shouldRegister: false,
         });
+    });
+
+    test('adds the client version to the URL of an extension asset', () => {
+        expect(buildExtensionAssetUrl('tts', 'style.css', 'SillyBunny:v2.0.0')).toBe('/scripts/extensions/tts/style.css?v=SillyBunny%3Av2.0.0');
+        expect(buildExtensionAssetUrl('third-party/Foo', 'manifest.json', 'a b')).toBe('/scripts/extensions/third-party/Foo/manifest.json?v=a%20b');
+        expect(buildExtensionAssetUrl('tts', 'settings.html', '')).toBe('/scripts/extensions/tts/settings.html?v=dev');
+        expect(buildExtensionAssetUrl('tts', 'settings.html')).toBe('/scripts/extensions/tts/settings.html?v=dev');
+    });
+
+    test('gives an extension module a URL with no query, so it matches the bare path that its own imports use', () => {
+        expect(buildExtensionModuleUrl('tts', 'index.js')).toBe('/scripts/extensions/tts/index.js');
+        expect(buildExtensionModuleUrl('third-party/Foo', 'src/main.js')).toBe('/scripts/extensions/third-party/Foo/src/main.js');
+
+        const entry = new URL(buildExtensionModuleUrl('tts', 'index.js'), 'http://localhost');
+        const bareImport = new URL('./index.js', new URL('/scripts/extensions/tts/azure.js', 'http://localhost'));
+        expect(entry.href).toBe(bareImport.href);
+        expect(entry.search).toBe('');
     });
 
     test('sorts manifest entries by loading order then display name', () => {
