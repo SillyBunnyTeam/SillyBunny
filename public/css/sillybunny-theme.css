@@ -81,7 +81,7 @@
     /* A row is a target, so compact keeps its 44px; only a row that is not a target may shrink. */
     --sb-density-row-min-height: max(var(--sb-density-floor), calc(44px - 4px * var(--sb-density-t)));
     --sb-density-row-padding-block: 6px;
-    --sb-density-container-padding: calc(12px - 2px * var(--sb-density-t));
+    --sb-density-container-padding: calc(12px - 3px * var(--sb-density-t));
     --sb-row-gap: calc(10px - 2px * var(--sb-density-t));
     --sb-section-gap: calc(14px - 4px * var(--sb-density-t));
     --sb-select-arrow-space: calc(38px - 4px * var(--sb-density-t));

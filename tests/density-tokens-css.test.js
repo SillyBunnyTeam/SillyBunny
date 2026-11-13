@@ -25,7 +25,7 @@ const TOKENS = [
     ['--sb-field-min-height', 46, 44, 40, 44],
     ['--sb-density-row-min-height', 44, 44, 40, 44],
     ['--sb-density-row-padding-block', 6, 6, 6, 6],
-    ['--sb-density-container-padding', 12, 12, 10, 10],
+    ['--sb-density-container-padding', 12, 12, 9, 9],
     ['--sb-row-gap', 10, 10, 8, 8],
 ];
 
