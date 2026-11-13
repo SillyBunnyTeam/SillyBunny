@@ -91,13 +91,13 @@ components:
   button-primary:
     backgroundColor: "{colors.accent}"
     textColor: "{colors.on-accent}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     padding: "10px 14px"
     height: "38px; 44px on coarse pointers"
   button-secondary:
     backgroundColor: "color-mix(in srgb, {colors.foreground} 10%, transparent)"
     textColor: "{colors.foreground}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     padding: "10px 14px"
     height: "38px; 44px on coarse pointers"
   button-suggested:
@@ -108,7 +108,7 @@ components:
   input-field:
     backgroundColor: "{colors.window}"
     textColor: "{colors.foreground}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.control}"
     padding: "12px"
     height: "46px"
   shell-tab-active:
@@ -120,13 +120,13 @@ components:
   card-surface:
     backgroundColor: "color-mix(in srgb, {colors.foreground} 8%, transparent); View in light tone"
     textColor: "{colors.foreground}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.card}"
     shadow: "Card Shadow"
     padding: "14px"
   pref-group:
     backgroundColor: "color-mix(in srgb, {colors.foreground} 8%, transparent); View in light tone"
     textColor: "{colors.foreground}"
-    rounded: "{rounded.lg}; {rounded.card} inside editors"
+    rounded: "{rounded.card}"
     shadow: "Card Shadow"
     padding: "0; rows 6px 16px"
   popover-surface:
@@ -148,7 +148,7 @@ components:
   chip-enabled:
     backgroundColor: "color-mix(in srgb, {colors.accent} 16%, transparent)"
     textColor: "{colors.foreground}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.pill}"
     padding: "6px 8px"
   shell-navigation-control:
     backgroundColor: "transparent"
@@ -632,7 +632,7 @@ Patterns follow the HIG pattern groups. Sizes and corners come from Layout and S
 - **Focus / Disabled:** Small controls use a `2px` focus-ring outline with an offset so the ring stays visible around the control. Disabled controls fade to the disabled opacity and show a `not-allowed` cursor.
 
 #### Chips
-- **Style:** Compact rounded controls at `14px`, `6px 8px` padding, readable text, and a tonal background.
+- **Style:** Compact controls at the Pill radius, `6px 8px` padding, readable text, and a tonal background.
 - **State:** Enabled or selected chips use a 16% Accent tint and a status icon. Inactive chips remain legible and low emphasis.
 - **Tag lists (HIG Text Fields, `AdwWrapBox`):** A set of chips flows like words in a line: it wraps to the next line when the next chip does not fit, with a gap between the chips of a line and a gap between lines. A tag field shows each value as a chip inside the field, so it reads well and each value can be removed; it needs a custom implementation, as no standard field has tags.
 - **Status chips:** A non-interactive chip that names a row's state in words, placed before the row's buttons. A positive or finished state (Installed, Enabled, Done) takes a 16% Success Green tint and a leading check in Success Green; any other state (Not installed, Skipped) takes an 8% body-colour tint and no icon. The text uses the strong contrast ink rather than the body colour, so it reaches 4.5:1 on the tint in every bundled theme, and the check reaches 3:1. The words always carry the state; colour and the check only reinforce it.
