@@ -11,7 +11,7 @@
  */
 
 import { FIXTURES } from './fixture-data.js';
-import { closeOverlays, dismissDialogs, openLegacyToggle } from './menu-steps.js';
+import { closeComposerSheets, closeOverlays, dismissDialogs, openLegacyToggle } from './menu-steps.js';
 import { selectBackend, settle } from './steps.js';
 
 /** The shell switches to its mobile layout at this width (`(max-width: 768px)`). */
@@ -181,8 +181,12 @@ export async function setConnection(page, connected) {
     }, connected);
 }
 
-/** Closes the two menus of the composer, which jQuery fades, by their own buttons. */
+/**
+ * Closes the two menus of the composer, which jQuery fades, by their own buttons; on a phone they are sheets whose scrim
+ * covers the buttons, and a press on the scrim closes them.
+ */
 export async function closeLegacyMenus(page) {
+    await closeComposerSheets(page);
     for (const [button, menu] of [['#options_button', '#options'], ['#extensionsMenuButton', '#extensionsMenu']]) {
         if (await page.locator(menu).isVisible()) {
             await page.locator(button).click();

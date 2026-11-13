@@ -7,7 +7,7 @@
  */
 
 import {
-    ARCHIVE_MENU_BUTTON, chooseItem, openAuditLorebook, openAuditPersona, closeAndWait, closePromptPopover, MENU_ROOT, openAgentEditor, openAgentList, openArchiveList, openArchiveSelection, openAuditCharacterEditor, openAuditChat,
+    ARCHIVE_MENU_BUTTON, chooseItem, closeComposerSheets, openAuditLorebook, openAuditPersona, closeAndWait, closePromptPopover, MENU_ROOT, openAgentEditor, openAgentList, openArchiveList, openArchiveSelection, openAuditCharacterEditor, openAuditChat,
     openAuditConversation, openAuditGroupEditor, openCharacterList, openChatHistory, openDataBank, openExtensionsManager, openFrom, openManagerFromList,
     openLegacyToggle, openPromptDetail, openPromptEditor, openPromptProperties, PICKER_ROOT, POPOVER_ROOT, settleFade, settleOverlay, showConversationPage,
 } from './menu-steps.js';
@@ -599,7 +599,9 @@ export const surfaces = [
             await openLegacyToggle(page, '#options_button', '#options');
         },
         async close(page) {
-            await page.locator('#options_button').click();
+            // On a phone the menu is a sheet whose scrim covers its trigger, and a press on the scrim closes it.
+            if (await page.locator('[data-sb-menu-sheet]').count()) await closeComposerSheets(page);
+            else await page.locator('#options_button').click();
             await page.locator('#options').waitFor({ state: 'hidden' });
         },
         primaryFlow: true,

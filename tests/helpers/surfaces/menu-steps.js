@@ -46,6 +46,7 @@ export async function settleFade(page, root) {
  */
 export async function openLegacyToggle(page, button, root) {
     await page.waitForFunction(selector => Boolean(window.$?._data(document.querySelector(selector), 'events')?.click?.length), button);
+    await closeComposerSheets(page);
     await page.locator(button).click();
     await settleFade(page, root);
 }
@@ -94,6 +95,18 @@ export async function openFrom(page, trigger, root = MENU_ROOT) {
 export async function chooseItem(page, name, root = MENU_ROOT) {
     await page.locator('.sb-action-menu').last().getByRole('menuitem', { name, exact: true }).click();
     await settleOverlay(page, root);
+}
+
+/**
+ * Closes a composer menu that is presented as a bottom sheet. Its scrim covers the composer, so the trigger of the next
+ * menu cannot be clicked while it is open; a press on the scrim closes it. (Escape closes it only while focus is in it.)
+ */
+export async function closeComposerSheets(page) {
+    while (await page.locator('[data-sb-menu-sheet]').count()) {
+        const before = await page.locator('[data-sb-menu-sheet]').count();
+        await page.locator('.sb-menu-sheet-scrim').last().click({ position: { x: 8, y: 8 } });
+        await page.waitForFunction(count => document.querySelectorAll('[data-sb-menu-sheet]').length < count, before);
+    }
 }
 
 /** Closes the action menu, popover or picker that is open, without the exit animation. */
