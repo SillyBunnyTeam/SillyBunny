@@ -324,9 +324,13 @@ test('opening an alternate greeting row reveals its content with motion', async 
     const add = page.locator('#character_greetings_editor .sb-greetings-editor__add');
     await add.click();
     const row = list.locator('.sb-greeting-row').last();
-    await expect(row).toHaveAttribute('open', '');
-    await row.evaluate(node => { node.open = false; });
-    await row.locator('summary').click();
+    const toggle = row.locator('.ds-row-expander__toggle').first();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(() => countEditorAnimations(page)).toBe(0);
+    await toggle.click();
+    await expect(row.locator('.ds-row-expander-content')).toBeHidden();
+    await expect.poll(() => countEditorAnimations(page)).toBe(0);
+    await toggle.click();
     await expect.poll(() => row.evaluate(node => document.getAnimations().some(animation => {
         const target = animation.effect?.target;
         return target === node || (target instanceof Node && node.contains(target));
@@ -340,9 +344,12 @@ test('opening an alternate greeting row skips motion with reduced motion', async
     const list = page.locator('.alternate_greetings_list');
     await page.locator('#character_greetings_editor .sb-greetings-editor__add').click();
     const row = list.locator('.sb-greeting-row').last();
-    await expect(row).toHaveAttribute('open', '');
-    await row.evaluate(node => { node.open = false; });
-    await row.locator('summary').click();
+    const toggle = row.locator('.ds-row-expander__toggle').first();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await toggle.click();
+    await expect(row.locator('.ds-row-expander-content')).toBeHidden();
+    await toggle.click();
+    await expect(row.locator('.ds-row-expander-content')).toBeVisible();
     expect(await countEditorAnimations(page)).toBe(0);
 });
 

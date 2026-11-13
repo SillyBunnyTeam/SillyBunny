@@ -520,7 +520,7 @@ export const surfaces = [
                 ready: '#character_group_greetings_editor .sb-greetings-editor__add',
                 async open(page) {
                     await scrollSectionIntoView(page, { scroller: CHARACTER.scroller, section: '#sb_character_group_greetings', mustMove: false });
-                    await page.locator('#sb_character_group_greetings > summary').click();
+                    await page.locator('#sb_character_group_greetings > .ds-row-expander__header > .ds-row-expander__toggle').click();
                     await shown(page, '#character_group_greetings_editor .sb-greetings-editor__add');
                     await settle(page);
                 },
@@ -607,10 +607,10 @@ export const surfaces = [
             }),
             {
                 id: 'expanded-sections',
-                ready: `${WORLD_INFO.root} details[open]`,
+                ready: `${WORLD_INFO.root} .ds-row-expander.is-open`,
                 async open(page) {
                     await expandAll(page, WORLD_INFO.root);
-                    await scrollSectionIntoView(page, { scroller: `${WORLD_INFO.root} .sb-wi-entry-body`, section: `${WORLD_INFO.root} details[open]`, mustMove: false });
+                    await scrollSectionIntoView(page, { scroller: `${WORLD_INFO.root} .sb-wi-entry-body`, section: `${WORLD_INFO.root} .ds-row-expander.is-open`, mustMove: false });
                 },
             },
             previewState({
@@ -667,7 +667,7 @@ export const surfaces = [
                 ready: `${PERSONA.root} [data-appendix-id="${FIXTURES['persona-appendices'].notes[0].id}"] .sb-persona-note-textarea`,
                 async open(page) {
                     await scrollSectionIntoView(page, { scroller: PERSONA.body, section: `${PERSONA.root} [data-sb-section="notes"]`, mustMove: false });
-                    await page.locator(`${PERSONA.root} [data-appendix-id="${FIXTURES['persona-appendices'].notes[0].id}"] summary .ds-row-label`).first().click();
+                    await page.locator(`${PERSONA.root} [data-appendix-id="${FIXTURES['persona-appendices'].notes[0].id}"] .ds-row-expander__toggle .ds-row-label`).first().click();
                     await shown(page, `${PERSONA.root} [data-appendix-id="${FIXTURES['persona-appendices'].notes[0].id}"] .sb-persona-note-textarea`);
                     await settle(page);
                 },

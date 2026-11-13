@@ -180,7 +180,7 @@ describe('World Info schema form', () => {
             expect(fieldRow.hidden).toBe(!model.isFieldVisible(data.entries[0], field.id));
             expect(translate).toHaveBeenCalledWith(field.label, field.i18n);
         }
-        expect([...host.querySelectorAll('.ds-row-expander')].every(node => !node.open)).toBe(true);
+        expect([...host.querySelectorAll('.ds-row-expander')].every(node => node.querySelector(':scope > .ds-row-expander__header > .ds-row-expander__toggle').getAttribute('aria-expanded') === 'false')).toBe(true);
         expect(controller.isDirty()).toBe(false);
         expect(control(host, 'key').placeholder).toBe('translated:Keywords or Regexes');
         expect(control(host, 'position').textContent).toBe('translated:Before Char Defs');
@@ -191,7 +191,7 @@ describe('World Info schema form', () => {
     test('titles every section and translates each through the key the model gives it', () => {
         const { host } = mount();
         const heading = id => host.querySelector(`[data-sb-editor-field="section-${id}"] .ds-pref-group-heading`).textContent;
-        const expander = id => host.querySelector(`[data-sb-editor-field="expander-${id}"] > summary .ds-row-label`).textContent;
+        const expander = id => host.querySelector(`[data-sb-editor-field="expander-${id}"] > .ds-row-expander__header .ds-row-label`).textContent;
         expect(['keywords', 'content'].map(heading)).toEqual(['Keywords', 'translated:Content']);
         expect(['matching', 'sources', 'timed', 'group', 'recursion', 'filters', 'advanced'].map(expander)).toEqual([
             'Matching', 'translated:Additional Matching Sources', 'Timed Effects', 'translated:Inclusion Group', 'Recursion', 'Filters', 'translated:Advanced',

@@ -1,5 +1,7 @@
 /** Shared boxed-list row factories. Labels arrive translated; adopted controls retain their identity. */
 
+import { animateHeightFrom, play, stopMotion, MOTION_SLOW } from '../sillybunny-motion.js';
+
 let nextRowId = 0;
 const reservedIds = new Map();
 const idReservations = new WeakMap();
@@ -713,7 +715,59 @@ export function createPropertyRow({ label, value, field, id, selectable = true }
     };
 }
 
+/** Reveals or hides an expander's content over the shared expander motion; with no motion it switches at once. */
+function revealContent(content, open) {
+    stopMotion(content);
+    if (open) {
+        content.hidden = false;
+        animateHeightFrom(content, 0, { duration: MOTION_SLOW });
+        return;
+    }
+    play(content, [{ height: `${content.getBoundingClientRect().height}px` }, { height: '0px' }], {
+        duration: MOTION_SLOW,
+        fill: 'forwards',
+        inert: true,
+        styles: { 'box-sizing': 'border-box', overflow: 'hidden' },
+        onFinish: () => { content.hidden = true; },
+    });
+}
+
 /**
+ * Wires a header button to the content it discloses. The button keeps focus when it toggles, and
+ * closed content is `hidden`, so nothing inside it is in the tab order.
+ */
+function bindExpander({ row, toggle, content, open = false, onToggle }) {
+    ensureId(content);
+    toggle.setAttribute('aria-controls', content.id);
+    const isOpen = () => toggle.getAttribute('aria-expanded') === 'true';
+    const render = expanded => {
+        toggle.setAttribute('aria-expanded', String(expanded));
+        row.classList.toggle('is-open', expanded);
+    };
+    render(Boolean(open));
+    content.hidden = !open;
+    function setOpen(next, { animate = true } = {}) {
+        const expanded = Boolean(next);
+        if (expanded === isOpen()) return;
+        if (!expanded && content.contains(document.activeElement)) toggle.focus({ preventScroll: true });
+        render(expanded);
+        if (animate) revealContent(content, expanded);
+        else {
+            stopMotion(content);
+            content.hidden = !expanded;
+        }
+        onToggle?.(expanded);
+    }
+    toggle.addEventListener('click', () => {
+        if (row.getAttribute('aria-disabled') !== 'true') setOpen(!isOpen());
+    });
+    return { isOpen, setOpen };
+}
+
+/**
+ * A row that discloses nested rows. The header is a row with a toggle button, so a control in its
+ * suffix (a switch, as AdwExpanderRow's enable switch) keeps its own focus and does not toggle the
+ * row. Several expanders may be open at once. Disabling the row makes all of it inert.
  * @param {object} options
  * @param {string} options.label
  * @param {string} options.field
@@ -721,33 +775,48 @@ export function createPropertyRow({ label, value, field, id, selectable = true }
  * @param {string} [options.subtitle]
  * @param {boolean} [options.open=false]
  * @param {(Node|{row: HTMLElement})[]} [options.children=[]]
- * @param {(open: boolean) => void} [options.onToggle]
- * @returns {object}
+ * @param {Node|Node[]} [options.suffix] Controls placed in the header before the arrow.
+ * @param {(open: boolean) => void} [options.onToggle] Runs on every change of state, from the user or from `setOpen`.
+ * @returns {object} The row controller, plus `header`, `toggle`, `content`, `isOpen()` and `setOpen(open, { animate })`.
  */
-export function createExpanderRow({ label, subtitle, field, id, open = false, children = [], onToggle }) {
-    const row = element('details', 'ds-row-expander');
+export function createExpanderRow({ label, subtitle, field, id, open = false, children = [], suffix, onToggle }) {
+    const row = element('div', 'ds-row-expander');
     markField(row, field, id);
-    const summary = element('summary', 'ds-row');
-    summary.append(textColumn(label, subtitle, summary));
+    const header = element('div', 'ds-row ds-row-expander__header');
+    const toggle = element('button', 'ds-row-expander__toggle');
+    toggle.type = 'button';
+    toggle.append(textColumn(label, subtitle, toggle));
+    header.append(toggle);
+    if (suffix) {
+        const tail = element('span', 'ds-row-suffix');
+        tail.append(...(Array.isArray(suffix) ? suffix : [suffix]));
+        header.append(tail);
+    }
+    const arrow = element('span', 'ds-row-expander__arrow');
+    arrow.setAttribute('aria-hidden', 'true');
+    header.append(arrow);
     const content = element('div', 'ds-row-expander-content');
     appendRows(content, children);
-    row.append(summary, content);
-    row.open = Boolean(open);
-    row.addEventListener('toggle', () => onToggle?.(row.open));
-    const preventDisabledToggle = event => {
-        if (row.getAttribute('aria-disabled') === 'true') event.preventDefault();
-    };
-    summary.addEventListener('click', preventDisabledToggle);
-    summary.addEventListener('keydown', event => {
-        if (event.key === ' ' || event.key === 'Enter') preventDisabledToggle(event);
-    });
-    return {
-        ...rowController(row, summary),
-        content,
-        setOpen(open) {
-            row.open = Boolean(open);
-        },
-    };
+    row.append(header, content);
+    const { isOpen, setOpen } = bindExpander({ row, toggle, content, open, onToggle });
+    return { ...rowController(row), control: toggle, header, toggle, content, isOpen, setOpen };
+}
+
+/**
+ * Binds markup that is already in the page: `.ds-row-expander` holding a `.ds-row-expander__header`
+ * with a `.ds-row-expander__toggle` button, and a `.ds-row-expander-content`. Use it where the
+ * expander is authored in HTML; {@link createExpanderRow} builds the same structure.
+ * @param {HTMLElement} row
+ * @param {object} [options]
+ * @param {boolean} [options.open=false]
+ * @param {(open: boolean) => void} [options.onToggle]
+ * @returns {{row: HTMLElement, toggle: HTMLButtonElement, content: HTMLElement, isOpen: () => boolean, setOpen: (open: boolean, options?: {animate?: boolean}) => void}}
+ */
+export function adoptExpanderRow(row, { open = false, onToggle } = {}) {
+    const toggle = row.querySelector(':scope > .ds-row-expander__header > .ds-row-expander__toggle');
+    const content = row.querySelector(':scope > .ds-row-expander-content');
+    if (!toggle || !content) throw new TypeError('Expected an expander row with a header toggle and content.');
+    return { row, toggle, content, ...bindExpander({ row, toggle, content, open, onToggle }) };
 }
 
 /**

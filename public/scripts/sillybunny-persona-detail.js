@@ -382,7 +382,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     function createNoteView(note) {
         const name = createEntryRow({ label: t`Label`, field: 'appendix-name', value: note.name, onInput: value => {
             note.name = value;
-            expander.row.querySelector('summary .ds-row-label').textContent = value;
+            expander.toggle.querySelector('.ds-row-label').textContent = value;
             session.changed({ immediate: true });
             refreshPreview();
         } });
@@ -412,10 +412,8 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             session.changed({ immediate: true });
             addNote.row.focus({ preventScroll: true });
         } });
-        const expander = createExpanderRow({ label: note.name, field: 'appendix', children: [name, noteBody, remove] });
+        const expander = createExpanderRow({ label: note.name, field: 'appendix', children: [name, noteBody, remove], suffix: active.row });
         active.row.classList.add('sb-persona-note-activation');
-        active.row.addEventListener('click', event => event.stopPropagation());
-        expander.row.querySelector('summary').append(active.row);
         expander.row.dataset.appendixId = note.id;
         return { note, expander, name, textarea, active };
     }
@@ -436,7 +434,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
                 draft.appendices[index] = view.note;
                 if (view.name.control.value !== note.name) view.name.setValue(note.name);
                 if (view.textarea.value !== note.description) view.textarea.value = note.description;
-                view.expander.row.querySelector('summary > .ds-row-text > .ds-row-label').textContent = note.name;
+                view.expander.toggle.querySelector('.ds-row-label').textContent = note.name;
             }
             const sibling = notesSection.group.children[index];
             if (sibling !== view.expander.row) notesSection.group.insertBefore(view.expander.row, sibling ?? null);

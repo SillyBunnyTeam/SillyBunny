@@ -725,6 +725,17 @@ This is the largest class by a wide margin.
   - **Editor sheets that pad their own fields read the inset token:** `.ds-field` and `.ds-field-pair > .ds-field` in `public/css/sillybunny-character-editor.css` had 16px literals, so Created by stood 4px right of the notes field once the non-row children of a settings group took 12px (`tests/character-editor-rendering.e2e.js`).
   - **Probe with the CSSOM, not by reading rules:** `getComputedStyle` says what a row got, and a walk over `document.styleSheets` for rules that match the element and set `min-height`, `padding` or `gap` says who set it. Run on an audit surface, it found each of the above in one pass.
 
+### Expander rows
+
+- **Breaks:** an expander built on `<details>` cannot hold a focusable control in its `<summary>` (the Persona scenario note put its Enabled switch there and stopped the click by hand), and each adopter animated and opened it its own way.
+- **Files:** `createExpanderRow` and `adoptExpanderRow` in `public/scripts/sillybunny-editor/rows.js`; the `.ds-row-expander*` rules in `public/css/sillybunny-tabs.css`; adopters in `sillybunny-tabs.js` (sampler cards), `sillybunny-persona-detail.js`, `sillybunny-world-info-entry.js`, `sillybunny-character-editor.js` and the chats archive.
+- **Guards:**
+  - The header is a row holding a native toggle `<button>` (`aria-expanded`, `aria-controls`), a suffix and an arrow; the toggle's `::after` covers the row. Enter and Space are the button's own, so no key handler exists.
+  - Closed content is `hidden`, so it is out of the tab order. Anything that walks ancestors for `hidden` must skip `.ds-row-expander-content[hidden]`: settings search made a closed sampler's controls unavailable until `computeSearchEntryAvailability` did (`tests/sillybunny-backend-settings.e2e.js`, "Native sampler expanders reveal search results").
+  - The reveal is `animateHeightFrom` and `play` from `sillybunny-motion.js`, which do nothing under reduced motion. `rows.js` imports that module, so a Jest mock of it needs `animateHeightFrom`, `play`, `stopMotion` and `MOTION_SLOW`; six suites stopped linking without them.
+  - Several rows may be open at once; no adopter keeps one open.
+- **Tests:** `tests/unit/sillybunny-editor-rows.test.js`; `tests/foundation/shared-ui.e2e.js` (expander rows); `tests/persona-management-ui.e2e.js`.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

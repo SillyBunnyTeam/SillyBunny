@@ -6260,14 +6260,12 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 }
 
 @media (hover: hover) {
-    :is(.ds-row-switch, .ds-row-check):not(:has(input:disabled)):hover,
-    .ds-row-expander > summary.ds-row:hover {
+    :is(.ds-row-switch, .ds-row-check):not(:has(input:disabled)):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-:is(.ds-row-switch, .ds-row-check):not(:has(input:disabled)):active,
-.ds-row-expander > summary.ds-row:active {
+:is(.ds-row-switch, .ds-row-check):not(:has(input:disabled)):active {
     background: var(--sb-flat-active-bg);
 }
 
@@ -6303,7 +6301,9 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
     margin: 0;
 }
 
-/* Native details owns disclosure and keyboard state; child rows supply the body's insets. */
+/* The header is a row that holds the toggle button, not the button itself, so a suffix control keeps its
+   own focus. The toggle's ::after covers the row behind the content and draws the hover, press and focus
+   ring; child rows supply the body's insets. */
 .ds-row-expander {
     min-width: 0;
     margin: 0;
@@ -6311,19 +6311,53 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
     border-bottom: 1px solid var(--sb-shell-border);
 }
 
-.ds-row-expander > summary.ds-row {
+.ds-row-expander__header {
+    position: relative;
+    flex-wrap: nowrap;
+    isolation: isolate;
     border-bottom: 0;
-    list-style: none;
+}
+
+.ds-row-expander__toggle {
+    display: flex;
+    flex: 1 1 var(--sb-row-title-min);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
     cursor: pointer;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-.ds-row-expander > summary.ds-row::-webkit-details-marker {
-    display: none;
-}
-
-.ds-row-expander > summary.ds-row::after {
+.ds-row-expander__toggle::after {
     content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+}
+
+@media (hover: hover) {
+    .ds-row-expander__toggle:hover::after {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.ds-row-expander__toggle:active::after {
+    background: var(--sb-flat-active-bg);
+}
+
+.ds-row-expander__toggle:focus-visible {
+    outline: none;
+}
+
+.ds-row-expander__toggle:focus-visible::after {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.ds-row-expander__arrow {
     flex: 0 0 auto;
     width: 8px;
     height: 8px;
@@ -6332,20 +6366,20 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
     border-bottom: 2px solid currentColor;
     transform: rotate(45deg);
     transition: transform var(--sb-transition-fast);
+    pointer-events: none;
 }
 
-.ds-row-expander[open] > summary.ds-row::after {
+.ds-row-expander__toggle[aria-expanded='true'] ~ .ds-row-expander__arrow {
     transform: rotate(225deg);
-}
-
-.ds-row-expander > summary.ds-row:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .ds-row-expander-content {
     min-width: 0;
     border-top: 1px solid var(--sb-shell-border);
+}
+
+.ds-row-expander-content[hidden] {
+    display: none;
 }
 
 .ds-row-expander-content > .ds-row:last-child {
@@ -6355,14 +6389,14 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 @media (prefers-reduced-motion: reduce) {
     .ds-row-switch,
     .ds-row-check,
-    .ds-row-expander > summary.ds-row,
-    .ds-row-expander > summary.ds-row::after {
+    .ds-row-expander__toggle::after,
+    .ds-row-expander__arrow {
         transition: none;
     }
 }
 
-body.reduced-motion :is(.ds-row-switch, .ds-row-check, .ds-row-expander > summary.ds-row),
-body.reduced-motion .ds-row-expander > summary.ds-row::after {
+body.reduced-motion :is(.ds-row-switch, .ds-row-check, .ds-row-expander__arrow),
+body.reduced-motion .ds-row-expander__toggle::after {
     transition: none;
 }
 
@@ -6982,10 +7016,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 #sb-settings-page [data-sb-emptied-by-order] {
     display: none !important;
 }
-
-/* Expander rows: new visual layer on top of existing .inline-drawer machinery */
-
-
 
 /* ── Settings page contextual overrides ─────────────────────────────────── */
 

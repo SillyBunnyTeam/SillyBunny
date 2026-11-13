@@ -30,7 +30,7 @@ import { isApplePlatform } from './sillybunny-platform.js';
 import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProtectionUi } from './sillybunny-preset-autosave.js';
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
-import { createRow } from './sillybunny-editor/rows.js';
+import { createExpanderRow, createRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { createProfileRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
@@ -8623,14 +8623,32 @@ function buildSamplingControlCard(selector, root = document) {
     const entry = SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector);
     const isTextGenSampler = controlBlock.hasAttribute('data-tg-samplers') || controlBlock.querySelector('[data-tg-samplers]');
     const isExpander = Boolean(entry?.expander);
-    const card = createElement(isExpander ? 'details' : 'div', {
-        className: [
-            'sb-sampling-control-card',
-            isTextGenSampler ? 'sb-sampling-textgen-card' : '',
-            entry?.large ? 'sb-sampling-large-card' : '',
-            isExpander ? 'ds-row-expander' : 'sb-sampling-row',
-        ].filter(Boolean).join(' '),
-    });
+    let card;
+    if (isExpander) {
+        const heading = controlBlock.querySelector(':scope > h4');
+        // A header toggle may already be normalized; its subtitle is not part of the sampler name.
+        const headingCopy = heading?.cloneNode(true);
+        headingCopy?.querySelectorAll('.ds-row-subtitle, [data-sb-copy-placeholder]').forEach(node => node.remove());
+        const labelText = headingCopy?.textContent.replace(/\s+/g, ' ').trim() || 'lorum ipsum';
+        const tooltip = heading?.matches('[title], [data-sttt--title]') ? heading : heading?.querySelector('[title], [data-sttt--title]');
+        const subtitleText = entry?.description || tooltip?.getAttribute('title') || tooltip?.getAttribute('data-sttt--title') || 'lorum ipsum';
+        // SillyBunny: move header toggles into the expander body as full-width live preference rows.
+        for (const label of controlBlock.querySelectorAll(':scope > h4 .checkbox_label')) controlBlock.prepend(label);
+        const expander = createExpanderRow({ label: labelText, subtitle: subtitleText, field: `sampler-${entry.id}`, children: [controlBlock] });
+        card = expander.row;
+        expander.content.classList.add('sb-sampling-multi-card');
+        const label = card.querySelector('.ds-row-label');
+        const subtitle = card.querySelector('.ds-row-subtitle');
+        if (labelText === 'lorum ipsum') label.dataset.sbCopyPlaceholder = 'true';
+        if (entry?.description) subtitle.dataset.i18n = entry.description;
+        if (subtitleText === 'lorum ipsum') subtitle.dataset.sbCopyPlaceholder = 'true';
+    } else {
+        card = createElement('div', { className: 'sb-sampling-row' });
+        card.appendChild(controlBlock);
+    }
+    card.classList.add('sb-sampling-control-card');
+    if (isTextGenSampler) card.classList.add('sb-sampling-textgen-card');
+    if (entry?.large) card.classList.add('sb-sampling-large-card');
     card.dataset.sbSamplingControl = selector;
     if (entry) card.dataset.sbSamplerId = entry.id;
     // Ungated samplers stay visible for every provider; gating code in openai.js and
@@ -8644,36 +8662,6 @@ function buildSamplingControlCard(selector, root = document) {
         if (controlBlock.hasAttribute(attributeName)) {
             card.setAttribute(attributeName, controlBlock.getAttribute(attributeName));
         }
-    }
-
-    if (isExpander) {
-        const summary = createElement('summary', { className: 'ds-row' });
-        const text = createElement('div', { className: 'ds-row-text' });
-        const heading = controlBlock.querySelector(':scope > h4');
-        // A header toggle may already be normalized; its subtitle is not part of the sampler name.
-        const headingCopy = heading?.cloneNode(true);
-        headingCopy?.querySelectorAll('.ds-row-subtitle, [data-sb-copy-placeholder]').forEach(node => node.remove());
-        const label = createElement('span', { className: 'ds-row-label', text: headingCopy?.textContent.replace(/\s+/g, ' ').trim() || 'lorum ipsum' });
-        if (label.textContent === 'lorum ipsum') label.dataset.sbCopyPlaceholder = 'true';
-        const tooltip = heading?.matches('[title], [data-sttt--title]') ? heading : heading?.querySelector('[title], [data-sttt--title]');
-        const subtitle = createElement('small', {
-            className: 'ds-row-subtitle',
-            text: tooltip?.getAttribute('title') || tooltip?.getAttribute('data-sttt--title') || 'lorum ipsum',
-        });
-        if (entry?.description) {
-            subtitle.textContent = entry.description;
-            subtitle.dataset.i18n = entry.description;
-        }
-        if (subtitle.textContent === 'lorum ipsum') subtitle.dataset.sbCopyPlaceholder = 'true';
-        text.append(label, subtitle);
-        summary.append(text);
-        const content = createElement('div', { className: 'ds-row-expander-content sb-sampling-multi-card' });
-        // SillyBunny: move header toggles into the expander body as full-width live preference rows.
-        for (const label of controlBlock.querySelectorAll(':scope > h4 .checkbox_label')) controlBlock.prepend(label);
-        content.append(controlBlock);
-        card.append(summary, content);
-    } else {
-        card.appendChild(controlBlock);
     }
     decorateSamplingControlCard(card, selector);
     normalizeBackendSettingsRows(card);
@@ -8750,7 +8738,7 @@ function getSamplingCardRank(card) {
 /** Builds an inert CC row from the live Text Completions card's label; returns null until that card exists. */
 function buildChatCompletionPlaceholderCard(entry, root) {
     const source = root.querySelector(`#sb-sampling-textgenerationwebui [data-sb-sampling-control="${entry.textgenerationwebui}"]`);
-    const sourceLabel = source?.querySelector(entry.expander ? ':scope > summary .ds-row-label' : '.ds-row-label');
+    const sourceLabel = source?.querySelector(entry.expander ? ':scope > .ds-row-expander__header .ds-row-label' : '.ds-row-label');
     const labelText = sourceLabel?.textContent.replace(/\s+/g, ' ').trim();
     if (!labelText || sourceLabel.hasAttribute('data-sb-copy-placeholder')) return null;
 
@@ -11581,8 +11569,8 @@ function getPersonaSearchEntries(tabState) {
 }
 
 function getSearchSectionLabel(element, fallback) {
-    const sampler = element.closest('details[data-sb-sampling-control]');
-    const samplerTitle = sampler?.querySelector('summary .ds-row-label')?.textContent.trim();
+    const sampler = element.closest('.ds-row-expander[data-sb-sampling-control]');
+    const samplerTitle = sampler?.querySelector(':scope > .ds-row-expander__header .ds-row-label')?.textContent.trim();
     if (samplerTitle) return samplerTitle;
     // For extension containers: use the extension's own name/header, not the parent tab label
     const extContainer = element.closest('.extension_container, [id$="-container"]');
@@ -11760,8 +11748,8 @@ function computeSearchEntryAvailability(entry, tabState) {
     if (!['sampling', 'prompting', 'editor'].includes(tabState.id)) return true;
     if (!(entry.element instanceof HTMLElement) || !tabState.searchRoot.contains(entry.element)) return false;
     for (let element = entry.element; element && element !== tabState.searchRoot; element = element.parentElement) {
-        // Collapsed sampler help is searchable; its provider/card ancestors still gate availability.
-        if (element.matches('.sb-sampling-help[hidden]')) continue;
+        // Collapsed sampler help and closed expanders are searchable; their provider/card ancestors still gate availability.
+        if (element.matches('.sb-sampling-help[hidden], .ds-row-expander-content[hidden]')) continue;
         if (element.hidden || getComputedStyle(element).display === 'none') return false;
     }
     return true;
@@ -12087,6 +12075,7 @@ function expandHiddenAccordions(target) {
     }
 
     const hiddenContents = [];
+    const closedExpanders = [];
     let current = target.parentElement;
 
     while (current) {
@@ -12094,8 +12083,15 @@ function expandHiddenAccordions(target) {
             hiddenContents.push(current);
         }
         if (current instanceof HTMLDetailsElement) current.open = true;
+        if (current.matches('.ds-row-expander-content[hidden]')) {
+            closedExpanders.push(current.parentElement?.querySelector(':scope > .ds-row-expander__header > .ds-row-expander__toggle'));
+        }
 
         current = current.parentElement;
+    }
+
+    for (const toggle of closedExpanders.reverse()) {
+        if (toggle instanceof HTMLElement) toggle.click();
     }
 
     for (const content of hiddenContents.reverse()) {

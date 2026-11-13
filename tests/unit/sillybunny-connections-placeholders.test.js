@@ -9,7 +9,7 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     translate: value => value,
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
-    animateIn: jest.fn(), animateOut: jest.fn(), play: jest.fn(), stopMotion: jest.fn(),
+    animateHeightFrom: jest.fn(), animateIn: jest.fn(), animateOut: jest.fn(), play: jest.fn(), stopMotion: jest.fn(), MOTION_SLOW: 250,
     MOTION_FAST: 200, MOTION_POPOVER_CLOSE: 150, MOTION_EASE_OUT_CUBIC: 'ease', SPRING_SHEET: {},
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({ MOBILE_QUERY: '(max-width: 768px)', positionPopover: jest.fn(() => '0px 0') }));

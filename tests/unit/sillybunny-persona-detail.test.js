@@ -38,7 +38,7 @@ await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
     }),
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
-    animateIn: jest.fn(), animateOut: (_node, _frames, finish) => finish(), play: jest.fn((_node, _frames, options) => options?.onEnd?.()), stopMotion: jest.fn(),
+    animateHeightFrom: jest.fn(), animateIn: jest.fn(), animateOut: (_node, _frames, finish) => finish(), play: jest.fn((_node, _frames, options) => options?.onEnd?.()), stopMotion: jest.fn(),
     prefersReducedMotion: () => true, MOTION_EASE_OUT_QUAD: 'linear', MOTION_EASE_OUT_CUBIC: 'linear', MOTION_FAST: 0,
     MOTION_SLOW: 0, MOTION_POPOVER_CLOSE: 0, SPRING_DIALOG: {}, SPRING_NAVIGATION: {}, SPRING_SHEET: {},
 }));
@@ -285,7 +285,7 @@ describe('Persona detail structure and explicit content edits', () => {
         expect(host.querySelector('.sb-persona-entry-footer')).toBeNull();
         const other = mount({ avatarId: 'other.png' });
         expect(field(other.host, 'description').id).not.toBe(description.id);
-        expect(host.querySelector('.ds-row-expander').open).toBe(false);
+        expect(host.querySelector('.ds-row-expander__toggle').getAttribute('aria-expanded')).toBe('false');
         expect(controller.isDirty()).toBe(false);
     });
 
@@ -472,14 +472,15 @@ describe('Scenario notes and immediate state', () => {
         const textareas = [...host.querySelectorAll('.sb-persona-note-textarea')];
         expect(new Set(textareas.map(node => node.id)).size).toBe(textareas.length);
         const note = host.querySelector('[data-sb-editor-field="appendix"]');
-        note.open = true;
+        const toggle = note.querySelector(':scope > .ds-row-expander__header > .ds-row-expander__toggle');
+        if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
         const input = field(note, 'appendix-name');
         input.focus();
         edit(note, 'appendix-name', 'Kept open');
         expect(await controller.save()).toBe(true);
         expect(field(note, 'appendix-name')).toBe(input);
         expect(document.activeElement).toBe(input);
-        expect(note.open).toBe(true);
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
     });
 
     test('default, chat lock, character links, and remove apply immediately without consuming draft edits', async () => {

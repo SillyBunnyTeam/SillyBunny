@@ -314,7 +314,7 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 expect(samplingHeaderMetrics.descriptionWraps && promptingHeaderMetrics.descriptionWraps).toBe(true);
                 await expectSamplingTaxonomy(sampling, api);
                 await expectNoOverflow(sampling);
-                await sampling.locator('details').evaluateAll(details => details.forEach(detail => { detail.open = true; }));
+                await sampling.locator('.ds-row-expander__toggle[aria-expanded="false"]').evaluateAll(toggles => toggles.forEach(toggle => toggle.click()));
                 await expectSwitchGeometry(sampling);
             }
             for (const tab of ['appearance', 'interface', 'messages', 'data-security']) {
@@ -363,9 +363,9 @@ test('Sampling uses the shared full-width rows at desktop and mobile widths', as
         return style.padding === '6px 12px' && parseFloat(style.minHeight) === 50;
     }))).toBe(true);
     for (const selector of ['#dryBlock', '#xtc_block']) {
-        const expander = sampling.locator(`details[data-sb-sampling-control="${selector}"]`);
-        await expander.locator('summary').click();
-        await expect(expander).toHaveAttribute('open', '');
+        const expander = sampling.locator(`.ds-row-expander[data-sb-sampling-control="${selector}"]`);
+        await expander.locator('.ds-row-expander__toggle').first().click();
+        await expect(expander.locator('.ds-row-expander__toggle').first()).toHaveAttribute('aria-expanded', 'true');
         await expect.poll(() => expander.evaluate(expander => Math.abs(expander.getBoundingClientRect().width - expander.parentElement.clientWidth))).toBeLessThanOrEqual(1);
         await expect.poll(() => expander.locator('.ds-row-expander-content .ds-row:visible').evaluateAll(rows => rows.every(row => {
             const rect = row.getBoundingClientRect();
@@ -818,23 +818,24 @@ test('Native sampler expanders reveal search results and preserve switch and cou
     await loadSettings(page, baseURL);
     await selectBackend(page, 'textgenerationwebui', 'ooba');
     const sampling = await openPanel(page, 'sampling');
-    const dry = sampling.locator('details[data-sb-sampling-control="#dryBlock"]');
-    await dry.locator('summary').focus();
+    const dry = sampling.locator('.ds-row-expander[data-sb-sampling-control="#dryBlock"]');
+    const dryToggle = dry.locator('.ds-row-expander__toggle').first();
+    await dryToggle.focus();
     await page.keyboard.press('Enter');
-    await expect(dry).toHaveAttribute('open', '');
+    await expect(dryToggle).toHaveAttribute('aria-expanded', 'true');
     await dry.locator('#dry_multiplier_counter_textgenerationwebui').fill('0.8');
     await dry.locator('#dry_multiplier_counter_textgenerationwebui').press('Enter');
     await expect(dry.locator('#dry_multiplier_textgenerationwebui')).toHaveValue('0.8');
     await page.keyboard.press('Tab');
-    await dry.locator('summary').click();
-    await expect(dry).not.toHaveAttribute('open', '');
+    await dryToggle.click();
+    await expect(dryToggle).toHaveAttribute('aria-expanded', 'false');
     await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
     await page.locator('#sb-universal-search input').fill('sequence breakers');
     await page.getByRole('group', { name: 'Backend · Sampling', exact: true }).getByRole('option', { name: /Sequence Breakers/ }).click();
-    await expect(dry).toHaveAttribute('open', '');
+    await expect(dryToggle).toHaveAttribute('aria-expanded', 'true');
     await expect(dry.locator('#dry_sequence_breakers_textgenerationwebui')).toBeVisible();
-    const dynamic = sampling.locator('details[data-sb-sampling-control="#dynatemp_block_ooba"]');
-    await dynamic.locator('summary').click();
+    const dynamic = sampling.locator('.ds-row-expander[data-sb-sampling-control="#dynatemp_block_ooba"]');
+    await dynamic.locator('.ds-row-expander__toggle').first().click();
     const toggle = dynamic.getByRole('switch', { name: 'Dynamic Temperature', exact: true });
     await toggle.focus();
     const checked = await toggle.isChecked();
@@ -888,7 +889,7 @@ test('Chat Completions lists Text Completions-only samplers as inert rows in the
         id: card.dataset.sbSamplerId,
         group: card.closest('[data-sb-sampling-group]').dataset.sbSamplingGroup,
         placeholder: card.hasAttribute('data-sb-sampling-placeholder'),
-        label: (card.querySelector(':scope > summary .ds-row-label') ?? card.querySelector('.ds-row-label'))?.textContent.replace(/\s+/g, ' ').trim(),
+        label: (card.querySelector(':scope > .ds-row-expander__header .ds-row-label') ?? card.querySelector('.ds-row-label'))?.textContent.replace(/\s+/g, ' ').trim(),
     })));
 
     for (const source of ['openai', 'custom', 'openrouter']) {
@@ -898,7 +899,7 @@ test('Chat Completions lists Text Completions-only samplers as inert rows in the
         for (const id of placeholderIds) {
             const row = cc.locator(`[data-sb-sampling-placeholder][data-sb-sampler-id="${id}"]`);
             await expect(row, `${source} ${id}`).toBeVisible();
-            await expect(row.locator('input, select, textarea, button, summary')).toHaveCount(0);
+            await expect(row.locator('input, select, textarea, button')).toHaveCount(0);
             await expect(row.locator('.ds-row-subtitle')).toHaveText('Not available in Chat Completions. Custom endpoints can send it with Additional Parameters.');
             await expect(row.locator('.sb-sampling-unavailable-badge')).toHaveText('Unavailable');
         }
@@ -1100,8 +1101,8 @@ test('Backend edits and quick context actions survive settings serialization and
     const sampling = await openPanel(page, 'sampling');
     await sampling.locator('#temp_counter_textgenerationwebui').fill('0.69');
     await sampling.locator('#temp_counter_textgenerationwebui').press('Enter');
-    const dry = sampling.locator('details[data-sb-sampling-control="#dryBlock"]');
-    await dry.locator('summary').click();
+    const dry = sampling.locator('.ds-row-expander[data-sb-sampling-control="#dryBlock"]');
+    await dry.locator('.ds-row-expander__toggle').first().click();
     await dry.locator('#dry_multiplier_counter_textgenerationwebui').fill('0.7');
     await dry.locator('#dry_multiplier_counter_textgenerationwebui').press('Enter');
     const prompting = await openPanel(page, 'prompting');
@@ -1129,7 +1130,7 @@ test('Backend edits and quick context actions survive settings serialization and
     await expect(sampling.locator('#temp_counter_openai')).toHaveValue('0.71');
     await selectBackend(page, 'textgenerationwebui', 'ooba');
     await expect(sampling.locator('#temp_textgenerationwebui')).toHaveValue('0.69');
-    await dry.locator('summary').click();
+    await dry.locator('.ds-row-expander__toggle').first().click();
     await expect(dry.locator('#dry_multiplier_textgenerationwebui')).toHaveValue('0.7');
     await expect(dry.locator('#dry_multiplier_counter_textgenerationwebui')).toHaveValue('0.7');
     await openPanel(page, 'prompting');

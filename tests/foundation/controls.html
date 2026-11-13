@@ -58,9 +58,10 @@
             </div>
         </div>
         <div class="fixture-surface" id="status-pages"></div>
+        <div class="fixture-surface" id="expander-rows"></div>
     </main>
     <script type="module">
-        import { createEntryRow, createPrefGroup } from '/scripts/sillybunny-editor/rows.js';
+        import { createEntryRow, createExpanderRow, createPrefGroup, createSwitchRow } from '/scripts/sillybunny-editor/rows.js';
         import { createSearchEntry } from '/scripts/sillybunny-editor/search-entry.js';
         import { createBanner } from '/scripts/sillybunny-editor/banner.js';
         import { createStatusPage } from '/scripts/sillybunny-editor/status-page.js';
@@ -102,6 +103,13 @@
         const rows = Object.fromEntries(Object.entries(entries).map(([id, options]) => [id, createEntryRow({ floating: true, id, ...options })]));
         rows['entry-error'].setError('Name is already taken');
         rows['entry-disabled'].setDisabled(true);
+        const nested = (id, label) => createEntryRow({ floating: true, id, label, field: id });
+        const expanders = [
+            createExpanderRow({ id: 'expander-rest', label: 'Advanced', subtitle: 'Less common options', field: 'rest', children: [nested('expander-name', 'Name')] }),
+            createExpanderRow({ id: 'expander-open', label: 'Matching', field: 'open', open: true, children: [createSwitchRow({ id: 'expander-case', label: 'Case sensitive', field: 'case' })] }),
+            createExpanderRow({ id: 'expander-note', label: 'Note', field: 'note', suffix: createSwitchRow({ id: 'expander-enabled', label: 'Enabled', field: 'enabled' }).row, children: [nested('expander-text', 'Text')] }),
+        ];
+        document.getElementById('expander-rows').append(createPrefGroup({ field: 'expander-rows', rows: expanders }).section);
         document.getElementById('entry-rows').append(createPrefGroup({ field: 'entry-rows', rows: Object.values(rows) }).section);
     </script>
 </body>

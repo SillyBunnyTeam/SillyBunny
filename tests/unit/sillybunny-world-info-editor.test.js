@@ -85,7 +85,7 @@ await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
 const play = jest.fn((_node, _frames, options) => { options?.onEnd?.(); return { cancel() {} }; });
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
     play,
-    stopMotion: jest.fn(), prefersReducedMotion: () => true,
+    stopMotion: jest.fn(), prefersReducedMotion: () => true, animateHeightFrom: jest.fn(),
     animateOut: jest.fn((_node, _frames, hide) => hide()),
     SPRING_NAVIGATION: {}, MOTION_FAST: 0, MOTION_SLOW: 0,
 }));

@@ -689,7 +689,7 @@ async function openSpinRows(page) {
     await row(editor, 'Alpha').click();
     const entry = editor.locator('.sb-wi-entry');
     await expect(entry).toBeVisible();
-    await entry.locator('details.ds-row-expander').evaluateAll(sections => sections.forEach(section => { section.open = true; }));
+    await entry.locator('.ds-row-expander__toggle[aria-expanded="false"]').evaluateAll(toggles => toggles.forEach(toggle => toggle.click()));
     await expect(entry.locator('.ds-row--spin').first()).toBeVisible();
     return entry;
 }

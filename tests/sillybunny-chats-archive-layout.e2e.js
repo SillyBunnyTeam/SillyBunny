@@ -110,8 +110,8 @@ for (const viewport of LAYOUT_VIEWPORTS) {
             await page.getByRole('button', { name: 'Latest Messages' }).click();
             await expectReachable(page, page.locator('.sbca-msg').last(), 'the last message');
             const metadata = page.locator('.sbca-messages-group > .ds-row-expander');
-            await expectReachable(page, metadata.locator('summary'), 'Metadata');
-            await metadata.locator('summary').click();
+            await expectReachable(page, metadata.locator('.ds-row-expander__toggle'), 'Metadata');
+            await metadata.locator('.ds-row-expander__toggle').click();
             await expectReachable(page, metadata.locator('.sbca-json'), 'the metadata JSON');
             await goBack(page);
 

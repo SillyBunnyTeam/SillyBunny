@@ -9,11 +9,13 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     translate: value => value,
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
+    animateHeightFrom: jest.fn(),
     animateIn: jest.fn(),
     animateOut: jest.fn((_element, _frames, hide) => hide()),
     play: jest.fn(),
     stopMotion: jest.fn(),
     MOTION_FAST: 200,
+    MOTION_SLOW: 250,
     MOTION_POPOVER_CLOSE: 150,
     MOTION_EASE_OUT_CUBIC: 'cubic-bezier(0.33, 1, 0.68, 1)',
     SPRING_SHEET: {},

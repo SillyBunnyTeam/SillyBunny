@@ -689,7 +689,7 @@ test('a long chat pages forward and back, jumps to the latest messages and revea
     await expect(messages.last()).toBeInViewport();
     const metadata = page.locator('.sbca-messages-group > .ds-row-expander');
     await metadata.scrollIntoViewIfNeeded();
-    await metadata.locator('summary').click();
+    await metadata.locator('.ds-row-expander__toggle').click();
     await expect(metadata.locator('.sbca-json')).toContainText('"note": "kept"');
     await expect(metadata.locator('.sbca-json')).toBeInViewport();
 });

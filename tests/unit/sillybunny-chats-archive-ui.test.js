@@ -247,12 +247,12 @@ describe('Messages group', () => {
         expect(cards()[3].dataset.sbcaRole).toBe('system');
         expect(cards()[3].querySelector('.sbca-role').textContent).toBe('System');
         expect(cards()[2].textContent).toContain('2 response alternatives');
-        const details = cards()[2].querySelectorAll('details');
-        expect([...details].map(node => node.querySelector('summary').textContent)).toEqual(['Response Alternatives', 'Extension Data']);
+        const expanders = cards()[2].querySelectorAll('.ds-row-expander');
+        expect([...expanders].map(node => node.querySelector('.ds-row-expander__toggle').textContent)).toEqual(['Response Alternatives', 'Extension Data']);
         expect(cards()[2].querySelector('.sbca-json')).toBeNull();
-        details[1].open = true;
+        expanders[1].querySelector('.ds-row-expander__toggle').click();
         await settle();
-        expect(JSON.parse(details[1].querySelector('.sbca-json').textContent)).toEqual({ model: 'x' });
+        expect(JSON.parse(expanders[1].querySelector('.sbca-json').textContent)).toEqual({ model: 'x' });
     });
 
     test('a search match opens its page, is marked and named, and takes the focus', async () => {
@@ -309,12 +309,13 @@ describe('Messages group', () => {
 
     test('chat metadata is an expander that renders its JSON on first open only', async () => {
         await messagesGroup(chat(2));
-        const metadata = [...document.querySelectorAll('.sbca-messages-group > details')].find(node => node.textContent.includes('Chat Metadata'));
+        const metadata = [...document.querySelectorAll('.sbca-messages-group > .ds-row-expander')].find(node => node.textContent.includes('Chat Metadata'));
+        const toggle = metadata.querySelector('.ds-row-expander__toggle');
         expect(metadata.querySelector('.sbca-json')).toBeNull();
-        metadata.open = true;
+        toggle.click();
         await settle();
-        metadata.open = false;
-        metadata.open = true;
+        toggle.click();
+        toggle.click();
         await settle();
         expect(metadata.querySelectorAll('.sbca-json')).toHaveLength(1);
         expect(JSON.parse(metadata.querySelector('.sbca-json').textContent)).toEqual({ note: 'kept' });
@@ -322,7 +323,7 @@ describe('Messages group', () => {
 
     test('a chat without metadata has no metadata expander', async () => {
         await messagesGroup(chat(2, { header: null }));
-        expect(document.querySelector('.sbca-messages-group > details')).toBeNull();
+        expect(document.querySelector('.sbca-messages-group > .ds-row-expander')).toBeNull();
     });
 
     test('a file that cannot be parsed shows a warning and the raw text behind its toggle', () => {

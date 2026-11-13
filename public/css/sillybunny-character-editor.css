@@ -984,25 +984,12 @@
     display: none;
 }
 
-/* Each greeting keeps .alternate_greeting for extensions; neutralise the
-   legacy summary marker/indent (style.css:3876–3928) so it is a plain row. */
-#form_create .sb-greeting-row {
-    width: 100%;
-    padding: 0;
-}
-
 #form_create .sb-greetings-list > .sb-greeting-row:last-child {
     border-bottom: 0;
 }
 
-#form_create .sb-greeting-row > summary.ds-row {
-    margin: 0;
+#form_create .sb-greeting-row > .ds-row-expander__header {
     padding-inline: 16px;
-    list-style: none;
-}
-
-#form_create .sb-greeting-row > summary::marker {
-    content: '';
 }
 
 .sb-greeting-row__snippet {
@@ -1012,7 +999,7 @@
     white-space: nowrap;
 }
 
-.sb-greeting-row[open] .sb-greeting-row__snippet {
+.sb-greeting-row.is-open .sb-greeting-row__snippet {
     display: none;
 }
 
@@ -1087,21 +1074,6 @@
 
 /* Greetings expander (group-only)
    ========================================================================= */
-
-.sb-greetings-expander {
-    margin: 0;
-    padding: 0;
-    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
-}
-
-.ds-pref-group > .sb-greetings-expander:last-child {
-    border-bottom: 0;
-}
-
-.sb-greetings-expander > summary {
-    list-style: none;
-    cursor: pointer;
-}
 
 .sb-greetings-expander__count {
     margin-left: 6px;

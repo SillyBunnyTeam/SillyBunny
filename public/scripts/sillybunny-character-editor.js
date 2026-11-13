@@ -42,12 +42,12 @@ import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
-import { createComboRow, createRow } from './sillybunny-editor/rows.js';
+import { adoptExpanderRow, createComboRow, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
 import { reconcileRows } from './sillybunny-editor/list-rows.js';
 import { getFolderId, getFolders, setFolder, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import './sillybunny-characters-navigation.js';
 import { mountEditorPreviews } from './sillybunny-editor/preview.js';
-import { animateHeightFrom, animateIn, animateListChange, MOTION_EASE_OUT_QUAD, MOTION_FAST, MOTION_SLOW, prefersReducedMotion } from './sillybunny-motion.js';
+import { animateIn, animateListChange, MOTION_EASE_OUT_QUAD, MOTION_FAST, prefersReducedMotion } from './sillybunny-motion.js';
 
 // Existing users' backups live under this prefix; changing it orphans them.
 const DRAFT_KEY_PREFIX = 'sb-editor-draft-';
@@ -1170,11 +1170,11 @@ function _greetingSnippet(text) {
     return flat.length > GREETING_SNIPPET_LENGTH ? `${flat.slice(0, GREETING_SNIPPET_LENGTH)}…` : flat;
 }
 
+const greetingExpanders = new WeakMap();
+
 /**
- * One greeting as an AdwExpanderRow: the summary carries the label and a
- * one-line snippet, the body carries the editor and the row's actions. Actions
- * live in the body, not the summary, because <summary> is itself the toggle
- * button and must not contain other interactive content.
+ * One greeting as an AdwExpanderRow: the header carries the label and a
+ * one-line snippet, the body carries the editor and the row's actions.
  * @param {string} greeting
  * @param {number} index
  * @param {'alternate'|'group'} kind
@@ -1184,31 +1184,20 @@ function _createGreetingRow(greeting, index, kind, greetingId) {
     const greetingsRef = kind === 'alternate' ? draftAlt : draftGrp;
     // Upstream's maximize editor and extensions address greetings by these ids.
     const textareaId = kind === 'alternate' ? `alternate_greeting_inline_${index}` : `group_greeting_inline_${index}`;
+    const titleText = kind === 'alternate'
+        ? t`Alternate greeting #${index + 1}`
+        : t`Group greeting #${index + 1}`;
 
-    const row = document.createElement('details');
-    row.className = 'ds-row-expander sb-greeting-row alternate_greeting';
+    const expander = createExpanderRow({ label: titleText, subtitle: _greetingSnippet(greeting), field: `${kind}-greeting` });
+    const row = expander.row;
+    row.classList.add('sb-greeting-row', 'alternate_greeting');
     row.dataset.index = String(index);
     row.dataset.greetingId = greetingId;
     row.setAttribute('role', 'listitem');
-
-    const summary = document.createElement('summary');
-    summary.className = 'ds-row';
-
-    const text = document.createElement('span');
-    text.className = 'ds-row-text';
-    const title = document.createElement('span');
-    title.className = 'ds-row-label';
-    title.textContent = kind === 'alternate'
-        ? t`Alternate greeting #${index + 1}`
-        : t`Group greeting #${index + 1}`;
-    const subtitle = document.createElement('span');
-    subtitle.className = 'ds-row-subtitle sb-greeting-row__snippet';
-    subtitle.textContent = _greetingSnippet(greeting);
-    text.append(title, subtitle);
-    summary.append(text);
-
-    const body = document.createElement('div');
-    body.className = 'ds-row-expander-content sb-greeting-row__body';
+    expander.content.classList.add('sb-greeting-row__body');
+    const subtitle = row.querySelector('.ds-row-subtitle');
+    subtitle.classList.add('sb-greeting-row__snippet');
+    greetingExpanders.set(row, expander);
 
     const textarea = document.createElement('textarea');
     textarea.id = textareaId;
@@ -1216,7 +1205,7 @@ function _createGreetingRow(greeting, index, kind, greetingId) {
     textarea.rows = 6;
     textarea.dataset.macros = '';
     textarea.value = greeting;
-    textarea.setAttribute('aria-label', title.textContent);
+    textarea.setAttribute('aria-label', titleText);
     // jQuery binding: the maximize editor writes back with jQuery .trigger('input'),
     // which does not reach addEventListener listeners.
     $(textarea).on('input', () => {
@@ -1229,7 +1218,7 @@ function _createGreetingRow(greeting, index, kind, greetingId) {
     const actions = document.createElement('div');
     actions.className = 'sb-greeting-row__actions';
     actions.setAttribute('role', 'group');
-    actions.setAttribute('aria-label', title.textContent);
+    actions.setAttribute('aria-label', titleText);
 
     const upButton = _createGreetingButton('fa-arrow-up', t`Move up`, () => _moveGreeting(kind, index, -1));
     upButton.disabled = index === 0;
@@ -1260,17 +1249,7 @@ function _createGreetingRow(greeting, index, kind, greetingId) {
     deleteButton.classList.add('sb-greeting-row__delete');
 
     actions.append(upButton, downButton, expandButton, spacer, deleteButton);
-    body.append(textarea, actions);
-    row.append(summary, body);
-
-    // AdwExpanderRow lists keep one row open, so a long list stays scannable.
-    row.addEventListener('toggle', () => {
-        if (!row.open) return;
-        row.parentElement?.querySelectorAll(':scope > details[open]').forEach(other => {
-            if (other !== row) /** @type {HTMLDetailsElement} */ (other).open = false;
-        });
-        _animateExpanderContent(row);
-    });
+    expander.content.append(textarea, actions);
 
     return row;
 }
@@ -1319,8 +1298,9 @@ function _moveGreeting(kind, index, delta) {
     // from the keyboard without hunting for the row again.
     const selector = kind === 'alternate' ? '.alternate_greetings_list' : '.group_only_greetings_list';
     const row = document.querySelector(`${selector} > .sb-greeting-row[data-index="${target}"]`);
-    if (row instanceof HTMLDetailsElement) {
-        row.open = true;
+    const expander = row && greetingExpanders.get(row);
+    if (expander) {
+        expander.setOpen(true);
         const button = row.querySelector(`.sb-greeting-row__btn[aria-label="${CSS.escape(delta < 0 ? t`Move up` : t`Move down`)}"]`);
         const fallback = row.querySelector('textarea');
         (button instanceof HTMLButtonElement && !button.disabled ? button : fallback)?.focus({ preventScroll: true });
@@ -1335,8 +1315,9 @@ function _reRenderKind(kind, options = {}) {
 function _focusGreetingRow(listSelector, index) {
     requestAnimationFrame(() => {
         const row = document.querySelector(`${listSelector} > .sb-greeting-row[data-index="${index}"]`);
-        if (!(row instanceof HTMLDetailsElement)) return;
-        row.open = true;
+        const expander = row && greetingExpanders.get(row);
+        if (!expander) return;
+        expander.setOpen(true);
         row.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
         row.querySelector('textarea')?.focus({ preventScroll: true });
     });
@@ -1344,19 +1325,10 @@ function _focusGreetingRow(listSelector, index) {
 
 function _bindGreetingExpanders() {
     document.querySelectorAll('.sb-greetings-expander').forEach(expander => {
-        if (!(expander instanceof HTMLDetailsElement) || expander.dataset.motionBound) return;
-        expander.dataset.motionBound = 'true';
-        expander.addEventListener('toggle', () => {
-            if (expander.open) _animateExpanderContent(expander);
-        });
+        if (expander.dataset.expanderBound) return;
+        expander.dataset.expanderBound = 'true';
+        adoptExpanderRow(expander);
     });
-}
-
-function _animateExpanderContent(expander) {
-    if (!(expander instanceof HTMLDetailsElement) || !expander.open) return;
-    const content = expander.querySelector(':scope > .ds-row-expander-content');
-    if (!(content instanceof HTMLElement)) return;
-    animateHeightFrom(content, 0, { duration: MOTION_SLOW });
 }
 
 // ============================================================

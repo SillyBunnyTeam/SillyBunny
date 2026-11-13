@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests use parameterized synchronous DOM assertions. */
-import { jest, describe, test, expect } from '@jest/globals';
+import { jest, describe, test, expect, afterEach } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import {
@@ -13,6 +13,7 @@ import {
     createEntryRow,
     createPropertyRow,
     createExpanderRow,
+    adoptExpanderRow,
     createButtonRow,
     createPrefGroup,
     moveCaption,
@@ -120,17 +121,32 @@ describe('moveCaption', () => {
     });
 });
 
+/** Evaluates rows.js as a script, with its motion import replaced by calls that finish at once. */
+function evaluateRows(exposed) {
+    const source = readFileSync(new URL('../../public/scripts/sillybunny-editor/rows.js', import.meta.url), 'utf8').replace(/^import .*$/m, '');
+    const motion = {
+        animateHeightFrom: () => null,
+        stopMotion: () => {},
+        MOTION_SLOW: 250,
+        play: (_element, _keyframes, { onFinish, onEnd } = {}) => {
+            onFinish?.();
+            onEnd?.();
+            return null;
+        },
+    };
+    return runInNewContext(`${source.replaceAll('export ', '')}\n(${exposed});`, { document, ...motion });
+}
+
 describe('shared row behavior', () => {
     test('destroying nested rows releases generated, explicit, heading and description reservations', () => {
-        const source = readFileSync(new URL('../../public/scripts/sillybunny-editor/rows.js', import.meta.url), 'utf8');
-        const api = runInNewContext(`${source.replaceAll('export ', '')}\n({ createEntryRow, createRow, createPrefGroup, createExpanderRow, reservationCount: () => reservedIds.size });`, { document });
+        const api = evaluateRows('{ createEntryRow, createRow, createPrefGroup, createExpanderRow, reservationCount: () => reservedIds.size }');
         for (let index = 0; index < 50; index++) {
             const entry = api.createEntryRow({ label: 'Entry', field: 'entry', subtitle: 'Description' });
             const explicit = api.createRow({ label: 'Row', field: 'row', id: `explicit-${index}`, subtitle: 'Description', activatable: true });
             const expander = api.createExpanderRow({ label: 'Expander', field: 'expander', children: [entry, explicit] });
             const group = api.createPrefGroup({ title: 'Group', subtitle: 'Description', field: 'group', rows: [expander] });
             document.body.append(group.section);
-            expect(api.reservationCount()).toBe(6);
+            expect(api.reservationCount()).toBe(7);
             entry.control.removeAttribute('id');
             group.destroy();
             group.destroy();
@@ -141,8 +157,7 @@ describe('shared row behavior', () => {
     });
 
     test('destroying one row cannot release an id still owned by another detached control', () => {
-        const source = readFileSync(new URL('../../public/scripts/sillybunny-editor/rows.js', import.meta.url), 'utf8');
-        const api = runInNewContext(`${source.replaceAll('export ', '')}\n({ createEntryRow, reservationCount: () => reservedIds.size });`, { document });
+        const api = evaluateRows('{ createEntryRow, reservationCount: () => reservedIds.size }');
         const first = api.createEntryRow({ label: 'First', field: 'first', id: 'sb-row-1' });
         const adopted = input('text');
         adopted.id = 'sb-row-1';
@@ -1121,8 +1136,7 @@ describe.each([['floating', true], ['stacked', false]])('createEntryRow error st
     });
 
     test('the error caption id is released with the row', () => {
-        const source = readFileSync(new URL('../../public/scripts/sillybunny-editor/rows.js', import.meta.url), 'utf8');
-        const api = runInNewContext(`${source.replaceAll('export ', '')}\n({ createEntryRow, reservationCount: () => reservedIds.size });`, { document });
+        const api = evaluateRows('{ createEntryRow, reservationCount: () => reservedIds.size }');
         const entry = api.createEntryRow({ label: 'Name', field: 'name', floating });
         expect(api.reservationCount()).toBe(1);
         entry.setError('Required');
@@ -1243,41 +1257,230 @@ describe('createPropertyRow', () => {
 });
 
 describe('createExpanderRow', () => {
-    test('uses native details with supplied content, description and toggle notifications', () => {
+    afterEach(() => {
+        document.body.replaceChildren();
+        document.body.classList.remove('reduced-motion');
+        delete window.matchMedia;
+    });
+
+    test('builds a header row with a toggle button, supplied content, a description and toggle notifications', () => {
         const child = createPropertyRow({ label: 'Value', field: 'value', value: 'child' });
         const extra = node('div');
         const onToggle = jest.fn();
         const result = createExpanderRow({ label: 'Advanced', subtitle: 'Description', field: 'advanced', children: [child, extra], onToggle });
-        const { row, content } = result;
-        expect(row.tagName).toBe('DETAILS');
+        const { row, header, toggle, content } = result;
+        expect(row.tagName).toBe('DIV');
         expect(row.className).toBe('ds-row-expander');
         expect(row.dataset.sbEditorField).toBe('advanced');
-        expect(row.open).toBe(false);
-        expect(row.firstChild.tagName).toBe('SUMMARY');
-        expect(row.firstChild.className).toBe('ds-row');
-        expect(row.firstChild.getAttribute('aria-describedby')).toBe(row.querySelector('small').id);
+        expect(row.firstChild).toBe(header);
+        expect(header.className).toBe('ds-row ds-row-expander__header');
+        expect(toggle.tagName).toBe('BUTTON');
+        expect(toggle.type).toBe('button');
+        expect(toggle.parentElement).toBe(header);
+        expect(toggle.querySelector('.ds-row-label').textContent).toBe('Advanced');
+        expect(toggle.getAttribute('aria-describedby')).toBe(row.querySelector('small').id);
+        expect(header.lastChild.className).toBe('ds-row-expander__arrow');
+        expect(header.lastChild.getAttribute('aria-hidden')).toBe('true');
         expect(content.className).toBe('ds-row-expander-content');
+        expect(row.lastChild).toBe(content);
         expect([...content.children]).toEqual([child.row, extra]);
-        result.setOpen(true);
-        expect(row.open).toBe(true);
-        row.dispatchEvent(new Event('toggle'));
-        expect(onToggle).toHaveBeenCalledWith(true);
-        result.setOpen(false);
-        row.dispatchEvent(new Event('toggle'));
-        expect(onToggle).toHaveBeenLastCalledWith(false);
+        expect(onToggle).not.toHaveBeenCalled();
     });
 
-    test('can start open and disabled summaries decline click and keyboard activation', () => {
+    test('names the content it controls and reports its state with aria-expanded', () => {
+        const { toggle, content, row, isOpen } = createExpanderRow({ label: 'Advanced', field: 'advanced' });
+        expect(content.id).not.toBe('');
+        expect(toggle.getAttribute('aria-controls')).toBe(content.id);
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(isOpen()).toBe(false);
+        expect(row.classList.contains('is-open')).toBe(false);
+    });
+
+    test('the toggle opens and closes the content, which is hidden while closed', () => {
+        const onToggle = jest.fn();
+        const field = input('text');
+        const { toggle, content, row, isOpen } = createExpanderRow({ label: 'Advanced', field: 'advanced', children: [node('div')], onToggle });
+        content.append(field);
+        document.body.append(row);
+        expect(content.hidden).toBe(true);
+        toggle.click();
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(row.classList.contains('is-open')).toBe(true);
+        expect(content.hidden).toBe(false);
+        expect(isOpen()).toBe(true);
+        expect(onToggle).toHaveBeenLastCalledWith(true);
+        toggle.click();
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(content.hidden).toBe(true);
+        expect(onToggle).toHaveBeenLastCalledWith(false);
+        expect(onToggle).toHaveBeenCalledTimes(2);
+    });
+
+    test('is a native button, so Enter and Space activate it and no key handler runs twice', () => {
+        const { toggle } = createExpanderRow({ label: 'Advanced', field: 'advanced' });
+        document.body.append(toggle);
+        for (const key of ['Enter', ' ']) {
+            const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+            toggle.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(false);
+        }
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.disabled).toBe(false);
+        expect(toggle.tabIndex).toBe(0);
+    });
+
+    test('focus stays on the toggle when it opens and closes', () => {
+        const { toggle, row } = createExpanderRow({ label: 'Advanced', field: 'advanced' });
+        document.body.append(row);
+        toggle.focus();
+        toggle.click();
+        expect(document.activeElement).toBe(toggle);
+        toggle.click();
+        expect(document.activeElement).toBe(toggle);
+    });
+
+    test('closing from code returns focus from the content to the toggle', () => {
+        const field = input('text');
+        const { toggle, row, setOpen } = createExpanderRow({ label: 'Advanced', field: 'advanced', open: true, children: [node('div')] });
+        row.querySelector('.ds-row-expander-content').append(field);
+        document.body.append(row);
+        field.focus();
+        expect(document.activeElement).toBe(field);
+        setOpen(false);
+        expect(document.activeElement).toBe(toggle);
+    });
+
+    test('several expanders stay open together', () => {
+        const first = createExpanderRow({ label: 'First', field: 'first' });
+        const second = createExpanderRow({ label: 'Second', field: 'second' });
+        document.body.append(first.row, second.row);
+        first.toggle.click();
+        second.toggle.click();
+        expect(first.isOpen()).toBe(true);
+        expect(second.isOpen()).toBe(true);
+    });
+
+    test('can start open, and setOpen can skip the motion', () => {
         const result = createExpanderRow({ label: 'Advanced', field: 'advanced', open: true });
-        expect(result.row.open).toBe(true);
+        expect(result.isOpen()).toBe(true);
+        expect(result.content.hidden).toBe(false);
+        expect(result.toggle.getAttribute('aria-expanded')).toBe('true');
+        result.setOpen(false, { animate: false });
+        expect(result.content.hidden).toBe(true);
+    });
+
+    test('a suffix switch keeps its own focus and does not toggle the row', () => {
+        const enabled = createSwitchRow({ label: 'Enabled', field: 'enabled' });
+        const { toggle, header, row, isOpen } = createExpanderRow({ label: 'Note', field: 'note', suffix: enabled.row });
+        document.body.append(row);
+        expect(enabled.row.closest('.ds-row-suffix').parentElement).toBe(header);
+        expect(toggle.contains(enabled.row)).toBe(false);
+        enabled.control.focus();
+        expect(document.activeElement).toBe(enabled.control);
+        enabled.control.click();
+        expect(enabled.control.checked).toBe(true);
+        expect(isOpen()).toBe(false);
+        expect(header.querySelector('.ds-row-expander__arrow').previousElementSibling).toBe(enabled.row.closest('.ds-row-suffix'));
+        toggle.click();
+        expect(isOpen()).toBe(true);
+        expect(enabled.control.checked).toBe(true);
+    });
+
+    test('disabling the row makes all of it inert and declines the toggle', () => {
+        const result = createExpanderRow({ label: 'Advanced', field: 'advanced', open: true });
         result.setDisabled(true);
         expect(result.row.hasAttribute('inert')).toBe(true);
-        for (const event of [new MouseEvent('click', { cancelable: true }), new KeyboardEvent('keydown', { key: 'Enter', cancelable: true })]) {
-            result.row.firstChild.dispatchEvent(event);
-            expect(event.defaultPrevented).toBe(true);
-        }
+        expect(result.row.getAttribute('aria-disabled')).toBe('true');
+        result.toggle.click();
+        expect(result.isOpen()).toBe(true);
         result.setDisabled(false);
         expect(result.row.hasAttribute('inert')).toBe(false);
+        result.toggle.click();
+        expect(result.isOpen()).toBe(false);
+    });
+
+    describe('reveal motion', () => {
+        function motionStub({ reduced = false, bodyClass = false } = {}) {
+            window.matchMedia = query => ({ matches: reduced && query.includes('reduce') });
+            document.body.classList.toggle('reduced-motion', bodyClass);
+            let finish;
+            const animation = { finished: new Promise(resolve => { finish = resolve; }), cancel: jest.fn() };
+            const animate = jest.fn(() => animation);
+            const result = createExpanderRow({ label: 'Advanced', field: 'advanced', children: [node('div')] });
+            document.body.append(result.row);
+            result.content.animate = animate;
+            result.content.getBoundingClientRect = () => ({ height: 80 });
+            return { ...result, animate, finish };
+        }
+
+        test('opens over the expander motion and hides the content once it has closed', async () => {
+            const { toggle, content, animate, finish } = motionStub();
+            toggle.click();
+            expect(content.hidden).toBe(false);
+            expect(animate).toHaveBeenCalledTimes(1);
+            expect(animate.mock.calls[0][0]).toEqual([{ height: '0px' }, { height: '80px' }]);
+            expect(animate.mock.calls[0][1]).toMatchObject({ duration: 250 });
+            toggle.click();
+            expect(animate).toHaveBeenCalledTimes(2);
+            expect(animate.mock.calls[1][0]).toEqual([{ height: '80px' }, { height: '0px' }]);
+            expect(content.hidden).toBe(false);
+            finish();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(content.hidden).toBe(true);
+        });
+
+        test('does not animate under prefers-reduced-motion', () => {
+            const { toggle, content, animate } = motionStub({ reduced: true });
+            toggle.click();
+            expect(content.hidden).toBe(false);
+            toggle.click();
+            expect(content.hidden).toBe(true);
+            expect(animate).not.toHaveBeenCalled();
+        });
+
+        test('does not animate under the Reduced Motion setting', () => {
+            const { toggle, content, animate } = motionStub({ bodyClass: true });
+            toggle.click();
+            expect(content.hidden).toBe(false);
+            toggle.click();
+            expect(content.hidden).toBe(true);
+            expect(animate).not.toHaveBeenCalled();
+        });
+    });
+});
+
+describe('adoptExpanderRow', () => {
+    function markup() {
+        document.body.innerHTML = `<div class="ds-row-expander" id="adopted">
+            <div class="ds-row ds-row-expander__header">
+                <button type="button" class="ds-row-expander__toggle"><span class="ds-row-text"><span class="ds-row-label">Group</span></span></button>
+                <span class="ds-row-suffix"><span id="count">2</span></span>
+                <span class="ds-row-expander__arrow" aria-hidden="true"></span>
+            </div>
+            <div class="ds-row-expander-content" hidden><input id="inside"></div>
+        </div>`;
+        return document.getElementById('adopted');
+    }
+
+    test('wires authored markup the way the factory does', () => {
+        const row = markup();
+        const onToggle = jest.fn();
+        const result = adoptExpanderRow(row, { onToggle });
+        const toggle = row.querySelector('.ds-row-expander__toggle');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.getAttribute('aria-controls')).toBe(result.content.id);
+        expect(result.content.hidden).toBe(true);
+        toggle.click();
+        expect(result.content.hidden).toBe(false);
+        expect(row.classList.contains('is-open')).toBe(true);
+        expect(onToggle).toHaveBeenCalledWith(true);
+        result.setOpen(false);
+        expect(result.isOpen()).toBe(false);
+    });
+
+    test('refuses markup without a header toggle and content', () => {
+        expect(() => adoptExpanderRow(node('div'))).toThrow(TypeError);
     });
 });
 

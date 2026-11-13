@@ -198,6 +198,95 @@ async function expectStatusPages(page, isMobile) {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(spinner).toHaveCSS('animation-name', 'none');
     await expect(spinner).toHaveCSS('border-top-color', await resolved(page, 'color', 'var(--sb-shell-text)'));
+}
+
+async function expectExpanderRows(page, isMobile) {
+    const toggle = id => page.locator(`#${id} > .ds-row-expander__header > .ds-row-expander__toggle`);
+    const content = id => page.locator(`#${id} > .ds-row-expander-content`);
+    const arrow = id => page.locator(`#${id} > .ds-row-expander__header > .ds-row-expander__arrow`);
+    const animating = id => content(id).evaluate(node => node.getAnimations().length > 0);
+    const arrowTransform = id => arrow(id).evaluate(node => getComputedStyle(node).transform);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    for (const [id, open] of [['expander-rest', false], ['expander-open', true], ['expander-note', false]]) {
+        await expect(toggle(id)).toHaveAttribute('aria-expanded', String(open));
+        await expect(toggle(id)).toHaveAttribute('aria-controls', await content(id).getAttribute('id'));
+        if (open) await expect(content(id)).toBeVisible();
+        else await expect(content(id)).toBeHidden();
+        const height = (await page.locator(`#${id} > .ds-row-expander__header`).boundingBox()).height;
+        expect(height, `${id} header keeps the row height`).toBeGreaterThanOrEqual(isMobile ? 44 : 36);
+    }
+    await expect(page.getByRole('button', { name: /^Advanced/ })).toBeVisible();
+    await expect(content('expander-rest')).toHaveAttribute('hidden', '');
+    expect(await arrowTransform('expander-rest')).not.toBe(await arrowTransform('expander-open'));
+
+    // Closed content is out of the tab order: the next stop after a closed row is the next row.
+    await page.locator('#primary').focus();
+    await toggle('expander-rest').focus();
+    await page.keyboard.press('Tab');
+    await expect(toggle('expander-open')).toBeFocused();
+    await expect.poll(() => toggle('expander-open').evaluate(node => getComputedStyle(node, '::after').boxShadow)).toBe(await resolved(page, 'box-shadow', 'var(--sb-focus-ring-inset)'));
+    await page.keyboard.press('Shift+Tab');
+    await expect(toggle('expander-rest')).toBeFocused();
+
+    // Enter opens, focus stays on the header, and the nested controls join the tab order.
+    await page.keyboard.press('Enter');
+    await expect(toggle('expander-rest')).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle('expander-rest')).toBeFocused();
+    await expect(content('expander-rest')).toBeVisible();
+    await expect(arrow('expander-rest')).toHaveCSS('transform', await arrowTransform('expander-open'));
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#expander-name')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(toggle('expander-rest')).toBeFocused();
+
+    // Space closes it again; the reveal has finished when the content is hidden.
+    await page.keyboard.press('Space');
+    await expect(toggle('expander-rest')).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle('expander-rest')).toBeFocused();
+    await expect(content('expander-rest')).toBeHidden();
+
+    // Several rows stay open at once.
+    await toggle('expander-note').click();
+    await toggle('expander-rest').click();
+    await expect(toggle('expander-open')).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle('expander-note')).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle('expander-rest')).toHaveAttribute('aria-expanded', 'true');
+    await toggle('expander-note').click();
+    await toggle('expander-rest').click();
+    await expect(content('expander-note')).toBeHidden();
+    await expect(content('expander-rest')).toBeHidden();
+
+    // The suffix switch keeps its own focus and does not toggle the row.
+    await toggle('expander-note').focus();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#expander-enabled')).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(page.locator('#expander-enabled')).toBeChecked();
+    await expect(toggle('expander-note')).toHaveAttribute('aria-expanded', 'false');
+    await page.locator('#expander-enabled').click();
+    await expect(page.locator('#expander-enabled')).not.toBeChecked();
+    await expect(toggle('expander-note')).toHaveAttribute('aria-expanded', 'false');
+    // The rest of the header is the toggle, down to its padding.
+    await page.locator('#expander-note > .ds-row-expander__header').click({ position: { x: 3, y: 3 } });
+    await expect(toggle('expander-note')).toHaveAttribute('aria-expanded', 'true');
+    await page.locator('#expander-note > .ds-row-expander__header').click({ position: { x: 3, y: 3 } });
+    await expect(content('expander-note')).toBeHidden();
+
+    // The reveal moves with motion, and does not under prefers-reduced-motion.
+    await toggle('expander-rest').click();
+    await expect.poll(() => animating('expander-rest')).toBe(true);
+    await expect(content('expander-rest')).toBeVisible();
+    await expect.poll(() => animating('expander-rest')).toBe(false);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await toggle('expander-rest').click();
+    await expect(content('expander-rest')).toBeHidden();
+    expect(await animating('expander-rest')).toBe(false);
+    await toggle('expander-rest').click();
+    await expect(content('expander-rest')).toBeVisible();
+    expect(await animating('expander-rest')).toBe(false);
+    await expect(arrow('expander-rest')).toHaveCSS('transition-duration', '0s');
+    await toggle('expander-rest').click();
     await page.emulateMedia({ reducedMotion: 'no-preference' });
 }
 
@@ -227,6 +316,7 @@ for (const [name, colors] of Object.entries(themes)) {
         await expectEntryRows(page);
         await expectSearchEntries(page, isMobile);
         await expectStatusPages(page, isMobile);
+        await expectExpanderRows(page, isMobile);
 
         for (const compact of [false, true]) {
             await page.evaluate(value => document.documentElement.dataset.sbCompactMode = String(value), compact);

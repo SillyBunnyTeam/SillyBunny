@@ -41,7 +41,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/chrome.js
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/preview.js', () => ({ mountEditorPreviews: () => ({ reset: jest.fn() }) }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
-    animateHeightFrom: jest.fn(), animateIn: jest.fn(), animateListChange: (_node, render) => render(),
+    animateHeightFrom: jest.fn(), animateIn: jest.fn(), play: jest.fn(), stopMotion: jest.fn(), animateListChange: (_node, render) => render(),
     MOTION_EASE_OUT_QUAD: '', MOTION_FAST: 0, MOTION_SLOW: 0, prefersReducedMotion: () => true,
 }));
 const { createObjectNavigation } = await import('../../public/scripts/sillybunny-editor/object-navigation.js');

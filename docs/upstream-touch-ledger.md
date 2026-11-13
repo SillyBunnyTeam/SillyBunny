@@ -52,6 +52,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05, PR #870 (opening layout). |
 | Owner | UI overhaul integrator. |
 
+### `public/index.html` - character editor Group-only greetings expander
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Character editor, the Group-only greetings expander. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `adoptExpanderRow` in `public/scripts/sillybunny-editor/rows.js` (called from `_bindGreetingExpanders` in `public/scripts/sillybunny-character-editor.js`) and the `.ds-row-expander*` rules in `public/css/sillybunny-tabs.css`. |
+| Adapter shape | The block `#sb_character_group_greetings` is the shared expander row markup: a header row with a toggle button and an arrow, and content that is `hidden` while closed, in place of `details` and `summary`. Its id, the count badge and the greeting list inside are kept; a `SillyBunny:` comment marks it. |
+| Protecting tests | `tests/unit/sillybunny-editor-rows.test.js`; `tests/foundation/shared-ui.e2e.js`; `tests/character-editor-rendering.e2e.js`; `tests/helpers/surfaces/editor.js` (the group greetings state). |
+| Validation | 2026-11-13: root and tests lint, the full unit run, the foundation config, the e2e specs that name the changed classes. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-13, UI polish sweep (task 2.13). |
+| Owner | `TODO(copy)` |
+
 ### Shared header icon-button markup
 | Field | Value |
 | --- | --- |
