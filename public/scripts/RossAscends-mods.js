@@ -472,6 +472,8 @@ function RA_autoconnect(PrevApi) {
                     || (secret_state[SECRET_KEYS.MINIMAX] && oai_settings.chat_completion_source == chat_completion_sources.MINIMAX)
                     || (secret_state[SECRET_KEYS.LINKAPI] && oai_settings.chat_completion_source == chat_completion_sources.LINKAPI)
                     || (isValidUrl(oai_settings.custom_url) && oai_settings.chat_completion_source == chat_completion_sources.CUSTOM)
+                    // SillyBunny: KoboldCpp's own Chat Completions API needs a key only when it was started with a password.
+                    || (isValidUrl(oai_settings.koboldcpp_url) && oai_settings.chat_completion_source == chat_completion_sources.KOBOLDCPP)
                     || (secret_state[SECRET_KEYS.AZURE_OPENAI] && oai_settings.chat_completion_source == chat_completion_sources.AZURE_OPENAI)
                 ) {
                     $('#api_button_openai').trigger('click');

@@ -219,6 +219,7 @@ export const CHAT_COMPLETION_SOURCES = {
     MINIMAX: 'minimax',
     WORKERS_AI: 'workers_ai',
     LINKAPI: 'linkapi',
+    KOBOLDCPP: 'koboldcpp', // SillyBunny: KoboldCpp's own Chat Completions endpoint, apart from Text Completion KoboldCpp.
 };
 
 /**

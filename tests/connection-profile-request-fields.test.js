@@ -5,6 +5,7 @@ const mockProxies = [];
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     CONNECT_API_MAP: {
+        'koboldcpp-chat': { selected: 'openai', source: 'koboldcpp' },
         nanogpt: { selected: 'openai', source: 'nanogpt' },
         openrouter: { selected: 'openai', source: 'openrouter' },
         'openrouter-text': { selected: 'textgenerationwebui', type: 'openrouter' },
@@ -67,6 +68,7 @@ await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
     isValidUrl: jest.fn(() => true),
 }));
 
+const { createModelIcon } = await import('../public/script.js');
 const {
     ConnectionManagerRequestService,
     getChatCompletionProfileRequestOverrides,
@@ -350,6 +352,54 @@ test('Pollinations profiles pass only their endpoint and honor a caller endpoint
         const overridden = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100, {}, { pollinations_endpoint: 'authenticated' });
         expect(overridden.pollinations_endpoint).toBe('authenticated');
         expect(profile['api-url']).toBe('anonymous');
+    } finally {
+        global.SillyTavern = originalContext;
+    }
+});
+
+test('KoboldCpp Chat Completion profiles send their URL and honor a caller URL override', async () => {
+    const profile = { id: 'koboldcpp-profile', mode: 'cc', api: 'koboldcpp-chat', model: '', 'api-url': 'http://127.0.0.1:5001' };
+    const processRequest = jest.fn(async payload => payload);
+    const originalContext = global.SillyTavern;
+    global.SillyTavern = {
+        getContext: () => ({
+            extensionSettings: { disabledExtensions: [], connectionManager: { profiles: [profile] } },
+            ChatCompletionService: { processRequest },
+            CONNECT_API_MAP: { 'koboldcpp-chat': { selected: 'openai', source: 'koboldcpp' } },
+        }),
+    };
+
+    try {
+        const result = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100);
+        expect(result.chat_completion_source).toBe('koboldcpp');
+        expect(result.koboldcpp_url).toBe('http://127.0.0.1:5001');
+        expect(result).not.toHaveProperty('custom_url');
+        const overridden = await ConnectionManagerRequestService.sendRequest(profile.id, 'Hello', 100, {}, { koboldcpp_url: 'http://127.0.0.1:5002' });
+        expect(overridden.koboldcpp_url).toBe('http://127.0.0.1:5002');
+        expect(profile['api-url']).toBe('http://127.0.0.1:5001');
+    } finally {
+        global.SillyTavern = originalContext;
+    }
+});
+
+test.each([
+    ['koboldcpp-chat', 'koboldcpp'],
+    ['openrouter-text', 'openrouter'],
+    ['nanogpt', 'nanogpt'],
+    ['unmapped-api', 'unmapped-api'],
+])('a %s profile shows the %s icon', (api, icon) => {
+    const profile = { id: `${api}-profile`, mode: 'cc', api, model: 'test-model' };
+    const originalContext = global.SillyTavern;
+    global.SillyTavern = {
+        getContext: () => ({
+            extensionSettings: { disabledExtensions: [], connectionManager: { profiles: [profile] } },
+        }),
+    };
+    createModelIcon.mockClear();
+
+    try {
+        ConnectionManagerRequestService.getProfileIcon(profile.id);
+        expect(createModelIcon).toHaveBeenCalledWith(icon, 'test-model');
     } finally {
         global.SillyTavern = originalContext;
     }
