@@ -10,7 +10,7 @@ import { t } from './i18n.js';
 import { eventSource, event_types } from './events.js';
 import { openActionMenu, closeActionMenu, isActionMenuOpen } from './sillybunny-action-menu.js';
 import { isPickerOpen } from './sillybunny-editor/picker.js';
-import { createListEditor, LIST_EDITOR_STYLESHEET } from './sillybunny-editor/list-shell.js';
+import { createListEditor, LIST_EDITOR_STYLESHEET, EDITOR_CHROME_STYLESHEET } from './sillybunny-editor/list-shell.js';
 import { reconcileRows, rowEntry, bindListKeyboard } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
@@ -69,7 +69,7 @@ function menuItem(label, glyph, action, danger = false, disabled = false) {
  * @param {{ href: string, id: string }[]} [stylesheets]
  * @returns {Promise<void>}
  */
-export async function loadPersonaEditorStyles(stylesheets = [LIST_EDITOR_STYLESHEET, ...STYLESHEETS]) {
+export async function loadPersonaEditorStyles(stylesheets = [LIST_EDITOR_STYLESHEET, EDITOR_CHROME_STYLESHEET, ...STYLESHEETS]) {
     const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
     if (!loader) return;
     await Promise.all(stylesheets.map(async ({ href, id }) => {

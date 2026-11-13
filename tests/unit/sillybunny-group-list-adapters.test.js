@@ -661,7 +661,8 @@ describe('native group stylesheet readiness', () => {
         const reveal = editorSource.match(/^export async function prepareGroupEditorReveal\([\s\S]*?^}/m)[0].replace('export ', '');
         const sheets = editorSource.match(/^const GROUP_EDITOR_STYLESHEETS = \[[\s\S]*?^\];/m)[0];
         const shellSheet = shellSource.match(/^export const LIST_EDITOR_STYLESHEET = .*;/m)[0].replace('export ', '');
-        const prepare = vm.runInNewContext(`${shellSheet}\n${sheets}\nconst groupEditorReveals = new WeakMap();\n${reveal}\nprepareGroupEditorReveal;`, { loadStylesheetAsync });
+        const chromeSheet = shellSource.match(/^export const EDITOR_CHROME_STYLESHEET = .*;/m)[0].replace('export ', '');
+        const prepare = vm.runInNewContext(`${shellSheet}\n${chromeSheet}\n${sheets}\nconst groupEditorReveals = new WeakMap();\n${reveal}\nprepareGroupEditorReveal;`, { loadStylesheetAsync });
         const context = loadFunctions(['select_group_chats', 'openGroupEditor', 'groupEditorTargetExists', 'reportGroupEditorError'], {
             $, prepareGroupEditorReveal: prepare, menu_type: 'group_edit', groupEditorReady: null,
             beginGroupEditorLoad: () => 'reconciled', openGroupId: 'group-1', groups: [{ id: 'group-1' }], editorDraft: {},
@@ -675,10 +676,11 @@ describe('native group stylesheet readiness', () => {
         const opening = context.api.openGroupEditor('group-1');
         expect(root.style.visibility).toBe('hidden');
         expect(root.inert).toBe(true);
-        const ids = ['deferred-editor-shell-css', 'deferred-entity-list-css', 'deferred-rm-groups-css'];
+        const ids = ['deferred-editor-shell-css', 'deferred-entity-list-css', 'deferred-rm-groups-css', 'deferred-editor-chrome-css'];
         const failed = document.getElementById(ids[1]);
         document.getElementById(ids[0]).dispatchEvent(new Event('load'));
         document.getElementById(ids[2]).dispatchEvent(new Event('load'));
+        document.getElementById(ids[3]).dispatchEvent(new Event('load'));
         failed.dispatchEvent(new Event('error'));
         await expect(opening).resolves.toBe(false);
         expect(root.style.visibility).toBe('hidden');
@@ -692,7 +694,7 @@ describe('native group stylesheet readiness', () => {
         await expect(reopening).resolves.toBe(true);
         expect(root.inert).toBe(false);
         expect(root.style.visibility).toBe('');
-        expect(document.head.querySelectorAll('link')).toHaveLength(3);
+        expect(document.head.querySelectorAll('link')).toHaveLength(4);
     });
 });
 

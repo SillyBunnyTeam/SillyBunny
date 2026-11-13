@@ -108,6 +108,7 @@ const personaMountSource = tabsSource.split('let personaEditorMountPromise = nul
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
     { href: 'css/sillybunny-editor-shell.css?v=20261114l', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-character-editor.css?v=20261114q', id: 'deferred-editor-chrome-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261113t', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261114l', id: 'deferred-persona-detail-css' },
@@ -309,21 +310,22 @@ describe('Persona editor shell', () => {
         expect(() => mountPersonaEditor(document.createElement('div'))).toThrow('#PersonaManagement');
     });
 
-    test('the editor waits for shared shell, entity row, list and detail stylesheets before reveal', async () => {
+    test('the editor waits for shared shell, editor chrome, entity row, list and detail stylesheets before reveal', async () => {
         personas();
         const resolvers = [];
         globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(() => new Promise(resolve => resolvers.push(resolve)));
         mounted = mountPersonaEditor(container);
         await settle();
-        expect(resolvers).toHaveLength(4);
+        expect(resolvers).toHaveLength(5);
         expect(container.classList.contains('sb-persona-editor-mounted')).toBe(false);
         expect(adapter.isOpen()).toBe(false);
         resolvers[0]();
         resolvers[1]();
         resolvers[2]();
+        resolvers[3]();
         await settle();
         expect(container.querySelector('.sb-persona-editor').hidden).toBe(true);
-        resolvers[3]();
+        resolvers[4]();
         await mounted.ready;
         expect(adapter.isOpen()).toBe(true);
     });

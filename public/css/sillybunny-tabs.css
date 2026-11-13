@@ -10234,3 +10234,20 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
         --sb-bottom-chat-mobile-persona-size: var(--sb-control-min-height);
     }
 }
+
+/* A section is a column of rows on every surface that builds one: the Connections page, dialogs, windows
+   and the editors. The editors' own sheet is deferred, so this base cannot live there. */
+.sb-editor-section,
+.sb-editor-section__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* Draft-recovery toast actions (sillybunny-editor/chrome.js). The toast renders outside the editors, and can
+   appear while the editors' deferred sheet is still loading. */
+.sb-draft-toast__actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}

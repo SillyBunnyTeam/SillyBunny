@@ -397,20 +397,22 @@ describe('World Info shell', () => {
         expect(() => mountWorldInfoEditor(document.createElement('div'))).toThrow('#WorldInfo');
     });
 
-    test('shell is not revealed until both deferred stylesheets resolve', async () => {
+    test('shell is not revealed until its deferred stylesheets resolve', async () => {
         // A sheet can be requested more than once: the status page asks for the one that draws it, as the shell does.
+        // The shell, the editor chrome and the World Info sheet are three.
         const resolvers = new Map();
         globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(href => new Promise(done => { resolvers.set(href, [...(resolvers.get(href) ?? []), done]); }));
         mounted = mountWorldInfoEditor(container);
         await settle();
         expect(container.querySelector('.sb-wi-editor').hidden).toBe(true);
         expect(container.classList.contains('sb-wi-editor-mounted')).toBe(false);
-        expect(resolvers.size).toBe(2);
-        const [first, second] = [...resolvers.values()];
+        expect(resolvers.size).toBe(3);
+        const [first, second, third] = [...resolvers.values()];
         first.forEach(done => done());
+        second.forEach(done => done());
         await settle();
         expect(container.querySelector('.sb-wi-editor').hidden).toBe(true);
-        second.forEach(done => done());
+        third.forEach(done => done());
         await settle();
         expect(container.querySelector('.sb-wi-editor').hidden).toBe(false);
         expect(container.classList.contains('sb-wi-editor-mounted')).toBe(true);

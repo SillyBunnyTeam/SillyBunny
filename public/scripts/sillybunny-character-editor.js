@@ -41,6 +41,7 @@ import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
+import { holdEditorsUntilStyled } from './sillybunny-editor/list-shell.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { adoptExpanderRow, createComboRow, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
 import { reconcileRows } from './sillybunny-editor/list-rows.js';
@@ -108,6 +109,7 @@ let draftGrpKeys = [];
 // ============================================================
 
 export function initCharacterEditor() {
+    holdEditorsUntilStyled();
     _mountChrome();
     _bindToolbarButtons();
     _bindExportMenu();

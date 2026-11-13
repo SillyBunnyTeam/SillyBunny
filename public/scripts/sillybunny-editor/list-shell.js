@@ -6,14 +6,94 @@ import { askLeaveEditor } from './leave-dialog.js';
 const DEFAULT_COLLAPSE_AT = 720;
 
 export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261114l', id: 'deferred-editor-shell-css' };
+/** The header, action, field and section rules that every explicit-save editor shares. index.html preloads it. */
+export const EDITOR_CHROME_STYLESHEET = { href: 'css/sillybunny-character-editor.css?v=20261114q', id: 'deferred-editor-chrome-css' };
 
 /**
- * Loads the deferred shell stylesheet. Consumers await it before revealing the shell.
+ * Loads the editor chrome stylesheet on its own, for the editors that have no list shell.
+ * @returns {Promise<unknown>}
+ */
+export function loadEditorChromeStyles() {
+    const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
+    return loader ? loader(EDITOR_CHROME_STYLESHEET.href, { id: EDITOR_CHROME_STYLESHEET.id }) : Promise.resolve();
+}
+
+/**
+ * Loads the deferred shell stylesheet and the editor chrome it builds on. Consumers await it before revealing the shell.
  * @returns {Promise<unknown>}
  */
 export function loadListEditorStyles() {
     const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
-    return loader ? loader(LIST_EDITOR_STYLESHEET.href, { id: LIST_EDITOR_STYLESHEET.id }) : Promise.resolve();
+    return loader
+        ? Promise.all([LIST_EDITOR_STYLESHEET, EDITOR_CHROME_STYLESHEET].map(({ href, id }) => loader(href, { id })))
+        : Promise.resolve();
+}
+
+const ACTIVE_MENU_CLASS = 'sb-active-right-menu';
+
+// The mobile shell makes an active menu `visibility: visible !important`, which only an important inline value outranks.
+const isHeld = menu => menu.style.getPropertyValue('visibility') === 'hidden' && menu.style.getPropertyPriority('visibility') === 'important';
+
+// The character editor needs only the chrome sheet. The group editor also reads the list shell, so it waits for both.
+const GATED_MENUS = Object.freeze([
+    { id: 'rm_ch_create_block', load: loadEditorChromeStyles },
+    { id: 'rm_group_chats_block', load: loadListEditorStyles },
+]);
+
+/**
+ * The character and group editors are static markup that `selectRightMenuWithAnimation()` shows from many paths.
+ * Their rules come from a deferred sheet, so a menu that turns active before its sheet applies is kept
+ * invisible until the sheet is ready. The observer runs in the microtask after the script that showed the
+ * menu, which is before the browser's next frame, so no frame paints the menu unstyled. Once a sheet is ready it
+ * stays applied, and the gate for that menu ends.
+ * @returns {() => void} Stops the gate and shows any held menu.
+ */
+export function holdEditorsUntilStyled() {
+    const gates = GATED_MENUS.map(({ id, load }) => ({ menu: document.getElementById(id), load, ready: false, loading: false, held: false }))
+        .filter(gate => gate.menu instanceof HTMLElement);
+    const observers = [];
+
+    const release = gate => {
+        gate.ready = true;
+        if (!gate.held) return;
+        gate.held = false;
+        // The sheet's rules start transitions from the unstyled values while the menu is still hidden. Finish them, so
+        // the first frame that shows the menu has the end values. The menu's own fade-in is not one of them.
+        const { CSSTransition } = globalThis;
+        if (typeof CSSTransition === 'function') {
+            for (const animation of gate.menu.getAnimations({ subtree: true })) {
+                if (animation instanceof CSSTransition && animation.effect?.target !== gate.menu) animation.finish();
+            }
+        }
+        if (gate.menu.classList.contains(ACTIVE_MENU_CLASS) && isHeld(gate.menu)) {
+            gate.menu.style.setProperty('visibility', 'visible');
+        }
+    };
+
+    const hold = gate => {
+        if (gate.ready || !gate.menu.classList.contains(ACTIVE_MENU_CLASS)) return;
+        if (!isHeld(gate.menu)) gate.menu.style.setProperty('visibility', 'hidden', 'important');
+        gate.held = true;
+        if (gate.loading) return;
+        gate.loading = true;
+        // A failed sheet must not leave the editor invisible: the editor works without its styles.
+        Promise.resolve()
+            .then(() => gate.load())
+            .catch(error => console.warn('Failed to load the editor styles.', error))
+            .finally(() => release(gate));
+    };
+
+    for (const gate of gates) {
+        const observer = new MutationObserver(() => hold(gate));
+        observer.observe(gate.menu, { attributes: true, attributeFilter: ['class', 'style'] });
+        observers.push(observer);
+        hold(gate);
+    }
+
+    return () => {
+        for (const observer of observers) observer.disconnect();
+        for (const gate of gates) release(gate);
+    };
 }
 
 /**

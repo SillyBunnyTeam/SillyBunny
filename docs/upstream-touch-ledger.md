@@ -1464,6 +1464,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-12, UI polish sweep. |
 | Owner | `TODO(copy)` |
 
+### `public/index.html` - editor chrome stylesheet loads on demand
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Head stylesheets: `css/sillybunny-character-editor.css`, the editor chrome sheet. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `loadListEditorStyles()`, `loadEditorChromeStyles()` and `holdEditorsUntilStyled()` in `public/scripts/sillybunny-editor/list-shell.js`; `loadStylesheetAsync()` in `public/scripts/dynamic-styles.js` adopts the preload in place, so the sheet keeps its place in the cascade. |
+| Adapter shape | The blocking `<link rel="stylesheet">` is a `<link rel="preload" as="style" data-sb-deferred-style>` at the same place, marked `SillyBunny:`; its key matches `EDITOR_CHROME_STYLESHEET` and the loader lists. Every editor and window that uses the sheet waits for it before it shows; the static character and group editors are held invisible until it applies. |
+| Protecting tests | `tests/editor-styles-first-frame.e2e.js`; `tests/unit/sillybunny-editor-styles-gate.test.js`; `tests/frontend-performance.e2e.js`; `npm run check:frontend-budgets`. |
+| Validation | 2026-11-14: root and tests lint, the full unit run, budgets, the e2e specs that open the editors, the first-frame spec. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-14, UI polish sweep (task 2.18). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/chats.js` - Data Bank Add menu as a sheet
 | Field | Value |
 | --- | --- |
