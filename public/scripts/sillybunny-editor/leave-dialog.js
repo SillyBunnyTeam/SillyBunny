@@ -13,7 +13,7 @@ export const LEAVE_DISCARD_RESULT = 2;
  */
 export async function askLeaveEditor() {
     const message = document.createElement('p');
-    message.textContent = t`Unsaved changes`;
+    message.textContent = t`You have unsaved changes`;
     const popup = new Popup(message, POPUP_TYPE.CONFIRM, '', {
         okButton: t`Save`,
         cancelButton: t`Cancel`,

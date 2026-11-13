@@ -602,7 +602,7 @@ test('a CC switch with a dirty editor draft does not throw', async ({ page }) =>
     // cancels the preset step; the switch still finishes and reports. The picker is used from the Editor tab, because
     // leaving that tab with a draft asks as well.
     const guards = [];
-    await page.addLocatorHandler(page.locator('dialog.popup[open]', { hasText: 'Unsaved changes' }), async dialog => {
+    await page.addLocatorHandler(page.locator('dialog.popup[open]', { hasText: 'You have unsaved changes' }), async dialog => {
         guards.push(await dialog.locator('.popup-button-cancel').textContent());
         await dialog.locator('.popup-button-cancel').click();
     });

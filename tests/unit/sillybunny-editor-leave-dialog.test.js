@@ -28,7 +28,7 @@ describe('askLeaveEditor', () => {
         popupShow.mockResolvedValue(0);
         await askLeaveEditor();
         const [content, type, , options] = PopupCtor.mock.calls[0];
-        expect(content.textContent).toBe('Unsaved changes');
+        expect(content.textContent).toBe('You have unsaved changes');
         expect(type).toBe('confirm');
         expect(options.okButton).toBe('Save');
         expect(options.cancelButton).toBe('Cancel');

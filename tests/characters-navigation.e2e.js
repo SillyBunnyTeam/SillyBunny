@@ -239,7 +239,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await addCandidate(page, members[1]);
         await memberRow(page, members[0]).locator('.ch_name').click();
         const popup = page.locator('dialog.popup[open]').last();
-        await expect(popup).toContainText('Unsaved changes');
+        await expect(popup).toContainText('You have unsaved changes');
         await popup.getByRole('button', { name: 'Save', exact: true }).click();
         await expect(popup).toBeHidden();
         await expectCharacterEditor(page, members[0]);
@@ -315,7 +315,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         expect(persistenceRequests.get(page).map(payload => payload.name)).not.toContain(draftName);
         await row.locator('.ch_name').click();
         const popup = page.locator('dialog.popup[open]').last();
-        await expect(popup).toContainText('Unsaved changes');
+        await expect(popup).toContainText('You have unsaved changes');
         await expect(popup.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
         await expect(popup.getByRole('button', { name: 'Discard', exact: true })).toBeVisible();
         await popup.getByRole('button', { name: 'Cancel', exact: true }).click();

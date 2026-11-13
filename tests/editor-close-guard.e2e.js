@@ -167,7 +167,7 @@ async function settle(page) {
 
 async function closeWithEdits(page, choice) {
     await page.locator('#sb-settings-close').click();
-    const dialog = page.locator('dialog.popup[open]:not([closing])', { hasText: 'Unsaved changes' });
+    const dialog = page.locator('dialog.popup[open]:not([closing])', { hasText: 'You have unsaved changes' });
     await expect(dialog).toBeVisible();
     await expect(page.locator('#sb-settings-page')).toBeVisible();
     await dialog.getByRole('button', { name: choice, exact: true }).click();
