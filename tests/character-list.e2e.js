@@ -451,31 +451,36 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024 }, { width: 375, height: 812 }]) {
-    test(`editor avatar and tag removal are native keyboard controls at ${viewport.width}px`, async ({ page }) => {
-        await prepareList(page, viewport);
-        await listRows(page, 'characters').first().getByRole('button', { name: 'Edit', exact: true }).click();
-        await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-editor/object-navigation.js')).objectNavigation.depth)).toBe(1);
-        const avatar = page.locator('#avatar_div_div');
-        await expect(avatar).toHaveRole('button');
-        await expect(avatar).toHaveAccessibleName('Change Persona Image');
-        await avatar.focus();
-        await expect(avatar).toBeFocused();
-        const chooserEvent = page.waitForEvent('filechooser');
-        await avatar.press('Enter');
-        const chooser = await chooserEvent;
-        await chooser.setFiles([]);
-        const tags = page.locator('#tagList > .tag');
-        const count = await tags.count();
-        expect(count).toBeGreaterThan(0);
-        const remove = tags.first().getByRole('button', { name: 'Remove', exact: true });
-        await expect(remove).toBeVisible();
-        const size = await remove.boundingBox();
-        const minimum = { 1440: 16, 768: 44, 375: 44 }[viewport.width];
-        expect(size.width).toBeGreaterThanOrEqual(minimum);
-        expect(size.height).toBeGreaterThanOrEqual(minimum);
-        await remove.focus();
-        await page.keyboard.press('Enter');
-        await expect(tags).toHaveCount(count - 1);
+    // The touch size follows the pointer, so the two narrow widths run with a touch screen.
+    test.describe(`${viewport.width}px ${viewport.width === 1440 ? 'fine' : 'coarse'} pointer`, () => {
+        test.use({ hasTouch: viewport.width !== 1440, isMobile: viewport.width !== 1440 });
+
+        test(`editor avatar and tag removal are native keyboard controls at ${viewport.width}px`, async ({ page }) => {
+            await prepareList(page, viewport);
+            await listRows(page, 'characters').first().getByRole('button', { name: 'Edit', exact: true }).click();
+            await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-editor/object-navigation.js')).objectNavigation.depth)).toBe(1);
+            const avatar = page.locator('#avatar_div_div');
+            await expect(avatar).toHaveRole('button');
+            await expect(avatar).toHaveAccessibleName('Change Persona Image');
+            await avatar.focus();
+            await expect(avatar).toBeFocused();
+            const chooserEvent = page.waitForEvent('filechooser');
+            await avatar.press('Enter');
+            const chooser = await chooserEvent;
+            await chooser.setFiles([]);
+            const tags = page.locator('#tagList > .tag');
+            const count = await tags.count();
+            expect(count).toBeGreaterThan(0);
+            const remove = tags.first().getByRole('button', { name: 'Remove', exact: true });
+            await expect(remove).toBeVisible();
+            const size = await remove.boundingBox();
+            const minimum = { 1440: 16, 768: 44, 375: 44 }[viewport.width];
+            expect(size.width).toBeGreaterThanOrEqual(minimum);
+            expect(size.height).toBeGreaterThanOrEqual(minimum);
+            await remove.focus();
+            await page.keyboard.press('Enter');
+            await expect(tags).toHaveCount(count - 1);
+        });
     });
 
     test(`keyboard chat, pencil and clean Escape restore the origin at ${viewport.width}px`, async ({ page }) => {

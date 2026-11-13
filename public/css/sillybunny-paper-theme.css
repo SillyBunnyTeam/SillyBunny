@@ -78,7 +78,7 @@ body::after {
 
 /*
  * Soft, rounded app surfaces. Controls inside the libadwaita-styled bottom chat bar, Conversation
- * chrome, the top bar, message edit rows, shell close buttons, status-page actions, and the greeting picture are excluded so their own corner contracts survive on phones.
+ * chrome, the top bar, message edit rows, shell close buttons, status-page actions, checkboxes and radios (switches are pills, selection checks are circles), and the greeting picture are excluded so their own corner contracts survive on phones.
  */
 .drawer-content,
 .popup {
@@ -86,7 +86,7 @@ body::after {
 }
 
 .menu_button:not(.sb-status-page__action):not(.gg-action-button):not(.sb-shell-close):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *),
-input:not(.sb-dialog__entry),
+input:not(.sb-dialog__entry, [type='checkbox'], [type='radio']),
 textarea:not(.sb-dialog__entry),
 select:not(.sb-dialog__entry),
 button:not(.sb-status-page__action):not(.ica--tpanel-handle):not(.gg-action-button):not(.sb-shell-close):not(.sbGreetingArtOpen):not(:is(#sheld[data-sb-conversation-mode='on'], #sb-bottom-chat-bar, #top-bar, .mes_edit_buttons, .mes_reasoning_actions) *) {

@@ -796,6 +796,11 @@ body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row
         min-height: 44px;
     }
 
+}
+
+/* Layout, not target size: the two-column grid and its 88px avatars follow the shell breakpoint, so a narrow window with
+   a fine pointer keeps them. */
+@media (pointer: coarse), (max-width: 768px) {
     .sb-character-list__box {
         margin: 4px;
     }
