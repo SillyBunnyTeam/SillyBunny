@@ -15,6 +15,69 @@ test.beforeEach(async ({ page, baseURL }) => {
     });
 });
 
+const entryIds = ['entry-rest', 'entry-filled', 'entry-focus', 'entry-error', 'entry-disabled', 'entry-password'];
+
+// Resolves a custom property to the value the browser computes for a property, so a state is compared with its token.
+function resolved(page, property, value) {
+    return page.evaluate(([name, token]) => {
+        const probe = document.createElement('div');
+        probe.style.setProperty(name, token);
+        document.body.append(probe);
+        const computed = getComputedStyle(probe).getPropertyValue(name);
+        probe.remove();
+        return computed;
+    }, [property, value]);
+}
+
+async function expectEntryRows(page) {
+    for (const compact of [false, true]) {
+        await page.evaluate(value => document.documentElement.dataset.sbCompactMode = String(value), compact);
+        const token = parseFloat(await resolved(page, 'min-height', 'var(--sb-field-min-height)'));
+        for (const id of entryIds) {
+            const height = (await page.locator(`#${id}`).boundingBox()).height;
+            expect(height, `${id} takes its height from --sb-field-min-height (compact ${compact})`).toBeGreaterThanOrEqual(token);
+            expect(height, `${id} does not outgrow --sb-field-min-height (compact ${compact})`).toBeLessThanOrEqual(token + 1);
+        }
+    }
+    await page.evaluate(() => delete document.documentElement.dataset.sbCompactMode);
+
+    const border = id => page.locator(`#${id}`).evaluate(input => getComputedStyle(input).borderTopColor);
+    const danger = await resolved(page, 'color', 'var(--sb-color-danger)');
+    expect(await border('entry-rest')).toBe('rgba(0, 0, 0, 0)');
+    expect(await border('entry-error')).toBe(danger);
+    const error = page.locator('#entry-error');
+    await expect(error).toHaveAttribute('aria-invalid', 'true');
+    const caption = page.locator('.ds-row-entry__error');
+    await expect(caption).toHaveText('Name is already taken');
+    await expect(caption).toHaveCSS('color', danger);
+    expect(await error.getAttribute('aria-describedby')).toContain(await caption.getAttribute('id'));
+    await expect(page.locator('#entry-rest')).not.toHaveAttribute('aria-invalid', /.*/);
+
+    const focusBorder = await resolved(page, 'border-top-color', 'var(--sb-entry-focus-border)');
+    const focusRing = await resolved(page, 'box-shadow', 'var(--sb-entry-focus-ring)');
+    await page.locator('#entry-focus').focus();
+    await expect(page.locator('#entry-focus')).toHaveCSS('border-top-color', focusBorder);
+    await expect(page.locator('#entry-focus')).toHaveCSS('box-shadow', focusRing);
+    await page.locator('#entry-error').focus();
+    await expect(page.locator('#entry-error')).toHaveCSS('border-top-color', danger);
+    await expect(page.locator('#entry-error')).toHaveCSS('box-shadow', /inset/);
+    await page.locator('#entry-error').blur();
+
+    const disabled = page.locator('#entry-disabled');
+    await expect(disabled).toBeDisabled();
+    await disabled.evaluate(input => input.focus());
+    await expect(disabled).not.toBeFocused();
+    await expect(page.locator('.ds-row-entry--floating:has(#entry-disabled)')).toHaveCSS('opacity', '0.5');
+    await expect(page.locator('.ds-row-entry--floating:has(#entry-disabled) label.ds-row-entry__title')).toBeVisible();
+    await expect(page.locator('.ds-row-entry--floating:has(#entry-rest)')).toHaveCSS('opacity', '1');
+
+    const password = page.locator('#entry-password');
+    await expect(password).toHaveAttribute('type', 'password');
+    await expect(password).not.toHaveClass(/is-masked/);
+    await expect(password).toHaveCSS('-webkit-text-security', 'disc');
+    await expect(page.locator('.ds-row-entry--floating:has(#entry-password) .ds-row-entry__reveal')).toHaveCount(0);
+}
+
 for (const [name, colors] of Object.entries(themes)) {
     test(`${name} shared controls`, async ({ page, isMobile }, testInfo) => {
         await page.route('**/__foundation', route => route.fulfill({ contentType: 'text/html', body: fixture }));
@@ -35,8 +98,10 @@ for (const [name, colors] of Object.entries(themes)) {
         await page.keyboard.press('Tab');
         await expect(page.locator('#secondary')).toBeFocused();
         await expect(page.locator('[disabled]').first()).toBeDisabled();
-        await expect(page.locator('[aria-disabled]')).toHaveCSS('cursor', 'not-allowed');
+        await expect(page.locator('.menu_button[aria-disabled]')).toHaveCSS('cursor', 'not-allowed');
         await expect(page.locator('[aria-busy]')).toHaveCSS('cursor', 'progress');
+
+        await expectEntryRows(page);
 
         for (const compact of [false, true]) {
             await page.evaluate(value => document.documentElement.dataset.sbCompactMode = String(value), compact);
@@ -54,6 +119,7 @@ for (const [name, colors] of Object.entries(themes)) {
         await expect(page.locator('#primary')).toHaveCSS('transition-duration', '0s');
         await expect(page.locator('#primary')).toHaveCSS('transition-delay', '0s');
         await expect(page.locator('#field')).toHaveCSS('transition-duration', '0s');
+        await expect(page.locator('label[for="entry-rest"]')).toHaveCSS('transition-duration', '0s');
         await page.addStyleTag({ content: ':root { --sb-radius-button: 7px; --sb-focus-ring: #ffadba; }' });
         await expect(page.locator('#secondary')).toHaveCSS('border-radius', '7px');
     });

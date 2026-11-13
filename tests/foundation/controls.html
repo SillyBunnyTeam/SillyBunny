@@ -40,6 +40,22 @@
             <select id="select"><option>Default</option><option>Creative</option></select>
             <label class="checkbox_label"><input type="checkbox">Default</label>
         </div>
+        <div class="fixture-surface" id="entry-rows"></div>
     </main>
+    <script type="module">
+        import { createEntryRow, createPrefGroup } from '/scripts/sillybunny-editor/rows.js';
+        const entries = {
+            'entry-rest': { label: 'Name', field: 'rest' },
+            'entry-filled': { label: 'Name', field: 'filled', value: 'Alex' },
+            'entry-focus': { label: 'Name', field: 'focus', value: 'Alex' },
+            'entry-error': { label: 'Name', field: 'error', value: 'Alex' },
+            'entry-disabled': { label: 'Name', field: 'disabled', value: 'Alex' },
+            'entry-password': { label: 'Password', field: 'password', type: 'password', value: 'hunter2' },
+        };
+        const rows = Object.fromEntries(Object.entries(entries).map(([id, options]) => [id, createEntryRow({ floating: true, id, ...options })]));
+        rows['entry-error'].setError('Name is already taken');
+        rows['entry-disabled'].setDisabled(true);
+        document.getElementById('entry-rows').append(createPrefGroup({ field: 'entry-rows', rows: Object.values(rows) }).section);
+    </script>
 </body>
 </html>

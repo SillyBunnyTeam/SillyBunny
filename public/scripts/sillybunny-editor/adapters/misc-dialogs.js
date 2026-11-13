@@ -208,7 +208,7 @@ export function accountFormOptions(source, { title = null, destructive = false }
         if (!caption) throw new TypeError('An account field needs its upstream caption.');
         const anchor = document.createComment('account entry row');
         input.before(anchor);
-        const row = createEntryRow({ label: textOf(caption), field: input.name, input });
+        const row = createEntryRow({ label: textOf(caption), field: input.name, input, type: input.type, floating: true });
         moveCaption(row.row.querySelector('.ds-row-label'), caption, { copyId: true });
         const group = createPrefGroup({ field: `${input.name}-field`, rows: [row] });
         if (container) container.replaceChildren(group.section);

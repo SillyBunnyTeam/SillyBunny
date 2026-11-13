@@ -782,6 +782,192 @@ describe('createEntryRow secret', () => {
     });
 });
 
+describe.each([['floating', true], ['stacked', false]])('createEntryRow error state (%s)', (_name, floating) => {
+    const make = options => createEntryRow({ label: 'Name', field: 'name', floating, ...options });
+
+    test('setError marks the control invalid and links a caption that carries the caller text', () => {
+        const { row, control, setError } = make({});
+        expect(control.hasAttribute('aria-invalid')).toBe(false);
+        setError('Name is already taken');
+        const caption = row.querySelector('.ds-row-entry__error');
+        expect(caption.textContent).toBe('Name is already taken');
+        expect(caption.id).not.toBe('');
+        expect(control.getAttribute('aria-invalid')).toBe('true');
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toContain(caption.id);
+        expect(row.querySelectorAll('.ds-row-entry__error')).toHaveLength(1);
+    });
+
+    test('the caption sits directly under the field', () => {
+        const { row, control, setError } = make({ subtitle: 'Helpful description' });
+        setError('Required');
+        const caption = row.querySelector('.ds-row-entry__error');
+        expect(caption.previousElementSibling).toBe(floating ? control.parentElement.parentElement : control);
+    });
+
+    test('a help caption keeps its place after the error', () => {
+        const { row, setError } = make({ subtitle: 'Helpful description' });
+        setError('Required');
+        const help = row.querySelector('small.ds-row-subtitle:not(.ds-row-entry__error)');
+        const order = row.querySelector('.ds-row-entry__error').compareDocumentPosition(help);
+        expect(Boolean(order & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(floating);
+    });
+
+    test('a second message replaces the text and keeps one caption and one description id', () => {
+        const { row, control, setError } = make({});
+        setError('First');
+        setError('Second');
+        expect(row.querySelectorAll('.ds-row-entry__error')).toHaveLength(1);
+        expect(row.querySelector('.ds-row-entry__error').textContent).toBe('Second');
+        expect(control.getAttribute('aria-describedby').split(/\s+/)).toHaveLength(1);
+    });
+
+    test('clearError removes the caption, aria-invalid and only its own description id', () => {
+        const { row, control, setError, clearError } = make({ subtitle: 'Helpful description' });
+        const helpId = control.getAttribute('aria-describedby');
+        setError('Required');
+        clearError();
+        expect(row.querySelector('.ds-row-entry__error')).toBeNull();
+        expect(control.hasAttribute('aria-invalid')).toBe(false);
+        expect(control.getAttribute('aria-describedby')).toBe(helpId);
+    });
+
+    test('clearError drops aria-describedby when the error was its only entry', () => {
+        const { control, setError, clearError } = make({});
+        setError('Required');
+        clearError();
+        expect(control.hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    test('an empty message clears the error and clearError without an error does nothing', () => {
+        const { row, control, setError, clearError } = make({});
+        clearError();
+        setError('Required');
+        setError('  ');
+        expect(row.querySelector('.ds-row-entry__error')).toBeNull();
+        expect(control.hasAttribute('aria-invalid')).toBe(false);
+    });
+
+    test('the caption is text, never markup', () => {
+        const { row, setError } = make({});
+        setError('<img src=x onerror=alert(1)>');
+        const caption = row.querySelector('.ds-row-entry__error');
+        expect(caption.children).toHaveLength(0);
+        expect(caption.textContent).toBe('<img src=x onerror=alert(1)>');
+    });
+
+    test('adds no wording of its own: without a message nothing is shown', () => {
+        const { row, control } = make({});
+        expect(row.querySelector('.ds-row-entry__error')).toBeNull();
+        expect(control.hasAttribute('aria-invalid')).toBe(false);
+    });
+
+    test('destroy leaves an adopted control without the error state', () => {
+        const adopted = input('text');
+        const result = make({ input: adopted });
+        result.setError('Required');
+        result.destroy();
+        expect(adopted.hasAttribute('aria-invalid')).toBe(false);
+        expect(adopted.hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    test('the error caption id is released with the row', () => {
+        const source = readFileSync(new URL('../../public/scripts/sillybunny-editor/rows.js', import.meta.url), 'utf8');
+        const api = runInNewContext(`${source.replaceAll('export ', '')}\n({ createEntryRow, reservationCount: () => reservedIds.size });`, { document });
+        const entry = api.createEntryRow({ label: 'Name', field: 'name', floating });
+        expect(api.reservationCount()).toBe(1);
+        entry.setError('Required');
+        expect(api.reservationCount()).toBe(2);
+        entry.clearError();
+        expect(api.reservationCount()).toBe(1);
+        entry.setError('Required');
+        entry.destroy();
+        expect(api.reservationCount()).toBe(0);
+    });
+});
+
+describe('createEntryRow disabled', () => {
+    test.each([['floating', true], ['stacked', false]])('%s: setDisabled makes the row insensitive and the input unfocusable', (_name, floating) => {
+        const { row, control, setDisabled } = createEntryRow({ label: 'Name', field: 'name', floating });
+        document.body.replaceChildren(row);
+        setDisabled(true);
+        expect(control.disabled).toBe(true);
+        expect(row.getAttribute('aria-disabled')).toBe('true');
+        expect(row.classList.contains('is-insensitive')).toBe(true);
+        control.focus();
+        expect(document.activeElement).not.toBe(control);
+        setDisabled(false);
+        expect(control.disabled).toBe(false);
+        expect(row.classList.contains('is-insensitive')).toBe(false);
+        control.focus();
+        expect(document.activeElement).toBe(control);
+    });
+
+    test('an adopted disabled input starts insensitive, and its title is inside the faded row', () => {
+        const adopted = input('text', 'Alex');
+        adopted.disabled = true;
+        const { row, control } = createEntryRow({ label: 'Name', field: 'name', floating: true, input: adopted });
+        expect(control.disabled).toBe(true);
+        expect(row.classList.contains('is-insensitive')).toBe(true);
+        expect(row.contains(row.querySelector('label.ds-row-entry__title'))).toBe(true);
+    });
+});
+
+describe('createEntryRow password', () => {
+    test('creates a password input in the floating layout and keeps the browser masking', () => {
+        const { row, control } = createEntryRow({ label: 'Password', field: 'password', floating: true, type: 'password' });
+        expect(control.type).toBe('password');
+        expect(control.getAttribute('type')).toBe('password');
+        expect(control.classList.contains('is-masked')).toBe(false);
+        expect(row.querySelector('.ds-row-entry__reveal')).toBeNull();
+        expect(control.getAttribute('placeholder')).toBe(' ');
+        expect(control.labels[0].textContent).toBe('Password');
+    });
+
+    test('creates a password input in the stacked layout', () => {
+        const { control } = createEntryRow({ label: 'Password', field: 'password', type: 'password' });
+        expect(control.type).toBe('password');
+    });
+
+    test('adopts an upstream password input in place, with its identity, hint and listeners', () => {
+        const control = input('password', 'secret');
+        control.name = 'current';
+        control.placeholder = '[ No password ]';
+        control.autocomplete = 'current-password';
+        const listener = jest.fn();
+        control.addEventListener('input', listener);
+        const old = node('div');
+        old.append(control);
+        const result = createEntryRow({ label: 'Current Password:', field: 'current', floating: true, input: control });
+        expect(result.control).toBe(control);
+        expect(control.type).toBe('password');
+        expect(control.name).toBe('current');
+        expect(control.autocomplete).toBe('current-password');
+        expect(control.getAttribute('aria-description')).toBe('[ No password ]');
+        expect(result.getValue()).toBe('secret');
+        expect(old.children).toHaveLength(0);
+        control.dispatchEvent(new Event('input'));
+        expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    test('a type that disagrees with an adopted input, or that the layout cannot hold, throws', () => {
+        expect(() => createEntryRow({ label: 'Password', field: 'password', floating: true, type: 'password', input: input('text') })).toThrow(TypeError);
+        expect(() => createEntryRow({ label: 'Count', field: 'count', floating: true, type: 'number' })).toThrow(TypeError);
+    });
+
+    test('a secret status mirror does not apply to a password input', () => {
+        const secret = { savedText: 'saved', missingText: 'missing', revealLabel: 'Show' };
+        expect(() => createEntryRow({ label: 'Password', field: 'password', floating: true, type: 'password', secret })).toThrow(TypeError);
+    });
+
+    test('error and disabled states work on a password row', () => {
+        const result = createEntryRow({ label: 'Password', field: 'password', floating: true, type: 'password' });
+        result.setError('Passwords do not match');
+        expect(result.control.getAttribute('aria-invalid')).toBe('true');
+        result.setDisabled(true);
+        expect(result.control.disabled).toBe(true);
+    });
+});
+
 describe('createPropertyRow', () => {
     test('places the caption above a selectable read-only value and safely updates it', () => {
         const result = createPropertyRow({ label: 'Identifier', field: 'identifier', value: 'abc' });

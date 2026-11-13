@@ -43,4 +43,18 @@ describe('libadwaita surface and layer foundations', () => {
         expect(tabsCss).not.toContain('.ds-row-entry--floating .ds-row-entry__field > input:focus::placeholder');
         expect(tabsCss).toMatch(/\.ds-row-entry--floating > \.ds-row-entry__caption \{[^}]*width: 100%;[^}]*white-space: normal;/);
     });
+
+    test('floating entry rows take their height from the field token and focus from the entry tokens', () => {
+        expect(tabsCss).not.toContain('max(48px, 3.4em)');
+        expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__field \{[^}]*min-height: var\(--sb-field-min-height\);/);
+        expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__field > input \{[^}]*min-height: var\(--sb-field-min-height\);/);
+        expect(tabsCss).toMatch(/\.ds-row-entry__field > input:is\(:focus, :focus-visible\):not\(\[disabled\]\) \{[^}]*border-color: var\(--sb-entry-focus-border\);[^}]*box-shadow: var\(--sb-entry-focus-ring\);/);
+        expect(tabsCss).toMatch(/#sb-settings-page \.sb-connections-provider \.ds-row-entry__field > input:focus:not\(\[disabled\]\) \{[^}]*var\(--sb-entry-focus-border\);[^}]*var\(--sb-entry-focus-ring\);/);
+    });
+
+    test('floating entry rows draw an error in Destructive Red and fade when disabled', () => {
+        expect(tabsCss).toMatch(/\.ds-row-entry__field > input\[aria-invalid='true'\] \{[^}]*--sb-entry-focus-border: var\(--sb-color-danger\);[^}]*border-color: var\(--sb-color-danger\);/);
+        expect(tabsCss).toMatch(/\.ds-row-entry__error \{[^}]*color: var\(--sb-color-danger\);/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > input:disabled\)\) \{[^}]*opacity: 0\.5;[^}]*cursor: not-allowed;/);
+    });
 });

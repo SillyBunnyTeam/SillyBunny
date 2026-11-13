@@ -5627,7 +5627,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     flex: 1 1 auto;
     gap: 0;
     min-width: 0;
-    min-height: max(48px, 3.4em);
+    min-height: var(--sb-field-min-height);
     justify-content: flex-end;
 }
 
@@ -5642,6 +5642,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     /* At rest the title stands where the value will be, so it takes the size of the value. */
     font-size: var(--sb-type-control);
     font-weight: 400;
+    line-height: 1.2;
     white-space: nowrap;
     text-overflow: ellipsis;
     pointer-events: none;
@@ -5656,7 +5657,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 
 .ds-row-entry--floating .ds-row-entry__field:focus-within > .ds-row-entry__title,
 .ds-row-entry--floating .ds-row-entry__field:has(> input:not(:placeholder-shown)) > .ds-row-entry__title {
-    top: 0.45em;
+    top: calc(0.35em - 0.2em * var(--sb-density-t));
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
     transform: none;
@@ -5664,14 +5665,14 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 
 /* Separate rules: an unsupported autofill selector would invalidate a shared selector list. */
 .ds-row-entry--floating .ds-row-entry__field:has(> input:-webkit-autofill) > .ds-row-entry__title {
-    top: 0.45em;
+    top: calc(0.35em - 0.2em * var(--sb-density-t));
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
     transform: none;
 }
 
 .ds-row-entry--floating .ds-row-entry__field:has(> input:autofill) > .ds-row-entry__title {
-    top: 0.45em;
+    top: calc(0.35em - 0.2em * var(--sb-density-t));
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
     transform: none;
@@ -5681,9 +5682,9 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     width: 100%;
     min-width: 0;
     height: auto;
-    min-height: max(48px, 3.4em);
+    min-height: var(--sb-field-min-height);
     margin: 0;
-    padding: 1.45em 12px 0.35em;
+    padding: calc(1.45em - 0.4em * var(--sb-density-t)) 12px 0.25em;
     border: 1px solid transparent;
     border-radius: var(--sb-radius-button);
     outline: none;
@@ -5704,10 +5705,41 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 }
 /* Same focus treatment as the shell's other text entries (sillybunny-theme.css shell entry rules). */
 .ds-row.ds-row-entry--floating .ds-row-entry__field > input:is(:focus, :focus-visible):not([disabled]) {
-    border-color: var(--sb-composer-focus-border);
+    border-color: var(--sb-entry-focus-border);
     outline: none;
     background: var(--sb-composer-input-bg);
-    box-shadow: var(--sb-composer-focus-ring);
+    box-shadow: var(--sb-entry-focus-ring);
+}
+
+/* An error keeps the Destructive colour on the border at rest and takes it into the focus ring. */
+.ds-row-entry--floating .ds-row-entry__field > input[aria-invalid='true'] {
+    --sb-entry-focus-border: var(--sb-color-danger);
+    --sb-entry-focus-ring: inset 0 0 0 1px var(--sb-color-danger);
+    border-color: var(--sb-color-danger);
+}
+
+.ds-row-entry__error {
+    color: var(--sb-color-danger);
+}
+
+.ds-row-entry--floating > .ds-row-entry__error + .ds-row-entry__caption {
+    margin-block-start: 0;
+}
+
+/* The whole row fades, the floating title with it. */
+.ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ds-row-entry--floating .ds-row-entry__field > input:disabled {
+    cursor: not-allowed;
+}
+
+@media (prefers-contrast: more) {
+    .ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) {
+        opacity: 0.4;
+    }
 }
 
 .ds-row-entry--floating .ds-row-entry__field > input.is-masked {
@@ -9222,8 +9254,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 /* Outranks the generic shell .text_pole rules so the adopted input keeps the floating-entry field shape. */
 #sb-settings-page .sb-connections-provider .ds-row-entry__field > input {
     margin: 0;
-    padding: 1.45em 12px 0.35em;
-    min-height: max(48px, 3.4em);
+    padding: calc(1.45em - 0.4em * var(--sb-density-t)) 12px 0.25em;
+    min-height: var(--sb-field-min-height);
     border: 1px solid transparent;
     border-radius: var(--sb-radius-button);
     background: var(--sb-composer-input-bg);
@@ -9231,9 +9263,13 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     color: var(--sb-shell-text);
 }
 
+#sb-settings-page .sb-connections-provider .ds-row-entry__field > input[aria-invalid='true'] {
+    border-color: var(--sb-color-danger);
+}
+
 #sb-settings-page .sb-connections-provider .ds-row-entry__field > input:focus:not([disabled]) {
-    border-color: var(--sb-composer-focus-border);
-    box-shadow: var(--sb-composer-focus-ring);
+    border-color: var(--sb-entry-focus-border);
+    box-shadow: var(--sb-entry-focus-ring);
 }
 
 @media (forced-colors: active) {

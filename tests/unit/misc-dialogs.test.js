@@ -141,7 +141,7 @@ test.each(['changePassword', 'deleteUser', 'resetSettings', 'userReset'])('%s re
     expect([...node.querySelectorAll('input')]).toEqual(inputs);
     expect(inputs.map(input => ({ name: input.name, type: input.type, autocomplete: input.autocomplete }))).toEqual(before);
     for (const input of inputs.filter(input => input.type !== 'checkbox')) {
-        expect(input.closest('.ds-row-entry')).not.toBeNull();
+        expect(input.closest('.ds-row-entry--floating')).not.toBeNull();
         input.dispatchEvent(new Event('input', { bubbles: true }));
         expect(node.querySelector(`label[for="${input.id}"]`)).not.toBeNull();
     }

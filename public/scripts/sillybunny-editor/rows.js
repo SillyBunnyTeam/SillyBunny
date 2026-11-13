@@ -362,14 +362,21 @@ export function createSpinRow({ label, subtitle, field, id, value, min, max, ste
     };
 }
 
-const FLOATING_ENTRY_TYPES = new Set(['text', 'url', 'search', 'email', 'tel']);
+const ENTRY_TYPES = new Set(['text', 'password', 'url', 'search', 'email', 'tel']);
 
-function prepareFloatingInput(input, id) {
-    if (input && (input.tagName !== 'INPUT' || !FLOATING_ENTRY_TYPES.has(input.type))) {
+/** An adopted input keeps its own type, so a requested type must agree with it. */
+function assertEntryType(input, type) {
+    if (type === undefined) return;
+    if (!ENTRY_TYPES.has(type) || (input && input.type !== type)) throw new TypeError(`Expected an entry input of type ${type}.`);
+}
+
+function prepareFloatingInput(input, id, type) {
+    if (input && (input.tagName !== 'INPUT' || !ENTRY_TYPES.has(input.type))) {
         throw new TypeError('Expected a single-line text input.');
     }
+    assertEntryType(input, type);
     const control = input ?? document.createElement('input');
-    if (!input) control.type = 'text';
+    if (!input) control.type = type ?? 'text';
     ensureId(control, id);
     return control;
 }
@@ -391,17 +398,19 @@ export function prepareFloatingPlaceholder(control, { describe = true } = {}) {
     if (control.getAttribute('placeholder') !== ' ') control.setAttribute('placeholder', ' ');
 }
 
-function prepareEntryInput(input, id) {
+function prepareEntryInput(input, id, type) {
     // Popup's public mainInput is a textarea, including its single-line name prompts.
     if (input?.tagName !== 'TEXTAREA') {
-        if (input && (input.tagName !== 'INPUT' || !['text', 'password', 'email', 'url', 'search', 'tel'].includes(input.type))) {
+        if (input && (input.tagName !== 'INPUT' || !ENTRY_TYPES.has(input.type))) {
             throw new TypeError('Expected a text or password entry input.');
         }
+        assertEntryType(input, type);
         const control = input ?? document.createElement('input');
-        if (!input) control.type = 'text';
+        if (!input) control.type = type ?? 'text';
         ensureId(control, id);
         return control;
     }
+    if (type !== undefined) throw new TypeError(`Expected an entry input of type ${type}.`);
     ensureId(input, id);
     return input;
 }
@@ -493,18 +502,20 @@ function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
  * @param {string} [options.value]
  * @param {string} [options.placeholder]
  * @param {number} [options.maxLength]
+ * @param {string} [options.type='text']  `password` keeps the browser's own masking, with no reveal toggle. An adopted input keeps its type, which must agree.
  * @param {boolean} [options.floating=false]  Title inside the field that floats on focus or value (AdwEntryRow).
  * @param {Node|Node[]} [options.suffix]  Trailing controls; `floating` only.
  * @param {{savedText: string, missingText: string, revealLabel: string}} [options.secret]
- *     Mirrors key status from the placeholder and masks where supported; the input type never changes. `floating` only.
+ *     Mirrors key status from the placeholder and masks where supported; the input type never changes. `floating` only; not for a password input.
  * @param {(value: string) => void} [options.onInput]
  * @param {(value: string) => void} [options.onChange]
  * @param {HTMLInputElement|HTMLTextAreaElement} [options.input]  Textareas are supported in the stacked layout only.
- * @returns {object}
+ * @returns {object}  The row controller, plus `setError(message)` and `clearError()`. `setError` shows the caller's text in a caption under the field and sets `aria-invalid` and `aria-describedby`; an empty message clears.
  */
-export function createEntryRow({ label, subtitle, field, id, value, placeholder, maxLength, floating = false, suffix, secret, onInput, onChange, input }) {
+export function createEntryRow({ label, subtitle, field, id, value, placeholder, maxLength, type, floating = false, suffix, secret, onInput, onChange, input }) {
     if ((secret || suffix) && !floating) throw new TypeError('Secret and suffix options need the floating layout.');
-    const control = floating ? prepareFloatingInput(input, id) : prepareEntryInput(input, id);
+    if (secret && (type ?? input?.type) === 'password') throw new TypeError('A password input has its own masking and takes no secret option.');
+    const control = floating ? prepareFloatingInput(input, id, type) : prepareEntryInput(input, id, type);
     if (value !== undefined) control.value = value;
     if (placeholder !== undefined) control.placeholder = placeholder;
     if (maxLength !== undefined) control.maxLength = maxLength;
@@ -522,12 +533,36 @@ export function createEntryRow({ label, subtitle, field, id, value, placeholder,
     control.addEventListener('input', () => onInput?.(control.value));
     control.addEventListener('change', () => onChange?.(control.value));
     const controller = rowController(row, control);
+    let errorCaption = null;
+    const clearError = () => {
+        if (!errorCaption) return;
+        const ids = (control.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(id => id && id !== errorCaption.id);
+        if (ids.length) control.setAttribute('aria-describedby', ids.join(' '));
+        else control.removeAttribute('aria-describedby');
+        control.removeAttribute('aria-invalid');
+        releaseRowIds(errorCaption);
+        errorCaption.remove();
+        errorCaption = null;
+    };
     return {
         ...controller,
         destroy() {
             disconnect();
+            clearError();
             controller.destroy();
         },
+        setError(message) {
+            const text = String(message ?? '').trim();
+            if (!text) return clearError();
+            if (!errorCaption) {
+                errorCaption = element('small', 'ds-row-subtitle ds-row-entry__caption ds-row-entry__error');
+                (floating ? row.firstElementChild : control).after(errorCaption);
+                associateDescription(control, errorCaption);
+            }
+            errorCaption.textContent = text;
+            control.setAttribute('aria-invalid', 'true');
+        },
+        clearError,
         getValue: () => control.value,
         setValue(value, { silent = true } = {}) {
             control.value = value ?? '';
