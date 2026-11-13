@@ -326,6 +326,17 @@ This is the largest class by a wide margin.
 - **Limit:** the Jest suites run `checkWorldInfo()` and its helpers cut out of `world-info.js` by `tests/util/world-info-harness.js`, with one token per word and settings that each test sets. `tests/frontend/WorldInfoActivation.e2e.js` runs seven rows of the table through the real module, tokenizer and macro engine.
 - **Fixes:** #393 (legacy string positions activated but never reached the prompt), `c11467f9b` and `612ea61d6` (scanning and serialization of lorebook entries).
 
+### Markdown auto-fix
+
+- **Breaks:** with Auto-fix Markdown on, nested emphasis loses the spaces around it, a `*` list marker joins the bold label of its item, `* * *` turns into `** **`, and code in a fence or in backticks loses spaces or gains a `*` (issue #955).
+- **Cause:** upstream `fixMarkdown()` in `public/scripts/power-user.js` matched pairs with the lazy regex `([*_]{1,2})([\s\S]*?)\1` across the whole message and deleted the horizontal whitespace next to every `*` and `_` inside each match. A match could end inside a `**` run, cross lines and reach into code. The display pass then added `*` or `"` to each line with an odd count, bullet lines and code lines included. `cleanUpMessage()` in `public/script.js` runs the first pass on the reply text that is saved, so stored messages changed too.
+- **Files:** `public/scripts/power-user.js` (upstream), `public/scripts/auto-fix-markdown.js`.
+- **Guards:** `fixMarkdown()` returns `autoFixMarkdown()`. It works line by line, pairs a whole run of `*` or `_` only with the nearest opener of the same character and length, and deletes only the horizontal whitespace directly inside a pair. Unpaired runs, such as list markers, stay. It skips fenced code (a fence that does not close runs to the end of the text, as in a reply that is still streaming), inline code, escaped marks, `_` between letters or digits, and lines made only of `*`, `_`, `-` and whitespace. The display pass skips the same code and lines, and does not count a `*` bullet marker at the start of a line.
+- **Tests:** `tests/auto-fix-markdown.test.js` (the issue cases, a comparison with the upstream function on ordinary text, a check that stored text only loses horizontal whitespace, and a time budget for long lines), `tests/auto-fix-markdown-wiring.test.js` (runs `fixMarkdown()` from the source of `power-user.js`).
+- **Limit:** pairs do not cross lines, so `*one\ntwo *` keeps its space. A list item whose text has a lone `*` with whitespace on both sides pairs it with the marker, as upstream does: `* 5 * 3 = 15` becomes `*5* 3 = 15`.
+- **Limit:** the display pass counts an escaped `\*` as a mark, and a line with an odd count of both `*` and `"` gets only the `"`. Both match upstream.
+- **Fixes:** `617492876` (pairing module), `029a740e6` (`fixMarkdown()` adapter).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

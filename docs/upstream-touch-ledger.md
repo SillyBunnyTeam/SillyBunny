@@ -791,6 +791,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-10 `perf/e2e-throughput`. |
 | Owner | Server and data compatibility integrator. |
 
+### `public/scripts/power-user.js` - Markdown auto-fix
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/power-user.js`. |
+| Area | Message formatting: Auto-fix Markdown on displayed and stored messages. |
+| Divergence reason | SillyBunny pairs whole `*` and `_` runs line by line and skips code in Auto-fix Markdown, because the upstream regex removes the spaces around nested emphasis, joins a `*` list marker to the bold label after it, and changes thematic breaks and code, in displayed and stored messages (issue `#955`). |
+| Target seam | `public/scripts/auto-fix-markdown.js`. |
+| Adapter shape | `fixMarkdown()` keeps its export, signature and upstream doc comment. Its body is a `SillyBunny:` comment and `return autoFixMarkdown(text, forDisplay);`. The file imports `autoFixMarkdown` from `./auto-fix-markdown.js`, and its `./utils.js` import no longer names `countOccurrences` and `isOdd`, which only the upstream body used. `messageFormatting()` (display, `forDisplay` true) and `cleanUpMessage()` (stored text, `forDisplay` false) in `public/script.js` call `fixMarkdown()` without change. |
+| Protecting tests | `tests/auto-fix-markdown.test.js` (the issue #955 cases, a comparison with the upstream function on ordinary text, a check that stored text only loses horizontal whitespace, and a time budget for long lines), `tests/auto-fix-markdown-wiring.test.js` (the import, the marker, and `fixMarkdown()` run from the source of `power-user.js` against the module). |
+| Validation | `npm run test:unit -- auto-fix-markdown.test.js auto-fix-markdown-wiring.test.js` in `tests/`, the 19 other unit suites that name `power-user.js`, `script-module-identity.test.js` and `webkit-prefix-companions.test.js`, `npm run lint` in the root and in `tests/`, `npm run check:frontend-budgets`. |
+| Rollback path | Put the upstream body back in `fixMarkdown()`, put `countOccurrences` and `isOdd` back in its `./utils.js` import, remove the `autoFixMarkdown` import, and delete `public/scripts/auto-fix-markdown.js`, `tests/auto-fix-markdown.test.js` and `tests/auto-fix-markdown-wiring.test.js`. Messages saved in the meantime keep their text, and no settings or stored formats change. |
+| Last reviewed | 2026-11-12 `fix/auto-fix-markdown-nested-emphasis` (issue #955). |
+| Owner | Bugfix integrator. |
+
 ### In-Chat Agents expressions and connection profiles
 | Field | Value |
 | --- | --- |
