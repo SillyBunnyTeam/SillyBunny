@@ -378,6 +378,7 @@ describe('rules', () => {
         expect(skipSelectorsFor('settings.customize.appearance')).toEqual(['.bg_list']);
         expect(skipSelectorsFor('settings.conversation.panel')).toEqual(['.sb-conversation-partner-list']);
         expect(skipSelectorsFor('extension:qr_container')).toEqual(['.qr--setList', '.qr--set-qrListContents']);
+        expect(skipSelectorsFor('settings.backend.sampling')).toEqual(['.openai_logit_bias_list', '.logit_bias_list']);
         expect(skipSelectorsFor('settings.customize.interface')).toEqual([]);
         expect(skipSelectorsFor('settings.customize.appearance', 'anything')).toEqual(['.bg_list']);
         expect(exceptionFor({ identity: 'label:checkbox:seraphina', kind: 'checkbox' })).toBeNull();

@@ -6,11 +6,12 @@
 
 /**
  * Data-driven lists inside a page, which are not settings: one entry per background file, per prompt of the loaded preset, per
- * character, lorebook, quick reply set or agent of the library, and the hidden store of extension containers (each extension's own
- * controls are inventoried through its subpage). Keyed by the surface id, by the surface id and `#` and the state id, or by
- * `extension:` and the container of an extension subpage.
+ * character, lorebook, quick reply set or agent of the library, one entry per row of the selected logit bias preset, and the hidden
+ * store of extension containers (each extension's own controls are inventoried through its subpage). Keyed by the surface id, by the
+ * surface id and `#` and the state id, or by `extension:` and the container of an extension subpage.
  */
 export const SKIP_SELECTORS = Object.freeze({
+    'settings.backend.sampling': ['.openai_logit_bias_list', '.logit_bias_list'],
     'settings.backend.editor': ['#completion_prompt_manager_list', '.sb-prompt-box'],
     'settings.backend.agents': ['.ica-agents-group'],
     'settings.conversation.panel': ['.sb-conversation-partner-list'],
