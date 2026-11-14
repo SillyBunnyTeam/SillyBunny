@@ -3,13 +3,14 @@ import { dirname, join } from 'node:path';
 import { checkArt } from './check.js';
 import { encoderMismatches } from './codec.js';
 import { deriveAsset, isDerived } from './derive.js';
+import { applyBump, keyProblems, planBump } from './keys.js';
 import { MANIFEST_PATH, mastersOf, outputFile, outputsOf, readManifest } from './manifest.js';
 import { ArtProblem, exitCodeOf } from './problem.js';
 import { proveArt } from './prove.js';
 import { sha256 } from './raster.js';
 
 /**
- * @typedef {{ root: string, manifestPath?: string, only?: string[], write?: boolean, pixels?: boolean }} CommandOptions
+ * @typedef {{ root: string, manifestPath?: string, only?: string[], write?: boolean, pixels?: boolean, today?: string, key?: string }} CommandOptions
  * @typedef {{ result: Record<string, unknown>, exitCode: number }} CommandRun
  */
 
@@ -51,7 +52,32 @@ export async function runCheck(options) {
         return failed;
     }
     const { summary, problems } = await checkArt(options.root, manifest);
+    problems.push(...keyProblems(options.root, manifest));
     return finish('check', { summary }, problems);
+}
+
+/**
+ * Gives a new key to every group whose files changed since its key did, and records it in the manifest. Without
+ * `write` it only reports the keys it would change.
+ * @param {CommandOptions} options `today` as YYYY-MM-DD, by default the UTC day.
+ * @returns {Promise<CommandRun>}
+ */
+export async function runBump(options) {
+    const { root, manifestPath = MANIFEST_PATH, write = false, today = new Date().toISOString().slice(0, 10), key } = options;
+    const { manifest, failed } = loadManifest('bump', options);
+    if (failed) {
+        return failed;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+        return finish('bump', { write }, [{ code: 'usage', message: `--today must be YYYY-MM-DD, got ${today}.` }]);
+    }
+    const { bumps, problems } = planBump(root, manifest, { today: today.replaceAll('-', ''), key });
+    if (problems.length > 0 || !write || bumps.length === 0) {
+        return finish('bump', { write, bumps }, problems);
+    }
+    applyBump(root, manifest, bumps);
+    const manifestChanged = writeManifest(join(root, manifestPath), manifest);
+    return finish('bump', { write, bumps, written: [...new Set(bumps.map(({ file }) => file))], manifestChanged }, []);
 }
 
 /** @param {CommandOptions} options @returns {Promise<CommandRun>} */

@@ -7,6 +7,17 @@
         "png": "1.6.58",
         "zlib-ng": "2.3.3"
     },
+    "keys": {
+        "home": {
+            "value": "20261105a",
+            "stamp": "38a904f56fcdeae20090e3397d3ed49c3eef49fc5fb528e5f4d74182b5f747ee"
+        },
+        "splash": {
+            "value": "20261106e",
+            "script": "20261106d",
+            "stamp": "c1a42cd225af01d66662fcc080a51736888445bacf818f069ee48203063d27cf"
+        }
+    },
     "assets": {
         "welcome-both": {
             "type": "scene",

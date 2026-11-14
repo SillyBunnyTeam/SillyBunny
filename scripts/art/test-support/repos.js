@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { encode } from '../lib/codec.js';
 import { isDerived } from '../lib/derive.js';
+import { KEY_SOURCES } from '../lib/keys.js';
 import { MANIFEST_PATH, outputsOf, readManifest } from '../lib/manifest.js';
 import { REPO_ROOT } from './pictures.js';
 
@@ -17,19 +18,19 @@ export function tempDir(t, prefix = 'sb-art-') {
 }
 
 /**
- * A scratch checkout with the art folder and every output of a derived asset, so a test can write without touching the
- * real checkout.
+ * A scratch checkout with the art folder, every output of a derived asset and the files that hold the cache keys, so a
+ * test can write without touching the real checkout.
  * @param {import('node:test').TestContext} t
  */
 export function copyOfArt(t) {
     const root = tempDir(t, 'sb-art-copy-');
     cpSync(join(REPO_ROOT, 'assets-src/art'), join(root, 'assets-src/art'), { recursive: true });
     const { manifest } = readManifest(REPO_ROOT);
-    for (const asset of Object.values(manifest.assets).filter(isDerived)) {
-        for (const { path } of outputsOf(asset)) {
-            mkdirSync(dirname(join(root, path)), { recursive: true });
-            cpSync(join(REPO_ROOT, path), join(root, path));
-        }
+    const keyFiles = Object.values(KEY_SOURCES).flat().map(({ file }) => file);
+    const outputs = Object.values(manifest.assets).filter(isDerived).flatMap((asset) => outputsOf(asset).map(({ path }) => path));
+    for (const path of new Set([...outputs, ...keyFiles])) {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        cpSync(join(REPO_ROOT, path), join(root, path));
     }
     return root;
 }

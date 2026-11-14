@@ -12,13 +12,17 @@ Commands:
   check     Check the manifest, the masters, the provenance records and the shipped files, without encoding.
   derive    Derive every output from its master and report the files that would change.
   prove     Derive every output again and compare it with the shipped file, byte for byte.
+  bump      Give a new cache key to every group whose files changed since its key did.
 
 Options:
   --root <dir>        The SillyBunny checkout. Default: the one that holds this script.
   --manifest <path>   The manifest, relative to the root. Default: assets-src/art/art-manifest.json.
   --only <id,id>      derive, prove: only these assets.
   --write             derive: write the changed outputs and their sha256 in the manifest.
+                      bump: write the new keys into their files and the manifest.
   --pixels            prove: compare encoded pictures by their decoded pixels, for an encoder that gives other bytes.
+  --today <day>       bump: the day of a new key, as YYYY-MM-DD. Default: today in UTC.
+  --key <key>         bump: the key every changed key takes, such as 20261114a.
   --help              Show this text.
 
 The result is one JSON document on stdout. Exit codes: 0 no problem, 1 problems, 2 usage,
@@ -29,8 +33,9 @@ const COMMANDS = Object.freeze({
     check: { run: 'runCheck', options: [] },
     derive: { run: 'runDerive', options: ['only', 'write'] },
     prove: { run: 'runProve', options: ['only', 'pixels'] },
+    bump: { run: 'runBump', options: ['write', 'today', 'key'] },
 });
-const VALUE_OPTIONS = Object.freeze(['root', 'manifest', 'only']);
+const VALUE_OPTIONS = Object.freeze(['root', 'manifest', 'only', 'today', 'key']);
 const FLAG_OPTIONS = Object.freeze(['write', 'pixels', 'help']);
 
 class UsageError extends Error {}
@@ -112,6 +117,8 @@ export async function main(argv) {
         only: options.only,
         write: options.write,
         pixels: options.pixels,
+        today: options.today,
+        key: options.key,
     });
     return report(result, exitCode);
 }
