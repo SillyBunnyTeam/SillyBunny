@@ -13,6 +13,8 @@ import { loadStylesheetAsync, prefetchAsset } from './dynamic-styles.js';
 import { createExtensionScriptLoadError, formatExtensionLoadError } from './extension-load-errors.js';
 import {
     EXTENSION_BOOT_ACTIVATION_ACTION,
+    buildExtensionAssetUrl,
+    buildExtensionModuleUrl,
     normalizeExtensionBootId,
     resolveExtensionActivationState,
     resolveExtensionManifestRegistration,
@@ -177,12 +179,10 @@ let requiresReload = false;
 let stateChanged = false;
 let saveMetadataTimeout = null;
 
-function getExtensionAssetVersion() {
-    return encodeURIComponent(CLIENT_VERSION || 'dev');
-}
-
+// SillyBunny: templates, styles, manifests and locales carry a version query. JavaScript modules use
+// buildExtensionModuleUrl() instead, because a query makes an extension's own imports load a second copy.
 function getExtensionAssetUrl(name, assetPath) {
-    return `/scripts/extensions/${name}/${assetPath}?v=${getExtensionAssetVersion()}`;
+    return buildExtensionAssetUrl(name, assetPath, CLIENT_VERSION);
 }
 
 function scheduleIdleTask(callback, timeout = 4000) {
@@ -199,7 +199,9 @@ function prefetchExtensionAsset(name, assetPath, as) {
     }
 
     try {
-        prefetchAsset(getExtensionAssetUrl(name, assetPath), { as });
+        // SillyBunny: scripts load without a query, so the hint must name the same URL.
+        const url = as === 'script' ? buildExtensionModuleUrl(name, assetPath) : getExtensionAssetUrl(name, assetPath);
+        prefetchAsset(url, { as });
     } catch (error) {
         console.debug('Could not prefetch extension asset', name, assetPath, error);
     }
@@ -723,7 +725,8 @@ async function callExtensionHook(name, hookName) {
         return;
     }
 
-    const url = getExtensionAssetUrl(name, manifest.js);
+    // SillyBunny: the bare URL keeps this import and the extension's own imports on one module instance.
+    const url = buildExtensionModuleUrl(name, manifest.js);
     console.debug(`callExtensionHook: Calling hook "${hookName}" (function "${hookFunctionName}") for extension "${name}"`);
 
     try {
@@ -1265,7 +1268,8 @@ function addExtensionScript(name, manifest) {
     }
 
     return new Promise((resolve, reject) => {
-        const url = getExtensionAssetUrl(name, manifest.js);
+        // SillyBunny: the bare URL keeps the entry module and the files that import it on one module instance.
+        const url = buildExtensionModuleUrl(name, manifest.js);
         const id = sanitizeSelector(`${name}-js`);
         let ready = false;
 

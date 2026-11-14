@@ -211,6 +211,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-05-28 extension boot lifecycle wiring. |
 | Owner | Refactor integrator and extension runtime owner. |
 
+### `public/scripts/extensions.js` - extension module URLs
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions.js`. |
+| Area | Extension boot, cache and module identity. |
+| Divergence reason | TODO(copy) |
+| Target seam | `buildExtensionModuleUrl()` and `buildExtensionAssetUrl()` in `public/scripts/extension-boot-lifecycle/index.js`. |
+| Adapter shape | `addExtensionScript()` and `callExtensionHook()` load the extension's JavaScript entry module through `buildExtensionModuleUrl()`, which gives a URL with no query. `getExtensionAssetUrl()` calls `buildExtensionAssetUrl()` and keeps the `?v=` client version for templates, stylesheets, manifests and locale files. `prefetchExtensionAsset()` hints a script by its module URL, so the hint matches the URL that the loader uses. Upstream loads the entry module by the same bare path. |
+| Protecting tests | `tests/extension-boot-lifecycle.test.js` (URL choice), `tests/extension-boot-lifecycle-wiring.test.js` (loader call sites), `tests/extension-module-identity.e2e.js` (a TTS provider setting is saved and `tts/index.js` loads once; no bundled extension module loads under two URLs). |
+| Validation | `npm run test:unit --prefix tests -- extension-boot-lifecycle.test.js extension-boot-lifecycle-wiring.test.js extensions-disable.test.js`, `e2e tests/extension-module-identity.e2e.js` (Bun) and the same spec against `npm run start:node`, `npm run lint`, `npm run lint --prefix tests`, `npm run check:frontend-budgets`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-13 F-291, TTS provider settings lost to a second `tts/index.js` instance. |
+| Owner | TODO(copy) |
+
 ### `public/scripts/extensions/quick-reply/` - active set canonicalization
 | Field | Value |
 | --- | --- |
