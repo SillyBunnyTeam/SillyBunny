@@ -1417,103 +1417,305 @@
                 }
             ]
         },
-        "logo-set": {
-            "type": "pinned",
+        "icon-16": {
+            "type": "icon",
             "key": null,
-            "reason": "The icon set before its masters are adopted.",
+            "master": "logo/logo-16.png",
+            "grid": [
+                16,
+                16
+            ],
             "outputs": [
                 {
                     "path": "public/img/sillybunny/logo-16.png",
+                    "encoding": "png",
                     "sha256": "d11927103d05e0479ec3a4499a948947943376f3c66fb3c76f677e1e2ad1892a"
-                },
-                {
-                    "path": "public/img/sillybunny/logo-32.png",
-                    "sha256": "cc7119ceef817c95ab716099284b813891a6a0a2b4447c99b8dfa0a9389ff035"
-                },
-                {
-                    "path": "public/img/sillybunny/logo-48.png",
-                    "sha256": "67687abcaac35198699dbe418207b5bf75d4ed195275d45f33db750eca188522"
-                },
-                {
-                    "path": "public/img/sillybunny/logo-64.png",
-                    "sha256": "fbe09e7a422a9579451702103f4f1cedf6472c1b437e3c6e919edc24b1869bc6"
-                },
-                {
-                    "path": "public/img/sillybunny/logo.svg",
-                    "sha256": "f05d898d244f54b179a49a37e18741ad25392762dacfc30082e42ecc3d5c669c"
-                },
-                {
-                    "path": "public/img/sillybunny/maskable-512.png",
-                    "sha256": "42c3ba88d73184b271f15122967cf05787b9dfc13c49f86b0caa98e582ddffc9"
                 },
                 {
                     "path": "public/img/icon-16x16.png",
+                    "encoding": "png",
                     "sha256": "d11927103d05e0479ec3a4499a948947943376f3c66fb3c76f677e1e2ad1892a"
-                },
+                }
+            ]
+        },
+        "icon-24": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-24.png",
+            "grid": [
+                24,
+                24
+            ],
+            "outputs": [
                 {
                     "path": "public/img/icon-24x24.png",
+                    "encoding": "png",
                     "sha256": "8563606de4e5d19054a373c0f874c69b4bed60056750331f58a2dfb0b8a603f6"
-                },
+                }
+            ]
+        },
+        "icon-32": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-32.png",
+            "grid": [
+                32,
+                32
+            ],
+            "outputs": [
                 {
-                    "path": "public/img/icon-32x32.png",
+                    "path": "public/img/sillybunny/logo-32.png",
+                    "encoding": "png",
                     "sha256": "cc7119ceef817c95ab716099284b813891a6a0a2b4447c99b8dfa0a9389ff035"
                 },
                 {
-                    "path": "public/img/icon-48x48.png",
+                    "path": "public/img/icon-32x32.png",
+                    "encoding": "png",
+                    "sha256": "cc7119ceef817c95ab716099284b813891a6a0a2b4447c99b8dfa0a9389ff035"
+                }
+            ]
+        },
+        "icon-48": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-48.png",
+            "grid": [
+                48,
+                48
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/logo-48.png",
+                    "encoding": "png",
                     "sha256": "67687abcaac35198699dbe418207b5bf75d4ed195275d45f33db750eca188522"
                 },
                 {
-                    "path": "public/img/icon-64x64.png",
+                    "path": "public/img/icon-48x48.png",
+                    "encoding": "png",
+                    "sha256": "67687abcaac35198699dbe418207b5bf75d4ed195275d45f33db750eca188522"
+                }
+            ]
+        },
+        "icon-64": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-64.png",
+            "grid": [
+                64,
+                64
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/logo-64.png",
+                    "encoding": "png",
                     "sha256": "fbe09e7a422a9579451702103f4f1cedf6472c1b437e3c6e919edc24b1869bc6"
                 },
                 {
+                    "path": "public/img/icon-64x64.png",
+                    "encoding": "png",
+                    "sha256": "fbe09e7a422a9579451702103f4f1cedf6472c1b437e3c6e919edc24b1869bc6"
+                }
+            ]
+        },
+        "icon-96": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-96.png",
+            "grid": [
+                96,
+                96
+            ],
+            "outputs": [
+                {
                     "path": "public/img/icon-96x96.png",
+                    "encoding": "png",
                     "sha256": "19390f1c7ee723afb66c84500c2a02d7382670ea0dcaabd006669164f4afd92d"
-                },
+                }
+            ]
+        },
+        "icon-128": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-128.png",
+            "grid": [
+                128,
+                128
+            ],
+            "outputs": [
                 {
                     "path": "public/img/icon-128x128.png",
+                    "encoding": "png",
                     "sha256": "ebfe1068db426dc50b3b7c9a3ee96a9a51315fba22103cb424d65dc4280714b1"
+                }
+            ]
+        },
+        "icon-256": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-256.png",
+            "grid": [
+                256,
+                256
+            ],
+            "outputs": [
+                {
+                    "path": "public/img/logo.png",
+                    "encoding": "png",
+                    "sha256": "3830d24eb0196bb319a17f7211be37284b83d9f205a5ecbe0626741e198176a1"
                 },
                 {
                     "path": "public/img/icon-256x256.png",
+                    "encoding": "png",
                     "sha256": "3830d24eb0196bb319a17f7211be37284b83d9f205a5ecbe0626741e198176a1"
-                },
+                }
+            ]
+        },
+        "icon-512": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/logo-512.png",
+            "grid": [
+                512,
+                512
+            ],
+            "outputs": [
                 {
                     "path": "public/img/icon-512x512.png",
+                    "encoding": "png",
                     "sha256": "18a73a8c557f6bf0361df5d1c5b7718bd233a641d3e12a1c4f40ed11f3fc9289"
-                },
+                }
+            ]
+        },
+        "platform-57": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-57.png",
+            "grid": [
+                57,
+                57
+            ],
+            "outputs": [
                 {
                     "path": "public/img/apple-icon-57x57.png",
+                    "encoding": "png",
                     "sha256": "56df616263684a4e9e522d207623c34eef775dada9d5beed4d6417f1d9ec9d57"
-                },
+                }
+            ]
+        },
+        "platform-72": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-72.png",
+            "grid": [
+                72,
+                72
+            ],
+            "outputs": [
                 {
                     "path": "public/img/apple-icon-72x72.png",
+                    "encoding": "png",
                     "sha256": "d7288faaeb4c0ba53af82614c05b6a5e4baaed6af0011a447367a6553de7c5cc"
-                },
+                }
+            ]
+        },
+        "platform-114": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-114.png",
+            "grid": [
+                114,
+                114
+            ],
+            "outputs": [
                 {
                     "path": "public/img/apple-icon-114x114.png",
+                    "encoding": "png",
                     "sha256": "29194a25c9daa35eda09f5fddbcc0d15d9d739ecb5a09b4d783fea7699f80d19"
-                },
+                }
+            ]
+        },
+        "platform-144": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-144.png",
+            "grid": [
+                144,
+                144
+            ],
+            "outputs": [
                 {
                     "path": "public/img/apple-icon-144x144.png",
+                    "encoding": "png",
                     "sha256": "c34d6e1be2eed4e004d8e13aa844208b7d2dd0006fa0c53727ebde844c18b379"
-                },
+                }
+            ]
+        },
+        "platform-180": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-180.png",
+            "grid": [
+                180,
+                180
+            ],
+            "outputs": [
                 {
                     "path": "public/img/apple-icon-180x180.png",
+                    "encoding": "png",
                     "sha256": "467a4d4d6d4b2eff51170abef32fc6769ccbccd4f82249a7cf7c10796a1910f6"
-                },
+                }
+            ]
+        },
+        "platform-192": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-192.png",
+            "grid": [
+                192,
+                192
+            ],
+            "outputs": [
                 {
                     "path": "public/img/apple-icon-192x192.png",
+                    "encoding": "png",
                     "sha256": "2b5ffa2f23b74c206ce4e5fabed80dc2d3b6675ebead08d0a4e52a3a6b3060bd"
-                },
+                }
+            ]
+        },
+        "platform-512": {
+            "type": "icon",
+            "key": null,
+            "master": "logo/platform-512.png",
+            "grid": [
+                512,
+                512
+            ],
+            "outputs": [
                 {
                     "path": "public/img/apple-icon-512x512.png",
+                    "encoding": "png",
                     "sha256": "42c3ba88d73184b271f15122967cf05787b9dfc13c49f86b0caa98e582ddffc9"
                 },
                 {
-                    "path": "public/img/logo.png",
-                    "sha256": "3830d24eb0196bb319a17f7211be37284b83d9f205a5ecbe0626741e198176a1"
-                },
+                    "path": "public/img/sillybunny/maskable-512.png",
+                    "encoding": "png",
+                    "sha256": "42c3ba88d73184b271f15122967cf05787b9dfc13c49f86b0caa98e582ddffc9"
+                }
+            ]
+        },
+        "favicon": {
+            "type": "ico",
+            "key": null,
+            "entries": [
+                "icon-16",
+                "icon-24",
+                "icon-32",
+                "icon-48",
+                "icon-64",
+                "icon-128",
+                "icon-256"
+            ],
+            "outputs": [
                 {
                     "path": "public/favicon.ico",
                     "sha256": "339c3738b3d8532a56271989cd3bd1619491ac82a38d26411c3bc51194a2c5c2"
@@ -1525,6 +1727,17 @@
                 {
                     "path": "public/st-launcher.ico",
                     "sha256": "339c3738b3d8532a56271989cd3bd1619491ac82a38d26411c3bc51194a2c5c2"
+                }
+            ]
+        },
+        "logo-svg": {
+            "type": "copy",
+            "key": null,
+            "master": "logo/logo.svg",
+            "outputs": [
+                {
+                    "path": "public/img/sillybunny/logo.svg",
+                    "sha256": "f05d898d244f54b179a49a37e18741ad25392762dacfc30082e42ecc3d5c669c"
                 }
             ]
         }

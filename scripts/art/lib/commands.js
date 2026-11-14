@@ -152,7 +152,7 @@ export async function runDerive(options) {
         }
         let files;
         try {
-            files = await deriveAsset(root, id, asset);
+            files = await deriveAsset(root, id, asset, manifest);
         } catch (error) {
             if (!(error instanceof ArtProblem)) {
                 throw error;

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { unlistedFiles } from './check.js';
 import { decode, encoderMismatches, encoderVersions } from './codec.js';
 import { deriveAsset, isDerived } from './derive.js';
+import { readIco } from './ico.js';
 import { outputFile, outputsOf } from './manifest.js';
 import { ArtProblem } from './problem.js';
 import { samePixels, sha256, upscaleNearest } from './raster.js';
@@ -44,7 +45,7 @@ export async function proveArt(root, manifest, { only, pixels = false } = {}) {
         summary.derived++;
         let files;
         try {
-            files = await deriveAsset(root, id, asset);
+            files = await deriveAsset(root, id, asset, manifest);
         } catch (error) {
             if (!(error instanceof ArtProblem)) {
                 throw error;
@@ -75,8 +76,8 @@ async function proveFile(root, id, file, recorded, pixels) {
         return { code: 'output-missing', asset: id, path: file.path, message: `${file.path} does not exist.` };
     }
     const shipped = readFileSync(path);
-    if (pixels && file.picture) {
-        return samePixels(await decode(shipped), await decode(file.bytes))
+    if (pixels && file.kind !== 'data') {
+        return await showSamePixels(file.kind, shipped, file.bytes)
             ? null
             : { code: 'output-stale', asset: id, path: file.path, message: `${file.path} does not show the pixels its master gives.` };
     }
@@ -88,6 +89,23 @@ async function proveFile(root, id, file, recorded, pixels) {
         return { code: 'manifest-stale', asset: id, path: file.path, expected: file.sha256, actual: recorded, message: `The manifest records another sha256 for ${file.path}. Run derive --write.` };
     }
     return null;
+}
+
+/** An ICO holds PNG pictures, so two ICOs show the same pixels when their entries, taken in order, do. */
+async function showSamePixels(kind, one, two) {
+    if (kind === 'picture') {
+        return samePixels(await decode(one), await decode(two));
+    }
+    const [first, second] = [readIco(one), readIco(two)];
+    if (first.length !== second.length) {
+        return false;
+    }
+    for (let at = 0; at < first.length; at++) {
+        if (!samePixels(await decode(first[at]), await decode(second[at]))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 async function provePinned(root, id, asset) {

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { decode, encoderVersions } from '../lib/codec.js';
 import { runDerive, runProve } from '../lib/commands.js';
+import { readIco } from '../lib/ico.js';
 import { MANIFEST_PATH } from '../lib/manifest.js';
 import { samePixels } from '../lib/raster.js';
 import { fakeSha } from '../test-support/manifests.js';
@@ -178,4 +179,26 @@ test('a backdrop drawn on the scene master canvas is cut with the still box', as
     assert.deepEqual(codes(await runDerive({ root, write: true })), []);
     const backdrop = await decode(readFileSync(join(root, SHIP, 'duo--backdrop@native.webp')));
     assert.equal(samePixels(backdrop, paint(10, 7, (x, y) => (y === 5 && x >= 1 && x < 9 ? [30, 30, 90, 255] : CLEAR))), true);
+});
+
+test('an icon keeps its channels and size, an ICO packs its icons, and a copy ships its master byte for byte', async (t) => {
+    const plate = paint(4, 4, (x, y) => (x === 0 && y === 0 ? CLEAR : [120, 90, 200, 255]));
+    const platform = paint(4, 4, () => [120, 90, 200, 255], 3);
+    const assets = {
+        'icon-4': { type: 'icon', key: null, master: 'logo/logo-4.png', grid: [4, 4], outputs: [{ path: 'public/img/icon-4x4.png', encoding: 'png', sha256: fakeSha('1') }] },
+        'platform-4': { type: 'icon', key: null, master: 'logo/platform-4.png', grid: [4, 4], outputs: [{ path: 'public/img/apple-icon-4x4.png', encoding: 'png', sha256: fakeSha('2') }] },
+        favicon: { type: 'ico', key: null, entries: ['icon-4'], outputs: [{ path: 'public/favicon.ico', sha256: fakeSha('3') }] },
+        'logo-svg': { type: 'copy', key: null, master: 'logo/logo.svg', outputs: [{ path: `${SHIP}/logo.svg`, sha256: fakeSha('4') }] },
+    };
+    const root = await repoWith(t, assets, { 'logo/logo-4.png': plate, 'logo/platform-4.png': platform, 'logo/logo.svg': '<svg/>' });
+
+    assert.deepEqual(codes(await runDerive({ root, write: true })), []);
+    const pngColourType = (path) => readFileSync(join(root, path))[25];
+    assert.deepEqual([pngColourType('public/img/icon-4x4.png'), pngColourType('public/img/apple-icon-4x4.png')], [6, 2]);
+    assert.deepEqual(readIco(readFileSync(join(root, 'public/favicon.ico'))), [readFileSync(join(root, 'public/img/icon-4x4.png'))]);
+    assert.equal(readFileSync(join(root, SHIP, 'logo.svg'), 'utf8'), '<svg/>');
+    assert.equal((await runProve({ root, pixels: true })).exitCode, 0);
+
+    const wrong = await repoWith(t, { 'icon-4': { ...assets['icon-4'], grid: [5, 5] } }, { 'logo/logo-4.png': plate });
+    assert.deepEqual(codes(await runDerive({ root: wrong })), ['grid-mismatch']);
 });

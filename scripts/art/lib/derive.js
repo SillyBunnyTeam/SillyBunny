@@ -2,17 +2,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 import { encode } from './codec.js';
 import { frameBox, renderFrame, SUBJECT_ALPHA } from './frame.js';
+import { encodeIco } from './ico.js';
 import { masterFile, outputsOf, parseRatio } from './manifest.js';
 import { ArtProblem } from './problem.js';
 import { createRaster, hasBinaryAlpha, opaqueBox, paste, readRaster, samePixels, sha256, upscaleNearest } from './raster.js';
 
 /**
- * A file as the derive makes it. `picture` is false for data such as a motion description, which is compared by its
- * bytes on every platform.
- * @typedef {{ path: string, bytes: Buffer, sha256: string, picture: boolean }} DerivedFile
+ * A file as the derive makes it. A `picture` or an `ico` may be compared by its decoded pixels on a platform whose
+ * encoder gives other bytes; `data`, such as a motion description, is compared by its bytes everywhere.
+ * @typedef {{ path: string, bytes: Buffer, sha256: string, kind: 'picture' | 'ico' | 'data' }} DerivedFile
  */
 
-const DERIVERS = Object.freeze({ still: deriveStill, scene: deriveScene });
+const DERIVERS = Object.freeze({ still: deriveStill, scene: deriveScene, icon: deriveIcon, ico: deriveIco, copy: deriveCopy });
 
 /** Whether the files of an asset are made from masters, as opposed to pinned by their sha256. */
 export const isDerived = (asset) => Object.hasOwn(DERIVERS, asset.type);
@@ -22,25 +23,26 @@ export const isDerived = (asset) => Object.hasOwn(DERIVERS, asset.type);
  * @param {string} root The checkout.
  * @param {string} id
  * @param {any} asset A valid manifest asset.
+ * @param {any} manifest The manifest that holds the asset, which an ICO reads its icons from.
  * @returns {Promise<DerivedFile[]>}
  * @throws {ArtProblem} When a master is missing or does not fit its placement.
  */
-export async function deriveAsset(root, id, asset) {
+export async function deriveAsset(root, id, asset, manifest) {
     if (!isDerived(asset)) {
         throw new ArtProblem('not-derived', `${id} is ${asset.type}, so it has no master to derive from.`, { asset: id });
     }
-    return DERIVERS[asset.type]({ root, id }, asset);
+    return DERIVERS[asset.type]({ root, id, manifest }, asset);
 }
 
-async function readMaster({ root, id }, master) {
+async function readMaster({ root, id }, master, { native = true } = {}) {
     const path = masterFile(root, master);
     if (!existsSync(path)) {
         throw new ArtProblem('master-missing', `The master ${master} does not exist.`, { asset: id, path: master });
     }
     const raster = await readRaster(path);
     // A native-grid master of a figure has one art pixel per image pixel, so a translucent pixel is a soft edge that
-    // would ship as one.
-    if (!hasBinaryAlpha(raster)) {
+    // would ship as one. An icon is drawn smooth at its own size, so it may have them.
+    if (native && !hasBinaryAlpha(raster)) {
         throw new ArtProblem('master-not-native', `The master ${master} has translucent pixels, so it is not a native-grid master.`, { asset: id, path: master });
     }
     return raster;
@@ -62,7 +64,7 @@ async function encodeOutputs(raster, outputs) {
     for (const output of outputs) {
         const scaled = (output.scale ?? 1) > 1 ? upscaleNearest(raster, output.scale) : raster;
         const bytes = await encode(scaled, output.encoding);
-        files.push({ path: output.path, bytes, sha256: sha256(bytes), picture: true });
+        files.push({ path: output.path, bytes, sha256: sha256(bytes), kind: 'picture' });
     }
     return files;
 }
@@ -160,6 +162,32 @@ async function deriveScene(context, asset) {
     return files;
 }
 
+async function deriveIcon(context, asset) {
+    const picture = checkGrid(context, await readMaster(context, asset.master, { native: false }), asset.grid, 'The icon');
+    return encodeOutputs(picture, asset.outputs);
+}
+
+async function deriveIco(context, asset) {
+    const entries = [];
+    for (const entry of asset.entries) {
+        const icon = context.manifest.assets[entry];
+        const [first] = await deriveIcon({ ...context, id: entry }, icon);
+        entries.push({ size: icon.grid[0], png: first.bytes });
+    }
+    const bytes = encodeIco(entries);
+    return asset.outputs.map(({ path }) => ({ path, bytes, sha256: sha256(bytes), kind: 'ico' }));
+}
+
+/** A master that is shipped as it is, such as the vector logo. */
+function deriveCopy({ root, id }, asset) {
+    const path = masterFile(root, asset.master);
+    if (!existsSync(path)) {
+        throw new ArtProblem('master-missing', `The master ${asset.master} does not exist.`, { asset: id, path: asset.master });
+    }
+    const bytes = readFileSync(path);
+    return asset.outputs.map((output) => ({ path: output.path, bytes, sha256: sha256(bytes), kind: 'data' }));
+}
+
 /** The motion description ships as it is, after a check that it names only files of its asset, inside its grid. */
 function copyMotion({ root, id }, asset) {
     const { master, output } = asset.motion;
@@ -191,7 +219,7 @@ function copyMotion({ root, id }, asset) {
             fail(`the layer ${layer.id} reaches past the grid.`);
         }
     }
-    return { path: output, bytes, sha256: sha256(bytes), picture: false };
+    return { path: output, bytes, sha256: sha256(bytes), kind: 'data' };
 }
 
 /** Every string in a description that names a picture file. */

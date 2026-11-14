@@ -55,6 +55,23 @@ TODO(copy)
 | hero-duo/hero-duo--tewi--breath-c-half.png | tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap, breath-frames | no | ce232d107deff075 |
 | hero-duo/hero-duo--tewi--breath-c.png | tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap, breath-frames | no | 6deef2f8cdb6c1b2 |
 | hero-duo/hero-duo.png | reisen, tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap, compose-scene | no | 818d5d45dd1a258f |
+| logo/logo-128.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | ebfe1068db426dc5 |
+| logo/logo-16.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | yes | d11927103d05e047 |
+| logo/logo-24.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 8563606de4e5d190 |
+| logo/logo-256.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 3830d24eb0196bb3 |
+| logo/logo-32.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | yes | cc7119ceef817c95 |
+| logo/logo-48.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 67687abcaac35198 |
+| logo/logo-512.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 18a73a8c557f6bf0 |
+| logo/logo-64.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | fbe09e7a422a9579 |
+| logo/logo-96.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 19390f1c7ee723af |
+| logo/logo.svg | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | f05d898d244f54b1 |
+| logo/platform-114.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 29194a25c9daa35e |
+| logo/platform-144.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | c34d6e1be2eed4e0 |
+| logo/platform-180.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 467a4d4d6d4b2eff |
+| logo/platform-192.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 2b5ffa2f23b74c20 |
+| logo/platform-512.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 42c3ba88d73184b2 |
+| logo/platform-57.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 56df616263684a4e |
+| logo/platform-72.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | d7288faaeb4c0ba5 |
 | reisen/about-reisen.png | reisen | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 3fcde2fcdf31abda |
 | reisen/gs-reisen-done.png | reisen | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 51c7d6af95577ba6 |
 | reisen/gs-reisen.png | reisen | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 54df2f2aeb3013ab |
@@ -125,7 +142,7 @@ TODO(copy)
 
 | Provider | Model | Masters | First | Last |
 |---|---|---|---|---|
-| openai | gpt-image-2.5-sunburst-h | 71 | 2026-11-01 | 2026-11-04 |
+| openai | gpt-image-2.5-sunburst-h | 88 | 2026-11-01 | 2026-11-04 |
 
 ### Shipped files without a master
 
@@ -137,7 +154,6 @@ TODO(copy)
 | card-tewi | 1 |
 | expressions-reisen | 28 |
 | expressions-tewi | 28 |
-| logo-set | 26 |
 
 ### Encoder
 
