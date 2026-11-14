@@ -778,6 +778,19 @@ This is the largest class by a wide margin.
   - Several rows may be open at once; no adopter keeps one open.
 - **Tests:** `tests/unit/sillybunny-editor-rows.test.js`; `tests/foundation/shared-ui.e2e.js` (expander rows); `tests/persona-management-ui.e2e.js`.
 
+### Formatting and Presets pages
+
+- **Breaks:** rows that the generic row pass never reached (the Prompting root carries `data-sb-presentation="manual"`), upstream wrappers that Backend source rules show and hide, and old nodes that a later regroup pass moved back into a box.
+- **Files:** `public/scripts/sillybunny-backend-pages.js` (loaded on demand by `ensureBackendPages` in `sillybunny-tabs.js`), `adoptFieldRow` options in `sillybunny-settings-presentation.js`, `tests/helpers/prompting-layout.js`.
+- **Guards:**
+  - `adoptFieldRow(row, { manual: true })` adopts rows inside a `data-sb-presentation="manual"` root; `keepWrapper` leaves a node that carries an id, a `data-` attribute or an inline style around the new row, because the Backend source switch (`[data-source]`, jQuery `.toggle()`) and `data-cc-null` act on that node. A replaced wrapper copies them with `carryVisibility`.
+  - `retire(node)` moves an emptied upstream node out of its box and sets `dataset.sbEmptiedByOrder`; `move`, `movePromptingNode` and `startReplyWith` in `sillybunny-tabs.js` skip such nodes, or the next backend change put them back. A hidden sibling that stays in a box leaves its neighbour with a separator that `:first-child` and `:last-child` cannot remove (`#sb-openai-request` keeps an audit allowlist entry for its source-hidden rows).
+  - The template buttons (`[data-preset-manager-*="<api>"]` and the file input) stay in the document inside `[data-sb-template-actions="<api>"]`, because `preset-manager.js` delegates its click handlers from `document`; the Template Actions menu clicks them. Rows that hold a template select carry `data-sb-preset-row`, which the autosave flush reads.
+  - The Enable Instruct Mode and Enable System Prompt switches do not disable their groups, because a template could not be picked while the switch is off; upstream toggles `.disabled` on `#instructSettingsBlock` and `#SystemPromptBlock`, and one rule dims the rows.
+  - A link row that opens another group passes the group's title to `revealSearchMatch`, which centres its target: a tall group would centre below its own heading (`tests/sillybunny-backend-settings.e2e.js`, "open each other").
+  - `auditPromptingLayout` measures the control of a `.ds-row-check` row (radio or check) at the 12px inset, and the text of every other row.
+- **Tests:** `tests/sillybunny-backend-settings.e2e.js`, `tests/sillybunny-settings-consistency.e2e.js`, `tests/sillybunny-preset-autosave.e2e.js`; the inventory and parity specs under `tests/audit/`.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

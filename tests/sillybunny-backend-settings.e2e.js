@@ -111,14 +111,17 @@ async function expectPromptingFlow(prompting, api) {
     await expect(categoryTitles).toHaveCount(api === 'openai' ? 1 : 2);
     expect(await categoryTitles.evaluateAll(titles => titles.filter(title => title.dataset.i18n !== title.textContent.trim()).map(title => title.textContent))).toEqual([]);
     if (api !== 'openai') {
+        // NovelAI's loose phrase, preamble and banned token blocks are groups of their own, after Character Names.
+        const novelGroups = api === 'novel' ? ['Phrase Repetition Penalty', 'Preamble', 'Banned Tokens'] : [];
         await expect(prompting.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
-            'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template', 'Character Names', 'Reasoning Template',
+            'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template', 'Character Names', ...novelGroups, 'Reasoning Template',
         ]);
         return;
     }
     await expect(prompting.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
-        'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names & Prompt Formatting', 'Reply Prefill',
-        'Request Options', 'Reasoning Template',
+        'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names Behavior', 'Continue Postfix',
+        'Character Names & Prompt Formatting', 'Reply Prefill', 'Request Options', 'Enable function calling', 'Send inline media',
+        'Request model reasoning', 'Reasoning Template',
     ]);
     await expect(prompting.locator('#completion_prompt_manager')).toHaveCount(0);
     await expect(prompting.locator('.openai-tab-buttons, .sb-subpage')).toHaveCount(0);
@@ -152,7 +155,7 @@ async function choosePresetAction(page, prompting, label) {
 async function expectPresetRow(page, prompting, api) {
     // The template groups below keep their own preset buttons, so only the Presets group is checked.
     await expect(prompting.locator(`#respective-presets-block :is(${PRESET_ACTION_ORIGINALS}):visible`)).toHaveCount(0);
-    const row = prompting.locator('[data-sb-preset-row]:visible');
+    const row = prompting.locator('#respective-presets-block [data-sb-preset-row]:visible');
     await expect(row).toHaveCount(1);
     await expect(row.locator('.ds-row-label')).toHaveText('Preset');
     const selected = await row.locator('select').evaluate(select => select.selectedOptions[0]?.textContent.replace(/\s+/g, ' ').trim() ?? '');
@@ -463,9 +466,9 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
     const formatting = await openPanel(page, 'context');
     await expect(page.locator('[data-sb-settings-tab="context"]')).toContainText('Formatting');
     await expect(formatting.locator('.sb-formatting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
-        'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Rendering',
+        'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering',
     ]);
-    await expect(formatting.locator('#sb-af-reply-prefix [name="startReplyWithBlock"]')).toBeVisible();
+    await expect(formatting.locator('#sb-af-reply-prefix #start_reply_with')).toBeVisible();
     await expect(formatting.locator('#advanced-formatting-cc-notice')).toBeHidden();
     await expect(formatting.locator('#reasoning_select, #reasoning_prefix, #reasoning_suffix, #reasoning_separator')).toHaveCount(0);
     await expect(formatting.locator('#reasoning_auto_parse, #reasoning_auto_expand, #reasoning_show_hidden, #reasoning_add_to_prompts, #reasoning_max_additions')).toHaveCount(5);
@@ -473,7 +476,7 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
     await selectBackend(page, 'textgenerationwebui', 'ooba');
     const textFormatting = await openPanel(page, 'context');
     await expect(textFormatting.locator('.sb-formatting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
-        'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Rendering',
+        'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering',
     ]);
 });
 
@@ -483,7 +486,8 @@ test('Backend tabs, aliases and Presets/Editor links are stable in every mode', 
         await selectBackend(page, api);
         const presets = await openPanel(page, 'prompting');
         await expect(page.locator('#sb-settings-tab-list button')).toHaveText(['Connections', 'Sampling', 'Presets', 'Editor', 'Formatting', 'Agents']);
-        await expect(page.locator('[data-sb-settings-tab="prompting"]')).toHaveAttribute('data-sb-search-aliases', 'Prompting|Presets|Update Preset|Save Preset As|Rename Preset|Import Preset|Export Preset|Delete Preset');
+        await expect(page.locator('[data-sb-settings-tab="prompting"]')).toHaveAttribute('data-sb-search-aliases', 'Prompting|Presets|Update Preset|Save Preset As|Rename Preset|Import Preset|Export Preset|Delete Preset|reasoning');
+        await expect(page.locator('[data-sb-settings-tab="context"]')).toHaveAttribute('data-sb-search-aliases', 'Context|Advanced Formatting|reasoning');
         await expect(page.locator('[data-sb-settings-tab="editor"]')).toHaveAttribute('data-sb-search-aliases', 'Prompt Manager|Prompts');
         const edit = presets.getByRole('button', { name: 'Edit Prompts', exact: true });
         // The Characters list can load the deferred Editor stylesheet first, so it is switched off to check the row's own style.
@@ -558,6 +562,23 @@ test('Preset API/Sampler Linking is a Chat Completions group of its own after Pr
     await selectBackend(page, 'textgenerationwebui', 'ooba');
     await openPanel(page, 'prompting');
     await expect(linking).toBeHidden();
+});
+
+test('The Reasoning groups of Formatting and Presets open each other and carry one placeholder caption each', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    for (const api of ['openai', 'textgenerationwebui']) {
+        await selectBackend(page, api, api === 'openai' ? 'openrouter' : 'ooba');
+        const formatting = await openPanel(page, 'context');
+        const reasoning = formatting.locator('#sb-af-reasoning');
+        await expect(reasoning.locator('.sb-settings-category-heading > small[data-sb-copy-placeholder="true"]')).toHaveText('TODO(copy)');
+        await reasoning.getByRole('button', { name: 'Reasoning Template', exact: true }).click();
+        const prompting = page.locator('[data-sb-panel="prompting"]');
+        const template = prompting.locator('#sb-reasoning-template');
+        await expect(template.locator('.sb-settings-category-title')).toBeInViewport();
+        await expect(template.locator('.sb-settings-category-heading > small[data-sb-copy-placeholder="true"]')).toHaveText('TODO(copy)');
+        await template.getByRole('button', { name: 'Reasoning', exact: true }).click();
+        await expect(reasoning.locator('.sb-settings-category-title')).toBeInViewport();
+    }
 });
 
 test('Backend category search returns one title and retains subtitle matches', async ({ page, baseURL }) => {

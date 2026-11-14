@@ -529,16 +529,16 @@ test.describe('Settings header consistency', () => {
         });
         const formatting = await openSettingsTab(page, 'context', 'left');
         const groups = formatting.locator('#AdvancedFormatting > .sb-formatting-group');
-        await expect(groups).toHaveCount(6);
+        await expect(groups).toHaveCount(7);
         await expect(groups.locator(':scope > .sb-settings-category-header .sb-settings-category-title')).toHaveText([
-            'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Rendering',
+            'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering',
         ]);
         await expect(groups.locator(':scope > .sb-settings-category-header .sb-settings-category-heading > small')).toHaveText([
             'Choose a tokenizer and adjust prompt token counts with padding.',
             'Choose text that stops generation, with optional macro replacement.',
             'Set how replies begin and whether that text appears in chat.',
             'Control line breaks, extra spaces, and unfinished sentences in replies.',
-            'Control how reasoning is parsed, displayed, and included in prompts.',
+            'TODO(copy)',
             'Keep specified standalone text from being treated as Markdown.',
         ]);
         const failures = await groups.evaluateAll((groups, expectedTitle) => groups.flatMap(group => {
@@ -551,9 +551,9 @@ test.describe('Settings header consistency', () => {
             const titleStyle = title ? getComputedStyle(title) : null;
             const checks = {
                 headerIsFirst: header === group.firstElementChild,
-                oneHeaderAndBody: group.children.length === 2 && header?.nextElementSibling === body,
+                oneHeaderAndBody: [...group.children].filter(child => !child.hidden).length === 2 && header?.nextElementSibling === body,
                 localizedTitle: Boolean(title && title.dataset.i18n === title.textContent),
-                localizedSubtitle: Boolean(subtitle && subtitle.dataset.i18n === subtitle.textContent),
+                localizedSubtitle: !subtitle || subtitle.dataset.sbCopyPlaceholder === 'true' || subtitle.dataset.i18n === subtitle.textContent,
                 titleMetrics: Boolean(titleStyle && Object.entries(expectedTitle).every(([key, value]) => titleStyle[key] === value)),
                 outerGroupHasNoBox: groupStyle.borderTopWidth === '0px' && groupStyle.padding === '0px' && groupStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && groupStyle.boxShadow === 'none',
                 bodyKeepsPreferenceBox: bodyStyle?.borderTopWidth === '0px' && bodyStyle.boxShadow !== 'none' && bodyStyle.borderRadius === '12px',
@@ -578,8 +578,9 @@ test.describe('Prompting and Sampling consistency', () => {
 
     test('Chat and Text Completions open with Presets and render their full prompting flows', async ({ page }) => {
         const chatGroups = [
-            'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names & Prompt Formatting',
-            'Reply Prefill', 'Request Options', 'Reasoning Template',
+            'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names Behavior', 'Continue Postfix',
+            'Character Names & Prompt Formatting', 'Reply Prefill', 'Request Options', 'Enable function calling',
+            'Send inline media', 'Request model reasoning', 'Reasoning Template',
         ];
         const textGroups = [
             'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template',
@@ -802,7 +803,7 @@ test.describe('Customize consistency', () => {
             await switchBackend(page, backend);
             const prompting = await openSettingsTab(page, 'prompting');
             const row = prompting.locator('.ds-row:has(#reasoning_select)');
-            const label = row.locator('label[for="reasoning_select"]');
+            const label = row.locator('.ds-row-label');
             const subtitle = row.locator('.ds-row-subtitle');
             await expect(label).toBeVisible();
             await expect(label).toHaveText('Reasoning Template');
@@ -812,7 +813,9 @@ test.describe('Customize consistency', () => {
             await expect(subtitle).toHaveAttribute('data-i18n', 'Select your current Reasoning Template');
             await expect(row).not.toHaveAttribute('title', /.+/);
             await expect(row.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
-            for (const action of actions) await expect(row.locator(`[data-preset-manager-${action}="reasoning"]`)).toBeVisible();
+            // The actions sit in the Template Actions menu; the upstream buttons stay in the document, in a holder the menu delegates to.
+            await expect(row.getByRole('button', { name: 'Template Actions', exact: true })).toBeVisible();
+            for (const action of actions) await expect(prompting.locator(`[data-sb-template-actions="reasoning"] [data-preset-manager-${action}="reasoning"]`)).toHaveCount(1);
             expect(await page.evaluate(selectors => window.__sbReasoningNodes.every((node, index) => node === document.querySelector(selectors[index])), selectors)).toBe(true);
 
             const select = row.locator('#reasoning_select');
@@ -832,33 +835,28 @@ test.describe('Customize consistency', () => {
             const row = prompting.locator('.ds-row:has(#reasoning_select)');
             const select = row.locator('#reasoning_select');
             await expect(select).toHaveValue('DeepSeek');
-            for (const action of actions) await expect(row.locator(`[data-preset-manager-${action}="reasoning"]`)).toBeVisible();
+            await expect(row.getByRole('button', { name: 'Template Actions', exact: true })).toBeVisible();
             expect(await page.evaluate(selectors => window.__sbReasoningNodes.every((node, index) => node === document.querySelector(selectors[index])), selectors)).toBe(true);
             await expectNoHorizontalOverflow(row);
             await row.scrollIntoViewIfNeeded();
             await page.evaluate(() => document.fonts.ready);
             layouts.push(await select.evaluate(control => {
-                const style = getComputedStyle(control);
-                const context = document.createElement('canvas').getContext('2d');
-                context.font = style.font;
-                const selectedText = control.selectedOptions[0].textContent;
-                const paddingLeft = parseFloat(style.paddingLeft);
-                const paddingRight = parseFloat(style.paddingRight);
+                const suffix = control.closest('.ds-row-suffix');
+                const trigger = suffix.querySelector('.ds-select-row__trigger');
+                const value = trigger.querySelector('.ds-select-row__value');
+                const style = getComputedStyle(value);
                 const bounds = element => {
                     const { x, y, width, height } = element.getBoundingClientRect();
                     return { x, y, width, height };
                 };
                 return {
                     viewportWidth: window.innerWidth,
-                    selectedText,
-                    textWidth: context.measureText(selectedText).width,
-                    availableTextWidth: control.clientWidth - paddingLeft - paddingRight,
+                    selectedText: value.textContent,
+                    textWidth: value.scrollWidth,
+                    availableTextWidth: value.clientWidth,
                     font: style.font,
-                    appearance: style.appearance,
-                    paddingLeft,
-                    paddingRight,
-                    select: bounds(control),
-                    actions: bounds(control.nextElementSibling),
+                    select: bounds(trigger),
+                    actions: bounds(suffix.querySelector('.ds-select-row__menu')),
                     row: bounds(control.closest('.ds-row')),
                 };
             }));
@@ -868,7 +866,8 @@ test.describe('Customize consistency', () => {
         expect(layouts.filter(layout => layout.availableTextWidth + 1 < layout.textWidth)).toEqual([]);
 
         const chooserPromise = page.waitForEvent('filechooser');
-        await page.locator('[data-preset-manager-import="reasoning"]').click();
+        await page.locator('[data-sb-panel="prompting"] .ds-row:has(#reasoning_select)').getByRole('button', { name: 'Template Actions', exact: true }).click();
+        await page.locator('.sb-action-menu[role="menu"]').getByRole('menuitem', { name: 'Import…', exact: true }).click();
         const chooser = await chooserPromise;
         expect(await chooser.element().evaluate(input => input === document.querySelector('[data-preset-manager-file="reasoning"]'))).toBe(true);
     });

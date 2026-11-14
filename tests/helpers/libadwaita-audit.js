@@ -430,6 +430,10 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#sampler_priority_block_ooba', rule: 'row-edges', reason: 'Upstream sampler priority block; rows are arranged in a drag-sortable list, not full-bleed .ds-row anatomy' },
     { selector: '#sampler_priority_block_ooba', rule: 'content-inset', reason: 'Upstream sampler priority block; inset measurement is not meaningful for a sortable list' },
     { selector: ':is(#sampler_order_block_kcpp, #sampler_order_block_lcpp, [name="KoboldSamplerOrderBlock"])', rule: 'content-inset', reason: 'Upstream sampler order block; centred title and description above a drag-sortable list' },
+    // SillyBunny: rows that lead with a control or whose buttons reach out of the row by design.
+    { selector: '.ds-row-check > .ds-row-text', rule: 'content-inset', reason: 'A check row leads with its control, so the text starts after the control (the libadwaita check prefix), not at the row inset' },
+    { selector: '.ds-row--spin > .ds-row-suffix', rule: 'content-inset', reason: 'The buttons of a spin row draw inside the row, and their hit area reaches out through the negative margin of the suffix' },
+    { selector: '#sb-openai-request', rule: 'row-edges', reason: 'Backend source rules hide sibling rows with inline display, so the first or last visible row keeps a separator that :first-child and :last-child cannot remove' },
     // SillyBunny: first/last row border leakage on specific groups whose inner rows retain their borders at the group boundary.
     { selector: '#sb-tc-context', rule: 'row-edges', reason: 'Context Template group; inner section rows retain border-top at the group boundary — upstream layout, addressed in Phase 4' },
     // SillyBunny: #left-nav-panel inside Connections tab — bespoke provider-slot markup with no .ds-pref-group anatomy.

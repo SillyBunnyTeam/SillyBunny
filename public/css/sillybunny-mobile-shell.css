@@ -509,10 +509,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 }
 
 @media screen and (max-width: 768px) {
-    #AdvancedFormatting .sb-formatting-group > .ds-pref-group > .standoutHeader > strong {
-        display: none !important;
-    }
-
     /* SillyBunny: descendant combinators, because the Connections panel wraps each provider's
        content (connect row included) in .sb-connections-provider-body. */
     #kobold_api_block .flex-container:has(> #api_button),

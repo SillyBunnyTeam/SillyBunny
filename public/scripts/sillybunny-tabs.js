@@ -111,6 +111,10 @@ const sbSearchRenderRequests = new WeakMap();
 const loadServerToolsModule = createDeferredModule(new URL('./sillybunny-server-tools.js', import.meta.url));
 const loadDataSecurityModule = createDeferredModule(new URL('./sillybunny-data-security.js', import.meta.url));
 const loadAppearanceModule = createDeferredModule(new URL('./sillybunny-appearance.js', import.meta.url));
+const loadBackendPagesModule = createDeferredModule(new URL('./sillybunny-backend-pages.js', import.meta.url));
+/** Set once the Formatting and Presets rows have been built; the Backend updates below call into it. */
+let backendPagesModule = null;
+let backendPagesPromise;
 let serverToolsPromise;
 let settingsPanelPromise;
 /** Set once the Appearance module has regrouped the upstream rows; the Appearance helpers below need it. */
@@ -142,6 +146,44 @@ function loadServerTools() {
         throw error;
     });
     return serverToolsPromise;
+}
+
+/** Opens a Backend page and brings one of its groups into view, as a search result does. */
+function revealBackendGroup(tabId, groupId) {
+    const group = document.getElementById(groupId);
+    // A search jump centres its target, so the title is the target: a tall group would centre below its own heading.
+    const target = group?.querySelector('.sb-settings-category-title') ?? group;
+    if (target instanceof HTMLElement) revealSearchMatch('left', { tabId, element: target });
+}
+
+const backendPagesContext = {
+    revealGroup: revealBackendGroup,
+    templateMenuSections: holder => getPresetMenuSections(holder, false, { master: false }),
+};
+
+/**
+ * Loads the Formatting and Presets page module and builds their rows. Search waits for it through `ensureReady`, so a
+ * row is found before the page was opened.
+ */
+function ensureBackendPages() {
+    backendPagesPromise ??= loadBackendPagesModule().then(module => {
+        backendPagesModule = module;
+        groupAdvancedFormattingIntoDrawers();
+        module.presentFormatting(backendPagesContext);
+        updateFormattingGroupVisibility(document.getElementById('AdvancedFormatting'));
+        // The Presets groups are built by the update that follows, so build the rows after it and update once more.
+        const prompting = getShellState('left')?.tabs.get('prompting');
+        if (prompting?.panel instanceof HTMLElement) updatePromptingPanel(prompting.panel);
+        for (const tabId of ['context', 'prompting']) {
+            const tab = getShellState('left')?.tabs.get(tabId);
+            if (tab) tab.searchIndex = null;
+        }
+    }).catch(error => {
+        backendPagesPromise = undefined;
+        console.error('[SillyBunny] Could not build the Formatting and Presets rows:', error);
+        throw error;
+    });
+    return backendPagesPromise;
 }
 
 function initializeSettingsPanel() {
@@ -395,13 +437,13 @@ function getPresetActionLabels(isChatCompletion) {
 }
 
 /** Reads the live originals, so call it on every open: PresetManager adds its restore-defaults button late, and autosave marks Update read-only per preset. */
-function getPresetMenuSections(block, isChatCompletion) {
+function getPresetMenuSections(block, isChatCompletion, { master = true } = {}) {
     const originals = new Map();
     for (const button of block.querySelectorAll('.menu_button, .menu_button_icon')) {
         const kind = getPresetActionKind(button);
         if (kind && !originals.has(kind)) originals.set(kind, button);
     }
-    if (!isChatCompletion) {
+    if (!isChatCompletion && master) {
         originals.set('masterImport', document.getElementById('af_master_import'));
         originals.set('masterExport', document.getElementById('af_master_export'));
     }
@@ -1175,7 +1217,7 @@ const SB_SHELLS = Object.freeze({
                 descriptionI18n: 'Manage presets, templates, and generation settings.',
                 searchPlaceholder: 'Search presets, instruct mode, markdown, or decorators',
                 searchExamples: ['presets', 'instruct', 'markdown', 'decorators'],
-                searchAliases: ['Prompting', 'Presets', 'Update Preset', 'Save Preset As', 'Rename Preset', 'Import Preset', 'Export Preset', 'Delete Preset'],
+                searchAliases: ['Prompting', 'Presets', 'Update Preset', 'Save Preset As', 'Rename Preset', 'Import Preset', 'Export Preset', 'Delete Preset', 'reasoning'],
             },
             {
                 id: 'editor',
@@ -1195,7 +1237,7 @@ const SB_SHELLS = Object.freeze({
                 descriptionI18n: 'Adjust token counting, stopping strings, text cleanup, and reasoning display.',
                 searchPlaceholder: 'Search formatting, context templates, regex, or text replacements',
                 searchExamples: ['formatting', 'context', 'advanced formatting', 'regex', 'replacement'],
-                searchAliases: ['Context', 'Advanced Formatting'],
+                searchAliases: ['Context', 'Advanced Formatting', 'reasoning'],
             },
             {
                 id: 'agents',
@@ -8883,7 +8925,7 @@ function createBackendGroupHeader(title, attrs = {}, description = '') {
     if (description) {
         heading.append(createElement('small', {
             text: description,
-            attrs: { 'data-i18n': description },
+            attrs: description === 'TODO(copy)' ? { 'data-sb-copy-placeholder': 'true' } : { 'data-i18n': description },
         }));
     }
     header.append(heading);
@@ -9190,7 +9232,7 @@ function preparePromptingPanel(root) {
         ['sb-tc-instruct', 'Instruct Template', 'Choose an instruct template and adjust how it formats messages for the AI.'],
         ['sb-tc-context', 'Context Template', 'Choose a context template and adjust its stopping rules.'],
         ['sb-tc-names', 'Character Names', 'Choose whether to add the character\'s name outside Instruct Mode.'],
-        ['sb-reasoning-template', 'Reasoning Template', 'Choose a template and set the text around reasoning blocks.'],
+        ['sb-reasoning-template', 'Reasoning Template', 'TODO(copy)'],
     ]) createPromptingGroup(id, title, description);
 
     // SillyBunny: keep range_block_openai around its groups for provider visibility and preset lookups.
@@ -9239,7 +9281,7 @@ function updatePromptingPanel(panel) {
         if (id.startsWith('sb-openai-') && range instanceof HTMLElement && group.parentElement !== range) range.append(group);
         group.classList.toggle('sb-prompting-group', true);
         if (id === 'sb-openai-budget') {
-            const title = group.querySelector('.sb-settings-flat-header b');
+            const title = group.querySelector('.sb-settings-flat-header :is(b, h3)');
             if (title && title.textContent !== 'Generation Settings') title.textContent = 'Generation Settings';
         }
         if (!group.querySelector(':scope > .sb-prompting-group-body')) {
@@ -9261,7 +9303,11 @@ function updatePromptingPanel(panel) {
     // mutation. This function runs from the drawer observer, so a per-group append kept re-triggering the
     // observer every frame and re-flattening the whole Prompting panel in a loop.
     if (range instanceof HTMLElement) {
-        const openAIReadingOrder = ['sb-openai-budget', 'sb-openai-names', 'sb-openai-prefill', 'sb-openai-request'];
+        // SillyBunny: the Presets module adds the groups for the choice sets and the dependent sets between the upstream ones.
+        const openAIReadingOrder = [
+            'sb-openai-budget', 'sb-openai-names-behavior', 'sb-openai-continue-postfix', 'sb-openai-names', 'sb-openai-prefill', 'sb-openai-request',
+            'sb-openai-function-calling', 'sb-openai-inline-media', 'sb-openai-request-images', 'sb-openai-request-reasoning', 'sb-openai-reasoning-tags',
+        ];
         const orderedGroups = openAIReadingOrder
             .map(id => root.querySelector(`#${id}`))
             .filter(group => group instanceof HTMLElement);
@@ -9319,6 +9365,7 @@ function updatePromptingPanel(panel) {
     normalizeBackendSettingsRows(root, { fields: false });
     hideEmptyGroupedSettingsDrawers();
     groupPromptingRowHelpers(root);
+    backendPagesModule?.presentPresets(backendPagesContext);
     // Batch writes and reads: interleaving `hidden` writes with checkVisibility() forces a style and
     // layout flush per group, which is what made opening Prompting drop frames on slower devices.
     const measured = [];
@@ -9410,7 +9457,7 @@ function setServerAdminMessage(element, message, tone = 'neutral') {
 function groupAdvancedFormattingIntoDrawers() {
     const formatting = document.getElementById('AdvancedFormatting');
     if (!(formatting instanceof HTMLElement)) return;
-    const groupOrder = ['sb-af-tokenizer', 'sb-af-stopping', 'sb-af-reply-prefix', 'sb-af-cleanup', 'sb-af-reasoning', 'sb-af-rendering'];
+    const groupOrder = ['sb-af-tokenizer', 'sb-af-stopping', 'sb-af-reply-prefix', 'sb-af-cleanup', 'sb-af-reasoning', 'sb-af-reasoning-prompts', 'sb-af-rendering'];
     const orderGroups = () => {
         const groups = groupOrder.map(id => formatting.querySelector(`#${id}`)).filter(group => group instanceof HTMLElement);
         const currentGroups = [...formatting.children].filter(child => child.classList.contains('sb-formatting-group'));
@@ -9420,7 +9467,7 @@ function groupAdvancedFormattingIntoDrawers() {
     if (formatting.dataset.sbGrouped === 'true') {
         const replyPrefixBody = formatting.querySelector('#sb-af-reply-prefix > .sb-prompting-group-body');
         const startReplyWith = formatting.querySelector('[name="startReplyWithBlock"]');
-        if (startReplyWith instanceof HTMLElement && replyPrefixBody instanceof HTMLElement && startReplyWith.parentElement !== replyPrefixBody) {
+        if (startReplyWith instanceof HTMLElement && replyPrefixBody instanceof HTMLElement && startReplyWith.parentElement !== replyPrefixBody && !startReplyWith.dataset.sbEmptiedByOrder) {
             startReplyWith.hidden = false;
             replyPrefixBody.append(startReplyWith);
         }
@@ -9440,6 +9487,7 @@ function groupAdvancedFormattingIntoDrawers() {
 
     const createGroup = (id, title, description) => {
         const group = createElement('section', { id, className: 'sb-prompting-group sb-formatting-group sb-settings-category' });
+        if (!description) group.dataset.sbDescription = 'none';
         group.append(
             createBackendGroupHeader(title, { 'data-i18n': title }, description),
             createElement('div', { className: 'ds-pref-group sb-prompting-group-body sb-settings-category-body' }),
@@ -9452,12 +9500,15 @@ function groupAdvancedFormattingIntoDrawers() {
         ['stopping', createGroup('sb-af-stopping', 'Stopping Strings', 'Choose text that stops generation, with optional macro replacement.')],
         ['reply-prefix', createGroup('sb-af-reply-prefix', 'Reply Prefix', 'Set how replies begin and whether that text appears in chat.')],
         ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup', 'Control line breaks, extra spaces, and unfinished sentences in replies.')],
-        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'Control how reasoning is parsed, displayed, and included in prompts.')],
+        // SillyBunny: the caption of the Reasoning group says that its settings are global (placeholder P4).
+        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'TODO(copy)')],
+        ['reasoning-prompts', createGroup('sb-af-reasoning-prompts', 'Add to Prompts')],
         ['rendering', createGroup('sb-af-rendering', 'Rendering', 'Keep specified standalone text from being treated as Markdown.')],
     ]);
 
+    // SillyBunny: a block that the Formatting and Presets rows emptied stays out of the box it came from.
     const move = (target, body) => {
-        if (!(target instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
+        if (!(target instanceof HTMLElement) || !(body instanceof HTMLElement) || target.dataset.sbEmptiedByOrder) return;
         body.append(target);
     };
     const moveClosest = (selector, body, ancestorSelector = null) => {
@@ -9479,7 +9530,7 @@ function groupAdvancedFormattingIntoDrawers() {
     const groupBody = id => promptingGroupBody(id);
     const movePromptingNode = (node, id) => {
         const body = groupBody(id);
-        if (node instanceof HTMLElement && body instanceof HTMLElement && node.parentElement !== body) body.append(node);
+        if (node instanceof HTMLElement && body instanceof HTMLElement && node.parentElement !== body && !node.dataset.sbEmptiedByOrder) body.append(node);
     };
 
     moveToPrompting('[name="bindModelPresetBlock"]', 'respective-presets-block');
@@ -9501,7 +9552,7 @@ function groupAdvancedFormattingIntoDrawers() {
     movePromptingNode(contextColumn.querySelector('#always-force-name2-checkbox')?.closest('label'), 'sb-tc-names');
     moveClosest('[name="tokenizerSettingsBlock"]', bodies.get('tokenizer'));
     moveClosest('div[data-cc-null][data-cc-chat-completion-visible]', bodies.get('stopping'));
-    if (startReplyWith instanceof HTMLElement) {
+    if (startReplyWith instanceof HTMLElement && !startReplyWith.dataset.sbEmptiedByOrder) {
         startReplyWith.hidden = false;
         move(startReplyWith, bodies.get('reply-prefix'));
     }
@@ -12078,8 +12129,10 @@ function buildShell(shellKey) {
                 preparePromptingPanel(originalContent);
                 promptingPanel.scroller.appendChild(originalContent);
             }
+            promptingPanel.ensureReady = ensureBackendPages;
             promptingPanel.onActivate = () => {
                 updatePromptingPanel(promptingPanel.panel);
+                void ensureBackendPages().catch(() => {});
                 void getShellState('left')?.tabs.get('sampling')?.ensureReady?.().then(() => updatePromptingPanel(promptingPanel.panel));
             };
             $(document).on('change.sbPromptingPanel', '#main_api, #chat_completion_source, #textgen_type', () => {
@@ -12109,9 +12162,11 @@ function buildShell(shellKey) {
             if (formattingPrep) {
                 const contextPanel = createShellPanel(customTab);
                 contextPanel.scroller.appendChild(formattingPrep.drawer);
+                contextPanel.ensureReady = ensureBackendPages;
                 contextPanel.onActivate = () => {
                     groupAdvancedFormattingIntoDrawers();
                     updateFormattingGroupVisibility(document.getElementById('AdvancedFormatting'));
+                    void ensureBackendPages().catch(() => {});
                 };
                 registerShellTab(shellKey, customTab, contextPanel, formattingPrep.drawerContent);
             }

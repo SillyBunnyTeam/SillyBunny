@@ -16,7 +16,8 @@ export function auditPromptingLayout(root) {
         const right = box.right - parseFloat(style.borderRightWidth);
         const add = (element, type, metrics, pass) => records.push({ group: body.parentElement.id, selector: selector(element), type, ...metrics, pass });
         const content = new Set(body.querySelectorAll([
-            '.ds-row > .ds-row-text',
+            '.ds-row:not(.ds-row-check) > .ds-row-text',
+            '.ds-row-check > input',
             '.sb-settings-flat-header b',
             '.toggle-description:not(.ds-row-subtitle)',
             '.sb-prompting-row-with-help > :is(.notes, p, small)',

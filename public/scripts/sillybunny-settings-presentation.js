@@ -336,7 +336,7 @@ const sbRowControllers = new WeakMap();
  * its text, so the translation key and the stored string do not change.
  * @param {HTMLElement} label
  */
-function readRowTitle(label) {
+export function readRowTitle(label) {
     const copy = /** @type {HTMLElement} */ (label.cloneNode(true));
     for (const part of copy.querySelectorAll('.ds-row-subtitle, .fa-circle-info, i, svg, script, style, .sr-only')) part.remove();
     return normalizeFieldTitle(copy.textContent ?? '');
@@ -346,10 +346,16 @@ function readRowTitle(label) {
  * Gives a field row of a contract tab the row that fits its control: a select row, a spin row or a text-area field.
  * The control keeps its node, id, value and listeners; the title and the subtitle move into the new row with their
  * translation keys. A row with any other control, or with more than one, is left as the row pass made it.
+ *
+ * A Backend page shows and hides rows through attributes of the row's own node (`data-source`, `data-tg-type`), so
+ * `keepWrapper` leaves a node that carries an id, a data attribute or an inline style in place as a wrapper around
+ * the new row. `keepLinks` carries the help links of the old title into the new one. `manual` also adopts rows inside a
+ * panel that lays itself out (`data-sb-presentation="manual"`): the Presets page builds its own groups and adopts the rest.
  * @param {HTMLElement} row
+ * @param {{keepWrapper?: boolean, keepLinks?: boolean, manual?: boolean}} [options]
  */
-function adoptFieldRow(row) {
-    if (row.matches(SB_ADOPTED_ROW_SELECTOR) || row.closest(`${SB_SKIP_SELECTOR}, .ds-row-expander-content`) || row.children.length !== 2) return;
+export function adoptFieldRow(row, { keepWrapper = false, keepLinks = false, manual = false } = {}) {
+    if (row.matches(SB_ADOPTED_ROW_SELECTOR) || row.closest(`${manual ? 'form' : SB_SKIP_SELECTOR}, .ds-row-expander-content`) || row.children.length !== 2) return;
     const text = row.querySelector(':scope > .ds-row-text');
     const suffix = row.querySelector(':scope > .ds-row-suffix');
     const label = text?.querySelector(':scope > .ds-row-label');
@@ -390,7 +396,20 @@ function adoptFieldRow(row) {
         moveCaption(newSubtitle, subtitle, { keepSource: true });
         if (subtitle.dataset.sbCopyPlaceholder) newSubtitle.dataset.sbCopyPlaceholder = subtitle.dataset.sbCopyPlaceholder;
     }
+    if (keepLinks && caption instanceof HTMLElement) {
+        for (const link of label.querySelectorAll('a[href]')) {
+            caption.append(' ', link);
+            if (!link.textContent?.trim() && !link.hasAttribute('aria-label')) link.setAttribute('aria-label', t`Help`);
+        }
+    }
     sbRowControllers.set(built.row, built);
+    const carriesState = top.id || top.getAttributeNames().some(name => name.startsWith('data-') || name === 'style');
+    if (keepWrapper && carriesState) {
+        top.classList.remove('ds-row', 'ds-row-slider');
+        top.classList.add('sb-settings-row-wrapper');
+        top.replaceChildren(built.row);
+        return;
+    }
     if (top !== row && top.id) built.row.id = top.id;
     top.replaceWith(built.row);
 }
@@ -400,7 +419,7 @@ function adoptFieldRow(row) {
  * so that the select row can lay the control out.
  * @param {HTMLElement} scope
  */
-function unwrapLoneSelects(scope) {
+export function unwrapLoneSelects(scope) {
     for (const wrapper of scope.querySelectorAll('.ds-row-suffix > .flex-container')) {
         if (wrapper.children.length === 1 && wrapper.firstElementChild instanceof HTMLSelectElement) wrapper.replaceWith(wrapper.firstElementChild);
     }
@@ -428,7 +447,7 @@ function collectRowButtons(row) {
  * element, and every category title carries the group heading class.
  * @param {HTMLElement} scope
  */
-function adoptGroupHeadings(scope) {
+export function adoptGroupHeadings(scope) {
     for (const title of scope.querySelectorAll('.sb-settings-category-heading > b > .sb-settings-category-title')) {
         const bold = title.parentElement;
         if (!bold || bold.children.length !== 1) continue;
@@ -445,8 +464,8 @@ function adoptGroupHeadings(scope) {
  * and the button itself, with its id and listeners, in the trailing slot. A flex container that holds only buttons (Miscellaneous) is opened first.
  * @param {HTMLElement} scope
  */
-function adoptButtonRows(scope) {
-    for (const box of scope.querySelectorAll('.ds-pref-group.sb-settings-category-body')) {
+export function adoptButtonRows(scope) {
+    for (const box of scope.querySelectorAll('.ds-pref-group:is(.sb-settings-category-body, .sb-prompting-group-body)')) {
         for (const wrapper of box.querySelectorAll(':scope > .flex-container')) {
             const nodes = [...wrapper.children];
             if (nodes.length && nodes.every(node => node.matches('.menu_button'))) wrapper.replaceWith(...nodes);
@@ -501,7 +520,7 @@ const sbDependentBodies = new WeakSet();
  * Other code sets the switch without an event, so the group also looks again when the pointer or focus reaches it.
  * @param {HTMLElement} scope
  */
-function bindDependentSets(scope) {
+export function bindDependentSets(scope) {
     for (const body of scope.querySelectorAll('[data-sb-enabled-by]')) {
         const enabler = body instanceof HTMLElement ? scope.querySelector(body.dataset.sbEnabledBy ?? '') : null;
         if (!(body instanceof HTMLElement) || !(enabler instanceof HTMLInputElement)) continue;

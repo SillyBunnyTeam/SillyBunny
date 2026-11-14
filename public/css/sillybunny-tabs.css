@@ -5371,8 +5371,19 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
     margin-inline-end: 6px;
 }
 
+.ds-row-check > input[type='radio'] {
+    flex: 0 0 auto;
+    margin: 0;
+    margin-inline-end: 6px;
+}
+
 :is(.ds-row-switch, .ds-row-check):has(input:disabled) {
     cursor: not-allowed;
+}
+
+/* Upstream marks these blocks while Instruct Mode or the System Prompt is off; the rows stay usable and show the state. */
+:is(#instructSettingsBlock, #SystemPromptBlock).disabled .ds-row {
+    opacity: 0.5;
 }
 
 @media (hover: hover) {
@@ -5704,6 +5715,7 @@ body.reduced-motion .ds-row-expander__toggle::after {
 #sb-settings-page .sb-editor-panel,
 #sb-settings-page .sb-prompting-panel #ai_response_configuration,
 #sb-settings-page .sb-prompting-panel #advanced-ai-config-block,
+#sb-settings-page .sb-prompting-panel #range_block_novel,
 #sb-settings-page .sb-prompting-panel #range_block_openai {
     display: flex;
     flex-direction: column;
@@ -6093,14 +6105,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 #sb-settings-page .sb-prompting-panel #pro-settings-block > .ds-row {
     flex: 0 0 auto;
     width: 100%;
-}
-
-#sb-reasoning-template .ds-row-suffix:has(> #reasoning_select) {
-    flex-wrap: wrap;
-}
-
-#sb-reasoning-template #reasoning_select {
-    flex: 1 1 190px;
 }
 
 #sb-settings-page .sb-prompting-panel #pro-settings-block .ds-row-suffix > [data-randomization-disabled] {
@@ -6963,7 +6967,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     gap: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .sb-prompting-row-with-help, .sb-custom-stopping-strings) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .sb-sampling-transmission, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .sb-prompting-row-with-help) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .sb-sampling-transmission, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
     padding: 10px var(--sb-density-row-padding-inline);
 }
 
@@ -7087,53 +7091,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page .sb-settings-mounted-shell label:is([for='swipes-checkbox'], [for='gestures-checkbox']) .ds-row-label > i {
     margin-inline-start: 6px;
-}
-
-/* The radio input and following span stay siblings: OpenAI reads the selected label there. */
-#sb-settings-page #sb-openai-names label:has(> input[name='character_names']) {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 2px 10px;
-    text-align: start;
-}
-
-#sb-settings-page #sb-openai-names label > input[name='character_names'] {
-    grid-column: 1;
-    grid-row: 1;
-    margin: 0;
-}
-
-#sb-settings-page #sb-openai-names label:has(> input[name='character_names']) > :is(span, small) {
-    grid-column: 2;
-    width: auto;
-    min-width: 0;
-    white-space: normal;
-    text-align: start;
-}
-
-#sb-settings-page #sb-openai-names label:has(> input[name='character_names']) > small {
-    font-size: var(--sb-type-caption);
-    line-height: 1.4;
-    color: var(--sb-input-placeholder);
-}
-
-#sb-settings-page #sb-openai-names .sb-settings-flat-header .flexBasis100p:has(:is(#character_names_display, #continue_postfix_display)) {
-    flex: 0 1 auto;
-    width: auto;
-    color: var(--sb-input-placeholder);
-}
-
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group .sb-custom-stopping-strings > h4 {
-    margin: 0;
-    padding: 12px var(--sb-density-row-padding-inline) 4px;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-custom-stopping-strings > div:has(> small) {
-    padding: 0 var(--sb-density-row-padding-inline) 8px;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-custom-stopping-strings > div:has(> textarea) {
-    padding: 0 var(--sb-density-row-padding-inline) 12px;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > * + * {
