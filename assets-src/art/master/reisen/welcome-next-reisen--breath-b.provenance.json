@@ -1,0 +1,33 @@
+{
+    "format": 1,
+    "file": "welcome-next-reisen--breath-b.png",
+    "sha256": "93beaa49430c45284f4b65e4d7e0e94e00a123209de7561ed4b56b1b9764df73",
+    "characters": [
+        "reisen"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "breath-frames",
+        "export-motion"
+    ],
+    "handEdits": false,
+    "record": "sha256:e0e30f8fc6af988373dd1e9ae7cde6c2748fec5b6e37b751015363b175d71d48",
+    "incomplete": "Decoded from the shipped file, which export-motion made; export-motion is not in this repository."
+}

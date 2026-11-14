@@ -1,0 +1,32 @@
+{
+    "format": 1,
+    "file": "welcome-both.png",
+    "sha256": "2d497764720e1b73edd7c99d148844ccfa063c4f3223261c83abe837c63a2940",
+    "characters": [
+        "reisen",
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-01",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "compose-scene"
+    ],
+    "handEdits": false,
+    "record": "sha256:19f34ec537422b68b208eacff35724edcbdc1c27943cef03a577b1ca64fada65"
+}

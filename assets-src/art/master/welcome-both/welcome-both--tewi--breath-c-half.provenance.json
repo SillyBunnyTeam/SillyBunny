@@ -1,0 +1,31 @@
+{
+    "format": 1,
+    "file": "welcome-both--tewi--breath-c-half.png",
+    "sha256": "114811de947dd8a63abaf023c77729aaa50f59427956e73cfdedebb9a96e3301",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-02",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "breath-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:6a885ba938a77e1652bed3fac9b5572d56ea01888cd5f07e6c476fc1d8d042d9"
+}

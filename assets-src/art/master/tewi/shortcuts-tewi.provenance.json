@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "shortcuts-tewi.png",
+    "sha256": "8365580c652be6e2fa9f2aecacb7a7b3efa1b70c2740206624fb24924e99e32c",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-01",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-01"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap"
+    ],
+    "handEdits": false,
+    "record": "sha256:aa6d215eb95d556923840b28524fc4340d8280fedd0ce6d61b6b18772f427932"
+}

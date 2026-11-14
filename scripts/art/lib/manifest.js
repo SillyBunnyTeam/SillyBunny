@@ -229,7 +229,7 @@ const CHECKERS = {
             } else {
                 for (const [name, frame] of Object.entries(asset.frames)) {
                     checkName(name, 'A frame', fail);
-                    checkPicture(frame, `frame ${name}`, fail);
+                    checkPicture(frame, `frame ${name}`, fail, { allowFrame: true });
                 }
             }
         }
@@ -332,14 +332,7 @@ function checkPlacement(asset, fail) {
     if (!parseRatio(asset.ratio)) {
         fail('ratio must be "1" or master pixels per placement pixel as "p/q", such as "3/2".');
     }
-    const frame = asset.frame;
-    const isFrame = isPlainObject(frame) && (
-        (frame.mode === 'canvas' && Object.keys(frame).length === 1)
-        || (frame.mode === 'subject' && Number.isInteger(frame.margin) && frame.margin >= 0 && Object.keys(frame).length === 2)
-    );
-    if (!isFrame) {
-        fail('frame must be { "mode": "canvas" } or { "mode": "subject", "margin": <whole art pixels> }.');
-    }
+    checkFrame(asset.frame, fail);
     checkGrid(asset.grid, fail);
     if (asset.rings !== undefined && asset.rings !== null) {
         const rings = asset.rings;
@@ -349,18 +342,35 @@ function checkPlacement(asset, fail) {
     }
 }
 
+function checkFrame(frame, fail) {
+    const isFrame = isPlainObject(frame) && (
+        (frame.mode === 'canvas' && Object.keys(frame).length === 1)
+        || (frame.mode === 'subject' && Number.isInteger(frame.margin) && frame.margin >= 0 && Object.keys(frame).length === 2)
+    );
+    if (!isFrame) {
+        fail('frame must be { "mode": "canvas" } or { "mode": "subject", "margin": <whole art pixels> }.');
+    }
+}
+
 function checkGrid(grid, fail) {
     if (!isWholeList(grid, 2) || grid[0] < 1 || grid[1] < 1) {
         fail('grid must be [width, height] in whole art pixels.');
     }
 }
 
-function checkPicture(picture, where, fail) {
+/**
+ * A frame of a still is cut with the base's box, so it lines up with the base pixel for pixel. A frame whose master was
+ * delivered already cut to the placement names its own `frame` instead.
+ */
+function checkPicture(picture, where, fail, { allowFrame = false } = {}) {
     if (!isPlainObject(picture)) {
         fail(`${where} must be { "master", "outputs" }.`);
         return;
     }
-    onlyKeys(picture, ['master', 'outputs'], where, fail);
+    onlyKeys(picture, allowFrame ? ['master', 'frame', 'outputs'] : ['master', 'outputs'], where, fail);
+    if (allowFrame && picture.frame !== undefined) {
+        checkFrame(picture.frame, fail);
+    }
     checkMaster(picture.master, '.png', fail);
     checkOutputs(picture.outputs, `${where} outputs`, fail, { encoded: true });
 }

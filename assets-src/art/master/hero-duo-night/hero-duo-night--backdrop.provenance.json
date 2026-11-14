@@ -1,0 +1,33 @@
+{
+    "format": 1,
+    "file": "hero-duo-night--backdrop.png",
+    "sha256": "b2dc433a4b90615c8fbad5a5225ddc20efe868d54e3635c69f908e0f9eda837c",
+    "characters": [],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-04"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "pixel-snap",
+        "breath-frames",
+        "compose-scene",
+        "retouch",
+        "export-motion"
+    ],
+    "handEdits": true,
+    "record": "sha256:800fee95bff3f8e0c93dbaa34328984d3c2de4290c8c3726c3b4e14b1202eb25",
+    "incomplete": "Decoded from the shipped file, which export-motion made; export-motion is not in this repository."
+}

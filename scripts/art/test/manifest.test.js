@@ -70,6 +70,19 @@ test('the shape of each asset is checked', () => {
     }
 });
 
+test('a frame of a still may name its own frame, and a layer picture may not', () => {
+    const still = sampleManifest();
+    still.assets['splash-reisen'].frames.idle.frame = { mode: 'canvas' };
+    assert.deepEqual(validateManifest(still), []);
+
+    still.assets['splash-reisen'].frames.idle.frame = { mode: 'subject' };
+    assert.ok(messages(still).some((message) => message.includes('frame must be')));
+
+    const scene = sampleManifest();
+    scene.assets['hero-duo'].layers.reisen.pictures['breath-c'].frame = { mode: 'canvas' };
+    assert.ok(messages(scene).some((message) => message.includes('unknown key "frame"')));
+});
+
 test('the pictures, outputs and masters of an asset are listed with every frame, layer and motion file', () => {
     const { assets } = sampleManifest();
 

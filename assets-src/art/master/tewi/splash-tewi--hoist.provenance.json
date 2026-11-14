@@ -1,0 +1,30 @@
+{
+    "format": 1,
+    "file": "splash-tewi--hoist.png",
+    "sha256": "14290f82c8a9cd3ba856e7165f3fa9a38627e26085f3766fcd4475b805a6bc15",
+    "characters": [
+        "tewi"
+    ],
+    "licence": "CC-BY-NC-SA-4.0",
+    "made": "2026-11-04",
+    "models": [
+        {
+            "provider": "openai",
+            "model": "gpt-image-2.5-sunburst-h",
+            "uses": [
+                "generate",
+                "edit",
+                "patch"
+            ],
+            "first": "2026-11-01",
+            "last": "2026-11-02"
+        }
+    ],
+    "references": "own-art",
+    "steps": [
+        "rim-recolour",
+        "splash-frames"
+    ],
+    "handEdits": false,
+    "record": "sha256:6d449fc8337913112d89affa059abea62bc62926f5efb8f3bc7ebaa327513ec0"
+}
