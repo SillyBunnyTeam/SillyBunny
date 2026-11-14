@@ -5,7 +5,7 @@ import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SB_DATA_SECURITY_CONTAINER_ID, SB_FLAT_SECTION_CLASS, SB_FLAT_SECTION_TOP_CLASS, flattenNestedSettingsDrawers, splitUserSettingsContent } from '../../public/scripts/sillybunny-settings-content.js';
+import { SB_DATA_SECURITY_CONTAINER_ID, SB_FLAT_SECTION_CLASS, SB_FLAT_SECTION_TOP_CLASS, SB_SETTINGS_SECTION_ORDER, flattenNestedSettingsDrawers, splitUserSettingsContent } from '../../public/scripts/sillybunny-settings-content.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
@@ -112,7 +112,64 @@ describe('Messages settings groups', () => {
         const titles = container => [...container.querySelectorAll('.sb-settings-category-title')];
         expect(titles(split.messages).length).toBeGreaterThan(0);
         expect(titles(split.messages).every(title => title.classList.contains('ds-pref-group-heading'))).toBe(true);
-        expect(titles(split.interface).some(title => title.classList.contains('ds-pref-group-heading'))).toBe(false);
+        expect(titles(split.appearance).length).toBeGreaterThan(0);
+        expect(titles(split.appearance).some(title => title.classList.contains('ds-pref-group-heading'))).toBe(false);
+    });
+});
+
+describe('Interface settings groups', () => {
+    let previousCSS;
+    beforeAll(() => {
+        previousCSS = globalThis.CSS;
+        globalThis.CSS = { ...previousCSS, escape: value => String(value) };
+    });
+    afterAll(() => {
+        globalThis.CSS = previousCSS;
+    });
+
+    const order = SB_SETTINGS_SECTION_ORDER.interface;
+    const byId = id => order.entries.find(entry => entry.id === id);
+
+    test('is built to the page contract, with the page-level groups in reading order', () => {
+        expect(order.contract).toBe(true);
+        expect(order.entries.map(entry => entry.id ?? 'section')).toEqual([
+            'interface', 'desktop', 'mobile', 'paper-texture', 'mobile-quick-actions',
+            'typing', 'section', 'stscript', 'moving-ui', 'miscellaneous',
+        ]);
+    });
+
+    test('keeps the device of each group, and the class that the search index excludes Quick Actions by', () => {
+        expect(byId('interface').className).toBeUndefined();
+        expect(byId('desktop').className).toBe('sb-desktop-setting');
+        expect(byId('mobile').className).toBe('sb-mobile-setting');
+        expect(byId('paper-texture').className).toBe('sb-mobile-setting');
+        expect(byId('mobile-quick-actions').className).toBe('sb-mobile-setting sb-mobile-quick-actions-group');
+    });
+
+    test('the lists that the page builds at run time are named by their ids', () => {
+        expect(order.entries.filter(entry => entry.body).map(entry => entry.body)).toEqual([
+            '#sb-interface-settings-body',
+            '#sb-desktop-settings-outlet',
+            '#sb-mobile-settings-outlet',
+            '#sb-paper-texture-settings',
+            '#sb-mobile-quick-actions-box',
+        ]);
+    });
+
+    test('the markup holds no Desktop or Mobile drawer and no Parser Flags label any more', () => {
+        const page = new DOMParser().parseFromString(indexHtml, 'text/html');
+        expect(page.getElementById('DesktopSection')).toBeNull();
+        expect(page.getElementById('MobileSection')).toBeNull();
+        expect(page.querySelector('[data-i18n="Parser Flags"]')).toBeNull();
+        expect(page.getElementById('stscript_parser_flag_strict_escaping')).not.toBeNull();
+        expect(page.getElementById('stscript_parser_flag_replace_getvar')).not.toBeNull();
+    });
+
+    test('the groups that the order names from the markup are the group headings, once the order has run', () => {
+        const split = splitAuthoredSettings();
+        const titles = [...split.interface.querySelectorAll('.sb-settings-category-title')];
+        expect(titles.map(title => title.textContent.trim())).toEqual(['Typing', 'STscript Settings', 'MovingUI', 'Miscellaneous']);
+        expect(titles.every(title => title.classList.contains('ds-pref-group-heading'))).toBe(true);
     });
 });
 

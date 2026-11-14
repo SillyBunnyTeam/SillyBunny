@@ -45,6 +45,7 @@ import { getCurrentUserHandle } from './user.js';
 import { kai_settings } from './kai-settings.js';
 // SillyBunny: the resize compensation below asks whether a greeting-only chat that is opening stays at its top.
 import { shouldHoldChatAtTop } from './sillybunny-home/greeting-art-opening.js';
+import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 
 const MOVING_UI_SHARED_KEYS = Object.freeze({
     'left-nav-panel': 'nav-panel-shared-size',
@@ -499,7 +500,8 @@ function RA_autoconnect(PrevApi) {
 function OpenNavPanels() {
     if (!isMobile()) {
         //auto-open R nav if locked and previously open
-        if (accountStorage.getItem('NavLockOn') == 'true' && accountStorage.getItem('NavOpened') == 'true') {
+        // SillyBunny: the pin applies above the phone layout only, so a narrow desktop window never opens the panel on load.
+        if (accountStorage.getItem('NavLockOn') == 'true' && accountStorage.getItem('NavOpened') == 'true' && !window.matchMedia(LAYOUT_MOBILE_QUERY).matches) {
             //console.log("RA -- clicking right nav to open");
             $('#rightNavDrawerIcon').trigger('click');
         }

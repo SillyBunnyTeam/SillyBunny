@@ -1434,10 +1434,10 @@ async function openQuickActions(page, target) {
 const quickActionsHint = status({
     id: 'interface.quick-actions-hint',
     title: 'Interface: the Mobile Quick Actions search before a query',
-    component: 'own',
-    root: `${QUICK_ACTIONS} .sb-mobile-quick-action-results .sb-mobile-quick-action-empty`,
+    component: 'shared',
+    root: `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]`,
     async open(page) {
-        await openQuickActions(page, `${QUICK_ACTIONS} .sb-mobile-quick-action-results .sb-mobile-quick-action-empty`);
+        await openQuickActions(page, `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]`);
         await settle(page);
     },
     viewports: MOBILE_LAYOUT_VIEWPORTS,
@@ -1447,13 +1447,13 @@ const quickActionsHint = status({
 const quickActionsNoMatches = status({
     id: 'interface.quick-actions-no-matches',
     title: 'Interface: the Mobile Quick Actions search finds nothing',
-    component: 'own',
-    root: `${QUICK_ACTIONS} .sb-mobile-quick-action-results .sb-mobile-quick-action-empty`,
-    ready: `${QUICK_ACTIONS} .sb-mobile-quick-action-results .sb-mobile-quick-action-empty:has-text("No matches")`,
+    component: 'shared',
+    root: `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]`,
+    ready: `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]:has(.sb-status-page__description:has-text("No matches"))`,
     async open(page) {
         await openQuickActions(page, `${QUICK_ACTIONS} .sb-mobile-quick-action-search`);
         await page.locator(`${QUICK_ACTIONS} .sb-mobile-quick-action-search`).fill(NO_MATCH);
-        await reveal(page, `${QUICK_ACTIONS} .sb-mobile-quick-action-results .sb-mobile-quick-action-empty:has-text("No matches")`);
+        await reveal(page, `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]:has(.sb-status-page__description:has-text("No matches"))`);
         await settle(page);
     },
     viewports: MOBILE_LAYOUT_VIEWPORTS,
@@ -1463,15 +1463,15 @@ const quickActionsNoMatches = status({
 const quickActionsEmpty = status({
     id: 'interface.quick-actions-empty',
     title: 'Interface: no Mobile Quick Actions selected',
-    component: 'own',
-    root: `${QUICK_ACTIONS} .sb-mobile-quick-action-list .sb-mobile-quick-action-empty`,
+    component: 'shared',
+    root: `${QUICK_ACTIONS} .sb-status-page[data-sb-region="list"]`,
     async open(page) {
         await openQuickActions(page, QUICK_ACTIONS);
         // The list is the user's own choice, kept in the browser's storage, so removing every shortcut is the way to empty it.
         for (let removed = 0; removed < 30 && await page.locator(`${QUICK_ACTIONS} .sb-mobile-quick-action-remove`).count(); removed++) {
             await page.locator(`${QUICK_ACTIONS} .sb-mobile-quick-action-remove`).first().click();
         }
-        await reveal(page, `${QUICK_ACTIONS} .sb-mobile-quick-action-list .sb-mobile-quick-action-empty`);
+        await reveal(page, `${QUICK_ACTIONS} .sb-status-page[data-sb-region="list"]`);
         await settle(page);
     },
     viewports: MOBILE_LAYOUT_VIEWPORTS,

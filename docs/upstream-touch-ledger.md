@@ -1478,6 +1478,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-12, UI polish sweep. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/RossAscends-mods.js` - the Characters pin only on desktop
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/RossAscends-mods.js` |
+| Area | `OpenNavPanels()`: the right panel opening on load when `NavLockOn` and `NavOpened` are `'true'`. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `LAYOUT_MOBILE_QUERY` in `public/scripts/sillybunny-editor/breakpoints.js`; the pin switch `createCharactersPinRow()` in `public/scripts/sillybunny-tabs.js`. |
+| Adapter shape | One import and one extra condition, `!window.matchMedia(LAYOUT_MOBILE_QUERY).matches`, under a `SillyBunny:` marker. Upstream's pin handler, `NavLockOn` and `#rm_button_panel_pin` are unchanged; the switch on Customize ▸ Interface ▸ Desktop proxies the hidden pin button. |
+| Protecting tests | `tests/unit/sillybunny-character-list.test.js`; `tests/sillybunny-settings-consistency.e2e.js`; `tests/character-list.e2e.js`. |
+| Validation | 2026-11-14: root and tests lint, the full unit run, the related e2e specs, the settings inventory of Customize ▸ Interface. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-14, UI polish sweep (tasks 4.4 and 4.12). |
+| Owner | `TODO(copy)` |
+
+### `public/index.html` - Interface page groups
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Customize ▸ Interface: the `#DesktopSection` and `#MobileSection` drawers and the "Parser Flags" label. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `injectThemePicker()` in `public/scripts/sillybunny-tabs.js` and the Interface entry of `SB_SETTINGS_SECTION_ORDER` in `public/scripts/sillybunny-settings-content.js`. |
+| Adapter shape | The two drawers and the label are removed, each under a `<!-- SillyBunny: … -->` marker; the page builds the Interface, Desktop, Mobile, Paper Texture and Mobile Quick Actions groups itself, and the two parser flag switches are rows of STscript Settings. The setting ids and stored keys are unchanged. |
+| Protecting tests | `tests/sillybunny-settings-consistency.e2e.js`; `tests/unit/sillybunny-interface-rows.test.js`; the settings inventory (`tests/audit/settings-inventory.e2e.js`). |
+| Validation | 2026-11-14: root and tests lint, the full unit run, the related e2e specs, the settings inventory, parity and axe of the page. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-14, UI polish sweep (task 4.4). |
+| Owner | `TODO(copy)` |
+
 ### `public/index.html` - editor chrome stylesheet loads on demand
 | Field | Value |
 | --- | --- |

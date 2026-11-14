@@ -11,6 +11,7 @@ import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { createFolderRow, folderCountLabel } from './sillybunny-editor/folder-row.js';
 import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
 import { closePicker, isPickerOpen } from './sillybunny-editor/picker.js';
+import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { eventSource, event_types } from './events.js';
 import { animateListChange, prefersReducedMotion, stopMotion } from './sillybunny-motion.js';
@@ -732,8 +733,8 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const onAccepted = () => {
             if (pendingActivation !== activation || destroyed || selection.isActive || activation.dismissed
                 || dependencies.getNavigationGeneration() !== activation.generation) return;
-            // The shell also uses pinnedOpen for layout; only the user's pin prevents dismissal.
-            if (document.getElementById('rm_button_panel_pin')?.checked) return;
+            // The shell also uses pinnedOpen for layout; only the user's pin prevents dismissal, and only above the phone layout.
+            if (document.getElementById('rm_button_panel_pin')?.checked && !window.matchMedia?.(LAYOUT_MOBILE_QUERY).matches) return;
             activation.dismissed = true;
             section.hidden = true;
             globalThis.SillyBunnyShell?.closeCharacters?.();

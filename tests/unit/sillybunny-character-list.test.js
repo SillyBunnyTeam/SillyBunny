@@ -1009,6 +1009,20 @@ describe('chat activation and current entity', () => {
         expect(globalThis.SillyBunnyShell.closeCharacters).not.toHaveBeenCalled();
     });
 
+    test.each([
+        ['769px and wider', false, 0],
+        ['768px and narrower', true, 1],
+    ])('the user pin applies at %s', async (_label, narrow, closed) => {
+        window.matchMedia = jest.fn(query => ({ matches: narrow && query === '(max-width: 768px)' }));
+        document.body.insertAdjacentHTML('beforeend', '<input type="checkbox" id="rm_button_panel_pin"><div id="right-nav-panel"></div>');
+        document.getElementById('rm_button_panel_pin').checked = true;
+        await mount();
+        rows()[0].click();
+        await settle();
+        expect(globalThis.SillyBunnyShell.closeCharacters).toHaveBeenCalledTimes(closed);
+        delete window.matchMedia;
+    });
+
     test('the shell layout pinnedOpen class alone is not a user pin', async () => {
         document.body.insertAdjacentHTML('beforeend', '<div id="right-nav-panel" class="pinnedOpen"></div>');
         await mount();

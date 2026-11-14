@@ -24,7 +24,6 @@ describe('SillyBunny settings theme drawers', () => {
 
     test('groups shell theme controls into persisted appearance drawers', () => {
         const drawerIds = [
-            'sb-interface-drawer',
             'sb-topbar-label-drawer',
             'sb-quick-access-shortcuts-drawer',
         ];
@@ -36,11 +35,12 @@ describe('SillyBunny settings theme drawers', () => {
         for (const drawerId of drawerIds) {
             expect(shellTabsSource).toContain(`'${drawerId}'`);
         }
-        // Splash Character, Background Visibility, Bottom Bar Size, in this order; the drawer's subtitle names the same three.
-        expect(shellTabsSource).toContain('content: [splashCharacterRow.row, surfaceSliderGroup, bottomBarSliderGroup],');
+        // The Interface page's first list: Splash Character, Compact Mode, Bottom Bar Size, and Background Visibility until the Appearance Background group takes it.
+        expect(shellTabsSource).not.toContain('\'sb-interface-drawer\'');
+        expect(shellTabsSource).toContain('createInterfaceGroupBody(\'sb-interface-settings-body\', [splashCharacterRow.row, createCompactModeRow(), bottomBarSliderGroup, surfaceSliderGroup]);');
         expect(shellTabsSource).toContain('title: \'Background Visibility\',');
         expect(shellTabsSource).toContain('title: \'Bottom Bar Size\',');
-        expect(shellTabsSource).toContain('description: \'Choose the splash character and adjust background visibility and the bottom bar size.\',');
+        expect(readSource('public', 'scripts', 'sillybunny-settings-content.js')).toContain('description: \'Choose the splash character and adjust background visibility and the bottom bar size.\',');
         expect(shellTabsSource).not.toContain('Change the app icon');
         expect(shellTabsSource).not.toContain('sb-shell-style-drawer');
         expect(shellTabsSource).not.toContain('data-sb-theme-option');
@@ -51,6 +51,6 @@ describe('SillyBunny settings theme drawers', () => {
         expect(shellTabsSource).not.toContain('sb-bottom-bar-size-drawer');
         expect(shellTabsCssSource).toContain('.sb-theme-settings-drawer > .inline-drawer-header');
         expect(shellTabsCssSource).toContain('.sb-theme-settings-drawer > .sb-theme-settings-drawer-body');
-        expect(shellTabsCssSource).toContain('.sb-interface-settings-group + .sb-interface-settings-group');
+        expect(shellTabsCssSource).not.toContain('.sb-interface-settings-group');
     });
 });

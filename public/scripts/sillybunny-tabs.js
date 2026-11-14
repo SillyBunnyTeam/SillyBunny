@@ -31,7 +31,7 @@ import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProt
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { adoptComposerMenus } from './sillybunny-editor/sheet-gestures.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
-import { createExpanderRow, createRow } from './sillybunny-editor/rows.js';
+import { createButtonRow, createExpanderRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { createProfileRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
@@ -1228,7 +1228,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Configure interface behavior, power user features, and UI preferences.',
                 searchPlaceholder: 'Search top bar, auto-scroll, power user, or chat features',
                 searchExamples: ['top bar', 'auto-scroll', 'power user'],
-                searchAliases: ['UI', 'behavior', 'stscript'],
+                searchAliases: ['UI', 'behavior', 'stscript', 'Desktop Navigation', 'Parser Flags'],
             },
             {
                 id: 'messages',
@@ -2199,7 +2199,7 @@ function setCompactMode(enabled, { persist = true } = {}) {
 }
 
 // SillyBunny: the icons-only top bar (the labelled bar without its labels) is stored per device and
-// only the viewport's own setting is ever in force. Only the Desktop Navigation group has a switch
+// only the viewport's own setting is ever in force. Only the Desktop group has a switch
 // for it; a value an earlier build stored for phones is still read and kept, but no control writes it.
 function isTopbarIconsOnlyActive() {
     return isMobileViewport() ? sbState.topbarIconsOnly.mobile : sbState.topbarIconsOnly.desktop;
@@ -10253,47 +10253,81 @@ function updateMobileQuickActionSettingsStatus() {
     }
 }
 
-function refreshMobileQuickActionSearchResults() {
-    const searchInput = document.getElementById('sb-mobile-quick-action-search');
-    const results = document.getElementById('sb-mobile-quick-action-results');
+function getMobileQuickActionsBox() {
+    return document.getElementById('sb-mobile-quick-actions-box');
+}
 
-    if (searchInput instanceof HTMLInputElement && results instanceof HTMLElement) {
-        renderMobileQuickActionResults(searchInput.value, results);
+/**
+ * Replaces one region of the Mobile Quick Actions box: `results` (the search answer) or `list` (the chosen shortcuts).
+ * Every row is a direct child of the box, so the boxed list keeps its separators; a region always sits ahead of the
+ * count row, and the results ahead of the list.
+ * @param {HTMLElement} box
+ * @param {'results'|'list'} region
+ * @param {HTMLElement[]} nodes
+ */
+function setMobileQuickActionRegion(box, region, nodes) {
+    for (const node of box.querySelectorAll(`:scope > [data-sb-region="${region}"]`)) {
+        node.remove();
+    }
+    for (const node of nodes) {
+        node.dataset.sbRegion = region;
+    }
+    const before = box.querySelector(region === 'results'
+        ? ':scope > [data-sb-region="list"], :scope > #sb-mobile-quick-action-count'
+        : ':scope > #sb-mobile-quick-action-count');
+    if (before) {
+        before.before(...nodes);
+    } else {
+        box.append(...nodes);
     }
 }
 
-async function renderMobileQuickActionResults(query, resultsElement) {
-    if (!(resultsElement instanceof HTMLElement)) {
+function refreshMobileQuickActionSearchResults() {
+    const searchInput = document.getElementById('sb-mobile-quick-action-search');
+    const box = getMobileQuickActionsBox();
+
+    if (searchInput instanceof HTMLInputElement && box instanceof HTMLElement) {
+        renderMobileQuickActionResults(searchInput.value, box);
+    }
+}
+
+async function renderMobileQuickActionResults(query, box) {
+    if (!(box instanceof HTMLElement)) {
         return;
     }
 
     const request = Symbol();
-    sbSearchRenderRequests.set(resultsElement, request);
+    sbSearchRenderRequests.set(box, request);
 
-    resultsElement.replaceChildren();
+    setMobileQuickActionRegion(box, 'results', []);
 
     const trimmedQuery = String(query ?? '').trim();
     if (trimmedQuery.length < 2) {
-        resultsElement.appendChild(createElement('div', {
-            className: 'sb-mobile-quick-action-empty',
-            text: 'Type at least 2 characters to find settings and extensions.',
-        }));
+        // HUMAN: replace — a title that names the state; the instruction becomes its description.
+        setMobileQuickActionRegion(box, 'results', [createStatusPage({
+            state: 'no-results',
+            title: 'Type at least 2 characters to find settings and extensions.',
+            compact: true,
+        }).element]);
         return;
     }
 
     await prepareShellSearch();
-    if (sbSearchRenderRequests.get(resultsElement) !== request) return;
+    if (sbSearchRenderRequests.get(box) !== request) return;
     const matches = getMobileQuickActionSearchMatches(trimmedQuery);
     if (!matches.length) {
-        resultsElement.appendChild(createElement('div', {
-            className: 'sb-mobile-quick-action-empty',
-            text: `No matches for "${trimmedQuery}" yet.`,
-        }));
+        setMobileQuickActionRegion(box, 'results', [createStatusPage({
+            state: 'no-results',
+            title: t`No results`,
+            description: `No matches for "${trimmedQuery}" yet.`,
+            compact: true,
+        }).element]);
         return;
     }
 
     const currentActions = sbState.mobileQuickActions;
     const currentKeys = new Set(currentActions.map(getMobileQuickActionKey));
+    const rows = [];
     for (const match of matches) {
         const action = createMobileQuickActionFromMatch(match);
         if (!action) {
@@ -10304,12 +10338,6 @@ async function renderMobileQuickActionResults(query, resultsElement) {
         const isAdded = currentKeys.has(actionKey);
         const isFull = currentActions.length >= SB_MOBILE_QUICK_ACTION_LIMIT;
         const buttonText = isAdded ? 'Added' : isFull ? 'Full' : 'Add';
-        const row = createElement('div', { className: 'sb-mobile-quick-action-result' });
-        const copy = createElement('span', { className: 'sb-mobile-quick-action-copy' });
-        const title = createElement('strong', { text: action.label });
-        const detail = createElement('small', {
-            text: `${match.shellLabel} · ${match.tabLabel}${action.sectionLabel ? ` · ${action.sectionLabel}` : ''}`,
-        });
         const button = createElement('button', {
             className: 'menu_button sb-mobile-quick-action-add',
             text: buttonText,
@@ -10324,43 +10352,44 @@ async function renderMobileQuickActionResults(query, resultsElement) {
         button.disabled = isAdded || isFull;
         button.addEventListener('click', () => addQuickActionFromMatch(match));
 
-        copy.append(title);
+        const { row } = createRow({
+            label: action.label,
+            subtitle: `${match.shellLabel} · ${match.tabLabel}${action.sectionLabel ? ` · ${action.sectionLabel}` : ''}`,
+            field: 'mobile-quick-action-result',
+            suffix: button,
+        });
+        row.classList.add('sb-mobile-quick-action-result');
         // SillyBunny: synthetic settings destinations carry help independently of mounted controls.
-        if (match.description) copy.append(createElement('small', { className: 'sb-mobile-quick-action-help', text: match.description }));
-        copy.append(detail);
-        row.append(copy, button);
-        resultsElement.appendChild(row);
+        if (match.description) {
+            row.querySelector('.ds-row-subtitle')?.before(createElement('small', { className: 'ds-row-subtitle sb-mobile-quick-action-help', text: match.description }));
+        }
+        rows.push(row);
     }
+    setMobileQuickActionRegion(box, 'results', rows);
 }
 
 function renderMobileQuickActionSettingsList() {
     updateMobileQuickActionSettingsStatus();
 
-    const list = document.getElementById('sb-mobile-quick-action-list');
-    if (!(list instanceof HTMLElement)) {
+    const box = getMobileQuickActionsBox();
+    if (!(box instanceof HTMLElement)) {
         return;
     }
 
     const currentActions = sbState.mobileQuickActions;
 
-    list.replaceChildren();
-
     if (!currentActions.length) {
-        list.appendChild(createElement('div', {
-            className: 'sb-mobile-quick-action-empty',
-            text: 'No mobile Quick Actions selected. Add one from search or reset to defaults.',
-        }));
+        // HUMAN: replace — a title that names the state; the instruction becomes its description.
+        setMobileQuickActionRegion(box, 'list', [createStatusPage({
+            state: 'empty',
+            title: 'No mobile Quick Actions selected. Add one from search or reset to defaults.',
+            compact: true,
+        }).element]);
         return;
     }
 
-    for (const action of currentActions) {
+    const rows = currentActions.map(action => {
         const actionKey = getMobileQuickActionKey(action);
-        const row = createElement('div', { className: 'sb-mobile-quick-action-current' });
-        const copy = createElement('span', { className: 'sb-mobile-quick-action-copy' });
-        const title = createElement('strong', { text: action.label });
-        const detail = createElement('small', { text: getMobileQuickActionContextLabel(action) });
-        const controls = createElement('span', { className: 'sb-mobile-quick-action-controls' });
-        const iconControl = createMobileQuickActionIconControl(action, actionKey);
         const removeButton = createElement('button', {
             className: 'menu_button sb-mobile-quick-action-remove',
             text: 'Remove',
@@ -10372,36 +10401,39 @@ function renderMobileQuickActionSettingsList() {
 
         removeButton.addEventListener('click', () => removeQuickAction(actionKey));
 
-        copy.append(title, detail);
-        controls.append(iconControl, removeButton);
-        row.append(copy, controls);
-        list.appendChild(row);
-    }
+        const { row } = createRow({
+            prefix: createMobileQuickActionIconControl(action, actionKey),
+            label: action.label,
+            subtitle: getMobileQuickActionContextLabel(action),
+            field: 'mobile-quick-action',
+            suffix: removeButton,
+        });
+        row.classList.add('sb-mobile-quick-action-current');
+        return row;
+    });
+    setMobileQuickActionRegion(box, 'list', rows);
 }
 
-function createMobileQuickActionSettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-mobile-quick-actions-group',
+/**
+ * The boxed list of the Mobile Quick Actions group: Reset, the search, the search answer, the chosen shortcuts and a count.
+ * The section order of the page puts it under its heading (`SB_SETTINGS_SECTION_ORDER.interface`).
+ */
+function createMobileQuickActionsBox() {
+    const box = createElement('div', {
+        id: 'sb-mobile-quick-actions-box',
+        className: 'ds-pref-group sb-settings-category-body',
     });
-    const header = createElement('div', { className: 'sb-mobile-quick-action-header' });
-    const heading = createElement('div', { className: 'sb-mobile-quick-action-heading' });
-    const title = createElement('strong', { text: 'Mobile Quick Actions' });
-    const description = createElement('p', {
-        className: 'sb-theme-slider-caption',
-        text: 'Choose the shortcuts shown in the mobile quick drawer. Defaults can be removed or restored.',
-    });
-    const resetButton = createElement('button', {
+    const resetRow = createButtonRow({
+        label: 'Reset to defaults',
+        field: 'mobile-quick-action-reset',
         id: 'sb-mobile-quick-action-reset',
-        className: 'menu_button sb-mobile-quick-action-reset',
-        text: 'Reset to defaults',
-        attrs: {
-            type: 'button',
-        },
+        onActivate: resetMobileQuickActions,
     });
+    resetRow.row.classList.add('sb-mobile-quick-action-reset');
 
     const searchInput = createElement('input', {
         id: 'sb-mobile-quick-action-search',
-        className: 'text_pole sb-mobile-quick-action-search',
+        className: 'sb-mobile-quick-action-search',
         attrs: {
             type: 'search',
             placeholder: 'Search settings or extensions...',
@@ -10409,106 +10441,88 @@ function createMobileQuickActionSettingsGroup() {
             'aria-label': 'Search settings and extensions to add as mobile Quick Actions',
         },
     });
-    const results = createElement('div', {
-        id: 'sb-mobile-quick-action-results',
-        className: 'sb-mobile-quick-action-results',
+    const searchEntry = createSearchEntry({
+        input: searchInput,
+        clearLabel: t`Clear Entry`,
+        onInput: value => renderMobileQuickActionResults(value, box),
     });
-    const list = createElement('div', {
-        id: 'sb-mobile-quick-action-list',
-        className: 'sb-mobile-quick-action-list',
-    });
-    const status = createElement('p', {
+    const searchRow = createElement('div', { className: 'ds-row sb-mobile-quick-action-search-row' });
+    searchRow.dataset.sbEditorField = 'mobile-quick-action-search';
+    searchRow.append(searchEntry.element);
+
+    const status = createElement('small', {
         id: 'sb-mobile-quick-action-status',
-        className: 'sb-theme-slider-caption',
+        className: 'ds-row-subtitle',
     });
+    const countRow = createElement('div', { id: 'sb-mobile-quick-action-count', className: 'ds-row' });
+    const countText = createElement('span', { className: 'ds-row-text' });
+    countText.append(status);
+    countRow.append(countText);
 
-    heading.append(title, description);
-    header.append(heading, resetButton);
-
-    resetButton.addEventListener('click', resetMobileQuickActions);
-
-    searchInput.addEventListener('input', event => {
-        const input = event.currentTarget;
-        renderMobileQuickActionResults(input instanceof HTMLInputElement ? input.value : '', results);
-    });
-
-    group.append(header, searchInput, results, list, status);
-    renderMobileQuickActionResults('', results);
+    box.append(resetRow.row, searchRow, countRow);
+    renderMobileQuickActionResults('', box);
 
     window.requestAnimationFrame(() => renderMobileQuickActionSettingsList());
-    return group;
+    return box;
 }
 
-function createCompactModeSettingsGroup(mode = 'mobile') {
-    const inputId = mode === 'desktop' ? 'sb-desktop-compact-mode-input' : 'sb-mobile-compact-mode-input';
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-compact-mode-group',
-    });
-    const label = createElement('label', {
-        className: 'sb-compact-mode-option',
-        attrs: {
-            for: inputId,
-        },
-    });
-    const checkbox = createElement('input', {
-        id: inputId,
-        className: 'sb-compact-mode-checkbox',
-        attrs: {
-            type: 'checkbox',
-            'data-sb-compact-mode-input': mode,
-        },
-    });
-    const copy = createElement('span', { className: 'sb-compact-mode-copy' });
-    const title = createElement('strong', { text: 'Compact Mode' });
-    const description = createElement('small', {
-        text: 'Reduce spacing, controls, and mobile composer height for denser screens.',
-    });
-
-    checkbox.addEventListener('change', event => {
-        const input = event.currentTarget;
-        setCompactMode(input instanceof HTMLInputElement && input.checked);
-    });
-
-    copy.append(title, description);
-    label.append(checkbox, copy);
-    group.appendChild(label);
-    return group;
+/**
+ * One switch row of the Interface page. The input keeps the id and the data attribute that the sync code and the specs read.
+ * @param {object} options
+ * @param {string} options.id
+ * @param {string} options.label
+ * @param {string} options.subtitle
+ * @param {string} options.field
+ * @param {string} [options.dataAttribute] Name of a data attribute that is set on the input.
+ * @param {string} [options.dataValue]
+ * @param {(checked: boolean) => void} options.onChange
+ */
+function createInterfaceSwitchRow({ id, label, subtitle, field, dataAttribute, dataValue = '', onChange }) {
+    const { row, control } = createSwitchRow({ label, subtitle, field, id, onChange });
+    if (dataAttribute) {
+        control.setAttribute(dataAttribute, dataValue);
+    }
+    return row;
 }
 
-function createBottomChatBarSettingsGroup(mode = 'mobile') {
-    const inputId = mode === 'desktop' ? 'sb-desktop-bottom-bar-visible-input' : 'sb-mobile-bottom-bar-visible-input';
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-compact-mode-group',
-    });
-    const label = createElement('label', {
-        className: 'sb-compact-mode-option',
-        attrs: {
-            for: inputId,
-        },
-    });
-    const checkbox = createElement('input', {
-        id: inputId,
-        className: 'sb-compact-mode-checkbox sb-bottom-bar-visible-checkbox',
-        attrs: {
-            type: 'checkbox',
-            'data-sb-bottom-bar-visible-input': mode,
-        },
-    });
-    const copy = createElement('span', { className: 'sb-compact-mode-copy' });
-    const title = createElement('strong', { text: 'Show Bottom Chat Bar' });
-    const description = createElement('small', {
-        text: 'Display the bottom bar with the chat switcher, persona picker, and chat actions.',
-    });
+/**
+ * A boxed list of the Interface page, with the id that the page's section order names. The order puts it under its heading.
+ * @param {string} id
+ * @param {HTMLElement[]} rows
+ * @param {string} [enabledBy] Selector of the switch that the rows after it depend on.
+ */
+function createInterfaceGroupBody(id, rows, enabledBy = '') {
+    const body = createElement('div', { id, className: 'ds-pref-group sb-settings-category-body' });
+    if (enabledBy) {
+        body.dataset.sbEnabledBy = enabledBy;
+    }
+    body.append(...rows);
+    return body;
+}
 
-    checkbox.addEventListener('change', event => {
-        const input = event.currentTarget;
-        setBottomChatBarVisible(input instanceof HTMLInputElement && input.checked);
+// One switch for the one stored value: `sb-compact-mode` is read and written by `setCompactMode` on every device, so the
+// switch belongs to the page and not to the Desktop or the Mobile group.
+function createCompactModeRow() {
+    return createInterfaceSwitchRow({
+        id: 'sb-compact-mode-input',
+        label: 'Compact Mode',
+        subtitle: 'Reduce spacing, controls, and mobile composer height for denser screens.',
+        field: 'compact-mode',
+        dataAttribute: 'data-sb-compact-mode-input',
+        onChange: checked => setCompactMode(checked),
     });
+}
 
-    copy.append(title, description);
-    label.append(checkbox, copy);
-    group.appendChild(label);
-    return group;
+function createBottomChatBarRow(mode = 'mobile') {
+    return createInterfaceSwitchRow({
+        id: `sb-${mode}-bottom-bar-visible-input`,
+        label: 'Show Bottom Chat Bar',
+        subtitle: 'Display the bottom bar with the chat switcher, persona picker, and chat actions.',
+        field: `bottom-bar-visible-${mode}`,
+        dataAttribute: 'data-sb-bottom-bar-visible-input',
+        dataValue: mode,
+        onChange: checked => setBottomChatBarVisible(checked),
+    });
 }
 
 function isGuidedGenerationsBarVisible() {
@@ -10524,148 +10538,67 @@ function setGuidedGenerationsBarVisible(shouldShow) {
     updateThemePickerUi();
 }
 
-function createGuidedGenerationsBarSettingsGroup(mode = 'mobile') {
-    const inputId = mode === 'desktop' ? 'sb-desktop-gg-bar-visible-input' : 'sb-mobile-gg-bar-visible-input';
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-compact-mode-group',
+function createGuidedGenerationsBarRow(mode = 'mobile') {
+    return createInterfaceSwitchRow({
+        id: `sb-${mode}-gg-bar-visible-input`,
+        label: 'Show Guided Generations Bar',
+        subtitle: 'Display the Guided Generations action buttons in the chat composer.',
+        field: `gg-bar-visible-${mode}`,
+        dataAttribute: 'data-sb-gg-bar-visible-input',
+        dataValue: mode,
+        onChange: checked => setGuidedGenerationsBarVisible(checked),
     });
-    const label = createElement('label', {
-        className: 'sb-compact-mode-option',
-        attrs: {
-            for: inputId,
-        },
-    });
-    const checkbox = createElement('input', {
-        id: inputId,
-        className: 'sb-compact-mode-checkbox',
-        attrs: {
-            type: 'checkbox',
-            'data-sb-gg-bar-visible-input': mode,
-        },
-    });
-    const copy = createElement('span', { className: 'sb-compact-mode-copy' });
-    const title = createElement('strong', { text: 'Show Guided Generations Bar' });
-    const description = createElement('small', {
-        text: 'Display the Guided Generations action buttons in the chat composer.',
-    });
-
-    checkbox.addEventListener('change', event => {
-        const input = event.currentTarget;
-        setGuidedGenerationsBarVisible(input instanceof HTMLInputElement && input.checked);
-    });
-
-    copy.append(title, description);
-    label.append(checkbox, copy);
-    group.appendChild(label);
-    return group;
-}
-
-function createMobileNavChoice({ id, type = 'radio', name = '', value = '', label, description = '', icon, onChange }) {
-    const choice = createElement('label', {
-        className: 'sb-mobile-nav-choice',
-        attrs: {
-            for: id,
-        },
-    });
-    const inputAttrs = {
-        type,
-        value,
-    };
-
-    if (name) {
-        inputAttrs.name = name;
-    }
-
-    const input = createElement('input', {
-        id,
-        className: 'sb-mobile-nav-choice-input',
-        attrs: inputAttrs,
-    });
-    const iconElement = createElement('i', {
-        className: `fa-solid ${icon} sb-mobile-nav-choice-icon`,
-        attrs: {
-            'aria-hidden': 'true',
-        },
-    });
-    const copy = createElement('span', { className: 'sb-mobile-nav-choice-copy' });
-    const title = createElement('strong', { text: label });
-
-    input.addEventListener('change', event => {
-        const target = event.currentTarget;
-        if (!(target instanceof HTMLInputElement)) {
-            return;
-        }
-
-        if (target.type === 'radio' && !target.checked) {
-            return;
-        }
-
-        onChange?.(target);
-    });
-
-    copy.appendChild(title);
-    if (description) {
-        copy.append(createElement('small', {
-            className: 'ds-row-subtitle',
-            text: description,
-            attrs: { 'data-i18n': description },
-        }));
-    }
-    choice.append(input, iconElement, copy);
-    return choice;
-}
-
-function createMobileNavDivider(label = '') {
-    const divider = createElement('div', {
-        className: 'sb-mobile-nav-settings-divider',
-        attrs: label ? { role: 'separator', 'aria-label': label } : { role: 'separator' },
-    });
-    if (label) {
-        divider.appendChild(createElement('span', { text: label }));
-    }
-    return divider;
 }
 
 // SillyBunny: desktop only. The phone bar never shows labels, so it has no switch for them.
-function createNavigationSettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-nav-settings-group sb-desktop-nav-settings-group',
-    });
-    const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
-    const title = createElement('strong', { text: 'Desktop Navigation' });
-    const topbarIconsOnlyChoice = createMobileNavChoice({
+function createTopbarIconsOnlyRow() {
+    return createInterfaceSwitchRow({
         id: 'sb-desktop-topbar-icons-only-input',
-        type: 'checkbox',
-        value: 'topbar-icons-only',
         label: 'Icons only top bar',
-        description: 'Show only icons in the desktop top bar.',
-        icon: 'fa-grip',
-        onChange: input => setTopbarIconsOnly('desktop', input.checked),
+        subtitle: 'Show only icons in the desktop top bar.',
+        field: 'topbar-icons-only',
+        onChange: checked => setTopbarIconsOnly('desktop', checked),
     });
-
-    header.appendChild(title);
-    group.append(header, topbarIconsOnlyChoice);
-    return group;
 }
 
-function createPaperTextureSettingsGroup() {
-    const group = createElement('section', {
-        className: 'sb-theme-slider-group sb-paper-texture-group',
+/** The user's pin of the Characters page lives in upstream's `NavLockOn`; the hidden pin checkbox applies it. */
+function isCharactersPinStored() {
+    return accountStorage.getItem('NavLockOn') === 'true';
+}
+
+function setCharactersPin(enabled) {
+    const pin = document.getElementById('rm_button_panel_pin');
+    // The pin's own click handler stores NavLockOn and sets the classes that upstream reads.
+    if (pin instanceof HTMLInputElement && pin.checked !== enabled) {
+        pin.click();
+    }
+    if (isCharactersPinStored() !== enabled) {
+        accountStorage.setItem('NavLockOn', String(enabled));
+    }
+}
+
+// SillyBunny: upstream's pin of the Characters page, as a switch. The page stays open after a chat is picked above the phone layout; the stored value is left alone at 768px and below, where it has no effect.
+function createCharactersPinRow() {
+    const row = createInterfaceSwitchRow({
+        id: 'sb-desktop-pin-characters-input',
+        label: t`TODO(copy)`,
+        subtitle: t`TODO(copy)`,
+        field: 'pin-characters',
+        onChange: checked => setCharactersPin(checked),
     });
-    const header = createElement('div', { className: 'sb-mobile-nav-settings-header' });
-    const title = createElement('strong', { text: 'Paper Texture' });
-    const description = createElement('p', {
-        className: 'sb-theme-slider-caption',
-        text: 'Add a subtle paper grain and wash overlay to the chat background.',
-    });
-    const toggleChoice = createMobileNavChoice({
+    for (const copy of row.querySelectorAll('.ds-row-label, .ds-row-subtitle')) {
+        copy.dataset.sbCopyPlaceholder = 'true';
+    }
+    return row;
+}
+
+function createPaperTextureBody() {
+    const toggleRow = createInterfaceSwitchRow({
         id: 'sb-paper-texture-enabled-input',
-        type: 'checkbox',
-        value: 'paper-texture-enabled',
         label: 'Enable paper texture',
-        description: 'Add a paper texture across the mobile interface.',
-        icon: 'fa-scroll',
-        onChange: input => setPaperTextureEnabled(input.checked),
+        subtitle: 'Add a paper texture across the mobile interface.',
+        field: 'paper-texture',
+        onChange: checked => setPaperTextureEnabled(checked),
     });
     const opacitySliderGroup = createThemeSliderGroup({
         title: 'Texture opacity',
@@ -10680,9 +10613,7 @@ function createPaperTextureSettingsGroup() {
         onInput: nextValue => setPaperTextureOpacity(nextValue),
     });
 
-    header.append(title, description);
-    group.append(header, toggleChoice, opacitySliderGroup);
-    return group;
+    return createInterfaceGroupBody('sb-paper-texture-settings', [toggleRow, opacitySliderGroup], '#sb-paper-texture-enabled-input');
 }
 
 let splashPreferences = null;
@@ -10832,7 +10763,6 @@ function injectThemePicker() {
         ariaLabel: 'Background visibility',
         caption: 'Higher values make the home and chat surfaces more transparent so your selected background picture shows through.',
         onInput: nextValue => setSurfaceTransparency(nextValue),
-        className: 'sb-interface-settings-group',
     });
     const bottomBarSliderGroup = createThemeSliderGroup({
         title: 'Bottom Bar Size',
@@ -10845,7 +10775,6 @@ function injectThemePicker() {
         ariaLabel: 'Bottom bar size',
         caption: 'Resize the bottom chat bar, send form, and action buttons without editing CSS.',
         onInput: nextValue => setBottomBarScale(nextValue),
-        className: 'sb-interface-settings-group',
     });
     const desktopButtonSliderGroup = createThemeSliderGroup({
         title: 'Desktop Button Size',
@@ -10858,7 +10787,6 @@ function injectThemePicker() {
         ariaLabel: 'Desktop button size',
         caption: 'Increase or decrease the desktop top bar and shell navigation buttons without changing mobile controls.',
         onInput: nextValue => setDesktopButtonScale(nextValue),
-        className: 'sb-desktop-setting',
     });
     const mobileButtonSliderGroup = createThemeSliderGroup({
         title: 'Mobile Button Size',
@@ -10871,83 +10799,39 @@ function injectThemePicker() {
         ariaLabel: 'Mobile button size',
         caption: 'Increase or decrease the mobile nav and mobile chat tool buttons without changing desktop controls.',
         onInput: nextValue => setMobileButtonScale(nextValue),
-        className: 'sb-mobile-only-setting',
     });
     const topbarLabelSettingsGroup = createTopbarLabelSettingsGroup();
-    const desktopNavLayoutSettingsGroup = createNavigationSettingsGroup();
-    const desktopSettingsDivider = createMobileNavDivider();
-    const desktopCompactModeSettingsGroup = createCompactModeSettingsGroup('desktop');
-    const mobileCompactModeSettingsGroup = createCompactModeSettingsGroup('mobile');
-    const desktopBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('desktop');
-    const mobileBottomChatBarSettingsGroup = createBottomChatBarSettingsGroup('mobile');
-    const paperTextureSettingsGroup = createPaperTextureSettingsGroup();
     const splashCharacterRow = createSplashCharacterRow(getSplashPreferences());
     const shortcutSettingsGroup = createShortcutSettingsGroup();
-    const desktopGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('desktop');
-    const mobileGuidedGenerationsBarSettingsGroup = createGuidedGenerationsBarSettingsGroup('mobile');
-    const mobileQuickActionSettingsGroup = createMobileQuickActionSettingsGroup();
-    const desktopSettingsOutlet = document.getElementById('sb-desktop-settings-outlet');
-    const mobileSettingsOutlet = document.getElementById('sb-mobile-settings-outlet');
-    const interfaceSettingsGroup = createThemeSettingsDrawer({
-        id: 'sb-interface-drawer',
-        title: 'Interface',
-        description: 'Choose the splash character and adjust background visibility and the bottom bar size.',
-        content: [splashCharacterRow.row, surfaceSliderGroup, bottomBarSliderGroup],
-    });
+
+    // The boxed lists of the Interface page. Each has the id that the page's section order names, and the order puts it under its heading.
+    // The Background Visibility row starts in the first list; the Appearance Background group takes it from there.
+    const interfaceBody = createInterfaceGroupBody('sb-interface-settings-body', [splashCharacterRow.row, createCompactModeRow(), bottomBarSliderGroup, surfaceSliderGroup]);
+    const desktopBody = createInterfaceGroupBody('sb-desktop-settings-outlet', [
+        createTopbarIconsOnlyRow(),
+        desktopButtonSliderGroup,
+        createCharactersPinRow(),
+        createBottomChatBarRow('desktop'),
+        createGuidedGenerationsBarRow('desktop'),
+    ]);
+    const mobileBody = createInterfaceGroupBody('sb-mobile-settings-outlet', [
+        mobileButtonSliderGroup,
+        createBottomChatBarRow('mobile'),
+        createGuidedGenerationsBarRow('mobile'),
+    ]);
+    const paperTextureBody = createPaperTextureBody();
+    const mobileQuickActionsBody = createMobileQuickActionsBox();
 
     getMessageStyleSelect()?.addEventListener('change', updateThemePickerUi);
     document.addEventListener('sb:chat-style-updated', updateThemePickerUi);
+    // The rows of the page use the shared button, status and insensitive-row rules of the deferred editor sheet.
+    void import('./sillybunny-editor/list-shell.js').then(({ loadListEditorStyles }) => loadListEditorStyles()).catch(error => console.warn('Failed to load the editor styles for the Interface page.', error));
 
-    if (desktopSettingsOutlet instanceof HTMLElement) {
-        desktopSettingsOutlet.replaceChildren(
-            desktopNavLayoutSettingsGroup,
-            desktopSettingsDivider,
-            desktopButtonSliderGroup,
-            desktopCompactModeSettingsGroup,
-            desktopBottomChatBarSettingsGroup,
-            desktopGuidedGenerationsBarSettingsGroup,
-        );
-    }
-
-    if (mobileSettingsOutlet instanceof HTMLElement) {
-        mobileSettingsOutlet.replaceChildren(
-            mobileButtonSliderGroup,
-            mobileCompactModeSettingsGroup,
-            mobileBottomChatBarSettingsGroup,
-            mobileGuidedGenerationsBarSettingsGroup,
-            paperTextureSettingsGroup,
-            mobileQuickActionSettingsGroup,
-        );
-    }
-
-    card.append(interfaceSettingsGroup, topbarLabelSettingsGroup, shortcutSettingsGroup);
-    if (!(desktopSettingsOutlet instanceof HTMLElement)) {
-        card.append(
-            desktopNavLayoutSettingsGroup,
-            desktopSettingsDivider,
-            desktopButtonSliderGroup,
-            desktopCompactModeSettingsGroup,
-            desktopBottomChatBarSettingsGroup,
-            desktopGuidedGenerationsBarSettingsGroup,
-        );
-    }
-
-    if (!(mobileSettingsOutlet instanceof HTMLElement)) {
-        card.append(
-            mobileButtonSliderGroup,
-            mobileCompactModeSettingsGroup,
-            mobileBottomChatBarSettingsGroup,
-            mobileGuidedGenerationsBarSettingsGroup,
-            mobileQuickActionSettingsGroup,
-        );
-    }
+    card.append(topbarLabelSettingsGroup, shortcutSettingsGroup);
     themeBlock.append(card);
     // SillyBunny: keep the shared injection path, then mount Interface controls in their own tab.
     const interfaceRoot = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.interface);
-    if (interfaceRoot instanceof HTMLElement) {
-        interfaceSettingsGroup.dataset.settingsTab = 'interface';
-        interfaceRoot.prepend(interfaceSettingsGroup);
-    }
+    (interfaceRoot instanceof HTMLElement ? interfaceRoot : card).prepend(interfaceBody, desktopBody, mobileBody, paperTextureBody, mobileQuickActionsBody);
     updateThemePickerUi();
 }
 
@@ -11037,7 +10921,6 @@ function updateThemePickerUi() {
         }
 
         input.checked = sbState.compactMode;
-        input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', sbState.compactMode);
     }
 
     for (const input of document.querySelectorAll('[data-sb-bottom-bar-visible-input]')) {
@@ -11046,7 +10929,6 @@ function updateThemePickerUi() {
         }
 
         input.checked = sbState.bottomChatBar.visible;
-        input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', sbState.bottomChatBar.visible);
     }
 
     const guidedGenerationsBarVisible = isGuidedGenerationsBarVisible();
@@ -11056,20 +10938,27 @@ function updateThemePickerUi() {
         }
 
         input.checked = guidedGenerationsBarVisible;
-        input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', guidedGenerationsBarVisible);
     }
 
     const topbarIconsOnlyInput = document.getElementById('sb-desktop-topbar-icons-only-input');
 
     if (topbarIconsOnlyInput instanceof HTMLInputElement) {
         topbarIconsOnlyInput.checked = sbState.topbarIconsOnly.desktop;
-        topbarIconsOnlyInput.closest('.sb-mobile-nav-choice')?.classList.toggle('is-selected', sbState.topbarIconsOnly.desktop);
+    }
+
+    const charactersPinInput = document.getElementById('sb-desktop-pin-characters-input');
+
+    if (charactersPinInput instanceof HTMLInputElement) {
+        // NavLockOn is the stored value; the hidden pin checkbox follows it, as it does at startup on a desktop browser.
+        charactersPinInput.checked = isCharactersPinStored();
+        const pin = document.getElementById('rm_button_panel_pin');
+        if (pin instanceof HTMLInputElement && pin.checked !== charactersPinInput.checked) {
+            pin.checked = charactersPinInput.checked;
+        }
     }
 
     if (paperTextureEnabledInput instanceof HTMLInputElement) {
         paperTextureEnabledInput.checked = sbState.paperTextureEnabled;
-        const choice = paperTextureEnabledInput.closest('.sb-mobile-nav-choice');
-        choice?.classList.toggle('is-selected', sbState.paperTextureEnabled);
     }
 
     if (paperTextureOpacityInput instanceof HTMLInputElement) {
@@ -11078,7 +10967,6 @@ function updateThemePickerUi() {
         paperTextureOpacityInput.step = String(SB_PAPER_TEXTURE_OPACITY.step);
         paperTextureOpacityInput.value = String(sbState.paperTextureOpacity);
         paperTextureOpacityInput.disabled = !sbState.paperTextureEnabled;
-        paperTextureOpacityInput.closest('.ds-row-slider')?.classList.toggle('is-disabled', !sbState.paperTextureEnabled);
     }
 
     if (paperTextureOpacityValue instanceof HTMLElement) {
@@ -13754,7 +13642,6 @@ function setBottomChatBarVisible(shouldShow, { persist = true } = {}) {
     for (const input of document.querySelectorAll('[data-sb-bottom-bar-visible-input]')) {
         if (input instanceof HTMLInputElement) {
             input.checked = nextVisible;
-            input.closest('.sb-compact-mode-option')?.classList.toggle('is-selected', nextVisible);
         }
     }
 

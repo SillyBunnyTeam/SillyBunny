@@ -1373,21 +1373,9 @@ body:not(.movingUI) .drawer-content.maximized {
     border: 0 !important;
 }
 
-/* SillyBunny: favorites are reached through the shared list filters on every tab. */
+/* SillyBunny: both blocks are transports for upstream code and never show, in any menu type or width. Favorites are reached through the shared list filters, and the editors have their own headers. */
+#right-nav-panel > #rm_PinAndTabs,
 #right-nav-panel > #CharListButtonAndHotSwaps {
-    display: none !important;
-}
-
-#right-nav-panel[data-menu-type="characters"] > #rm_PinAndTabs,
-#right-nav-panel[data-menu-type="groups"] > #rm_PinAndTabs,
-#right-nav-panel[data-menu-type="editor_empty"] > #rm_PinAndTabs,
-#right-nav-panel[data-menu-type="world-info"] > #rm_PinAndTabs,
-#right-nav-panel[data-menu-type="persona"] > #rm_PinAndTabs,
-/* SillyBunny: editors have their own sticky header; #rm_PinAndTabs void removed (Step 3b/4) */
-#right-nav-panel[data-menu-type="character_edit"] > #rm_PinAndTabs,
-#right-nav-panel[data-menu-type="create"] > #rm_PinAndTabs,
-#right-nav-panel[data-menu-type="group_edit"] > #rm_PinAndTabs,
-#right-nav-panel[data-menu-type="group_create"] > #rm_PinAndTabs {
     display: none !important;
 }
 
@@ -2255,27 +2243,8 @@ body:not(.movingUI) .drawer-content.maximized {
     opacity: 0.72;
 }
 
-.sb-interface-settings-group:not(.ds-row) {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sb-shell-space-sm);
-}
-
-.sb-interface-settings-group + .sb-interface-settings-group:not(.ds-row) {
-    padding-top: var(--sb-shell-space-md);
-    border-top: 1px solid color-mix(in srgb, var(--sb-shell-border) 62%, transparent);
-}
-
 .sb-mobile-only-setting {
     display: none;
-}
-
-/* libadwaita toggle cards: neutral hover fill and an accent border for selection, no lift or shadow. */
-
-.sb-compact-mode-option:focus-visible {
-    outline: none;
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 46%, var(--sb-shell-border) 54%);
-    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .sb-theme-option-label {
@@ -2321,244 +2290,6 @@ body:not(.movingUI) .drawer-content.maximized {
     max-width: 640px;
 }
 
-.sb-compact-mode-option {
-    -webkit-appearance: none;
-    appearance: none;
-    position: relative;
-    isolation: isolate;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 48px;
-    padding: 12px 14px;
-    border-radius: var(--sb-radius-md);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
-    background: transparent;
-    color: var(--SmartThemeBodyColor);
-    cursor: pointer;
-    box-sizing: border-box;
-    transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast);
-}
-
-.sb-compact-mode-option::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    pointer-events: none;
-    background: color-mix(in srgb, var(--sb-shell-main-bg) 84%, transparent);
-    opacity: var(--sb-shell-control-opacity);
-}
-
-@media (hover: hover) {
-    .sb-compact-mode-option:hover::before {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-shell-main-bg));
-    }
-}
-
-.sb-compact-mode-option.is-selected {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, var(--sb-shell-border) 58%);
-}
-
-.sb-compact-mode-option.is-selected::before {
-    background: var(--sb-shell-tab-active-bg);
-    opacity: var(--sb-shell-card-opacity);
-}
-
-.sb-compact-mode-checkbox {
-    flex: 0 0 auto;
-    width: 16px;
-    height: 16px;
-    margin: 0;
-    accent-color: var(--color-primary, var(--sb-accent));
-}
-
-.sb-compact-mode-copy {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.sb-compact-mode-copy strong {
-    font-size: calc(var(--mainFontSize) * 0.78);
-    line-height: 1.2;
-}
-
-.sb-compact-mode-copy small {
-    font-size: calc(var(--mainFontSize) * 0.72);
-    line-height: 1.35;
-    opacity: 0.76;
-}
-
-.sb-nav-settings-group,
-#sb-desktop-settings-outlet,
-#sb-mobile-settings-outlet {
-    gap: 12px;
-}
-
-.sb-mobile-nav-settings-header,
-.sb-mobile-nav-dependent-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.sb-mobile-nav-settings-header > strong,
-.sb-mobile-nav-dependent-title {
-    font-size: calc(var(--mainFontSize) * 0.78);
-    line-height: 1.2;
-}
-
-.sb-mobile-nav-choice {
-    -webkit-appearance: none;
-    appearance: none;
-    position: relative;
-    isolation: isolate;
-    display: grid;
-    grid-template-columns: auto 22px minmax(0, 1fr);
-    align-items: center;
-    gap: 10px;
-    min-height: 46px;
-    padding: 10px 12px;
-    border-radius: var(--sb-radius-md);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
-    background: transparent;
-    color: var(--SmartThemeBodyColor);
-    cursor: pointer;
-    box-sizing: border-box;
-    transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast);
-}
-
-.sb-mobile-nav-choice::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    pointer-events: none;
-    background: color-mix(in srgb, var(--sb-shell-main-bg) 84%, transparent);
-    opacity: var(--sb-shell-control-opacity);
-}
-
-@media (hover: hover) {
-    .sb-mobile-nav-choice:not(.is-disabled):hover::before {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-shell-main-bg));
-    }
-}
-
-.sb-mobile-nav-choice.is-selected {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, var(--sb-shell-border) 58%);
-}
-
-.sb-mobile-nav-choice.is-selected::before {
-    background: var(--sb-shell-tab-active-bg);
-    opacity: var(--sb-shell-card-opacity);
-}
-
-.sb-mobile-nav-choice.is-disabled,
-.sb-mobile-nav-dependent-group.is-disabled {
-    opacity: 0.54;
-}
-
-.sb-mobile-nav-choice.is-disabled {
-    cursor: not-allowed;
-}
-
-.sb-mobile-nav-choice-input {
-    width: 16px;
-    height: 16px;
-    margin: 0;
-    accent-color: var(--color-primary, var(--sb-accent));
-}
-
-.sb-mobile-nav-choice-icon {
-    width: 22px;
-    text-align: center;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, transparent);
-}
-
-.sb-mobile-nav-choice-copy {
-    min-width: 0;
-}
-
-.sb-mobile-nav-choice-copy strong {
-    display: block;
-    overflow-wrap: anywhere;
-    font-size: var(--sb-type-meta);
-    line-height: 1.25;
-}
-
-.sb-mobile-nav-settings-divider {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 1px;
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-caption);
-    font-weight: 700;
-    letter-spacing: 0;
-    line-height: 1;
-    text-transform: none;
-}
-
-.sb-mobile-nav-settings-divider::before,
-.sb-mobile-nav-settings-divider::after {
-    content: '';
-    height: 1px;
-    flex: 1 1 auto;
-    background: color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-}
-
-.sb-mobile-nav-settings-divider:empty::before {
-    flex-basis: 100%;
-}
-
-.sb-mobile-nav-settings-divider:empty::after {
-    display: none;
-}
-
-.sb-mobile-nav-replacement-field {
-    display: grid;
-    grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
-    gap: 10px;
-    align-items: center;
-    min-width: 0;
-    font-size: calc(var(--mainFontSize) * 0.78);
-}
-
-.sb-mobile-nav-replacement-field.is-disabled {
-    opacity: 0.54;
-}
-
-.sb-mobile-nav-replacement-select {
-    min-width: 0;
-    min-height: 34px;
-}
-
-.sb-mobile-quick-actions-group {
-    gap: 12px;
-}
-
-.sb-mobile-quick-action-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.sb-mobile-quick-action-heading {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-}
-
-.sb-mobile-quick-action-heading strong {
-    font-size: var(--sb-type-control);
-}
-
 .sb-mobile-quick-action-search {
     width: 100%;
     min-height: 34px;
@@ -2566,80 +2297,19 @@ body:not(.movingUI) .drawer-content.maximized {
     box-sizing: border-box;
 }
 
-.sb-mobile-quick-action-results,
 .sb-mobile-quick-action-list {
     display: grid;
     gap: 8px;
 }
 
-.sb-mobile-quick-action-results:empty {
-    display: none;
-}
-
-.sb-mobile-quick-action-empty,
-.sb-mobile-quick-action-result,
-.sb-mobile-quick-action-current {
+.sb-mobile-quick-action-empty {
     border-radius: var(--sb-radius-card);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
-}
-
-.sb-mobile-quick-action-empty {
     padding: 10px 12px;
     font-size: var(--sb-type-caption);
     line-height: 1.4;
     opacity: 0.76;
-}
-
-.sb-mobile-quick-action-result,
-.sb-mobile-quick-action-current {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content;
-    align-items: center;
-    gap: 10px;
-    min-height: 46px;
-    padding: 8px 10px;
-}
-
-.sb-mobile-quick-action-current {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-}
-
-.sb-mobile-quick-action-copy {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 0;
-}
-
-.sb-mobile-quick-action-copy strong,
-.sb-mobile-quick-action-copy small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.sb-mobile-quick-action-copy strong {
-    font-size: calc(var(--mainFontSize) * 0.78);
-    line-height: 1.2;
-}
-
-.sb-mobile-quick-action-copy small {
-    font-size: var(--sb-type-caption);
-    line-height: 1.3;
-    opacity: 0.72;
-}
-
-.sb-mobile-quick-action-copy .sb-mobile-quick-action-help {
-    white-space: normal;
-}
-
-.sb-mobile-quick-action-controls {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    min-width: 0;
 }
 
 .sb-mobile-quick-action-icon-picker,
@@ -2669,48 +2339,9 @@ body:not(.movingUI) .drawer-content.maximized {
     opacity: 0.82;
 }
 
-.sb-mobile-quick-action-add,
-.sb-mobile-quick-action-remove,
-.sb-mobile-quick-action-reset {
-    min-height: 32px;
-    margin: 0;
-    white-space: nowrap;
-}
-
-.sb-mobile-quick-action-remove {
-    color: color-mix(in srgb, var(--color-danger, var(--sb-color-danger)) 82%, var(--SmartThemeBodyColor) 18%);
-}
-
-.sb-mobile-quick-action-search:focus-visible,
-.sb-mobile-quick-action-add:focus-visible,
-.sb-mobile-quick-action-icon-picker:focus-visible,
-.sb-mobile-quick-action-remove:focus-visible,
-.sb-mobile-quick-action-reset:focus-visible {
+.sb-mobile-quick-action-icon-picker:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
-}
-
-@media screen and (max-width: 768px) {
-    .sb-mobile-quick-action-header,
-    .sb-mobile-quick-action-result,
-    .sb-mobile-quick-action-current {
-        grid-template-columns: 1fr;
-    }
-
-    .sb-mobile-quick-action-header {
-        display: grid;
-    }
-
-    .sb-mobile-quick-action-reset,
-    .sb-mobile-quick-action-add,
-    .sb-mobile-quick-action-remove {
-        width: 100%;
-    }
-
-    .sb-mobile-quick-action-controls {
-        justify-content: flex-start;
-        width: 100%;
-    }
 }
 
 /* Bottom chat management bar */
@@ -3933,49 +3564,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     }
 }
 
-/* SillyBunny: WebKit keeps flex children at min-width:auto in this sticky header; keep the token text shrinkable and every action icon in a fixed touch target. */
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_selected_ch,
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info,
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info_text {
-    min-width: 0;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info {
-    flex: 0 1 auto;
-    max-width: 100%;
-    justify-content: flex-end;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info_text {
-    overflow: hidden;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info_text > div {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info > .right_menu_button {
-    flex: 0 0 34px;
-    width: 34px;
-    min-width: 34px;
-    max-width: 34px;
-    height: 34px;
-    min-height: 34px;
-    max-height: 34px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0;
-    padding: 0 !important;
-    border-radius: var(--sb-radius-sm);
-}
-
-#right-nav-panel #result_info #character_open_media_overrides span {
-    display: none;
-}
-
 /* SillyBunny: the editors' rename affordance is the header title button, so the
    legacy #rm_button_selected_ch h2 pointing-hand styling is gone with it; the
    element itself still lives in #rm_PinAndTabs and is written to as a transport. */
@@ -4052,15 +3640,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 @media screen and (max-width: 768px) {
     .sb-desktop-setting {
         display: none !important;
-    }
-
-    .sb-compact-mode-option {
-        align-items: flex-start;
-        padding: 10px 12px;
-    }
-
-    .sb-compact-mode-checkbox {
-        margin-top: 2px;
     }
 }
 
@@ -4475,18 +4054,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
             pointer-events: auto !important;
         }
     }
-}
-
-/* Force character panel visibility on mobile when open.
- * iOS Safari clips position:fixed descendants inside overflow:hidden ancestors.
- * Use JS-toggled class instead of :has() which can cause Safari rendering issues. */
-
-
-#right-nav-panel.openDrawer[data-menu-type="characters"] > #rm_PinAndTabs,
-#right-nav-panel.openDrawer[data-menu-type="editor_empty"] > #rm_PinAndTabs,
-#right-nav-panel.openDrawer[data-menu-type="persona"] > #rm_PinAndTabs,
-#right-nav-panel.openDrawer[data-menu-type="import"] > #rm_PinAndTabs {
-    display: none !important;
 }
 
 @media screen and (min-width: 769px) {
@@ -6002,14 +5569,6 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 /* A dependent set keeps its rows in view and makes them insensitive; upstream hides these two while Smooth Streaming is off. */
 #sb-settings-page .sb-settings-mounted-shell #smooth_streaming_control ~ :is(#smooth_streaming_speed_control, #smooth_streaming_no_think_control) {
     display: flex;
-}
-
-#sb-interface-content .sb-interface-select-group > .ds-row-text {
-    flex: 1 1 var(--sb-row-title-min);
-}
-
-#sb-interface-content .sb-interface-select-group > .ds-row-suffix {
-    flex: 1 1 var(--sb-row-control-min);
 }
 
 .ds-row-slider > .ds-row-suffix > input[type='range'] {
@@ -7933,7 +7492,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     min-width: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell :is(.sb-topbar-label-option-grid, .sb-compact-mode-group) {
+#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-option-grid {
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -7967,7 +7526,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     max-width: none;
 }
 
-#sb-settings-page .sb-settings-mounted-shell :is(.sb-topbar-label-option, .sb-compact-mode-option, .sb-mobile-nav-choice, .sb-topbar-custom-text-field).ds-row {
+#sb-settings-page .sb-settings-mounted-shell :is(.sb-topbar-label-option, .sb-topbar-custom-text-field).ds-row {
     flex-direction: row;
     width: 100%;
     min-height: var(--sb-density-row-min-height);
@@ -7979,7 +7538,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     text-align: start;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-row-label :is(.sb-topbar-label-option-copy, .sb-compact-mode-copy, .sb-mobile-nav-choice-copy) > strong {
+#sb-settings-page .sb-settings-mounted-shell .ds-row-label .sb-topbar-label-option-copy > strong {
     font: inherit;
 }
 
@@ -8000,45 +7559,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     background: transparent;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group .sb-theme-slider-group.sb-mobile-quick-actions-group {
-    gap: var(--sb-density-row-gap);
-    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
-}
-
-#sb-settings-page :is(#sb-desktop-settings-outlet, #sb-mobile-settings-outlet) {
-    gap: 0;
-    padding: 0;
-}
-
-#sb-settings-page :is(#sb-desktop-settings-outlet, #sb-mobile-settings-outlet) > .sb-theme-slider-group {
-    border-top: 0;
-    border-bottom: 1px solid var(--sb-shell-border);
-}
-
-#sb-settings-page :is(#sb-desktop-settings-outlet, #sb-mobile-settings-outlet) > .sb-theme-slider-group:last-child {
-    border-bottom: 0;
-}
-
-#sb-settings-page :is(#sb-desktop-settings-outlet, #sb-mobile-settings-outlet) > .ds-row {
-    border-top: 0;
-}
-
-#sb-settings-page .sb-mobile-nav-settings-divider {
-    display: none;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-mobile-nav-settings-header {
-    padding: 12px var(--sb-density-row-padding-inline) 6px;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-mobile-nav-settings-header > strong {
-    font-size: var(--sb-type-control);
-}
-
-#sb-settings-page .sb-settings-mounted-shell .ds-row-switch > .ds-row-text > .ds-row-label > .sb-mobile-nav-choice-icon,
-#sb-settings-page .sb-settings-mounted-shell .ds-row-switch.sb-mobile-nav-choice::before,
-#sb-settings-page .sb-settings-mounted-shell .ds-row-switch.sb-topbar-label-option::before,
-#sb-settings-page .sb-settings-mounted-shell .ds-row-switch.sb-compact-mode-option::before {
+#sb-settings-page .sb-settings-mounted-shell .ds-row-switch.sb-topbar-label-option::before {
     display: none;
 }
 
@@ -8059,6 +7580,11 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     justify-content: flex-end;
 }
 
+/* The global button rule lets a label wrap; a button in a row's trailing slot keeps its label on one line and the slot wraps instead. */
+#sb-settings-page .ds-row-actions > .ds-row-suffix > .menu_button:not(.menu_button_icon) {
+    white-space: nowrap;
+}
+
 .ds-pref-group > .flex-container.alignitemscenter,
 .sb-settings-mounted-shell .flex-container:not(.flexFlowColumn, .checkbox_label, .ds-row-suffix):is(.alignitemscenter, .alignItemsCenter, .alignItemsBaseline):has(> :is(select, textarea, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='image']))) {
     flex-wrap: wrap;
@@ -8077,59 +7603,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     #sb-settings-page .sb-console-log-output {
         min-height: 260px;
     }
-}
-
-/* The MovingUI preset picker is a row whose save button sits beside it rather than in its suffix.
-   The block is only a wrapper, so the inner pair is drawn as the row: it carries the separator and
-   the trailing inset, and the row inside gives up its own so the button lands on the 16px edge. */
-#sb-settings-page .sb-settings-mounted-shell #MovingUI-presets-block {
-    padding: 0;
-    gap: 0;
-}
-
-#sb-settings-page .sb-settings-mounted-shell #MovingUI-presets-block > .flex-container {
-    flex: 1 1 auto;
-    flex-flow: row;
-    flex-wrap: nowrap;
-    align-items: center;
-    min-width: 0;
-    gap: 0;
-    padding-inline-end: 16px;
-    border-bottom: 1px solid var(--sb-shell-border);
-}
-
-#sb-settings-page .sb-settings-mounted-shell #MovingUI-presets-block > .flex-container > .ds-row {
-    padding-inline-end: 12px;
-    border-bottom: 0;
-}
-
-#sb-settings-page .sb-settings-mounted-shell #MovingUI-presets-block #movingui-preset-save-button {
-    margin: 0;
-}
-
-.sb-settings-mounted-shell #MovingUI-presets-block label {
-    display: flex;
-    flex-flow: row;
-    flex-wrap: nowrap;
-    align-items: center;
-    flex: 1 1 auto;
-    min-width: 0;
-    gap: 12px;
-}
-
-.sb-settings-mounted-shell #MovingUI-presets-block label > small {
-    flex: 0 0 auto;
-    margin: 0;
-}
-
-.sb-settings-mounted-shell #MovingUI-presets-block label > .flex-container {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.sb-settings-mounted-shell #MovingUI-presets-block select {
-    flex: 1 1 auto;
-    min-width: 0;
 }
 
 /* `<small>` defaults to the UA's 0.8333em, which lands on 12.5px against a 15px row and drifts
@@ -9666,8 +9139,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
         min-height: 48px;
     }
 
-    :is(.sb-shell-nav-scroll, .sb-mobile-panel-close, #sb_character_editor_exit, .sb-settings-search-toggle-btn, .sb-settings-close-button, .sb-settings-back-button, .sb-subpage-back, .sb-connections-help),
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #result_info > .right_menu_button {
+    :is(.sb-shell-nav-scroll, .sb-mobile-panel-close, #sb_character_editor_exit, .sb-settings-search-toggle-btn, .sb-settings-close-button, .sb-settings-back-button, .sb-subpage-back, .sb-connections-help) {
         width: 44px;
         min-width: 44px;
         max-width: none;
@@ -9688,12 +9160,10 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     .sb-search-show-all,
     .sb-shell-search,
     .sb-theme-slider-value,
-    .sb-mobile-nav-replacement-select,
     .sb-mobile-quick-action-search,
     .sb-mobile-quick-action-add,
     .sb-mobile-quick-action-remove,
     .sb-mobile-quick-action-reset,
-    .sb-compact-mode-option,
     .sb-persona-option,
     .sb-persona-picker-manage,
     .sb-persona-picker-appendix-toggle,
@@ -9703,8 +9173,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     .sb-chat-history-cleanup-actions .menu_button,
     #sb-settings-page .sb-action-btn,
     #sb-settings-page .ds-row-suffix :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, select),
-    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(button, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), .menu_button),
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_selected_ch {
+    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(button, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), .menu_button) {
         min-height: 44px;
     }
 

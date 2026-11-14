@@ -402,7 +402,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#sb-openai-prompts', rule: 'row-geometry', reason: 'Prompt editor rows use bespoke textarea layout; midpointDelta check does not apply' },
     // SillyBunny: tab root containers — these are structural wrappers, not preference groups, and carry no heading of their own.
     { selector: '#sb-messages-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav, not a group heading' },
-    { selector: '#sb-interface-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav' },
     { selector: '#sb-appearance-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav' },
     { selector: '#user-settings-block', rule: 'group-anatomy', reason: 'Right-shell root used as a structural mount point, not a named preference group' },
     { selector: '#ica--settings', rule: 'group-anatomy', reason: 'Agents extension settings; marked data-sb-presentation=manual and excluded from normalizer' },
@@ -420,8 +419,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     // SillyBunny: tab root containers and structural mount points — row-edges and content-inset expect full-bleed .ds-row anatomy but these containers add their own wrapper padding.
     { selector: '#sb-appearance-content', rule: 'row-edges', reason: 'Tab root container with wrapper padding; row-edge inset check does not apply' },
     { selector: '#sb-appearance-content', rule: 'content-inset', reason: 'Tab root container with wrapper padding; content-inset check does not apply' },
-    { selector: '#sb-interface-content', rule: 'row-edges', reason: 'Tab root container; icon-group rows are intentionally narrower than the group width' },
-    { selector: '#sb-interface-content', rule: 'content-inset', reason: 'Tab root container with wrapper padding; content-inset check does not apply' },
     { selector: '#sb-messages-content', rule: 'row-edges', reason: 'Tab root container with wrapper padding; row-edge check does not apply' },
     { selector: '#sb-messages-content', rule: 'content-inset', reason: 'Tab root container; rows sit inside section children that add their own inset' },
     { selector: '#user-settings-block', rule: 'row-edges', reason: 'Structural mount point; content is hosted inside extension-owned sections with their own padding' },
@@ -442,8 +439,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#sb-tc-context', rule: 'row-edges', reason: 'Context Template group; inner section rows retain border-top at the group boundary — upstream layout, addressed in Phase 4' },
     { selector: '#CustomCSS-textAreaBlock', rule: 'row-edges', reason: 'Custom CSS textarea block retains a top border on its first row; upstream layout' },
     { selector: '#sb-topbar-label-drawer', rule: 'row-edges', reason: 'Topbar label drawer first row retains border-top; bespoke label-option grid layout' },
-    { selector: '#sb-desktop-settings-outlet', rule: 'row-edges', reason: 'Desktop settings outlet last row retains border-bottom; theme-slider groups added by extension' },
-    { selector: '#sb-mobile-settings-outlet', rule: 'row-edges', reason: 'Mobile settings outlet last row retains border-bottom; theme-slider groups added by extension' },
     // SillyBunny: #left-nav-panel inside Connections tab — bespoke provider-slot markup with no .ds-pref-group anatomy.
     { selector: '#left-nav-panel', rule: 'group-anatomy', reason: 'Connections left panel uses provider-slot layout; no visible .ds-pref-group groups expected' },
     // SillyBunny: autoSetHeight textareas in Formatting sections — these resize to content and may render shorter than 32px when empty; they are multi-line inputs, not interactive controls.

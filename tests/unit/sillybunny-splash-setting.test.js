@@ -1,10 +1,37 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests use synchronous DOM assertions. */
-import { describe, expect, test } from '@jest/globals';
+import { jest, describe, expect, test } from '@jest/globals';
 
 import { SETTINGS_COPY } from '../helpers/copy-settings.js';
-import { createSplashCharacterRow } from '../../public/scripts/sillybunny-splash-setting.js';
-import { initSplashPreferences } from '../../public/scripts/sillybunny-splash-preferences.js';
+
+// The select row draws its picker from modules that need the app's browser globals.
+await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => strings.reduce((out, string, index) => out + string + (index < values.length ? values[index] : ''), ''),
+    translate: value => value,
+}));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
+    animateHeightFrom: jest.fn(),
+    animateIn: jest.fn(),
+    animateOut: jest.fn((_element, _frames, hide) => hide()),
+    play: jest.fn(),
+    stopMotion: jest.fn(),
+    MOTION_FAST: 200,
+    MOTION_SLOW: 250,
+    MOTION_POPOVER_CLOSE: 150,
+    MOTION_EASE_OUT_CUBIC: 'cubic-bezier(0.33, 1, 0.68, 1)',
+    SPRING_SHEET: {},
+}));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
+    MOBILE_QUERY: '(max-width: 768px)',
+    positionPopover: jest.fn(() => '0px 0'),
+}));
+await jest.unstable_mockModule('../../public/scripts/sillybunny-sheet.js', () => ({
+    blockUpstreamDrawerClose: jest.fn(),
+    createSheetController: jest.fn(),
+}));
+
+const { createSplashCharacterRow } = await import('../../public/scripts/sillybunny-splash-setting.js');
+const { initSplashPreferences } = await import('../../public/scripts/sillybunny-splash-preferences.js');
 
 function createStorage(initial = {}) {
     const values = new Map(Object.entries(initial));

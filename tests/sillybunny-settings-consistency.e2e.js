@@ -1159,10 +1159,12 @@ test.describe('Settings entry regressions', () => {
             test('cold Interface entry creates live normalized controls without visiting Appearance', async ({ page, baseURL }) => {
                 const settingsStore = {};
                 await loadSettings(page, baseURL, settingsStore);
-                const ids = ['button-scale-input', 'compact-mode-input', 'bottom-bar-visible-input', 'gg-bar-visible-input']
+                const ids = ['button-scale-input', 'bottom-bar-visible-input', 'gg-bar-visible-input']
                     .map(suffix => `sb-${mode}-${suffix}`);
                 const interfacePanel = page.locator('[data-sb-panel="interface"]');
                 const outlet = interfacePanel.locator(`#sb-${mode}-settings-outlet`);
+                // Compact Mode is one stored value on every device, so its one switch belongs to the page's first group.
+                const firstGroup = interfacePanel.locator('#sb-interface-settings-body');
 
                 const openInterface = async () => {
                     // One native entry only: a second tab activation can conceal initialization-order bugs.
@@ -1170,19 +1172,27 @@ test.describe('Settings entry regressions', () => {
                     await expect(interfacePanel).toHaveAttribute('aria-hidden', 'false');
                     await expect.poll(() => page.evaluate(ids => ids.filter(id => !document.getElementById(id)), ids)).toEqual([]);
                     await expect(outlet).toHaveClass(/ds-pref-group/);
-                    await expect(outlet.locator('.sb-mobile-quick-actions-group')).toHaveCount(mobile ? 1 : 0);
+                    await expect(firstGroup).toHaveClass(/ds-pref-group/);
+                    // The Quick Actions group is a page-level group of its own; only the phone layout shows it.
+                    const quickActions = interfacePanel.locator('.sb-mobile-quick-actions-group');
+                    await expect(quickActions).toHaveCount(1);
+                    await expect(outlet.locator('.sb-mobile-quick-actions-group')).toHaveCount(0);
+                    await expect(quickActions).toBeVisible({ visible: mobile });
                     for (const id of ids) {
                         const input = outlet.locator(`#${id}`);
                         await expect(input).toHaveCount(1);
                         await expect(input).toBeVisible();
                     }
+                    await expect(firstGroup.locator('#sb-compact-mode-input')).toBeVisible();
                     await expectSwitchSemantics(outlet);
+                    await expectSwitchSemantics(firstGroup);
                     const anatomy = await page.evaluate(({ ids, mode }) => ids.every(id => {
                         const input = document.getElementById(id);
                         return document.querySelectorAll(`[id="${id}"]`).length === 1
                             && input.closest('.ds-pref-group')?.id === `sb-${mode}-settings-outlet`
                             && (input.type !== 'checkbox' || input.classList.contains('sb-switch') && Boolean(input.closest('.ds-row-switch')));
-                    }), { ids, mode });
+                    }) && document.querySelectorAll('[id$="compact-mode-input"]').length === 1
+                        && document.getElementById('sb-compact-mode-input').closest('.ds-pref-group')?.id === 'sb-interface-settings-body', { ids, mode });
                     expect(anatomy).toBe(true);
                 };
 
@@ -1266,6 +1276,85 @@ test.describe('Settings entry regressions', () => {
                 });
             }
 
+            test('Compact Mode is one switch for the one stored value, whatever the width', async ({ page, baseURL }) => {
+                await loadSettings(page, baseURL);
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                const interfacePanel = page.locator('[data-sb-panel="interface"]');
+                await expect(interfacePanel.locator('[data-sb-compact-mode-input]')).toHaveCount(1);
+                await expect(page.locator('#sb-desktop-compact-mode-input, #sb-mobile-compact-mode-input')).toHaveCount(0);
+                const compact = interfacePanel.locator('#sb-compact-mode-input');
+                await expect(compact).toBeVisible();
+                const next = !(await compact.isChecked());
+                await compact.setChecked(next);
+                await expect(page.locator('html')).toHaveAttribute('data-sb-compact-mode', String(next));
+                await expect.poll(() => page.evaluate(() => localStorage.getItem('sb-compact-mode'))).toBe(String(next));
+
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'messages'));
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                await expect(compact).toBeChecked({ checked: next });
+                // The value is the same on both sides of the layout breakpoint.
+                await page.setViewportSize({ width: mobile ? 1440 : 390, height: 900 });
+                await expect(page.locator('html')).toHaveAttribute('data-sb-compact-mode', String(next));
+                await expect(compact).toBeChecked({ checked: next });
+                await compact.setChecked(!next);
+                await expect(page.locator('html')).toHaveAttribute('data-sb-compact-mode', String(!next));
+            });
+
+            if (!mobile) {
+                test('the pin switch stores NavLockOn, drives the hidden pin and follows the stored value across tabs and reloads', async ({ page, baseURL }) => {
+                    await loadSettings(page, baseURL, {});
+                    const pin = page.locator('[data-sb-panel="interface"] #sb-desktop-pin-characters-input');
+                    const stored = () => page.evaluate(() => window.SillyTavern.getContext().accountStorage.getItem('NavLockOn'));
+                    const openInterface = async () => {
+                        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                        await expect(pin).toBeVisible();
+                    };
+
+                    await openInterface();
+                    // The copy of the pin is still a placeholder, so the row is found by its id.
+                    await expect(pin).toHaveAttribute('role', 'switch');
+                    const next = !(await pin.isChecked());
+                    // A reload must find the value in the settings that the page saved.
+                    const saved = page.waitForRequest(request => request.url().includes('/api/settings/save'));
+                    await pin.setChecked(next);
+                    await saved;
+                    await expect.poll(stored).toBe(String(next));
+                    await expect(page.locator('#rm_button_panel_pin')).toBeChecked({ checked: next });
+                    if (next) await expect(page.locator('#right-nav-panel')).toHaveClass(/pinnedOpen/);
+                    else await expect(page.locator('#right-nav-panel')).not.toHaveClass(/pinnedOpen/);
+
+                    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'messages'));
+                    await openInterface();
+                    await expect(pin).toBeChecked({ checked: next });
+
+                    await page.reload({ waitUntil: 'domcontentloaded' });
+                    await page.waitForFunction(
+                        () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
+                        null,
+                        { timeout: 60000 },
+                    );
+                    await openInterface();
+                    await expect(pin).toBeChecked({ checked: next });
+                    await pin.setChecked(!next);
+                    await expect.poll(stored).toBe(String(!next));
+                });
+            }
+
+            test('the old pin and character list transports stay out of the layout in every menu type', async ({ page, baseURL }) => {
+                await loadSettings(page, baseURL);
+                const displays = await page.evaluate(() => {
+                    const panel = document.getElementById('right-nav-panel');
+                    const read = {};
+                    for (const type of [null, 'characters', 'character_edit', 'create', 'group_edit']) {
+                        if (type) panel.setAttribute('data-menu-type', type);
+                        else panel.removeAttribute('data-menu-type');
+                        read[String(type)] = ['rm_PinAndTabs', 'CharListButtonAndHotSwaps'].map(id => getComputedStyle(document.getElementById(id)).display);
+                    }
+                    return read;
+                });
+                for (const pair of Object.values(displays)) expect(pair).toEqual(['none', 'none']);
+            });
+
             test('Interface has no Desktop Quick Actions and leaves the old saved list alone', async ({ page, baseURL }) => {
                 await page.addInitScript(() => {
                     if (localStorage.getItem('sb-desktop-quick-actions-v2') === null) localStorage.setItem('sb-desktop-quick-actions-v2', 'orphan');
@@ -1291,7 +1380,7 @@ test.describe('Settings entry regressions', () => {
                     await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
                     const group = page.locator('[data-sb-panel="interface"] .sb-mobile-quick-actions-group');
                     await expect(group).toBeVisible();
-                    await expect(group.locator('strong').first()).toHaveText('Mobile Quick Actions');
+                    await expect(group.locator('.sb-settings-category-title')).toHaveText('Mobile Quick Actions');
                     const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('sb-mobile-quick-actions-v2') ?? '[]').length);
                     const rows = group.locator('.sb-mobile-quick-action-current');
                     await expect(rows).not.toHaveCount(0);
@@ -1302,7 +1391,7 @@ test.describe('Settings entry regressions', () => {
                     await expect(rows).toHaveCount(initial - 1);
                     await expect.poll(saved).toBe(initial - 1);
 
-                    await group.locator('.sb-mobile-quick-action-reset').click();
+                    await group.locator('#sb-mobile-quick-action-reset').click();
                     await expect(rows).toHaveCount(initial);
                     await expect.poll(saved).toBe(initial);
                 });

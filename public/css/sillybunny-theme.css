@@ -1892,16 +1892,6 @@ select.text_pole:where(:not([multiple]):not([size]):not(.select2-hidden-accessib
     opacity: 1;
 }
 
-/*
- * The character-list drawer can render an empty sticky header block with a tinted
- * background before any character is selected. Collapse that placeholder so the
- * list controls sit flush under the favorites strip again.
- */
-#right-nav-panel:not([data-menu-type]) #rm_PinAndTabs:has(#rm_button_selected_ch h2:empty):has(#result_info[style*="display: none"]),
-#right-nav-panel[data-menu-type="characters"] #rm_PinAndTabs:has(#rm_button_selected_ch h2:empty):has(#result_info[style*="display: none"]) {
-    display: none !important;
-}
-
 @media screen and (min-width: 769px) {
     #options_button::before {
         content: '' !important;
@@ -5575,22 +5565,17 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     min-width: 0;
 }
 
-#MiscellaneousToggles,
-#STscriptToggles,
 .vectors_settings {
     display: flex;
     flex-direction: column;
     gap: var(--sb-row-gap);
 }
 
-#STscriptToggles > div,
 .vectors_settings .flex-container {
     gap: var(--sb-row-gap);
     min-width: 0;
 }
 
-#MiscellaneousToggles .checkbox_label,
-#STscriptToggles .checkbox_label,
 #tts_container .checkbox_label {
     padding: var(--sb-settings-card-padding);
     border-radius: var(--sb-radius-md);
@@ -5599,13 +5584,8 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     align-items: center;
 }
 
-#STscriptToggles .checkbox_label > span,
 #tts_container .checkbox_label > span {
     flex: 1 1 auto;
-}
-
-#STscriptToggles .checkbox_label .notes-link {
-    margin-left: auto;
 }
 
 .vectors_settings h4,
@@ -5898,8 +5878,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     margin-bottom: var(--sb-row-gap);
 }
 
-#AppearanceLayoutSection .range-block-title,
-#STscriptToggles h4 {
+#AppearanceLayoutSection .range-block-title {
     display: flex;
     align-items: center;
     justify-content: center;

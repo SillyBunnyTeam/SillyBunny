@@ -360,10 +360,42 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
     }),
     interface: Object.freeze({
         root: `#${SB_USER_SETTINGS_CONTAINER_IDS.interface}`,
+        contract: true,
         entries: Object.freeze([
-            { section: '#sb-interface-drawer' },
-            { section: '#DesktopSection' },
-            { section: '#MobileSection' },
+            {
+                id: 'interface',
+                title: 'Interface',
+                description: 'Choose the splash character and adjust background visibility and the bottom bar size.',
+                body: '#sb-interface-settings-body',
+            },
+            {
+                id: 'desktop',
+                title: 'Desktop',
+                description: 'Adjust desktop navigation, button sizes, chat bars, and shortcuts.',
+                className: 'sb-desktop-setting',
+                body: '#sb-desktop-settings-outlet',
+            },
+            {
+                id: 'mobile',
+                title: 'Mobile',
+                description: 'Adjust mobile navigation, button sizes, chat bars, shortcuts, and paper texture.',
+                className: 'sb-mobile-setting',
+                body: '#sb-mobile-settings-outlet',
+            },
+            {
+                id: 'paper-texture',
+                title: 'Paper Texture',
+                description: 'Add a subtle paper grain and wash overlay to the chat background.',
+                className: 'sb-mobile-setting',
+                body: '#sb-paper-texture-settings',
+            },
+            {
+                id: 'mobile-quick-actions',
+                title: 'Mobile Quick Actions',
+                description: 'Choose the shortcuts shown in the mobile quick drawer. Defaults can be removed or restored.',
+                className: 'sb-mobile-setting sb-mobile-quick-actions-group',
+                body: '#sb-mobile-quick-actions-box',
+            },
             {
                 id: 'typing',
                 title: 'Typing',
@@ -376,7 +408,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
                 id: 'moving-ui',
                 title: 'MovingUI',
                 description: 'Drag and resize panels on desktop',
-                rows: ['div:has(> #movingUIModeCheckBlock)', '#movingUIOffscreenWarning', '#MovingUI-presets-block'],
+                rows: ['#movingUImode', '#movingUIreset', '#movingUIOffscreenWarning', '#MovingUI-presets-block'],
             },
             { id: 'miscellaneous', adopt: '[name="MiscellaneousToggles"]' },
         ]),
@@ -616,6 +648,9 @@ function createSettingsCategory(entry, contract = false) {
     const category = document.createElement('section');
     category.className = `${SB_FLAT_SECTION_CLASS} ${SB_SETTINGS_CATEGORY_CLASS}`;
     category.dataset.sbCategory = entry.id;
+    if (entry.className) {
+        category.classList.add(...entry.className.split(' '));
+    }
 
     if (entry.title) {
         const heading = ensureCategoryHeading(category);
@@ -659,6 +694,9 @@ function placeRowsCategory(root, entry, sources, contract) {
             category = createSettingsCategory(entry, contract);
         }
         body.classList.add('ds-pref-group', 'sb-settings-category-body');
+        if (entry.enabledBy) {
+            body.dataset.sbEnabledBy = entry.enabledBy;
+        }
         if (body.parentElement !== category) {
             placeSettingsNode(category, body, null, sources);
         }

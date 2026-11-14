@@ -334,24 +334,25 @@ describe('icons only top bar', () => {
         expect(updateSource).toContain('queueTopbarFit();');
     });
 
-    test('mounts the toggle in the Desktop Navigation group only', () => {
+    test('mounts the toggle in the Desktop group only', () => {
         // Geechan review: nesting it inside the Quick Access Shortcuts drawer is a nested menu,
-        // and Navigation is where a top bar layout option is intuitively expected. The phone bar
+        // and the desktop navigation options are where a top bar layout option is intuitively expected. The phone bar
         // never has labels, so a phone switch would change nothing.
-        const navSource = getFunctionSource('createNavigationSettingsGroup');
-        expect(navSource).toContain('id: \'sb-desktop-topbar-icons-only-input\',');
-        expect(navSource).toContain('label: \'Icons only top bar\',');
-        expect(navSource).toContain('description: \'Show only icons in the desktop top bar.\',');
-        expect(navSource).toContain('onChange: input => setTopbarIconsOnly(\'desktop\', input.checked),');
-        expect(navSource).toContain('group.append(header, topbarIconsOnlyChoice);');
-        expect(navSource).not.toContain('\'mobile\'');
+        const rowSource = getFunctionSource('createTopbarIconsOnlyRow');
+        expect(rowSource).toContain('id: \'sb-desktop-topbar-icons-only-input\',');
+        expect(rowSource).toContain('label: \'Icons only top bar\',');
+        expect(rowSource).toContain('subtitle: \'Show only icons in the desktop top bar.\',');
+        expect(rowSource).toContain('onChange: checked => setTopbarIconsOnly(\'desktop\', checked),');
+        expect(rowSource).not.toContain('\'mobile\'');
+        expect(normalizedTabsSource).toContain('const desktopBody = createInterfaceGroupBody(\'sb-desktop-settings-outlet\', [\n        createTopbarIconsOnlyRow(),');
 
         expect(normalizedTabsSource).not.toContain('createTopbarIconsOnlySettingsGroup');
         expect(normalizedTabsSource).not.toContain('createMobileNavLayoutSettingsGroup');
         expect(normalizedTabsSource).not.toContain('createDesktopNavLayoutSettingsGroup');
+        expect(normalizedTabsSource).not.toContain('createNavigationSettingsGroup');
         expect(normalizedTabsSource).not.toContain('sb-mobile-topbar-icons-only-input');
         expect(normalizedTabsSource).not.toContain('Show page icons in the');
-        expect(normalizedTabsSource.match(/createNavigationSettingsGroup\(/g)).toHaveLength(2);
+        expect(normalizedTabsSource.match(/createTopbarIconsOnlyRow\(/g)).toHaveLength(2);
         expect(getFunctionSource('createShortcutSettingsGroup')).toContain('content: [description, ...rows],');
         expect(normalizedTabsSource.match(/'Icons only top bar'/g)).toHaveLength(1);
     });

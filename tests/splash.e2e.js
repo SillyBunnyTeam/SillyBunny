@@ -568,9 +568,11 @@ for (const { name, options } of VIEWPORTS) {
 
             await expect(row).toBeVisible();
             await expect(row.locator('.ds-row-label')).toHaveText('Splash Character');
-            const select = row.getByRole('combobox', { name: 'Splash Character' });
+            // The select row draws its own trigger over the native select, which keeps the options and the value.
+            const select = row.locator('select');
             await expect(select.locator('option')).toHaveText(['Random', 'Reisen', 'Tewi', 'Both']);
             await expect(select).toHaveValue('random');
+            await expect(row.getByRole('button', { name: /Splash Character/ })).toContainText('Random');
             await expect(row.locator('.ds-row-subtitle')).toHaveText(SETTINGS_COPY.splashSubtitle);
             await expect(row.locator('.ds-row-subtitle')).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
             // The sheet slides in from the side, so the row is read once it has stopped moving.
@@ -582,7 +584,8 @@ for (const { name, options } of VIEWPORTS) {
             await bootApp(page, { account: { [SPLASH_ACCOUNT_KEY]: undefined } });
             const row = await openInterface(page);
 
-            await row.getByRole('combobox', { name: 'Splash Character' }).selectOption('both');
+            await row.getByRole('button', { name: /Splash Character/ }).click();
+            await page.getByRole('option', { name: 'Both', exact: true }).click();
 
             expect(await readLocal(page, SPLASH_CHARACTER_KEY)).toBe('both');
             expect(await readAccount(page, SPLASH_ACCOUNT_KEY)).toBe('both');
@@ -604,7 +607,8 @@ for (const { name, options } of VIEWPORTS) {
 
             await expect.poll(() => readLocal(page, SPLASH_CHARACTER_KEY)).toBe('reisen');
             const row = await openInterface(page);
-            await expect(row.getByRole('combobox', { name: 'Splash Character' })).toHaveValue('reisen');
+            await expect(row.locator('select')).toHaveValue('reisen');
+            await expect(row.getByRole('button', { name: /Splash Character/ })).toContainText('Reisen');
         });
 
         sizeFreeTest('Reduced Motion is mirrored to this browser when the settings load and on every save', async ({ page }) => {

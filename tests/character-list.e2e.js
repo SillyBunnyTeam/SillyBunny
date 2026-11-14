@@ -877,7 +877,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             }));
         });
 
-        test(`${view} refusal, failed loading, and pinning keep the list open at ${viewport.width}px`, async ({ page }) => {
+        test(`${view} refusal and failed loading keep the list open, and so does the pin above 768px, at ${viewport.width}px`, async ({ page }) => {
             await prepareList(page, viewport);
             await showView(page, view);
             const before = await chatState(page);
@@ -904,12 +904,16 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await page.evaluate(() => { document.getElementById('rm_button_panel_pin').checked = true; });
             const other = listRows(page, view).first();
             await other.locator('.ch_name').click();
-            await expect(other).toHaveAttribute('aria-current', 'true');
-            await expect(other).not.toHaveClass(/is-activating-entity/);
-            await expect(page.locator('#sb-settings-page')).toBeVisible();
-            await page.evaluate(() => { document.getElementById('rm_button_panel_pin').checked = false; });
-            await other.locator('.ch_name').click();
+            if (viewport.width > 768) {
+                await expect(other).toHaveAttribute('aria-current', 'true');
+                await expect(other).not.toHaveClass(/is-activating-entity/);
+                await expect(page.locator('#sb-settings-page')).toBeVisible();
+                await page.evaluate(() => { document.getElementById('rm_button_panel_pin').checked = false; });
+                await other.locator('.ch_name').click();
+            }
+            // The pin applies above the phone layout only: at 768px and narrower the list closes after the pick either way.
             await waitForChatActivation(page);
+            if (viewport.width <= 768) await expect(page.locator('#sb-settings-page')).toBeHidden();
         });
 
         for (const [shell, tab] of [['left', 'connections'], ['right', 'appearance'], ['characters', 'world-info']]) {

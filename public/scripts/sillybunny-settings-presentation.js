@@ -37,7 +37,7 @@
 
 import { formatSettingsMacroExamples } from './sillybunny-settings-macros.js';
 import { t } from './i18n.js';
-import { createEntryRow, createSpinRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
+import { createEntryRow, createRow, createSpinRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { SB_SETTINGS_SECTION_ORDER } from './sillybunny-settings-content.js';
 
@@ -57,7 +57,7 @@ const SB_CUSTOMIZE_TABS = new Set(['appearance', 'interface', 'messages', 'data-
  * @returns {HTMLElement|null}
  */
 function createRowSubtitle(row, { placeholder = true } = {}) {
-    let existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, .sb-topbar-label-option-copy > small, .sb-compact-mode-copy > small, .sb-mobile-nav-choice-copy > small, label small + small');
+    let existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, .sb-topbar-label-option-copy > small, label small + small');
     // These rows already own live help beside the label. Keep that node (and its dynamic
     // provider/preset updates) instead of promoting a redundant title or a status-icon tooltip.
     if (!existing && row.matches('label:is([for="bind_preset_to_connection"], [for="bind_preset_to_sampling"], [for="squash_system_messages"], [for="openai_function_calling"], [for="openai_media_inlining"])') && row.nextElementSibling?.matches('.toggle-description')) {
@@ -387,10 +387,11 @@ function adoptFieldRow(row) {
     const subtitleText = subtitle?.textContent?.trim() ?? '';
     const field = control.id || control.name || 'customize-field';
     const options = { label: title, subtitle: subtitleText || undefined, field };
+    const { top, buttons } = kind === 'select' ? collectRowButtons(row) : { top: row, buttons: [] };
     /** @type {{row: HTMLElement}} */
     let built;
     if (kind === 'select') {
-        built = createSelectRow({ ...options, select: /** @type {HTMLSelectElement} */ (control), searchLabel: t`Search`, emptyText: t`No results` });
+        built = createSelectRow({ ...options, select: /** @type {HTMLSelectElement} */ (control), searchLabel: t`Search`, emptyText: t`No results`, suffix: buttons.length ? buttons : undefined });
     } else if (kind === 'spin') {
         built = createSpinRow({ ...options, input: /** @type {HTMLInputElement} */ (control), normalize: false });
     } else {
@@ -407,7 +408,84 @@ function adoptFieldRow(row) {
         if (subtitle.dataset.sbCopyPlaceholder) newSubtitle.dataset.sbCopyPlaceholder = subtitle.dataset.sbCopyPlaceholder;
     }
     sbRowControllers.set(built.row, built);
-    row.replaceWith(built.row);
+    if (top !== row && top.id) built.row.id = top.id;
+    top.replaceWith(built.row);
+}
+
+/**
+ * A select that upstream wrapped in a flex container of its own (the AutoComplete Style row) sits in its row without the wrapper,
+ * so that the select row can lay the control out.
+ * @param {HTMLElement} scope
+ */
+function unwrapLoneSelects(scope) {
+    for (const wrapper of scope.querySelectorAll('.ds-row-suffix > .flex-container')) {
+        if (wrapper.children.length === 1 && wrapper.firstElementChild instanceof HTMLSelectElement) wrapper.replaceWith(wrapper.firstElementChild);
+    }
+}
+
+/**
+ * The wrappers around a field row that hold nothing else but its action buttons (the MovingUI Preset block and its save button).
+ * @param {HTMLElement} row
+ * @returns {{top: HTMLElement, buttons: HTMLElement[]}} the outermost such wrapper, and the buttons it holds beside the row
+ */
+function collectRowButtons(row) {
+    const buttons = [];
+    let top = row;
+    for (let parent = row.parentElement; parent?.matches('.flex-container:not(.ds-pref-group)'); parent = parent.parentElement) {
+        const siblings = [...parent.children].filter(node => node !== top);
+        if (!siblings.every(node => node instanceof HTMLElement && node.matches('.menu_button'))) break;
+        buttons.push(...siblings);
+        top = parent;
+    }
+    return { top, buttons };
+}
+
+/**
+ * A section that a contract tab keeps from a drawer (AutoComplete) is a group like the rest: its bold title becomes the group heading
+ * element, and every category title carries the group heading class.
+ * @param {HTMLElement} scope
+ */
+function adoptGroupHeadings(scope) {
+    for (const title of scope.querySelectorAll('.sb-settings-category-heading > b > .sb-settings-category-title')) {
+        const bold = title.parentElement;
+        if (!bold || bold.children.length !== 1) continue;
+        const heading = document.createElement('h4');
+        for (const { name, value } of title.attributes) heading.setAttribute(name, value);
+        heading.append(...title.childNodes);
+        bold.replaceWith(heading);
+    }
+    for (const title of scope.querySelectorAll('.sb-settings-category-title')) addMissingClasses(title, 'ds-pref-group-heading');
+}
+
+/**
+ * Gives each button that sits loose in a boxed list a row of its own: a title that reads like the button, the button's tooltip as the subtitle,
+ * and the button itself, with its id and listeners, in the trailing slot. A flex container that holds only buttons (Miscellaneous) is opened first.
+ * @param {HTMLElement} scope
+ */
+function adoptButtonRows(scope) {
+    for (const box of scope.querySelectorAll('.ds-pref-group.sb-settings-category-body')) {
+        for (const wrapper of box.querySelectorAll(':scope > .flex-container')) {
+            const nodes = [...wrapper.children];
+            if (nodes.length && nodes.every(node => node.matches('.menu_button'))) wrapper.replaceWith(...nodes);
+        }
+        for (const button of box.querySelectorAll(':scope > .menu_button')) {
+            if (!(button instanceof HTMLElement)) continue;
+            const caption = button.querySelector('span, small') ?? button;
+            const title = readRowTitle(caption instanceof HTMLElement ? caption : button);
+            if (!title) continue;
+            const tooltip = button.getAttribute('title')?.trim();
+            const next = button.nextSibling;
+            const { row } = createRow({ label: title, subtitle: tooltip || undefined, field: button.id || 'button', suffix: button });
+            row.classList.add('ds-row-actions');
+            const key = readLabelI18nKey(caption instanceof HTMLElement ? caption : button);
+            const rowTitle = row.querySelector('.ds-row-label');
+            if (key && rowTitle instanceof HTMLElement) rowTitle.dataset.i18n = key;
+            const tooltipKey = button.getAttribute('data-i18n')?.match(/(?:^|;)\[title\]([^;]+)/)?.[1];
+            const rowSubtitle = row.querySelector('.ds-row-subtitle');
+            if (tooltipKey && rowSubtitle instanceof HTMLElement) rowSubtitle.dataset.i18n = tooltipKey;
+            box.insertBefore(row, next);
+        }
+    }
 }
 
 /** @param {HTMLElement} row @param {boolean} insensitive */
@@ -493,7 +571,7 @@ function normalizeCustomizeRows(scope, tabName = '') {
         suffix.append(version);
         row.append(text, suffix);
     }
-    for (const label of scope.querySelectorAll('.checkbox_label, .sb-topbar-label-option, .sb-compact-mode-option, .sb-mobile-nav-choice')) {
+    for (const label of scope.querySelectorAll('.checkbox_label, .sb-topbar-label-option')) {
         if (label instanceof HTMLLabelElement && !label.closest('[data-sb-presentation="manual"]')) normalizeCustomizeSwitch(label);
     }
     for (const control of scope.querySelectorAll('select, input[type="range"], input[type="number"], input[type="text"], textarea')) {
@@ -513,6 +591,9 @@ function normalizeCustomizeRows(scope, tabName = '') {
     if (isContractTab(tabName)) {
         // A title wrapped in a flex container (upstream baseline layout) would add that container's own box to the row.
         for (const wrapper of scope.querySelectorAll('.ds-row-label > .flex-container')) wrapper.replaceWith(...wrapper.childNodes);
+        adoptGroupHeadings(scope);
+        unwrapLoneSelects(scope);
+        adoptButtonRows(scope);
         for (const row of scope.querySelectorAll('.ds-row')) {
             if (row instanceof HTMLElement) adoptFieldRow(row);
         }

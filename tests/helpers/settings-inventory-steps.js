@@ -276,7 +276,10 @@ export const scrollerOf = root => (/^\[data-sb-panel="[^"]+"\]$/.test(root) ? `$
  * @returns {Promise<string[]>} The selectors of the switches that this turned on.
  */
 export async function enableDependentSets(page, recorder, root) {
-    const enablers = await page.evaluate(scope => [...new Set([...document.querySelectorAll(`${scope} [data-sb-enabled-by]`)].map(group => group.dataset.sbEnabledBy))], root);
+    // A set the layout hides (the phone's Paper Texture on a desktop page) has no switch to reach, and nothing in it is on the page.
+    const enablers = await page.evaluate(scope => [...new Set([...document.querySelectorAll(`${scope} [data-sb-enabled-by]`)]
+        .filter(group => group.getClientRects().length > 0)
+        .map(group => group.dataset.sbEnabledBy))], root);
     const turned = [];
     for (const selector of enablers) {
         const input = page.locator(selector).first();

@@ -227,11 +227,11 @@ for (const width of [1440, 390]) {
                 const search = page.locator('#sb-mobile-quick-action-search');
                 for (const [id] of fields) {
                     await search.fill(`ica--${id}`);
-                    const result = page.locator('#sb-mobile-quick-action-results .sb-mobile-quick-action-result');
+                    const result = page.locator('#sb-mobile-quick-actions-box > .sb-mobile-quick-action-result');
                     await expect(result).toHaveCount(1);
-                    await expect(result.locator('strong')).not.toHaveText('');
+                    await expect(result.locator('.ds-row-label')).not.toHaveText('');
                     await expect(result.locator('.sb-mobile-quick-action-help')).not.toHaveText('');
-                    await expect(result.locator('small').last()).toHaveText('Backend · Agents · Settings');
+                    await expect(result.locator('.ds-row-subtitle').last()).toHaveText('Backend · Agents · Settings');
                 }
                 await expect(driver.root.locator('[data-agent-page="settings"]')).toHaveCount(0);
                 await expectClean(page, driver);

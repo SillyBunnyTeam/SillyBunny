@@ -64,16 +64,16 @@
     <!-- SillyBunny: this cache key tracks fork edits to the mobile stylesheet. -->
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261115b" media="(max-width: 768px)">
     <!-- SillyBunny: shell stylesheet cache keys track fork CSS changes without changing upstream asset URLs. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261115c">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261115g">
     <!-- SillyBunny: the mobile surface stylesheet cache key tracks its fork-owned responsive rules. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261112t" media="(max-width: 768px)">
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261115d">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261115g">
     <!-- SillyBunny: entity lists and tag filters load after startup; the group editor activates them on open. -->
     <link rel="preload" as="style" href="css/sillybunny-entity-list.css?v=20261112o" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: the Characters/Groups list activates this deferred stylesheet on first mount. Keep this version aligned with the runtime loader URLs. -->
     <link rel="preload" as="style" href="css/sillybunny-character-list.css?v=20261114e" data-sb-deferred-style data-sb-media="all">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261114z" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261115g" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261112o">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261112q">
     <!-- SillyBunny: the editor chrome sheet is deferred, so it stays out of the blocking-CSS budget. The editors, the lists and the windows that use it load it through loadListEditorStyles() and wait for it before they show; the character and group editors are held hidden until it applies (holdEditorsUntilStyled() in sillybunny-editor/list-shell.js). Keep this version aligned with the runtime loader URLs. -->
@@ -6196,26 +6196,7 @@
                                 </div>
                             </div>
                             </div>
-                            <div class="inline-drawer wide100p flexFlowColumn sb-settings-subdrawer sb-desktop-setting" id="DesktopSection">
-                                <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable">
-                                    <b><i class="fa-solid fa-desktop"></i> <span data-i18n="Desktop">Desktop</span></b>
-                                    <small class="ds-row-subtitle" data-i18n="Adjust desktop navigation, button sizes, chat bars, and shortcuts.">Adjust desktop navigation, button sizes, chat bars, and shortcuts.</small>
-                                    <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
-                                </div>
-                                <div class="inline-drawer-content flex-container flexFlowColumn sb-settings-subdrawer-body" style="display:none">
-                                    <div id="sb-desktop-settings-outlet" class="flex-container flexFlowColumn"></div>
-                                </div>
-                            </div>
-                            <div class="inline-drawer wide100p flexFlowColumn sb-settings-subdrawer sb-mobile-setting" id="MobileSection">
-                                <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable">
-                                    <b><i class="fa-solid fa-mobile-screen-button"></i> <span data-i18n="Mobile">Mobile</span></b>
-                                    <small class="ds-row-subtitle" data-i18n="Adjust mobile navigation, button sizes, chat bars, shortcuts, and paper texture.">Adjust mobile navigation, button sizes, chat bars, shortcuts, and paper texture.</small>
-                                    <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
-                                </div>
-                                <div class="inline-drawer-content flex-container flexFlowColumn sb-settings-subdrawer-body" style="display:none">
-                                    <div id="sb-mobile-settings-outlet" class="flex-container flexFlowColumn"></div>
-                                </div>
-                            </div>
+                            <!-- SillyBunny: the Desktop and Mobile drawers of the Interface page are built as boxed lists by sillybunny-tabs.js (injectThemePicker) and placed by the Interface section order. -->
                             <div id="CustomCSS-block" class="inline-drawer wide100p flexFlowColumn sb-settings-subdrawer sb-settings-topdrawer-centered">
                                 <div class="inline-drawer-toggle inline-drawer-header userSettingsInnerExpandable" title="Apply a custom CSS style to the whole SillyBunny interface." data-i18n="[title]Apply a custom CSS style to the whole SillyBunny interface.">
                                     <b><span data-i18n="Custom CSS">Custom CSS</span></b>
@@ -6378,7 +6359,7 @@
                                 <h4 data-i18n="STscript Settings">STscript Settings</h4>
                                 <small class="ds-row-subtitle" data-i18n="Set how STscript handles escaped characters and variable macros.">Set how STscript handles escaped characters and variable macros.</small>
                                 <div title="Sets default flags for the STscript parser." data-i18n="[title]Sets default flags for the STscript parser.">
-                                    <label><small data-i18n="Parser Flags">Parser Flags</small></label>
+                                    <!-- SillyBunny: the "Parser Flags" label is dropped; the Interface page names the two flags directly and keeps "Parser Flags" as a search alias. -->
                                     <label class="checkbox_label" title="Switch to stricter escaping, allowing all delimiting characters to be escaped with a backslash, and backslashes to be escaped as well." data-i18n="[title]Switch to stricter escaping, allowing all delimiting characters to be escaped with a backslash, and backslashes to be escaped as well.">
                                         <input id="stscript_parser_flag_strict_escaping" type="checkbox" />
                                         <span>

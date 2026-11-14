@@ -81,8 +81,8 @@
         "public/css/sillybunny-mobile-shell.css": {
             "radius-literal": 1,
             "shadow-literal": 2,
-            "important": 324,
-            "spacing-off-scale": 84,
+            "important": 320,
+            "spacing-off-scale": 73,
             "spacing-off-scale-fallback": 3
         },
         "public/css/sillybunny-paper-theme.css": {
@@ -113,11 +113,11 @@
             "radius-literal": 10,
             "shadow-literal": 7,
             "duration-literal": 1,
-            "important": 280,
+            "important": 277,
             "breakpoint-off-set": 12,
             "breakpoint-1000": 2,
             "focus-outline": 1,
-            "spacing-off-scale": 220,
+            "spacing-off-scale": 207,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-tag-manager.css": {
@@ -129,7 +129,7 @@
         "public/css/sillybunny-theme.css": {
             "radius-literal": 2,
             "shadow-literal": 25,
-            "important": 199,
+            "important": 198,
             "hover-ungated": 6,
             "breakpoint-off-set": 4,
             "focus-outline": 1,
