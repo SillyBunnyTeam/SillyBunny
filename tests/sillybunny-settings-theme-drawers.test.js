@@ -34,12 +34,17 @@ describe('SillyBunny settings theme drawers', () => {
         for (const drawerId of drawerIds) {
             expect(shellTabsSource).toContain(`'${drawerId}'`);
         }
-        // The Interface page's first list: Splash Character, Compact Mode, Bottom Bar Size, and Background Visibility until the Appearance Background group takes it.
+        // The Interface page's first list: Splash Character, Compact Mode, and Background Visibility until the Appearance Background group takes it.
+        // Bottom Bar Size and the two bar switches are one list of their own, the Bottom Bar group.
         expect(shellTabsSource).not.toContain('\'sb-interface-drawer\'');
-        expect(shellTabsSource).toContain('createInterfaceGroupBody(\'sb-interface-settings-body\', [splashCharacterRow.row, createCompactModeRow(), bottomBarSliderGroup, surfaceSliderGroup]);');
+        expect(shellTabsSource).toContain('createInterfaceGroupBody(\'sb-interface-settings-body\', [splashCharacterRow.row, createCompactModeRow(), surfaceSliderGroup]);');
+        expect(shellTabsSource).toContain('createInterfaceGroupBody(\'sb-bottom-bar-settings\', [\n        bottomBarSliderGroup,');
         expect(shellTabsSource).toContain('title: \'Background Visibility\',');
         expect(shellTabsSource).toContain('title: \'Bottom Bar Size\',');
-        expect(readSource('public', 'scripts', 'sillybunny-settings-content.js')).toContain('description: \'Choose the splash character and adjust background visibility and the bottom bar size.\',');
+        const contentSource = readSource('public', 'scripts', 'sillybunny-settings-content.js');
+        expect(contentSource).toContain('title: \'General\',\n                description: \'Choose the splash character and Compact Mode.\',');
+        expect(contentSource).toContain('description: \'Adjust the button size on phones.\',');
+        expect(contentSource).toContain('title: \'Bottom Bar\',\n                body: \'#sb-bottom-bar-settings\',');
         expect(shellTabsSource).not.toContain('Change the app icon');
         expect(shellTabsSource).not.toContain('sb-shell-style-drawer');
         expect(shellTabsSource).not.toContain('data-sb-theme-option');

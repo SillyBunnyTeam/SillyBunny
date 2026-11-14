@@ -10126,24 +10126,20 @@ function createShortcutSettingsGroup() {
             updateShortcutButton(side);
         });
 
-        const subtitleText = 'Choose what this top bar shortcut opens on desktop. Select None to hide it.';
-        const row = createSelectRow({
+        rows.push(createSelectRow({
             select,
             label: SB_SHORTCUT_LABELS[side] || side,
-            subtitle: subtitleText,
             field: `shortcut-${side}`,
             searchLabel: t`Search`,
             emptyText: t`No results`,
-        });
-        row.row.querySelector('.ds-row-subtitle').dataset.i18n = subtitleText;
-        rows.push(row);
+        }));
     }
 
     const group = appearanceModule.createAppearanceGroup({
         id: 'quick-access-shortcuts',
         elementId: 'sb-quick-access-shortcuts-drawer',
         title: 'Quick Access Shortcuts',
-        description: 'Assign a shell tab or universal search to each shortcut button in the top bar.',
+        description: 'Assign a shell tab or universal search to each shortcut button in the top bar. Choose None to hide a button.',
     });
     group.append(...rows);
     return group.section;
@@ -10490,14 +10486,16 @@ function createCompactModeRow() {
     });
 }
 
-function createBottomChatBarRow(mode = 'mobile') {
+// One switch for the one stored value: `sb-bottom-chat-bar-visible` is read and written by `setBottomChatBarVisible` on every
+// device. The id keeps its `desktop` segment because specs and the settings inventory name it.
+function createBottomChatBarRow() {
     return createInterfaceSwitchRow({
-        id: `sb-${mode}-bottom-bar-visible-input`,
+        id: 'sb-desktop-bottom-bar-visible-input',
         label: 'Show Bottom Chat Bar',
         subtitle: 'Display the bottom bar with the chat switcher, persona picker, and chat actions.',
-        field: `bottom-bar-visible-${mode}`,
+        field: 'bottom-bar-visible-desktop',
         dataAttribute: 'data-sb-bottom-bar-visible-input',
-        dataValue: mode,
+        dataValue: 'desktop',
         onChange: checked => setBottomChatBarVisible(checked),
     });
 }
@@ -10515,14 +10513,15 @@ function setGuidedGenerationsBarVisible(shouldShow) {
     updateThemePickerUi();
 }
 
-function createGuidedGenerationsBarRow(mode = 'mobile') {
+// One switch for the one stored value, `extension_settings['guided-generations'].showActionButtonContainer`.
+function createGuidedGenerationsBarRow() {
     return createInterfaceSwitchRow({
-        id: `sb-${mode}-gg-bar-visible-input`,
+        id: 'sb-desktop-gg-bar-visible-input',
         label: 'Show Guided Generations Bar',
         subtitle: 'Display the Guided Generations action buttons in the chat composer.',
-        field: `gg-bar-visible-${mode}`,
+        field: 'gg-bar-visible-desktop',
         dataAttribute: 'data-sb-gg-bar-visible-input',
-        dataValue: mode,
+        dataValue: 'desktop',
         onChange: checked => setGuidedGenerationsBarVisible(checked),
     });
 }
@@ -10556,17 +10555,13 @@ function setCharactersPin(enabled) {
 
 // SillyBunny: upstream's pin of the Characters page, as a switch. The page stays open after a chat is picked above the phone layout; the stored value is left alone at 768px and below, where it has no effect.
 function createCharactersPinRow() {
-    const row = createInterfaceSwitchRow({
+    return createInterfaceSwitchRow({
         id: 'sb-desktop-pin-characters-input',
-        label: t`TODO(copy)`,
-        subtitle: t`TODO(copy)`,
+        label: t`Keep Characters Open`,
+        subtitle: t`The Characters page stays open after you pick a chat.`,
         field: 'pin-characters',
         onChange: checked => setCharactersPin(checked),
     });
-    for (const copy of row.querySelectorAll('.ds-row-label, .ds-row-subtitle')) {
-        copy.dataset.sbCopyPlaceholder = 'true';
-    }
-    return row;
 }
 
 function createPaperTextureBody() {
@@ -10772,18 +10767,17 @@ function injectThemePicker() {
 
     // The boxed lists of the Interface page. Each has the id that the page's section order names, and the order puts it under its heading.
     // The Background Visibility row starts in the first list; the Appearance Background group takes it from there.
-    const interfaceBody = createInterfaceGroupBody('sb-interface-settings-body', [splashCharacterRow.row, createCompactModeRow(), bottomBarSliderGroup, surfaceSliderGroup]);
+    const interfaceBody = createInterfaceGroupBody('sb-interface-settings-body', [splashCharacterRow.row, createCompactModeRow(), surfaceSliderGroup]);
     const desktopBody = createInterfaceGroupBody('sb-desktop-settings-outlet', [
         createTopbarIconsOnlyRow(),
         desktopButtonSliderGroup,
         createCharactersPinRow(),
-        createBottomChatBarRow('desktop'),
-        createGuidedGenerationsBarRow('desktop'),
     ]);
-    const mobileBody = createInterfaceGroupBody('sb-mobile-settings-outlet', [
-        mobileButtonSliderGroup,
-        createBottomChatBarRow('mobile'),
-        createGuidedGenerationsBarRow('mobile'),
+    const mobileBody = createInterfaceGroupBody('sb-mobile-settings-outlet', [mobileButtonSliderGroup]);
+    const bottomBarBody = createInterfaceGroupBody('sb-bottom-bar-settings', [
+        bottomBarSliderGroup,
+        createBottomChatBarRow(),
+        createGuidedGenerationsBarRow(),
     ]);
     const paperTextureBody = createPaperTextureBody();
     const mobileQuickActionsBody = createMobileQuickActionsBox();
@@ -10797,7 +10791,7 @@ function injectThemePicker() {
     themeBlock.append(card);
     // SillyBunny: keep the shared injection path, then mount Interface controls in their own tab.
     const interfaceRoot = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.interface);
-    (interfaceRoot instanceof HTMLElement ? interfaceRoot : card).prepend(interfaceBody, desktopBody, mobileBody, paperTextureBody, mobileQuickActionsBody);
+    (interfaceRoot instanceof HTMLElement ? interfaceRoot : card).prepend(interfaceBody, desktopBody, mobileBody, bottomBarBody, paperTextureBody, mobileQuickActionsBody);
     updateThemePickerUi();
 }
 

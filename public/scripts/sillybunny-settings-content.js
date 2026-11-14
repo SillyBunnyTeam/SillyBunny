@@ -426,23 +426,28 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
         entries: Object.freeze([
             {
                 id: 'interface',
-                title: 'Interface',
-                description: 'Choose the splash character and adjust background visibility and the bottom bar size.',
+                title: 'General',
+                description: 'Choose the splash character and Compact Mode.',
                 body: '#sb-interface-settings-body',
             },
             {
                 id: 'desktop',
                 title: 'Desktop',
-                description: 'Adjust desktop navigation, button sizes, chat bars, and shortcuts.',
+                description: 'Adjust desktop navigation and the button size.',
                 className: 'sb-desktop-setting',
                 body: '#sb-desktop-settings-outlet',
             },
             {
                 id: 'mobile',
                 title: 'Mobile',
-                description: 'Adjust mobile navigation, button sizes, chat bars, shortcuts, and paper texture.',
+                description: 'Adjust the button size on phones.',
                 className: 'sb-mobile-setting',
                 body: '#sb-mobile-settings-outlet',
+            },
+            {
+                id: 'bottom-bar',
+                title: 'Bottom Bar',
+                body: '#sb-bottom-bar-settings',
             },
             {
                 id: 'paper-texture',

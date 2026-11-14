@@ -133,13 +133,21 @@ describe('Interface settings groups', () => {
     test('is built to the page contract, with the page-level groups in reading order', () => {
         expect(order.contract).toBe(true);
         expect(order.entries.map(entry => entry.id ?? 'section')).toEqual([
-            'interface', 'desktop', 'mobile', 'paper-texture', 'mobile-quick-actions',
+            'interface', 'desktop', 'mobile', 'bottom-bar', 'paper-texture', 'mobile-quick-actions',
             'typing', 'section', 'stscript', 'moving-ui', 'miscellaneous',
         ]);
     });
 
+    test('titles the first group General, describes Mobile by its button size, and gives Bottom Bar no description', () => {
+        expect(byId('interface')).toMatchObject({ title: 'General', description: 'Choose the splash character and Compact Mode.' });
+        expect(byId('mobile').description).toBe('Adjust the button size on phones.');
+        expect(byId('bottom-bar')).toMatchObject({ title: 'Bottom Bar', body: '#sb-bottom-bar-settings' });
+        expect(byId('bottom-bar').description).toBeUndefined();
+    });
+
     test('keeps the device of each group, and the class that the search index excludes Quick Actions by', () => {
         expect(byId('interface').className).toBeUndefined();
+        expect(byId('bottom-bar').className).toBeUndefined();
         expect(byId('desktop').className).toBe('sb-desktop-setting');
         expect(byId('mobile').className).toBe('sb-mobile-setting');
         expect(byId('paper-texture').className).toBe('sb-mobile-setting');
@@ -151,6 +159,7 @@ describe('Interface settings groups', () => {
             '#sb-interface-settings-body',
             '#sb-desktop-settings-outlet',
             '#sb-mobile-settings-outlet',
+            '#sb-bottom-bar-settings',
             '#sb-paper-texture-settings',
             '#sb-mobile-quick-actions-box',
         ]);

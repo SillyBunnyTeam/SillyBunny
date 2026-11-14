@@ -350,8 +350,8 @@ async function expectAnimatedBackgroundStructure(appearance, { geometry = true }
     await expect(box.locator(':scope > .bpt-animated-bg-volume.ds-row.ds-row-slider #bpt-animated-bg-volume')).toHaveCount(1);
     await expect(animated.locator('.ds-pref-group')).toHaveCount(1);
     await expect(box.locator(':scope > #bpt-animated-bg-sources')).toHaveCount(1);
-    // The URL field's title is the one placeholder.
-    await expect(animated.locator('[data-sb-copy-placeholder]')).toHaveCount(1);
+    await expect(box.locator(':scope > .ds-row-entry--floating:first-child .ds-row-label')).toHaveText('Video URL');
+    await expect(animated.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
     await expectSwitchSemantics(animated);
     if (geometry) await expectSwitchGeometry(animated);
     return animated;
@@ -1106,9 +1106,9 @@ test.describe('Backgrounds settings consistency', () => {
         expect(preserved.originalNodesRetained).toBe(true);
         expect(preserved.originalIdsRetained).toBe(true);
         expect(preserved.originalLabelsRetained).toBe(true);
-        // The URL field gained its title, a placeholder; the group's blocks need no space between them.
+        // The URL field gained its title; the group's blocks need no space between them.
         const unspaced = text => text.replace(/\s+/g, '');
-        expect(unspaced(preserved.text)).toBe(unspaced(preserved.originalText.replace('Use URL', 'TODO(copy) Use URL')));
+        expect(unspaced(preserved.text)).toBe(unspaced(preserved.originalText.replace('Use URL', 'Video URL Use URL')));
         expect(preserved.values).toEqual(preserved.originalValues);
         expect(preserved.events).toEqual([]);
 
@@ -1166,10 +1166,12 @@ test.describe('Settings entry regressions', () => {
             test('cold Interface entry creates live normalized controls without visiting Appearance', async ({ page, baseURL }) => {
                 const settingsStore = {};
                 await loadSettings(page, baseURL, settingsStore);
-                const ids = ['button-scale-input', 'bottom-bar-visible-input', 'gg-bar-visible-input']
-                    .map(suffix => `sb-${mode}-${suffix}`);
+                // The two bar switches are one stored value each on every device, so each has one switch, in the Bottom Bar group.
+                const barIds = ['sb-desktop-bottom-bar-visible-input', 'sb-desktop-gg-bar-visible-input'];
+                const ids = [`sb-${mode}-button-scale-input`, ...barIds];
                 const interfacePanel = page.locator('[data-sb-panel="interface"]');
                 const outlet = interfacePanel.locator(`#sb-${mode}-settings-outlet`);
+                const bottomBar = interfacePanel.locator('#sb-bottom-bar-settings');
                 // Compact Mode is one stored value on every device, so its one switch belongs to the page's first group.
                 const firstGroup = interfacePanel.locator('#sb-interface-settings-body');
 
@@ -1185,18 +1187,24 @@ test.describe('Settings entry regressions', () => {
                     await expect(quickActions).toHaveCount(1);
                     await expect(outlet.locator('.sb-mobile-quick-actions-group')).toHaveCount(0);
                     await expect(quickActions).toBeVisible({ visible: mobile });
-                    for (const id of ids) {
-                        const input = outlet.locator(`#${id}`);
+                    await expect(outlet.locator(`#sb-${mode}-button-scale-input`)).toBeVisible();
+                    for (const id of barIds) {
+                        const input = bottomBar.locator(`#${id}`);
                         await expect(input).toHaveCount(1);
                         await expect(input).toBeVisible();
                     }
+                    await expect(bottomBar.locator('#sb-bottom-bar-scale-input')).toBeVisible();
+                    await expect(page.locator('#sb-mobile-bottom-bar-visible-input, #sb-mobile-gg-bar-visible-input')).toHaveCount(0);
+                    await expect(page.locator('[data-sb-bottom-bar-visible-input], [data-sb-gg-bar-visible-input]')).toHaveCount(2);
                     await expect(firstGroup.locator('#sb-compact-mode-input')).toBeVisible();
                     await expectSwitchSemantics(outlet);
+                    await expectSwitchSemantics(bottomBar);
                     await expectSwitchSemantics(firstGroup);
                     const anatomy = await page.evaluate(({ ids, mode }) => ids.every(id => {
                         const input = document.getElementById(id);
+                        const group = id.endsWith('button-scale-input') ? `sb-${mode}-settings-outlet` : 'sb-bottom-bar-settings';
                         return document.querySelectorAll(`[id="${id}"]`).length === 1
-                            && input.closest('.ds-pref-group')?.id === `sb-${mode}-settings-outlet`
+                            && input.closest('.ds-pref-group')?.id === group
                             && (input.type !== 'checkbox' || input.classList.contains('sb-switch') && Boolean(input.closest('.ds-row-switch')));
                     }) && document.querySelectorAll('[id$="compact-mode-input"]').length === 1
                         && document.getElementById('sb-compact-mode-input').closest('.ds-pref-group')?.id === 'sb-interface-settings-body', { ids, mode });
@@ -1283,6 +1291,26 @@ test.describe('Settings entry regressions', () => {
                 });
             }
 
+            test('the Bottom Bar group follows the device groups and holds the size and both bar switches once', async ({ page, baseURL }) => {
+                await loadSettings(page, baseURL);
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                const interfacePanel = page.locator('[data-sb-panel="interface"]');
+                const headings = interfacePanel.locator('.sb-settings-category:visible > .sb-settings-category-header .ds-pref-group-heading');
+                await expect(headings.first()).toHaveText('General');
+                const titles = await headings.allTextContents();
+                expect(titles.slice(0, 3)).toEqual(['General', mobile ? 'Mobile' : 'Desktop', 'Bottom Bar']);
+                const group = interfacePanel.locator('.sb-settings-category[data-sb-category="bottom-bar"]');
+                await expect(group).toHaveAttribute('data-sb-description', 'none');
+                await expect(group.locator('.sb-settings-category-header small')).toHaveCount(0);
+                const descriptionOf = id => interfacePanel.locator(`.sb-settings-category[data-sb-category="${id}"] .sb-settings-category-header small`);
+                await expect(descriptionOf('interface')).toHaveText('Choose the splash character and Compact Mode.');
+                await expect(descriptionOf('mobile')).toHaveText('Adjust the button size on phones.');
+                for (const id of ['sb-bottom-bar-scale-input', 'sb-desktop-bottom-bar-visible-input', 'sb-desktop-gg-bar-visible-input']) {
+                    await expect(group.locator(`#${id}`)).toBeVisible();
+                }
+                await expect(group.locator('.ds-row')).toHaveCount(3);
+            });
+
             test('Compact Mode is one switch for the one stored value, whatever the width', async ({ page, baseURL }) => {
                 await loadSettings(page, baseURL);
                 await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
@@ -1318,8 +1346,10 @@ test.describe('Settings entry regressions', () => {
                     };
 
                     await openInterface();
-                    // The copy of the pin is still a placeholder, so the row is found by its id.
                     await expect(pin).toHaveAttribute('role', 'switch');
+                    const pinRow = pin.locator('xpath=ancestor::*[contains(@class, "ds-row")][1]');
+                    await expect(pinRow.locator('.ds-row-label')).toHaveText('Keep Characters Open');
+                    await expect(pinRow.locator('.ds-row-subtitle')).toHaveText('The Characters page stays open after you pick a chat.');
                     const next = !(await pin.isChecked());
                     // A reload must find the value in the settings that the page saved.
                     const saved = page.waitForRequest(request => request.url().includes('/api/settings/save'));

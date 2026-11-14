@@ -51,13 +51,13 @@ function moveCopy(row, selector, source, options) {
 /**
  * Builds a row from an upstream row's title and subtitle, so their text and `data-i18n` survive.
  * @param {Element|null} oldRow
- * @param {object} options  Options of `createRow`; `label` and `subtitle` default to the old row's.
+ * @param {object} options  Options of `createRow`; `label` and `subtitle` default to the old row's. An explicit `label` replaces the old title.
  */
 function createRowFrom(oldRow, options) {
     const label = oldRow?.querySelector('.ds-row-label');
     const subtitle = oldRow?.querySelector('.ds-row-subtitle');
     const controller = createRow({ label: textOf(label), subtitle: textOf(subtitle) || undefined, ...options });
-    moveCopy(controller.row, '.ds-row-label', label);
+    if (options.label === undefined) moveCopy(controller.row, '.ds-row-label', label);
     moveCopy(controller.row, '.ds-row-subtitle', subtitle);
     return controller;
 }
@@ -108,7 +108,7 @@ function presentGeneral(container) {
 
     const clearButtons = ['#clear_all_cache_button', '#clear_cookies_cache_button'].map(find).filter(Boolean);
     if (clearButtons.length) {
-        const clearRow = createRowFrom(clearButtons[0].closest('.ds-row'), { field: 'clear-cache', id: 'user-settings-utility-actions', suffix: clearButtons });
+        const clearRow = createRowFrom(clearButtons[0].closest('.ds-row'), { label: 'Browser Cache', field: 'clear-cache', id: 'user-settings-utility-actions', suffix: clearButtons });
         clearRow.row.classList.add('ds-row-actions');
         rows.push(clearRow);
     }

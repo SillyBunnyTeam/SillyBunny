@@ -156,12 +156,12 @@ function presentCustomAccent(container) {
 
     const oldLabel = toggle.closest('label');
     const title = oldLabel?.querySelector(':scope > span');
-    const description = oldLabel?.querySelector(':scope > .ds-row-subtitle');
+    // The upstream subtitle belongs to the switch it describes; the group states what its two colour rows are.
     const group = createAppearanceGroup({
         id: 'custom-accent',
         title: textOf(title) || 'Custom RGB Accent',
-        description: textOf(description) || 'Show controls for choosing custom primary and secondary accent colors.',
-        source: { title, description },
+        description: 'Choose your own primary and secondary accent colors.',
+        source: { title },
     });
     // The settings normaliser pointed the switch at captions that the group now holds.
     toggle.removeAttribute('aria-labelledby');
@@ -344,9 +344,8 @@ export function presentAnimatedBackgrounds(panel) {
     group.group.setAttribute('aria-labelledby', title.id);
     group.group.setAttribute('aria-describedby', note.id);
     group.section.querySelector('.ds-pref-group-header').replaceChildren(title, note);
-    // The upstream-injected row has no caption of its own, so the field's title is a placeholder.
-    const entry = createEntryRow({ label: t`TODO(copy)`, field: 'animated-background-url', input: url, floating: true, suffix: [apply] });
-    entry.row.querySelector('.ds-row-label')?.setAttribute('data-sb-copy-placeholder', 'true');
+    // The upstream-injected row has no caption of its own, so the field's title is SillyBunny's.
+    const entry = createEntryRow({ label: t`Video URL`, field: 'animated-background-url', input: url, floating: true, suffix: [apply] });
     urlRow.remove();
 
     const box = group.group;
