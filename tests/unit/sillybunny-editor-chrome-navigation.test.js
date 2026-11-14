@@ -33,7 +33,7 @@ await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
 }));
 
 const {
-    mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow,
+    mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow,
     showDraftRecoveryToast, dismissDraftRecoveryToast,
 } = await import('../../public/scripts/sillybunny-editor/chrome.js');
 const { registerEditorNavigation, characterTabGuardSelector, CHARACTER_TAB_GUARD_SELECTOR } = await import('../../public/scripts/sillybunny-editor/navigation.js');
@@ -334,6 +334,9 @@ describe('mountEditorChrome shared header', () => {
         expect(host.firstElementChild).toBe(row);
         expect(row.firstElementChild).toBe(summary);
         expect(summary.classList.contains('sb-editor-summary')).toBe(true);
+        setSummaryText(summary, 'Persona', 'In-chat @ Depth · Depth 7 ›');
+        expect(summary.textContent).toBe('In-chat @ Depth · Depth 7 ›');
+        expect(summary.getAttribute('aria-label')).toBe('Persona: In-chat @ Depth · Depth 7 ›');
 
         const section = document.createElement('section');
         const labelRow = Object.assign(document.createElement('div'), { className: 'ds-pref-group-header' });

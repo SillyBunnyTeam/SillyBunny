@@ -1093,7 +1093,7 @@ test.describe('Prompt editor mobile interaction', () => {
         await ui.openEditor('sbFixtureInChat');
         const editor = page.locator('.sb-prompt-detail');
         await expect(page.locator('.sb-prompt-owned > .sb-backend-section-header')).toBeHidden();
-        await editor.getByRole('button', { name: 'Prompt properties', exact: true }).click();
+        await editor.getByRole('button', { name: 'Prompt properties: User · In-chat @ 2 · Swipe, Quiet ›', exact: true }).click();
         const sheet = page.getByRole('dialog', { name: 'Prompt properties', exact: true });
         await sheet.getByRole('button', { name: 'Role', exact: true }).click();
         await page.getByRole('option', { name: 'Assistant', exact: true }).click();

@@ -11,8 +11,8 @@ import { DESKTOP, PHONE, bootMiscWithChat } from './helpers/dialog-accessibility
 
 const SHOTS = '/tmp/opencode/composer-menu-sheets';
 const MENUS = [
-    { name: 'Options menu', node: '#options', trigger: '#options_button', row: '#options .options-content a:visible', title: 'Chat Actions' },
-    { name: 'wand menu', node: '#extensionsMenu', trigger: '#extensionsMenuButton', row: '#extensionsMenu > .extension_container > div:visible, #extensionsMenu > .list-group-item:visible', title: 'Extensions' },
+    { name: 'Options menu', node: '#options', trigger: '#options_button', row: '#options .options-content a:visible', title: 'Chat Actions', role: 'group', desktopRole: null },
+    { name: 'wand menu', node: '#extensionsMenu', trigger: '#extensionsMenuButton', row: '#extensionsMenu > .extension_container > div:visible, #extensionsMenu > .list-group-item:visible', title: 'Extensions', role: 'list', desktopRole: 'list' },
 ];
 
 test.describe.configure({ timeout: 120_000 });
@@ -89,7 +89,7 @@ test.describe('on a phone', () => {
             expect(placement.width).toBeCloseTo(placement.viewportWidth, 0);
             expect(placement.bottom).toBeCloseTo(placement.viewportHeight, 0);
             if (menu.title) {
-                expect(placement.role).toBe('dialog');
+                expect(placement.role).toBe(menu.role);
                 expect(placement.label).toBe(menu.title);
             }
             await expect(page.locator(`${menu.node} > .sb-dialog__handle`)).toBeVisible();
@@ -241,7 +241,7 @@ test.describe('on a desktop', () => {
             expect(placement.sheet).toBe(false);
             expect(placement.handle).toBe(false);
             expect(placement.scrim).toBe(false);
-            expect(placement.role).not.toBe('dialog');
+            expect(placement.role).toBe(menu.desktopRole);
             expect(placement.inlineTransform).not.toBe('');
             expect(placement.transform).not.toBe('none');
             expect(placement.width).toBeLessThan(placement.viewportWidth / 2);

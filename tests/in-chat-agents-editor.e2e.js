@@ -621,8 +621,9 @@ test('390px phone property sheet matches Prompt pills, controls, title and summa
     await page.locator('button[data-sb-settings-tab="editor"]').evaluate(node => node.click());
     await page.locator('.sb-prompt-row[data-prompt-id="main"] .sb-prompt-row-name').click();
     const prompt = page.locator('.sb-prompt-detail');
-    const promptSummary = prompt.getByRole('button', { name: 'Prompt properties', exact: true });
+    const promptSummary = prompt.locator('.sb-prompt-property-summary');
     await expect(promptSummary).toHaveText(/^.+ · .+ · .+ ›$/);
+    await expect(promptSummary).toHaveAccessibleName(`Prompt properties: ${await promptSummary.textContent()}`);
     await promptSummary.click();
     const reference = page.locator('.sb-dialog.sb-prompt-properties-dialog');
     const forbid = reference.getByRole('switch', { name: 'Forbid overrides', exact: true });
@@ -816,7 +817,11 @@ for (const width of [1440, 390]) {
         const prompt = page.locator('.sb-prompt-detail');
         const promptSheet = {
             1440: async () => {},
-            390: () => prompt.getByRole('button', { name: 'Prompt properties', exact: true }).click(),
+            390: async () => {
+                const summary = prompt.locator('.sb-prompt-property-summary');
+                await expect(summary).toHaveAccessibleName(`Prompt properties: ${await summary.textContent()}`);
+                await summary.click();
+            },
         };
         await promptSheet[width]();
         const role = page.getByRole('button', { name: 'Role', exact: true });
@@ -933,7 +938,11 @@ for (const width of [1440, 390]) {
         const prompt = page.locator('.sb-prompt-detail');
         const promptSheet = {
             1440: async () => {},
-            390: () => prompt.getByRole('button', { name: 'Prompt properties', exact: true }).click(),
+            390: async () => {
+                const summary = prompt.locator('.sb-prompt-property-summary');
+                await expect(summary).toHaveAccessibleName(`Prompt properties: ${await summary.textContent()}`);
+                await summary.click();
+            },
         };
         await promptSheet[width]();
         const role = page.getByRole('button', { name: 'Role', exact: true });

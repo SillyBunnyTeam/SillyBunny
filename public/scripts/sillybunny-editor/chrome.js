@@ -97,6 +97,18 @@ export function createSummaryRow(summary = null) {
 }
 
 /**
+ * Writes the text of a property-summary button and names the button `<label>: <text>`, so that its accessible name contains
+ * the text that is on screen (WCAG 2.5.3, Label in Name).
+ * @param {HTMLElement} summary
+ * @param {string} label  What the summary opens ("Persona", "Prompt properties").
+ * @param {string} text  The visible text.
+ */
+export function setSummaryText(summary, label, text) {
+    summary.textContent = text;
+    summary.setAttribute('aria-label', `${label}: ${text}`);
+}
+
+/**
  * Puts a field's control at the inline end of its label row: the group header that holds the field's heading, or the
  * label row of a text-area field (`createTextAreaField` in rows.js), which already carries its own Expand.
  * @param {HTMLElement} section  The group's `.sb-editor-section`, or the text-area field's row.

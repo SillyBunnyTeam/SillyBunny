@@ -14,7 +14,7 @@ import {
 import * as model from './sillybunny-persona-model.js';
 import { createRow, createSwitchRow, createEntryRow, createTextAreaField, createPropertyRow, createExpanderRow, createButtonRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
 import { openPicker } from './sillybunny-editor/picker.js';
-import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { createEntityRow } from './sillybunny-editor/entity-row.js';
@@ -143,7 +143,6 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     saveButton.type = 'button';
     header.append(back, name, dirtyDot, modes, modeToggle, actions, cancel, saveButton);
     const summary = button('', 'sb-persona-property-summary');
-    summary.setAttribute('aria-label', t`Persona`);
     summary.setAttribute('aria-haspopup', 'dialog');
     summary.setAttribute('aria-expanded', 'false');
     summary.addEventListener('click', openProperties);
@@ -607,7 +606,6 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         const trigger = button('', 'sb-persona-dropdown');
         const caption = element('span');
         trigger.append(caption, icon('chevron-down'));
-        trigger.setAttribute('aria-label', field.label);
         trigger.setAttribute('aria-haspopup', 'listbox');
         trigger.setAttribute('aria-expanded', 'false');
         trigger.addEventListener('click', () => {
@@ -679,6 +677,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         return { control: trigger, setValue(value) {
             const option = field.options.find(option => Number(option.value) === value);
             caption.textContent = option ? translate(option.label, option.i18n) : value;
+            trigger.setAttribute('aria-label', `${field.label}: ${caption.textContent}`);
         } };
     }
 
@@ -720,7 +719,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         }
         const position = model.POSITION_OPTIONS.find(option => Number(option.value) === draft.position);
         const role = model.ROLE_OPTIONS.find(option => Number(option.value) === draft.role);
-        summary.textContent = `${translate(position.label, position.i18n)}${draft.position === model.PERSONA_POSITION.AT_DEPTH ? ` · ${t`Depth`} ${draft.depth} · ${translate(role.label, role.i18n)}` : ''} ›`;
+        setSummaryText(summary, t`Persona`, `${translate(position.label, position.i18n)}${draft.position === model.PERSONA_POSITION.AT_DEPTH ? ` · ${t`Depth`} ${draft.depth} · ${translate(role.label, role.i18n)}` : ''} ›`);
     }
 
     function openProperties() {

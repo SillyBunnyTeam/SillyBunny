@@ -308,8 +308,10 @@ export function presentMenuAsSheet({ node, getTrigger = () => null, close = null
 
         node.setAttribute(MENU_SHEET_ATTRIBUTE, '');
         node.style.setProperty(MENU_SHEET_LEVEL, level);
+        // Nothing traps focus, so the sheet is not a dialog. Its rows keep the list parent that the menu's own role gives them
+        // (`a11y.js` makes `.options-content` and `.list-group` lists); a node with no role gets a group, which can carry a name.
         if (title) {
-            node.setAttribute('role', 'dialog');
+            if (!node.hasAttribute('role')) node.setAttribute('role', 'group');
             node.setAttribute('aria-label', title);
         }
         node.prepend(handle);

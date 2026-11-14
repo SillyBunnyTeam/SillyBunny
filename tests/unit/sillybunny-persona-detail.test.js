@@ -341,6 +341,9 @@ describe('Persona detail structure and explicit content edits', () => {
         edit(host, 'depth', '7.9');
         choose(host, 'role', 2);
         expect(host.querySelector('.sb-persona-property-summary').textContent).toContain('Depth 7');
+        expect(host.querySelector('.sb-persona-property-summary').getAttribute('aria-label')).toBe(`Persona: ${host.querySelector('.sb-persona-property-summary').textContent}`);
+        expect(host.querySelector('[data-sb-editor-field="position"] > button').getAttribute('aria-label')).toBe('Position: In-chat @ Depth');
+        expect(host.querySelector('[data-sb-editor-field="role"] > button').getAttribute('aria-label')).toBe('Role: Assistant');
         expect(await controller.save()).toBe(true);
         expect(state.persona_descriptions['first.png']).toMatchObject({ position: 4, depth: 7, role: 2 });
         choose(host, 'position', 9);

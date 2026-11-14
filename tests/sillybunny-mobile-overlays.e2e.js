@@ -129,7 +129,9 @@ for (const layout of layouts) {
             await summary.click();
             const surface = await expectDialogPresentation(page, 'sb-persona-properties-dialog', layout.width, layout.height);
             const position = surface.locator('.sb-persona-property').filter({ hasText: 'Position' });
-            await expect(position.getByRole('button', { name: 'Position', exact: true })).toBeVisible();
+            const positionButton = position.locator('button');
+            await expect(positionButton).toBeVisible();
+            await expect(positionButton).toHaveAccessibleName(`Position: ${await positionButton.locator('span').textContent()}`);
             await position.scrollIntoViewIfNeeded();
             const geometry = await position.evaluate(row => {
                 const label = row.querySelector(':scope > span').getBoundingClientRect();
@@ -148,13 +150,14 @@ for (const layout of layouts) {
             await page.goto('/');
             await waitForApp(page);
             const editor = await openPromptEntry(page);
-            const summary = editor.getByRole('button', { name: 'Prompt properties', exact: true });
+            const summary = editor.locator('.sb-prompt-property-summary');
             if (!(await summary.isVisible())) {
                 await expect(editor.locator(':scope > .sb-prompt-properties')).toBeVisible();
                 await expect(page.locator('.sb-dialog-host:has(.sb-prompt-properties-dialog)')).toHaveCount(0);
                 return;
             }
 
+            await expect(summary).toHaveAccessibleName(`Prompt properties: ${await summary.textContent()}`);
             await summary.click();
             const surface = await expectDialogPresentation(page, 'sb-prompt-properties-dialog', layout.width, layout.height);
             await expect(surface.locator('.sb-prompt-properties')).toBeVisible();

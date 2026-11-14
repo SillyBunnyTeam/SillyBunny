@@ -7,7 +7,7 @@ import { getTokenCountAsync } from './tokenizers.js';
 import * as model from './sillybunny-world-info-model.js';
 import { createRow, createSwitchRow, createComboRow, createSpinRow, createEntryRow, createPropertyRow, createExpanderRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
 import { createChipEntry } from './sillybunny-editor/chip-entry.js';
-import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
@@ -131,7 +131,6 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     banner.hidden = true;
     const body = element('div', 'sb-wi-entry-body');
     const summary = button('', 'sb-wi-property-summary');
-    summary.setAttribute('aria-label', t`World Info`);
     summary.setAttribute('aria-haspopup', 'dialog');
     summary.setAttribute('aria-expanded', 'false');
     summary.addEventListener('click', openProperties);
@@ -328,7 +327,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         }
         const strategy = model.STRATEGY_OPTIONS.find(option => option.value === model.entryStrategy(draft));
         const outlet = Number(draft.position) === model.WI_POSITION.outlet && draft.outletName ? ` ${draft.outletName}` : '';
-        summary.textContent = `${translate(strategy.label, strategy.i18n)} · ${model.entryBadge(draft)}${outlet} · ${model.readField(draft, 'probability') ?? '—'}% ›`;
+        setSummaryText(summary, t`World Info`, `${translate(strategy.label, strategy.i18n)} · ${model.entryBadge(draft)}${outlet} · ${model.readField(draft, 'probability') ?? '—'}% ›`);
     }
 
     function openProperties() {

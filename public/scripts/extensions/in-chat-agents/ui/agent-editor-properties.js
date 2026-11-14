@@ -3,6 +3,7 @@ import { createSegmentedControl, setSegmentedControlValue } from '../../../silly
 import { blockUpstreamDrawerClose, createSheetController } from '../../../sillybunny-sheet.js';
 import { closeActionMenu } from '../../../sillybunny-action-menu.js';
 import { bindSheetSwipeClose, createSheetHandle } from '../../../sillybunny-editor/sheet-gestures.js';
+import { setSummaryText } from '../../../sillybunny-editor/chrome.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_POPOVER_CLOSE, play, stopMotion } from '../../../sillybunny-motion.js';
 
 let nextId = 0;
@@ -16,7 +17,6 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
     const frame = element('div', 'sb-prompt-editor ica-agent-property-frame');
     const summary = element('button', 'menu_button sb-prompt-property-summary ica-agent-property-summary');
     summary.type = 'button';
-    summary.setAttribute('aria-label', t`Agent properties`);
     summary.setAttribute('aria-haspopup', 'dialog');
     summary.setAttribute('aria-expanded', 'false');
     const bar = element('div', 'sb-prompt-properties ica-agent-properties');
@@ -238,7 +238,7 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
             const labels = [categoryLabel.textContent];
             if (!stageProperty.hidden) labels.push(stages.find(([value]) => value === fields.phase)?.[1] ?? fields.phase);
             labels.push(executions.find(([value]) => value === fields.execution)?.[1] ?? fields.execution);
-            summary.textContent = `${labels.join(' · ')} ›`;
+            setSummaryText(summary, t`Agent properties`, `${labels.join(' · ')} ›`);
         },
         destroy() {
             closeCategoryPopover(false);

@@ -9,7 +9,7 @@ import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
 import { t, translate } from './i18n.js';
 import { createSegmentedControl } from './sillybunny-segmented-control.js';
 import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list-shell.js';
-import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { getCurrentUserHandle } from './user.js';
@@ -1078,10 +1078,10 @@ export function initializePromptEditor(column) {
         if (kind === 'text-completion') {
             const position = draft.propertyValues.context_story_string_position;
             const depth = draft.propertyValues.context_story_string_depth;
-            summary.textContent = `${t`Story string`} · ${t`Position`} ${position} · ${t`Depth`} ${depth} ›`;
+            setSummaryText(summary, t`Prompt properties`, `${t`Story string`} · ${t`Position`} ${position} · ${t`Depth`} ${depth} ›`);
             return;
         }
-        summary.textContent = `${capitalized(draft.role ?? 'system')} · ${Number(draft.injection_position) === 1 ? `${t`In-chat`} @ ${draft.injection_depth ?? 4}` : t`Relative`} · ${triggerSummary()} ›`;
+        setSummaryText(summary, t`Prompt properties`, `${capitalized(draft.role ?? 'system')} · ${Number(draft.injection_position) === 1 ? `${t`In-chat`} @ ${draft.injection_depth ?? 4}` : t`Relative`} · ${triggerSummary()} ›`);
     }
 
     function refreshProperties() {
@@ -1223,7 +1223,6 @@ export function initializePromptEditor(column) {
         let summaryRow = null;
         if (hasProperties) {
             const summary = button('', null, openProperties, 'sb-prompt-property-summary');
-            summary.setAttribute('aria-label', t`Prompt properties`);
             summaryRow = createSummaryRow(summary);
             editor.append(summaryRow, properties());
             refreshSummary();

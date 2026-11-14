@@ -1741,6 +1741,8 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         box-sizing: border-box;
         min-block-size: 44px;
         align-items: center;
+        /* Upstream dims `.list-group-item` rows to 0.5 until hovered, which a touch sheet never shows. */
+        opacity: 1;
     }
 
     /* Rows that extensions add straight to the wand menu get the padding and full opacity of the rows in its containers. */

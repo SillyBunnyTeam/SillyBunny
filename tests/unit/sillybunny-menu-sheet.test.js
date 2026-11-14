@@ -152,7 +152,7 @@ describe('presentMenuAsSheet on a phone', () => {
         expect(presenter.isOpen).toBe(true);
         expect(presenter.isPresented).toBe(true);
         expect(parts.node.hasAttribute(ATTRIBUTE)).toBe(true);
-        expect(parts.node.getAttribute('role')).toBe('dialog');
+        expect(parts.node.getAttribute('role')).toBe('group');
         expect(parts.node.getAttribute('aria-label')).toBe('Extensions');
         expect(parts.node.firstElementChild.className).toBe('sb-dialog__handle');
         expect(parts.node.children).toHaveLength(2);
@@ -171,7 +171,7 @@ describe('presentMenuAsSheet on a phone', () => {
         present(named);
         await show(named.node);
         expect(named.node.getAttribute('aria-label')).toBe('Trigger Stable Diffusion');
-        expect(named.node.getAttribute('role')).toBe('dialog');
+        expect(named.node.getAttribute('role')).toBe('group');
 
         const unnamed = makeMenu({ title: '' });
         unnamed.node.id = 'other_node';
@@ -179,6 +179,20 @@ describe('presentMenuAsSheet on a phone', () => {
         await show(unnamed.node);
         expect(unnamed.node.hasAttribute('aria-label')).toBe(false);
         expect(unnamed.node.hasAttribute('role')).toBe(false);
+    });
+
+    test('keeps the role of a node that has one, so that its rows keep their list parent, and names it with aria-label only', async () => {
+        const parts = makeMenu();
+        parts.node.setAttribute('role', 'list');
+        present(parts);
+        await show(parts.node);
+
+        expect(parts.node.getAttribute('role')).toBe('list');
+        expect(parts.node.getAttribute('aria-label')).toBe('Extensions');
+
+        await hide(parts.node);
+        expect(parts.node.getAttribute('role')).toBe('list');
+        expect(parts.node.hasAttribute('aria-label')).toBe(false);
     });
 
     test('hiding the node removes everything the presenter added and restores earlier attributes', async () => {
