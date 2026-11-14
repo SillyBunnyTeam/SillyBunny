@@ -24,9 +24,21 @@ export function depthInFigure(raster) {
 }
 
 /**
+ * Whether the depth of a pixel is known. The canvas may end flush with the outside of a rim, or cut through the figure,
+ * and nothing tells the two apart, so a pixel nearer the canvas border than to every transparent pixel inside it could
+ * lie at any depth up to the one measured.
+ */
+const isDepthKnown = ({ width, height }, depth, at) => {
+    const x = at % width;
+    const y = (at - x) / width;
+    return Math.min(x + 1, y + 1, width - x, height - y) >= depth[at];
+};
+
+/**
  * Paints the sticker again from the silhouette in: every opaque pixel within `rim` art pixels of transparent space takes
  * the rim colour, and every one within the next `band` takes the band colour. A fit leaves the rings ragged, because a
- * cell on the edge takes the colour most of its master pixels have, which may be the art or the band.
+ * cell on the edge takes the colour most of its master pixels have, which may be the art or the band. A pixel whose
+ * depth the canvas border hides keeps its colour, so a cut stays a cut and a rim along the border stays a rim.
  * @param {import('./raster.js').Raster} raster With alpha 0 or 255 only.
  * @param {{ rim: number, band: number }} widths In art pixels.
  * @param {{ rim: readonly number[], band: readonly number[] }} [colours]
@@ -37,7 +49,7 @@ export function rebuildRings(raster, { rim, band }, colours = STICKER) {
     const rebuilt = { ...raster, data: Buffer.from(raster.data) };
     let changed = 0;
     for (let at = 0; at < depth.length; at++) {
-        if (raster.data[at * 4 + 3] === 0) {
+        if (raster.data[at * 4 + 3] === 0 || !isDepthKnown(raster, depth, at)) {
             continue;
         }
         const colour = depth[at] <= rim + EPSILON ? colours.rim : depth[at] <= rim + band + EPSILON ? colours.band : null;
@@ -52,7 +64,8 @@ export function rebuildRings(raster, { rim, band }, colours = STICKER) {
 /**
  * The widths the rings of a picture really have. The rim is the widest whole number of art pixels within which every
  * opaque pixel has the rim colour, and the band is the same for the pixels after it in the band colour, so a gap or a
- * thin stretch shows as a smaller width. Band-coloured art further in, such as white fur, is not counted.
+ * thin stretch shows as a smaller width. Band-coloured art further in, such as white fur, is not counted, and neither
+ * is a pixel whose depth the canvas border hides.
  * @param {import('./raster.js').Raster} raster
  * @param {{ rim: readonly number[], band: readonly number[] }} [colours]
  * @returns {{ rim: number, band: number }}
@@ -61,7 +74,7 @@ export function measureRings(raster, colours = STICKER) {
     const depth = depthInFigure(raster);
     const opaque = [];
     for (let at = 0; at < depth.length; at++) {
-        if (raster.data[at * 4 + 3] !== 0) {
+        if (raster.data[at * 4 + 3] !== 0 && isDepthKnown(raster, depth, at)) {
             opaque.push(at);
         }
     }

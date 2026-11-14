@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { crop } from '../lib/raster.js';
 import { distanceToMask, measureRings, rebuildRings, STICKER } from '../lib/rings.js';
 import { paint, pixelAt } from '../test-support/pictures.js';
 
@@ -49,4 +50,13 @@ test('a figure cut by the canvas border gets no ring along the cut', () => {
     const { raster } = rebuildRings(cut, { rim: 2, band: 2 });
 
     assert.deepEqual([pixelAt(raster, 10, 9), pixelAt(raster, 10, 3), pixelAt(raster, 3, 9)], [ART, RIM, RIM]);
+});
+
+test('a rim that ends flush with the canvas border keeps its colour and measures at its width', () => {
+    const drawn = rebuildRings(paint(24, 20, (x, y) => (x >= 4 && x < 20 && y >= 4 && y < 16 ? ART : CLEAR)), { rim: 2, band: 2 }).raster;
+    const flush = crop(drawn, { x: 0, y: 0, width: 24, height: 16 });
+    assert.deepEqual([pixelAt(flush, 12, 15), pixelAt(flush, 12, 14), pixelAt(flush, 12, 13)], [RIM, RIM, BAND], 'the rim runs along the last row');
+
+    assert.deepEqual(measureRings(flush), { rim: 2, band: 2 });
+    assert.equal(rebuildRings(flush, { rim: 2, band: 2 }).changed, 0);
 });
