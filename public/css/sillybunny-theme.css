@@ -5956,6 +5956,11 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     line-height: 1.45;
 }
 
+/* These captions already take the dim strength from --sb-muted-fg; upstream's `small { opacity: 0.7 }` would dim them a second time. */
+:is(.sb-editor-section-hint, .sb-subpage-heading-description, .sb-subpage-detail-description, .sb-settings-subdrawer-toolbar small, .sb-sampling-sampler-tools-card small) {
+    opacity: 1;
+}
+
 #custom_css_save_state {
     gap: 6px;
 }
