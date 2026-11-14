@@ -4240,6 +4240,26 @@ body.reduced-motion .sb-search-entry {
     font-size: var(--sb-type-meta);
 }
 
+/* The match count of a page while the sidebar search is typed. */
+.sb-settings-tab-badge {
+    margin-inline-start: auto;
+    color: var(--sb-shell-text-secondary);
+    font-size: var(--sb-type-meta);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* A row or a group that the sidebar search hides. The class is repeated, not `!important`, to outrank the
+   `display` of the many row and group rules (upstream's among them) that carry an id or a second class. */
+#sb-settings-page .sb-settings-row--filtered.sb-settings-row--filtered.sb-settings-row--filtered {
+    display: none;
+}
+
+/* The words the sidebar search matched, marked without changing the page (CSS Custom Highlight API). */
+::highlight(sb-settings-search-text) {
+    background-color: color-mix(in srgb, var(--sb-accent) 32%, transparent);
+}
+
 .sb-settings-tab .fa-solid {
     font-size: 13px;
     width: 16px;

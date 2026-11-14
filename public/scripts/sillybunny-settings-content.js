@@ -308,8 +308,9 @@ export const SB_SETTINGS_CATEGORY_CLASS = 'sb-settings-category';
  * `root` names the element whose children are reordered. `contract: true` marks a tab that is built to
  * the settings page contract: its group titles are `ds-pref-group-heading` elements, and `sillybunny-settings-presentation.js`
  * turns its selects, numbers and text areas into rows. An entry's `enabledBy` names the switch that a group
- * depends on: the switch is the group's first row and the other rows are insensitive while it is off.
- * Entries come in three shapes:
+ * depends on: the switch is the group's first row and the other rows are insensitive while it is off. An
+ * entry's `searchAliases` are the names its group had before it was regrouped; the settings search finds the
+ * group by them. Entries come in three shapes:
  *
  * - `section`: an existing section that already reads as one sub-category, moved into place whole.
  * - `adopt`: an existing group that carries its own heading (an `h4`, and optionally the `small`
@@ -433,6 +434,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'desktop',
                 title: 'Desktop',
+                searchAliases: ['Desktop Navigation'],
                 description: 'Adjust desktop navigation and the button size.',
                 className: 'sb-desktop-setting',
                 body: '#sb-desktop-settings-outlet',
@@ -470,7 +472,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
                 rows: ['#enable_auto_select_input', '#enable_md_hotkeys', '#restore_user_input'],
             },
             { section: '[name="AutoCompleteToggle"]' },
-            { id: 'stscript', adopt: '[name="STscriptToggles"]' },
+            { id: 'stscript', adopt: '[name="STscriptToggles"]', searchAliases: ['Parser Flags'] },
             {
                 id: 'moving-ui',
                 title: 'MovingUI',
@@ -520,6 +522,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'swipes',
                 title: 'Swipes',
+                searchAliases: ['Swipes and Continue'],
                 description: 'Alternative replies and automatic regeneration',
                 rows: [
                     '.checkbox-container:has(#swipes-checkbox)',
@@ -529,6 +532,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'auto-swipe',
                 title: 'Auto-swipe',
+                searchAliases: ['Swipes and Continue'],
                 description: 'Automatically reject and re-generate AI message based on configurable criteria.',
                 descriptionKey: 'Automatically reject and re-generate AI message based on configurable criteria',
                 enabledBy: '#auto_swipe',
@@ -542,6 +546,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'auto-continue',
                 title: 'Auto-Continue',
+                searchAliases: ['Swipes and Continue'],
                 description: 'Automatically \'continue\' a response if the model stopped before reaching a certain amount of tokens.',
                 enabledBy: '#auto_continue_enabled',
                 rows: [
@@ -706,6 +711,18 @@ function categoryTitleClass(contract) {
 }
 
 /**
+ * Gives a group the names it had before it was regrouped, so the settings search finds and reveals it by them.
+ * The search reads the pipe-separated attribute and nothing else about the entry.
+ * @param {HTMLElement} element
+ * @param {{searchAliases?: string[]}} entry
+ */
+function applySearchAliases(element, entry) {
+    if (entry.searchAliases?.length) {
+        element.setAttribute('data-sb-search-aliases', entry.searchAliases.join('|'));
+    }
+}
+
+/**
  * Creates an empty category element for `entry`.
  * @param {{id: string, title?: string, description?: string, descriptionKey?: string}} entry
  * @param {boolean} [contract] whether the tab is built to the page contract
@@ -715,6 +732,7 @@ function createSettingsCategory(entry, contract = false) {
     const category = document.createElement('section');
     category.className = `${SB_FLAT_SECTION_CLASS} ${SB_SETTINGS_CATEGORY_CLASS}`;
     category.dataset.sbCategory = entry.id;
+    applySearchAliases(category, entry);
     if (entry.className) {
         category.classList.add(...entry.className.split(' '));
     }
@@ -921,6 +939,7 @@ export function applySettingsSectionOrder(scope, tabId) {
             // takes the top-level header metric like every sibling it now sits beside. A group that builds
             // its own header has no flat header to measure.
             if (element?.querySelector(':scope > .sb-settings-flat-header')) element.classList.add(SB_FLAT_SECTION_TOP_CLASS);
+            if (element) applySearchAliases(element, entry);
         } else if (entry.adopt) {
             element = placeAdoptedCategory(root, entry, sources, order.contract === true);
         } else {

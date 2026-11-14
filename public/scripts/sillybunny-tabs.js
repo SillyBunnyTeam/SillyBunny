@@ -1252,7 +1252,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Configure interface behavior, power user features, and UI preferences.',
                 searchPlaceholder: 'Search top bar, auto-scroll, power user, or chat features',
                 searchExamples: ['top bar', 'auto-scroll', 'power user'],
-                searchAliases: ['UI', 'behavior', 'stscript', 'Desktop Navigation', 'Parser Flags'],
+                searchAliases: ['UI', 'behavior', 'stscript'],
             },
             {
                 id: 'messages',
@@ -1262,7 +1262,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Configure message display, actions, swipes, and interaction preferences.',
                 searchPlaceholder: 'Search message actions, swipes, auto-scroll, or display',
                 searchExamples: ['swipes', 'message actions', 'auto-scroll'],
-                searchAliases: ['chat', 'message display', 'sending', 'character handling', 'Swipes and Continue'],
+                searchAliases: ['chat'],
             },
             {
                 id: 'data-security',
@@ -1272,7 +1272,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Manage the SillyBunny backend and server settings here.',
                 searchPlaceholder: 'Search backup, data path, security, or config.yaml',
                 searchExamples: ['backup', 'data path', 'security'],
-                searchAliases: ['backup', 'restore', 'import', 'export', 'server tools', 'data path', 'Import Your SillyTavern Setup'],
+                searchAliases: ['backup', 'restore', 'data path'],
             },
             {
                 id: 'logs',
@@ -7001,6 +7001,7 @@ function syncCharacterShellTabs(activeTab = null) {
                 button.setAttribute('aria-selected', String(button instanceof HTMLElement && button.dataset.sbSettingsTab === normalizedTab));
             });
             renderSettingsPageHeading(settingsTab);
+            void settingsSidebarSearch?.activate(normalizedTab);
         }
     }
 
@@ -14820,6 +14821,9 @@ function activateSettingsTab(shellKey, tabId) {
     if (isMobileViewport()) {
         setSettingsMobileContentView(true);
     }
+
+    // A search that is still typed filters the page that has just opened.
+    void settingsSidebarSearch?.activate(tabId);
 }
 
 function syncSettingsPageActiveButton() {
@@ -14853,6 +14857,11 @@ function setSettingsSidebarSearchOpen(isOpen, { focusInput = false } = {}) {
     toggleBtn.setAttribute('aria-expanded', String(isOpen));
     searchRow.classList.toggle('is-expanded', isOpen);
     searchRow.setAttribute('aria-hidden', String(!isOpen));
+
+    if (isOpen) {
+        // The module is loaded by the time a letter is typed, so the page list answers at once.
+        void loadSettingsSearchModule().catch(() => {});
+    }
 
     if (isOpen && focusInput && searchInput instanceof HTMLElement) {
         // Defer slightly so the max-height transition has started before focus shifts.
@@ -14917,81 +14926,105 @@ function initSettingsPageClose() {
 }
 
 let sbSettingsSidebarFilterRequest = 0;
+let settingsSidebarSearch = null;
 
-function settingsTabLabelMatches(label, query, aliases = []) {
-    const labels = [label, ...aliases];
-    if (labels.some(value => normalizeText(value).includes(query))) {
-        return true;
+// SillyBunny: the sidebar search loads on first use, so it adds nothing to startup. It does the matching, the page counts,
+// the row filter and the text marks; the shell only says what a page is made of and how to reveal a place in it.
+const loadSettingsSearchModule = createDeferredModule(new URL('./sillybunny-settings-search.js', import.meta.url));
+
+// Pages that are not made of groups of rows: the prompt editor is a workspace, and the other two answer by what they list.
+const SB_SEARCH_NO_ROW_TABS = Object.freeze(new Set(['editor', 'agents', 'extensions']));
+// Of those, the ones whose entries still count as hits. The prompt editor's content is not searched.
+const SB_SEARCH_ENTRY_TABS = Object.freeze(new Set(['agents', 'extensions']));
+
+function getSettingsSearchRoots(tabId) {
+    const shellKey = sbSettingsState.activeShell;
+    if (shellKey === 'characters') {
+        if (tabId === 'editor') {
+            const editors = ['rm_ch_create_block', 'rm_group_chats_block'].map(id => document.getElementById(id)).filter(Boolean);
+            const active = editors.filter(editor => editor.classList.contains('sb-active-right-menu'));
+            return active.length ? active : editors;
+        }
+        const hostId = { 'world-info': 'sb_character_world_info_panel', persona: 'sb_character_persona_panel', import: 'sb_character_import_panel' }[tabId];
+        const host = hostId ? document.getElementById(hostId) : null;
+        // The two lists are entities with their own filters.
+        return host instanceof HTMLElement ? [host] : [];
     }
 
-    // Word-initial matching, e.g. "cl" for Console Logs.
-    return query.length > 1 && labels.some(value => {
-        const initials = normalizeText(value).split(/[\s-]+/).filter(Boolean).map(word => word[0]).join('');
-        return initials.startsWith(query.replace(/\s+/g, ''));
-    });
+    if (SB_SEARCH_NO_ROW_TABS.has(tabId)) {
+        return null;
+    }
+    const root = getShellState(shellKey)?.tabs.get(tabId)?.searchRoot;
+    return root instanceof HTMLElement ? [root] : null;
+}
+
+function getSettingsSearchContentMatches(rawQuery) {
+    const shellKey = sbSettingsState.activeShell;
+    const matches = [];
+    for (const match of collectGlobalSearchMatches(rawQuery, { limit: Infinity })) {
+        const matchShell = match.shellKey === 'left' && match.tabId === 'world-info' ? 'characters' : match.shellKey;
+        if (matchShell !== shellKey || !match.tabId) continue;
+        // A page's own name and aliases are matched by the sidebar itself.
+        if (match.headingMatch === true && /::page$|^characters::/.test(match.dedupeKey ?? '')) continue;
+        const isEntity = match.element === null || match.element === undefined;
+        if (shellKey === 'characters' ? !isEntity : !SB_SEARCH_ENTRY_TABS.has(match.tabId)) continue;
+        matches.push({ tabId: match.tabId, key: match.dedupeKey || `${match.tabId}::${match.displayText}`, searchText: match.searchText });
+    }
+    return matches;
+}
+
+async function whenSettingsTabReady(tabId) {
+    const shellKey = sbSettingsState.activeShell;
+    if (shellKey === 'characters') {
+        await Promise.allSettled([characterPanelRevealPromise, characterListViewPromise]);
+    } else {
+        await getShellState(shellKey)?.tabs.get(tabId)?.ensureReady?.();
+    }
+    // The page's own activation (drawer flatten, section order) runs before the next frame.
+    await new Promise(resolve => window.requestAnimationFrame(resolve));
+}
+
+function createSettingsSearchAdapter() {
+    return {
+        getShellKey: () => sbSettingsState.activeShell,
+        getTabList: () => document.getElementById('sb-settings-tab-list'),
+        getTabs: () => getSettingsPageTabs(sbSettingsState.activeShell).map(tab => ({ id: tab.id, label: tab.label, aliases: tab.searchAliases ?? [] })),
+        getActiveTabId: () => sbSettingsState.activeTabId,
+        getRoots: getSettingsSearchRoots,
+        // The Characters pages are marked, not filtered, except the two settings pages that open in them.
+        canHideRows: body => sbSettingsState.activeShell !== 'characters' || Boolean(body.closest('.sb-wi-settings, .sb-persona-settings')),
+        getContentMatches: getSettingsSearchContentMatches,
+        ensureReady: prepareShellSearch,
+        whenTabReady: whenSettingsTabReady,
+        changeSelector: '#main_api, #chat_completion_source, #textgen_type',
+        pulse: pulseSearchTarget,
+        scroll: target => scrollElementIntoManagedView(target, { block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' }),
+        expand: expandHiddenAccordions,
+        // A phone shows the sidebar or the page, and scrolling the hidden page shifts the clipped pane sideways.
+        canReveal: () => !isMobileViewport() || Boolean(getSettingsPage()?.classList.contains('sb-settings-page--content')),
+        // HUMAN: replace — the match count of a page in the sidebar; the number is how many settings on the page match.
+        badgeLabel: count => t`TODO(copy) ${count}`,
+        emptyLabel: 'No matching pages',
+    };
 }
 
 async function filterSettingsSidebarTabs(rawQuery) {
     const request = ++sbSettingsSidebarFilterRequest;
-    const query = normalizeText(rawQuery);
-    const shellKey = sbSettingsState.activeShell;
-    const tabList = document.getElementById('sb-settings-tab-list');
-    if (!(tabList instanceof HTMLElement)) {
+    if (!normalizeText(rawQuery)) {
+        // Nothing to restore until a search has run, and the module is loaded by then.
+        settingsSidebarSearch?.clear();
+        return;
+    }
+    if (!sbSettingsState.activeShell) {
         return;
     }
 
-    const applyFilter = contentMatches => {
-        let visibleCount = 0;
-        for (const button of tabList.querySelectorAll('.sb-settings-tab')) {
-            const label = button.textContent ?? '';
-            const tabId = button.dataset.sbSettingsTab;
-            const aliases = String(button.dataset.sbSearchAliases ?? '').split('|').filter(Boolean);
-            const labelMatch = Boolean(query) && settingsTabLabelMatches(label, query, aliases);
-            // Label hits always keep their tab. A content hit only reveals a tab when the label
-            // itself did not match, so typing "Logs" opens Logs rather than every tab that happens
-            // to mention logs somewhere in its body.
-            const isMatch = !query || labelMatch || contentMatches.has(tabId);
-            const byContent = Boolean(query) && isMatch && !labelMatch;
-            button.classList.toggle('sb-settings-tab--filtered', !isMatch);
-            button.classList.toggle('sb-settings-tab--by-content', byContent);
-            button.setAttribute('aria-hidden', String(!isMatch));
-            button.tabIndex = isMatch ? 0 : -1;
-            // Label hits render above content hits; `order` does it without touching DOM order,
-            // which keeps keyboard traversal stable while a filter is active.
-            button.style.order = !query || labelMatch ? '0' : '1';
-            visibleCount += Number(isMatch);
-        }
-
-        let empty = tabList.querySelector('.sb-settings-tab-empty');
-        if (query && visibleCount === 0) {
-            if (!empty) {
-                empty = createElement('p', { className: 'sb-settings-tab-empty', text: 'No matching pages' });
-                tabList.appendChild(empty);
-            }
-        } else {
-            empty?.remove();
-        }
-    };
-
-    // Label matches apply immediately; content matches refine once the search index is ready.
-    applyFilter(new Set());
-    if (!query || !shellKey) {
+    const module = await loadSettingsSearchModule();
+    if (request !== sbSettingsSidebarFilterRequest) {
         return;
     }
-
-    await prepareShellSearch();
-    if (request !== sbSettingsSidebarFilterRequest || sbSettingsState.activeShell !== shellKey) {
-        return;
-    }
-
-    const contentMatches = new Set();
-    for (const match of collectGlobalSearchMatches(query, { limit: Infinity })) {
-        const matchShell = match.shellKey === 'left' && match.tabId === 'world-info' ? 'characters' : match.shellKey;
-        if (matchShell === shellKey && match.tabId && match.headingMatch === true) {
-            contentMatches.add(match.tabId);
-        }
-    }
-    applyFilter(contentMatches);
+    settingsSidebarSearch ??= module.createSidebarSearch(createSettingsSearchAdapter());
+    await settingsSidebarSearch.update(rawQuery);
 }
 
 // ── Mode toggle (top-bar direct toggle) ─────────────────────────────────

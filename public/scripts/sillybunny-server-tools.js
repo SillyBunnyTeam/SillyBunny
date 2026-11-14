@@ -607,8 +607,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
     }
 
     /** A group of the Data & Security page, built from the shared boxed-list factories. */
-    function createServerSection(title, description, field, headerSuffix) {
-        return createDataSecurityGroup({ title, description, field, headerSuffix });
+    function createServerSection(title, description, field, headerSuffix, searchAliases) {
+        return createDataSecurityGroup({ title, description, field, headerSuffix, searchAliases });
     }
 
     /** A note under the rows of a group. The element takes the text, tone and `hidden` of `setServerAdminMessage`. */
@@ -1553,7 +1553,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const column = createElement('div', { className: 'sb-shell-column sb-server-column' });
 
         const statusPill = createElement('span', { className: 'sb-server-pill', text: 'Checking…' });
-        const statusSection = createServerSection('App Status', 'Review the current runtime, branch, commit, and whether this workspace can update safely.', 'app-status', statusPill);
+        const statusSection = createServerSection('App Status', 'Review the current runtime, branch, commit, and whether this workspace can update safely.', 'app-status', statusPill, ['Server Tools']);
         const statusNote = createServerStatusRow();
         // SillyBunny: migration link for non-Git copies; the target is a placeholder until the bootstrap installer ships.
         const installLink = createServerStatusRow();

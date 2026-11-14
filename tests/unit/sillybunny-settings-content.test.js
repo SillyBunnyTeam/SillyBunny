@@ -329,3 +329,34 @@ describe('flattening settings drawers', () => {
         expect(levelOf(inner)).toEqual({ flat: true, top: false });
     });
 });
+
+describe('Search aliases of regrouped settings', () => {
+    let previousCSS;
+    beforeAll(() => {
+        previousCSS = globalThis.CSS;
+        globalThis.CSS = { ...previousCSS, escape: value => String(value) };
+    });
+    afterAll(() => {
+        globalThis.CSS = previousCSS;
+    });
+
+    const aliasesOf = (container, selector) => container.querySelector(selector)?.getAttribute('data-sb-search-aliases') ?? null;
+
+    test('a group keeps the name it had before as a pipe-separated alias', () => {
+        const { messages, interface: interfacePage } = splitAuthoredSettings();
+        for (const id of ['swipes', 'auto-swipe', 'auto-continue']) {
+            expect(aliasesOf(messages, `[data-sb-category="${id}"]`)).toBe('Swipes and Continue');
+        }
+        expect(aliasesOf(interfacePage, '[data-sb-category="stscript"]')).toBe('Parser Flags');
+    });
+
+    test('a group that the page builds at run time carries its alias in the order', () => {
+        const entry = SB_SETTINGS_SECTION_ORDER.interface.entries.find(item => item.id === 'desktop');
+        expect(entry.searchAliases).toEqual(['Desktop Navigation']);
+    });
+
+    test('a group without a former name has no alias attribute', () => {
+        const { messages } = splitAuthoredSettings();
+        expect(aliasesOf(messages, '[data-sb-category="smooth-streaming"]')).toBeNull();
+    });
+});

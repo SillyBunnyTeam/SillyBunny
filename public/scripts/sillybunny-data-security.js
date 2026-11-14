@@ -30,11 +30,13 @@ const textOf = node => node?.textContent.trim() ?? '';
  * @param {string} [options.id]
  * @param {Node} [options.headerSuffix]
  * @param {boolean} [options.translated=false]  Marks the title and description with their translation keys.
+ * @param {string[]} [options.searchAliases]  The names the group had before, which the settings search finds it by.
  */
-export function createDataSecurityGroup({ title, description, field, id, headerSuffix, translated = false }) {
+export function createDataSecurityGroup({ title, description, field, id, headerSuffix, translated = false, searchAliases = [] }) {
     const group = createPrefGroup({ title, subtitle: description, field, id, headerSuffix });
     group.section.classList.add(GROUP_CLASS);
     group.section.dataset.sbPresentation = 'manual';
+    if (searchAliases.length) group.section.setAttribute('data-sb-search-aliases', searchAliases.join('|'));
     if (translated) {
         group.section.querySelector('.ds-pref-group-heading').dataset.i18n = title;
         group.section.querySelector('.ds-pref-group-subtitle').dataset.i18n = description;
@@ -174,7 +176,10 @@ export function presentDataSecurity(container) {
  * @returns {object}  The `section`, the boxed `card`, and the controls the importer reads.
  */
 export function buildImportGroup() {
-    const group = createDataSecurityGroup({ title: 'Import & Restore', description: IMPORT_DESCRIPTION, field: 'import', id: 'SillyTavernImportSection' });
+    const group = createDataSecurityGroup({
+        title: 'Import & Restore', description: IMPORT_DESCRIPTION, field: 'import', id: 'SillyTavernImportSection',
+        searchAliases: ['Import Your SillyTavern Setup'],
+    });
     group.group.id = 'sb-import-card';
 
     const pathInput = element('input', '');

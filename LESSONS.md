@@ -679,6 +679,21 @@ This is the largest class by a wide margin.
   - The clear button shows through `:has(> input:placeholder-shown)`, so the component gives an input without a placeholder a single space as one; a value cleared by a script hides the button too.
 - **Tests:** `tests/unit/sillybunny-search-entry.test.js`; `tests/foundation/shared-ui.e2e.js` (search entries).
 
+### Settings sidebar search
+
+- **Breaks:** the old filter matched a page by substring or initials and kept a page only when a heading matched, so `Frequency` found nothing inside a card and `cl` found Console Logs; and a page that was kept showed every row.
+- **Files:** `public/scripts/sillybunny-settings-search.js` (matcher, row filter, marks, `createSidebarSearch`); the adapter in `public/scripts/sillybunny-tabs.js` (`createSettingsSearchAdapter`, `getSettingsSearchRoots`, `filterSettingsSidebarTabs`); `.sb-settings-tab-badge`, `.sb-settings-row--filtered` and `::highlight(sb-settings-search-text)` in `public/css/sillybunny-tabs.css`.
+- **Guards:**
+  - The module loads on demand through `createDeferredModule`, and opening the search field preloads it, so it adds nothing to startup (`tests/frontend-performance.e2e.js`).
+  - A token matches only as a whole word, except that a token that starts or ends with a symbol needs no boundary on that side. A partial word, a plural and initials match nothing.
+  - A row is one child of a top-level `.ds-pref-group` or `.sb-settings-category-body`. It matches when every token is a word of its own text or of its group's title, description or `data-sb-search-aliases`, which is how a group keeps the name it had before a regrouping. Put the alias on the group, never on the page tab.
+  - Closed expander and sampler help stay in the row's text, and a match that is only in closed content opens it (`revealClosedMatches`). A row that matches but is not shown (another backend, another device) is not counted and not touched.
+  - Rows are hidden by `.sb-settings-row--filtered` and `aria-hidden`, by three repeated classes under `#sb-settings-page` so that no `!important` is needed. `restoreFilteredRows()` runs before each analysis and on clear, so a clear is one synchronous pass. Only the open page is filtered; all pages are counted. Two `MutationObserver`s and a `change` listener on the backend pickers re-run the pass when rows come or go.
+  - The `.sb-mobile-quick-actions-group` is not searched, so a filter hides it like any group with no match.
+  - The Characters pages are only marked and counted; rows are hidden only inside `.sb-wi-settings` and `.sb-persona-settings`, and a lazily mounted panel is indexed once it exists.
+  - The reveal waits until the page is shown, and a phone shows the page only after its tab is pressed, so the pulse and scroll run on activation.
+- **Tests:** `tests/unit/sillybunny-settings-search.test.js`; `tests/sillybunny-settings-search.e2e.js` (clear timing, highlight, reduced motion, aliases, both shells, 1440×900 and 390×844); the alias cases in `tests/unit/sillybunny-settings-content.test.js`; `tests/sillybunny-backend-settings.e2e.js` (page aliases).
+
 ### Select rows and the shared picker
 
 - **Breaks:** a select row that replaces select2 loses what select2 showed or did: the details of a model, the placeholder of an empty select, the removal of a saved option that is no longer offered.

@@ -3151,11 +3151,13 @@ export function fuzzySearchPersonas(data, searchValue, fuzzySearchCaches = null)
     const mappedData = data.map(x => ({
         key: x,
         name: power_user.personas[x] ?? '',
+        title: power_user.persona_descriptions[x]?.title ?? '', // SillyBunny: the persona list search also matches the title shown on the card.
         description: power_user.persona_descriptions[x]?.description ?? '',
     }));
 
     const keys = [
         { name: 'name', weight: 20 },
+        { name: 'title', weight: 10 }, // SillyBunny: see the title field above.
         { name: 'description', weight: 3 },
     ];
 
