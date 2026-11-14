@@ -1318,11 +1318,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Settings, persona state, presets, and prompt context. |
 | Divergence reason | SillyBunny adds shell settings, scoped persona behavior, preset synchronization, and character/group Author's Notes while preserving upstream persisted formats. |
 | Target seam | `public/scripts/sillybunny-tabs.js`, `public/scripts/sillybunny-conversation/`, `public/scripts/preset-api-sync-lifecycle/`, and `public/scripts/authors-note.js`. |
-| Adapter shape | Keep upstream settings/preset/persona APIs authoritative; isolate fork state transitions in the named seams and preserve legacy keys. |
-| Protecting tests | `tests/persona-avatar-source-sync.test.js`, `tests/sillybunny-conversation-persona-runtime.test.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-save-deleted-default.test.js`, `tests/openai-preset-utils.test.js`. |
+| Adapter shape | Keep upstream settings/preset/persona APIs authoritative; isolate fork state transitions in the named seams and preserve legacy keys. `fuzzySearchPersonas()` in `power-user.js` also searches `persona_descriptions[x].title` (weight 10), under a `SillyBunny:` marker. |
+| Protecting tests | `tests/persona-avatar-source-sync.test.js`, `tests/sillybunny-conversation-persona-runtime.test.js`, `tests/preset-api-sync-lifecycle.test.js`, `tests/preset-save-deleted-default.test.js`, `tests/openai-preset-utils.test.js`, `tests/sillybunny-settings-search.e2e.js` (persona title). |
 | Validation | Focused unit tests, `node --check` on each file, `npm run lint`. |
 | Rollback path | Revert fork settings and scoped-state adapters without changing upstream preset, persona, or character data schemas. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Last reviewed | 2026-11-14, UI polish sweep (task 4.14: the persona title in persona search). |
 | Owner | Settings and conversation integrator. |
 
 ### Content/default management and server initialization
