@@ -99,25 +99,44 @@ describe('Data & Security groups', () => {
             expect(general.contains(node)).toBe(true);
         }
         expect(general.contains(usageButton)).toBe(true);
-        for (const id of ['UI-language-block', 'account_controls', 'user_stats_controls', 'user-settings-utility-actions']) {
+        for (const id of ['UI-language-block', 'user-settings-utility-actions']) {
             expect(container.querySelectorAll(`#${id}`)).toHaveLength(1);
             expect(general.querySelector(`#${id}`)).not.toBeNull();
         }
     });
 
-    test('Language, Usage Stats and Version keep their translation keys and the copy of the upstream rows', () => {
+    test('Account, Admin Panel, Usage Stats and Logout are the upstream buttons as button rows titled with the action', () => {
+        const container = authoredContainer();
+        const usageButton = container.querySelector('.user_stats_button');
+        const nodes = Object.fromEntries(['account_button', 'admin_button', 'logout_button'].map(id => [id, container.querySelector(`#${id}`)]));
+        presentDataSecurity(container);
+        const general = container.querySelector('[data-sb-category="general"] > .ds-pref-group');
+        const rows = [
+            [nodes.account_button, 'Account', true],
+            [nodes.admin_button, 'Admin Panel', true],
+            [usageButton, 'Usage Stats', true],
+            [nodes.logout_button, 'Logout', false],
+        ];
+        for (const [button, title, arrow] of rows) {
+            expect(button.parentElement).toBe(general);
+            expect(button.matches('.ds-row.ds-button-row')).toBe(true);
+            expect(button.classList.contains('menu_button')).toBe(false);
+            expect(button.querySelector('.ds-row-label').textContent).toBe(title);
+            expect(button.querySelector('.ds-row-label').dataset.i18n).toBe(title);
+            expect(button.hasAttribute('data-i18n')).toBe(false);
+            expect(button.querySelector('.ds-row-subtitle')).toBeNull();
+            expect(button.querySelector('.ds-row__chevron') !== null).toBe(arrow);
+        }
+        expect(usageButton.type).toBe('button');
+        for (const id of ['account_controls', 'user_stats_controls']) expect(container.querySelector(`#${id}`)).toBeNull();
+    });
+
+    test('Language and Version keep their translation keys and the copy of the upstream rows', () => {
         const container = authoredContainer();
         presentDataSecurity(container);
         expect(container.querySelector('#UI-language-block .ds-row-label').dataset.i18n).toBe('UI Language');
         expect(container.querySelector('#UI-language-block .ds-row-label').textContent).toBe('Language');
         expect(container.querySelector('#UI-language-block .ds-row-subtitle').textContent).toBe('Choose which language is used for menus and settings.');
-        const subtitle = container.querySelector('#user_stats_controls .ds-row-subtitle');
-        expect(subtitle.textContent).toBe(SETTINGS_COPY.usageStatsSubtitle);
-        expect(subtitle.dataset.i18n).toBe(SETTINGS_COPY.usageStatsSubtitle);
-        expect(container.querySelector('#user_stats_controls .ds-row-label').dataset.i18n).toBe('Usage Stats');
-        const button = container.querySelector('#user_stats_controls .ds-row-suffix > button.user_stats_button');
-        expect(button.type).toBe('button');
-        expect(button.dataset.i18n).toBe('Usage Stats');
         expect(container.querySelector('#version_display').closest('.ds-row-property').querySelector('.ds-row-subtitle').dataset.i18n).toBe('Version');
     });
 
@@ -132,39 +151,36 @@ describe('Data & Security groups', () => {
         expect(input.hasAttribute('aria-labelledby')).toBe(false);
     });
 
-    test('Admin Panel and Logout rows follow the display of their buttons', async () => {
+    test('Admin Panel and Logout stay hidden by the display that user.js writes on their buttons', () => {
         const container = authoredContainer();
-        // user.js hides both buttons with jQuery, which writes the inline display.
+        // user.js hides both buttons with jQuery, which writes the inline display; the button is the row.
         for (const id of ['admin_button', 'logout_button']) container.querySelector(`#${id}`).style.display = 'none';
         presentDataSecurity(container);
-        const flush = () => new Promise(resolve => setTimeout(resolve, 0));
         for (const id of ['admin_button', 'logout_button']) {
             const button = container.querySelector(`#${id}`);
-            const row = button.closest('.ds-row');
-            expect(row.style.display).toBe('none');
+            expect(button.matches('.ds-row')).toBe(true);
+            expect(button.style.display).toBe('none');
             button.style.display = '';
-            await flush();
-            expect(row.style.display).toBe('');
-            button.style.display = 'none';
-            await flush();
-            expect(row.style.display).toBe('none');
+            expect(button.style.display).toBe('');
         }
     });
 
     test.each([
-        ['user_backup_controls', 'user_backup_button', 'Download Backup', 'Download a complete backup of your user data.'],
-        ['settings_snapshots_controls', 'settings_snapshots_button', 'Settings Snapshots', 'Manage your settings snapshots.'],
-    ])('Export row %s reuses the upstream strings', (rowId, buttonId, label, subtitle) => {
+        ['user_backup_button', 'Download Backup', false],
+        ['settings_snapshots_button', 'Settings Snapshots', true],
+    ])('Export row %s is the upstream button as a button row', (buttonId, label, arrow) => {
         const container = authoredContainer();
         const upstreamButton = container.querySelector(`#${buttonId}`);
         presentDataSecurity(container);
-        const row = container.querySelector(`[data-sb-category="export"] #${rowId}`);
-        expect(row.querySelector('.ds-row-label').dataset.i18n).toBe(label);
-        expect(row.querySelector('.ds-row-subtitle').dataset.i18n).toBe(subtitle);
-        const button = row.querySelector(`.ds-row-suffix > button#${buttonId}`);
+        const button = container.querySelector(`[data-sb-category="export"] > .ds-pref-group > button#${buttonId}`);
         expect(button).toBe(upstreamButton);
         expect(button.type).toBe('button');
+        expect(button.matches('.ds-row.ds-button-row')).toBe(true);
+        expect(button.querySelector('.ds-row-label').dataset.i18n).toBe(label);
         expect(button.textContent).toBe(label);
+        expect(button.querySelector('.ds-row-subtitle')).toBeNull();
+        expect(button.querySelector('.ds-row__chevron') !== null).toBe(arrow);
+        expect(container.querySelector(`#${buttonId.replace('_button', '_controls')}`)).toBeNull();
     });
 
     test('Export has its written description, translated like its siblings', () => {

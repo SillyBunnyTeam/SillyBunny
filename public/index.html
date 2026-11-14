@@ -68,7 +68,7 @@
     <!-- SillyBunny: the mobile surface stylesheet cache key tracks its fork-owned responsive rules. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261112t" media="(max-width: 768px)">
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261115c">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261115d">
     <!-- SillyBunny: entity lists and tag filters load after startup; the group editor activates them on open. -->
     <link rel="preload" as="style" href="css/sillybunny-entity-list.css?v=20261112o" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: the Characters/Groups list activates this deferred stylesheet on first mount. Keep this version aligned with the runtime loader URLs. -->
@@ -5795,14 +5795,15 @@
                                     Exclude 'Thinking...'
                                 </small>
                             </label>
+                            <!-- SillyBunny: the slider is titled by what it sets; its group already says Smooth Streaming. -->
                             <div id="smooth_streaming_speed_control" class="ds-row ds-row-slider">
                                 <div class="ds-row-text">
-                                    <label class="ds-row-label" for="smooth_streaming_speed" data-i18n="Smooth Streaming">Smooth Streaming</label>
+                                    <label class="ds-row-label" for="smooth_streaming_speed" data-i18n="Speed">Speed</label>
                                     <small class="ds-row-subtitle" data-i18n="Set how quickly text appears when Smooth Streaming is enabled. Higher values display text faster.">Set how quickly text appears when Smooth Streaming is enabled. Higher values display text faster.</small>
                                 </div>
                                 <div class="ds-row-suffix">
                                     <input type="range" id="smooth_streaming_speed" name="smooth_streaming_speed" min="0" max="100" step="10" value="50">
-                                    <input class="neo-range-input" type="number" id="smooth_streaming_speed_counter" data-for="smooth_streaming_speed" min="0" max="100" step="10" value="50" aria-label="Smooth Streaming">
+                                    <input class="neo-range-input" type="number" id="smooth_streaming_speed_counter" data-for="smooth_streaming_speed" min="0" max="100" step="10" value="50" aria-label="Speed">
                                 </div>
                             </div>
                             <label class="checkbox_label" for="stream_fade_in" title="Fade in streamed text when it appears, instead of it just popping in." data-i18n="[title]Fade in streamed text when it appears, instead of it just popping in">

@@ -952,6 +952,9 @@ function ensureDescription(section, heading, promoteTooltip) {
     }
     if (findDescription(header) !== null) return null;
 
+    // A group built to have no description is not missing copy.
+    if (section.dataset.sbDescription === 'none') return null;
+
     const existingCaption = header.nextElementSibling;
     if (promoteTooltip && existingCaption instanceof HTMLElement && existingCaption.matches('.sb-theme-slider-caption') && existingCaption.textContent.trim()) {
         getDescriptionHost(header, getTitleElement(header)).appendChild(existingCaption);

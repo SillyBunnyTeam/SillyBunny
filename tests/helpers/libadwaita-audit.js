@@ -197,13 +197,14 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
             // layout (narrow viewport stacking). The suffix sits below the label there
             // and the delta is always large; centering is not the intended constraint.
             const isColumnRow = getComputedStyle(row).flexDirection === 'column';
+            const textBottom = row.querySelector(':scope > .ds-row-text')?.getBoundingClientRect().bottom ?? Infinity;
             for (const control of verticalControls) {
                 if (isColumnRow) continue;
                 const controlRect = control.getBoundingClientRect();
-                // Skip controls that have wrapped below the row (column / wrap layout at
-                // narrow viewports). In that layout midpointDelta is always large and
-                // centering is not meaningful.
-                if (controlRect.top > rect.bottom - 2) continue;
+                // Skip controls that have wrapped below the row or under its text (column / wrap
+                // layout at narrow viewports: the control moves under the title when the two do not
+                // fit). In that layout midpointDelta is always large and centering is not meaningful.
+                if (controlRect.top > rect.bottom - 2 || controlRect.top >= textBottom - 2) continue;
                 const midpointDelta = (controlRect.top + controlRect.height / 2) - (rect.top + rect.height / 2);
                 addRecord(control, 'row-geometry', { midpointDelta, tolerance: 2 }, Math.abs(midpointDelta) <= 2);
             }

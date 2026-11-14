@@ -716,20 +716,20 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261114t', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261114q', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261114t', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
-        { href: 'css/sillybunny-editor-shell.css?v=20261114t', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261114q', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-world-info-editor.css?v=20261114t', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
-        { href: 'css/sillybunny-editor-shell.css?v=20261114t', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261114q', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261113t', id: 'deferred-persona-editor-css' },
@@ -748,7 +748,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-character-list.css?v=20261114e', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261114t', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261112m', id: 'deferred-character-import-css' },
     ],
@@ -760,7 +760,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
     'right:data-security': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261114t', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
     ],
 });
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';
@@ -1238,7 +1238,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Configure message display, actions, swipes, and interaction preferences.',
                 searchPlaceholder: 'Search message actions, swipes, auto-scroll, or display',
                 searchExamples: ['swipes', 'message actions', 'auto-scroll'],
-                searchAliases: ['chat', 'message display', 'sending', 'character handling'],
+                searchAliases: ['chat', 'message display', 'sending', 'character handling', 'Swipes and Continue'],
             },
             {
                 id: 'data-security',

@@ -5,7 +5,7 @@ import { askLeaveEditor } from './leave-dialog.js';
 
 const DEFAULT_COLLAPSE_AT = 720;
 
-export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261114t', id: 'deferred-editor-shell-css' };
+export const LIST_EDITOR_STYLESHEET = { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' };
 /** The header, action, field and section rules that every explicit-save editor shares. index.html preloads it. */
 export const EDITOR_CHROME_STYLESHEET = { href: 'css/sillybunny-character-editor.css?v=20261114q', id: 'deferred-editor-chrome-css' };
 

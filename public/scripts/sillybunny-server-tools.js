@@ -1565,7 +1565,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         installLink.hidden = true;
         statusSection.append(statusNote, installLink);
 
-        const updateSection = createServerSection('Updates & Restart', 'Check upstream status, update the app, and relaunch automatically when it is safe to do so.', 'updates-restart');
+        const updateSection = createServerSection('Updates & Restart', t`Updates use Git and only run when the repository can fast-forward cleanly.`, 'updates-restart');
         const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull', 'aria-label': 'Auto-stash local changes before pulling' } });
         const autoStashRow = createSwitchRow({ label: 'Auto-stash local changes before pulling', field: 'auto-stash', input: autoStashCheckbox });
         const refreshButton = createServerButtonRow('Check for updates', 'check-for-updates', () => refreshServerAdminPanel({ includeConfig: false }));
@@ -1594,6 +1594,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const mobileBgSize = createThumbnailSizeRow('Mobile background', 'mobile-bg');
         const mobileAvatarSize = createThumbnailSizeRow('Mobile character', 'mobile-avatar');
         const mobilePersonaSize = createThumbnailSizeRow('Mobile persona', 'mobile-persona');
+        const actionsSection = createServerSection(t`TODO(copy)`, undefined, 'thumbnail-actions');
+        actionsSection.section.querySelector('.ds-pref-group-heading').dataset.sbCopyPlaceholder = 'true';
         const thumbnailUseRecommendedButton = createServerButtonRow('Use desktop recommended', 'thumbnail-use-recommended', handleUseRecommendedThumbnailSettings);
         const thumbnailUseRecommendedMobileButton = createServerButtonRow('Use mobile recommended', 'thumbnail-use-recommended-mobile', handleUseRecommendedMobileThumbnailSettings);
         const thumbnailSaveButton = createServerButtonRow('Save thumbnails', 'thumbnail-save', () => handleServerThumbnailSave({ clearCache: false }));
@@ -1604,6 +1606,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         mobileSection.append(
             thumbnailMobileEnabledRow, thumbnailMobileFormatRow, thumbnailMobileQualityRow,
             mobileBgSize, mobileAvatarSize, mobilePersonaSize,
+        );
+        actionsSection.append(
             thumbnailUseRecommendedButton, thumbnailUseRecommendedMobileButton,
             thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton,
             thumbnailNote,
@@ -1630,7 +1634,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const configNote = createServerStatusRow('Most config changes only take effect after a restart.');
         configSection.append(configField, reloadConfigButton, saveConfigButton, saveConfigRestartButton, configNote);
 
-        column.append(statusSection.section, updateSection.section, thumbnailSection.section, mobileSection.section, configSection.section);
+        column.append(statusSection.section, updateSection.section, thumbnailSection.section, mobileSection.section, actionsSection.section, configSection.section);
         scroller.appendChild(column);
 
         const state = getServerAdminState();

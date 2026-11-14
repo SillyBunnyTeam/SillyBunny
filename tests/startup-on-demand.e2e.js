@@ -158,8 +158,7 @@ test('Data & Security opens Usage Stats', async ({ page }) => {
     }));
     await openApp(page);
     await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
-    const row = page.locator('[data-sb-panel="data-security"] #user_stats_controls');
-    await row.getByRole('button', { name: 'Usage Stats', exact: true }).click();
+    await page.locator('[data-sb-panel="data-security"]').getByRole('button', { name: 'Usage Stats', exact: true }).click();
     const stats = page.locator('dialog[open] .rm_stat_block');
     await expect(stats.filter({ hasText: 'User Messages' })).toContainText('4');
     await expect(stats.filter({ hasText: 'Character Messages' })).toContainText('7');

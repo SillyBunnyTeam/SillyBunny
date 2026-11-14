@@ -1736,6 +1736,57 @@ describe('createButtonRow', () => {
         const { row } = createButtonRow({ label: 'Apply', field: 'apply' });
         expect(row.querySelector('i')).toBeNull();
         expect(row.classList.contains('is-destructive')).toBe(false);
+        expect(row.classList.contains('ds-button-row--arrow')).toBe(false);
+        expect(row.querySelector('.ds-row__chevron')).toBeNull();
+    });
+
+    test('ends with a decorative arrow when it opens a window', () => {
+        const { row } = createButtonRow({ label: 'Account', field: 'account', arrow: true });
+        expect(row.classList.contains('ds-button-row--arrow')).toBe(true);
+        expect(row.lastChild.matches('i.ds-row__chevron')).toBe(true);
+        expect(row.lastChild.getAttribute('aria-hidden')).toBe('true');
+        expect(row.querySelector('.ds-row-label').textContent).toBe('Account');
+    });
+
+    describe('adopting an upstream button', () => {
+        test('a native button is the row, with its id and handler, and its caption key moves to the title', () => {
+            document.body.innerHTML = '<button id="backup" type="button" class="margin0 menu_button menu_button_icon" data-i18n="Download Backup">Download Backup</button>';
+            const button = document.getElementById('backup');
+            const handler = jest.fn();
+            button.addEventListener('click', handler);
+            const result = createButtonRow({ label: 'Download Backup', field: 'download-backup', button });
+            expect(result.row).toBe(button);
+            expect(document.getElementById('backup')).toBe(button);
+            expect(button.className).toBe('ds-row ds-button-row');
+            expect(button.hasAttribute('data-i18n')).toBe(false);
+            expect(button.dataset.sbEditorField).toBe('download-backup');
+            expect(button.querySelector('.ds-row-label').dataset.i18n).toBe('Download Backup');
+            expect(button.textContent).toBe('Download Backup');
+            button.click();
+            expect(handler).toHaveBeenCalledTimes(1);
+            result.setDisabled(true);
+            expect(button.disabled).toBe(true);
+        });
+
+        test('another element gets the button role, a tab stop and Enter and Space, and keeps its inline display', () => {
+            document.body.innerHTML = '<div id="logout" class="margin0 menu_button" style="display: none"><i class="fa-solid fa-right-from-bracket"></i><span data-i18n="Logout">Logout</span></div>';
+            const node = document.getElementById('logout');
+            const handler = jest.fn();
+            node.addEventListener('click', handler);
+            const result = createButtonRow({ label: 'Logout', field: 'logout', button: node });
+            expect(result.row).toBe(node);
+            expect(node.getAttribute('role')).toBe('button');
+            expect(node.tabIndex).toBe(0);
+            expect(node.style.display).toBe('none');
+            expect(node.querySelector('i')).toBeNull();
+            expect(node.querySelector('.ds-row-label').dataset.i18n).toBe('Logout');
+            node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            node.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+            node.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true }));
+            expect(handler).toHaveBeenCalledTimes(2);
+            result.destroy();
+            expect(document.getElementById('logout')).toBeNull();
+        });
     });
 });
 

@@ -420,7 +420,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             },
             {
                 id: 'swipes',
-                title: 'Swipes and Continue',
+                title: 'Swipes',
                 description: 'Alternative replies and automatic regeneration',
                 rows: [
                     '.checkbox-container:has(#swipes-checkbox)',
@@ -463,7 +463,6 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'smooth-streaming',
                 title: 'Smooth Streaming',
-                description: 'Reveal streamed replies character by character, with pauses at punctuation.',
                 enabledBy: '#smooth_streaming',
                 // One parent and this order: the upstream `~` combinators off `#smooth_streaming_control`
                 // in `toggle-dependent.css` still address the speed and no-think rows.
@@ -631,6 +630,8 @@ function createSettingsCategory(entry, contract = false) {
             description.dataset.i18n = entry.descriptionKey ?? entry.description;
             description.textContent = entry.description;
             heading.appendChild(description);
+        } else if (contract) {
+            category.dataset.sbDescription = 'none';
         }
 
         category.setAttribute('aria-label', entry.title);

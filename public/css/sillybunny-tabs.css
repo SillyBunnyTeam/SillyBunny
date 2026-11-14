@@ -1999,15 +1999,6 @@ body:not(.movingUI) .drawer-content.maximized {
     padding-block: 6px;
 }
 
-/* The two cache buttons do not fit beside the title on a phone; the row stacks them under it, as the wrapping did. */
-@media (max-width: 450px) {
-    #sb-settings-page .sb-settings-mounted-shell .sb-data-security-group .ds-pref-group > .ds-row.ds-row-actions {
-        flex-direction: column;
-        flex-wrap: nowrap;
-        align-items: stretch;
-    }
-}
-
 .sb-import-file-input {
     display: none;
 }

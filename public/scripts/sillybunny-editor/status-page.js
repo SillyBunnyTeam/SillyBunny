@@ -7,7 +7,7 @@ export const STATUS_PAGE_LOADING_DELAY = 200;
 const DEFAULT_ICONS = Object.freeze({ 'empty': 'inbox', 'no-results': 'magnifying-glass', 'error': 'triangle-exclamation', 'unavailable': 'ban' });
 
 // The page's rules live in the deferred editor shell sheet. This key matches the `LIST_EDITOR_STYLESHEET` call sites.
-const STYLESHEET = Object.freeze({ href: 'css/sillybunny-editor-shell.css?v=20261114t', id: 'deferred-editor-shell-css' });
+const STYLESHEET = Object.freeze({ href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' });
 
 let pageCount = 0;
 

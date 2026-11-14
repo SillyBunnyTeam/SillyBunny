@@ -445,6 +445,40 @@ test.describe('Settings header consistency', () => {
         expect(titles.filter(title => /[:：]$/.test(title)), 'row titles that still end in a colon').toEqual([]);
     });
 
+    test('Messages titles its swipes group Swipes, leaves Smooth Streaming without a description and names the slider Speed', async ({ page }) => {
+        const messages = await openSettingsTab(page, 'messages', 'right');
+        await expect(messages.locator('[data-sb-category="swipes"] .sb-settings-category-title')).toHaveText('Swipes');
+        const smooth = messages.locator('[data-sb-category="smooth-streaming"]');
+        await expect(smooth.locator('.sb-settings-category-title')).toHaveText('Smooth Streaming');
+        await expect(smooth.locator('.sb-settings-category-heading small')).toHaveCount(0);
+        await expect(smooth.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
+        await expect(smooth.locator('#smooth_streaming_speed_control .ds-row-label')).toHaveText('Speed');
+        await expect(smooth.locator('#smooth_streaming_speed_counter')).toHaveAccessibleName('Speed');
+    });
+
+    test('Data & Security opens windows and acts in place from button rows titled with the action', async ({ page }) => {
+        const dataSecurity = await openSettingsTab(page, 'data-security', 'right');
+        for (const [selector, title, arrow] of [
+            ['#account_button', 'Account', true],
+            ['.user_stats_button', 'Usage Stats', true],
+            ['#user_backup_button', 'Download Backup', false],
+            ['#settings_snapshots_button', 'Settings Snapshots', true],
+        ]) {
+            const row = dataSecurity.locator(`${selector}.ds-button-row`);
+            await expect(row, title).toBeVisible();
+            await expect(row.locator('.ds-row-label'), title).toHaveText(title);
+            await expect(row.locator('.ds-row__chevron'), `${title} arrow`).toHaveCount(arrow ? 1 : 0);
+            await expect(row.locator('.ds-row-subtitle'), `${title} subtitle`).toHaveCount(0);
+        }
+        await expect(dataSecurity.locator('[data-sb-editor-field="updates-restart"] .ds-pref-group-subtitle'))
+            .toHaveText('Updates use Git and only run when the repository can fast-forward cleanly.');
+        const actions = dataSecurity.locator('[data-sb-editor-field="thumbnail-actions"]');
+        await expect(actions.locator('.ds-pref-group-heading')).toHaveText('TODO(copy)');
+        await expect(actions.locator('.ds-pref-group-heading')).toHaveAttribute('data-sb-copy-placeholder', 'true');
+        await expect(actions.locator('.ds-pref-group-subtitle')).toHaveCount(0);
+        await expect(actions.locator('.ds-button-row')).toHaveText(['Use desktop recommended', 'Use mobile recommended', 'Save thumbnails', 'Save & Clear Cache', 'Clear cache only']);
+    });
+
     test('Appearance and Formatting keep migrated groups flat and aligned', async ({ page }) => {
         const appearance = await openSettingsTab(page, 'appearance', 'right');
         const appearanceMetrics = await appearance.evaluate(root => {

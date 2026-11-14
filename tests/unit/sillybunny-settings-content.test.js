@@ -86,6 +86,22 @@ describe('Messages settings groups', () => {
         expect(first.contains(body.querySelector(enabler))).toBe(true);
     });
 
+    test('the swipes group is titled Swipes, and Smooth Streaming has no description of its own', () => {
+        const { messages } = splitAuthoredSettings();
+        const heading = id => messages.querySelector(`[data-sb-category="${id}"] .sb-settings-category-heading`);
+        expect(heading('swipes').querySelector('.sb-settings-category-title').textContent).toBe('Swipes');
+        expect(heading('swipes').querySelector('.sb-settings-category-title').dataset.i18n).toBe('Swipes');
+        expect(heading('smooth-streaming').querySelector('.sb-settings-category-title').textContent).toBe('Smooth Streaming');
+        expect(heading('smooth-streaming').querySelector('small')).toBeNull();
+    });
+
+    test('the Smooth Streaming slider is titled Speed', () => {
+        const row = splitAuthoredSettings().messages.querySelector('#smooth_streaming_speed_control');
+        expect(row.querySelector('.ds-row-label').textContent).toBe('Speed');
+        expect(row.querySelector('.ds-row-label').dataset.i18n).toBe('Speed');
+        expect(row.querySelector('#smooth_streaming_speed_counter').getAttribute('aria-label')).toBe('Speed');
+    });
+
     test('Aggressive DOM Unloading is enabled by its own switch', () => {
         const group = splitAuthoredSettings().messages.querySelector('[name="AggressiveDomUnloadToggles"]');
         expect(group.dataset.sbEnabledBy).toBe('#aggressive_dom_unload');

@@ -933,6 +933,36 @@ export function adoptExpanderRow(row, { open = false, onToggle } = {}) {
     return { row, toggle, content, ...bindExpander({ row, toggle, content, open, onToggle }) };
 }
 
+// Classes that dress a control as a stand-alone button; on a row they would restyle it.
+const BUTTON_CLASSES = Object.freeze(['menu_button', 'menu_button_icon', 'margin0']);
+
+/**
+ * Turns an upstream button into the row. A node that is not a `<button>` gets the button role, a tab stop and Enter and
+ * Space. The translation key of its caption moves to the label, because a key on the button itself would rewrite the row.
+ * @returns {{ cleanup: () => void, i18n: string|undefined }}
+ */
+function adoptButtonNode(node) {
+    const key = node.dataset.i18n ?? node.querySelector('[data-i18n]')?.dataset.i18n;
+    delete node.dataset.i18n;
+    node.classList.remove(...BUTTON_CLASSES);
+    node.classList.add('ds-row', 'ds-button-row');
+    node.replaceChildren();
+    const i18n = key && !key.startsWith('[') ? key : undefined;
+    if (node.localName === 'button') {
+        node.type = 'button';
+        return { cleanup: () => {}, i18n };
+    }
+    node.setAttribute('role', 'button');
+    if (!node.hasAttribute('tabindex')) node.tabIndex = 0;
+    const keydown = event => {
+        if (event.target !== node || !['Enter', ' '].includes(event.key)) return;
+        event.preventDefault();
+        node.click();
+    };
+    node.addEventListener('keydown', keydown);
+    return { cleanup: () => node.removeEventListener('keydown', keydown), i18n };
+}
+
 /**
  * @param {object} options
  * @param {string} options.label
@@ -940,22 +970,35 @@ export function adoptExpanderRow(row, { open = false, onToggle } = {}) {
  * @param {string} [options.id]
  * @param {string} [options.icon] Font Awesome icon name without the fa- prefix.
  * @param {boolean} [options.danger=false]
+ * @param {boolean} [options.arrow=false]  A trailing arrow, for a row that opens a window or a new view.
+ * @param {HTMLElement} [options.button]  An upstream button that becomes the row, with its id, handlers and visibility.
  * @param {(event: MouseEvent) => void} [options.onActivate]
  * @returns {object}
  */
-export function createButtonRow({ label, icon, field, id, danger = false, onActivate }) {
-    const row = element('button', 'ds-row ds-button-row');
+export function createButtonRow({ label, icon, field, id, danger = false, arrow = false, button, onActivate }) {
+    const row = button ?? element('button', 'ds-row ds-button-row');
+    const adopted = button ? adoptButtonNode(row) : null;
     markField(row, field, id);
-    row.type = 'button';
+    if (adopted && row.id) reserveId(row);
+    if (!button) row.type = 'button';
     row.classList.toggle('is-destructive', Boolean(danger));
+    row.classList.toggle('ds-button-row--arrow', Boolean(arrow));
     if (icon) {
         const glyph = element('i', `fa-solid fa-${icon}`);
         glyph.setAttribute('aria-hidden', 'true');
         row.append(glyph);
     }
-    row.append(element('span', 'ds-row-label', label));
+    const title = element('span', 'ds-row-label', label);
+    if (adopted?.i18n) title.dataset.i18n = adopted.i18n;
+    row.append(title);
+    if (arrow) {
+        const glyph = element('i', 'fa-solid fa-chevron-right fa-fw ds-row__chevron');
+        glyph.setAttribute('aria-hidden', 'true');
+        row.append(glyph);
+    }
     row.addEventListener('click', event => onActivate?.(event));
-    return rowController(row, row);
+    const controller = rowController(row, row);
+    return adopted ? { ...controller, destroy() { adopted.cleanup(); controller.destroy(); } } : controller;
 }
 
 /**

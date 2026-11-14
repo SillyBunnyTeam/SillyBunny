@@ -62,21 +62,14 @@ function createRowFrom(oldRow, options) {
     return controller;
 }
 
-/** A row for one upstream button, titled like the button. */
-function createButtonHostRow(button, options) {
-    const caption = button.querySelector('span') ?? button;
-    const controller = createRow({ label: textOf(caption), ...options, suffix: button });
-    if (caption.dataset.i18n) controller.row.querySelector('.ds-row-label').dataset.i18n = caption.dataset.i18n;
-    return controller;
-}
-
-/** jQuery shows and hides the Admin Panel and Logout buttons by their inline `display`; the row follows its button. */
-function followVisibility(button, row) {
-    const sync = () => {
-        row.style.display = button.style.display === 'none' || button.hidden ? 'none' : '';
-    };
-    sync();
-    new MutationObserver(sync).observe(button, { attributes: true, attributeFilter: ['style', 'hidden'] });
+/**
+ * A button row that is the upstream button itself, titled with the action. The node keeps its ID, its handlers and the inline
+ * `display` that `user.js` writes to show and hide it, so the row is hidden exactly when the button is.
+ * @param {HTMLElement} button
+ * @param {object} options  `field`, and `arrow` for a row that opens a window.
+ */
+function adoptButtonRow(button, options) {
+    return createButtonRow({ ...options, label: textOf(button.querySelector('span') ?? button), button });
 }
 
 function presentGeneral(container) {
@@ -93,19 +86,13 @@ function presentGeneral(container) {
         rows.push(row);
     }
 
-    const accountButton = find('#account_button');
-    if (accountButton) rows.push(createRowFrom(find('#account_controls'), { field: 'account', id: 'account_controls', suffix: accountButton }));
-
-    for (const [id, field] of [['#admin_button', 'admin'], ['#logout_button', 'logout']]) {
-        const button = find(id);
-        if (!button) continue;
-        const row = createButtonHostRow(button, { field });
-        followVisibility(button, row.row);
-        rows.push(row);
+    for (const [selector, field, arrow] of [['#account_button', 'account', true], ['#admin_button', 'admin', true], ['#logout_button', 'logout', false]]) {
+        const button = find(selector);
+        if (button) rows.push(adoptButtonRow(button, { field, arrow }));
     }
 
     const usageButton = find('#user_stats_controls .user_stats_button');
-    if (usageButton) rows.push(createRowFrom(find('#user_stats_controls'), { field: 'usage-stats', id: 'user_stats_controls', suffix: usageButton }));
+    if (usageButton) rows.push(adoptButtonRow(usageButton, { field: 'usage-stats', arrow: true }));
 
     const version = find('#version_display');
     if (version) {
@@ -151,13 +138,13 @@ function presentGeneral(container) {
 
 function presentExport(container) {
     const rows = [
-        ['#user_backup_controls', '#user_backup_button', 'download-backup'],
-        ['#settings_snapshots_controls', '#settings_snapshots_button', 'settings-snapshots'],
-    ].flatMap(([rowSelector, buttonSelector, field]) => {
+        ['#user_backup_controls', '#user_backup_button', 'download-backup', false],
+        ['#settings_snapshots_controls', '#settings_snapshots_button', 'settings-snapshots', true],
+    ].flatMap(([rowSelector, buttonSelector, field, arrow]) => {
         const oldRow = container.querySelector(rowSelector);
         const button = container.querySelector(buttonSelector);
         if (!button) return [];
-        const row = createRowFrom(oldRow, { field, id: oldRow?.id || undefined, suffix: button });
+        const row = adoptButtonRow(button, { field, arrow });
         oldRow?.remove();
         return [row];
     });
