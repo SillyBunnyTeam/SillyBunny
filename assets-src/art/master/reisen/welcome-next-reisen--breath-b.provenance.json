@@ -1,7 +1,7 @@
 {
     "format": 1,
     "file": "welcome-next-reisen--breath-b.png",
-    "sha256": "93beaa49430c45284f4b65e4d7e0e94e00a123209de7561ed4b56b1b9764df73",
+    "sha256": "9413d2f4771cb854a87a5a8d7340794d6c1a2743a044f214eb5721794ca2f83b",
     "characters": [
         "reisen"
     ],
@@ -24,10 +24,8 @@
     "steps": [
         "rim-recolour",
         "pixel-snap",
-        "breath-frames",
-        "export-motion"
+        "breath-frames"
     ],
     "handEdits": false,
-    "record": "sha256:e0e30f8fc6af988373dd1e9ae7cde6c2748fec5b6e37b751015363b175d71d48",
-    "incomplete": "Decoded from the shipped file, which export-motion made; export-motion is not in this repository."
+    "record": "sha256:ff477115404c1ef4bd95686a64e00df5a69252f60239d11450fbe604722e56fd"
 }

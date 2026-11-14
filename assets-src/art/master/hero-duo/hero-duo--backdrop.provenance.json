@@ -1,7 +1,7 @@
 {
     "format": 1,
     "file": "hero-duo--backdrop.png",
-    "sha256": "626a24c602f87de84679f91b4094e6bf73d7cff3548a341b0f14a9ea535bbe65",
+    "sha256": "f69d9aa81d2cc2cfb8cf816ed1c2078714fbd306c42aa8e557d7db2ad6401df2",
     "characters": [],
     "licence": "CC-BY-NC-SA-4.0",
     "made": "2026-11-04",
@@ -22,11 +22,9 @@
     "steps": [
         "rim-recolour",
         "pixel-snap",
-        "breath-frames",
         "compose-scene",
-        "export-motion"
+        "breath-frames"
     ],
     "handEdits": false,
-    "record": "sha256:6ff72f32b1fb50dc9bef8563f4f7fcc17f72d72e4b7a31d9ebaae7df8ca1aa3a",
-    "incomplete": "Decoded from the shipped file, which export-motion made; export-motion is not in this repository."
+    "record": "sha256:ce6cfb6d786ae14c219a2c959ad586040c8a53a24af341b2da411d9e45744289"
 }

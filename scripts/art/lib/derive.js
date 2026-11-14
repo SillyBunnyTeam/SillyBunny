@@ -86,7 +86,7 @@ async function deriveStill(context, asset) {
     const frames = new Map();
     for (const [name, frame] of Object.entries(asset.frames ?? {})) {
         const picture = await readMaster(context, frame.master);
-        const box = frame.frame ? frameBox(picture, frame.frame) : base ? baseFrameBox(context, base, baseBox, picture, name) : frameBox(picture, asset.frame);
+        const box = base ? baseFrameBox(context, base, baseBox, picture, name) : frameBox(picture, asset.frame);
         const framed = checkGrid(context, renderFrame(picture, box), asset.grid, `The frame ${name}`);
         frames.set(name, framed);
         files.push(...await encodeOutputs(framed, frame.outputs));
@@ -101,16 +101,16 @@ async function deriveStill(context, asset) {
 }
 
 /**
- * A frame cut with the base's box lines up with the base pixel for pixel, which holds only while the frame's master has
- * the base master's canvas and its figure stands in the same box.
+ * A frame is cut with the base's box, so it lines up with the base pixel for pixel. That holds only while the frame's
+ * master has the base master's canvas, and the cut keeps the whole frame only while its figure lies inside the box.
  */
 function baseFrameBox({ id }, base, baseBox, picture, name) {
     if (picture.width !== base.width || picture.height !== base.height) {
         throw new ArtProblem('frame-size', `The frame ${name} is ${picture.width}x${picture.height}, but the base master is ${base.width}x${base.height}.`, { asset: id });
     }
-    const [one, other] = [opaqueBox(base, SUBJECT_ALPHA), opaqueBox(picture, SUBJECT_ALPHA)];
-    if (['x', 'y', 'width', 'height'].some((key) => one?.[key] !== other?.[key])) {
-        throw new ArtProblem('frame-box', `The figure of the frame ${name} stands in another box than the base's, so it would sit differently on the page.`, { asset: id });
+    const figure = opaqueBox(picture, SUBJECT_ALPHA);
+    if (figure && (figure.x < baseBox.x || figure.y < baseBox.y || figure.x + figure.width > baseBox.x + baseBox.width || figure.y + figure.height > baseBox.y + baseBox.height)) {
+        throw new ArtProblem('frame-box', `The figure of the frame ${name} reaches past the base's box, so the cut would lose part of it.`, { asset: id });
     }
     return baseBox;
 }
@@ -122,11 +122,17 @@ async function deriveScene(context, asset) {
         throw new ArtProblem('scene-ratio', `${id} is a scene at a ratio of ${asset.ratio}; a scene is derived at ratio 1 only.`, { asset: id });
     }
     const base = await readMaster(context, asset.master);
-    const still = checkGrid(context, renderFrame(base, frameBox(base, asset.frame)), asset.grid, 'The scene');
+    const box = frameBox(base, asset.frame);
+    const still = checkGrid(context, renderFrame(base, box), asset.grid, 'The scene');
     const files = await encodeOutputs(still, asset.outputs);
     const composed = createRaster(asset.grid[0], asset.grid[1]);
     if (asset.backdrop) {
-        const backdrop = checkGrid(context, await readMaster(context, asset.backdrop.master), asset.grid, 'The backdrop');
+        // The backdrop is drawn on the scene master's canvas and cut with the still's box, so it lies on the still's pixels.
+        const drawn = await readMaster(context, asset.backdrop.master);
+        if (drawn.width !== base.width || drawn.height !== base.height) {
+            throw new ArtProblem('backdrop-size', `The backdrop is ${drawn.width}x${drawn.height}, but the scene master is ${base.width}x${base.height}.`, { asset: id });
+        }
+        const backdrop = renderFrame(drawn, box);
         files.push(...await encodeOutputs(backdrop, asset.backdrop.outputs));
         paste(composed, backdrop, 0, 0);
     }

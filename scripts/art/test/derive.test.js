@@ -81,25 +81,16 @@ test('a master that does not fit its placement, is translucent or is missing wri
     }
 });
 
-test('a frame is cut with the base box when it shares the base canvas, and by its own frame when it names one', async (t) => {
-    const frames = {
-        blink: { master: 'fig/fig--blink.png', outputs: [{ path: `${SHIP}/fig--blink@native.webp`, encoding: 'webp-lossless', sha256: fakeSha('1') }] },
-        cut: { master: 'fig/fig--cut.png', frame: { mode: 'canvas' }, outputs: [{ path: `${SHIP}/fig--cut@native.webp`, encoding: 'webp-lossless', sha256: fakeSha('2') }] },
-    };
-    const root = await repoWith(t, { fig: stillAsset({ frames }) }, {
-        'fig/fig.png': block(14, 14, [3, 2, 6, 8]),
-        'fig/fig--blink.png': block(14, 14, [3, 2, 6, 8], [90, 40, 40, 255]),
-        'fig/fig--cut.png': block(10, 12, [2, 2, 6, 8], [10, 200, 10, 255]),
-    });
+test('a frame is cut with the base box, may move inside it, and may not reach past it or have another canvas', async (t) => {
+    const frames = { breath: { master: 'fig/fig--breath.png', outputs: [{ path: `${SHIP}/fig--breath@native.webp`, encoding: 'webp-lossless', sha256: fakeSha('1') }] } };
+    const withFrame = (frame) => repoWith(t, { fig: stillAsset({ frames }) }, { 'fig/fig.png': block(14, 14, [3, 2, 6, 8]), 'fig/fig--breath.png': frame });
 
+    const root = await withFrame(block(14, 14, [3, 3, 6, 7], [90, 40, 40, 255]));
     assert.deepEqual(codes(await runDerive({ root, write: true })), []);
-    assert.equal(samePixels(await decode(readFileSync(join(root, SHIP, 'fig--blink@native.webp'))), block(10, 12, [2, 2, 6, 8], [90, 40, 40, 255])), true);
+    assert.equal(samePixels(await decode(readFileSync(join(root, SHIP, 'fig--breath@native.webp'))), block(10, 12, [2, 3, 6, 7], [90, 40, 40, 255])), true);
 
-    const moved = await repoWith(t, { fig: stillAsset({ frames: { blink: frames.blink } }) }, {
-        'fig/fig.png': block(14, 14, [3, 2, 6, 8]),
-        'fig/fig--blink.png': block(14, 14, [4, 2, 6, 8]),
-    });
-    assert.deepEqual(codes(await runDerive({ root: moved })), ['frame-box']);
+    assert.deepEqual(codes(await runDerive({ root: await withFrame(block(14, 14, [6, 2, 6, 8])) })), ['frame-box']);
+    assert.deepEqual(codes(await runDerive({ root: await withFrame(block(10, 12, [2, 2, 6, 8])) })), ['frame-size']);
 });
 
 test('a still with no master of its own repeats a frame, and its motion may name only its own files', async (t) => {
@@ -158,4 +149,33 @@ test('a scene must give its still back from the backdrop and the composing pictu
     assert.deepEqual(codes(await runDerive({ root: stale })), ['composition-mismatch']);
     const tooBig = await repoWith(t, { duo: { ...scene, layers: { fig: { ...scene.layers.fig, box: [6, 1, 3, 4] } } } }, files);
     assert.deepEqual(codes(await runDerive({ root: tooBig })), ['layer-box']);
+    const otherCanvas = await repoWith(t, { duo: scene }, { ...files, 'duo/duo--backdrop.png': paint(8, 7, () => [30, 30, 90, 255]) });
+    assert.deepEqual(codes(await runDerive({ root: otherCanvas })), ['backdrop-size']);
+});
+
+test('a backdrop drawn on the scene master canvas is cut with the still box', async (t) => {
+    const master = paint(12, 9, (x, y) => (y === 7 && x >= 2 && x < 10 ? [30, 30, 90, 255] : x >= 4 && x < 7 && y >= 3 && y < 7 ? [240, 200, 180, 255] : CLEAR));
+    const scene = {
+        type: 'scene',
+        key: 'home',
+        master: 'duo/duo.png',
+        ratio: '1',
+        frame: { mode: 'subject', margin: 1 },
+        grid: [10, 7],
+        outputs: [{ path: `${SHIP}/duo@native.webp`, encoding: 'webp-lossless', sha256: fakeSha('1') }],
+        backdrop: { master: 'duo/duo--backdrop.png', outputs: [{ path: `${SHIP}/duo--backdrop@native.webp`, encoding: 'webp-lossless', sha256: fakeSha('2') }] },
+        layers: { fig: { box: [3, 1, 3, 4], pictures: { 'breath-c': { master: 'duo/duo--fig--breath-c.png', outputs: [{ path: `${SHIP}/duo--fig--breath-c@native.webp`, encoding: 'webp-lossless', sha256: fakeSha('3') }] } } } },
+        compose: { pose: 'breath-c' },
+        motion: { master: 'duo/duo--breath.json', output: `${SHIP}/duo--breath.json`, sha256: fakeSha('4') },
+    };
+    const root = await repoWith(t, { duo: scene }, {
+        'duo/duo.png': master,
+        'duo/duo--backdrop.png': paint(12, 9, (x, y) => (y === 7 && x >= 2 && x < 10 ? [30, 30, 90, 255] : CLEAR)),
+        'duo/duo--fig--breath-c.png': paint(3, 4, () => [240, 200, 180, 255]),
+        'duo/duo--breath.json': { grid: { width: 10, height: 7 }, backdrop: 'duo--backdrop@native.webp', layers: [{ id: 'fig', left: 3, top: 1, width: 3, height: 4, images: { c: { base: 'duo--fig--breath-c@native.webp' } } }] },
+    });
+
+    assert.deepEqual(codes(await runDerive({ root, write: true })), []);
+    const backdrop = await decode(readFileSync(join(root, SHIP, 'duo--backdrop@native.webp')));
+    assert.equal(samePixels(backdrop, paint(10, 7, (x, y) => (y === 5 && x >= 1 && x < 9 ? [30, 30, 90, 255] : CLEAR))), true);
 });

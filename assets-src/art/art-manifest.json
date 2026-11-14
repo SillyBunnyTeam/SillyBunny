@@ -206,9 +206,6 @@
             "frames": {
                 "breath-b": {
                     "master": "tewi/welcome-persona-tewi--breath-b.png",
-                    "frame": {
-                        "mode": "canvas"
-                    },
                     "outputs": [
                         {
                             "path": "public/img/sillybunny/welcome-persona-tewi--breath-b@native.webp",
@@ -251,9 +248,6 @@
             "frames": {
                 "breath-b": {
                     "master": "reisen/welcome-next-reisen--breath-b.png",
-                    "frame": {
-                        "mode": "canvas"
-                    },
                     "outputs": [
                         {
                             "path": "public/img/sillybunny/welcome-next-reisen--breath-b@native.webp",
@@ -1119,7 +1113,7 @@
         "greeting-reisen": {
             "type": "pinned",
             "key": null,
-            "reason": "A smooth picture with no native-grid master yet.",
+            "reason": "The 768x512 snap of a generated picture, exported by greeting-pictures.mjs at 1x and as a nearest 2x. Its snap is not in this repository, so the pair stays pinned.",
             "checks": [
                 "nearest-pair"
             ],
@@ -1137,7 +1131,7 @@
         "greeting-tewi": {
             "type": "pinned",
             "key": null,
-            "reason": "A smooth picture with no native-grid master yet.",
+            "reason": "The 768x512 snap of a generated picture, exported by greeting-pictures.mjs at 1x and as a nearest 2x. Its snap is not in this repository, so the pair stays pinned.",
             "checks": [
                 "nearest-pair"
             ],
@@ -1155,7 +1149,7 @@
         "card-reisen": {
             "type": "pinned",
             "key": null,
-            "reason": "Built by the old card build, which scales a smooth master; waits for a native-grid card master.",
+            "reason": "Built by build-card.mjs, which scales the smooth card art with Lanczos; waits for a native-grid card master.",
             "outputs": [
                 {
                     "path": "default/content/default_AssistantReisen.png",
@@ -1166,7 +1160,7 @@
         "card-tewi": {
             "type": "pinned",
             "key": null,
-            "reason": "Built by the old card build, which scales a smooth master; waits for a native-grid card master.",
+            "reason": "Built by build-card.mjs, which scales the smooth card art with Lanczos; waits for a native-grid card master.",
             "outputs": [
                 {
                     "path": "default/content/default_AssistantTewi.png",
@@ -1177,7 +1171,7 @@
         "expressions-reisen": {
             "type": "pinned",
             "key": null,
-            "reason": "Lossy stand-in sprites with no master; a lossy file cannot be derived again.",
+            "reason": "Built by expression-build.mjs from pose and head-patch pictures that are not in this repository, and stored as lossy WebP, which cannot be derived again.",
             "outputs": [
                 {
                     "path": "default/content/Assistant Reisen/admiration.webp",
@@ -1296,7 +1290,7 @@
         "expressions-tewi": {
             "type": "pinned",
             "key": null,
-            "reason": "Lossy stand-in sprites with no master; a lossy file cannot be derived again.",
+            "reason": "Built by expression-build.mjs from pose and head-patch pictures that are not in this repository, and stored as lossy WebP, which cannot be derived again.",
             "outputs": [
                 {
                     "path": "default/content/Assistant Tewi/admiration.webp",

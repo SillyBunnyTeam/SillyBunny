@@ -1,7 +1,7 @@
 {
     "format": 1,
     "file": "welcome-persona-tewi--breath-b.png",
-    "sha256": "4c49a18b04502014c5ba20f8c72cf50cbf0246d07e49c6a1f13a2ca97e7a7e96",
+    "sha256": "e4fff056e58a03053f32c18f1e45d3aa00a0f8e6056356b0327c539e98bfb03b",
     "characters": [
         "tewi"
     ],
@@ -24,10 +24,8 @@
     "steps": [
         "rim-recolour",
         "pixel-snap",
-        "breath-frames",
-        "export-motion"
+        "breath-frames"
     ],
     "handEdits": false,
-    "record": "sha256:e83797534d87f177a344c1afd1b8deb4515e6790371aa79cec8d0e69e92b4c61",
-    "incomplete": "Decoded from the shipped file, which export-motion made; export-motion is not in this repository."
+    "record": "sha256:28f6fc81796b5b23764e8ba9f7766c32eb97c55ca074e21bfeb0a14b4c607c8e"
 }

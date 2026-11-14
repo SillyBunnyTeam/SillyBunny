@@ -1,7 +1,7 @@
 {
     "format": 1,
     "file": "hero-duo-night--backdrop.png",
-    "sha256": "b2dc433a4b90615c8fbad5a5225ddc20efe868d54e3635c69f908e0f9eda837c",
+    "sha256": "6e93ead16e66405e734d0466c54e4647686f095a973f6e13eecf0670a9e2d25f",
     "characters": [],
     "licence": "CC-BY-NC-SA-4.0",
     "made": "2026-11-04",
@@ -22,12 +22,10 @@
     "steps": [
         "rim-recolour",
         "pixel-snap",
-        "breath-frames",
         "compose-scene",
-        "retouch",
-        "export-motion"
+        "breath-frames",
+        "retouch"
     ],
     "handEdits": true,
-    "record": "sha256:800fee95bff3f8e0c93dbaa34328984d3c2de4290c8c3726c3b4e14b1202eb25",
-    "incomplete": "Decoded from the shipped file, which export-motion made; export-motion is not in this repository."
+    "record": "sha256:7c8f23f6cf57588fb606aed0919b81ae5a71168ee62439b46e24a5eeaaba8ba3"
 }

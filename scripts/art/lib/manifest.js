@@ -229,7 +229,7 @@ const CHECKERS = {
             } else {
                 for (const [name, frame] of Object.entries(asset.frames)) {
                     checkName(name, 'A frame', fail);
-                    checkPicture(frame, `frame ${name}`, fail, { allowFrame: true });
+                    checkPicture(frame, `frame ${name}`, fail);
                 }
             }
         }
@@ -358,19 +358,12 @@ function checkGrid(grid, fail) {
     }
 }
 
-/**
- * A frame of a still is cut with the base's box, so it lines up with the base pixel for pixel. A frame whose master was
- * delivered already cut to the placement names its own `frame` instead.
- */
-function checkPicture(picture, where, fail, { allowFrame = false } = {}) {
+function checkPicture(picture, where, fail) {
     if (!isPlainObject(picture)) {
         fail(`${where} must be { "master", "outputs" }.`);
         return;
     }
-    onlyKeys(picture, allowFrame ? ['master', 'frame', 'outputs'] : ['master', 'outputs'], where, fail);
-    if (allowFrame && picture.frame !== undefined) {
-        checkFrame(picture.frame, fail);
-    }
+    onlyKeys(picture, ['master', 'outputs'], where, fail);
     checkMaster(picture.master, '.png', fail);
     checkOutputs(picture.outputs, `${where} outputs`, fail, { encoded: true });
 }
