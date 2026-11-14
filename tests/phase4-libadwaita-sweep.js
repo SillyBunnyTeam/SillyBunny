@@ -108,8 +108,8 @@ function applyCrossTabParity(records, expectedTabs) {
         const tabs = expectedTabs[family];
         // SillyBunny: pick the first tab that yields a non-null signature AND is not
         // allowlisted for cross-tab-parity. Connections has no .ds-row elements (null
-        // signature). Sampling uses intentionally compact 44 px rows. Using either as
-        // the reference would fail all other tabs. Skip both via the allowlist.
+        // signature). Using it as the reference would fail all other tabs. Skip it
+        // via the allowlist.
         let referenceTab = tabs[0];
         let referenceSignature = null;
         for (const candidate of tabs) {

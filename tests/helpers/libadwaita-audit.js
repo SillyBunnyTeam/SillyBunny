@@ -197,7 +197,12 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
             // layout (narrow viewport stacking). The suffix sits below the label there
             // and the delta is always large; centering is not the intended constraint.
             const isColumnRow = getComputedStyle(row).flexDirection === 'column';
-            const textBottom = row.querySelector(':scope > .ds-row-text')?.getBoundingClientRect().bottom ?? Infinity;
+            const textRect = row.querySelector(':scope > .ds-row-text')?.getBoundingClientRect() ?? null;
+            const textBottom = textRect?.bottom ?? Infinity;
+            // A row that wraps a full-width line under its title and control (the wire control of a sampler's slider)
+            // centres the control on the first line, beside the title, so the title is the reference there.
+            const hasLineBelow = [...row.children].some(child => isVisible(child) && child.getBoundingClientRect().top >= textBottom - 2);
+            const reference = hasLineBelow && textRect ? textRect : rect;
             for (const control of verticalControls) {
                 if (isColumnRow) continue;
                 const controlRect = control.getBoundingClientRect();
@@ -205,7 +210,7 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
                 // layout at narrow viewports: the control moves under the title when the two do not
                 // fit). In that layout midpointDelta is always large and centering is not meaningful.
                 if (controlRect.top > rect.bottom - 2 || controlRect.top >= textBottom - 2) continue;
-                const midpointDelta = (controlRect.top + controlRect.height / 2) - (rect.top + rect.height / 2);
+                const midpointDelta = (controlRect.top + controlRect.height / 2) - (reference.top + reference.height / 2);
                 addRecord(control, 'row-geometry', { midpointDelta, tolerance: 2 }, Math.abs(midpointDelta) <= 2);
             }
 
@@ -406,12 +411,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#user-settings-block', rule: 'group-anatomy', reason: 'Right-shell root used as a structural mount point, not a named preference group' },
     { selector: '#ica--settings', rule: 'group-anatomy', reason: 'Agents extension settings; marked data-sb-presentation=manual and excluded from normalizer' },
     // SillyBunny: upstream containers with bespoke layout — row-edges and content-inset checks expect full-width .ds-row anatomy.
-    { selector: '#dynatemp_block_ooba', rule: 'row-edges', reason: 'Upstream dynamic temperature block with padded container; row-edge check does not apply' },
-    { selector: '#dynatemp_block_ooba', rule: 'content-inset', reason: 'Upstream dynamic temperature block; double-inset from padded container is expected' },
-    { selector: '#cfg_block_ooba', rule: 'row-edges', reason: 'Upstream CFG block with padded container; row-edge check does not apply' },
-    { selector: '#cfg_block_ooba', rule: 'content-inset', reason: 'Upstream CFG block; double-inset from padded container is expected' },
-    { selector: '#contrastiveSearchBlock', rule: 'row-edges', reason: 'Upstream contrastive search block; row-edge check does not apply' },
-    { selector: '#contrastiveSearchBlock', rule: 'content-inset', reason: 'Upstream contrastive search block; double-inset expected' },
     { selector: '#MovingUI-presets-block', rule: 'row-edges', reason: 'Moving UI presets block uses bespoke two-row layout; row-edge check does not apply' },
     { selector: '#MovingUI-presets-block', rule: 'content-inset', reason: 'Moving UI presets block uses bespoke two-row layout; inset check does not apply' },
     // SillyBunny: Connections tab uses fully bespoke provider-slot layout with no .ds-row elements; cross-tab parity cannot derive a signature.
@@ -425,11 +424,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#user-settings-block', rule: 'content-inset', reason: 'Structural mount point; rightInset and inset measurements are meaningless for a full-width container' },
     { selector: '#bg-header-fixed', rule: 'row-edges', reason: 'Background section with bespoke fixed-header layout; row-edge check does not apply' },
     { selector: '#bg-header-fixed', rule: 'content-inset', reason: 'Background section; rightInset is measured against a group that spans the full panel width' },
-    // SillyBunny: upstream sampling blocks with non-standard padding.
-    { selector: '#logit_bias_block_ooba', rule: 'content-inset', reason: 'Upstream logit-bias block adds its own container padding on top of the row inset' },
-    { selector: '#sampler_priority_block_ooba', rule: 'row-edges', reason: 'Upstream sampler priority block; rows are arranged in a drag-sortable list, not full-bleed .ds-row anatomy' },
-    { selector: '#sampler_priority_block_ooba', rule: 'content-inset', reason: 'Upstream sampler priority block; inset measurement is not meaningful for a sortable list' },
-    { selector: ':is(#sampler_order_block_kcpp, #sampler_order_block_lcpp, [name="KoboldSamplerOrderBlock"])', rule: 'content-inset', reason: 'Upstream sampler order block; centred title and description above a drag-sortable list' },
     // SillyBunny: rows that lead with a control or whose buttons reach out of the row by design.
     { selector: '.ds-row-check > .ds-row-text', rule: 'content-inset', reason: 'A check row leads with its control, so the text starts after the control (the libadwaita check prefix), not at the row inset' },
     { selector: '.ds-row--spin > .ds-row-suffix', rule: 'content-inset', reason: 'The buttons of a spin row draw inside the row, and their hit area reaches out through the negative margin of the suffix' },

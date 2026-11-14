@@ -1305,7 +1305,7 @@
             ],
             "keysecondary": [],
             "comment": "A29 Backend ▸ Sampling",
-            "content": "Backend ▸ Sampling (\"Modify model text parameters here - useful for dialing in responses!\") shows only the section for the active API, titled Backend: Chat Completions, Text Completions, Kobold/Horde or NovelAI. Other APIs show \"No unified samplers for this backend yet\". Groups: Sampling, Penalties & Repetition, Advanced Algorithms, Token Control and Output & Generation. Each section notes \"Some backends ignore samplers they do not support.\" Many samplers appear only for Text Completions. Chat Completion presets also hold some sampler values, and the Presets tab has its own Sampling group. The tab links Geechan's sampling guide at rentry.org/samplersettings.",
+            "content": "Backend ▸ Sampling (\"Modify model text parameters here - useful for dialing in responses!\") shows only the section for the active API, titled Backend: Chat Completions, Text Completions, Kobold/Horde or NovelAI. Other APIs show \"No unified samplers for this backend yet\". Groups: Sampling, Penalties & Repetition, Advanced Algorithms, Token Control, Banned Tokens/Strings and Output & Generation. Each section notes \"Some backends ignore samplers they do not support.\" Many samplers appear only for Text Completions. Chat Completion presets also hold some sampler values, and the Presets tab has its own Sampling group. The tab links Geechan's sampling guide at rentry.org/samplersettings.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,

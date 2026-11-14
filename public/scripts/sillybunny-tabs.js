@@ -112,6 +112,7 @@ const loadServerToolsModule = createDeferredModule(new URL('./sillybunny-server-
 const loadDataSecurityModule = createDeferredModule(new URL('./sillybunny-data-security.js', import.meta.url));
 const loadAppearanceModule = createDeferredModule(new URL('./sillybunny-appearance.js', import.meta.url));
 const loadBackendPagesModule = createDeferredModule(new URL('./sillybunny-backend-pages.js', import.meta.url));
+const loadSamplingModule = createDeferredModule(new URL('./sillybunny-sampling.js', import.meta.url));
 /** Set once the Formatting and Presets rows have been built; the Backend updates below call into it. */
 let backendPagesModule = null;
 let backendPagesPromise;
@@ -8185,6 +8186,9 @@ function syncBackgroundSettingsSection() {
     if (changed) invalidateUserSettingsTabSearchIndexes();
 }
 
+/** The Sampling rows module, once the panel has loaded it. */
+let samplingModule = null;
+
 const SB_SAMPLING_BACKENDS = Object.freeze([
     {
         id: 'openai',
@@ -8221,17 +8225,19 @@ const SB_SAMPLING_GROUPS = Object.freeze([
     { id: 'penalties', title: 'Penalties & Repetition', description: 'Control how the AI reuses tokens and repeats phrases.' },
     { id: 'algorithms', title: 'Advanced Algorithms', description: 'Use advanced sampling methods to adjust token choices and repetition.' },
     { id: 'tokens', title: 'Token Control', description: 'Set seeds, token preferences, minimum length, and streaming speed limits.' },
+    // The group has no description yet; its title keeps the translation key the upstream heading uses.
+    { id: 'banned', title: 'Banned Tokens/Strings', i18n: 'Banned Tokens', description: '' },
     { id: 'output', title: 'Output & Generation', description: 'Adjust sampler order, generation options, and output rules.' },
 ]);
 
 /**
  * Shared sampler registry. Each entry maps a canonical sampler id to selectors across backends.
  * Controls are displayed in registry order within their group. Backends with no selector omit the entry.
- * @type {ReadonlyArray<{id: string, group: string, openai?: string|string[], textgenerationwebui?: string|string[], kobold?: string|string[], novel?: string|string[], expander?: boolean, large?: boolean, gated?: boolean, description?: string, subtitleSource?: string}>}
+ * @type {ReadonlyArray<{id: string, group: string, openai?: string|string[], textgenerationwebui?: string|string[], kobold?: string|string[], novel?: string|string[], expander?: boolean, gated?: boolean, description?: string, subtitleSource?: string}>}
  */
 const SB_SAMPLER_REGISTRY = Object.freeze([
     // Sampling
-    { id: 'sampler_toolbar', group: 'sampling', openai: '#sb_neutralize_chat_samplers', textgenerationwebui: '#samplerResetButton', large: true, gated: true },
+    { id: 'sampler_toolbar', group: 'sampling', openai: '#sb_neutralize_chat_samplers', textgenerationwebui: '#samplerResetButton', gated: true },
     { id: 'temperature', group: 'sampling', openai: '#temp_openai', textgenerationwebui: '#temp_textgenerationwebui', kobold: '#temp', novel: '#temp_novel' },
     { id: 'top_k', group: 'sampling', openai: '#top_k_openai', textgenerationwebui: '#top_k_textgenerationwebui', kobold: '#top_k', novel: '#top_k_novel' },
     { id: 'top_p', group: 'sampling', openai: '#top_p_openai', textgenerationwebui: '#top_p_textgenerationwebui', kobold: '#top_p', novel: '#top_p_novel' },
@@ -8268,17 +8274,19 @@ const SB_SAMPLER_REGISTRY = Object.freeze([
     { id: 'beam_search', group: 'algorithms', textgenerationwebui: '#beamSearchBlock', expander: true, gated: true },
     { id: 'contrastive_search', group: 'algorithms', textgenerationwebui: '#contrastiveSearchBlock', expander: true, gated: true },
     // Tokens
-    { id: 'seed', group: 'tokens', openai: '#seed_openai', textgenerationwebui: '#seed_textgenerationwebui', kobold: '#seed_kobold', large: true, subtitleSource: '[data-sb-sampling-control="#seed_textgenerationwebui"] .ds-row-subtitle' },
-    { id: 'logit_bias', group: 'tokens', openai: '#openai_logit_bias_preset', textgenerationwebui: '#logit_bias_block_ooba', large: true, gated: true },
-    { id: 'banned_tokens', group: 'tokens', textgenerationwebui: '#banned_tokens_block_ooba', large: true, gated: true },
+    { id: 'seed', group: 'tokens', openai: '#seed_openai', textgenerationwebui: '#seed_textgenerationwebui', kobold: '#seed_kobold', subtitleSource: '[data-sb-sampling-control="#seed_textgenerationwebui"] .ds-row-subtitle' },
+    { id: 'logit_bias', group: 'tokens', openai: '#openai_logit_bias_preset', textgenerationwebui: '#logit_bias_block_ooba', gated: true },
+    { id: 'banned_tokens', group: 'banned', textgenerationwebui: '#banned_tokens_block_ooba', gated: true },
     { id: 'min_length', group: 'tokens', textgenerationwebui: '#min_length_textgenerationwebui', novel: '#min_length_novel', gated: true },
     { id: 'max_tokens_second', group: 'tokens', textgenerationwebui: '#max_tokens_second_textgenerationwebui', gated: true },
     // Output
-    { id: 'sampler_order', group: 'output', textgenerationwebui: ['#sampler_order_block_kcpp', '#sampler_order_block_lcpp'], kobold: '#kobold_order', large: true, gated: true },
-    { id: 'sampler_priority', group: 'output', textgenerationwebui: ['#sampler_priority_block_ooba', '#sampler_priority_block_aphrodite'], large: true, gated: true },
-    { id: 'json_schema', group: 'output', textgenerationwebui: '#json_schema_block', large: true, gated: true },
+    { id: 'sampler_order', group: 'output', textgenerationwebui: ['#sampler_order_block_kcpp', '#sampler_order_block_lcpp'], kobold: '#kobold_order', gated: true },
+    { id: 'sampler_priority', group: 'output', textgenerationwebui: ['#sampler_priority_block_ooba', '#sampler_priority_block_aphrodite'], gated: true },
+    { id: 'json_schema', group: 'output', textgenerationwebui: '#json_schema_block', gated: true },
     { id: 'do_sample', group: 'output', textgenerationwebui: '#do_sample_textgenerationwebui', gated: true },
     { id: 'add_bos_token', group: 'output', textgenerationwebui: '#add_bos_token_textgenerationwebui', gated: true },
+    { id: 'ban_eos_token', group: 'output', textgenerationwebui: '#ban_eos_token_textgenerationwebui', gated: true },
+    { id: 'skip_special_tokens', group: 'output', textgenerationwebui: '#skip_special_tokens_textgenerationwebui', gated: true },
     { id: 'ignore_eos_token', group: 'output', textgenerationwebui: '#ignore_eos_token_textgenerationwebui', gated: true },
     { id: 'use_default_badwordsids', group: 'output', kobold: '#use_default_badwordsids', gated: true },
     { id: 'temperature_last', group: 'output', textgenerationwebui: '#temperature_last_textgenerationwebui', gated: true },
@@ -8301,33 +8309,18 @@ function getSamplingGroupId(selector) {
     return SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector)?.group ?? 'sampling';
 }
 
-function getSpecialTokenControlBlock() {
-    const controls = [
-        document.getElementById('ban_eos_token_textgenerationwebui')?.closest('.checkbox_label'),
-        document.getElementById('skip_special_tokens_textgenerationwebui')?.closest('.checkbox_label'),
-    ].filter(control => control instanceof HTMLElement);
-
-    if (!controls.length) {
-        return null;
-    }
-
-    const block = createElement('div', { className: 'sb-sampling-special-token-controls' });
-    controls.forEach(control => block.appendChild(control));
-    return block;
-}
-
+/** Text Completions sampler tools: an action row for each button, with the tooltip beside it as the subtitle. */
 function getSamplerToolbarControlBlock() {
-    const toolbar = getSamplingControlBlock('#samplerResetButton');
-    if (!(toolbar instanceof HTMLElement)) {
+    const reset = document.getElementById('samplerResetButton');
+    if (!(reset instanceof HTMLElement) || !samplingModule) {
         return null;
     }
 
     const block = createElement('div', { className: 'sb-sampling-sampler-tools-card' });
-    block.appendChild(toolbar);
-
-    const specialTokenControls = getSpecialTokenControlBlock();
-    if (specialTokenControls) {
-        block.appendChild(specialTokenControls);
+    for (const button of [reset, document.getElementById('samplerSelectButton')]) {
+        if (button instanceof HTMLElement) {
+            block.append(samplingModule.createActionRow(button, samplingModule.readTooltip(button.parentElement?.querySelector(':scope > .fa-circle-info'))));
+        }
     }
 
     return block;
@@ -8407,18 +8400,18 @@ function decorateSamplingControlCard(card, selector) {
 
         let container = card.querySelector('.sb-sampling-transmission');
         if (!container) {
-            container = createElement('div', { className: 'sb-sampling-transmission flex-container alignitemscenter gap5 m-t-0-5' });
+            container = createElement('div', { className: 'sb-sampling-transmission' });
             container.setAttribute('data-sampling-transmission-for', parameterId);
 
             const labelContainer = createElement('div', {
-                className: 'flex-container alignitemscenter gap5',
+                className: 'sb-sampling-transmission__legend',
             });
             const label = createElement('small', {
-                className: 'sb-sampling-transmission__label opacity70p',
+                className: 'sb-sampling-transmission__label',
                 text: 'Wire:',
             });
             const infoIcon = createElement('div', {
-                className: 'fa-solid fa-circle-info opacity50p sb-sampling-info-icon',
+                className: 'fa-solid fa-circle-info sb-sampling-info-icon',
                 attrs: {
                     title: 'Controls how this setting is sent to the AI:\n\n• Auto: Normal default behavior.\n• Send: Force this slider\'s exact value to be sent.\n• Omit: Completely delete this setting from the request so models that reject it (like Grok or o1) won\'t crash.',
                 },
@@ -8428,7 +8421,7 @@ function decorateSamplingControlCard(card, selector) {
             container.appendChild(labelContainer);
 
             const options = createElement('div', {
-                className: 'sb-sampling-transmission__options flex-container gap5',
+                className: 'sb-sampling-transmission__options',
                 attrs: {
                     role: 'radiogroup',
                     'aria-label': `Transmission policy for ${descriptor.label}`,
@@ -8493,42 +8486,26 @@ function decorateSamplingControlCard(card, selector) {
         }
         refreshSamplingTransmission(card, selector);
     }
-
-    if (selector === '#seed_textgenerationwebui') {
-        const seedLabel = card.querySelector('label');
-        seedLabel?.classList.add('range-block-title', 'justifyLeft', 'sb-sampling-seed-title');
-        seedLabel?.insertAdjacentElement('afterend', createElement('small', {
-            className: 'sb-sampling-card-help',
-            text: 'Set to get deterministic results. Use -1 for a random seed.',
-        }));
-    }
 }
 
-/** Chat Completions counterpart of the Text Completions sampler toolbar (`#samplerResetButton` row). */
+/** Chat Completions counterpart of the Text Completions sampler tools (`#samplerResetButton` row). */
 function getChatSamplerToolbarControlBlock() {
     const existing = document.getElementById('sb_neutralize_chat_samplers');
     if (existing instanceof HTMLElement) return existing.closest('.sb-sampling-sampler-tools-card');
+    if (!samplingModule) return null;
 
     const block = createElement('div', { className: 'sb-sampling-sampler-tools-card' });
-    const toolbar = createElement('div', { className: 'flex-container justifyCenter' });
-    const item = createElement('small', { className: 'flex-container alignitemscenter' });
     const button = createElement('button', {
         id: 'sb_neutralize_chat_samplers',
         className: 'menu_button whitespacenowrap sb-neutralize-chat-samplers',
         text: 'Neutralize Samplers',
         attrs: { type: 'button', 'data-i18n': 'Neutralize Samplers' },
     });
-    const info = createElement('div', {
-        className: 'fa-solid fa-circle-info opacity50p',
-        attrs: {
-            title: 'Set all samplers to their neutral/disabled state.',
-            'data-i18n': '[title]Set all samplers to their neutral/disabled state.',
-        },
-    });
     button.addEventListener('click', neutralizeChatCompletionSamplers);
-    item.append(button, info);
-    toolbar.append(item);
-    block.append(toolbar);
+    block.append(samplingModule.createActionRow(button, {
+        text: 'Set all samplers to their neutral/disabled state.',
+        key: 'Set all samplers to their neutral/disabled state.',
+    }));
     return block;
 }
 
@@ -8536,10 +8513,6 @@ function getSamplingControlBlock(selector) {
     const input = document.querySelector(selector);
     if (!(input instanceof HTMLElement)) {
         return null;
-    }
-
-    if (input.id === 'samplerResetButton' || input.id === 'samplerSelectButton') {
-        return input.closest('.flex-container.justifyCenter') ?? input.parentElement;
     }
 
     if (SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector)?.expander || input.matches('#cfg_block_ooba, #grammar_block_ooba, #json_schema_block, #banned_tokens_block_ooba, #logit_bias_block_ooba, [id^="sampler_order_block_"], [id^="sampler_priority_block_"]')) {
@@ -8566,7 +8539,6 @@ function buildSamplingControlCard(selector, root = document) {
     }
 
     const entry = SB_SAMPLER_ENTRY_BY_SELECTOR.get(selector);
-    const isTextGenSampler = controlBlock.hasAttribute('data-tg-samplers') || controlBlock.querySelector('[data-tg-samplers]');
     const isExpander = Boolean(entry?.expander);
     let card;
     if (isExpander) {
@@ -8592,10 +8564,9 @@ function buildSamplingControlCard(selector, root = document) {
         card.appendChild(controlBlock);
     }
     card.classList.add('sb-sampling-control-card');
-    if (isTextGenSampler) card.classList.add('sb-sampling-textgen-card');
-    if (entry?.large) card.classList.add('sb-sampling-large-card');
     card.dataset.sbSamplingControl = selector;
     if (entry) card.dataset.sbSamplerId = entry.id;
+    samplingModule?.prepareSamplingBlock(selector, controlBlock, { root });
     // Ungated samplers stay visible for every provider; gating code in openai.js and
     // textgen-settings.js skips elements carrying this marker.
     if (entry && !entry.gated) {
@@ -8609,9 +8580,11 @@ function buildSamplingControlCard(selector, root = document) {
         }
     }
     decorateSamplingControlCard(card, selector);
-    normalizeBackendSettingsRows(card);
+    // The lists stay lists: their entries are data, not settings rows.
+    normalizeBackendSettingsRows(card, { skip: '.sb-sampling-list' });
     applySamplingSubtitleSource(card, entry, root);
     addSamplingDescriptionToggles(card);
+    samplingModule?.finishSamplingCard(card);
     return card;
 }
 
@@ -8631,7 +8604,7 @@ function addSamplingDescriptionToggles(card) {
         subtitle.hidden = true;
         const button = createElement('button', {
             className: 'sb-sampling-help-toggle',
-            attrs: { type: 'button', 'aria-expanded': 'false', 'aria-controls': subtitle.id },
+            attrs: { type: 'button', 'aria-expanded': 'false', 'aria-controls': subtitle.id, 'data-sb-keeps-sensitive': '' },
         });
         const name = createElement('span', {
             className: 'sr-only', text: 'Details',
@@ -8871,6 +8844,7 @@ function syncSamplingPanelControls(root) {
         updateSamplingCardVisibility(section);
     }
 
+    samplingModule?.syncSamplingDependents(root);
     hideEmptyGroupedSettingsDrawers();
 }
 
@@ -8932,7 +8906,8 @@ function createBackendGroupHeader(title, attrs = {}, description = '') {
     return header;
 }
 
-function buildSamplingPanel() {
+async function buildSamplingPanel() {
+    samplingModule ??= await loadSamplingModule();
     const { panel, scroller } = createShellPanel({ id: 'sampling' });
     const column = createElement('div', {
         className: 'sb-shell-column sb-sampling-panel',
@@ -8964,7 +8939,7 @@ function buildSamplingPanel() {
                 attrs: { 'data-sb-sampling-group': group.id },
             });
             category.append(
-                createBackendGroupHeader(group.title, {}, group.description),
+                createBackendGroupHeader(group.title, group.i18n ? { 'data-i18n': group.i18n } : {}, group.description),
                 createElement('div', { className: 'ds-pref-group' }),
             );
             section.append(category);

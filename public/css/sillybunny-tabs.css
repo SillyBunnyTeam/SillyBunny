@@ -4675,8 +4675,7 @@ body.reduced-motion .sb-search-entry {
 
 /* In a row laid out as a column, the title's minimum width as a basis would become its height. */
 .ds-row:is(.ds-row--stacked, .ds-row-entry--floating) > .ds-row-text,
-#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) > .ds-row-text,
-#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > .ds-row-text {
+#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) > .ds-row-text {
     flex-basis: auto;
 }
 
@@ -5525,7 +5524,8 @@ body.reduced-motion .ds-row-expander__toggle::after {
     transition: none;
 }
 
-/* SillyBunny: Backend groups retain their live controls and use the shared preference-row metrics. */
+/* SillyBunny: Backend ▸ Sampling uses the standard rows. A card holds the rows of one sampler, so it draws
+   nothing of its own but the separator below its last row; the rows inside own the inset and the other separators. */
 .sb-sampling-group {
     min-width: 0;
 }
@@ -5543,6 +5543,7 @@ body.reduced-motion .ds-row-expander__toggle::after {
     display: block;
     min-width: 0;
     margin: 0;
+    padding: 0;
     border: 0;
     border-bottom: 1px solid var(--sb-shell-border);
     border-radius: 0;
@@ -5553,20 +5554,69 @@ body.reduced-motion .ds-row-expander__toggle::after {
     border-bottom: 0;
 }
 
-#sb-settings-page .sb-sampling-panel .sb-sampling-control-card:not(.sb-settings-row-wrapper) {
-    padding: 12px;
-}
-
-#sb-settings-page .sb-sampling-panel .sb-sampling-control-card:has(> .ds-row),
-#sb-settings-page .sb-sampling-panel .ds-row-expander {
-    padding: 0;
-}
-
-#sb-settings-page .sb-sampling-panel .sb-sampling-control-card > .ds-row {
-    width: 100%;
+/* The block that holds a card's rows is a wrapper. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-control-card > :not(.ds-row, .ds-row-expander__header, .ds-row-expander-content, .sb-sampling-list) {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    min-width: 0;
     margin: 0;
+    padding: 0;
+    gap: 0;
     border: 0;
-    border-radius: 0;
+}
+
+/* The last row of a card leaves the separator to the card, and a title row stays with the list under it. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-row :is(.ds-row, .sb-sampling-list):not(:has(~ :is(.ds-row, .sb-sampling-list):not([hidden], [style*='display: none']))),
+#sb-settings-page .sb-sampling-panel .sb-sampling-row .ds-row:has(+ .sb-sampling-list) {
+    border-bottom: 0;
+}
+
+/* A list is data, not a row: it takes the row inset and is scrollable inside it. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-list {
+    min-width: 0;
+    padding: 0 var(--sb-density-row-padding-inline) var(--sb-density-row-padding-block);
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+/* Upstream centres the items; in a column that scrolls, the part that overflows above the start can never be reached. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-list .prompt_order {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 6px;
+    max-height: 260px;
+    overflow: auto;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-list .prompt_order > div {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+/* A select with four icon buttons beside it: the title takes the width that is left, and the select and the buttons move under it together when they do not fit. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-row .ds-select-row:has(> .ds-row-suffix > .menu_button) > .ds-row-text {
+    flex: 1 1 var(--sb-row-title-min);
+    max-width: none;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-row .ds-select-row:has(> .ds-row-suffix > .menu_button) > .ds-row-suffix {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-row .ds-select-row:has(> .ds-row-suffix > .menu_button) > .ds-row-suffix > .ds-select-row__trigger {
+    flex: 0 0 auto;
+}
+
+/* The hidden native select keeps no room in the line: the shared sizing of a flexible control would give it 190px. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-row .ds-select-row .ds-select-row__native {
+    position: absolute;
+    flex: 0 0 1px;
+    width: 1px;
+    min-width: 0;
+    max-width: 1px;
 }
 
 /* Inert Chat Completions rows for Text Completions-only samplers keep their layout but read as unavailable. */
@@ -5598,55 +5648,96 @@ body.reduced-motion .ds-row-expander__toggle::after {
     white-space: nowrap;
 }
 
-#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > .ds-row-suffix {
-    flex-direction: column;
-    align-items: stretch;
-    flex: 0 0 auto;
-}
-
-#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row {
-    flex-direction: column;
-    align-items: stretch;
-}
-
-#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] > .ds-row > :is(.ds-row-text, .ds-row-suffix) {
-    flex: 0 0 auto;
-    width: 100%;
-}
-
-#sb-settings-page .sb-sampling-panel [data-sb-sampling-control='#openai_logit_bias_preset'] :is(.openai_logit_bias_preset_form, .inline-drawer) {
-    min-width: 0;
-    width: 100%;
-}
-
-#sb-settings-page .sb-sampling-panel .ds-row-slider {
+/* The wire control is the last line of its slider row, under the title and the explanation. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-transmission {
     display: flex;
     align-items: center;
-    flex-direction: row;
-}
-
-#sb-settings-page .sb-sampling-panel .ds-row-slider .ds-row-label {
-    display: block;
-}
-
-#sb-settings-page .sb-sampling-panel .ds-row-suffix input[type='range'] {
-    flex: 1 1 4em;
-    width: 100%;
+    justify-content: space-between;
+    flex: 0 0 100%;
+    flex-wrap: wrap;
+    gap: 6px 9px;
     min-width: 0;
-    margin: 0;
 }
 
-#sb-settings-page .sb-sampling-panel .ds-row-suffix .neo-range-input {
-    flex: 0 0 5.5em;
-    width: 5.5em;
-    min-width: 0;
-    margin: 0;
+#sb-settings-page .sb-sampling-panel .sb-sampling-transmission__legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-#sb-settings-page .sb-sampling-panel .sb-sampling-transmission {
-    margin: 0;
-    padding: 8px var(--sb-density-row-padding-inline);
-    border-top: 0;
+#sb-settings-page .sb-sampling-panel .sb-sampling-transmission__label {
+    font-size: var(--sb-type-caption);
+    color: var(--sb-shell-text);
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-info-icon {
+    color: var(--sb-input-placeholder);
+    cursor: help;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-transmission__options {
+    display: inline-flex;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--sb-shell-border);
+    border-radius: var(--sb-radius-control);
+    background: color-mix(in srgb, var(--sb-shell-surface) 90%, black 10%);
+}
+
+#sb-settings-page .sb-sampling-panel .sb-transmission-btn {
+    padding: 3px 9px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-radius-inner);
+    background: transparent;
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-meta);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+@media (hover: hover) {
+    #sb-settings-page .sb-sampling-panel .sb-transmission-btn:hover:not(.active, [disabled]) {
+        background: var(--sb-flat-hover-bg);
+        color: var(--sb-shell-text);
+    }
+}
+
+#sb-settings-page .sb-sampling-panel .sb-transmission-btn.active {
+    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 60%, transparent);
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 20%, transparent);
+    color: var(--sb-shell-text);
+    font-weight: 700;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-transmission-btn[data-policy-state='omit'].active {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    text-decoration: line-through;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-transmission-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* A parameter that is omitted from the request dims its slider. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-control-card:has(.sb-transmission-btn[data-policy-state='omit'].active) :is(input[type='range'], .neo-range-input) {
+    opacity: 0.35;
+    filter: grayscale(0.8);
+}
+
+#sb-settings-page .sb-sampling-panel .sb-capability-forbidden-badge {
+    padding: 3px 6px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
+    border-radius: var(--sb-radius-inner);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+    color: var(--SmartThemeBodyColor);
+    font-size: var(--sb-type-meta);
+    font-weight: 600;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-capability-forbidden-badge[hidden] {
+    display: none;
 }
 
 /* The thin trough stays while the interactive area grows beyond the legacy 4px height. */
@@ -5655,15 +5746,12 @@ body.reduced-motion .ds-row-expander__toggle::after {
         min-height: 32px;
     }
 
-    #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card .ds-row {
-        align-items: center;
-    }
-
     #sb-settings-page .sb-sampling-panel input[type='range'] {
         background: linear-gradient(color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent) 0 0) center / 100% 4px no-repeat !important;
     }
 }
 
+/* An expander's body holds the sampler's own block, whose heading and rule the expander header replaces. */
 #sb-settings-page .sb-sampling-panel .sb-sampling-multi-card > * {
     min-width: 0;
     margin: 0;
@@ -5685,7 +5773,6 @@ body.reduced-motion .ds-row-expander__toggle::after {
     border-top: 0;
 }
 
-/* Legacy sampler grids also match migrated rows; the live rows own their layout and insets. */
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card .ds-row {
     display: flex;
 }
@@ -5699,17 +5786,6 @@ body.reduced-motion .ds-row-expander__toggle::after {
 
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-multi-card :is(.ds-row, .sb-settings-row-wrapper):last-child {
     border-bottom: 0;
-}
-
-@media screen and (max-width: 620px) {
-    #sb-settings-page .sb-sampling-panel .openai_logit_bias_preset_form {
-        flex-wrap: wrap;
-    }
-
-    #sb-settings-page .sb-sampling-panel .openai_logit_bias_preset_form > select {
-        flex: 1 1 100%;
-        min-width: 0;
-    }
 }
 
 #sb-settings-page .sb-editor-panel,
@@ -6990,32 +7066,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
    mounted-shell heading rule zeroes the inline padding, which put these flush against the border. */
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-flat-section > .sb-settings-flat-header, .ds-pref-group-heading) {
     padding: 10px var(--sb-density-row-padding-inline) 4px;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-sampling-transmission > .flex-container {
-    padding: 0;
-    min-height: 0;
-    border: 0;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-transmission {
-    justify-content: flex-end;
-    min-height: 0;
-    gap: 8px;
-    padding: 0 var(--sb-density-row-padding-inline) 8px;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-sampling-sampler-tools-card > .flex-container > small.flex-container {
-    min-height: 0;
-    padding: 0;
-    border: 0;
-    flex: 0 1 auto;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-sampling-sampler-tools-card .menu_button {
-    width: auto;
-    height: auto;
-    white-space: nowrap;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .ds-row.sb-sampling-help-row {

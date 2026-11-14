@@ -165,6 +165,9 @@ test('a drag still moves a logit bias row', async ({ page, baseURL }) => {
     const texts = () => list.locator('.openai_logit_bias_text').evaluateAll(nodes => nodes.map(node => node.value));
     expect(await texts()).toEqual(['two', 'one']);
 
+    // Dragging within the scroll sensitivity of the page's edge scrolls the page under the pointer, so the list is centred first.
+    await list.evaluate(node => node.scrollIntoView({ block: 'center' }));
+    await settle(page);
     const from = await list.locator(':scope > *').last().locator('.drag-handle').boundingBox();
     const to = await list.locator(':scope > *').first().boundingBox();
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);

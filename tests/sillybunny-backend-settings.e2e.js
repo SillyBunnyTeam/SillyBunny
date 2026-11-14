@@ -210,14 +210,16 @@ async function expectSamplingTaxonomy(sampling, api) {
         const title = header.querySelector('.sb-settings-category-title');
         const subtitle = header.querySelector('.sb-settings-category-heading > small');
         const failures = [];
-        if (!title?.textContent.trim() || title.dataset.i18n !== title.textContent.trim()) failures.push('missing title localization key');
-        if (!subtitle?.textContent.trim() || /(?:lorum|lorem) ipsum/i.test(subtitle.textContent)) failures.push('missing category subtitle');
-        if (subtitle?.dataset.i18n !== subtitle?.textContent.trim()) failures.push('missing subtitle localization key');
+        // Banned Tokens/Strings has no description yet, and keeps the translation key the upstream heading uses.
+        const banned = header.closest('[data-sb-sampling-group="banned"]');
+        if (!title?.textContent.trim() || title.dataset.i18n !== (banned ? 'Banned Tokens' : title.textContent.trim())) failures.push('missing title localization key');
+        if (!banned && (!subtitle?.textContent.trim() || /(?:lorum|lorem) ipsum/i.test(subtitle.textContent))) failures.push('missing category subtitle');
+        if (!banned && subtitle?.dataset.i18n !== subtitle?.textContent.trim()) failures.push('missing subtitle localization key');
         return failures.map(failure => `${title?.textContent}: ${failure}`);
     }))).toEqual([]);
     if (api !== 'textgenerationwebui') return;
     await expect(sampling.locator('.sb-sampling-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
-        'Sampling', 'Penalties & Repetition', 'Advanced Algorithms', 'Token Control', 'Output & Generation',
+        'Sampling', 'Penalties & Repetition', 'Advanced Algorithms', 'Token Control', 'Banned Tokens/Strings', 'Output & Generation',
     ]);
     await expect(sampling.locator('.sb-sampling-group[data-sb-sampling-group="presets"]')).toHaveCount(0);
 }
@@ -383,7 +385,8 @@ test('Sampling uses the shared full-width rows at desktop and mobile widths', as
         await expect.poll(() => expander.evaluate(expander => Math.abs(expander.getBoundingClientRect().width - expander.parentElement.clientWidth))).toBeLessThanOrEqual(1);
         await expect.poll(() => expander.locator('.ds-row-expander-content .ds-row:visible').evaluateAll(rows => rows.every(row => {
             const rect = row.getBoundingClientRect();
-            const text = row.querySelector('.ds-row-text')?.getBoundingClientRect();
+            // A text-area field has no text column; its label row starts at the inset instead.
+            const text = row.querySelector('.ds-row-text, .ds-row-textarea__label-row')?.getBoundingClientRect();
             return text && Math.abs(text.left - rect.left - 12) <= 1 && getComputedStyle(row).display === 'flex';
         }))).toBe(true);
     }
@@ -684,7 +687,7 @@ test('Sampling uses one registry order, grouping and styling for every backend',
         for (const card of shared) {
             const tc = layout.textgenerationwebui.find(entry => entry.id === card.id);
             expect(card.group, `${backend} ${card.id} group`).toBe(tc.group);
-            const shape = className => ['ds-row-expander', 'sb-sampling-large-card'].filter(token => className.split(' ').includes(token));
+            const shape = className => ['ds-row-expander'].filter(token => className.split(' ').includes(token));
             expect(shape(card.className), `${backend} ${card.id} styling`).toEqual(shape(tc.className));
         }
     }
@@ -1000,10 +1003,14 @@ test('Mobile Sampling follows provider and manual sampler visibility', async ({ 
     await acceptPopup(page.locator('dialog[open]'));
     const bannedTokens = sampling.locator('#send_banned_tokens_textgenerationwebui');
     const enabled = await bannedTokens.isChecked();
-    await sampling.locator('#send_banned_tokens_label .menu_button').click();
+    await sampling.locator('#send_banned_tokens_label').click();
     await expect(bannedTokens).toBeChecked({ checked: !enabled });
-    await sampling.locator('#send_banned_tokens_label .menu_button').click();
+    // The two lists follow the switch.
+    const bannedLists = sampling.locator('#global_banned_tokens_textgenerationwebui, #banned_tokens_textgenerationwebui');
+    for (const list of await bannedLists.all()) await expect(list).toBeEnabled({ enabled: !enabled });
+    await sampling.locator('#send_banned_tokens_label').click();
     await expect(bannedTokens).toBeChecked({ checked: enabled });
+    for (const list of await bannedLists.all()) await expect(list).toBeEnabled({ enabled });
     await expectNoOverflow(sampling);
 });
 

@@ -351,11 +351,12 @@ export function readRowTitle(label) {
  * `keepWrapper` leaves a node that carries an id, a data attribute or an inline style in place as a wrapper around
  * the new row. `keepLinks` carries the help links of the old title into the new one. `manual` also adopts rows inside a
  * panel that lays itself out (`data-sb-presentation="manual"`): the Presets page builds its own groups and adopts the rest.
+ * `owned` is for a page that adopts its rows inside its own wrappers and inside expanders, and keeps their gating attributes (Sampling).
  * @param {HTMLElement} row
- * @param {{keepWrapper?: boolean, keepLinks?: boolean, manual?: boolean}} [options]
+ * @param {{keepWrapper?: boolean, keepLinks?: boolean, manual?: boolean, owned?: boolean}} [options]
  */
-export function adoptFieldRow(row, { keepWrapper = false, keepLinks = false, manual = false } = {}) {
-    if (row.matches(SB_ADOPTED_ROW_SELECTOR) || row.closest(`${manual ? 'form' : SB_SKIP_SELECTOR}, .ds-row-expander-content`) || row.children.length !== 2) return;
+export function adoptFieldRow(row, { keepWrapper = false, keepLinks = false, manual = false, owned = false } = {}) {
+    if (row.matches(SB_ADOPTED_ROW_SELECTOR) || (!owned && row.closest(`${manual ? 'form' : SB_SKIP_SELECTOR}, .ds-row-expander-content`)) || row.children.length !== 2) return;
     const text = row.querySelector(':scope > .ds-row-text');
     const suffix = row.querySelector(':scope > .ds-row-suffix');
     const label = text?.querySelector(':scope > .ds-row-label');
@@ -411,7 +412,31 @@ export function adoptFieldRow(row, { keepWrapper = false, keepLinks = false, man
         return;
     }
     if (top !== row && top.id) built.row.id = top.id;
+    if (owned) carryGatingAttributes(row, built.row);
     top.replaceWith(built.row);
+}
+
+/** The attributes by which the backends show and hide a control (`showTGSamplerControls`, `updateCommonSourceElements`). */
+const SB_GATING_ATTRIBUTES = Object.freeze(['data-source', 'data-source-mode', 'data-tg-type', 'data-tg-type-mode', 'data-tg-samplers', 'data-sb-sampler-ungated']);
+
+/**
+ * A control that moves into a row of its own hands the row the attributes the backends gate it by.
+ * @param {Element} from @param {Element} to
+ */
+export function carryGatingAttributes(from, to) {
+    for (const name of SB_GATING_ATTRIBUTES) {
+        if (from.hasAttribute(name) && !to.hasAttribute(name)) to.setAttribute(name, from.getAttribute(name) ?? '');
+    }
+}
+
+/**
+ * Backend ▸ Sampling gives the field rows of its cards (a seed, the DRY sequence breakers) the row that fits the control.
+ * @param {HTMLElement} scope
+ */
+export function adoptSamplingFieldRows(scope) {
+    for (const row of scope.querySelectorAll('.ds-row')) {
+        if (row instanceof HTMLElement) adoptFieldRow(row, { owned: true });
+    }
 }
 
 /**
@@ -491,7 +516,7 @@ export function adoptButtonRows(scope) {
 }
 
 /** @param {HTMLElement} row @param {boolean} insensitive */
-function setRowInsensitive(row, insensitive) {
+export function setRowInsensitive(row, insensitive) {
     if (row.classList.contains('is-insensitive') === insensitive) return;
     const controller = sbRowControllers.get(row);
     if (controller) {
@@ -502,6 +527,8 @@ function setRowInsensitive(row, insensitive) {
     row.setAttribute('aria-disabled', String(insensitive));
     for (const control of row.querySelectorAll('input, select, textarea, button')) {
         if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement || control instanceof HTMLButtonElement)) continue;
+        // SillyBunny: a control marked data-sb-keeps-sensitive (the Sampling details button) explains the row, so it keeps working in an insensitive row.
+        if (control.hasAttribute('data-sb-keeps-sensitive')) continue;
         // A control that something else disables stays disabled when the row becomes sensitive again.
         if (insensitive && !control.disabled) {
             control.disabled = true;
@@ -1628,7 +1655,7 @@ function retireLabel(label) {
 }
 
 /** The translation key a label carries, when the row can carry the same one. */
-function readLabelI18nKey(label) {
+export function readLabelI18nKey(label) {
     const holder = label.dataset.i18n ? label : label.querySelector(':scope > [data-i18n]');
     const key = holder instanceof HTMLElement ? holder.dataset.i18n : '';
     return key && !key.includes('[') ? key : '';

@@ -305,12 +305,17 @@ export async function restoreDependentSets(page, recorder, turned) {
  * @param {import('@playwright/test').Page} page
  * @param {string} root
  * @param {string[]} [skip] Selectors of data-driven lists that are not part of the inventory.
+ * @param {{ recorder: any, turned: string[] }} [dependents] A dependent set inside a closed expander has no switch to reach until the
+ * expanders are open: the switches that this turns on are added to `turned`, for the caller to give back.
  */
-export async function collectSection(page, root, skip = []) {
+export async function collectSection(page, root, skip = [], dependents = null) {
     await settle(page, { root });
     const before = await page.evaluate(({ root, skip }) => window.__sbInventory.collect(root, { skip }), { root, skip });
     await expandAll(page, scrollerOf(root));
     await waitForAnimations(page, root);
+    if (dependents) {
+        dependents.turned.push(...await enableDependentSets(page, dependents.recorder, root));
+    }
     await settle(page, { root });
     const after = await page.evaluate(({ root, skip }) => window.__sbInventory.collect(root, { skip }), { root, skip });
     return { before, after };

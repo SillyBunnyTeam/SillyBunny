@@ -1,0 +1,309 @@
+import { t } from './i18n.js';
+import { createRow, createSwitchRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
+import { adoptSamplingFieldRows, bindDependentSets, carryGatingAttributes, readLabelI18nKey, readRowTitle } from './sillybunny-settings-presentation.js';
+
+/**
+ * Backend ▸ Sampling rows. The page keeps the upstream sampler nodes (ids, listeners and the backends'
+ * show/hide attributes), so each block upstream lays out as a heading, a rule and a loose control is
+ * rebuilt here as the standard rows around the same nodes: a select row, an action row, a text-area field
+ * or a switch row. Lists (the sampler order, the logit bias entries) stay lists, in a block of their own.
+ * The module loads when the Sampling panel is first built, so the startup bundle does not carry it.
+ */
+
+const clean = text => (text ?? '').replace(/\s+/g, ' ').trim();
+
+function element(tag, className) {
+    const node = document.createElement(tag);
+    node.className = className;
+    return node;
+}
+
+/**
+ * The tooltip of an info icon, which upstream uses as the only description of a control.
+ * @param {Element|null|undefined} node
+ * @returns {{text: string, key: string}}
+ */
+export function readTooltip(node) {
+    const holder = node?.matches?.('[title], [data-sttt--title]') ? node : node?.querySelector?.('[title], [data-sttt--title]');
+    if (!holder) return { text: '', key: '' };
+    return {
+        text: (holder.getAttribute('title') || holder.getAttribute('data-sttt--title') || '').trim(),
+        key: holder.getAttribute('data-i18n')?.match(/(?:^|;)\[title\]([^;]+)/)?.[1] ?? '',
+    };
+}
+
+/** @param {Element|null|undefined} node @param {string} key */
+function setKey(node, key) {
+    if (node instanceof HTMLElement && key) node.dataset.i18n = key;
+}
+
+/**
+ * A button that does something once, in a row of its own: the title reads like the button, the tooltip is the
+ * subtitle, and the button itself, with its id and listeners, sits in the trailing slot.
+ * @param {HTMLElement} button
+ * @param {{text?: string, key?: string}} [tooltip]
+ * @returns {HTMLElement}
+ */
+export function createActionRow(button, { text = '', key = '' } = {}) {
+    const caption = button.querySelector('span, small') ?? button;
+    const { row } = createRow({ label: readRowTitle(caption), subtitle: text || undefined, field: button.id || 'button', suffix: button });
+    row.classList.add('ds-row-actions');
+    setKey(row.querySelector('.ds-row-label'), readLabelI18nKey(caption));
+    setKey(row.querySelector('.ds-row-subtitle'), key);
+    return row;
+}
+
+/**
+ * A multi-line field for a textarea, with the docs link of its heading in the label row.
+ * @param {HTMLTextAreaElement} textarea
+ * @param {{title: string, titleKey?: string, subtitle?: string, subtitleKey?: string, link?: HTMLAnchorElement|null}} options
+ */
+function createField(textarea, { title, titleKey = '', subtitle = '', subtitleKey = '', link = null }) {
+    textarea.classList.remove('wide100p');
+    const field = createTextAreaField({ label: title, subtitle: subtitle || undefined, field: textarea.id, input: textarea, expandLabel: t`Expand the editor` });
+    setKey(field.row.querySelector('.ds-row-label'), titleKey);
+    setKey(field.row.querySelector('.ds-row-subtitle'), subtitleKey);
+    if (link) {
+        // The link is an icon; the field's title names where it goes.
+        link.setAttribute('aria-label', title);
+        if (titleKey) link.setAttribute('data-i18n', `[aria-label]${titleKey}`);
+        field.labelRow.insertBefore(link, field.expand);
+    }
+    return field;
+}
+
+/** @param {Element} node */
+function createListBlock(node) {
+    const block = element('div', 'sb-sampling-list');
+    block.append(node);
+    return block;
+}
+
+/** A node that carries a backend's gating hands it to the row that replaces the node. */
+function replaceGated(node, row) {
+    carryGatingAttributes(node, row);
+    node.replaceWith(row);
+}
+
+/** Chat Completions logit bias: a preset select row with its four icon buttons, an action row for new entries, and the list. */
+function prepareChatLogitBias(block) {
+    const select = block.querySelector('#openai_logit_bias_preset');
+    const title = block.querySelector('#logit_bias_openai');
+    // The Prompting pass may already have made the block a row; its parts are found wherever they sit.
+    const description = block.querySelector('.toggle-description');
+    const form = block.querySelector('.openai_logit_bias_preset_form');
+    const add = block.querySelector('#openai_logit_bias_new_entry');
+    const list = block.querySelector('.openai_logit_bias_list');
+    if (!(select instanceof HTMLSelectElement) || !title || !description || !form || !(add instanceof HTMLElement) || !list) return;
+
+    const tip = add.parentElement?.querySelector('.m-t-1 span[data-i18n]');
+    const { row } = createSelectRow({
+        select,
+        label: readRowTitle(title),
+        subtitle: clean(description.textContent),
+        field: 'logit-bias-preset',
+        searchLabel: t`Search`,
+        emptyText: t`No results`,
+        suffix: [...form.querySelectorAll('.menu_button, input[type="file"]')],
+    });
+    setKey(row.querySelector('.ds-row-label'), readLabelI18nKey(title));
+    // The description carries a link to the tokenizer; its words and keys move whole.
+    const subtitle = row.querySelector('.ds-row-text > .ds-row-subtitle');
+    if (subtitle) moveCaption(subtitle, description);
+
+    add.classList.remove('wide100p', 'flex-container', 'justifyCenter');
+    const addRow = createActionRow(add, { text: clean(tip?.textContent), key: tip?.getAttribute('data-i18n') ?? '' });
+    block.classList.remove('ds-row', 'm-t-1');
+    block.replaceChildren(row, addRow, createListBlock(list));
+}
+
+/** Text Completions logit bias: one row with the Add button, then the list. */
+function prepareTextLogitBias(block) {
+    const title = block.querySelector('h4 [data-i18n]');
+    const description = block.querySelector('.toggle-description');
+    const add = block.querySelector('#textgen_logit_bias_new_entry');
+    const list = block.querySelector('.logit_bias_list');
+    if (!title || !description || !(add instanceof HTMLElement) || !list) return;
+
+    const { row } = createRow({ label: readRowTitle(title), subtitle: clean(description.textContent), field: 'logit-bias', suffix: add });
+    row.classList.add('ds-row-actions');
+    setKey(row.querySelector('.ds-row-label'), readLabelI18nKey(title));
+    const subtitle = row.querySelector('.ds-row-subtitle');
+    if (subtitle) moveCaption(subtitle, description);
+    block.replaceChildren(row, createListBlock(list));
+}
+
+/**
+ * Banned tokens and strings: the kill switch (a hidden checkbox behind a power icon upstream) is a switch row, and the
+ * two lists are text-area fields that are insensitive while it is off.
+ */
+function prepareBannedTokens(block) {
+    const label = block.querySelector('#send_banned_tokens_label');
+    const input = block.querySelector('#send_banned_tokens_textgenerationwebui');
+    const help = readTooltip(block.querySelector(':scope > .range-block-title .fa-circle-info'));
+    const lists = [
+        ['#global_banned_tokens_textgenerationwebui', help],
+        ['#banned_tokens_textgenerationwebui', { text: '', key: '' }],
+    ].map(([selector, tooltip]) => {
+        const textarea = block.querySelector(selector);
+        const wrapper = textarea?.parentElement;
+        const title = wrapper?.previousElementSibling?.querySelector('[data-i18n]');
+        return textarea instanceof HTMLTextAreaElement && wrapper && title ? { textarea, wrapper, title, tooltip } : null;
+    });
+    if (!(label instanceof HTMLElement) || !(input instanceof HTMLInputElement) || lists.some(list => !list)) return;
+
+    input.removeAttribute('style');
+    const enabled = createSwitchRow({ label: 'Enabled', field: 'send_banned_tokens', input });
+    setKey(enabled.row.querySelector('.ds-row-label'), 'Enabled');
+    enabled.row.id = 'send_banned_tokens_label';
+    carryGatingAttributes(label, enabled.row);
+
+    const rows = lists.map(({ textarea, wrapper, title, tooltip }) => {
+        const { row } = createField(textarea, {
+            title: readRowTitle(title),
+            titleKey: readLabelI18nKey(title),
+            subtitle: tooltip.text,
+            subtitleKey: tooltip.key,
+        });
+        carryGatingAttributes(wrapper, row);
+        return row;
+    });
+    block.dataset.sbEnabledBy = '#send_banned_tokens_textgenerationwebui';
+    block.replaceChildren(enabled.row, ...rows);
+}
+
+/** CFG: the Scale slider is titled "CFG Scale" from the two words the block already has, and the negative prompt is a text-area field. */
+function prepareCfg(block) {
+    const name = block.querySelector(':scope > h4 [data-i18n="CFG"]');
+    const scale = block.querySelector('small[data-i18n="Scale"]');
+    const prompt = block.querySelector('[data-tg-samplers="negative_prompt"]');
+    const textarea = prompt?.querySelector('textarea');
+    const title = prompt?.querySelector('small[data-i18n]');
+    if (!name || !scale || !(textarea instanceof HTMLTextAreaElement) || !title) return;
+
+    const tip = readTooltip(prompt.querySelector('.fa-circle-info'));
+    block.querySelector(':scope > hr')?.remove();
+    block.querySelector(':scope > h4')?.remove();
+    scale.removeAttribute('data-i18n');
+    const word = element('span', '');
+    word.dataset.i18n = 'Scale';
+    word.textContent = 'Scale';
+    scale.replaceChildren(name, ' ', word);
+    const { row } = createField(textarea, {
+        title: readRowTitle(title), titleKey: readLabelI18nKey(title), subtitle: tip.text, subtitleKey: tip.key,
+    });
+    replaceGated(prompt, row);
+}
+
+/** Grammar (Text Completions and Kobold): the heading becomes the field's title and its docs link stays in the label row. */
+function prepareGrammar(block, root) {
+    const textarea = block.querySelector('textarea');
+    const heading = block.querySelector(':scope > h4');
+    const name = heading?.querySelector(':scope [data-i18n]:not(a, a *)');
+    if (!(textarea instanceof HTMLTextAreaElement) || !name) return;
+
+    const tip = readTooltip(heading.querySelector('.fa-circle-info'));
+    // Kobold's heading carries no tooltip; it takes the description Text Completions gives the same setting.
+    const source = tip.text ? null : root?.querySelector('[data-sb-sampling-control="#grammar_block_ooba"] .ds-row-subtitle:not([data-sb-copy-placeholder])');
+    const { row } = createField(textarea, {
+        title: readRowTitle(name),
+        titleKey: readLabelI18nKey(name),
+        subtitle: tip.text || clean(source?.textContent),
+        subtitleKey: tip.key || source?.getAttribute('data-i18n') || '',
+        link: heading.querySelector('a'),
+    });
+    block.replaceChildren(row);
+}
+
+/** JSON schema: a text-area field with the docs link, then the switch row the block already has. */
+function prepareJsonSchema(block) {
+    const textarea = block.querySelector('textarea');
+    const heading = block.querySelector(':scope > h4');
+    const name = heading?.querySelector('[data-i18n]:not(a, a *)');
+    if (!(textarea instanceof HTMLTextAreaElement) || !name) return;
+
+    const { row } = createField(textarea, { title: readRowTitle(name), titleKey: readLabelI18nKey(name), link: heading.querySelector('a') });
+    heading.remove();
+    block.querySelector(':scope > hr')?.remove();
+    block.prepend(row);
+}
+
+/**
+ * The sampler order and priority lists: a row with the title, the description and the lock, the list in a
+ * block of its own, and the button that loads the default order as an action row.
+ */
+function prepareSamplerList(block) {
+    const list = block.querySelector(':scope > .prompt_order');
+    const lock = block.querySelector('.sampler-order-lock');
+    const heading = block.querySelector(':scope > .range-block-title');
+    const name = heading?.querySelector(':scope > span[data-i18n]');
+    const description = block.querySelector(':scope > .toggle-description');
+    const reset = block.querySelector(':scope > .menu_button');
+    if (!list || !(lock instanceof HTMLElement) || !name || !(reset instanceof HTMLElement)) return;
+
+    const { row } = createRow({ label: readRowTitle(name), subtitle: clean(description?.textContent) || undefined, field: list.id || 'sampler-order', suffix: lock });
+    setKey(row.querySelector('.ds-row-label'), readLabelI18nKey(name));
+    const subtitle = row.querySelector('.ds-row-subtitle');
+    if (subtitle && description) moveCaption(subtitle, description);
+    // The list scrolls, so a keyboard user needs a stop on it to reach what is below its fold.
+    list.setAttribute('tabindex', '0');
+    list.setAttribute('role', 'group');
+    list.setAttribute('aria-label', readRowTitle(name));
+    const nameKey = readLabelI18nKey(name);
+    if (nameKey) list.setAttribute('data-i18n', `[aria-label]${nameKey}`);
+    block.replaceChildren(row, createListBlock(list), createActionRow(reset));
+}
+
+/** Dynamic temperature: its range sliders follow its switch, as a dependent set does elsewhere. */
+function prepareDynamicTemperature(block) {
+    block.querySelector(':scope > .flexFlowRow')?.setAttribute('data-sb-enabled-by', '#dynatemp_textgenerationwebui');
+}
+
+/**
+ * Rebuilds the block of a sampler that upstream lays out as a heading and loose controls. Runs before the generic row pass.
+ * @param {string} selector The registry selector of the card.
+ * @param {HTMLElement} block The control block the card holds.
+ * @param {{root?: ParentNode}} [context]
+ */
+export function prepareSamplingBlock(selector, block, { root } = {}) {
+    switch (selector) {
+        case '#openai_logit_bias_preset': return prepareChatLogitBias(block);
+        case '#logit_bias_block_ooba': return prepareTextLogitBias(block);
+        case '#banned_tokens_block_ooba': return prepareBannedTokens(block);
+        case '#cfg_block_ooba': return prepareCfg(block);
+        case '#grammar_block_ooba':
+        case '#grammar': return prepareGrammar(block, root);
+        case '#json_schema_block': return prepareJsonSchema(block);
+        case '#dynatemp_block_ooba': return prepareDynamicTemperature(block);
+        default:
+            if (block.querySelector(':scope > .prompt_order')) prepareSamplerList(block);
+    }
+}
+
+/**
+ * The finishing pass of a card, after the generic row pass: the wire control joins its slider row as the last line,
+ * a seed and the DRY sequence breakers take the row that fits their control, and a dependent set follows its switch.
+ * @param {HTMLElement} card
+ */
+export function finishSamplingCard(card) {
+    const wire = card.querySelector(':scope > .sb-sampling-transmission');
+    const slider = card.querySelector(':scope > .ds-row-slider');
+    if (wire && slider) {
+        const label = wire.querySelector('.sb-sampling-transmission__label');
+        if (label) label.textContent = clean(label.textContent).replace(/\s*[:：]$/, '');
+        slider.append(wire);
+    }
+    if (card.dataset.sbSamplerId === 'seed') {
+        for (const wrapper of card.querySelectorAll('.ds-row-suffix > div')) {
+            if (wrapper.children.length === 1 && wrapper.firstElementChild instanceof HTMLInputElement) wrapper.replaceWith(wrapper.firstElementChild);
+        }
+    }
+    adoptSamplingFieldRows(card);
+    bindDependentSets(card);
+}
+
+/** Looks again at every dependent set of the page; other code changes a switch without an event. */
+export function syncSamplingDependents(root) {
+    bindDependentSets(root);
+}

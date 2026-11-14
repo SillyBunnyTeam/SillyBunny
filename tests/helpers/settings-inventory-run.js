@@ -97,14 +97,14 @@ async function warmUp(page, recorder, { root, skip }, controls) {
 export async function recordSection(page, recorder, target) {
     const turned = await enableDependentSets(page, recorder, target.root);
     try {
-        return await recordEnabledSection(page, recorder, target);
+        return await recordEnabledSection(page, recorder, target, turned);
     } finally {
         await restoreDependentSets(page, recorder, turned);
     }
 }
 
-async function recordEnabledSection(page, recorder, { key, root, skip, roundTrip: exercise, only = () => true }) {
-    const { before, after } = await collectSection(page, root, skip);
+async function recordEnabledSection(page, recorder, { key, root, skip, roundTrip: exercise, only = () => true }, turned) {
+    const { before, after } = await collectSection(page, root, skip, { recorder, turned });
     const findings = [];
     const controls = [];
     const merged = mergeCollections(before, after).filter(record => only({ ...record, shown: record.where !== 'hidden' }));
@@ -182,16 +182,16 @@ async function recordEnabledSection(page, recorder, { key, root, skip, roundTrip
 export async function checkSection(page, recorder, target) {
     const turned = await enableDependentSets(page, recorder, target.root);
     try {
-        return await checkEnabledSection(page, recorder, target);
+        return await checkEnabledSection(page, recorder, target, turned);
     } finally {
         await restoreDependentSets(page, recorder, turned);
     }
 }
 
-async function checkEnabledSection(page, recorder, { key, root, section: recorded, fixture = null, accepted = ACCEPTED_DIFFERENCES, only = () => true }) {
+async function checkEnabledSection(page, recorder, { key, root, section: recorded, fixture = null, accepted = ACCEPTED_DIFFERENCES, only = () => true }, turned) {
     const skip = recorded.skip ?? [];
     const failures = [];
-    const after = (await collectSection(page, root, skip)).after.filter(only);
+    const after = (await collectSection(page, root, skip, { recorder, turned })).after.filter(only);
     // Every lookup is made inside the section's root: the same identity on another page is another control.
     const compared = compareSection(recorded, after);
     const { result, unused, arrived, renamed, added } = applyAccepted(key, compared, accepted);
