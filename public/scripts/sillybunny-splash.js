@@ -28,7 +28,7 @@
     var DOTS_PAUSE_MS = 200;
 
     // Each picture is stored at its own size in art pixels, so the table is what lets the script size the box before
-    // the file has loaded. tests/unit/sillybunny-splash.test.js reads the files and the export spec and fails when a
+    // the file has loaded. tests/unit/sillybunny-splash.test.js reads the files and the art manifest and fails when a
     // size is stale. The URL is root-relative and the service worker caches /img/ by full URL, so change the key
     // whenever a file changes.
     var ART_VERSION = '20261106e';
