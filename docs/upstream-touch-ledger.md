@@ -1442,13 +1442,13 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | Root upstream-origin files, `.github/**`, `docker/**`, `package.json`, lockfiles, launcher scripts, `webpack.config.js`, and repository policy/setup documents. |
 | Area | Release policy, packaging, launch, CI, container runtime, and project identity. |
-| Divergence reason | SillyBunny carries fork branch policy, branding, Bun-first and Node-compatible launch paths, constrained installs, release automation, and container defaults. |
+| Divergence reason | SillyBunny carries fork branch policy, branding, Bun-first and Node-compatible launch paths, constrained installs, release automation, and container defaults. Its shipped pixel art and icons are derived from masters by `scripts/art`, so `pr-checks.yml` has a job (`run-art-tests`) that derives them again and compares them byte for byte. |
 | Target seam | `.github/workflows/`, launcher scripts, `scripts/dependency-state.js`, `src/runtime.js`, and Docker entrypoints. |
 | Adapter shape | Keep upstream-compatible commands and package contracts; isolate fork runtime selection, metadata, branding, and release gates in the named infrastructure files. |
 | Protecting tests | `tests/sillybunny-launcher-smol.test.js`, `tests/server-supervisor.test.js`, `tests/frontend-assets.test.js`, root lint, frontend build, README mirror check, and workflow static validation. |
-| Validation | `npm ci --dry-run`, launcher unit tests, shell/JSON/YAML syntax checks, `npm run lint`, `npm run build:frontend`, and release workflow smoke. |
+| Validation | `npm ci --dry-run`, launcher unit tests, shell/JSON/YAML syntax checks, `npm run lint`, `npm run build:frontend`, and release workflow smoke. 2026-11-14 (art derive job): `pr-checks.yml` parses as YAML, and the job's two commands, `npm ci --ignore-scripts --prefix scripts/art` and `npm test --prefix scripts/art`, pass on linux-x64 (WSL, Node 24.22.0, npm 11.19.1; 74 tests, byte proof included). |
 | Rollback path | Revert each launcher, workflow, or packaging adapter independently while retaining user data and upstream application formats. |
-| Last reviewed | 2026-11-04 SillyTavern staging sync (`ad29cbda6`). |
+| Last reviewed | 2026-11-14, art derive module (PR checks job). |
 | Owner | Release integrator. |
 
 ### Bundled defaults and install-time content
