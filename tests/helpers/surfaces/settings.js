@@ -321,7 +321,8 @@ export const surfaces = [
         title: 'Customize: Logs',
         shell: 'right',
         tab: 'logs',
-        ready: '[data-sb-panel="logs"] .ds-button-row',
+        // The button rows sit under the console, below the fold of a phone, so the ready mark is the status row above it.
+        ready: '[data-sb-panel="logs"] .sb-console-log-note',
         masks: ['[data-sb-panel="logs"] .sb-console-log-output', '[data-sb-panel="logs"] .sb-server-pill', '[data-sb-panel="logs"] .sb-console-log-note'],
         sources: [`${SCRIPTS}/sillybunny-server-tools.js`],
     })),
