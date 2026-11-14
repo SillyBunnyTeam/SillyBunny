@@ -64,9 +64,10 @@ function selectedValues(select) {
 }
 
 /**
- * Writes a value back with a native bubbling change event. jQuery binds its handlers natively, so this
- * reaches select2 and every jQuery handler as well as plain listeners; jQuery's own trigger('change')
- * would skip the plain listeners.
+ * Writes a value back with the native bubbling `input` and `change` events that a picked option fires, in
+ * that order: upstream binds some selects on `input` (`#image_overswipe`) and others on `change`. jQuery
+ * binds its handlers natively, so this reaches select2 and every jQuery handler as well as plain listeners;
+ * jQuery's own trigger('change') would skip the plain listeners.
  */
 function writeBack(select, value) {
     if (select.multiple) {
@@ -74,6 +75,7 @@ function writeBack(select, value) {
     } else {
         select.value = value;
     }
+    select.dispatchEvent(new Event('input', { bubbles: true }));
     select.dispatchEvent(new Event('change', { bubbles: true }));
 }
 

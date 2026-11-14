@@ -207,6 +207,17 @@ describe('createSelectRow', () => {
         expect(trigger.textContent).toContain('Claude Sonnet');
     });
 
+    test('choosing fires input before change, as a native select does, so upstream handlers bound to input run', () => {
+        const select = makeSelect();
+        const events = [];
+        select.addEventListener('input', () => events.push('input'));
+        select.addEventListener('change', () => events.push('change'));
+        const { trigger } = mount({ select });
+        trigger.click();
+        pickerOptions().find(option => option.textContent === 'Claude Sonnet').click();
+        expect(events).toEqual(['input', 'change']);
+    });
+
     test('with real jQuery, a write-back reaches jQuery and native handlers once each', () => {
         loadJQuery();
         const select = makeSelect();
