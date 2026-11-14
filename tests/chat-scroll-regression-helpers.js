@@ -450,6 +450,35 @@ export async function scrollMessageNearTop(page, messageId, offsetTop = 24) {
     await waitForAnimationFrames(page, 2);
 }
 
+/**
+ * Renders the chat again, then scrolls a message near the top before the next frame. A chat load queues a bottom pin
+ * for that frame, so the scroll comes while the pin is queued.
+ *
+ * With `afterSettleTimerMs`, the scroll comes after the chat load settle timer that has that delay, which queues a
+ * bottom pin too. A page timer with the same delay starts right after the settle timers, so it runs right after that
+ * settle timer. A frame can still run between the two timers, and the pin then runs before the scroll.
+ * @param {import('@playwright/test').Page} page
+ * @param {number|string} messageId
+ * @param {{ offsetTop?: number, afterSettleTimerMs?: number }} [options]
+ * @returns {Promise<number>} The distance from the bottom right after the scroll
+ */
+export async function scrollMessageNearTopBeforeQueuedChatLoadPin(page, messageId, { offsetTop = 24, afterSettleTimerMs = 0 } = {}) {
+    return page.evaluate(async ({ targetMessageId, targetOffsetTop, pageTimerMs }) => {
+        const chat = document.querySelector('#chat');
+
+        await window.SillyTavern.getContext().printMessages();
+        if (pageTimerMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, pageTimerMs));
+        }
+
+        const message = chat.querySelector(`.mes[mesid="${targetMessageId}"]`);
+        chat.scrollTop += message.getBoundingClientRect().top - chat.getBoundingClientRect().top - targetOffsetTop;
+        chat.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+        return chat.scrollHeight - chat.clientHeight - chat.scrollTop;
+    }, { targetMessageId: String(messageId), targetOffsetTop: offsetTop, pageTimerMs: afterSettleTimerMs });
+}
+
 export async function markManualMobileScroll(page, scrollTop) {
     await page.evaluate((nextScrollTop) => {
         const chat = document.querySelector('#chat');

@@ -3367,15 +3367,12 @@ function scrollLoadedChatToBottom() {
     }
 
     scrollChatToBottom({ force: true });
-    scrollChatToBottom({ waitForFrame: true, force: true });
+    // SillyBunny: queue load pins through the lock, because a forced scroll queued for the next frame still runs after the lock ends.
+    pinChatLoadToBottom({ waitForFrame: true });
 
     for (const delayMs of CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS) {
         setTimeout(() => {
-            if (!isChatLoadBottomLockActive()) {
-                return;
-            }
-
-            scrollChatToBottom({ waitForFrame: true, force: true });
+            pinChatLoadToBottom({ waitForFrame: true });
         }, delayMs);
     }
 }
