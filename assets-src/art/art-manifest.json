@@ -1172,7 +1172,7 @@
         "card-reisen": {
             "type": "pinned",
             "key": null,
-            "reason": "Built by build-card.mjs, which scales the smooth card art with Lanczos; waits for a native-grid card master.",
+            "reason": "Built by build-card.mjs, which scales smooth card art with Lanczos onto a gradient, so it cannot be derived again. A card entry can take over once there is a native card master: an opaque PNG of the whole card, gradient included, on a grid that a whole scale takes to 768x1152 (such as 256x384 at 3 or 192x288 at 4), with the waist cut on its bottom edge and no ring along the cut, together with the card text as a V3 card. scripts/art/lib/card.js builds such a card and reads it back.",
             "outputs": [
                 {
                     "path": "default/content/default_AssistantReisen.png",
@@ -1183,7 +1183,7 @@
         "card-tewi": {
             "type": "pinned",
             "key": null,
-            "reason": "Built by build-card.mjs, which scales the smooth card art with Lanczos; waits for a native-grid card master.",
+            "reason": "Built by build-card.mjs, which scales smooth card art with Lanczos onto a gradient, so it cannot be derived again. A card entry can take over once there is a native card master: an opaque PNG of the whole card, gradient included, on a grid that a whole scale takes to 768x1152 (such as 256x384 at 3 or 192x288 at 4), with the waist cut on its bottom edge and no ring along the cut, together with the card text as a V3 card. scripts/art/lib/card.js builds such a card and reads it back.",
             "outputs": [
                 {
                     "path": "default/content/default_AssistantTewi.png",
