@@ -1094,7 +1094,7 @@ test.describe('Settings entry regressions', () => {
             test('cold Interface entry creates live normalized controls without visiting Appearance', async ({ page, baseURL }) => {
                 const settingsStore = {};
                 await loadSettings(page, baseURL, settingsStore);
-                const ids = ['topbar-icons-only-input', 'button-scale-input', 'compact-mode-input', 'bottom-bar-visible-input', 'gg-bar-visible-input']
+                const ids = ['button-scale-input', 'compact-mode-input', 'bottom-bar-visible-input', 'gg-bar-visible-input']
                     .map(suffix => `sb-${mode}-${suffix}`);
                 const interfacePanel = page.locator('[data-sb-panel="interface"]');
                 const outlet = interfacePanel.locator(`#sb-${mode}-settings-outlet`);
@@ -1125,10 +1125,6 @@ test.describe('Settings entry regressions', () => {
                 await page.evaluate(ids => {
                     window.__sbInterfaceControlRefs = ids.map(id => document.getElementById(id));
                 }, ids);
-                const iconsOnly = outlet.locator(`#sb-${mode}-topbar-icons-only-input`);
-                const nextIconsOnly = !(await iconsOnly.isChecked());
-                await iconsOnly.setChecked(nextIconsOnly);
-                await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(nextIconsOnly));
                 const scale = outlet.locator(`#sb-${mode}-button-scale-input`);
                 await scale.focus();
                 await scale.press('Home');
@@ -1139,7 +1135,6 @@ test.describe('Settings entry regressions', () => {
                 await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'messages'));
                 await openInterface();
                 expect(await page.evaluate(ids => ids.every((id, index) => document.getElementById(id) === window.__sbInterfaceControlRefs[index]), ids)).toBe(true);
-                await expect(iconsOnly).toBeChecked({ checked: nextIconsOnly });
                 await expect(scale).toHaveValue('75');
 
                 await page.reload({ waitUntil: 'domcontentloaded' });
@@ -1149,15 +1144,62 @@ test.describe('Settings entry regressions', () => {
                     { timeout: 60000 },
                 );
                 await openInterface();
-                await expect(iconsOnly).toBeChecked({ checked: nextIconsOnly });
                 await expect(scale).toHaveValue('75');
-                await iconsOnly.setChecked(!nextIconsOnly);
-                await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(!nextIconsOnly));
                 await scale.focus();
                 await scale.press('ArrowRight');
                 await expect(scale).toHaveValue('80');
                 await expect.poll(() => page.evaluate(mode => document.documentElement.style.getPropertyValue(`--sb-${mode}-button-scale`), mode)).toBe('0.8');
             });
+
+            if (!mobile) {
+                test('the desktop Icons only switch is live, kept across tabs and reloads, and the phone switch is gone', async ({ page, baseURL }) => {
+                    await loadSettings(page, baseURL);
+                    const outlet = page.locator('[data-sb-panel="interface"] #sb-desktop-settings-outlet');
+                    const iconsOnly = outlet.locator('#sb-desktop-topbar-icons-only-input');
+                    const openInterface = async () => {
+                        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                        await expect(iconsOnly).toBeVisible();
+                    };
+
+                    await openInterface();
+                    await expect(page.locator('[data-sb-panel="interface"] #sb-mobile-topbar-icons-only-input')).toHaveCount(0);
+                    await expect(outlet.getByText('Show only icons in the desktop top bar.', { exact: true })).toBeVisible();
+                    const nextIconsOnly = !(await iconsOnly.isChecked());
+                    await iconsOnly.setChecked(nextIconsOnly);
+                    await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(nextIconsOnly));
+
+                    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'messages'));
+                    await openInterface();
+                    await expect(iconsOnly).toBeChecked({ checked: nextIconsOnly });
+
+                    await page.reload({ waitUntil: 'domcontentloaded' });
+                    await page.waitForFunction(
+                        () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
+                        null,
+                        { timeout: 60000 },
+                    );
+                    await openInterface();
+                    await expect(iconsOnly).toBeChecked({ checked: nextIconsOnly });
+                    await iconsOnly.setChecked(!nextIconsOnly);
+                    await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(!nextIconsOnly));
+                });
+            }
+
+            if (mobile) {
+                test('the phone has no Icons only switch and its stored value is left alone', async ({ page, baseURL }) => {
+                    await page.addInitScript(() => {
+                        if (localStorage.getItem('sb-mobile-topbar-icons-only') === null) localStorage.setItem('sb-mobile-topbar-icons-only', 'true');
+                    });
+                    await loadSettings(page, baseURL);
+                    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
+                    const interfacePanel = page.locator('[data-sb-panel="interface"]');
+                    await expect(interfacePanel.locator('#sb-mobile-button-scale-input')).toBeVisible();
+                    await expect(interfacePanel.locator('[id$="topbar-icons-only-input"]:visible')).toHaveCount(0);
+                    await expect(interfacePanel.locator('#sb-mobile-topbar-icons-only-input')).toHaveCount(0);
+                    await expect(interfacePanel.getByText('Mobile Navigation', { exact: true })).toHaveCount(0);
+                    expect(await page.evaluate(() => localStorage.getItem('sb-mobile-topbar-icons-only'))).toBe('true');
+                });
+            }
 
             test('Interface has no Desktop Quick Actions and leaves the old saved list alone', async ({ page, baseURL }) => {
                 await page.addInitScript(() => {

@@ -95,15 +95,11 @@ async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly, mobi
 
     const iconsOnly = page.viewportSize().width <= 768 ? mobileIconsOnly : desktopIconsOnly;
     await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(iconsOnly));
-    const entryPoints = iconsOnly
-        ? [
-            { selector: '[data-sb-topbar-page="left:connections"]', tabId: 'connections' },
-            { selector: '[data-sb-topbar-page="right:appearance"]', tabId: 'appearance' },
-        ]
-        : [
-            { selector: '#sb-left-shell-toggle', tabId: 'connections' },
-            { selector: '#sb-right-shell-toggle', tabId: 'appearance' },
-        ];
+    // The same two buttons open the settings in both modes: the icons-only bar is the labelled bar without labels.
+    const entryPoints = [
+        { selector: '#sb-left-shell-toggle', tabId: 'connections' },
+        { selector: '#sb-right-shell-toggle', tabId: 'appearance' },
+    ];
 
     for (const entryPoint of entryPoints) {
         const button = page.locator(entryPoint.selector);

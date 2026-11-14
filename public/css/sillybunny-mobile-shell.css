@@ -594,10 +594,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         display: flex;
     }
 
-    #sb-topbar-inner {
-        grid-template-columns: 1fr auto 1fr;
-    }
-
     #sb-topbar-primary .sb-topbar-group {
         flex-wrap: nowrap !important;
         align-items: center !important;
@@ -613,7 +609,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         max-height: var(--sb-mobile-toggle-size) !important;
         flex: 0 0 var(--sb-mobile-toggle-size) !important;
         padding: 0 !important;
-        border-radius: var(--sb-radius-pill) !important;
+        border-radius: var(--sb-radius-control) !important;
         box-sizing: border-box !important;
         line-height: 1 !important;
         aspect-ratio: 1 / 1;
@@ -698,79 +694,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         display: none;
     }
 
-    #sb-left-shell-toggle {
-        display: none;
-    }
-
-    /* SillyBunny: the shell toggle is the only way into the settings page on mobile, so it is always
-       present -- only the icons-only top bar supersedes it. (feat/v1.9.0-ui-overhaul) */
-    :root:not([data-sb-topbar-icons-only='true']) #sb-left-shell-toggle {
-        display: inline-flex;
-    }
-
-    #sb-topbar-inner {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        gap: var(--sb-topbar-inline-gap);
-    }
-
-    .sb-topbar-group {
-        gap: var(--sb-topbar-group-gap);
-    }
-
-    .sb-topbar-group-left {
-        justify-self: start;
-    }
-
-    .sb-topbar-group-right {
-        justify-self: end;
-        align-items: center;
-        flex-wrap: nowrap;
-    }
-
-    .sb-topbar-brand {
-        align-items: center;
-        text-align: center;
-        width: 100%;
-        padding: 0 2px;
-    }
-
-    /* Icons only top bar: phones have no room for both the rail and the centre brand, so drop
-       the label here and hand its column to the rail. Desktop keeps the label. */
-    :root[data-sb-topbar-icons-only='true'] .sb-topbar-brand {
-        display: none;
-    }
-
-    /* One spacing rhythm for the whole bar: the clusters and the groups both sit at the 3-4px
-       group gap, and the grid seam would otherwise add a third width. Identical square buttons a
-       few px apart at three different distances is what reads as awkward, so the seam keys off
-       the group gap too. */
-    :root[data-sb-topbar-icons-only='true'] #sb-topbar-inner {
-        grid-template-columns: minmax(0, 1fr) minmax(0, auto);
-        gap: var(--sb-topbar-group-gap);
-    }
-
-    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-right {
-        min-width: 0;
-    }
-
-    :root[data-sb-topbar-icons-only='true'] .sb-topbar-group-left {
-        justify-self: stretch;
-        min-width: 0;
-    }
-
-    /* One target size for the whole bar. The page icons and Quick Access slots used to sit at the
-       26px chatbar size next to 40px anchors, which made them noticeably harder to hit
-       (Geechan review, #685). Home needs naming explicitly: its id-level min-width in
-       sillybunny-tabs.css outranks a class selector. */
-    :root[data-sb-topbar-icons-only='true'] .sb-proxy-button-icon-only,
-    :root[data-sb-topbar-icons-only='true'] #sb-home-toggle {
-        min-width: var(--sb-mobile-toggle-size);
-        width: var(--sb-mobile-toggle-size);
-        height: var(--sb-mobile-toggle-size);
-        min-height: var(--sb-mobile-toggle-size);
-    }
-
     /* Adopted third-party buttons keep the same minimum target size as the rest of the bar.
        Icon-only controls stay square while text-bearing controls can grow to fit their label.
        This sheet loads after sillybunny-tabs.css, so the equal-specificity tie goes here. */
@@ -787,15 +710,9 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     }
 
     /* Visibility and seam handling live in sillybunny-tabs.css; the phone bar only shortens
-       the icon-only target to match its smaller squares. */
+       the rule to match its smaller squares. */
     .sb-topbar-cluster-divider {
         height: calc(var(--sb-mobile-toggle-size) * 0.5);
-    }
-
-    /* The strip's characters-pages boundary; equal specificity to the desktop hide in
-       sillybunny-tabs.css, so this sheet's later load order re-enables it on phones. */
-    :root[data-sb-topbar-icons-only='true'] #sb-topbar-divider-characters {
-        display: inline-block;
     }
 
     .sb-universal-search {
@@ -820,8 +737,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     #sb-home-toggle,
 #sb-left-shell-toggle,
 #sb-right-shell-toggle,
-#sb-character-toggle,
-.sb-topbar-page-button {
+#sb-character-toggle {
         min-width: var(--sb-mobile-toggle-size);
         width: var(--sb-mobile-toggle-size);
         height: var(--sb-mobile-toggle-size);
@@ -833,16 +749,14 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     #sb-home-toggle span,
 #sb-left-shell-toggle span,
 #sb-right-shell-toggle span,
-#sb-character-toggle span,
-.sb-topbar-page-button span {
+#sb-character-toggle span {
         display: none;
     }
 
     #sb-home-toggle::after,
 #sb-left-shell-toggle::after,
 #sb-right-shell-toggle::after,
-#sb-character-toggle::after,
-.sb-topbar-page-button::after {
+#sb-character-toggle::after {
         left: var(--sb-proxy-underline-inset);
         right: var(--sb-proxy-underline-inset);
         bottom: var(--sb-proxy-underline-bottom);
@@ -851,8 +765,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     #sb-home-toggle i,
 #sb-left-shell-toggle i,
 #sb-right-shell-toggle i,
-#sb-character-toggle i,
-.sb-topbar-page-button i {
+#sb-character-toggle i {
         font-size: var(--sb-topbar-compact-icon-size);
     }
 
@@ -978,14 +891,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     .sb-shell-panel-scroller {
         padding-bottom: var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px)));
-    }
-
-    .sb-brand-title,
-    .sb-brand-title.is-chat {
-        max-width: 100%;
-        font-size: calc(var(--mainFontSize) * 0.82);
-        line-height: 1.05;
-        letter-spacing: 0;
     }
 
     .sb-topbar-label-option-grid {

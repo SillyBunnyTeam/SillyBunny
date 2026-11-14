@@ -49,7 +49,7 @@
     --sb-topbar-search-row-height: max(var(--sb-density-floor), calc(var(--sb-topbar-search-row-height-base) * var(--sb-topbar-scale-active)));
     --sb-topbar-search-panel-gap: calc(var(--sb-topbar-search-panel-gap-base) * var(--sb-topbar-scale-active));
     --sb-topbar-group-gap: calc(var(--sb-topbar-group-gap-base) * var(--sb-topbar-scale-active));
-    /* Seam between icons-only clusters. A multiple of the group gap rather than a fixed value, so
+    /* Seam around a divider between two sets of controls. A multiple of the group gap rather than a fixed value, so
        it tracks the user's top bar scale and compact mode instead of fighting them. */
     --sb-topbar-cluster-gap: calc(var(--sb-topbar-group-gap) * 2.5);
     --sb-chatbar-height: calc(var(--sb-chatbar-height-base) * var(--sb-chatbar-scale-active));
@@ -233,6 +233,7 @@ body.sb-topbar-dragging {
     position: relative;
     width: min(100%, var(--sb-topbar-max-width));
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows:
         var(--sb-topbar-primary-height)
         minmax(var(--sb-chatbar-height), auto);
@@ -272,19 +273,34 @@ body.sb-topbar-compact #sb-chatbar-layer {
     display: flex;
     align-items: center;
     width: 100%;
+    min-width: 0;
 }
 
+/* Three tracks: the two groups never shrink below what their controls need (min-content), the
+   title takes what they leave and the rest is shared equally, so the title sits on the window's
+   centre while it fits and truncates when it does not. The groups themselves are fitted by
+   fitTopbar() in sillybunny-tabs.js, which hides the title and then drops the labels before
+   the tracks could run out. */
 #sb-topbar-inner {
     width: 100%;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-columns: minmax(min-content, 1fr) minmax(0, auto) minmax(min-content, 1fr);
     align-items: center;
     gap: var(--sb-topbar-inline-gap);
     min-width: 0;
 }
 
+:root[data-sb-topbar-title='hidden'] #sb-topbar-inner {
+    grid-template-columns: minmax(min-content, 1fr) minmax(min-content, 1fr);
+}
+
+:root[data-sb-topbar-title='hidden'] .sb-topbar-brand {
+    display: none;
+}
+
 .sb-topbar-group {
     display: flex;
+    flex-wrap: nowrap;
     align-items: center;
     gap: var(--sb-topbar-group-gap);
     min-width: 0;
@@ -296,7 +312,6 @@ body.sb-topbar-compact #sb-chatbar-layer {
 
 .sb-topbar-group-right {
     justify-content: flex-end;
-    flex-wrap: wrap;
 }
 
 @media screen and (min-width: 769px) {
@@ -324,12 +339,6 @@ body.sb-topbar-compact #sb-chatbar-layer {
         font-size: calc(var(--mainFontSize) * 0.9 * var(--sb-desktop-button-scale));
     }
 
-    #sb-topbar-primary .sb-topbar-group-right {
-        align-items: center;
-        flex-wrap: nowrap;
-    }
-
-
 }
 
 .sb-topbar-brand {
@@ -338,6 +347,7 @@ body.sb-topbar-compact #sb-chatbar-layer {
     justify-content: center;
     justify-self: center;
     min-width: 0;
+    max-width: 100%;
     overflow: hidden;
     text-align: center;
 }
@@ -651,19 +661,19 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-brand-title {
-    display: inline-flex;
-    align-items: center;
-    min-block-size: 32px;
+    --sb-brand-title-height: 32px;
+    display: block;
+    min-width: 0;
     max-width: min(100%, 42rem);
+    block-size: var(--sb-brand-title-height);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    margin: -2px 0;
-    padding: 2px 6px;
-    border-radius: var(--sb-radius-pill);
-    font-size: var(--sb-type-body);
+    padding: 0 6px;
+    border-radius: var(--sb-radius-control);
+    font-size: var(--sb-type-title);
     font-weight: var(--sb-weight-title);
-    line-height: var(--sb-line-title);
+    line-height: var(--sb-brand-title-height);
     letter-spacing: 0;
     cursor: pointer;
     touch-action: manipulation;
@@ -685,12 +695,6 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-brand-title:active {
     background: var(--sb-flat-active-bg);
-}
-
-.sb-brand-title.is-chat {
-    font-size: var(--sb-type-control);
-    font-weight: var(--sb-weight-title);
-    letter-spacing: 0;
 }
 
 .sb-proxy-button {
@@ -771,7 +775,8 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-proxy-button.is-open i,
 .sb-proxy-button.is-active i,
-.sb-proxy-button.is-current i {
+.sb-proxy-button.is-current i,
+.sb-proxy-button.sb-settings-active i {
     color: var(--color-primary, var(--sb-accent));
 }
 
@@ -796,88 +801,51 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
-/* Icons only top bar: each section grows a cluster of its own page icons. Workspace and Customize
-   yield to their complete clusters while Home and Characters stay put with labels suppressed.
-
-   Square hit boxes at the labelled buttons' own height. The icons used to be 30px wide inside a
-   36px-tall bar, which read as a smaller, harder-to-hit control than the anchors beside them
-   (Geechan review, #685). Placed after .sb-proxy-button-icon-only so equal specificity resolves
-   here by source order. */
-.sb-topbar-page-button,
-:root[data-sb-topbar-icons-only='true'] .sb-proxy-button-icon-only {
+/* Square hit boxes at the labelled buttons' own height, in the labelled bar as well: an icon
+   button is as tall as it is wide (Geechan review, #685). Placed after .sb-proxy-button-icon-only
+   so equal specificity resolves here by source order. */
+#sb-topbar-inner .sb-proxy-button-icon-only {
     width: var(--sb-proxy-button-height);
     min-width: var(--sb-proxy-button-height);
 }
 
-/* The rails do not scroll on their own. A nested scroll region ended mid-button and left an
-   unreadable sliver of an icon at its boundary; the whole bar scrolls as one axis instead. */
-.sb-topbar-pages {
+/* The labels are off by the setting (data-sb-topbar-icons-only) or because the bar had no room
+   for them (data-sb-topbar-labels, set by fitTopbar()). Both leave the same bar without text. */
+:root:is([data-sb-topbar-icons-only='true'], [data-sb-topbar-labels='off']) #sb-topbar-inner .sb-proxy-button {
+    width: var(--sb-proxy-button-height);
+    min-width: var(--sb-proxy-button-height);
+    padding: 0;
+    gap: 0;
+}
+
+:root:is([data-sb-topbar-icons-only='true'], [data-sb-topbar-labels='off']) #sb-topbar-inner .sb-proxy-button span {
     display: none;
-    align-items: center;
-    flex-wrap: nowrap;
-    gap: var(--sb-topbar-group-gap);
 }
 
-:root[data-sb-topbar-icons-only='true'] #sb-left-shell-toggle,
-:root[data-sb-topbar-icons-only='true'] #sb-right-shell-toggle {
-    display: none;
-}
-
-/* A cluster's anchor sits tight against its own page icons; each new anchor opens the wider seam
-   that separates the clusters, so Workspace, Customize and Characters read as three zones rather
-   than one strip. Derived from the group gap so it follows the user's top bar scale. */
-:root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-lead:not(:first-child) {
-    margin-inline-start: calc(var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap));
-}
-
-:root[data-sb-topbar-icons-only='true'] #sb-topbar-cluster-workspace {
-    margin-inline-start: calc(var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap));
-}
-
-/* Boundary rule between clusters: a 1px theme-derived rule marks where one cluster ends and the
-   next begins -- Workspace|Customize on the left half, Home|Characters on the right -- at every
-   size while the mode is on. The symmetric margins reproduce the cluster seam around the rule. */
+/* A rule between two sets of controls: Quick Access from the shell buttons on desktop. The seam
+   is derived from the group gap so it follows the user's top bar scale. */
 .sb-topbar-cluster-divider {
     display: none;
     flex: 0 0 auto;
     width: 0;
     height: calc(var(--sb-proxy-button-height) * 0.55);
-    margin-inline: calc((var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap)) / 2);
     /* Whole-pixel margins keep each rule on a single device column; a fractional margin
        antialiases it across two, which reads heavier than its partner. */
     margin-inline: round(calc((var(--sb-topbar-cluster-gap) - var(--sb-topbar-group-gap)) / 2), 1px);
-    /* Browsers snap 1px borders to device pixels cleanly at any scale factor; background-based
-       lines need subpixel adjustments that can still vanish or double at fractional DPR. */
     /* Square on purpose: a border-radius turns the rule into an antialiased path that skips
        device-pixel snapping, so it reads lighter or heavier depending on its subpixel offset. */
     border-inline-start: 1px solid var(--sb-shell-border);
 }
 
-/* The divider carries the seam, so the lead's extra margin steps aside to keep the rule centred
-   (this must follow the seam-margin rule above to win on source order). */
-:root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider {
+/* Shown only while that side has a visible Quick Access button (or the overflow button that
+   stands for them); an emptied slot gets an inline display:none. */
+:root:not([data-sb-topbar-overflow='true']) .sb-topbar-group-left:has(> #sb-shortcut-left:not([style*='display: none']), > #sb-shortcut-slot3:not([style*='display: none']), > #sb-shortcut-slot4:not([style*='display: none'])) > #sb-topbar-divider-quick-left,
+.sb-topbar-group-right:has(> #sb-shortcut-right:not([style*='display: none']), > #sb-shortcut-slot5:not([style*='display: none']), > #sb-shortcut-slot6:not([style*='display: none'])) > #sb-topbar-divider-quick-right {
     display: inline-block;
 }
 
-/* Quick action boundaries: rules between the shell buttons and the Quick Access slots, so each
-   side of the bar reads as shell | quick actions | title | quick actions | shell. Shown only
-   while the slots sit in their home positions (icons-only mode gathers them on the right) and
-   only when that side has a visible slot; an emptied slot gets an inline display:none. */
-:root:not([data-sb-topbar-icons-only='true']) .sb-topbar-group-left:has(> #sb-shortcut-left:not([style*='display: none']), > #sb-shortcut-slot3:not([style*='display: none']), > #sb-shortcut-slot4:not([style*='display: none'])) > #sb-topbar-divider-quick-left,
-:root:not([data-sb-topbar-icons-only='true']) .sb-topbar-group-right:has(> #sb-shortcut-right:not([style*='display: none']), > #sb-shortcut-slot5:not([style*='display: none']), > #sb-shortcut-slot6:not([style*='display: none'])) > #sb-topbar-divider-quick-right {
-    display: inline-block;
-}
-
-/* The characters divider is the phone strip's boundary marker; on desktop the home divider
-   already carries Home|Characters, so showing both would double the rule. The phone sheet
-   re-enables it at equal specificity and wins on load order. */
-:root[data-sb-topbar-icons-only='true'] #sb-topbar-divider-characters {
-    display: none;
-}
-
-/* Mobile-only dividers: search (left of search button) and mode (right of mode button).
-   These appear on mobile regardless of icons-only mode to visually separate utility buttons
-   from the main menu tabs. Hidden on desktop via sb-mobile-setting class. */
+/* Mobile-only dividers: search (left of the search button) and mode (right of the mode button)
+   separate the utility buttons from the section buttons. Hidden on desktop via sb-mobile-setting. */
 @media screen and (max-width: 768px) {
     #sb-topbar-divider-search-mobile,
     #sb-topbar-divider-mode-mobile {
@@ -885,91 +853,21 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 }
 
-:root[data-sb-topbar-icons-only='true'] .sb-topbar-cluster-divider + .sb-topbar-cluster-lead {
-    margin-inline-start: 0;
-}
-
-/* Overflow state: the leading group scrolls and the trailing controls sit beside it, so Quick
-   Actions, Home and Characters stay reachable however far the icons are scrolled.
-   The icons deliberately scroll beside the trailing group rather than under it. Scrolling them
-   under would need the pinned group to paint over them, and its only theme-correct backing is
-   the bar's own translucent background: repainting that double-darkens, and backdrop-filter
-   silently no-ops in WebKit when nested inside another backdrop-filtered element (#top-bar),
-   leaving the group transparent with the icons showing straight through it on iOS. */
-:root[data-sb-topbar-scroll='true'] #sb-topbar-inner {
-    display: flex;
-    align-items: center;
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    /* Without this the nowrap content sets a min-content floor and the bar grows past the
-       viewport instead of scrolling inside it. */
-    min-width: 0;
-    max-width: 100%;
-}
-
-:root[data-sb-topbar-scroll='true'] .sb-topbar-group-left {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    /* Tell WebKit this axis is a pan target; without it the buttons swallow the gesture. */
-    touch-action: pan-x;
-    /* No scroll snapping: the first snap point is the leading page icon, so the browser pulled
-       the bar past the hamburger on load and hid it. */
-    scroll-padding-inline-end: var(--sb-topbar-group-gap);
-}
-
-:root[data-sb-topbar-scroll='true'] .sb-topbar-group-left::-webkit-scrollbar {
+/* Overflow: the Quick Access buttons give way to one button that opens them as a menu. */
+#sb-topbar-overflow-toggle {
     display: none;
 }
 
-/* The min-content floor propagates up through every flex/grid ancestor, so each one has to be
-   told it may shrink or the whole bar widens past the viewport instead of scrolling.
-   Gated on icons-only rather than on the scroll state itself: the overflow verdict is measured
-   from #sb-topbar-inner's client width, and leaving these unset lets the bar inflate to fit its
-   own content, so a small overflow would never be detected and could never be scrolled. */
-:root[data-sb-topbar-icons-only='true'] #sb-topbar-stack,
-:root[data-sb-topbar-icons-only='true'] #sb-topbar-primary,
-:root[data-sb-topbar-icons-only='true'] #sb-topbar-inner {
-    min-width: 0;
+:root[data-sb-topbar-overflow='true'] #sb-topbar-overflow-toggle {
+    display: inline-flex;
 }
 
-:root[data-sb-topbar-scroll='true'] .sb-topbar-group-right {
-    flex: 0 0 auto;
-    min-width: auto;
-    padding-left: var(--sb-topbar-group-gap);
-}
-
-:root[data-sb-topbar-icons-only='true'] .sb-topbar-pages {
-    display: flex;
-}
-
-:root[data-sb-topbar-icons-only='true'] .sb-topbar-shortcut-duplicate {
+:root[data-sb-topbar-overflow='true'] :is(#sb-shortcut-left, #sb-shortcut-slot3, #sb-shortcut-slot4, #sb-shortcut-slot5, #sb-shortcut-slot6, #sb-shortcut-right) {
     display: none;
 }
 
-/* Once the label is squeezed out there is nothing left to centre on, so it yields its width to
-   the clusters, which keep hugging their own edge of the bar. The clusters are positioned by
-   meaning here, not by balance: Workspace stays hard left and Characters hard right at every
-   width, so neither group is ever pulled toward the centre. */
-:root[data-sb-topbar-brand-cramped='true'] .sb-topbar-brand {
-    display: none;
-}
-
-/* display:none takes the label out of the grid entirely, and with only two items left the right
-   group would auto-place into the centre `auto` column and drift toward the middle, under the
-   left group's overflow. Collapse to two columns so each group keeps its own edge. */
-:root[data-sb-topbar-brand-cramped='true'] #sb-topbar-inner {
-    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
-}
-
-/* #sb-home-toggle's id-level min-width outranks .sb-proxy-button-icon-only, so without this
-   the home button keeps a label-width box with no label in it. */
-:root[data-sb-topbar-icons-only='true'] #sb-home-toggle {
-    min-width: var(--sb-proxy-button-height);
+:root[data-sb-topbar-overflow='true'] #sb-topbar-divider-quick-right {
+    display: inline-block;
 }
 
 #top-settings-holder > .sb-drawer-host:not(.sb-embedded-drawer) {
@@ -1010,8 +908,8 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 /*
- * display:none rather than zero width: syncTopbarBrandFit() adds one inline gap per visible
- * child, so an empty-but-visible slot would inflate the overflow verdict by a gap.
+ * display:none rather than zero width: fitTopbar() adds one group gap per visible child, so an
+ * empty-but-visible slot would inflate its verdict by a gap.
  */
 #sb-topbar-extension-slot[data-sb-topbar-slot-empty='true'] {
     display: none;
@@ -4538,11 +4436,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         min-width: 0 !important;
     }
 
-    .sb-topbar-brand {
-        align-items: center;
-        text-align: center;
-    }
-
     .sb-shell-description,
     .sb-shell-tab-copy small {
         display: none;
@@ -4667,11 +4560,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         width: 32px;
         min-width: 32px;
         font-size: calc(var(--mainFontSize) * 1.04);
-    }
-
-    .sb-brand-title,
-    .sb-brand-title.is-chat {
-        font-size: var(--sb-type-meta);
     }
 
 }
@@ -5422,15 +5310,6 @@ body.reduced-motion .sb-search-entry {
 #sb-topbar-search-toggle,
 #sb-mode-toggle {
     flex-shrink: 0;
-}
-
-/* ── Accent fill on active section button ───────────────────────────────── */
-/* Approved exception to Signal Scarcity Rule: section button doubles as a
-   persistent state indicator, not just an action trigger. */
-
-.sb-proxy-button.openDrawer:not(.sb-proxy-button-icon-only),
-.sb-proxy-button.sb-settings-active {
-    color: var(--color-primary, var(--sb-accent));
 }
 
 /* ── Preference group primitives ────────────────────────────────────────── */
@@ -10174,7 +10053,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     }
 
     .sb-brand-title {
-        min-block-size: 44px;
+        --sb-brand-title-height: 44px;
     }
 
     .sb-shell-tab {

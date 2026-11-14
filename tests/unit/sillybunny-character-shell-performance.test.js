@@ -120,8 +120,8 @@ describe('Characters tab shell', () => {
             ${section(tabs, 'function syncSettingsPageActiveButton(', 'function setSettingsSidebarSearchOpen(')}
             ({ syncProxyButtonState, syncSettingsPageActiveButton });
         `, {
-            document, HTMLElement, sbSettingsState: state,
-            SB_TOPBAR_CLUSTERS: [{ key: 'characters', leadId: 'sb-character-toggle' }],
+            document, HTMLElement, sbSettingsState: state, syncHomeButtonState: jest.fn(),
+            SB_TOPBAR_SECTIONS: [{ key: 'characters', leadId: 'sb-character-toggle', shellKey: 'characters' }],
             getCharacterPanel: () => document.getElementById('right-nav-panel'),
         });
         const button = document.getElementById('sb-character-toggle');

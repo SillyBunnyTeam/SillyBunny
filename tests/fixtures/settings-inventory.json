@@ -6797,7 +6797,6 @@
         {"identity":"#sb-desktop-compact-mode-input","identityKind":"id","kind":"switch","name":"Compact Mode","group":"Desktop","where":"visible","storage":["sb-compact-mode"]},
         {"identity":"#sb-desktop-bottom-bar-visible-input","identityKind":"id","kind":"switch","name":"Show Bottom Chat Bar","group":"Desktop","where":"visible","storage":["sb-bottom-chat-bar-visible"]},
         {"identity":"#sb-desktop-gg-bar-visible-input","identityKind":"id","kind":"switch","name":"Show Guided Generations Bar","group":"Desktop","where":"visible","keys":["extension_settings.guided-generations.showActionButtonContainer"],"selfSaves":true},
-        {"identity":"#sb-mobile-topbar-icons-only-input","kind":"switch","where":"hidden"},
         {"identity":"#sb-mobile-button-scale-input","kind":"range","where":"hidden"},
         {"identity":"data:data-sb-theme-slider-counter=sb-mobile-button-scale-input","kind":"number","where":"hidden"},
         {"identity":"#sb-mobile-compact-mode-input","kind":"switch","where":"hidden"},

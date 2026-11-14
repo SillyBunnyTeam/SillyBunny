@@ -82,7 +82,7 @@
             "radius-literal": 1,
             "shadow-literal": 2,
             "important": 324,
-            "spacing-off-scale": 85,
+            "spacing-off-scale": 84,
             "spacing-off-scale-fallback": 3
         },
         "public/css/sillybunny-paper-theme.css": {
@@ -117,7 +117,7 @@
             "breakpoint-off-set": 12,
             "breakpoint-1000": 2,
             "focus-outline": 1,
-            "spacing-off-scale": 236,
+            "spacing-off-scale": 234,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-tag-manager.css": {

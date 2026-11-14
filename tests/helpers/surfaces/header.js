@@ -3,7 +3,7 @@
  * surface under it, so that the tools measure and scan the bar and nothing else.
  *
  * The top bar has two modes (labels, and icons only), and each mode has a state with a character whose name is long,
- * because the title is the element that truncates.
+ * because the title is the element that truncates. Both modes show the title.
  */
 
 import { FIXTURES } from './fixture-data.js';
@@ -85,19 +85,14 @@ function topBar({ id, title, iconsOnly }) {
         owner: 'A',
         title,
         root: '#top-bar',
-        // The top bar is there before `open` runs, so `ready` is what only this mode shows: the labelled bar names the page, the bar of icons has the page rail and no title.
-        ready: iconsOnly ? '#top-bar .sb-topbar-pages' : [withText('#top-bar #sb-topbar-title', 'Home'), '#top-bar #sb-left-shell-toggle'],
+        // The top bar is there before `open` runs. Both modes show the page title and the Backend button, so `open` waits for the mode itself.
+        ready: [withText('#top-bar #sb-topbar-title', 'Home'), '#top-bar #sb-left-shell-toggle'],
         open: page => openTopBar(page, { iconsOnly }),
         states: [
             {
                 id: 'long-title',
-                // The bar of icons hides the title, so the bottom chat bar (the chip of a phone, the chat picker of a desktop) is where the name shows in that mode.
-                ready: ({ viewport }) => {
-                    if (!iconsOnly) {
-                        return withText('#top-bar #sb-topbar-title', name);
-                    }
-                    return MOBILE_LAYOUT_VIEWPORTS.includes(viewport) ? withText('.sb-bottom-chat-chip', name) : withText('#sb-bottom-chat-select', name);
-                },
+                // The title names the open chat in both modes: it is truncated by its own ellipsis, so its text is still the whole name.
+                ready: withText('#top-bar #sb-topbar-title', name),
                 async open(page) {
                     await selectCharacter(page, long);
                 },
@@ -106,8 +101,7 @@ function topBar({ id, title, iconsOnly }) {
                 id: 'search-open',
                 ready: '#sb-topbar-search-row.is-open .sb-universal-search-field',
                 async open(page) {
-                    // In icons-only mode the toggle can sit in the part of the start group that scrolls out of view.
-                    await page.locator('#sb-topbar-search-toggle').evaluate(button => button.click());
+                    await page.locator('#sb-topbar-search-toggle').click();
                     await page.locator('#sb-topbar-search-row.is-open').waitFor({ state: 'visible' });
                     await settle(page);
                 },

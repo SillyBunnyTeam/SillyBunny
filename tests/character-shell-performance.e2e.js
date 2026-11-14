@@ -55,9 +55,15 @@ for (const width of [1440, 390]) {
             const button = document.getElementById('sb-character-toggle');
             button.click();
             const icon = getComputedStyle(button.querySelector('i'));
+            const probe = document.createElement('i');
+            probe.style.color = 'var(--color-primary, var(--sb-accent))';
+            document.body.append(probe);
+            const accent = getComputedStyle(probe).color;
+            probe.remove();
             return {
                 active: button.classList.contains('sb-settings-active'),
                 legacy: button.classList.contains('is-open'),
+                accent,
                 icon: icon.color,
                 label: getComputedStyle(button.querySelector('span')).color,
                 transition: icon.transitionProperty,
@@ -65,7 +71,9 @@ for (const width of [1440, 390]) {
         });
         expect(colours.active).toBe(true);
         expect(colours.legacy).toBe(false);
-        expect(colours.icon).toBe(colours.label);
+        // An open section is a neutral fill with Accent on its icon alone, and the colour is there on the same frame as the class.
+        expect(colours.icon).toBe(colours.accent);
+        expect(colours.label).not.toBe(colours.accent);
         expect(colours.transition).not.toContain('color');
         await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
         await settleNavigation(page);

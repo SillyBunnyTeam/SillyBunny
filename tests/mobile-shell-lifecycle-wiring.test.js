@@ -747,7 +747,6 @@ describe('mobile shell lifecycle wiring', () => {
         const buildTopBarSource = getFunctionSource('buildTopBar');
         const activateShortcutTargetSource = getFunctionSource('activateShortcutTarget');
         const toggleShellPanelSource = getFunctionSource('toggleShellPanel');
-        const isCharacterPanelTabOpenSource = getFunctionSource('isCharacterPanelTabOpen');
         const toggleSettingsPageSource = getFunctionSource('toggleSettingsPage');
 
         expect(buildTopBarSource).toContain('activateShortcutTarget(getShortcutTarget(\'left\'))');
@@ -756,7 +755,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(activateShortcutTargetSource).not.toContain('openCharacterPanelTab(tab);');
         expect(toggleShellPanelSource).toContain('toggleSettingsPage(\'characters\', tabId ? normalizeCharacterPanelTab(tabId) : null);');
         expect(toggleSettingsPageSource).toContain('closeSettingsPage();');
-        expect(isCharacterPanelTabOpenSource).toContain('getActiveCharacterPanelTab() === normalizeCharacterPanelTab(tabId)');
     });
 
     test('routes mobile overlay exclusivity through the lifecycle seam', () => {
