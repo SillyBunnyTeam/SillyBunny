@@ -109,6 +109,7 @@ const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
 const sbSearchRenderRequests = new WeakMap();
 const loadServerToolsModule = createDeferredModule(new URL('./sillybunny-server-tools.js', import.meta.url));
+const loadDataSecurityModule = createDeferredModule(new URL('./sillybunny-data-security.js', import.meta.url));
 let serverToolsPromise;
 let settingsPanelPromise;
 
@@ -757,6 +758,10 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'right:extensions': [
         { href: 'css/extensions-panel.css?v=20261114o', id: 'deferred-extensions-panel-css' },
     ],
+    // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
+    'right:data-security': [
+        { href: 'css/sillybunny-editor-shell.css?v=20261114t', id: 'deferred-editor-shell-css' },
+    ],
 });
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';
 /**
@@ -1243,7 +1248,7 @@ const SB_SHELLS = Object.freeze({
                 description: 'Manage the SillyBunny backend and server settings here.',
                 searchPlaceholder: 'Search backup, data path, security, or config.yaml',
                 searchExamples: ['backup', 'data path', 'security'],
-                searchAliases: ['backup', 'restore', 'import', 'export', 'server tools', 'data path'],
+                searchAliases: ['backup', 'restore', 'import', 'export', 'server tools', 'data path', 'Import Your SillyTavern Setup'],
             },
             {
                 id: 'logs',
@@ -9574,10 +9579,11 @@ function updateSillyTavernImportInteractivity() {
  * With accounts off, isAdmin() is true.
  */
 function updateFolderImportVisibility() {
-    const folderPane = getImporterRefs()?.folderPane;
-    if (folderPane instanceof HTMLElement) {
-        // .ds-row sets display: flex, which the hidden attribute does not override.
-        folderPane.style.display = isAdmin() ? '' : 'none';
+    // .ds-row sets display: flex, which the hidden attribute does not override.
+    for (const row of getImporterRefs()?.folderRows ?? []) {
+        if (row instanceof HTMLElement) {
+            row.style.display = isAdmin() ? '' : 'none';
+        }
     }
 }
 
@@ -9928,135 +9934,38 @@ async function handleSillyTavernZipImport(file) {
     }
 }
 
-function injectSillyTavernImportCard(host = null) {
-    // Import & Restore lives on the Data & Security tab, so the card belongs in the outlet the
-    // import drawer carries there. It is injected only when that panel is built: before then the
-    // drawer is detached, its outlet cannot be looked up by id, and an earlier call would fall
-    // through to the theme block and paint the card at the top of Appearance. The theme block
-    // fallback keeps the card reachable if the drawer is ever missing from the markup.
-    const importOutlet = host instanceof HTMLElement
-        ? host
-        : document.getElementById('sb-import-tools-outlet');
-    const themeBlock = document.getElementById('UI-presets-block');
-    const cardHost = importOutlet instanceof HTMLElement
-        ? importOutlet
-        : themeBlock;
-    if (!(cardHost instanceof HTMLElement)) {
+function injectSillyTavernImportCard(host, { buildImportGroup }) {
+    // Import & Restore lives on the Data & Security tab. It is injected only when that panel is built:
+    // before then the settings container is detached, and an earlier call would paint the group into
+    // another tab.
+    if (!(host instanceof HTMLElement) || host.querySelector('#sb-import-card')) {
         return;
     }
 
-    const existingCard = document.getElementById('sb-import-card');
-    if (existingCard instanceof HTMLElement) {
-        if (cardHost.firstElementChild !== existingCard) {
-            cardHost.prepend(existingCard);
-        }
-
-        return;
+    const built = buildImportGroup();
+    const placeholder = host.querySelector('#SillyTavernImportSection');
+    if (placeholder) {
+        placeholder.replaceWith(built.section);
+    } else {
+        host.prepend(built.section);
     }
 
-    const card = createElement('section', { id: 'sb-import-card', className: 'ds-pref-group sb-import-card', attrs: { 'data-sb-presentation': 'manual' } });
-    const header = createElement('div', { className: 'ds-row ds-row-actions' });
-    const copy = createElement('div', { className: 'ds-row-text' });
-    const title = createElement('strong', { className: 'ds-row-label', text: 'Import Your SillyTavern Setup' });
-    const description = createElement('p', { className: 'ds-row-subtitle', text: 'Bring over characters, chats, presets, themes, extensions, and account settings from an existing SillyTavern folder or backup ZIP without touching the filesystem manually.' });
-    const headerSuffix = createElement('div', { className: 'ds-row-suffix' });
-    const badge = createElement('span', { className: 'sb-server-pill', text: 'Easy Import' });
-    copy.append(title, description);
-    headerSuffix.append(badge);
-    header.append(copy, headerSuffix);
-
-    const folderPane = createElement('div', { className: 'ds-row sb-import-pane' });
-    const folderCopy = createElement('div', { className: 'ds-row-text' });
-    const folderTitle = createElement('label', { className: 'ds-row-label', text: 'Import From Folder Path', attrs: { for: 'sb-import-path-input' } });
-    const folderBody = createElement('p', { className: 'ds-row-subtitle', html: 'Paste the path to your SillyTavern install, its <code>data</code> folder, or the specific user folder you want to import. Use the full import for everything, or sync just your third-party extensions with a detailed report.' });
-    const pathRow = createElement('div', { className: 'ds-row-suffix sb-import-path-row' });
-    const actionRow = createElement('div', { className: 'sb-import-action-row' });
-    const pathInput = createElement('input', {
-        id: 'sb-import-path-input',
-        className: 'text_pole ds-control-flex sb-import-path-input',
-        attrs: {
-            type: 'text',
-            placeholder: '/path/to/SillyTavern',
-            'aria-label': 'SillyTavern folder path',
-            autocomplete: 'off',
-            spellcheck: 'false',
-            title: 'You can paste a full SillyTavern install path, its data folder, or a specific user folder.',
-        },
-    });
-    const folderButton = createElement('button', {
-        className: 'menu_button menu_button_icon sb-server-action menu_button_primary',
-        attrs: { type: 'button' },
-        html: '<i class="fa-solid fa-folder-open" aria-hidden="true"></i><span>Import Folder</span>',
-    });
-    const syncButton = createElement('button', {
-        className: 'menu_button menu_button_icon sb-server-action',
-        attrs: { type: 'button' },
-        html: '<i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i><span>Sync Extensions</span>',
-    });
-    pathRow.append(pathInput, actionRow);
-    actionRow.append(folderButton, syncButton);
-    folderCopy.append(folderTitle, folderBody);
-    folderPane.append(folderCopy, pathRow);
-
-    const zipPane = createElement('div', { className: 'ds-row sb-import-pane' });
-    const zipCopy = createElement('div', { className: 'ds-row-text' });
-    const zipSuffix = createElement('div', { className: 'ds-row-suffix' });
-    const zipTitle = createElement('strong', { className: 'ds-row-label', text: 'Import From Backup ZIP' });
-    const zipBody = createElement('p', { className: 'ds-row-subtitle', text: 'Use the backup ZIP that SillyTavern exports. Pick the file here and SillyBunny will import it into this account.' });
-    const zipButton = createElement('button', {
-        className: 'menu_button menu_button_icon sb-server-action menu_button_primary',
-        attrs: { type: 'button' },
-        html: '<i class="fa-solid fa-file-zipper" aria-hidden="true"></i><span>Import Backup ZIP</span>',
-    });
-    const zipFileInput = createElement('input', {
-        id: 'sb-import-zip-input',
-        className: 'sb-import-file-input',
-        attrs: {
-            type: 'file',
-            accept: '.zip,application/zip,application/x-zip-compressed',
-            'aria-label': 'Choose a SillyTavern backup ZIP',
-        },
-    });
-    const zipFileName = createElement('small', { className: 'sb-import-file-name', text: 'No ZIP selected yet.' });
-    zipCopy.append(zipTitle, zipBody, zipFileName);
-    zipSuffix.append(zipButton, zipFileInput);
-    zipPane.append(zipCopy, zipSuffix);
-
-    const note = createElement('div', {
-        className: 'sb-server-note sb-import-note',
-        text: 'Full imports replace matching files and reload automatically. Extension sync replaces matching third-party extension folders, then shows a report so you can review it before reloading.',
-    });
-    const report = createElement('section', {
-        className: 'sb-import-report',
-        attrs: { 'aria-live': 'polite' },
-    });
-    const reportHeader = createElement('div', { className: 'sb-import-report-header' });
-    const reportTitle = createElement('strong', { text: 'Third-Party Extension Sync Report' });
-    const reportSummary = createElement('p', { className: 'sb-import-report-summary' });
-    const reportHelp = createElement('p', { className: 'sb-import-report-help' });
-    const reportList = createElement('div', { className: 'sb-import-report-list' });
-
-    reportHeader.append(reportTitle);
-    report.append(reportHeader, reportSummary, reportHelp, reportList);
-    report.hidden = true;
-
-    card.append(header, folderPane, zipPane, note, report);
-    cardHost.prepend(card);
-
+    const { folderButton, syncButton, pathInput, zipButton, zipFileInput, zipFileName } = built;
     getImporterState().refs = {
-        card,
-        folderPane,
+        card: built.card,
+        folderPane: built.folderPane,
+        folderRows: built.folderRows,
         pathInput,
         folderButton,
         syncButton,
         zipButton,
         zipFileInput,
         zipFileName,
-        note,
-        report,
-        reportSummary,
-        reportHelp,
-        reportList,
+        note: built.note,
+        report: built.report,
+        reportSummary: built.reportSummary,
+        reportHelp: built.reportHelp,
+        reportList: built.reportList,
     };
 
     folderButton.addEventListener('click', handleSillyTavernFolderImport);
@@ -12384,7 +12293,12 @@ function buildShell(shellKey) {
 
         if (customTab.id === 'data-security') {
             const serverPanel = createOnDemandShellPanel(shellKey, customTab, async () => {
+                // SillyBunny: the page builds rows that the deferred editor shell sheet styles, so the sheet applies before the first frame.
+                await Promise.all(SB_PANEL_STYLESHEETS['right:data-security'].map(stylesheet =>
+                    window.SillyBunnyAssets?.loadStylesheetAsync?.(stylesheet.href, { id: stylesheet.id })))
+                    .catch(error => console.warn('Failed to load panel stylesheet:', error));
                 const loaded = await (await loadServerTools()).buildServerAdminPanel();
+                const dataSecurityModule = await loadDataSecurityModule();
 
                 // The split lifts Import & Restore out of the settings block because it manages saved
                 // data rather than appearance. It leads the panel, ahead of the server cards, because
@@ -12414,11 +12328,13 @@ function buildShell(shellKey) {
                     bindInlineDrawerPersistence(dataSecurityContent);
                     // SillyBunny: this action was detached when the initial shell bindings ran.
                     bindClearCookiesAndCacheButton(dataSecurityContent);
-                    injectSillyTavernImportCard(dataSecurityContent.querySelector('#sb-import-tools-outlet'));
+                    // SillyBunny: the upstream rows move into boxed-list groups now that every fix-up above has run on them.
+                    dataSecurityModule.presentDataSecurity(dataSecurityContent);
+                    injectSillyTavernImportCard(dataSecurityContent, dataSecurityModule);
                 } else {
                     // Without the split there is no Data & Security container to adopt, so the card
-                    // takes its theme block fallback rather than going missing.
-                    injectSillyTavernImportCard();
+                    // leads the server groups rather than going missing.
+                    injectSillyTavernImportCard(loaded.searchRoot, dataSecurityModule);
                 }
 
                 return loaded;

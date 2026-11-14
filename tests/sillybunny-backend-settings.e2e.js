@@ -89,7 +89,8 @@ async function expectSwitchGeometry(root) {
         const style = getComputedStyle(row);
         const rowRect = row.getBoundingClientRect();
         const switchRect = input.getBoundingClientRect();
-        const suffix = input.closest('.ds-row-suffix');
+        // A switch row of sillybunny-editor/rows.js holds the switch itself at the end of the row, with no suffix around it.
+        const suffix = input.closest('.ds-row-suffix') ?? input;
         const metrics = {
             padding: style.padding === '6px 12px',
             gap: style.gap === '6px',

@@ -16,6 +16,12 @@ const AUDIT_RULES = { auditContentInset: 'content-inset', auditRowEdges: 'row-ed
 /** Rows that the server tools add when the server answers (`appendServerAdminStat`): which of them exist depends on the server, so they are not measured. */
 const NOT_SERVER_STAT = ':not(:has(.sb-server-stat-value))';
 
+/**
+ * Rows whose text has a role of its own in DESIGN.md (Boxed lists): a property row names at Caption size, a button row sets its
+ * title in the Title role, and an entry row's title is the field's floating label. Their titles are not Body at regular weight.
+ */
+const OWN_TITLE_ROLE = ':not(.ds-row-property, .ds-button-row, .ds-row-entry--floating)';
+
 /** A property that only means something on a flex or grid container: `normal` on a block says nothing. */
 export const IF_FLEX = ['flex', 'inline-flex', 'grid', 'inline-grid'];
 
@@ -125,7 +131,7 @@ export const rules = {
         },
         {
             id: 'row-title',
-            selectors: [{ id: 'ds-row', selector: `.ds-pref-group .ds-row${NOT_SERVER_STAT} .ds-row-label` }],
+            selectors: [{ id: 'ds-row', selector: `.ds-pref-group .ds-row${NOT_SERVER_STAT}${OWN_TITLE_ROLE} .ds-row-label` }],
             properties: ROW_TITLE,
         },
         {

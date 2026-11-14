@@ -402,7 +402,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     // SillyBunny: tab root containers — these are structural wrappers, not preference groups, and carry no heading of their own.
     { selector: '#sb-messages-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav, not a group heading' },
     { selector: '#sb-interface-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav' },
-    { selector: '#sb-data-security-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav' },
     { selector: '#sb-appearance-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav' },
     { selector: '#user-settings-block', rule: 'group-anatomy', reason: 'Right-shell root used as a structural mount point, not a named preference group' },
     { selector: '#ica--settings', rule: 'group-anatomy', reason: 'Agents extension settings; marked data-sb-presentation=manual and excluded from normalizer' },
@@ -442,7 +441,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#sb-tc-context', rule: 'row-edges', reason: 'Context Template group; inner section rows retain border-top at the group boundary — upstream layout, addressed in Phase 4' },
     { selector: '#CustomCSS-textAreaBlock', rule: 'row-edges', reason: 'Custom CSS textarea block retains a top border on its first row; upstream layout' },
     { selector: '#sb-topbar-label-drawer', rule: 'row-edges', reason: 'Topbar label drawer first row retains border-top; bespoke label-option grid layout' },
-    { selector: '#sb-import-card', rule: 'row-edges', reason: 'Import card last row retains border-bottom; upstream two-pane import layout' },
     { selector: '#sb-desktop-settings-outlet', rule: 'row-edges', reason: 'Desktop settings outlet last row retains border-bottom; theme-slider groups added by extension' },
     { selector: '#sb-mobile-settings-outlet', rule: 'row-edges', reason: 'Mobile settings outlet last row retains border-bottom; theme-slider groups added by extension' },
     // SillyBunny: #left-nav-panel inside Connections tab — bespoke provider-slot markup with no .ds-pref-group anatomy.
@@ -456,8 +454,7 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '[data-sb-panel="context"]', rule: 'cross-tab-parity', reason: 'Formatting uses sb-settings-flat-section rows with 14px padding and a different separator token — divergence from the standard Prompting ds-row layout is intentional' },
     // SillyBunny: Agents panel hosts ICA extension settings with its own type scale; font-size parity against Prompting is not enforced.
     { selector: '[data-sb-panel="agents"]', rule: 'cross-tab-parity', reason: 'Agents panel hosts ICA extension settings with its own type scale; cross-tab parity against Prompting is not enforced' },
-    // SillyBunny: right-shell Data & Security and Logs tabs have different row densities from the Appearance reference in some backend/theme scenarios.
-    { selector: '[data-sb-panel="data-security"]', rule: 'cross-tab-parity', reason: 'Data & Security row density differs from the Appearance reference in some backend/theme scenarios; cross-tab parity within the right shell is not enforced' },
+    // SillyBunny: the right-shell Logs tab has a different row density from the Appearance reference in some backend/theme scenarios.
     { selector: '[data-sb-panel="logs"]', rule: 'cross-tab-parity', reason: 'Logs panel row density differs from the Appearance reference in some scenarios; cross-tab parity within the right shell is not enforced' },
     // SillyBunny: #bg-header-fixed image picker on mobile uses a stacked control layout; midpointDelta check is not meaningful for that row.
     { selector: '#bg-header-fixed', rule: 'row-geometry', reason: 'Background image picker uses a stacked control layout on mobile; midpointDelta check does not apply' },

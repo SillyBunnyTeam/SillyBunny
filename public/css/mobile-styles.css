@@ -1162,22 +1162,6 @@
         font-size: 14px !important;
     }
 
-    .sb-import-path-input {
-        min-height: 42px !important;
-        padding: 10px 12px !important;
-        font-size: 15px !important;
-    }
-
-    .sb-import-action-row .sb-server-action,
-    .sb-import-pane > .sb-server-action {
-        min-height: 42px !important;
-    }
-
-    .sb-import-card .sb-import-path-row,
-    .sb-import-card .sb-import-action-row {
-        gap: 8px !important;
-    }
-
     .select2-dropdown {
         z-index: var(--sb-z-critical) !important;
     }

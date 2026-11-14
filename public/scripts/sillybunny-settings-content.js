@@ -24,7 +24,8 @@ export const SB_USER_SETTINGS_CONTAINER_IDS = Object.freeze({
  *
  * It is owned by the same split so the move happens in one place with the rest of the relocation,
  * but its panel is built on demand by `sillybunny-server-tools.js`, which adopts the container
- * instead of being handed it. Import and restore write to the account's data paths and replace
+ * instead of being handed it. `sillybunny-data-security.js` then regroups its rows into the
+ * General, Import & Restore and Export groups. Import and restore write to the account's data paths and replace
  * saved files, so it belongs with the other data-management controls, not with Appearance.
  */
 export const SB_DATA_SECURITY_CONTAINER_ID = 'sb-data-security-content';
@@ -90,9 +91,8 @@ const SB_SETTINGS_TAB_SECTIONS = Object.freeze({
  * They are authored in `#user-settings-block`'s header rows because that is where the markup
  * happened to sit, but Language, Account, Usage Stats, Version, the cache controls, Download Backup,
  * and Settings Snapshots all act on saved data or the backend, so they read as Data & Security
- * content. They move in this order, ahead of Import & Restore, so that tab opens on Language ->
- * Account -> Usage Stats -> Version -> Clear cache -> Import. The section order then puts Download
- * Backup and Settings Snapshots in the Export category after Import.
+ * content. They move in this order, ahead of Import & Restore. The groups are built when the tab
+ * opens (`presentDataSecurity`), not by the section order of this file.
  */
 const SB_DATA_SECURITY_SECTIONS = Object.freeze([
     '#UI-language-block',
@@ -464,24 +464,6 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
                 title: 'Diagnostics',
                 description: 'Prompt logging and token probabilities',
                 rows: ['#console_log_prompts', '#request_token_probabilities'],
-            },
-        ]),
-    }),
-    'data-security': Object.freeze({
-        root: `#${SB_DATA_SECURITY_CONTAINER_ID}`,
-        entries: Object.freeze([
-            {
-                id: 'general',
-                title: 'General',
-                description: 'Language, account, usage stats, version, and browser cache',
-                rows: ['#UI-language-block', '#account_controls', '#user_stats_controls', '#version_display', '#user-settings-utility-actions'],
-            },
-            { section: '#SillyTavernImportSection' },
-            {
-                id: 'export',
-                title: 'Export',
-                description: 'Full data backups and settings snapshots',
-                rows: ['#user_backup_controls', '#settings_snapshots_controls'],
             },
         ]),
     }),
@@ -915,7 +897,6 @@ export function splitUserSettingsContent(originalContent) {
         applySettingsSectionOrder(container, tabId);
     }
     flattenNestedSettingsDrawers(dataSecurity, flattenOptions);
-    applySettingsSectionOrder(dataSecurity, 'data-security');
 
     const missing = [];
     for (const [tabId, sectionIds] of Object.entries(SB_REQUIRED_SECTIONS)) {

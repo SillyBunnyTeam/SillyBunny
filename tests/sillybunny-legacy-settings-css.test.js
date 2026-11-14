@@ -18,8 +18,13 @@ describe('SillyBunny settings legacy CSS cleanup', () => {
         expect(sources.join('\n')).not.toContain('sb-admin-card');
     });
 
-    test('retains the live server-tools card hook', () => {
-        expect(readSource('public', 'scripts', 'sillybunny-server-tools.js')).toContain('sb-server-card');
-        expect(readSource('public', 'css', 'sillybunny-tabs.css')).toContain('.sb-server-card');
+    test('does not retain the retired server-tools card presentation path', () => {
+        const sources = [
+            readSource('public', 'scripts', 'sillybunny-server-tools.js'),
+            readSource('public', 'scripts', 'sillybunny-data-security.js'),
+            readSource('public', 'css', 'sillybunny-tabs.css'),
+        ];
+
+        expect(sources.join('\n')).not.toMatch(/sb-server-(?:card|grid|stat(?![-\w])|stat-label|actions)|sb-thumbnail-(?:card|controls|field)/);
     });
 });

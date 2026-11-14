@@ -1,6 +1,8 @@
 import { yaml } from '../lib.js';
-import { normalizeBackendSettingsRows } from './sillybunny-settings-presentation.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
+import { createButtonRow, createPropertyRow, createRow, createSpinRow, createSwitchRow, createTextAreaField } from './sillybunny-editor/rows.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
+import { createDataSecurityGroup } from './sillybunny-data-security.js';
 import { t } from './i18n.js';
 
 const SB_CONSOLE_LOG_LIMIT = 260;
@@ -434,16 +436,23 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         return data;
     }
 
+    /** A button row keeps its text in `.ds-row-label`; setting the button's own text would drop the label node. */
+    function getServerButtonLabel(button) {
+        return button.querySelector('.ds-row-label') ?? button;
+    }
+
     function setServerAdminButtonLabel(button, isBusy, busyLabel) {
         if (!(button instanceof HTMLButtonElement)) {
             return;
         }
 
+        const label = getServerButtonLabel(button);
+
         if (!button.dataset.idleLabel) {
-            button.dataset.idleLabel = button.textContent || '';
+            button.dataset.idleLabel = label.textContent || '';
         }
 
-        button.textContent = isBusy ? busyLabel : button.dataset.idleLabel;
+        label.textContent = isBusy ? busyLabel : button.dataset.idleLabel;
     }
 
     function describeAutoStashState(result) {
@@ -530,39 +539,50 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         refs.thumbnailMobileAvatarHeight.value = String(mobileSettings.dimensions?.avatar?.[1] ?? 480);
         refs.thumbnailMobilePersonaWidth.value = String(mobileSettings.dimensions?.persona?.[0] ?? 320);
         refs.thumbnailMobilePersonaHeight.value = String(mobileSettings.dimensions?.persona?.[1] ?? 480);
+
+        // The picker rows show the select's value only when asked; the switches decide which rows are available.
+        refs.thumbnailFormatRow.sync();
+        refs.thumbnailMobileFormatRow.sync();
+        setThumbnailInputsDisabled(isThumbnailLocked(), refs);
     }
 
-    function setThumbnailInputsDisabled(disabled, refs = getServerAdminRefs()) {
-        const controls = [
-            refs?.thumbnailEnabled,
-            refs?.thumbnailFormat,
-            refs?.thumbnailQuality,
-            refs?.thumbnailBgWidth,
-            refs?.thumbnailBgHeight,
-            refs?.thumbnailAvatarWidth,
-            refs?.thumbnailAvatarHeight,
-            refs?.thumbnailPersonaWidth,
-            refs?.thumbnailPersonaHeight,
-            refs?.thumbnailUseRecommendedButton,
-            refs?.thumbnailUseRecommendedMobileButton,
-            refs?.thumbnailSaveButton,
-            refs?.thumbnailSaveClearButton,
-            refs?.thumbnailClearButton,
-            refs?.thumbnailMobileEnabled,
-            refs?.thumbnailMobileFormat,
-            refs?.thumbnailMobileQuality,
-            refs?.thumbnailMobileBgWidth,
-            refs?.thumbnailMobileBgHeight,
-            refs?.thumbnailMobileAvatarWidth,
-            refs?.thumbnailMobileAvatarHeight,
-            refs?.thumbnailMobilePersonaWidth,
-            refs?.thumbnailMobilePersonaHeight,
-        ];
+    function isThumbnailLocked() {
+        const state = getServerAdminState();
+        return state.busy || state.restarting || !state.thumbnailSettingsLoaded;
+    }
 
-        for (const control of controls) {
-            if (control instanceof HTMLElement) {
-                control.disabled = disabled;
-            }
+    function setThumbnailRowDisabled(row, disabled) {
+        row.setDisabled(disabled);
+        if (row.control instanceof HTMLSelectElement) {
+            row.control.disabled = disabled;
+        }
+    }
+
+    /**
+     * Every thumbnail control follows `locked`. The rows of a preset also wait for its switch, because
+     * nothing is generated while it is off.
+     */
+    function setThumbnailInputsDisabled(locked, refs = getServerAdminRefs()) {
+        if (!refs?.thumbnailRows) {
+            return;
+        }
+
+        refs.thumbnailEnabledRow.setDisabled(locked);
+        refs.thumbnailMobileEnabledRow.setDisabled(locked);
+
+        const desktopOff = locked || !refs.thumbnailEnabled.checked;
+        const mobileOff = locked || !refs.thumbnailMobileEnabled.checked;
+        refs.thumbnailRows.desktop.forEach(row => setThumbnailRowDisabled(row, desktopOff));
+        refs.thumbnailRows.mobile.forEach(row => setThumbnailRowDisabled(row, mobileOff));
+
+        for (const button of [
+            refs.thumbnailUseRecommendedButton,
+            refs.thumbnailUseRecommendedMobileButton,
+            refs.thumbnailSaveButton,
+            refs.thumbnailSaveClearButton,
+            refs.thumbnailClearButton,
+        ]) {
+            button.disabled = locked;
         }
     }
 
@@ -585,32 +605,39 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         return { section, header, body };
     }
 
-    function createServerToolsRow(title, control, { label = false } = {}) {
-        const row = createElement(label ? 'label' : 'div', { className: 'ds-row' });
-        const text = createElement('span', { className: 'ds-row-text' });
-        const suffix = createElement('span', { className: 'ds-row-suffix' });
-        text.append(createElement('span', { className: 'ds-row-label', text: title }));
-        suffix.append(control);
-        row.append(text, suffix);
-        return row;
+    /** A group of the Data & Security page, built from the shared boxed-list factories. */
+    function createServerSection(title, description, field, headerSuffix) {
+        return createDataSecurityGroup({ title, description, field, headerSuffix });
     }
 
-    function createServerToolsActions(...buttons) {
-        const row = createElement('div', { className: 'ds-row ds-row-actions sb-server-actions' });
-        const suffix = createElement('div', { className: 'ds-row-suffix' });
-        suffix.append(...buttons);
-        row.append(suffix);
-        return row;
+    /** A note under the rows of a group. The element takes the text, tone and `hidden` of `setServerAdminMessage`. */
+    function createServerStatusRow(text = '') {
+        return createElement('div', { className: 'ds-row sb-server-note', text });
     }
 
-    function appendServerAdminStat(target, label, value) {
-        if (!(target instanceof HTMLElement)) {
+    function createServerButtonRow(label, field, onActivate) {
+        return createButtonRow({ label, field, onActivate }).row;
+    }
+
+    /** The status rows exist while a status is shown; each render replaces them and keeps the notes after them. */
+    function clearServerAdminStats() {
+        const refs = getServerAdminRefs();
+        refs?.statusRows.splice(0).forEach(row => row.destroy());
+    }
+
+    function appendServerAdminStat(label, value, { monospace = false } = {}) {
+        const refs = getServerAdminRefs();
+        if (!refs) {
             return;
         }
 
-        const content = createElement('strong', { className: 'sb-server-stat-value', text: value || '—' });
-        const item = createServerToolsRow(label, content);
-        target.appendChild(item);
+        const stat = createPropertyRow({ label, value: value || '—', field: `status-${label.toLowerCase()}` });
+        stat.row.querySelector('.ds-row-property__value').classList.add('sb-server-stat-value');
+        if (monospace) {
+            stat.row.querySelector('.ds-row-property__value').classList.add('is-monospace');
+        }
+        refs.statusGrid.insertBefore(stat.row, refs.statusNote);
+        refs.statusRows.push(stat);
     }
 
     function updateServerConfigDirtyState() {
@@ -647,8 +674,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         setButtonDisabled(refs.saveConfigButton, locked || !hasConfigContent);
         setButtonDisabled(refs.saveConfigRestartButton, locked || !hasConfigContent);
         const repository = state.lastStatusData?.repository;
-        refs.autoStashCheckbox.disabled = locked || !state.configLoaded
-            || state.lastStatusData?.installType === 'docker' || !repository?.supported || !repository?.isRepo;
+        refs.autoStashRow.setDisabled(locked || !state.configLoaded
+            || state.lastStatusData?.installType === 'docker' || !repository?.supported || !repository?.isRepo);
         setThumbnailInputsDisabled(thumbnailLocked);
 
         if (refs.configEditor instanceof HTMLTextAreaElement) {
@@ -669,19 +696,16 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const installType = data?.installType || (repository?.isRepo ? 'git' : 'unsupported');
         const isDockerInstall = installType === 'docker';
         const isGitInstall = !isDockerInstall && Boolean(repository?.supported && repository?.isRepo);
-        const statusGrid = refs.statusGrid;
-        statusGrid.replaceChildren();
+        clearServerAdminStats();
 
-        appendServerAdminStat(statusGrid, 'Runtime', data?.runtime || 'Unknown');
-        appendServerAdminStat(statusGrid, 'Version', version?.pkgVersion ? `v${version.pkgVersion}` : 'Unknown');
+        appendServerAdminStat('Runtime', data?.runtime || 'Unknown');
+        appendServerAdminStat('Version', version?.pkgVersion ? `v${version.pkgVersion}` : 'Unknown');
 
         // Branch selector instead of static text
         const branchSelect = createElement('select', {
             id: 'sb-branch-select',
             className: 'text_pole ds-control-flex',
         });
-        const branchContainer = createServerToolsRow(isGitInstall ? 'Branch' : 'Install', branchSelect, { label: true });
-        branchContainer.classList.add('sb-server-stat');
         branchSelect.disabled = !isGitInstall;
         const currentBranch = isGitInstall
             ? (repository?.displayBranch || repository?.branch || version?.gitBranch || '')
@@ -693,20 +717,22 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const currentOption = createElement('option', { attrs: currentOptionAttributes });
         currentOption.textContent = currentBranch || 'Unknown';
         branchSelect.appendChild(currentOption);
-        statusGrid.appendChild(branchContainer);
+        const branchRow = createSelectRow({ select: branchSelect, label: isGitInstall ? 'Branch' : 'Install', field: 'status-branch' });
+        refs.statusGrid.insertBefore(branchRow.row, refs.statusNote);
+        refs.statusRows.push(branchRow);
 
         // Load available branches
         if (isGitInstall) {
-            loadServerAdminBranches(branchSelect, currentBranch);
+            loadServerAdminBranches(branchSelect, currentBranch, branchRow);
         }
 
         if (isGitInstall) {
-            appendServerAdminStat(statusGrid, 'Commit', repository?.currentCommit || version?.gitRevision || 'Unknown');
-            appendServerAdminStat(statusGrid, 'Tracking', repository?.trackingBranch || 'Not set');
-            appendServerAdminStat(statusGrid, 'Ahead', String(repository?.ahead ?? 0));
-            appendServerAdminStat(statusGrid, 'Behind', String(repository?.behind ?? 0));
+            appendServerAdminStat('Commit', repository?.currentCommit || version?.gitRevision || 'Unknown', { monospace: true });
+            appendServerAdminStat('Tracking', repository?.trackingBranch || 'Not set');
+            appendServerAdminStat('Ahead', String(repository?.ahead ?? 0));
+            appendServerAdminStat('Behind', String(repository?.behind ?? 0));
         }
-        appendServerAdminStat(statusGrid, 'Config', data?.configPath || 'Unknown');
+        appendServerAdminStat('Config', data?.configPath || 'Unknown', { monospace: true });
 
         state.lastStatusData = {
             runtime: data?.runtime || '',
@@ -749,7 +775,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         refs.updateButton.dataset.sbCanUpdate = String(Boolean(updateMode));
         refs.updateButton.dataset.sbUpdateMode = updateMode;
         refs.updateButton.hidden = !isGitInstall;
-        refs.refreshButton.textContent = isGitInstall ? 'Check for updates' : 'Refresh status';
+        getServerButtonLabel(refs.refreshButton).textContent = isGitInstall ? 'Check for updates' : 'Refresh status';
 
         // SillyBunny: Docker and non-Git copies have no in-app updater; the note explains how they update instead.
         const installNote = isDockerInstall
@@ -1003,7 +1029,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             if (error?.status !== 403) {
                 console.error('Failed to refresh server admin panel.', error);
             }
-            getServerAdminRefs()?.statusGrid.replaceChildren();
+            clearServerAdminStats();
             setServerAdminPill(getServerAdminRefs()?.statusPill, error?.status === 403 ? 'Admin Only' : 'Unavailable', tone);
             setServerAdminMessage(getServerAdminRefs()?.statusNote, error.message || 'Failed to load server tools.', tone);
         } finally {
@@ -1204,13 +1230,10 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         setServerAdminMessage(refs.thumbnailNote, 'Recommended mobile thumbnail settings are staged. Save them when ready.', 'warn');
     }
 
+    /** Width and height are one setting of two fields, so they share a row instead of taking a spin row each. */
     function createThumbnailSizeRow(label, key) {
-        const row = createElement('div', { className: 'ds-row sb-thumbnail-size-row' });
-        const text = createElement('span', { className: 'ds-row-text' });
-        const rowLabel = createElement('span', { className: 'ds-row-label', text: label });
-        const suffix = createElement('span', { className: 'ds-row-suffix sb-thumbnail-dimensions' });
         const widthInput = createElement('input', {
-            className: 'text_pole sb-thumbnail-number',
+            className: 'text_pole',
             attrs: {
                 type: 'number',
                 inputmode: 'numeric',
@@ -1221,8 +1244,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             },
         });
         const separator = createElement('span', { className: 'sb-thumbnail-size-separator', text: 'x' });
+        separator.setAttribute('aria-hidden', 'true');
         const heightInput = createElement('input', {
-            className: 'text_pole sb-thumbnail-number',
+            className: 'text_pole',
             attrs: {
                 type: 'number',
                 inputmode: 'numeric',
@@ -1233,11 +1257,42 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             },
         });
 
-        row.dataset.thumbnailSize = key;
-        text.append(rowLabel);
-        suffix.append(widthInput, separator, heightInput);
-        row.append(text, suffix);
-        return { row, widthInput, heightInput };
+        const row = createRow({ label, field: `thumbnail-size-${key}`, suffix: [widthInput, separator, heightInput] });
+        row.row.classList.add('sb-thumbnail-size-row');
+        row.row.dataset.thumbnailSize = key;
+        return {
+            ...row,
+            widthInput,
+            heightInput,
+            setDisabled(disabled) {
+                row.setDisabled(disabled);
+                widthInput.disabled = Boolean(disabled);
+                heightInput.disabled = Boolean(disabled);
+            },
+        };
+    }
+
+    function createThumbnailQualityRow(label, field) {
+        const input = createElement('input', {
+            className: 'text_pole',
+            attrs: {
+                type: 'number',
+                inputmode: 'numeric',
+                min: '1',
+                max: '100',
+                step: '1',
+            },
+        });
+        return { input, row: createSpinRow({ label, field, input, normalize: false }) };
+    }
+
+    function createThumbnailFormatRow(label, field) {
+        const select = createElement('select', { className: 'text_pole ds-control-flex' });
+        select.append(
+            createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
+            createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
+        );
+        return { select, row: createSelectRow({ select, label, field }) };
     }
 
     async function handleServerAdminRestart() {
@@ -1364,7 +1419,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         }
     }
 
-    async function loadServerAdminBranches(selectElement, currentBranch) {
+    async function loadServerAdminBranches(selectElement, currentBranch, branchRow) {
         try {
             const result = await requestServerAdmin('/api/server-admin/branches');
             const branches = result?.branches || [];
@@ -1381,14 +1436,15 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             }
 
             // Add change handler
-            selectElement.addEventListener('change', () => handleServerAdminBranchSwitch(selectElement));
+            selectElement.addEventListener('change', () => handleServerAdminBranchSwitch(selectElement, branchRow.sync));
         } catch (error) {
             console.error('Failed to load branches.', error);
             // Keep the current branch option if loading fails
         }
     }
 
-    async function handleServerAdminBranchSwitch(selectElement) {
+    /** `syncRow` shows the select's value again in its picker row after the code resets it without an event. */
+    async function handleServerAdminBranchSwitch(selectElement, syncRow = () => {}) {
         const state = getServerAdminState();
         const refs = getServerAdminRefs();
 
@@ -1429,6 +1485,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         if (response !== 'switch') {
             // Reset select to current branch
             selectElement.value = currentBranch;
+            syncRow();
             return;
         }
 
@@ -1472,6 +1529,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
             // Reset select to current branch
             selectElement.value = currentBranch;
+            syncRow();
 
             if (error.name === 'AbortError') {
                 const timeoutMessage = 'Branch switch is taking longer than expected. The server may still be working; refresh in a moment to see the result.';
@@ -1492,112 +1550,66 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         });
 
         const column = createElement('div', { className: 'sb-shell-column sb-server-column' });
-        const callout = createElement('div', { className: 'sb-shell-callout sb-server-tools-intro' });
-        callout.innerHTML = '<strong>Server Tools</strong><p>Edit <code>config.yaml</code>, check for updates, and restart the app from inside Customize. Updates use Git and only run when the repository can fast-forward cleanly.</p>';
 
-        const { section: statusCard, header: statusHeader, body: statusGrid } = createServerToolsGroup('App Status', 'Review the current runtime, branch, commit, and whether this workspace can update safely.', 'sb-server-card sb-server-grid');
         const statusPill = createElement('span', { className: 'sb-server-pill', text: 'Checking…' });
-        const statusNote = createElement('div', { className: 'sb-server-note' });
+        const statusSection = createServerSection('App Status', 'Review the current runtime, branch, commit, and whether this workspace can update safely.', 'app-status', statusPill);
+        const statusNote = createServerStatusRow();
         // SillyBunny: migration link for non-Git copies; the target is a placeholder until the bootstrap installer ships.
-        const installLink = createElement('div', { className: 'sb-server-note' });
+        const installLink = createServerStatusRow();
         installLink.dataset.tone = 'warn';
         installLink.appendChild(createElement('a', {
             text: 'Reinstall with the installer to get updates',
             attrs: { href: SB_INSTALLER_URL, target: '_blank', rel: 'noopener noreferrer' },
         }));
         installLink.hidden = true;
-        statusHeader.append(statusPill);
-        statusCard.append(statusNote, installLink);
+        statusSection.append(statusNote, installLink);
 
-        const { section: updateCard, body: updateBody } = createServerToolsGroup('Updates & Restart', 'Check upstream status, update the app, and relaunch automatically when it is safe to do so.', 'sb-server-card');
-        const refreshButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Check for updates', attrs: { type: 'button' } });
-        const updateButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Update & Restart', attrs: { type: 'button' } });
-        const restartButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Restart server', attrs: { type: 'button' } });
-        const updateNote = createElement('div', { className: 'sb-server-note', text: 'Git fast-forward updates restart automatically once they finish.' });
-        const autoStashCheckbox = createElement('input', { className: 'sb-switch', attrs: { type: 'checkbox', id: 'auto_stash_before_pull', role: 'switch', 'aria-label': 'Auto-stash local changes before pulling' } });
-        const autoStashLabel = createServerToolsRow('Auto-stash local changes before pulling', autoStashCheckbox, { label: true });
-        autoStashLabel.classList.add('checkbox_label', 'ds-row-switch');
+        const updateSection = createServerSection('Updates & Restart', 'Check upstream status, update the app, and relaunch automatically when it is safe to do so.', 'updates-restart');
+        const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull', 'aria-label': 'Auto-stash local changes before pulling' } });
+        const autoStashRow = createSwitchRow({ label: 'Auto-stash local changes before pulling', field: 'auto-stash', input: autoStashCheckbox });
+        const refreshButton = createServerButtonRow('Check for updates', 'check-for-updates', () => refreshServerAdminPanel({ includeConfig: false }));
+        const updateButton = createServerButtonRow('Update & Restart', 'update-restart', handleServerAdminUpdate);
+        const restartButton = createServerButtonRow('Restart server', 'restart-server', handleServerAdminRestart);
+        const updateNote = createServerStatusRow('Git fast-forward updates restart automatically once they finish.');
         const updateOutput = createElement('pre', { className: 'sb-server-output' });
         updateOutput.hidden = true;
-        updateBody.append(createServerToolsActions(refreshButton, updateButton, restartButton), autoStashLabel, updateNote, updateOutput);
+        updateSection.append(autoStashRow, refreshButton, updateButton, restartButton, updateNote, updateOutput);
 
-        const { section: thumbnailCard, body: thumbnailBody } = createServerToolsGroup('Thumbnail Quality', 'Set thumbnail format, quality, and generated sizes without hand-editing config.yaml.', 'sb-server-card sb-thumbnail-card');
-        const thumbnailEnabled = createElement('input', { className: 'sb-switch', attrs: { type: 'checkbox', role: 'switch', 'aria-label': 'Generate thumbnails' } });
-        const thumbnailEnabledLabel = createServerToolsRow('Generate thumbnails', thumbnailEnabled, { label: true });
-        thumbnailEnabledLabel.classList.add('checkbox_label', 'ds-row-switch');
-
-        const thumbnailFormat = createElement('select', { className: 'text_pole ds-control-flex' });
-        thumbnailFormat.append(
-            createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
-            createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
-        );
-        const thumbnailFormatGroup = createServerToolsRow('Format', thumbnailFormat, { label: true });
-
-        const thumbnailQuality = createElement('input', {
-            className: 'text_pole sb-thumbnail-number',
-            attrs: {
-                type: 'number',
-                inputmode: 'numeric',
-                min: '1',
-                max: '100',
-                step: '1',
-            },
-        });
-        const thumbnailQualityGroup = createServerToolsRow('Quality', thumbnailQuality, { label: true });
-
+        const thumbnailSection = createServerSection('Thumbnail Quality', 'Set thumbnail format, quality, and generated sizes without hand-editing config.yaml.', 'thumbnail-quality');
+        const thumbnailEnabled = createElement('input', { attrs: { type: 'checkbox', 'aria-label': 'Generate thumbnails' } });
+        const thumbnailEnabledRow = createSwitchRow({ label: 'Generate thumbnails', field: 'thumbnail-enabled', input: thumbnailEnabled });
+        const { select: thumbnailFormat, row: thumbnailFormatRow } = createThumbnailFormatRow('Format', 'thumbnail-format');
+        const { input: thumbnailQuality, row: thumbnailQualityRow } = createThumbnailQualityRow('Quality', 'thumbnail-quality');
         const bgSize = createThumbnailSizeRow('Background', 'bg');
         const avatarSize = createThumbnailSizeRow('Character', 'avatar');
         const personaSize = createThumbnailSizeRow('Persona', 'persona');
+        thumbnailSection.append(thumbnailEnabledRow, thumbnailFormatRow, thumbnailQualityRow, bgSize, avatarSize, personaSize);
 
-        const thumbnailUseRecommendedButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use desktop recommended', attrs: { type: 'button' } });
-        const thumbnailUseRecommendedMobileButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Use mobile recommended', attrs: { type: 'button' } });
-        const thumbnailSaveButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Save thumbnails', attrs: { type: 'button' } });
-        const thumbnailSaveClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Save & Clear Cache', attrs: { type: 'button' } });
-        const thumbnailClearButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Clear cache only', attrs: { type: 'button' } });
-        const thumbnailNote = createElement('div', { className: 'sb-server-note', text: 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.' });
-
-        const thumbnailMobileHeading = createElement('h4', { className: 'ds-pref-group-heading', text: 'Mobile preset' });
-        const thumbnailMobileEnabled = createElement('input', { className: 'sb-switch', attrs: { type: 'checkbox', role: 'switch', 'aria-label': 'Generate mobile thumbnails' } });
-        const thumbnailMobileEnabledLabel = createServerToolsRow('Generate mobile thumbnails', thumbnailMobileEnabled, { label: true });
-        thumbnailMobileEnabledLabel.classList.add('checkbox_label', 'ds-row-switch');
-
-        const thumbnailMobileFormat = createElement('select', { className: 'text_pole ds-control-flex' });
-        thumbnailMobileFormat.append(
-            createElement('option', { text: 'JPG', attrs: { value: 'jpg' } }),
-            createElement('option', { text: 'PNG', attrs: { value: 'png' } }),
-        );
-        const thumbnailMobileFormatGroup = createServerToolsRow('Mobile format', thumbnailMobileFormat, { label: true });
-
-        const thumbnailMobileQuality = createElement('input', {
-            className: 'text_pole sb-thumbnail-number',
-            attrs: {
-                type: 'number',
-                inputmode: 'numeric',
-                min: '1',
-                max: '100',
-                step: '1',
-            },
-        });
-        const thumbnailMobileQualityGroup = createServerToolsRow('Mobile quality', thumbnailMobileQuality, { label: true });
-
+        const mobileSection = createServerSection('Mobile preset', 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.', 'thumbnail-mobile');
+        const thumbnailMobileEnabled = createElement('input', { attrs: { type: 'checkbox', 'aria-label': 'Generate mobile thumbnails' } });
+        const thumbnailMobileEnabledRow = createSwitchRow({ label: 'Generate mobile thumbnails', field: 'thumbnail-mobile-enabled', input: thumbnailMobileEnabled });
+        const { select: thumbnailMobileFormat, row: thumbnailMobileFormatRow } = createThumbnailFormatRow('Mobile format', 'thumbnail-mobile-format');
+        const { input: thumbnailMobileQuality, row: thumbnailMobileQualityRow } = createThumbnailQualityRow('Mobile quality', 'thumbnail-mobile-quality');
         const mobileBgSize = createThumbnailSizeRow('Mobile background', 'mobile-bg');
         const mobileAvatarSize = createThumbnailSizeRow('Mobile character', 'mobile-avatar');
         const mobilePersonaSize = createThumbnailSizeRow('Mobile persona', 'mobile-persona');
-
-        thumbnailBody.append(
-            thumbnailEnabledLabel, thumbnailFormatGroup, thumbnailQualityGroup,
-            bgSize.row, avatarSize.row, personaSize.row,
-            thumbnailMobileHeading, thumbnailMobileEnabledLabel, thumbnailMobileFormatGroup, thumbnailMobileQualityGroup,
-            mobileBgSize.row, mobileAvatarSize.row, mobilePersonaSize.row,
-            createServerToolsActions(thumbnailUseRecommendedButton, thumbnailUseRecommendedMobileButton),
-            createServerToolsActions(thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton),
+        const thumbnailUseRecommendedButton = createServerButtonRow('Use desktop recommended', 'thumbnail-use-recommended', handleUseRecommendedThumbnailSettings);
+        const thumbnailUseRecommendedMobileButton = createServerButtonRow('Use mobile recommended', 'thumbnail-use-recommended-mobile', handleUseRecommendedMobileThumbnailSettings);
+        const thumbnailSaveButton = createServerButtonRow('Save thumbnails', 'thumbnail-save', () => handleServerThumbnailSave({ clearCache: false }));
+        const thumbnailSaveClearButton = createServerButtonRow('Save & Clear Cache', 'thumbnail-save-clear', () => handleServerThumbnailSave({ clearCache: true }));
+        const thumbnailClearButton = createServerButtonRow('Clear cache only', 'thumbnail-clear', handleServerThumbnailClearCache);
+        const thumbnailNote = createServerStatusRow();
+        thumbnailNote.hidden = true;
+        mobileSection.append(
+            thumbnailMobileEnabledRow, thumbnailMobileFormatRow, thumbnailMobileQualityRow,
+            mobileBgSize, mobileAvatarSize, mobilePersonaSize,
+            thumbnailUseRecommendedButton, thumbnailUseRecommendedMobileButton,
+            thumbnailSaveButton, thumbnailSaveClearButton, thumbnailClearButton,
             thumbnailNote,
         );
 
-        const { section: configCard, header: configHeader, body: configBody } = createServerToolsGroup('config.yaml Editor', 'Edit the live config file directly here. Saves validate YAML before writing anything to disk.', 'sb-server-card');
         const configState = createElement('span', { className: 'sb-server-inline-state', text: 'Loading…' });
-        const configPath = createElement('code', { className: 'sb-server-config-path', text: 'config.yaml' });
-        const configMeta = createElement('div', { className: 'sb-server-config-meta' });
+        const configPath = createElement('code', { text: 'config.yaml' });
         const configEditor = createElement('textarea', {
             className: 'text_pole sb-server-config-editor',
             attrs: {
@@ -1606,22 +1618,25 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 'aria-label': 'config.yaml editor',
             },
         });
-        const reloadConfigButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Reload file', attrs: { type: 'button' } });
-        const saveConfigButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action', text: 'Save config', attrs: { type: 'button' } });
-        const saveConfigRestartButton = createElement('button', { className: 'menu_button menu_button_icon sb-server-action menu_button_primary', text: 'Save & Restart', attrs: { type: 'button' } });
-        const configNote = createElement('div', { className: 'sb-server-note', text: 'Most config changes only take effect after a restart.' });
-        configHeader.append(configState);
-        configMeta.append(configPath);
-        configBody.append(configMeta, configEditor, createServerToolsActions(reloadConfigButton, saveConfigButton, saveConfigRestartButton), configNote);
+        const configSection = createServerSection('config.yaml Editor', 'Edit the live config file directly here. Saves validate YAML before writing anything to disk.', 'config-editor');
+        // The editor fills the width of the group, and a code file has no use for Expand.
+        const configField = createTextAreaField({ label: 'config.yaml', field: 'config-file', input: configEditor, expand: false });
+        configField.row.querySelector('.ds-row-textarea__label').replaceChildren(configPath);
+        configField.labelRow.append(configState);
+        const reloadConfigButton = createServerButtonRow('Reload file', 'config-reload', handleServerAdminReloadConfig);
+        const saveConfigButton = createServerButtonRow('Save config', 'config-save', () => handleServerAdminSaveConfig({ restart: false }));
+        const saveConfigRestartButton = createServerButtonRow('Save & Restart', 'config-save-restart', () => handleServerAdminSaveConfig({ restart: true }));
+        const configNote = createServerStatusRow('Most config changes only take effect after a restart.');
+        configSection.append(configField, reloadConfigButton, saveConfigButton, saveConfigRestartButton, configNote);
 
-        column.append(callout, statusCard, updateCard, thumbnailCard, configCard);
-        normalizeBackendSettingsRows(column, { fields: false });
+        column.append(statusSection.section, updateSection.section, thumbnailSection.section, mobileSection.section, configSection.section);
         scroller.appendChild(column);
 
         const state = getServerAdminState();
         state.refs = {
             statusPill,
-            statusGrid,
+            statusGrid: statusSection.group,
+            statusRows: [],
             statusNote,
             installLink,
             refreshButton,
@@ -1630,8 +1645,11 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             updateNote,
             updateOutput,
             autoStashCheckbox,
+            autoStashRow,
             thumbnailEnabled,
+            thumbnailEnabledRow,
             thumbnailFormat,
+            thumbnailFormatRow,
             thumbnailQuality,
             thumbnailBgWidth: bgSize.widthInput,
             thumbnailBgHeight: bgSize.heightInput,
@@ -1646,7 +1664,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             thumbnailClearButton,
             thumbnailNote,
             thumbnailMobileEnabled,
+            thumbnailMobileEnabledRow,
             thumbnailMobileFormat,
+            thumbnailMobileFormatRow,
             thumbnailMobileQuality,
             thumbnailMobileBgWidth: mobileBgSize.widthInput,
             thumbnailMobileBgHeight: mobileBgSize.heightInput,
@@ -1654,6 +1674,10 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             thumbnailMobileAvatarHeight: mobileAvatarSize.heightInput,
             thumbnailMobilePersonaWidth: mobilePersonaSize.widthInput,
             thumbnailMobilePersonaHeight: mobilePersonaSize.heightInput,
+            thumbnailRows: {
+                desktop: [thumbnailFormatRow, thumbnailQualityRow, bgSize, avatarSize, personaSize],
+                mobile: [thumbnailMobileFormatRow, thumbnailMobileQualityRow, mobileBgSize, mobileAvatarSize, mobilePersonaSize],
+            },
             configPath,
             configState,
             configEditor,
@@ -1667,22 +1691,13 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         configState.textContent = 'Not loaded';
         configState.dataset.state = 'neutral';
 
-        refreshButton.addEventListener('click', () => refreshServerAdminPanel({ includeConfig: false }));
-        updateButton.addEventListener('click', handleServerAdminUpdate);
-        restartButton.addEventListener('click', handleServerAdminRestart);
-        thumbnailUseRecommendedButton.addEventListener('click', handleUseRecommendedThumbnailSettings);
-        thumbnailUseRecommendedMobileButton.addEventListener('click', handleUseRecommendedMobileThumbnailSettings);
-        thumbnailSaveButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: false }));
-        thumbnailSaveClearButton.addEventListener('click', () => handleServerThumbnailSave({ clearCache: true }));
-        thumbnailClearButton.addEventListener('click', handleServerThumbnailClearCache);
-        reloadConfigButton.addEventListener('click', handleServerAdminReloadConfig);
-        saveConfigButton.addEventListener('click', () => handleServerAdminSaveConfig({ restart: false }));
-        saveConfigRestartButton.addEventListener('click', () => handleServerAdminSaveConfig({ restart: true }));
         configEditor.addEventListener('input', () => {
             updateServerConfigDirtyState();
             updateServerAdminInteractivity();
         });
         autoStashCheckbox.addEventListener('change', handleAutoStashChange);
+        thumbnailEnabled.addEventListener('change', () => setThumbnailInputsDisabled(isThumbnailLocked()));
+        thumbnailMobileEnabled.addEventListener('change', () => setThumbnailInputsDisabled(isThumbnailLocked()));
         updateServerAdminInteractivity();
 
         return {

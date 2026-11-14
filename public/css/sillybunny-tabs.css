@@ -1817,38 +1817,6 @@ body:not(.movingUI) .drawer-content.maximized {
     opacity: 0.75;
 }
 
-.sb-server-card {
-    overflow: hidden;
-}
-
-.sb-server-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
-    gap: var(--sb-shell-space-sm);
-}
-
-.sb-server-stat {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-    padding: 12px 14px;
-    border-radius: var(--sb-radius-md);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-}
-
-.sb-server-stat-label {
-    font-size: var(--sb-type-caption);
-    opacity: 0.68;
-}
-
-.sb-server-stat-value {
-    font-size: var(--sb-type-control);
-    line-height: var(--sb-line-body);
-    overflow-wrap: anywhere;
-}
-
 .sb-server-pill,
 .sb-server-inline-state {
     display: inline-flex;
@@ -1904,12 +1872,6 @@ body:not(.movingUI) .drawer-content.maximized {
     border-color: color-mix(in srgb, var(--color-danger, var(--sb-color-danger)) 32%, transparent);
 }
 
-.sb-server-actions {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-    gap: var(--sb-shell-space-sm);
-}
-
 .sb-server-action {
     width: 100%;
     min-width: 0;
@@ -1917,117 +1879,7 @@ body:not(.movingUI) .drawer-content.maximized {
     text-align: center;
 }
 
-.sb-thumbnail-card {
-    --sb-thumbnail-label-track: minmax(136px, 0.72fr);
-    --sb-thumbnail-field-track: minmax(132px, 1fr);
-    --sb-thumbnail-separator-track: 18px;
-    --sb-thumbnail-grid-gap: 12px;
-}
-
-.sb-thumbnail-controls {
-    display: grid;
-    grid-template-columns:
-        var(--sb-thumbnail-label-track)
-        var(--sb-thumbnail-field-track)
-        var(--sb-thumbnail-separator-track)
-        var(--sb-thumbnail-field-track);
-    grid-template-areas: "enabled enabled enabled enabled" ". format . quality";
-    gap: 8px var(--sb-thumbnail-grid-gap);
-    align-items: end;
-}
-
-.sb-thumbnail-enabled {
-    grid-area: enabled;
-    min-height: 44px;
-    align-items: center;
-    align-self: end;
-}
-
-.sb-thumbnail-field {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 6px;
-    font-size: var(--sb-type-meta);
-}
-
-.sb-thumbnail-controls > .sb-thumbnail-field:nth-child(2) {
-    grid-area: format;
-}
-
-.sb-thumbnail-controls > .sb-thumbnail-field:nth-child(3) {
-    grid-area: quality;
-}
-
-.sb-thumbnail-field > .text_pole {
-    width: 100%;
-    margin: 0;
-}
-
-.sb-thumbnail-field > span,
-.sb-thumbnail-size-label {
-    opacity: 0.72;
-    font-size: calc(var(--mainFontSize) * 0.72);
-    line-height: 1.25;
-}
-
-.sb-thumbnail-size-row {
-    display: grid;
-    grid-template-columns:
-        var(--sb-thumbnail-label-track)
-        var(--sb-thumbnail-field-track)
-        var(--sb-thumbnail-separator-track)
-        var(--sb-thumbnail-field-track);
-    gap: 8px var(--sb-thumbnail-grid-gap);
-    align-items: center;
-    min-height: 46px;
-}
-
-.sb-thumbnail-size-separator {
-    justify-self: center;
-    width: 100%;
-    text-align: center;
-    opacity: 0.64;
-    font-size: calc(var(--mainFontSize) * 0.72);
-}
-
-.sb-thumbnail-number {
-    width: 100%;
-    min-width: 0;
-    text-align: center;
-}
-
-.sb-thumbnail-card .sb-server-actions {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.sb-thumbnail-card .sb-server-action {
-    min-height: 40px;
-    white-space: normal;
-}
-
-.sb-server-config-meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.sb-server-config-path {
-    max-width: 100%;
-    padding: 4px 10px;
-    border-radius: var(--sb-radius-pill);
-    background: var(--sb-muted-bg);
-    overflow-wrap: anywhere;
-}
-
 .sb-server-config-editor {
-    width: 100%;
-    min-width: 0;
-    min-height: 360px;
-    padding: 14px 16px;
-    resize: vertical;
     line-height: 1.55;
     font-family: var(--monoFontFamily, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace);
 }
@@ -2056,64 +1908,104 @@ body:not(.movingUI) .drawer-content.maximized {
     color: var(--sb-input-placeholder);
 }
 
-.sb-import-card {
-    gap: 0;
-    width: 100%;
-    max-width: 100%;
-    margin-bottom: var(--sb-shell-space-lg);
+/* Data & Security groups: sillybunny-data-security.js builds General, Import & Restore and Export, and
+   sillybunny-server-tools.js builds the server groups. Their rows come from sillybunny-editor/rows.js; this sheet holds
+   what the shared row styles do not. */
+.sb-data-security-group .ds-row[hidden] {
+    display: none;
 }
 
-.sb-import-pane {
-    min-width: 0;
+/* Rows that hide leave the last visible row without a separator, which `:last-child` cannot see. */
+.sb-data-security-group > .ds-pref-group > .ds-row:not(:has(~ .ds-row:not([hidden]))) {
+    border-bottom: 0;
 }
 
-.sb-import-pane strong {
-    font-size: var(--sb-type-control);
+.sb-data-security-group .ds-row.ds-button-row:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
-.sb-import-note {
-    margin: 0;
+/* A status line: the row element takes the text, the tone and `hidden` of setServerAdminMessage(). */
+.ds-row.sb-server-note {
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
+    border: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+    border-radius: 0;
+    background: transparent;
     color: var(--sb-input-placeholder);
-    line-height: 1.45;
+    font-size: var(--sb-type-caption);
+    line-height: 1.4;
 }
 
-.sb-import-path-row {
-    display: flex;
+.ds-row.sb-server-note[data-tone='good'] {
+    color: color-mix(in srgb, var(--sb-color-success) 70%, var(--sb-shell-text));
+}
+
+.ds-row.sb-server-note[data-tone='warn'] {
+    color: color-mix(in srgb, var(--sb-color-warning) 70%, var(--sb-shell-text));
+}
+
+.ds-row.sb-server-note[data-tone='danger'] {
+    color: color-mix(in srgb, var(--sb-color-danger) 70%, var(--sb-shell-text));
+}
+
+.sb-data-security-group .ds-pref-group > .sb-server-output {
+    max-height: 20em;
+    margin: 0;
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
+    border: 0;
+    border-top: 1px solid var(--sb-shell-border);
+    border-radius: 0;
+    background: transparent;
+}
+
+/* style.css pads and dims the upstream version line by its ID. */
+.sb-data-security-group #version_display {
+    padding: 0;
+    opacity: 1;
+}
+
+.sb-server-stat-value.is-monospace,
+.sb-data-security-group .ds-row-textarea__label code {
+    font-family: var(--monoFontFamily, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace);
+}
+
+.sb-data-security-group .ds-row-textarea__label code {
+    padding: 0;
+    background: transparent;
+    font-size: inherit;
+    overflow-wrap: anywhere;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-thumbnail-size-row > .ds-row-suffix > input[type='number'] {
+    width: 6em;
+    text-align: end;
+}
+
+.sb-thumbnail-size-separator {
+    color: var(--sb-input-placeholder);
+}
+
+/* The settings-page row rule forces flex-direction: row; the floating entry row stacks its field over its caption.
+   Its parts stack, so only the row's own column-gap is restated for the 6px between parts. */
+#sb-settings-page .sb-settings-mounted-shell .sb-data-security-group .ds-pref-group > .ds-row.ds-row-entry--floating {
     flex-direction: column;
-    align-items: center;
-    gap: var(--sb-shell-space-sm);
-    flex: 1 1 0;
+    align-items: stretch;
+    column-gap: 6px;
 }
 
-#sb-settings-page .sb-import-pane > .ds-row-text {
-    flex: 1 1 0;
+/* A property row keeps the 6px block padding of every row. */
+.sb-data-security-group .ds-row.ds-row-property {
+    padding-block: 6px;
 }
 
-.sb-import-action-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--sb-shell-space-sm);
-    width: 100%;
-}
-
-.sb-import-action-row .sb-server-action {
-    flex: 1 1 180px;
-    justify-content: center;
-    color: inherit;
-}
-
-.sb-import-action-row .sb-server-action.menu_button_primary,
-.sb-import-pane .ds-row-suffix > .sb-server-action.menu_button_primary {
-    color: var(--sb-on-accent, var(--SmartThemeBlurTintColor));
-    text-shadow: none;
-}
-
-.sb-import-path-input {
-    flex: 0 1 auto;
-    min-width: 0;
-    width: 100%;
-    max-width: 100%;
+/* The two cache buttons do not fit beside the title on a phone; the row stacks them under it, as the wrapping did. */
+@media (max-width: 450px) {
+    #sb-settings-page .sb-settings-mounted-shell .sb-data-security-group .ds-pref-group > .ds-row.ds-row-actions {
+        flex-direction: column;
+        flex-wrap: nowrap;
+        align-items: stretch;
+    }
 }
 
 .sb-import-file-input {
@@ -2121,10 +2013,6 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-import-file-name {
-    min-height: 1.4em;
-    font-size: calc(var(--mainFontSize) * 0.72);
-    line-height: 1.4;
-    color: var(--sb-input-placeholder);
     overflow-wrap: anywhere;
 }
 
@@ -2132,10 +2020,8 @@ body:not(.movingUI) .drawer-content.maximized {
     display: flex;
     flex-direction: column;
     gap: var(--sb-shell-space-sm);
-    padding: var(--sb-shell-space-md);
-    border-radius: var(--sb-radius-md);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 76%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
+    border-top: 1px solid var(--sb-shell-border);
 }
 
 .sb-import-report[hidden] {
@@ -2216,49 +2102,10 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 @media screen and (max-width: 900px) {
-    .sb-server-config-meta {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
     .sb-server-pill,
     .sb-server-inline-state {
         align-self: flex-start;
         white-space: normal;
-    }
-
-    .sb-thumbnail-controls {
-        grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr);
-        grid-template-areas:
-            "enabled enabled enabled"
-            "format . quality";
-        gap: 10px;
-    }
-
-    .sb-thumbnail-size-row {
-        grid-template-columns: minmax(92px, 0.72fr) minmax(0, 1fr) 14px minmax(0, 1fr);
-        gap: 8px 10px;
-    }
-
-    .sb-thumbnail-card .sb-server-actions {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .sb-import-path-row {
-        flex-direction: column;
-    }
-
-    .sb-import-action-row {
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .sb-import-path-input {
-        flex-basis: auto;
-    }
-
-    .sb-import-action-row .sb-server-action {
-        flex: 0 1 auto;
     }
 
     .sb-import-report-list {
@@ -2272,30 +2119,18 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 @media screen and (max-width: 620px) {
-    .sb-import-card {
-        margin-bottom: 14px;
-    }
-
     .sb-import-report {
         gap: 8px;
-        padding: 12px;
     }
 
     .sb-import-report-header strong {
         font-size: var(--sb-type-meta);
     }
 
-    .sb-import-note,
     .sb-import-report-summary,
     .sb-import-report-help {
         font-size: calc(var(--mainFontSize) * 0.72);
         line-height: 1.45;
-    }
-
-    .sb-import-action-row .sb-server-action,
-    .sb-import-pane .ds-row-suffix > .sb-server-action {
-        min-height: 42px;
-        padding-block: 9px;
     }
 }
 
@@ -8072,23 +7907,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     width: 5.5em;
 }
 
-#sb-settings-page :is(#UI-language-block, #account_controls).ds-row {
-    flex: 0 0 auto;
-    min-width: 0;
-}
-
-#sb-settings-page #user-settings-utility-actions {
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-}
-
-#sb-settings-page #user-settings-utility-actions .sb-settings-utility-action {
-    flex: 0 1 auto;
-    min-width: 0;
-}
-
 #sb-settings-page #color-picker-block {
     display: flex;
     flex-direction: column;
@@ -8235,30 +8053,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     display: none;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group:has(> #sb-import-tools-outlet) {
-    background: transparent;
-    padding: 0;
-}
-
-#sb-settings-page #sb-import-tools-outlet {
-    gap: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    overflow: visible;
-}
-
-#sb-settings-page #sb-import-card {
-    padding: 0;
-}
-
-#sb-settings-page .sb-import-card > .sb-import-note {
-    border-radius: 0;
-    border-inline: 0;
-    border-bottom: 0;
-    background: transparent;
-}
-
 #sb-settings-page .sb-console-log-column > .ds-pref-group {
     margin: 0;
 }
@@ -8307,73 +8101,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 #sb-settings-page .sb-console-log-actions > button {
     width: auto;
-}
-
-/* Server Tools uses the same named category and boxed-list primitives as the other Backend tabs.
-   The controls are still created on demand so their existing refs and handlers remain untouched. */
-#sb-settings-page .sb-server-column .sb-server-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-
-#sb-settings-page .sb-server-column .sb-server-stat {
-    display: flex;
-    min-height: var(--sb-density-row-min-height);
-    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
-    border: 0;
-    border-bottom: 1px solid var(--sb-shell-border);
-    border-radius: 0;
-    background: transparent;
-}
-
-#sb-settings-page .sb-server-column .sb-server-stat:last-child {
-    border-bottom: 0;
-}
-
-#sb-settings-page .sb-server-column .sb-server-stat-value {
-    font-size: var(--sb-type-control);
-    font-weight: 500;
-}
-
-#sb-settings-page .sb-server-column .sb-server-actions {
-    display: flex;
-}
-
-#sb-settings-page .sb-server-column .sb-server-actions > .ds-row-suffix {
-    flex: 1 1 auto;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-}
-
-#sb-settings-page .sb-server-column .sb-server-actions .sb-server-action {
-    width: auto;
-    min-width: 0;
-}
-
-#sb-settings-page .sb-server-column .sb-thumbnail-card .sb-server-actions {
-    grid-template-columns: none;
-}
-
-#sb-settings-page .sb-server-column .sb-thumbnail-size-row {
-    min-height: var(--sb-density-row-min-height);
-    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
-}
-
-#sb-settings-page .sb-server-column .sb-thumbnail-dimensions {
-    flex: 1 1 320px;
-}
-
-#sb-settings-page .sb-server-column .sb-thumbnail-dimensions > .sb-thumbnail-number {
-    flex: 1 1 100px;
-    width: auto;
-}
-
-#sb-settings-page .sb-server-column .sb-settings-category-body > .sb-server-note,
-#sb-settings-page .sb-server-column .sb-settings-category-body > .sb-server-config-meta {
-    border-inline: 0;
-    border-radius: 0;
-    background: transparent;
 }
 
 #sb-settings-page .sb-console-log-actions {
@@ -10097,7 +9824,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     .sb-persona-picker-appendix-toggle,
     .sb-model-id-picker-empty,
     .sb-model-id-picker-option,
-    :is(.sb-thumbnail-card .sb-server-action, .sb-import-action-row .sb-server-action, .sb-import-pane .ds-row-suffix > .sb-server-action),
     :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets .menu_button,
     .sb-chat-history-cleanup-actions .menu_button,
     #sb-settings-page .sb-action-btn,

@@ -117,7 +117,7 @@
             "breakpoint-off-set": 12,
             "breakpoint-1000": 2,
             "focus-outline": 1,
-            "spacing-off-scale": 234,
+            "spacing-off-scale": 222,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-tag-manager.css": {
@@ -133,7 +133,7 @@
             "hover-ungated": 6,
             "breakpoint-off-set": 4,
             "focus-outline": 1,
-            "spacing-off-scale": 254,
+            "spacing-off-scale": 251,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-windows.css": {

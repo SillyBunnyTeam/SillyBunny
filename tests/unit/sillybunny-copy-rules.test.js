@@ -10,6 +10,7 @@ const MODULES = [
     'public/scripts/sillybunny-connections-panel.js',
     'public/scripts/sillybunny-connections-form.js',
     'public/scripts/sillybunny-connections-groups.js',
+    'public/scripts/sillybunny-data-security.js',
 ];
 
 const TRANSLATED = /\bt`((?:[^`\\]|\\.)*)`|\btranslate\(\s*(['"])((?:(?!\2)[^\\]|\\.)*)\2/g;

@@ -311,7 +311,7 @@ export const surfaces = [
         tab: 'data-security',
         ready: '[data-sb-panel="data-security"] button:has-text("Usage Stats")',
         masks: ['[data-sb-panel="data-security"] .sb-server-stat-value', '[data-sb-panel="data-security"] .sb-server-pill', '[data-sb-panel="data-security"] .sb-server-note', '[data-sb-panel="data-security"] .ds-row:has(select)', '[data-sb-panel="data-security"] #version_display'],
-        sources: [`${SCRIPTS}/sillybunny-server-tools.js`],
+        sources: [`${SCRIPTS}/sillybunny-data-security.js`, `${SCRIPTS}/sillybunny-server-tools.js`],
     }), async (page) => {
         // The version line is written when the server has answered, and its width moves the rows around it.
         await page.waitForFunction(() => Boolean(document.querySelector('[data-sb-panel="data-security"] #version_display')?.textContent.trim()), null, { timeout: 10_000 });

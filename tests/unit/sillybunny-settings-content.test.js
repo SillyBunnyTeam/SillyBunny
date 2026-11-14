@@ -5,7 +5,6 @@ import { describe, test, expect, beforeAll, afterAll } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SETTINGS_COPY } from '../helpers/copy-settings.js';
 import { SB_DATA_SECURITY_CONTAINER_ID, SB_FLAT_SECTION_CLASS, SB_FLAT_SECTION_TOP_CLASS, flattenNestedSettingsDrawers, splitUserSettingsContent } from '../../public/scripts/sillybunny-settings-content.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -31,66 +30,30 @@ describe('Data & Security settings split', () => {
         globalThis.CSS = previousCSS;
     });
 
-    test('places Usage Stats in General between Account and Version', () => {
+    test('hands every Data & Security row to the container, Import & Restore last', () => {
         const split = splitAuthoredSettings();
         expect(split.missing).toEqual([]);
         expect(split.dataSecurity.id).toBe(SB_DATA_SECURITY_CONTAINER_ID);
 
-        const general = split.dataSecurity.querySelector('[data-sb-category="general"] > .sb-settings-category-body');
-        const rows = [...general.children];
-        const position = element => rows.indexOf(element);
-        const usageStats = split.dataSecurity.querySelector('#user_stats_controls');
-        expect(position(usageStats)).toBe(position(split.dataSecurity.querySelector('#account_controls')) + 1);
-        expect(position(split.dataSecurity.querySelector('#version_display').closest('.ds-row'))).toBe(position(usageStats) + 1);
+        const children = [...split.dataSecurity.children];
+        const ids = children.map(child => child.id || child.querySelector('#version_display')?.id);
+        expect(ids).toEqual([
+            'UI-language-block',
+            'account_controls',
+            'user_stats_controls',
+            'version_display',
+            'user-settings-utility-actions',
+            'user_backup_controls',
+            'settings_snapshots_controls',
+            'SillyTavernImportSection',
+        ]);
     });
 
-    test('Usage Stats keeps the upstream button class and translated label', () => {
-        const usageStats = splitAuthoredSettings().dataSecurity.querySelector('#user_stats_controls');
-        expect(usageStats.querySelector('.ds-row-label').dataset.i18n).toBe('Usage Stats');
-        const button = usageStats.querySelector('.ds-row-suffix > button.user_stats_button');
-        expect(button.type).toBe('button');
-        expect(button.dataset.i18n).toBe('Usage Stats');
-        expect(button.textContent).toBe('Usage Stats');
-    });
-
-    test('places Export right after Import & Restore with Download Backup then Settings Snapshots', () => {
-        const split = splitAuthoredSettings();
-        expect(split.missing).toEqual([]);
-
-        const sections = [...split.dataSecurity.children];
-        const exportCategory = split.dataSecurity.querySelector('[data-sb-category="export"]');
-        expect(sections.indexOf(exportCategory)).toBe(sections.indexOf(split.dataSecurity.querySelector('#SillyTavernImportSection')) + 1);
-        const rows = [...exportCategory.querySelector(':scope > .sb-settings-category-body').children];
-        expect(rows.map(row => row.id)).toEqual(['user_backup_controls', 'settings_snapshots_controls']);
-    });
-
-    test('Export has its written description, translated like its siblings', () => {
-        const exportCategory = splitAuthoredSettings().dataSecurity.querySelector('[data-sb-category="export"]');
-        expect(exportCategory.querySelector('.sb-settings-category-title').dataset.i18n).toBe('Export');
-        const description = exportCategory.querySelector('.sb-settings-category-heading > small');
-        expect(description.textContent).toBe(SETTINGS_COPY.exportDescription);
-        expect(description.dataset.i18n).toBe(SETTINGS_COPY.exportDescription);
-        expect(description.hasAttribute('data-sb-copy-placeholder')).toBe(false);
-    });
-
-    test('Usage Stats has its written subtitle with a translation key of its own', () => {
-        const subtitle = splitAuthoredSettings().dataSecurity.querySelector('#user_stats_controls .ds-row-subtitle');
-        expect(subtitle.textContent).toBe(SETTINGS_COPY.usageStatsSubtitle);
-        expect(subtitle.dataset.i18n).toBe(SETTINGS_COPY.usageStatsSubtitle);
-        expect(subtitle.hasAttribute('data-sb-copy-placeholder')).toBe(false);
-    });
-
-    test.each([
-        ['user_backup_controls', 'user_backup_button', 'Download Backup', 'Download a complete backup of your user data.'],
-        ['settings_snapshots_controls', 'settings_snapshots_button', 'Settings Snapshots', 'Manage your settings snapshots.'],
-    ])('Export row %s reuses the upstream strings', (rowId, buttonId, label, subtitle) => {
-        const row = splitAuthoredSettings().dataSecurity.querySelector(`[data-sb-category="export"] #${rowId}`);
-        expect(row.querySelector('.ds-row-label').dataset.i18n).toBe(label);
-        expect(row.querySelector('.ds-row-subtitle').dataset.i18n).toBe(subtitle);
-        const button = row.querySelector(`.ds-row-suffix > button#${buttonId}`);
-        expect(button.type).toBe('button');
-        expect(button.dataset.i18n).toBe(label);
-        expect(button.textContent).toBe(label);
+    test('leaves the grouping of the container to the Data & Security presenter', () => {
+        const { dataSecurity } = splitAuthoredSettings();
+        expect(dataSecurity.querySelector('[data-sb-category]')).toBeNull();
+        expect(dataSecurity.querySelector('#SillyTavernImportSection')).not.toBeNull();
+        expect(dataSecurity.querySelector('#sb-import-tools-outlet')).not.toBeNull();
     });
 });
 
