@@ -4,18 +4,55 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { decode, encoderVersions } from '../lib/codec.js';
 import { runDerive, runProve } from '../lib/commands.js';
+import { fitToGrid } from '../lib/fit.js';
 import { readIco } from '../lib/ico.js';
 import { MANIFEST_PATH } from '../lib/manifest.js';
 import { samePixels } from '../lib/raster.js';
+import { depthInFigure, measureRings, STICKER } from '../lib/rings.js';
 import { fakeSha } from '../test-support/manifests.js';
-import { paint } from '../test-support/pictures.js';
+import { paint, pixelAt } from '../test-support/pictures.js';
 import { fixtureRepo, writeFixtureManifest } from '../test-support/repos.js';
 
 const CLEAR = [0, 0, 0, 0];
+const ART = [200, 120, 220, 255];
 const SHIP = 'public/img/sillybunny';
 
 /** A canvas with one opaque block of `colour` at `box`. */
-const block = (width, height, [x, y, w, h], colour = [200, 120, 220, 255]) => paint(width, height, (px, py) => (px >= x && px < x + w && py >= y && py < y + h ? colour : CLEAR));
+const block = (width, height, [x, y, w, h], colour = ART) => paint(width, height, (px, py) => (px >= x && px < x + w && py >= y && py < y + h ? colour : CLEAR));
+
+/**
+ * A sticker figure drawn at `p/q` master pixels per art pixel. Its silhouette is a disc on the art grid, stretched cell by
+ * cell, so it fits back to that disc; its rings and its striped art are drawn at the master's own scale, so the fit
+ * leaves the rings ragged where they cross a cell.
+ */
+function stickerMaster(artSize, radius, { p, q }) {
+    const size = (artSize * p) / q;
+    const centre = artSize / 2;
+    const cellAt = (x) => Math.floor((x + 0.5) / (p / q));
+    const silhouette = paint(size, size, (x, y) => ((cellAt(x) - centre) ** 2 + (cellAt(y) - centre) ** 2 <= radius ** 2 ? ART : CLEAR));
+    const depth = depthInFigure(silhouette);
+    const ring = (2 * p) / q;
+    return paint(size, size, (x, y) => {
+        const at = y * size + x;
+        if (silhouette.data[at * 4 + 3] === 0) {
+            return CLEAR;
+        }
+        if (depth[at] <= ring) {
+            return [...STICKER.rim, 255];
+        }
+        return depth[at] <= 2 * ring ? [...STICKER.band, 255] : Math.floor(x / 3) % 2 === 0 ? ART : [90, 60, 140, 255];
+    });
+}
+
+const coloursOf = (raster) => {
+    const found = new Set();
+    for (let at = 0; at < raster.data.length; at += 4) {
+        if (raster.data[at + 3] !== 0) {
+            found.add(raster.data.readUIntBE(at, 3));
+        }
+    }
+    return found;
+};
 
 function stillAsset(extra = {}) {
     return {
@@ -71,7 +108,9 @@ test('a master that does not fit its placement, is translucent or is missing wri
         [stillAsset({ grid: [9, 12] }), block(14, 14, [3, 2, 6, 8]), 'grid-mismatch'],
         [stillAsset(), paint(14, 14, (x, y) => (x === 5 && y === 5 ? [9, 9, 9, 128] : x > 3 && x < 9 && y > 2 && y < 10 ? [1, 2, 3, 255] : CLEAR)), 'master-not-native'],
         [stillAsset({ master: 'fig/other.png' }), block(14, 14, [3, 2, 6, 8]), 'master-missing'],
-        [stillAsset({ ratio: '3/2' }), block(14, 14, [3, 2, 6, 8]), 'ratio-unsupported'],
+        [stillAsset({ ratio: '5/2' }), block(14, 14, [3, 2, 6, 8]), 'ratio-too-large'],
+        [stillAsset({ ratio: '2/3' }), block(14, 14, [3, 2, 6, 8]), 'fractional-enlargement'],
+        [stillAsset({ ratio: '2' }), block(14, 14, [3, 2, 6, 8]), 'grid-mismatch'],
     ];
     for (const [asset, master, code] of cases) {
         const root = await repoWith(t, { fig: asset }, { 'fig/fig.png': master });
@@ -201,4 +240,44 @@ test('an icon keeps its channels and size, an ICO packs its icons, and a copy sh
 
     const wrong = await repoWith(t, { 'icon-4': { ...assets['icon-4'], grid: [5, 5] } }, { 'logo/logo-4.png': plate });
     assert.deepEqual(codes(await runDerive({ root: wrong })), ['grid-mismatch']);
+});
+
+test('a master at 3/2 or 2 fits its grid with rings of exactly 2+2 and only colours of the master', async (t) => {
+    for (const [ratio, parts] of [['3/2', { p: 3, q: 2 }], ['2', { p: 2, q: 1 }]]) {
+        const master = stickerMaster(30, 11, parts);
+        assert.notDeepEqual(measureRings(fitToGrid(master, parts)), { rim: 2, band: 2 }, `${ratio}: the fit alone leaves a ring broken`);
+        const root = await repoWith(t, { fig: stillAsset({ ratio, grid: [27, 27], rings: { rim: 2, band: 2 } }) }, { 'fig/fig.png': master });
+
+        assert.deepEqual(codes(await runDerive({ root, write: true })), [], ratio);
+        const shipped = await decode(readFileSync(join(root, SHIP, 'fig@native.webp')));
+        assert.deepEqual(measureRings(shipped), { rim: 2, band: 2 }, ratio);
+        assert.deepEqual([...coloursOf(shipped)].filter((colour) => !coloursOf(master).has(colour)), [], ratio);
+        assert.equal((await runProve({ root })).exitCode, 0, ratio);
+    }
+});
+
+test('a fitted figure cut by the canvas border keeps the cut with no ring along it', async (t) => {
+    const root = await repoWith(t, { fig: stillAsset({ ratio: '2', grid: [16, 12], rings: { rim: 2, band: 2 } }) }, { 'fig/fig.png': block(40, 24, [8, 8, 24, 16]) });
+
+    assert.deepEqual(codes(await runDerive({ root, write: true })), []);
+    const shipped = await decode(readFileSync(join(root, SHIP, 'fig@native.webp')));
+    assert.deepEqual([pixelAt(shipped, 8, 2), pixelAt(shipped, 8, 9), pixelAt(shipped, 8, 10)], [[...STICKER.rim, 255], ART, CLEAR]);
+});
+
+test('a fitted frame lines up with its base, and a frame master of another canvas is refused though both fit to one size', async (t) => {
+    const frames = { breath: { master: 'fig/fig--breath.png', outputs: [{ path: `${SHIP}/fig--breath@native.webp`, encoding: 'webp-lossless', sha256: fakeSha('1') }] } };
+    const withFrame = (frame) => repoWith(t, { fig: stillAsset({ ratio: '2', grid: [8, 8], frames }) }, { 'fig/fig.png': block(14, 14, [4, 4, 8, 8]), 'fig/fig--breath.png': frame });
+
+    const root = await withFrame(block(14, 14, [4, 6, 8, 6]));
+    assert.deepEqual(codes(await runDerive({ root, write: true })), []);
+    assert.equal(samePixels(await decode(readFileSync(join(root, SHIP, 'fig--breath@native.webp'))), block(8, 8, [2, 3, 4, 3])), true);
+
+    assert.deepEqual(codes(await runDerive({ root: await withFrame(block(13, 13, [4, 4, 8, 8])) })), ['frame-size']);
+});
+
+test('a master at 1/2 is enlarged by whole pixels before its frame is cut', async (t) => {
+    const root = await repoWith(t, { fig: stillAsset({ ratio: '1/2', grid: [14, 16] }) }, { 'fig/fig.png': block(7, 8, [1, 1, 5, 6]) });
+
+    assert.deepEqual(codes(await runDerive({ root, write: true })), []);
+    assert.equal(samePixels(await decode(readFileSync(join(root, SHIP, 'fig@native.webp'))), block(14, 16, [2, 2, 10, 12])), true);
 });

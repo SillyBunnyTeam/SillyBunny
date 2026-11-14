@@ -1,11 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 import { encode } from './codec.js';
+import { fitToGrid, placementStep } from './fit.js';
 import { frameBox, renderFrame, SUBJECT_ALPHA } from './frame.js';
 import { encodeIco } from './ico.js';
 import { masterFile, outputsOf, parseRatio } from './manifest.js';
 import { ArtProblem } from './problem.js';
 import { createRaster, hasBinaryAlpha, opaqueBox, paste, readRaster, samePixels, sha256, upscaleNearest } from './raster.js';
+import { rebuildRings } from './rings.js';
 
 /**
  * A file as the derive makes it. A `picture` or an `ico` may be compared by its decoded pixels on a platform whose
@@ -69,16 +71,31 @@ async function encodeOutputs(raster, outputs) {
     return files;
 }
 
-function requireRatioOne({ id }, asset) {
-    const { p, q } = parseRatio(asset.ratio);
-    if (p !== q) {
-        throw new ArtProblem('ratio-unsupported', `${id} is placed at a ratio of ${asset.ratio}; this derive ships masters at ratio 1 only.`, { asset: id });
+/**
+ * Brings a master onto its placement grid. This comes before the frame is cut, so the frame's margin counts placement
+ * pixels. A fitted master gets its sticker painted again on its own canvas, where a figure cut by the canvas border has
+ * no edge along the cut; the frame's padding would give it one.
+ * @returns {(raster: import('./raster.js').Raster) => import('./raster.js').Raster}
+ */
+function placementOf({ id }, asset) {
+    const ratio = parseRatio(asset.ratio);
+    const { step, factor } = placementStep(ratio, id);
+    if (step === 'enlarge') {
+        return (raster) => upscaleNearest(raster, factor);
     }
+    if (step === 'fit') {
+        return (raster) => {
+            const fitted = fitToGrid(raster, ratio);
+            return asset.rings ? rebuildRings(fitted, asset.rings).raster : fitted;
+        };
+    }
+    return (raster) => raster;
 }
 
 async function deriveStill(context, asset) {
-    requireRatioOne(context, asset);
-    const base = asset.master ? await readMaster(context, asset.master) : null;
+    const place = placementOf(context, asset);
+    const baseMaster = asset.master ? await readMaster(context, asset.master) : null;
+    const base = baseMaster ? place(baseMaster) : null;
     const baseBox = base ? frameBox(base, asset.frame) : null;
     const files = [];
     if (base) {
@@ -87,8 +104,9 @@ async function deriveStill(context, asset) {
     }
     const frames = new Map();
     for (const [name, frame] of Object.entries(asset.frames ?? {})) {
-        const picture = await readMaster(context, frame.master);
-        const box = base ? baseFrameBox(context, base, baseBox, picture, name) : frameBox(picture, asset.frame);
+        const master = await readMaster(context, frame.master);
+        const picture = place(master);
+        const box = base ? baseFrameBox(context, { baseMaster, baseBox }, { master, picture, name }) : frameBox(picture, asset.frame);
         const framed = checkGrid(context, renderFrame(picture, box), asset.grid, `The frame ${name}`);
         frames.set(name, framed);
         files.push(...await encodeOutputs(framed, frame.outputs));
@@ -105,10 +123,11 @@ async function deriveStill(context, asset) {
 /**
  * A frame is cut with the base's box, so it lines up with the base pixel for pixel. That holds only while the frame's
  * master has the base master's canvas, and the cut keeps the whole frame only while its figure lies inside the box.
+ * The canvases are compared before a fit, because two canvases of different sizes may fit to one size.
  */
-function baseFrameBox({ id }, base, baseBox, picture, name) {
-    if (picture.width !== base.width || picture.height !== base.height) {
-        throw new ArtProblem('frame-size', `The frame ${name} is ${picture.width}x${picture.height}, but the base master is ${base.width}x${base.height}.`, { asset: id });
+function baseFrameBox({ id }, { baseMaster, baseBox }, { master, picture, name }) {
+    if (master.width !== baseMaster.width || master.height !== baseMaster.height) {
+        throw new ArtProblem('frame-size', `The frame ${name} is ${master.width}x${master.height}, but the base master is ${baseMaster.width}x${baseMaster.height}.`, { asset: id });
     }
     const figure = opaqueBox(picture, SUBJECT_ALPHA);
     if (figure && (figure.x < baseBox.x || figure.y < baseBox.y || figure.x + figure.width > baseBox.x + baseBox.width || figure.y + figure.height > baseBox.y + baseBox.height)) {
