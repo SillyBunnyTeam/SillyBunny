@@ -340,22 +340,84 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
     }),
     appearance: Object.freeze({
         root: `#${SB_USER_SETTINGS_CONTAINER_IDS.appearance}`,
+        contract: true,
         entries: Object.freeze([
-            { id: 'theme', adopt: '#UI-presets-block', boxed: false },
-            { section: '.sb-settings-flat-section:has(> .sb-settings-flat-header [data-i18n="Theme Colors"])' },
-            { section: '#AppearanceLayoutSection' },
+            { section: '[data-sb-category="ui-theme"]' },
+            { section: '[data-sb-category="custom-accent"]' },
+            {
+                id: 'theme-colors',
+                title: 'Theme Colors',
+                description: 'Specify colors for your theme.',
+                rows: [
+                    '#main-text-color-picker',
+                    '#italics-color-picker',
+                    '#underline-color-picker',
+                    '#quote-color-picker',
+                    '#shadow-color-picker',
+                    '#chat-tint-color-picker',
+                    '#blur-tint-color-picker',
+                    '#border-color-picker',
+                    '#user-mes-blur-tint-color-picker',
+                    '#bot-mes-blur-tint-color-picker',
+                ],
+            },
+            {
+                id: 'page-size',
+                title: 'Page Size & Clarity',
+                description: 'Tune page width, global font size, blur strength, and text shadow.',
+                rows: [
+                    '#chat_width_slider',
+                    '#font_scale',
+                    '#line_spacing',
+                    '#message_margin_size',
+                    '#blur_strength',
+                    '#shadow_width',
+                    '#sheld_blur_strength',
+                ],
+            },
             { section: '#sb-background-settings-section' },
-            { section: '#GoogleFont-block' },
+            { section: '#bpt-animated-bg-panel' },
+            { section: '[data-sb-category="font"]' },
             {
                 id: 'chat-display',
                 title: 'Chat Display',
                 description: 'Avatars, message layout, media, and notifications',
                 body: '[name="AvatarAndChatDisplay"]',
             },
-            { section: '#ThemeTogglesSection' },
+            {
+                id: 'visual-toggles',
+                title: 'Visual Toggles',
+                description: 'Toggle motion, blur, timestamps, and other interface extras.',
+                rows: [
+                    '#reduced_motion',
+                    '#fast_ui_mode',
+                    '#noShadowsmode',
+                    '#sb_auto_close_inline_drawers',
+                    '#waifuMode',
+                    '#expandMessageActions',
+                    '#enableZenSliders',
+                    '#enableLabMode',
+                    '#messageTimerEnabled',
+                    '#messageTimestampsEnabled',
+                    '#messageModelIconEnabled',
+                    '#messageModelNameEnabled',
+                    '#messageReasoningEffortEnabled',
+                    '#mesIDDisplayEnabled',
+                    '#hideChatAvatarsEnabled',
+                    '#messageTokensEnabled',
+                    '#compact_input_area',
+                    '#show_swipe_num_all_messages',
+                    '#hotswapEnabled',
+                    '#zoomed_avatar_magnification',
+                    '#click_to_edit',
+                ],
+            },
             { section: '#sb-topbar-label-drawer' },
+            { section: '[data-sb-category="topbar-custom-text"]' },
+            { section: '#sb-topbar-label-mobile-group' },
+            { section: '[data-sb-category="topbar-custom-text-mobile"]' },
             { section: '#sb-quick-access-shortcuts-drawer' },
-            { section: '#CustomCSS-block' },
+            { section: '[data-sb-category="custom-css"]' },
         ]),
     }),
     interface: Object.freeze({
@@ -788,14 +850,26 @@ function placeAdoptedCategory(root, entry, sources, contract) {
  * section, so the outermost wrapper below `root` with no control left is hidden. It stays in the
  * document because upstream code still looks some of these up by id.
  *
+ * A tab built to the contract also counts a hidden control as no control: upstream leaves hidden inputs
+ * (`#bogus_folders`) in a wrapper whose heading would otherwise stay over nothing.
+ *
  * @param {HTMLElement} root
  * @param {Set<HTMLElement>} sources
+ * @param {boolean} [ignoreHidden]
  */
-function hideEmptiedSettingsWrappers(root, sources) {
+function hideEmptiedSettingsWrappers(root, sources, ignoreHidden = false) {
+    const hasControl = wrapper => {
+        for (const control of wrapper.querySelectorAll(SB_SETTINGS_CONTROL_SELECTOR)) {
+            let node = control;
+            while (ignoreHidden && node !== wrapper && !node.hidden && !node.classList.contains('displayNone')) node = node.parentElement;
+            if (!ignoreHidden || node === wrapper) return true;
+        }
+        return false;
+    };
     for (const source of sources) {
         let emptied = null;
         for (let current = source; current && current !== root && root.contains(current); current = current.parentElement) {
-            if (current.classList.contains(SB_SETTINGS_CATEGORY_CLASS) || current.querySelector(SB_SETTINGS_CONTROL_SELECTOR)) {
+            if (current.classList.contains(SB_SETTINGS_CATEGORY_CLASS) || hasControl(current)) {
                 break;
             }
             emptied = current;
@@ -839,8 +913,9 @@ export function applySettingsSectionOrder(scope, tabId) {
         if (entry.section) {
             element = root.querySelector(entry.section);
             // A section moved up from inside another one is now a section in its own right, and
-            // takes the top-level header metric like every sibling it now sits beside.
-            element?.classList.add(SB_FLAT_SECTION_TOP_CLASS);
+            // takes the top-level header metric like every sibling it now sits beside. A group that builds
+            // its own header has no flat header to measure.
+            if (element?.querySelector(':scope > .sb-settings-flat-header')) element.classList.add(SB_FLAT_SECTION_TOP_CLASS);
         } else if (entry.adopt) {
             element = placeAdoptedCategory(root, entry, sources, order.contract === true);
         } else {
@@ -865,7 +940,7 @@ export function applySettingsSectionOrder(scope, tabId) {
         anchor.remove();
     }
 
-    hideEmptiedSettingsWrappers(root, sources);
+    hideEmptiedSettingsWrappers(root, sources, order.contract === true);
     return true;
 }
 

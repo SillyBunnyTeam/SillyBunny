@@ -57,7 +57,7 @@ const SB_CUSTOMIZE_TABS = new Set(['appearance', 'interface', 'messages', 'data-
  * @returns {HTMLElement|null}
  */
 function createRowSubtitle(row, { placeholder = true } = {}) {
-    let existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, .sb-topbar-label-option-copy > small, label small + small');
+    let existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, label small + small');
     // These rows already own live help beside the label. Keep that node (and its dynamic
     // provider/preset updates) instead of promoting a redundant title or a status-icon tooltip.
     if (!existing && row.matches('label:is([for="bind_preset_to_connection"], [for="bind_preset_to_sampling"], [for="squash_system_messages"], [for="openai_function_calling"], [for="openai_media_inlining"])') && row.nextElementSibling?.matches('.toggle-description')) {
@@ -279,57 +279,40 @@ function bindCustomizeSliderCounters(scope) {
     }
 }
 
-/** @param {HTMLElement} gallery */
-function normalizeAnimatedBackgroundPanel(gallery) {
-    const panel = gallery.querySelector('#bpt-animated-bg-panel');
+/** @type {((panel: HTMLElement) => boolean)|null} */
+let animatedBackgroundPresenter = null;
+
+/** The Appearance module loads on demand, so the page hands over its presenter once it has arrived. @param {(panel: HTMLElement) => boolean} presenter */
+export function setAnimatedBackgroundPresenter(presenter) {
+    animatedBackgroundPresenter = presenter;
+}
+
+/** @param {HTMLElement|null} panel  `#bpt-animated-bg-panel`, which the section order moves out of the gallery. */
+function normalizeAnimatedBackgroundPanel(panel) {
     if (!(panel instanceof HTMLElement) || panel.dataset.sbBackgroundPresented === 'true') return;
 
-    const header = panel.querySelector('.bpt-animated-bg-header');
-    const title = header?.querySelector('.bpt-animated-bg-title');
-    const note = header?.querySelector('.bpt-animated-bg-note');
     const controls = panel.querySelector('.bpt-animated-bg-controls');
-    const urlRow = panel.querySelector('.bpt-animated-bg-url-row');
-    if (![header, title, note, controls, urlRow].every(node => node instanceof HTMLElement)) return;
+    if (!(controls instanceof HTMLElement)) return;
 
     // BunnyPresetTools owns the inputs and listeners; move its nodes rather than rewriting its markup.
-    panel.classList.add('sb-settings-category');
-    title.classList.add('sb-settings-category-title');
-    title.id ||= 'sb-animated-backgrounds-heading';
-    title.setAttribute('role', 'heading');
-    title.setAttribute('aria-level', '3');
-    panel.setAttribute('aria-labelledby', title.id);
-    note.id ||= 'sb-animated-backgrounds-note';
-    const heading = document.createElement('div');
-    heading.className = 'flex-container flexFlowColumn sb-settings-category-heading';
-    heading.append(title, ' ', note);
-    header.classList.add('sb-settings-flat-header', 'sb-settings-category-header');
-    header.append(heading);
-
-    controls.classList.add('ds-pref-group', 'sb-settings-category-body');
-    urlRow.classList.add('ds-row', 'ds-row-actions');
-    controls.prepend(urlRow);
-    const url = urlRow.querySelector('input');
-    if (url instanceof HTMLInputElement) {
-        url.setAttribute('aria-labelledby', title.id);
-        url.setAttribute('aria-describedby', note.id);
-    }
+    controls.classList.add('ds-pref-group');
     for (const label of controls.querySelectorAll('.checkbox_label')) {
         if (label instanceof HTMLLabelElement) normalizeCustomizeSwitch(label, { subtitles: false });
     }
     const volume = controls.querySelector('input[type="range"]');
     if (volume instanceof HTMLInputElement) normalizeCustomizeField(volume.parentElement, volume, { subtitles: false });
-    panel.dataset.sbBackgroundPresented = 'true';
+    animatedBackgroundPresenter?.(panel);
 }
 
 /** @param {HTMLElement} scope */
 function normalizeBackgroundSettings(scope) {
     const gallery = scope.querySelector('#Backgrounds');
     if (!(gallery instanceof HTMLElement)) return;
-    normalizeAnimatedBackgroundPanel(gallery);
+    normalizeAnimatedBackgroundPanel(scope.querySelector('#bpt-animated-bg-panel'));
     if (gallery.dataset.sbBackgroundObserverBound === 'true') return;
 
     // Extensions can inject the panel after Appearance is already open. Only direct additions matter.
-    new MutationObserver(() => normalizeAnimatedBackgroundPanel(gallery)).observe(gallery, { childList: true });
+    new MutationObserver(() => normalizeAnimatedBackgroundPanel(document.getElementById('bpt-animated-bg-panel'))).observe(gallery, { childList: true });
     gallery.dataset.sbBackgroundObserverBound = 'true';
 }
 
@@ -547,7 +530,7 @@ function normalizeCustomizeRows(scope, tabName = '') {
     for (const header of scope.querySelectorAll('[data-sb-settings-compound] > .sb-settings-flat-header')) {
         if (header instanceof HTMLElement) ensureDescription(header, header, true);
     }
-    for (const picker of scope.querySelectorAll('#color-picker-block toolcool-color-picker')) {
+    for (const picker of scope.querySelectorAll('.ds-row toolcool-color-picker:not([aria-labelledby])')) {
         const title = picker.closest('.ds-row')?.querySelector('.ds-row-label');
         if (!(picker instanceof HTMLElement) || !picker.id || !(title instanceof HTMLElement)) continue;
         if (!title.id) title.id = `sb-setting-${picker.id}-label`;
@@ -571,7 +554,7 @@ function normalizeCustomizeRows(scope, tabName = '') {
         suffix.append(version);
         row.append(text, suffix);
     }
-    for (const label of scope.querySelectorAll('.checkbox_label, .sb-topbar-label-option')) {
+    for (const label of scope.querySelectorAll('.checkbox_label')) {
         if (label instanceof HTMLLabelElement && !label.closest('[data-sb-presentation="manual"]')) normalizeCustomizeSwitch(label);
     }
     for (const control of scope.querySelectorAll('select, input[type="range"], input[type="number"], input[type="text"], textarea')) {

@@ -250,8 +250,8 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) test(`editor headings ma
     const subtitle = await page.locator('[data-sb-section="character-fields"] .ds-pref-group-subtitle').evaluate(typography);
     await page.locator('#sb-right-shell-toggle').click();
     await page.locator('button[data-sb-settings-tab="appearance"]').click();
-    const reference = await page.getByText('Theme Colors', { exact: true }).evaluate(typography);
-    const referenceSubtitle = await page.locator('.sb-settings-flat-header').filter({ hasText: 'Theme Colors' }).locator('small').evaluate(typography);
+    const reference = await page.getByRole('heading', { name: 'Theme Colors', exact: true }).evaluate(typography);
+    const referenceSubtitle = await page.locator('[data-sb-category="theme-colors"] .sb-settings-flat-header small').evaluate(typography);
     expect(heading).toEqual(reference);
     expect(subtitle).toEqual(referenceSubtitle);
 });

@@ -107,13 +107,13 @@ describe('Messages settings groups', () => {
         expect(group.dataset.sbEnabledBy).toBe('#aggressive_dom_unload');
     });
 
-    test('the Messages group titles are group headings; the tabs that have not adopted the contract keep the flat header', () => {
+    test('the group titles of the tabs that follow the contract are group headings', () => {
         const split = splitAuthoredSettings();
         const titles = container => [...container.querySelectorAll('.sb-settings-category-title')];
-        expect(titles(split.messages).length).toBeGreaterThan(0);
-        expect(titles(split.messages).every(title => title.classList.contains('ds-pref-group-heading'))).toBe(true);
-        expect(titles(split.appearance).length).toBeGreaterThan(0);
-        expect(titles(split.appearance).some(title => title.classList.contains('ds-pref-group-heading'))).toBe(false);
+        for (const tab of [split.messages, split.appearance]) {
+            expect(titles(tab).length).toBeGreaterThan(0);
+            expect(titles(tab).every(title => title.classList.contains('ds-pref-group-heading'))).toBe(true);
+        }
     });
 });
 

@@ -283,7 +283,8 @@ export async function enableDependentSets(page, recorder, root) {
     const turned = [];
     for (const selector of enablers) {
         const input = page.locator(selector).first();
-        if (await input.count() === 0 || await input.isChecked()) {
+        // A switch that is not shown at this viewport (the mobile Top Bar Label) is no switch the user can turn on.
+        if (await input.count() === 0 || !await input.isVisible() || await input.isChecked()) {
             continue;
         }
         await observeChange(page, recorder, () => input.setChecked(true, { timeout: 4000 }));

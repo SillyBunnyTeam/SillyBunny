@@ -83,6 +83,8 @@ async function expectNoOverflow(panel) {
 
 async function expectSwitchGeometry(root) {
     const readFailures = () => root.locator('input[type="checkbox"]:visible').evaluateAll(inputs => inputs.flatMap(input => {
+        // A check row picks one of several (the mobile Top Bar Label): a check, not a switch.
+        if (input.closest('.ds-row-check')) return [];
         const row = input.closest('.ds-row-switch');
         const id = input.id || input.dataset.name || input.getAttribute('aria-label');
         if (!row) return [`${id}: missing switch row`];

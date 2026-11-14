@@ -1732,6 +1732,11 @@ body:not(.movingUI) .drawer-content.maximized {
     padding-bottom: var(--sb-shell-panel-bottom-padding);
 }
 
+/* Appearance presents its groups once its module has loaded, so the upstream rows stay out of sight until then. */
+.sb-shell-panel-scroller > [aria-busy='true'] {
+    visibility: hidden;
+}
+
 :root[data-sb-compact-mode='true'] .sb-shell-panel-scroller {
     padding: var(--sb-shell-space-sm) var(--sb-shell-space-md) 0;
 }
@@ -1976,7 +1981,7 @@ body:not(.movingUI) .drawer-content.maximized {
 
 /* The settings-page row rule forces flex-direction: row; the floating entry row stacks its field over its caption.
    Its parts stack, so only the row's own column-gap is restated for the 6px between parts. */
-#sb-settings-page .sb-settings-mounted-shell .sb-data-security-group .ds-pref-group > .ds-row.ds-row-entry--floating {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > .ds-row.ds-row-entry--floating {
     flex-direction: column;
     align-items: stretch;
     column-gap: 6px;
@@ -2139,70 +2144,6 @@ body:not(.movingUI) .drawer-content.maximized {
     margin-bottom: var(--sb-shell-space-md);
 }
 
-.sb-theme-settings-drawer {
-    min-width: 0;
-    overflow: hidden;
-    border-radius: var(--sb-radius-md);
-    border: 0;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-}
-
-.sb-theme-settings-drawer > .inline-drawer-header {
-    min-height: 48px;
-    margin: 0;
-    padding: 10px 14px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-}
-
-@media (hover: hover) {
-    .sb-theme-settings-drawer > .inline-drawer-header:hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-.sb-theme-settings-drawer > .inline-drawer-header > strong {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: var(--sb-type-control);
-}
-
-.sb-theme-settings-drawer > .inline-drawer-header > .inline-drawer-icon {
-    flex: 0 0 auto;
-    font-size: calc(var(--mainFontSize) * 1.15);
-}
-
-.sb-theme-settings-drawer > .sb-theme-settings-drawer-body {
-    min-width: 0;
-    margin: 0;
-    padding: 0 var(--sb-shell-space-md) var(--sb-shell-space-md);
-}
-
-.sb-theme-settings-drawer > .sb-theme-settings-drawer-body[style*='display: block'] {
-    display: flex !important;
-    flex-direction: column;
-    gap: var(--sb-shell-space-sm);
-}
-
-.sb-theme-settings-drawer > .sb-theme-settings-drawer-body > p:first-child {
-    margin-top: 0;
-}
-
-:root[data-sb-compact-mode='true'] .sb-theme-settings-drawer > .sb-theme-settings-drawer-body {
-    padding: 0 var(--sb-shell-space-sm) var(--sb-shell-space-sm);
-}
-
-@media screen and (max-width: 620px) {
-    .sb-theme-settings-drawer > .inline-drawer-header {
-        padding: 9px 10px;
-    }
-
-    .sb-theme-settings-drawer > .sb-theme-settings-drawer-body {
-        padding: 0 10px 10px;
-    }
-}
-
 .sb-theme-slider-group {
     display: flex;
     flex-direction: column;
@@ -2250,44 +2191,6 @@ body:not(.movingUI) .drawer-content.maximized {
 .sb-theme-option-label {
     font-size: var(--sb-type-control);
     font-weight: 700;
-}
-
-.sb-topbar-label-section,
-.sb-topbar-custom-text-field {
-    display: flex;
-    flex-direction: column;
-}
-
-.sb-topbar-label-section,
-.sb-topbar-custom-text-field {
-    gap: 12px;
-}
-
-.sb-topbar-label-header,
-.sb-topbar-label-section-heading {
-    gap: 6px;
-}
-
-.sb-topbar-label-section-heading {
-    display: flex;
-    flex-direction: column;
-}
-
-.sb-topbar-label-section-heading strong {
-    font-size: var(--sb-type-meta);
-}
-
-.sb-topbar-label-section-heading small {
-    font-size: calc(var(--mainFontSize) * 0.72);
-    line-height: 1.45;
-    opacity: 0.74;
-}
-
-.sb-topbar-label-option-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 10px;
-    max-width: 640px;
 }
 
 .sb-mobile-quick-action-search {
@@ -3658,96 +3561,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         }
     }
 }
-
-.sb-topbar-label-option {
-    -webkit-appearance: none;
-    appearance: none;
-    position: relative;
-    isolation: isolate;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 14px;
-    min-height: 106px;
-    border-radius: var(--sb-radius-md);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
-    background: transparent;
-    color: var(--SmartThemeBodyColor);
-    cursor: pointer;
-    transition: border-color var(--sb-transition-fast), background-color var(--sb-transition-fast);
-}
-
-:root[data-sb-compact-mode='true'] .sb-topbar-label-option {
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    min-height: 92px;
-}
-
-.sb-topbar-label-option::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    pointer-events: none;
-    background: color-mix(in srgb, var(--sb-shell-main-bg) 84%, transparent);
-    opacity: var(--sb-shell-control-opacity);
-}
-
-@media (hover: hover) {
-    .sb-topbar-label-option:hover::before {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, var(--sb-shell-main-bg));
-    }
-}
-
-.sb-topbar-label-option.is-selected {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 42%, var(--sb-shell-border) 58%);
-}
-
-.sb-topbar-label-option.is-selected::before {
-    background: var(--sb-shell-tab-active-bg);
-    opacity: var(--sb-shell-card-opacity);
-}
-
-.sb-topbar-label-checkbox {
-    flex: 0 0 auto;
-    margin: 0;
-    accent-color: var(--color-primary, var(--sb-accent));
-}
-
-:root[data-sb-compact-mode='true'] .sb-topbar-label-checkbox {
-    margin: 0;
-}
-
-.sb-topbar-label-option-copy {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    text-align: center;
-}
-
-:root[data-sb-compact-mode='true'] .sb-topbar-label-option-copy {
-    gap: 4px;
-}
-
-.sb-topbar-label-option-copy strong {
-    font-size: calc(var(--mainFontSize) * 0.78);
-}
-
-.sb-topbar-label-option-copy small {
-    font-size: calc(var(--mainFontSize) * 0.72);
-    line-height: 1.45;
-    opacity: 0.76;
-}
-
-.sb-topbar-custom-text-input {
-    width: 100%;
-}
-
+@media (hover: hover) {}
 .sb-search-hit {
     animation: sb-search-hit 2.2s var(--sb-ease-out);
 }
@@ -3857,22 +3671,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         min-width: max-content;
         padding: 10px 12px;
     }
-
-    .sb-topbar-label-option-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .sb-topbar-label-option {
-        justify-content: flex-start;
-        min-height: auto;
-        text-align: left;
-    }
-
-    .sb-topbar-label-option-copy {
-        align-items: flex-start;
-        text-align: left;
-    }
-
     #sb-chatbar {
         grid-template-columns: auto minmax(150px, 1fr) minmax(180px, 1fr) auto;
         gap: var(--sb-chatbar-gap);
@@ -5341,6 +5139,17 @@ body.reduced-motion :is(.ds-row-entry--floating .ds-row-entry__title, .ds-row-en
     gap: 4px;
 }
 
+/* The wrap rule counts every control of the suffix: with a menu button beside the select, the pair moves under the
+   title when the title and the control minimum plus the button no longer fit. */
+.ds-row.ds-select-row:has(> .ds-row-suffix > .ds-select-row__menu) > .ds-row-text {
+    flex: 1 1 var(--sb-row-title-min);
+    max-width: 180px;
+}
+
+.ds-row.ds-select-row:has(> .ds-row-suffix > .ds-select-row__menu) > .ds-row-suffix {
+    flex: 1 1 calc(var(--sb-row-control-min) + 44px);
+}
+
 .ds-select-row__trigger {
     display: inline-flex;
     align-items: center;
@@ -6457,7 +6266,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
    not sit inside the box it used to be. Several wrappers parent their own card around a nested
    drawer, and those treatments would otherwise stack a tinted box inside a tinted box. */
 .sb-settings-mounted-shell .sb-settings-flat-section.sb-settings-subdrawer,
-.sb-settings-mounted-shell .sb-settings-flat-section.sb-theme-settings-drawer,
 .sb-settings-mounted-shell .sb-settings-flat-section.sb-openai-settings-drawer {
     margin: 0;
     background: transparent;
@@ -6830,20 +6638,13 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 /* Sentence case, like every other group label on the page. The
    tracked uppercase kicker here was the last one left in settings. */
-#sb-settings-page .sb-settings-mounted-shell .sb-theme-presets-label {
-    font-size: var(--sb-type-control);
-    font-weight: var(--sb-weight-title);
-    letter-spacing: 0;
-    text-transform: none;
-    color: var(--sb-shell-text);
-}
-
 /* SillyBunny: gallery and extension chrome follow Settings without changing their data or controls. */
-#sb-settings-page #Backgrounds {
+#sb-settings-page :is(#Backgrounds, #bpt-animated-bg-panel) {
     --sb-bg-icon-size: 40px;
 }
 
-#sb-settings-page #Backgrounds #bpt-animated-bg-panel {
+/* The extension styles its own panel as a card; the group inside is the box. */
+#sb-settings-page #bpt-animated-bg-panel {
     gap: var(--sb-settings-heading-gap);
     padding: 0;
     margin: 0;
@@ -6852,71 +6653,25 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     background: transparent;
 }
 
-#sb-settings-page #Backgrounds .bpt-animated-bg-header {
-    flex-wrap: nowrap;
-    align-items: flex-start;
-    justify-content: flex-start;
-    min-height: 0;
-    padding: 0 4px;
-}
-
-#sb-settings-page #Backgrounds .bpt-animated-bg-note {
-    margin: 0;
-    font-size: var(--sb-type-caption);
-    font-weight: 400;
-    line-height: 1.4;
-    color: var(--sb-shell-text-secondary);
-    overflow-wrap: anywhere;
-}
-
-#sb-settings-page #Backgrounds .bpt-animated-bg-controls {
-    flex-wrap: nowrap;
-    align-items: stretch;
-    gap: 0;
-}
-
-#sb-settings-page #Backgrounds .bpt-animated-bg-url-row {
-    flex-wrap: nowrap;
+#sb-settings-page #bpt-animated-bg-panel .bpt-animated-bg-volume {
     gap: var(--sb-density-row-gap);
-    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
 }
 
-#sb-settings-page #Backgrounds .bpt-animated-bg-url-row input {
-    flex: 1 1 0;
-    min-width: 0;
-    margin: 0;
-}
-
-#sb-settings-page #Backgrounds .bpt-animated-bg-volume {
-    display: flex;
-    gap: var(--sb-density-row-gap);
-    min-width: 0;
-}
-
-#sb-settings-page #Backgrounds .bpt-animated-bg-volume > .ds-row-suffix {
-    flex: 0 1 190px;
-}
-
-#sb-settings-page #Backgrounds .bpt-animated-bg-volume input[type='range'] {
-    width: 100%;
-    min-width: 0;
-}
-
-#sb-settings-page #Backgrounds #bpt-animated-bg-sources {
+#sb-settings-page #bpt-animated-bg-sources {
     display: flex;
     flex-direction: column;
     gap: 4px;
     min-width: 0;
 }
 
-#sb-settings-page #Backgrounds .bpt-animated-source-empty {
+#sb-settings-page #bpt-animated-bg-panel .bpt-animated-source-empty {
     padding: 0 4px;
     font-size: var(--sb-type-meta);
     line-height: 1.4;
     color: var(--sb-shell-text-secondary);
 }
 
-#sb-settings-page #Backgrounds .bpt-animated-source-card {
+#sb-settings-page #bpt-animated-bg-panel .bpt-animated-source-card {
     min-width: 0;
     padding: 4px;
     gap: 4px;
@@ -6926,18 +6681,18 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     box-shadow: none;
 }
 
-#sb-settings-page #Backgrounds .bpt-animated-source-card.is-active {
+#sb-settings-page #bpt-animated-bg-panel .bpt-animated-source-card.is-active {
     background: var(--sb-flat-selected-bg);
 }
 
-#sb-settings-page #Backgrounds .bpt-animated-source-main {
+#sb-settings-page #bpt-animated-bg-panel .bpt-animated-source-main {
     min-height: var(--sb-bg-icon-size);
     padding: 8px 12px;
     border-radius: var(--sb-shell-control-radius);
     font-size: var(--sb-type-control);
 }
 
-#sb-settings-page #Backgrounds .bpt-animated-source-card > .menu_button {
+#sb-settings-page #bpt-animated-bg-panel .bpt-animated-source-card > .menu_button {
     color: var(--sb-color-danger);
 }
 
@@ -6959,7 +6714,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     transition: background-color var(--sb-transition-fast);
 }
 
-#sb-settings-page #Backgrounds :is(#bpt-animated-bg-url, #bg-filter, #bg-sort, #background_fitting) {
+#sb-settings-page #Backgrounds :is(#bg-filter, #bg-sort) {
     min-height: max(var(--sb-field-min-height), var(--sb-bg-icon-size));
     border-radius: var(--sb-shell-control-radius);
 }
@@ -6971,6 +6726,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     gap: 8px 12px;
     min-width: 0;
     padding: 0;
+    margin: 0 var(--sb-density-row-padding-inline) var(--sb-density-row-padding-inline);
     border: 0;
     background: transparent;
 }
@@ -7009,7 +6765,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     gap: 4px;
 }
 
-#sb-settings-page #Backgrounds :is(#bg_thumb_zoom_out, #bg_thumb_zoom_in, #bg-scroll-top, #bg_selection_mode_button:not(:has(#bg_group_select_count:not(:empty))), .bpt-animated-source-card > .menu_button) {
+#sb-settings-page #Backgrounds :is(#bg_thumb_zoom_out, #bg_thumb_zoom_in, #bg-scroll-top, #bg_selection_mode_button:not(:has(#bg_group_select_count:not(:empty)))) {
     width: var(--sb-bg-icon-size);
     height: var(--sb-bg-icon-size);
     min-width: var(--sb-bg-icon-size);
@@ -7039,37 +6795,37 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     outline-color: var(--sb-focus-ring);
 }
 
-#sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):focus-visible {
+#sb-settings-page :is(#Backgrounds, #bpt-animated-bg-panel) :is(.menu_button, .bpt-animated-source-main):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
 @media (hover: hover) {
-    #sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):hover {
+    #sb-settings-page :is(#Backgrounds, #bpt-animated-bg-panel) :is(.menu_button, .bpt-animated-source-main):hover {
         background: var(--sb-raised-hover-bg);
         box-shadow: none;
         transform: none;
     }
 
-    #sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):hover:focus-visible {
+    #sb-settings-page :is(#Backgrounds, #bpt-animated-bg-panel) :is(.menu_button, .bpt-animated-source-main):hover:focus-visible {
         box-shadow: var(--sb-focus-ring-inset);
     }
 }
 
-#sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main):active {
+#sb-settings-page :is(#Backgrounds, #bpt-animated-bg-panel) :is(.menu_button, .bpt-animated-source-main):active {
     background: var(--sb-raised-active-bg);
     transform: none;
 }
 
 @media (pointer: coarse) {
-    #sb-settings-page #Backgrounds {
+    #sb-settings-page :is(#Backgrounds, #bpt-animated-bg-panel) {
         --sb-bg-icon-size: 44px;
     }
 }
 
 @media screen and (max-width: 768px) {
     /* The mobile paper baseline forces 14px on inputs and buttons; these keep the shell control shape. */
-    #sb-settings-page #Backgrounds :is(.menu_button, .bpt-animated-source-main, #bpt-animated-bg-url, #bg-filter, #bg-sort, #background_fitting) {
+    #sb-settings-page #Backgrounds :is(.menu_button, #bg-filter, #bg-sort) {
         border-radius: var(--sb-shell-control-radius) !important;
     }
 }
@@ -7085,15 +6841,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
     #sb-settings-page #Backgrounds .heading-controls {
         justify-content: flex-start;
-    }
-
-    #sb-settings-page #Backgrounds .bpt-animated-bg-url-row {
-        align-items: stretch;
-    }
-
-    #sb-settings-page #Backgrounds .bpt-animated-bg-url-row input {
-        flex-basis: auto;
-        width: 100%;
     }
 }
 
@@ -7465,18 +7212,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 #sb-settings-page .sb-settings-mounted-shell .ds-row-slider > .ds-row-suffix > input[type='number'] {
     width: 5.5em;
 }
-
-#sb-settings-page #color-picker-block {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sb-settings-group-gap);
-    padding: 0;
-}
-
-#sb-settings-page #color-picker-block > .ds-pref-group {
-    margin: 0;
-}
-
 #sb-settings-page .sb-settings-mounted-shell :is(.sb-settings-row-stack, .checkbox-container, [name='themeToggles']) {
     display: flex;
     flex-direction: column;
@@ -7492,61 +7227,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     min-width: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-option-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-
-/* SillyBunny: Top Bar Label options are preference rows in the settings shell, not the old
-   640px choice-card grid. Let their switches use the shared trailing-suffix position. */
-#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section {
-    width: 100%;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section-heading {
-    padding-inline: var(--sb-density-row-padding-inline);
-    gap: var(--sb-density-row-text-gap);
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section-heading > strong {
-    font-size: var(--sb-type-body);
-    font-weight: 700;
-    line-height: 1.3;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-section-heading > small {
-    font-size: var(--sb-type-caption);
-    line-height: 1.4;
-    opacity: 1;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-option-grid {
-    width: 100%;
-    max-width: none;
-}
-
-#sb-settings-page .sb-settings-mounted-shell :is(.sb-topbar-label-option, .sb-topbar-custom-text-field).ds-row {
-    flex-direction: row;
-    width: 100%;
-    min-height: var(--sb-density-row-min-height);
-    justify-content: flex-start;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    text-align: start;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .ds-row-label .sb-topbar-label-option-copy > strong {
-    font: inherit;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-topbar-label-option-copy {
-    align-items: flex-start;
-    text-align: start;
-}
-
 #sb-settings-page .sb-theme-slider-value[hidden] {
     display: none;
 }
@@ -7557,10 +7237,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     border: 0;
     border-radius: 0;
     background: transparent;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .ds-row-switch.sb-topbar-label-option::before {
-    display: none;
 }
 
 :root[data-sb-surface-tone='light'] #sb-settings-page .sb-server-pill[data-tone='good'] {

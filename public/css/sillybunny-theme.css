@@ -5032,92 +5032,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         min-width: 0;
     }
 }
-
-
-#UI-presets-block {
-    gap: 12px;
-    padding: 0;
-    border-radius: var(--sb-radius-lg);
-    background:
-        linear-gradient(135deg, color-mix(in srgb, var(--sb-accent) 16%, transparent), transparent 62%),
-        linear-gradient(180deg, color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent), color-mix(in srgb, var(--SmartThemeBlurTintColor) 86%, transparent));
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 86%, transparent);
-}
-
-#UI-presets-block > h4 {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 0;
-    padding: 2px 6px 8px;
-    background: transparent;
-    border: 0;
-    box-shadow: none;
-}
-
-#UI-presets-block > h4 .flex-container {
-    gap: 8px;
-    align-items: center;
-    margin-left: auto;
-}
-
-#UI-presets-block .flex-container.flexnowrap.alignitemscenter {
-    gap: 10px;
-}
-
-#themes {
-    flex: 1 1 auto;
-    min-height: 46px;
-    border-radius: var(--sb-radius-md);
-    border: 1px solid var(--sb-input-border);
-    background: var(--sb-input-bg);
-    padding-inline: 14px;
-}
-
-#ui_preset_import_button,
-#ui_preset_export_button,
-#ui-preset-delete-button,
-#ui-preset-update-button,
-#ui-preset-save-button {
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.sb-theme-presets {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.sb-theme-presets-label {
-    color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.72);
-    font-weight: 700;
-}
-
-.sb-theme-preset-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.sb-theme-preset-button {
-    min-height: 42px;
-    padding: 0 14px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.sb-theme-preset-button i {
-    color: var(--sb-accent);
-}
-
 .quick_context_size_container {
     display: flex;
     align-items: center;
@@ -5234,31 +5148,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     padding: 0 8px;
     text-align: center;
 }
-
-.sb-accent-color-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 12px;
-}
-
-.sb-accent-preset-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.sb-accent-color-label,
-.sb-accent-picker-label {
-    font-size: calc(var(--mainFontSize) * 0.78);
-    color: var(--sb-muted-fg);
-}
-
-.sb-accent-color-label {
-    font-weight: 700;
-}
-
 .sb-accent-presets {
     display: flex;
     align-items: center;
@@ -5349,25 +5238,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .sb-accent-preset[data-accent='gray'] {
     --sb-accent-swatch: #6b7280;
 }
-
-.sb-custom-accent-toggle {
-    margin-top: 2px;
-}
-
-.sb-custom-accent-pickers {
-    gap: 10px;
-    margin-top: 2px;
-}
-
-.sb-accent-picker-row {
-    align-items: center;
-    gap: 10px;
-}
-
-.sb-accent-picker-row toolcool-color-picker {
-    flex: 0 0 auto;
-}
-
 .sb-message-style-button {
     min-height: 44px;
     padding: 10px 12px;
@@ -5437,15 +5307,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         grid-template-columns: minmax(0, 1fr) var(--sb-range-counter-width);
         gap: 8px;
     }
-
-    .sb-accent-preset-row {
-        align-items: flex-start;
-    }
-
-    .sb-accent-color-label {
-        flex-basis: 100%;
-    }
-
     .sb-accent-presets {
         gap: 6px;
     }
@@ -5453,11 +5314,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     .sb-accent-preset {
         --sb-accent-swatch-size: 24px;
     }
-
-    .sb-accent-picker-row {
-        gap: 8px;
-    }
-
 }
 
 #user-settings-block [name="MiscellaneousToggles"] {
@@ -5602,12 +5458,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     line-height: 1.25;
 }
 
-#CustomCSS-block {
-    display: flex;
-    flex-direction: column;
-}
-
-
 .sb-settings-topdrawer-centered > .inline-drawer-header {
     position: relative;
     justify-content: center;
@@ -5625,16 +5475,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     right: 12px;
     margin-left: 0;
 }
-
-#CustomCSS-textAreaBlock {
-    display: flex;
-    align-items: stretch;
-}
-
-.sb-appearance-select-group {
-    gap: 10px;
-}
-
 #rm_extensions_block {
     overflow: visible;
 }
@@ -5856,36 +5696,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     color: var(--sb-accent-ink);
 }
 
-#AppearanceLayoutSection [name="FontBlurChatWidthBlock"] {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-
-#ThemeTogglesSection [name="themeToggles"] {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-
-#AppearanceLayoutSection [name="FontBlurChatWidthBlock"] > .alignitemscenter.flex-container.flexFlowColumn {
-    gap: var(--sb-row-gap);
-    align-items: stretch;
-}
-
-#AppearanceLayoutSection .range-block {
-    gap: 8px 10px;
-    margin-bottom: var(--sb-row-gap);
-}
-
-#AppearanceLayoutSection .range-block-title {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 34px;
-    line-height: 1.25;
-}
-
 body #toast-container {
     --sb-toast-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%);
     --toast-success-bg: var(--sb-toast-surface);
@@ -6040,8 +5850,7 @@ body.reduced-motion *::after {
     }
 
     #AdvancedFormatting .sb-reasoning-toggle-grid,
-    #AdvancedFormatting .sb-reasoning-meta-row,
-    #AppearanceLayoutSection [name="FontBlurChatWidthBlock"] {
+    #AdvancedFormatting .sb-reasoning-meta-row {
         grid-template-columns: 1fr;
     }
 
@@ -6087,8 +5896,6 @@ body.reduced-motion *::after {
         width: 100%;
     }
 
-    #UI-presets-block > h4,
-    #UI-presets-block .flex-container.flexnowrap.alignitemscenter,
     .sb-settings-subdrawer-toolbar {
         align-items: center;
         flex-wrap: wrap;

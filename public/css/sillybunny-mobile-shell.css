@@ -892,22 +892,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     .sb-shell-panel-scroller {
         padding-bottom: var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px)));
     }
-
-    .sb-topbar-label-option-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .sb-topbar-label-option {
-        justify-content: flex-start;
-        min-height: auto;
-        text-align: left;
-    }
-
-    .sb-topbar-label-option-copy {
-        align-items: flex-start;
-        text-align: left;
-    }
-
     .sb-sampling-docs-link .note-link-span {
         inline-size: 24px;
         block-size: 24px;

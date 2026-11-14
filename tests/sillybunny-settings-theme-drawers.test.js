@@ -28,9 +28,8 @@ describe('SillyBunny settings theme drawers', () => {
             'sb-quick-access-shortcuts-drawer',
         ];
 
-        expect(shellTabsSource).toContain('\'data-settings-tab\': \'appearance\'');
-        expect(shellTabsSource).toContain('body.style.display = \'none\';');
         expect(shellTabsSource).toContain('themeBlock.append(card);');
+        expect(shellTabsSource).not.toContain('createThemeSettingsDrawer');
         expect(shellTabsSource).not.toContain('themeBlock.prepend(card);');
         for (const drawerId of drawerIds) {
             expect(shellTabsSource).toContain(`'${drawerId}'`);
@@ -49,8 +48,7 @@ describe('SillyBunny settings theme drawers', () => {
         expect(shellTabsSource).not.toContain('Frontend Icon');
         expect(shellTabsSource).not.toContain('sb-background-visibility-drawer');
         expect(shellTabsSource).not.toContain('sb-bottom-bar-size-drawer');
-        expect(shellTabsCssSource).toContain('.sb-theme-settings-drawer > .inline-drawer-header');
-        expect(shellTabsCssSource).toContain('.sb-theme-settings-drawer > .sb-theme-settings-drawer-body');
+        expect(shellTabsCssSource).not.toContain('.sb-theme-settings-drawer');
         expect(shellTabsCssSource).not.toContain('.sb-interface-settings-group');
     });
 });

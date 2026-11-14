@@ -353,7 +353,7 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).not.toContain('sb-mobile-topbar-icons-only-input');
         expect(normalizedTabsSource).not.toContain('Show page icons in the');
         expect(normalizedTabsSource.match(/createTopbarIconsOnlyRow\(/g)).toHaveLength(2);
-        expect(getFunctionSource('createShortcutSettingsGroup')).toContain('content: [description, ...rows],');
+        expect(getFunctionSource('createShortcutSettingsGroup')).toContain('group.append(...rows);');
         expect(normalizedTabsSource.match(/'Icons only top bar'/g)).toHaveLength(1);
     });
 

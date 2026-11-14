@@ -425,11 +425,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#user-settings-block', rule: 'content-inset', reason: 'Structural mount point; rightInset and inset measurements are meaningless for a full-width container' },
     { selector: '#bg-header-fixed', rule: 'row-edges', reason: 'Background section with bespoke fixed-header layout; row-edge check does not apply' },
     { selector: '#bg-header-fixed', rule: 'content-inset', reason: 'Background section; rightInset is measured against a group that spans the full panel width' },
-    // SillyBunny: padded Appearance sub-drawers — rows inside these sections get double-inset (container padding + row padding).
-    { selector: '#UI-presets-block', rule: 'row-edges', reason: 'Appearance presets block adds its own container padding; row-edge inset check does not apply' },
-    { selector: '#UI-presets-block', rule: 'content-inset', reason: 'Appearance presets block adds its own container padding; content is double-inset by design' },
-    { selector: '#GoogleFont-block', rule: 'row-edges', reason: 'Font picker sub-drawer adds container padding; row-edge check does not apply' },
-    { selector: '#GoogleFont-block', rule: 'content-inset', reason: 'Font picker sub-drawer adds container padding; content is double-inset by design' },
     // SillyBunny: upstream sampling blocks with non-standard padding.
     { selector: '#logit_bias_block_ooba', rule: 'content-inset', reason: 'Upstream logit-bias block adds its own container padding on top of the row inset' },
     { selector: '#sampler_priority_block_ooba', rule: 'row-edges', reason: 'Upstream sampler priority block; rows are arranged in a drag-sortable list, not full-bleed .ds-row anatomy' },
@@ -437,8 +432,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: ':is(#sampler_order_block_kcpp, #sampler_order_block_lcpp, [name="KoboldSamplerOrderBlock"])', rule: 'content-inset', reason: 'Upstream sampler order block; centred title and description above a drag-sortable list' },
     // SillyBunny: first/last row border leakage on specific groups whose inner rows retain their borders at the group boundary.
     { selector: '#sb-tc-context', rule: 'row-edges', reason: 'Context Template group; inner section rows retain border-top at the group boundary — upstream layout, addressed in Phase 4' },
-    { selector: '#CustomCSS-textAreaBlock', rule: 'row-edges', reason: 'Custom CSS textarea block retains a top border on its first row; upstream layout' },
-    { selector: '#sb-topbar-label-drawer', rule: 'row-edges', reason: 'Topbar label drawer first row retains border-top; bespoke label-option grid layout' },
     // SillyBunny: #left-nav-panel inside Connections tab — bespoke provider-slot markup with no .ds-pref-group anatomy.
     { selector: '#left-nav-panel', rule: 'group-anatomy', reason: 'Connections left panel uses provider-slot layout; no visible .ds-pref-group groups expected' },
     // SillyBunny: autoSetHeight textareas in Formatting sections — these resize to content and may render shorter than 32px when empty; they are multi-line inputs, not interactive controls.

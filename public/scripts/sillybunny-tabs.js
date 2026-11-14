@@ -31,9 +31,9 @@ import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProt
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { adoptComposerMenus } from './sillybunny-editor/sheet-gestures.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
-import { createButtonRow, createExpanderRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
+import { createButtonRow, createCheckRow, createEntryRow, createExpanderRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
-import { createProfileRow } from './sillybunny-editor/select-row.js';
+import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
 import {
     animateIn,
@@ -87,7 +87,7 @@ import {
     flattenNestedSettingsDrawers,
     splitUserSettingsContent,
 } from './sillybunny-settings-content.js';
-import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSettingsPresentation } from './sillybunny-settings-presentation.js';
+import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSettingsPresentation, setAnimatedBackgroundPresenter } from './sillybunny-settings-presentation.js';
 import { createSubpageStack, SB_SUBPAGE_DURATION, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
 import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
 import { watchStrayExtensionDrawers } from './sillybunny-settings-stray-drawers.js';
@@ -110,8 +110,28 @@ const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
 const sbSearchRenderRequests = new WeakMap();
 const loadServerToolsModule = createDeferredModule(new URL('./sillybunny-server-tools.js', import.meta.url));
 const loadDataSecurityModule = createDeferredModule(new URL('./sillybunny-data-security.js', import.meta.url));
+const loadAppearanceModule = createDeferredModule(new URL('./sillybunny-appearance.js', import.meta.url));
 let serverToolsPromise;
 let settingsPanelPromise;
+/** Set once the Appearance module has regrouped the upstream rows; the Appearance helpers below need it. */
+let appearanceModule = null;
+
+/** Appearance holds raw upstream rows until its module has regrouped them, and the settings passes must not reshape them first. */
+function isAppearancePending(tabId) {
+    return tabId === 'appearance' && appearanceModule === null;
+}
+
+async function presentAppearancePage() {
+    const container = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.appearance);
+    try {
+        const module = await loadAppearanceModule();
+        module.presentAppearance(container);
+        appearanceModule = module;
+        setAnimatedBackgroundPresenter(module.presentAnimatedBackgrounds);
+    } finally {
+        container?.removeAttribute('aria-busy');
+    }
+}
 
 function loadServerTools() {
     serverToolsPromise ??= loadServerToolsModule().then(module => module.createServerTools({
@@ -125,7 +145,7 @@ function loadServerTools() {
 }
 
 function initializeSettingsPanel() {
-    settingsPanelPromise ??= Promise.resolve().then(() => {
+    settingsPanelPromise ??= presentAppearancePage().then(() => {
         injectThemePicker();
         // SillyTavern's own settings tab UI is not used here: the settings page sidebar owns
         // navigation, so the inline drawers are opened directly instead.
@@ -498,7 +518,7 @@ function flattenRightShellSettingsDrawers() {
 
     syncBackgroundSettingsSection();
     for (const [tabId, tabState] of shellState.tabs.entries()) {
-        if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) && !isSubpagePanel(tabId) && tabState.panel instanceof HTMLElement) {
+        if (!SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) && !isSubpagePanel(tabId) && !isAppearancePending(tabId) && tabState.panel instanceof HTMLElement) {
             flattenNestedSettingsDrawers(tabState.panel, { includeTopLevel: true });
             applySettingsSectionOrder(tabState.panel, tabId);
             normalizeSettingsPresentation(tabState.panel, { name: tabId });
@@ -591,7 +611,7 @@ function openAllInlineDrawers(root = null) {
  */
 function flattenSettingsPanelDrawers(shellKey, tabId) {
     if (shellKey === 'right') syncBackgroundSettingsSection();
-    if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId)) {
+    if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId) || (shellKey === 'right' && isAppearancePending(tabId))) {
         return;
     }
 
@@ -760,6 +780,10 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
     'right:data-security': [
+        { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
+    ],
+    // SillyBunny: Appearance builds entry, text-area and button rows, which the same sheet styles.
+    'right:appearance': [
         { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
     ],
 });
@@ -8068,29 +8092,22 @@ function prepareEmbeddedDrawer(drawerId, root = document) {
 function syncBackgroundSettingsSection() {
     const appearance = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.appearance);
     const gallery = document.getElementById('backgrounds-button');
-    if (!(appearance instanceof HTMLElement) || !(gallery instanceof HTMLElement)) return;
+    if (!appearanceModule || !(appearance instanceof HTMLElement) || !(gallery instanceof HTMLElement)) return;
 
     let section = appearance.querySelector('#sb-background-settings-section');
     let changed = false;
     if (!(section instanceof HTMLElement)) {
-        section = createElement('section', {
-            id: 'sb-background-settings-section',
-            className: `${SB_FLAT_SECTION_CLASS} sb-settings-category`,
-            attrs: { 'data-sb-category': 'background', 'data-settings-tab': 'appearance', 'aria-labelledby': 'sb-background-settings-heading' },
+        const group = appearanceModule.createAppearanceGroup({
+            id: 'background',
+            elementId: 'sb-background-settings-section',
+            title: 'Background',
+            description: 'Choose backgrounds and adjust their size, blur, opacity, and visibility.',
         });
-        const header = createElement('div', { className: `${SB_FLAT_SECTION_HEADER_CLASS} sb-settings-category-header` });
-        const heading = createElement('div', { className: 'flex-container flexFlowColumn sb-settings-category-heading' });
-        heading.append(
-            createElement('h3', {
-                id: 'sb-background-settings-heading',
-                className: 'ds-pref-group-heading sb-settings-category-title',
-                text: 'Background',
-                attrs: { 'data-i18n': 'Background' },
-            }),
-            createElement('small', { text: 'Choose backgrounds and adjust their size, blur, opacity, and visibility.', attrs: { 'data-i18n': 'Choose backgrounds and adjust their size, blur, opacity, and visibility.' } }),
-        );
-        header.append(heading);
-        section.append(header, createElement('div', { id: 'sb-background-settings-controls', className: 'ds-pref-group sb-settings-category-body' }));
+        group.group.id = 'sb-background-settings-controls';
+        const heading = group.section.querySelector('.ds-pref-group-heading');
+        heading.id = 'sb-background-settings-heading';
+        group.group.setAttribute('aria-labelledby', heading.id);
+        section = group.section;
         appearance.append(section);
         changed = true;
     }
@@ -8100,16 +8117,26 @@ function syncBackgroundSettingsSection() {
 
     // The gallery owns its toolbar and layout; the normalizer must not box it around another pill.
     if (gallery.dataset.sbPresentation !== 'manual') gallery.dataset.sbPresentation = 'manual';
-    // These rows are authored in three tabs, and Interface injects its slider after the initial split.
+    const fitting = appearanceModule.presentBackgroundGallery(gallery);
+    if (fitting) {
+        controls.append(fitting.row);
+        changed = true;
+    }
+    // The fitting row and the gallery close the group; the slider rows, which Interface injects after the initial split, come before them.
+    const closing = controls.querySelector(':scope > .ds-select-row') ?? (gallery.parentElement === controls ? gallery : null);
+    // These rows are authored in three tabs.
     for (const id of ['background-blur-block', 'background-opacity-block', 'background_thumbnails_animation', 'sb-surface-transparency-input']) {
-        const row = document.getElementById(id)?.closest('.ds-row, .checkbox_label');
+        const control = document.getElementById(id);
+        const row = id === 'background_thumbnails_animation' && control instanceof HTMLInputElement
+            ? appearanceModule.presentBackgroundSwitch(control)
+            : control?.closest('.ds-row, .checkbox_label');
         if (!(row instanceof HTMLElement) || row.parentElement === controls) continue;
-        controls.append(row);
+        controls.insertBefore(row, closing);
         changed = true;
     }
 
-    if (gallery.parentElement !== section) {
-        section.append(gallery);
+    if (gallery.parentElement !== controls) {
+        controls.append(gallery);
         changed = true;
     }
     if (changed) invalidateUserSettingsTabSearchIndexes();
@@ -9994,34 +10021,6 @@ function injectSillyTavernImportCard(host, { buildImportGroup }) {
     eventSource.on(event_types.SETTINGS_LOADED, updateFolderImportVisibility);
 }
 
-function createThemeSettingsDrawer({ id, title, content, description = '', className = '' }) {
-    const drawer = createElement('section', {
-        id,
-        className: `inline-drawer sb-theme-settings-drawer ${className}`.trim(),
-        attrs: {
-            'data-settings-tab': 'appearance',
-        },
-    });
-    const header = createElement('div', { className: 'inline-drawer-toggle inline-drawer-header' });
-    const heading = createElement('strong', { text: title });
-    const icon = createElement('div', { className: 'fa-solid fa-circle-chevron-down inline-drawer-icon down' });
-    const body = createElement('div', { className: 'inline-drawer-content sb-theme-settings-drawer-body' });
-    body.style.display = 'none';
-
-    header.append(heading);
-    if (description) {
-        header.append(createElement('small', {
-            className: 'ds-row-subtitle',
-            text: description,
-            attrs: { 'data-i18n': description },
-        }));
-    }
-    header.append(icon);
-    body.append(...content);
-    drawer.append(header, body);
-    return drawer;
-}
-
 function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step, ariaLabel, caption, onInput, className = '' }) {
     const sliderGroup = createElement('div', { className: `ds-row ds-row-slider ${className}`.trim() });
     const sliderHeader = createElement('div', { className: 'ds-row-text' });
@@ -10075,67 +10074,40 @@ function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step
     return sliderGroup;
 }
 
-function createTopbarLabelOption(mode, part) {
-    const inputId = `sb-topbar-label-${mode}-${part.id}`;
-    const option = createElement('label', {
-        className: 'sb-topbar-label-option',
-        attrs: {
-            for: inputId,
-        },
-    });
-    const checkbox = createElement('input', {
-        id: inputId,
-        className: 'sb-topbar-label-checkbox',
+/**
+ * One part of the top bar label: a switch for the desktop label, which mixes any combination, and a check for
+ * the mobile one, which keeps a single part.
+ */
+function createTopbarLabelPartRow(mode, part) {
+    const input = createElement('input', {
+        id: `sb-topbar-label-${mode}-${part.id}`,
         attrs: {
             type: 'checkbox',
             'data-sb-topbar-label-mode': mode,
             'data-sb-topbar-label-part': part.id,
         },
     });
-    const copy = createElement('span', { className: 'sb-topbar-label-option-copy' });
-    const title = createElement('strong', { text: part.label });
-    const description = createElement('small', { text: part.description });
-
-    checkbox.addEventListener('change', event => {
-        const input = event.currentTarget;
-        const isChecked = input instanceof HTMLInputElement ? input.checked : false;
-
-        if (mode === 'mobile') {
-            setMobileTopbarLabelPart(part.id, isChecked);
-        } else {
-            setDesktopTopbarLabelPart(part.id, isChecked);
-        }
+    const createPartRow = mode === 'mobile' ? createCheckRow : createSwitchRow;
+    return createPartRow({
+        label: part.label,
+        subtitle: part.description,
+        field: `topbar-label-${mode}-${part.id}`,
+        input,
+        onChange: isChecked => {
+            if (mode === 'mobile') {
+                setMobileTopbarLabelPart(part.id, isChecked);
+            } else {
+                setDesktopTopbarLabelPart(part.id, isChecked);
+            }
+        },
     });
-
-    copy.append(title, description);
-    option.append(checkbox, copy);
-    return option;
 }
 
 function createShortcutSettingsGroup() {
-    const description = createElement('p', {
-        className: 'sb-theme-slider-caption',
-        text: 'Assign a shell tab or universal search to each shortcut button in the top bar.',
-    });
     const rows = [];
 
     for (const side of SB_SHORTCUT_SLOTS) {
-        const selectId = `sb-shortcut-${side}-select`;
-        const row = createElement('div', { className: 'sb-shortcut-row' });
-
-        const label = createElement('label', {
-            className: 'sb-shortcut-label',
-            attrs: {
-                for: selectId,
-            },
-        });
-        label.textContent = SB_SHORTCUT_LABELS[side] || side;
-
-        const select = createElement('select', {
-            id: selectId,
-            className: 'sb-shortcut-select',
-        });
-
+        const select = createElement('select', { id: `sb-shortcut-${side}-select` });
         const currentTarget = getShortcutTarget(side);
         for (const target of SB_SHORTCUT_TARGETS) {
             const option = createElement('option', {
@@ -10154,22 +10126,27 @@ function createShortcutSettingsGroup() {
             updateShortcutButton(side);
         });
 
-        row.append(label);
         const subtitleText = 'Choose what this top bar shortcut opens on desktop. Select None to hide it.';
-        row.append(createElement('small', {
-            className: 'ds-row-subtitle',
-            text: subtitleText,
-            attrs: { 'data-i18n': subtitleText },
-        }));
-        row.append(select);
+        const row = createSelectRow({
+            select,
+            label: SB_SHORTCUT_LABELS[side] || side,
+            subtitle: subtitleText,
+            field: `shortcut-${side}`,
+            searchLabel: t`Search`,
+            emptyText: t`No results`,
+        });
+        row.row.querySelector('.ds-row-subtitle').dataset.i18n = subtitleText;
         rows.push(row);
     }
 
-    return createThemeSettingsDrawer({
-        id: 'sb-quick-access-shortcuts-drawer',
+    const group = appearanceModule.createAppearanceGroup({
+        id: 'quick-access-shortcuts',
+        elementId: 'sb-quick-access-shortcuts-drawer',
         title: 'Quick Access Shortcuts',
-        content: [description, ...rows],
+        description: 'Assign a shell tab or universal search to each shortcut button in the top bar.',
     });
+    group.append(...rows);
+    return group.section;
 }
 
 function getMobileQuickActionContextLabel(action) {
@@ -10678,66 +10655,55 @@ function syncShortcutButtonActiveStates() {
     queueTopbarSectionStateSync();
 }
 
-function createTopbarLabelSettingsGroup() {
-    const description = createElement('p', {
-        className: 'sb-theme-slider-caption',
-        text: 'Choose what the center label shows. Desktop can mix multiple parts with a middle dot, while mobile keeps one selection at a time.',
-    });
-    const desktopSection = createElement('div', { className: 'sb-topbar-label-section sb-desktop-setting' });
-    const desktopHeading = createElement('div', { className: 'sb-topbar-label-section-heading' });
-    const desktopTitle = createElement('strong', { text: 'Desktop' });
-    const desktopDescription = createElement('small', { text: 'Pick any combination you want.' });
-    const desktopGrid = createElement('div', { className: 'sb-topbar-label-option-grid' });
-    const mobileSection = createElement('div', { className: 'sb-topbar-label-section sb-mobile-setting' });
-    const mobileHeading = createElement('div', { className: 'sb-topbar-label-section-heading' });
-    const mobileTitle = createElement('strong', { text: 'Mobile' });
-    const mobileDescription = createElement('small', { text: 'Pick one option at a time.' });
-    const mobileGrid = createElement('div', { className: 'sb-topbar-label-option-grid' });
-    const customTextField = createElement('label', {
-        className: 'ds-row sb-topbar-custom-text-field',
-        attrs: {
-            for: 'sb-topbar-custom-text-input',
-        },
-    });
-    const customTextHeading = createElement('div', { className: 'ds-row-text' });
-    const customTextTitle = createElement('strong', { className: 'ds-row-label', text: 'Custom Text Value' });
-    const customTextDescription = createElement('small', { className: 'ds-row-subtitle', text: 'This only appears in the top bar when the Custom Text checkbox is enabled above.' });
-    const customTextSuffix = createElement('div', { className: 'ds-row-suffix' });
-    const customTextInput = createElement('input', {
-        id: 'sb-topbar-custom-text-input',
-        className: 'text_pole ds-control-flex sb-topbar-custom-text-input',
-        attrs: {
-            type: 'text',
-            maxlength: String(SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH),
-            placeholder: 'SillyBunny',
-            'aria-label': 'Top bar custom text',
-        },
-    });
+/**
+ * The Top Bar Label groups, for the desktop label (any mix of parts) and the mobile label (one part). Each device
+ * shows its own pair, and each pair has its own custom text field, because the field depends on the device's own
+ * Custom Text part. Both fields write the one stored text.
+ * @returns {HTMLElement[]}
+ */
+function createTopbarLabelSettingsGroups() {
+    const groups = [];
+    for (const [mode, deviceClass] of [['desktop', 'sb-desktop-setting'], ['mobile', 'sb-mobile-setting']]) {
+        const suffix = mode === 'mobile' ? '-mobile' : '';
+        const labelGroup = appearanceModule.createAppearanceGroup({
+            id: `topbar-label${suffix}`,
+            elementId: mode === 'mobile' ? 'sb-topbar-label-mobile-group' : 'sb-topbar-label-drawer',
+            title: 'Top Bar Label',
+            description: 'Choose what the center label shows. Desktop can mix multiple parts with a middle dot, while mobile keeps one selection at a time.',
+        });
+        labelGroup.append(...SB_TOPBAR_LABEL_PARTS.map(part => createTopbarLabelPartRow(mode, part)));
 
-    customTextInput.addEventListener('input', event => {
-        const input = event.currentTarget;
-        setTopbarCustomText(input instanceof HTMLInputElement ? input.value : '');
-    });
+        const customTextInput = createElement('input', {
+            id: mode === 'mobile' ? 'sb-topbar-custom-text-input-mobile' : 'sb-topbar-custom-text-input',
+            className: 'sb-topbar-custom-text-input',
+            attrs: {
+                type: 'text',
+                maxlength: String(SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH),
+                placeholder: 'SillyBunny',
+                'aria-label': 'Top bar custom text',
+            },
+        });
+        const customTextRow = createEntryRow({
+            label: 'Custom Text Value',
+            field: `topbar-custom-text${suffix}`,
+            input: customTextInput,
+            floating: true,
+            onInput: value => setTopbarCustomText(value),
+        });
+        const customTextGroup = appearanceModule.createAppearanceGroup({
+            id: `topbar-custom-text${suffix}`,
+            title: 'Custom Text',
+            description: 'This only appears in the top bar when the Custom Text checkbox is enabled above.',
+        });
+        customTextGroup.append(customTextRow);
+        customTextGroup.group.dataset.sbEnabledBy = `#sb-topbar-label-${mode}-custom`;
 
-    desktopHeading.append(desktopTitle, desktopDescription);
-    mobileHeading.append(mobileTitle, mobileDescription);
-    customTextHeading.append(customTextTitle, customTextDescription);
-
-    for (const part of SB_TOPBAR_LABEL_PARTS) {
-        desktopGrid.appendChild(createTopbarLabelOption('desktop', part));
-        mobileGrid.appendChild(createTopbarLabelOption('mobile', part));
+        for (const group of [labelGroup, customTextGroup]) {
+            group.section.classList.add(deviceClass);
+            groups.push(group.section);
+        }
     }
-
-    desktopSection.append(desktopHeading, desktopGrid);
-    mobileSection.append(mobileHeading, mobileGrid);
-    customTextSuffix.append(customTextInput);
-    customTextField.append(customTextHeading, customTextSuffix);
-
-    return createThemeSettingsDrawer({
-        id: 'sb-topbar-label-drawer',
-        title: 'Top Bar Label',
-        content: [description, desktopSection, mobileSection, customTextField],
-    });
+    return groups;
 }
 
 function injectThemePicker() {
@@ -10800,7 +10766,7 @@ function injectThemePicker() {
         caption: 'Increase or decrease the mobile nav and mobile chat tool buttons without changing desktop controls.',
         onInput: nextValue => setMobileButtonScale(nextValue),
     });
-    const topbarLabelSettingsGroup = createTopbarLabelSettingsGroup();
+    const topbarLabelSettingsGroups = createTopbarLabelSettingsGroups();
     const splashCharacterRow = createSplashCharacterRow(getSplashPreferences());
     const shortcutSettingsGroup = createShortcutSettingsGroup();
 
@@ -10827,7 +10793,7 @@ function injectThemePicker() {
     // The rows of the page use the shared button, status and insensitive-row rules of the deferred editor sheet.
     void import('./sillybunny-editor/list-shell.js').then(({ loadListEditorStyles }) => loadListEditorStyles()).catch(error => console.warn('Failed to load the editor styles for the Interface page.', error));
 
-    card.append(topbarLabelSettingsGroup, shortcutSettingsGroup);
+    card.append(...topbarLabelSettingsGroups, shortcutSettingsGroup);
     themeBlock.append(card);
     // SillyBunny: keep the shared injection path, then mount Interface controls in their own tab.
     const interfaceRoot = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.interface);
@@ -10848,7 +10814,7 @@ function updateThemePickerUi() {
     const desktopButtonScaleValue = document.getElementById('sb-desktop-button-scale-value');
     const mobileButtonScaleInput = document.getElementById('sb-mobile-button-scale-input');
     const mobileButtonScaleValue = document.getElementById('sb-mobile-button-scale-value');
-    const customTextInput = document.getElementById('sb-topbar-custom-text-input');
+    const customTextInputs = document.querySelectorAll('.sb-topbar-custom-text-input');
     const paperTextureEnabledInput = document.getElementById('sb-paper-texture-enabled-input');
     const paperTextureOpacityInput = document.getElementById('sb-paper-texture-opacity-input');
     const paperTextureOpacityValue = document.getElementById('sb-paper-texture-opacity-value');
@@ -10908,11 +10874,12 @@ function updateThemePickerUi() {
             : sbState.topbarLabel.desktopParts.includes(partId);
 
         input.checked = isChecked;
-        input.closest('.sb-topbar-label-option')?.classList.toggle('is-selected', isChecked);
     }
 
-    if (customTextInput instanceof HTMLInputElement && customTextInput.value !== sbState.topbarLabel.customText) {
-        customTextInput.value = sbState.topbarLabel.customText;
+    for (const customTextInput of customTextInputs) {
+        if (customTextInput instanceof HTMLInputElement && customTextInput.value !== sbState.topbarLabel.customText) {
+            customTextInput.value = sbState.topbarLabel.customText;
+        }
     }
 
     for (const input of document.querySelectorAll('[data-sb-compact-mode-input]')) {
@@ -11241,6 +11208,12 @@ function getSearchSectionLabel(element, fallback) {
         const text = (heading ? getSearchLabelText(heading) : '').replace(/\s+/g, ' ').trim();
         if (text && text !== fallback) return text;
     }
+
+    // A group that SillyBunny builds names itself by its heading.
+    const labelledGroup = element.closest('[data-sb-category] > .ds-pref-group[aria-labelledby]');
+    const groupHeading = labelledGroup ? document.getElementById(labelledGroup.getAttribute('aria-labelledby') ?? '') : null;
+    const groupText = (groupHeading ? getSearchLabelText(groupHeading) : '').replace(/\s+/g, ' ').trim();
+    if (groupText && groupText !== fallback) return groupText;
 
     const preferred = element.closest('.bg-header-row-1')
         ?? element.closest('.bg-header-row-2')
@@ -12047,6 +12020,8 @@ function buildShell(shellKey) {
         userSettingsSplit = splitUserSettingsContent(originalContent);
 
         if (userSettingsSplit) {
+            // SillyBunny: the Appearance module loads when the page first needs it, so the upstream rows wait unseen until it has built its groups.
+            userSettingsSplit.appearance.setAttribute('aria-busy', 'true');
             basePanel.scroller.appendChild(userSettingsSplit.appearance);
         }
 
@@ -12161,6 +12136,8 @@ function buildShell(shellKey) {
                 panel.scroller.appendChild(userSettingsSplit.messages);
             }
             panel.ensureReady = initializeSettingsPanel;
+            // Messages authors the animated thumbnails switch that the Background group in Appearance takes in, so direct entry loads the Appearance module too.
+            panel.onActivate = basePanel.onActivate;
             registerShellTab(shellKey, customTab, panel);
             continue;
         }
@@ -13038,7 +13015,7 @@ function reflattenRuntimeDrawers() {
             updateEditorPanel(panel);
             continue;
         }
-        if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId) || !panel.querySelector('.inline-drawer')) {
+        if (SB_COLLAPSIBLE_DRAWER_TAB_IDS.has(tabId) || isSubpagePanel(tabId) || isAppearancePending(tabId) || !panel.querySelector('.inline-drawer')) {
             continue;
         }
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });

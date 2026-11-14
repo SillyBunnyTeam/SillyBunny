@@ -229,6 +229,8 @@ async function expectSwitchSemantics(panel) {
         // Icon-button toggles keep their state in a display:none checkbox; the label button is the control.
         if (getComputedStyle(input).display === 'none') return [];
         if (allowlist.some(selector => input.closest(selector))) return [];
+        // A check row picks one of several (the mobile Top Bar Label): a check, not a switch.
+        if (input.closest('.ds-row-check')) return [];
         const name = input.id || input.name || input.getAttribute('aria-label') || 'unnamed checkbox';
         const issues = [];
         if (input.getAttribute('role') !== 'switch') issues.push('missing role=switch');
@@ -333,22 +335,23 @@ async function expectNoHorizontalOverflow(element) {
 }
 
 async function expectAnimatedBackgroundStructure(appearance, { geometry = true } = {}) {
-    const animated = appearance.locator('#bpt-animated-bg-panel.sb-settings-category');
+    const animated = appearance.locator('#bpt-animated-bg-panel.sb-appearance-group');
     await expect(animated).toBeVisible();
     await expect(animated).toHaveAttribute('data-sb-background-presented', 'true');
-    const header = animated.locator(':scope > .bpt-animated-bg-header.sb-settings-flat-header.sb-settings-category-header');
+    const header = animated.locator(':scope > .ds-pref-group-header');
     await expect(header).toHaveCount(1);
-    await expect(header.locator(':scope > .sb-settings-category-heading')).toHaveCount(1);
-    await expect(header.locator('.sb-settings-category-heading > .bpt-animated-bg-title.sb-settings-category-title')).toHaveText('Animated Backgrounds');
-    await expect(header.locator('.sb-settings-category-heading > .bpt-animated-bg-note')).toHaveText('Use the normal uploader for local MP4/WebM files, or paste a YouTube/direct video URL here.');
-    const controls = animated.locator(':scope > .bpt-animated-bg-controls.ds-pref-group.sb-settings-category-body');
-    await expect(controls).toHaveCount(1);
-    await expect(controls.locator(':scope > .bpt-animated-bg-url-row.ds-row.ds-row-actions:first-child')).toHaveCount(1);
-    await expect(controls.locator(':scope > label.checkbox_label.ds-row.ds-row-switch')).toHaveCount(4);
-    await expect(controls.locator(':scope > .bpt-animated-bg-volume.ds-row.ds-row-slider #bpt-animated-bg-volume')).toHaveCount(1);
+    await expect(header.locator('.bpt-animated-bg-title.ds-pref-group-heading')).toHaveText('Animated Backgrounds');
+    await expect(header.locator('.bpt-animated-bg-note.ds-pref-group-subtitle')).toHaveText('Use the normal uploader for local MP4/WebM files, or paste a YouTube/direct video URL here.');
+    const box = animated.locator(':scope > .ds-pref-group');
+    await expect(box).toHaveCount(1);
+    await expect(box.locator(':scope > .ds-row-entry--floating:first-child #bpt-animated-bg-url')).toHaveCount(1);
+    await expect(box.locator('.ds-row-suffix > #bpt-animated-bg-apply')).toHaveCount(1);
+    await expect(box.locator(':scope > label.checkbox_label.ds-row.ds-row-switch')).toHaveCount(4);
+    await expect(box.locator(':scope > .bpt-animated-bg-volume.ds-row.ds-row-slider #bpt-animated-bg-volume')).toHaveCount(1);
     await expect(animated.locator('.ds-pref-group')).toHaveCount(1);
-    await expect(animated.locator(':scope > #bpt-animated-bg-sources')).toHaveCount(1);
-    await expect(animated.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
+    await expect(box.locator(':scope > #bpt-animated-bg-sources')).toHaveCount(1);
+    // The URL field's title is the one placeholder.
+    await expect(animated.locator('[data-sb-copy-placeholder]')).toHaveCount(1);
     await expectSwitchSemantics(animated);
     if (geometry) await expectSwitchGeometry(animated);
     return animated;
@@ -482,44 +485,41 @@ test.describe('Settings header consistency', () => {
     test('Appearance and Formatting keep migrated groups flat and aligned', async ({ page }) => {
         const appearance = await openSettingsTab(page, 'appearance', 'right');
         const appearanceMetrics = await appearance.evaluate(root => {
-            const pageSize = root.querySelector('#AppearanceLayoutSection');
-            const visual = root.querySelector('#ThemeTogglesSection');
+            const pageSize = root.querySelector('[data-sb-category="page-size"]');
+            const visual = root.querySelector('[data-sb-category="visual-toggles"]');
             const borderTop = element => element ? getComputedStyle(element).borderTopWidth : null;
             return { pageSizeBorderTop: borderTop(pageSize), visualBorderTop: borderTop(visual) };
         });
         expect(appearanceMetrics).toEqual({ pageSizeBorderTop: '0px', visualBorderTop: '0px' });
 
         const topbar = appearance.locator('#sb-topbar-label-drawer:visible');
-        const topbarMetrics = await topbar.evaluate(drawer => {
-            const desktop = drawer.querySelector('.sb-desktop-setting');
-            const mobile = drawer.querySelector('.sb-mobile-setting');
-            const option = desktop?.querySelector('.sb-topbar-label-option');
-            const input = option?.querySelector('input[type="checkbox"]');
-            const title = desktop?.querySelector('.sb-topbar-label-section-heading > strong');
-            const optionRect = option?.getBoundingClientRect();
+        const topbarMetrics = await topbar.evaluate(group => {
+            const title = group.querySelector('.ds-pref-group-heading');
+            const row = group.querySelector('.ds-row-switch');
+            const input = row?.querySelector('input[type="checkbox"]');
+            const rowRect = row?.getBoundingClientRect();
             const inputRect = input?.getBoundingClientRect();
             return {
                 desktopTitleVisible: Boolean(title && title.getBoundingClientRect().height > 0 && title.scrollWidth <= title.clientWidth),
-                mobileTitlePresent: Boolean(mobile?.querySelector('.sb-topbar-label-section-heading > strong')?.textContent.trim()),
-                switchIsTrailing: Boolean(optionRect && inputRect && inputRect.right > optionRect.left + optionRect.width / 2),
-                optionGridFullWidth: Boolean(desktop?.querySelector('.sb-topbar-label-option-grid')?.clientWidth === desktop.clientWidth),
+                switchIsTrailing: Boolean(rowRect && inputRect && inputRect.right > rowRect.left + rowRect.width / 2),
+                boxFullWidth: group.querySelector('.ds-pref-group')?.clientWidth === group.clientWidth,
             };
         });
         expect(topbarMetrics).toEqual({
             desktopTitleVisible: true,
-            mobileTitlePresent: true,
             switchIsTrailing: true,
-            optionGridFullWidth: true,
+            boxFullWidth: true,
         });
 
         await page.setViewportSize({ width: 390, height: 844 });
         const mobileAppearance = await openSettingsTab(page, 'appearance', 'right');
-        const mobileTopbar = mobileAppearance.locator('#sb-topbar-label-drawer:visible');
-        const mobileTitleMetrics = await mobileTopbar.locator('.sb-mobile-setting .sb-topbar-label-section-heading > strong').evaluate(title => ({
+        const mobileTopbar = mobileAppearance.locator('#sb-topbar-label-mobile-group:visible');
+        const mobileTitleMetrics = await mobileTopbar.locator('.ds-pref-group-heading').evaluate(title => ({
             visible: title.getBoundingClientRect().height > 0,
             fits: title.scrollWidth <= title.clientWidth,
         }));
         expect(mobileTitleMetrics).toEqual({ visible: true, fits: true });
+        await expect(mobileTopbar.locator('.ds-row-check')).toHaveCount(3);
 
         await page.setViewportSize({ width: 1280, height: 720 });
         const messages = await openSettingsTab(page, 'messages', 'right');
@@ -875,16 +875,20 @@ test.describe('Customize consistency', () => {
 
     test('Appearance includes the expected Theme Colors, Page Size, and Visual Toggles rows', async ({ page }) => {
         const appearance = await openSettingsTab(page, 'appearance', 'right');
-        await expect(appearance.locator('#color-picker-block > .ds-pref-group')).toHaveCount(2);
-        const colorRows = await appearance.locator('#color-picker-block > .ds-pref-group').evaluateAll(groups =>
+        await expect(appearance.locator('[data-sb-category="theme-colors"] > .ds-pref-group')).toHaveCount(1);
+        const colorRows = await appearance.locator('[data-sb-category="theme-colors"] > .ds-pref-group').evaluateAll(groups =>
             groups.map(group => group.querySelectorAll(':scope > .ds-row').length),
         );
-        expect(colorRows).toEqual([5, 5]);
-        await expect(appearance.locator('#AppearanceLayoutSection .ds-row-slider')).toHaveCount(7);
+        expect(colorRows).toEqual([10]);
+        await expect(appearance.locator('[data-sb-category="page-size"] .ds-row-slider')).toHaveCount(7);
         await expect(appearance.locator('#sb-background-settings-controls #background-blur-block, #sb-background-settings-controls #background-opacity-block')).toHaveCount(2);
         // 21 since Tags as Folders was retired for full folder support; #bogus_folders stays as a hidden transport.
-        await expect(appearance.locator('#ThemeTogglesSection .ds-row-switch')).toHaveCount(21);
+        await expect(appearance.locator('[data-sb-category="visual-toggles"] .ds-row-switch')).toHaveCount(21);
         await expect(appearance.locator('#bogus_folders')).toBeHidden();
+        const themeMenu = appearance.locator('[data-sb-category="ui-theme"] .ds-select-row__menu');
+        await expect(themeMenu).toHaveAccessibleName('Theme Actions');
+        await expect(themeMenu).toHaveAttribute('title', 'Theme Actions');
+        await expect(themeMenu).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
     });
 });
 
@@ -927,7 +931,7 @@ test.describe('Backgrounds settings consistency', () => {
                     return {
                         reference: metric(reference),
                         animated: metric(root.querySelector('.bpt-animated-bg-title')),
-                        referenceNoteSize: getComputedStyle(reference.parentElement.querySelector('small')).fontSize,
+                        referenceNoteSize: getComputedStyle(reference.parentElement.querySelector('.ds-pref-group-subtitle')).fontSize,
                         animatedNoteSize: getComputedStyle(root.querySelector('.bpt-animated-bg-note')).fontSize,
                     };
                 });
@@ -950,7 +954,7 @@ test.describe('Backgrounds settings consistency', () => {
 
                 const gallery = appearance.locator('#Backgrounds');
                 const radiusFailures = await gallery.locator([
-                    '#bpt-animated-bg-url', '#bpt-animated-bg-apply', '#bg-filter', '#bg-sort', '#background_fitting',
+                    '#bg-filter', '#bg-sort',
                     '#auto_background', '#bg_add_folder_button', '#add_background_button_top', '#bg_tabs .heading-controls .menu_button',
                 ].map(selector => `${selector}:visible`).join(', ')).evaluateAll((controls, minimumHeight) => controls.flatMap(control => {
                     const style = getComputedStyle(control);
@@ -1087,9 +1091,10 @@ test.describe('Backgrounds settings consistency', () => {
             if (!fixture) throw new Error('Expected original animated background fixture.');
             return {
                 samePanel: fixture.panel === panel,
-                originalNodesRetained: fixture.nodes.every(node => panel.contains(node)),
+                // The extension's layout wrappers (header, URL row, controls) give way to the group; its controls stay inside the panel.
+                originalNodesRetained: fixture.nodes.filter(node => node.matches('input, label, button, #bpt-animated-bg-sources')).every(node => panel.contains(node)),
                 originalIdsRetained: fixture.ids.every(([id, node]) => document.getElementById(id) === node && document.querySelectorAll(`#${id}`).length === 1),
-                originalLabelsRetained: fixture.labels.every(label => label.parentElement === panel.querySelector('.bpt-animated-bg-controls') && label.matches('.ds-row-switch')),
+                originalLabelsRetained: fixture.labels.every(label => label.parentElement === panel.querySelector(':scope > .ds-pref-group') && label.matches('.ds-row-switch')),
                 text: panel.textContent.replace(/\s+/g, ' ').trim(),
                 originalText: fixture.text,
                 values: fixture.inputs.map(input => ({ id: input.id, value: input.type === 'checkbox' ? input.checked : input.value })),
@@ -1101,7 +1106,9 @@ test.describe('Backgrounds settings consistency', () => {
         expect(preserved.originalNodesRetained).toBe(true);
         expect(preserved.originalIdsRetained).toBe(true);
         expect(preserved.originalLabelsRetained).toBe(true);
-        expect(preserved.text).toBe(preserved.originalText);
+        // The URL field gained its title, a placeholder; the group's blocks need no space between them.
+        const unspaced = text => text.replace(/\s+/g, '');
+        expect(unspaced(preserved.text)).toBe(unspaced(preserved.originalText.replace('Use URL', 'TODO(copy) Use URL')));
         expect(preserved.values).toEqual(preserved.originalValues);
         expect(preserved.events).toEqual([]);
 
