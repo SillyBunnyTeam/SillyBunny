@@ -32,9 +32,9 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Target seam | `public/scripts/chat-render-lifecycle/`. |
 | Adapter shape | Keep exported compatibility functions in `public/script.js`; delegate initial-load bottom landing, bottom-scroll decisions, scheduling, scroll intent/state, anchor preservation, replacement/media anchoring, off-screen message tracking, and update batching to the lifecycle module. |
 | Protecting tests | `tests/chat-scroll-edges.test.js`, `tests/mobile-streaming.test.js`, `tests/chat-render-lifecycle-index.test.js`, `tests/chat-render-lifecycle-bottom-scroll.test.js`, `tests/chat-render-lifecycle-rollout-guard.test.js`, `tests/chat-render-lifecycle-anchor.test.js`, `tests/chat-render-lifecycle-scheduler.test.js`, `tests/chat-render-lifecycle-scroll-intent.test.js`, `tests/chat-render-lifecycle-scroll-state.test.js`, `tests/chat-render-lifecycle-offscreen-messages.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`, `tests/chat-scroll-state-machine.e2e.js`, `tests/chat-send-scroll.e2e.js`, `tests/chat-scroll-regressions.e2e.js`, future lifecycle unit tests. |
-| Validation | `node --check public/script.js`, focused lifecycle Jest `chat-render-lifecycle-scroll-state.test.js chat-render-lifecycle-script-wiring.test.js`, `npm run check:frontend-budgets`, plus prior lifecycle lint/unit/e2e packs on this stack. |
+| Validation | `npm run lint`, `npm run lint` in `tests/`, lifecycle Jest (`chat-render-lifecycle-script-wiring.test.js`, the other `chat-render-lifecycle-*` suites, `chat-scroll-edges.test.js`, `mobile-streaming.test.js`), `npm run check:frontend-budgets`, e2e `chat-scroll-regressions.e2e.js`, `chat-send-scroll.e2e.js` and `chat-scroll-state-machine.e2e.js`. |
 | Rollback path | Disable affected lifecycle routes with the permanent device-local kill switch while correcting the routed implementation. |
-| Last reviewed | 2026-10-22 issue `#911` off-screen message skipping route. |
+| Last reviewed | 2026-11-14 chat-load bottom pin frames that end with the bottom lock (nightly issue `#993`). |
 | Owner | Refactor integrator. |
 
 ### `public/script.js` - generation lifecycle

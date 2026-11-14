@@ -15,6 +15,7 @@ import {
     markManualMobileScroll,
     openReadyChat,
     scrollMessageNearTop,
+    scrollMessageNearTopBeforeQueuedChatLoadPin,
     waitForAnimationFrames,
 } from './chat-scroll-regression-helpers.js';
 
@@ -211,6 +212,31 @@ test.describe('issue 167 chat scroll regressions', () => {
 
         expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
         expect(Math.abs(after.firstVisibleOffsetTop - before.firstVisibleOffsetTop)).toBeLessThanOrEqual(3);
+        expect(after.bottomDelta).toBeGreaterThan(200);
+    });
+
+    test('a queued chat-load bottom pin does not run after the view moves up', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 96, visibleCount: 24 });
+        const renderedIds = await getRenderedMessageIds(page);
+
+        const bottomDeltaAfterScroll = await scrollMessageNearTopBeforeQueuedChatLoadPin(page, renderedIds.at(6), { offsetTop: 32 });
+        await waitForAnimationFrames(page, 6);
+        const after = await getChatScrollSnapshot(page);
+
+        expect(bottomDeltaAfterScroll).toBeGreaterThan(200);
+        expect(after.bottomDelta).toBeGreaterThan(200);
+    });
+
+    test('a bottom pin that a chat-load settle timer queued does not run after the view moves up', async ({ page }) => {
+        await installSyntheticLongChat(page, { messageCount: 96, visibleCount: 24 });
+        const renderedIds = await getRenderedMessageIds(page);
+
+        // 80 must equal the first entry of CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS in public/script.js, which no test can read. Any other value lets the test pass without the race.
+        const bottomDeltaAfterScroll = await scrollMessageNearTopBeforeQueuedChatLoadPin(page, renderedIds.at(6), { offsetTop: 32, afterSettleTimerMs: 80 });
+        await waitForAnimationFrames(page, 6);
+        const after = await getChatScrollSnapshot(page);
+
+        expect(bottomDeltaAfterScroll).toBeGreaterThan(200);
         expect(after.bottomDelta).toBeGreaterThan(200);
     });
 
