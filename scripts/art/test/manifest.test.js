@@ -60,6 +60,10 @@ test('the shape of each asset is checked', () => {
         [(manifest) => { manifest.assets.favicon.entries = ['gs-reisen']; }, 'is not an icon'],
         [(manifest) => { manifest.assets['greeting-reisen'].outputs.pop(); }, 'exactly two outputs'],
         [(manifest) => { manifest.assets['greeting-reisen'].reason = ''; }, 'needs the reason'],
+        [(manifest) => { manifest.assets['greeting-tewi'].outputs.reverse(); }, 'at scale 1, then the same picture at scale 2'],
+        [(manifest) => { manifest.assets['greeting-tewi'].outputs.pop(); }, 'at scale 1, then the same picture at scale 2'],
+        [(manifest) => { delete manifest.assets['greeting-tewi'].opaque; }, 'opaque must be true or false'],
+        [(manifest) => { manifest.assets['greeting-tewi'].frame = { mode: 'canvas' }; }, 'The pair has an unknown key "frame"'],
         [(manifest) => { manifest.keys = { home: { value: '2026115a', stamp: fakeSha('1') } }; }, 'keys.home needs'],
         [(manifest) => { manifest.keys = { splash: { value: '20261106e', stamp: fakeSha('1') } }; }, 'keys.splash needs the script key'],
     ];

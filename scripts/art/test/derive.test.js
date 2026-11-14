@@ -7,7 +7,7 @@ import { runDerive, runProve } from '../lib/commands.js';
 import { fitToGrid } from '../lib/fit.js';
 import { readIco } from '../lib/ico.js';
 import { MANIFEST_PATH } from '../lib/manifest.js';
-import { samePixels } from '../lib/raster.js';
+import { samePixels, upscaleNearest } from '../lib/raster.js';
 import { depthInFigure, measureRings, STICKER } from '../lib/rings.js';
 import { fakeSha } from '../test-support/manifests.js';
 import { paint, pixelAt } from '../test-support/pictures.js';
@@ -218,6 +218,33 @@ test('a backdrop drawn on the scene master canvas is cut with the still box', as
     assert.deepEqual(codes(await runDerive({ root, write: true })), []);
     const backdrop = await decode(readFileSync(join(root, SHIP, 'duo--backdrop@native.webp')));
     assert.equal(samePixels(backdrop, paint(10, 7, (x, y) => (y === 5 && x >= 1 && x < 9 ? [30, 30, 90, 255] : CLEAR))), true);
+});
+
+test('an opaque pair ships its master without alpha at 1x and by whole pixels at 2x, and refuses a transparent master', async (t) => {
+    const master = paint(6, 4, (x, y) => [x * 40, y * 60, 90, 255]);
+    const pair = {
+        type: 'pair',
+        key: null,
+        master: 'fig/fig.png',
+        ratio: '1',
+        grid: [6, 4],
+        opaque: true,
+        outputs: [
+            { path: `${SHIP}/fig.webp`, encoding: 'webp-lossless', sha256: fakeSha('1') },
+            { path: `${SHIP}/fig@2x.webp`, encoding: 'webp-lossless', scale: 2, sha256: fakeSha('2') },
+        ],
+    };
+    const root = await repoWith(t, { fig: pair }, { 'fig/fig.png': master });
+
+    assert.deepEqual(codes(await runDerive({ root, write: true })), []);
+    const [one, two] = await Promise.all(['fig.webp', 'fig@2x.webp'].map((name) => decode(readFileSync(join(root, SHIP, name)))));
+    assert.deepEqual([one.channels, two.channels], [3, 3]);
+    assert.equal(samePixels(one, master), true);
+    assert.equal(samePixels(two, upscaleNearest(master, 2)), true);
+    assert.equal((await runProve({ root })).exitCode, 0);
+
+    const holed = await repoWith(t, { fig: pair }, { 'fig/fig.png': paint(6, 4, (x, y) => (x === 0 && y === 0 ? CLEAR : [x * 40, y * 60, 90, 255])) });
+    assert.deepEqual(codes(await runDerive({ root: holed })), ['master-not-opaque']);
 });
 
 test('an icon keeps its channels and size, an ICO packs its icons, and a copy ships its master byte for byte', async (t) => {

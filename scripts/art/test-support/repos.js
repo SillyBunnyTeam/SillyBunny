@@ -51,6 +51,7 @@ export async function fixtureRepo(t, files) {
 
 /** Writes a manifest into a scratch checkout as the CLI writes it. */
 export function writeFixtureManifest(root, manifest) {
+    mkdirSync(dirname(join(root, MANIFEST_PATH)), { recursive: true });
     writeFileSync(join(root, MANIFEST_PATH), `${JSON.stringify(manifest, null, 4)}\n`);
 }
 

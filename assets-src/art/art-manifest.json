@@ -1122,37 +1122,49 @@
             }
         },
         "greeting-reisen": {
-            "type": "pinned",
+            "type": "pair",
             "key": null,
-            "reason": "The 768x512 snap of a generated picture, exported by greeting-pictures.mjs at 1x and as a nearest 2x. Its snap is not in this repository, so the pair stays pinned.",
-            "checks": [
-                "nearest-pair"
+            "master": "reisen/greeting-reisen.png",
+            "ratio": "1",
+            "grid": [
+                768,
+                512
             ],
+            "opaque": true,
             "outputs": [
                 {
                     "path": "public/img/sillybunny/greeting-reisen.webp",
+                    "encoding": "webp-lossless",
                     "sha256": "7d724ba8014a5090ec52f014826b271b056eaec15851a2d90e104fba127f5250"
                 },
                 {
                     "path": "public/img/sillybunny/greeting-reisen@2x.webp",
+                    "encoding": "webp-lossless",
+                    "scale": 2,
                     "sha256": "f4ca2907656fcb2adabdad80adeef18a814d171cf2e61a11c7aa1a632ce0cfae"
                 }
             ]
         },
         "greeting-tewi": {
-            "type": "pinned",
+            "type": "pair",
             "key": null,
-            "reason": "The 768x512 snap of a generated picture, exported by greeting-pictures.mjs at 1x and as a nearest 2x. Its snap is not in this repository, so the pair stays pinned.",
-            "checks": [
-                "nearest-pair"
+            "master": "tewi/greeting-tewi.png",
+            "ratio": "1",
+            "grid": [
+                768,
+                512
             ],
+            "opaque": true,
             "outputs": [
                 {
                     "path": "public/img/sillybunny/greeting-tewi.webp",
+                    "encoding": "webp-lossless",
                     "sha256": "ddd5ed54eea2ae57303b493326f65e5bb5e7b00e9625a318e3094d34e06b1979"
                 },
                 {
                     "path": "public/img/sillybunny/greeting-tewi@2x.webp",
+                    "encoding": "webp-lossless",
+                    "scale": 2,
                     "sha256": "086d6e0c05148ddd4e5e691514e7a52a43b8221dff4b73605cf80a3107a1d360"
                 }
             ]

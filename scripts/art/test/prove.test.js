@@ -4,12 +4,23 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { runDerive, runProve } from '../lib/commands.js';
 import { MANIFEST_PATH, readManifest } from '../lib/manifest.js';
-import { sha256 } from '../lib/raster.js';
-import { encoderVersions } from '../lib/codec.js';
-import { REPO_ROOT } from '../test-support/pictures.js';
-import { copyOfArt, writeFixtureManifest } from '../test-support/repos.js';
+import { sha256, upscaleNearest } from '../lib/raster.js';
+import { encode, encoderVersions } from '../lib/codec.js';
+import { paint, REPO_ROOT } from '../test-support/pictures.js';
+import { copyOfArt, fixtureRepo, writeFixtureManifest } from '../test-support/repos.js';
 
 const codes = (run) => run.result.problems.map(({ code }) => code);
+
+/** A checkout whose only asset is a pinned pair: a small picture, and `twice` of it as the second file. */
+async function pinnedPair(t, twice) {
+    const one = paint(3, 2, (x, y) => [x * 80, y * 100, 50, 255]);
+    const bytes = [await encode(one, 'webp-lossless'), await encode(twice(one), 'webp-lossless')];
+    const paths = ['public/img/sillybunny/pic.webp', 'public/img/sillybunny/pic@2x.webp'];
+    const root = await fixtureRepo(t, Object.fromEntries(paths.map((path, index) => [path, bytes[index]])));
+    const outputs = paths.map((path, index) => ({ path, sha256: sha256(bytes[index]) }));
+    writeFixtureManifest(root, { format: 1, encoder: encoderVersions(), assets: { pic: { type: 'pinned', key: null, reason: 'No master yet.', checks: ['nearest-pair'], outputs } } });
+    return root;
+}
 
 test('the shipped art is what its masters give, byte for byte', async () => {
     const run = await runProve({ root: REPO_ROOT });
@@ -55,6 +66,11 @@ test('a changed shipped file and a stale manifest hash are told apart', async (t
     assert.deepEqual(codes(await runProve({ root: fixed, only: ['about-tewi'] })), ['manifest-stale']);
     assert.deepEqual((await runDerive({ root: fixed, write: true })).result.written, []);
     assert.deepEqual(codes(await runProve({ root: fixed, only: ['about-tewi'] })), []);
+});
+
+test('a pinned pair must be a picture and the same picture with every pixel drawn as 2 by 2', async (t) => {
+    assert.deepEqual(codes(await runProve({ root: await pinnedPair(t, (one) => upscaleNearest(one, 2)) })), []);
+    assert.deepEqual(codes(await runProve({ root: await pinnedPair(t, () => paint(6, 4, () => [1, 2, 3, 255])) })), ['pair-mismatch']);
 });
 
 test('another encoder version stops a byte proof and a write with exit 3, and a pixel proof still runs', async (t) => {

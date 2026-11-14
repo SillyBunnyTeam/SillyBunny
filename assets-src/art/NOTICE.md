@@ -73,6 +73,7 @@ TODO(copy)
 | logo/platform-57.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | 56df616263684a4e |
 | logo/platform-72.png | - | openai gpt-image-2.5-sunburst-h | vectorize, icons | no | d7288faaeb4c0ba5 |
 | reisen/about-reisen.png | reisen | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 3fcde2fcdf31abda |
+| reisen/greeting-reisen.png | reisen | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 3d33145be01ffc6e |
 | reisen/gs-reisen-done.png | reisen | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 51c7d6af95577ba6 |
 | reisen/gs-reisen.png | reisen | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 54df2f2aeb3013ab |
 | reisen/help-reisen.png | reisen | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | e726ab7acf707fb9 |
@@ -96,6 +97,7 @@ TODO(copy)
 | tewi/about-tewi.png | tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 41999d79a13ad81c |
 | tewi/empty-tewi.png | tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 848723408baad789 |
 | tewi/extras-tewi.png | tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 6b6dc556a1c6c615 |
+| tewi/greeting-tewi.png | tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | e5c0eb67ee74004a |
 | tewi/shortcuts-tewi.png | tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, pixel-snap | no | 8365580c652be6e2 |
 | tewi/splash-tewi--hoist.png | tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, splash-frames | no | 14290f82c8a9cd3b |
 | tewi/splash-tewi--mid.png | tewi | openai gpt-image-2.5-sunburst-h | rim-recolour, splash-frames | no | 7023ab6ff893987a |
@@ -142,14 +144,12 @@ TODO(copy)
 
 | Provider | Model | Masters | First | Last |
 |---|---|---|---|---|
-| openai | gpt-image-2.5-sunburst-h | 88 | 2026-11-01 | 2026-11-04 |
+| openai | gpt-image-2.5-sunburst-h | 90 | 2026-11-01 | 2026-11-04 |
 
 ### Shipped files without a master
 
 | Asset | Files |
 |---|---|
-| greeting-reisen | 2 |
-| greeting-tewi | 2 |
 | card-reisen | 1 |
 | card-tewi | 1 |
 | expressions-reisen | 28 |

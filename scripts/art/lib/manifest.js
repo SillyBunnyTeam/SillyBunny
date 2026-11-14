@@ -4,7 +4,7 @@ import { isAbsolute, join, resolve, sep } from 'node:path';
 export const MANIFEST_PATH = 'assets-src/art/art-manifest.json';
 export const MASTER_ROOT = 'assets-src/art/master';
 
-export const ASSET_TYPES = Object.freeze(['still', 'scene', 'icon', 'ico', 'copy', 'pinned']);
+export const ASSET_TYPES = Object.freeze(['still', 'scene', 'pair', 'icon', 'ico', 'copy', 'pinned']);
 export const KEY_GROUPS = Object.freeze(['home', 'splash']);
 const PINNED_CHECKS = Object.freeze(['nearest-pair']);
 const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -279,6 +279,22 @@ const CHECKERS = {
         }
         checkMotion(asset.motion, fail);
     },
+    pair(asset, fail) {
+        onlyKeys(asset, [...COMMON_KEYS, 'master', 'ratio', 'grid', 'opaque', 'outputs'], 'The pair', fail);
+        checkKey(asset, fail);
+        checkMaster(asset.master, '.png', fail);
+        checkRatio(asset.ratio, fail);
+        checkGrid(asset.grid, fail);
+        if (typeof asset.opaque !== 'boolean') {
+            fail('opaque must be true or false: whether the pair ships without an alpha channel.');
+        }
+        checkOutputs(asset.outputs, 'outputs', fail, { encoded: true });
+        const outputs = Array.isArray(asset.outputs) ? asset.outputs : [];
+        const scales = outputs.map((output) => output?.scale ?? 1);
+        if (scales.length !== 2 || scales[0] !== 1 || scales[1] !== 2 || outputs.some((output) => output?.from !== undefined)) {
+            fail('A pair ships exactly two outputs: the picture at scale 1, then the same picture at scale 2.');
+        }
+    },
     icon(asset, fail) {
         onlyKeys(asset, [...COMMON_KEYS, 'master', 'grid', 'outputs'], 'The icon', fail);
         checkKey(asset, fail);
@@ -328,10 +344,14 @@ function checkKey(asset, fail) {
     }
 }
 
-function checkPlacement(asset, fail) {
-    if (!parseRatio(asset.ratio)) {
+function checkRatio(ratio, fail) {
+    if (!parseRatio(ratio)) {
         fail('ratio must be "1" or master pixels per placement pixel as "p/q", such as "3/2".');
     }
+}
+
+function checkPlacement(asset, fail) {
+    checkRatio(asset.ratio, fail);
     checkFrame(asset.frame, fail);
     checkGrid(asset.grid, fail);
     if (asset.rings !== undefined && asset.rings !== null) {

@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, posix, relative, sep } from 'node:path';
 import { masterFile, MASTER_ROOT, mastersOf, outputFile, outputsOf, picturesOf } from './manifest.js';
 import { needsRecord, recordPathOf, validateRecord } from './provenance.js';
-import { hasBinaryAlpha, readRaster, sha256 } from './raster.js';
+import { hasBinaryAlpha, isOpaque, readRaster, sha256 } from './raster.js';
 
 /** Every file in this folder ships through the manifest, so a file the manifest does not list is a stale one. */
 const SHIPPED_ART_FOLDER = 'public/img/sillybunny';
@@ -82,8 +82,13 @@ export async function checkArt(root, manifest) {
                 continue;
             }
             const bytes = readFileSync(path);
-            if (nativePictures.has(master) && ['still', 'scene'].includes(asset.type) && !hasBinaryAlpha(await readRaster(bytes))) {
-                problems.push({ code: 'master-not-native', asset: id, path: master, message: `The master ${master} has translucent pixels.` });
+            if (nativePictures.has(master) && ['still', 'scene', 'pair'].includes(asset.type)) {
+                const raster = await readRaster(bytes);
+                if (!hasBinaryAlpha(raster)) {
+                    problems.push({ code: 'master-not-native', asset: id, path: master, message: `The master ${master} has translucent pixels.` });
+                } else if (asset.opaque && !isOpaque(raster)) {
+                    problems.push({ code: 'master-not-opaque', asset: id, path: master, message: `The master ${master} has transparent pixels, but the pair is opaque.` });
+                }
             }
             if (!needsRecord(master)) {
                 continue;

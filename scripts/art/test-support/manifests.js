@@ -71,6 +71,18 @@ export function sampleManifest() {
                 master: 'logo/logo.svg',
                 outputs: [{ path: 'public/img/sillybunny/logo.svg', sha256: fakeSha('a') }],
             },
+            'greeting-tewi': {
+                type: 'pair',
+                key: null,
+                master: 'tewi/greeting-tewi.png',
+                ratio: '1',
+                grid: [768, 512],
+                opaque: true,
+                outputs: [
+                    { path: 'public/img/sillybunny/greeting-tewi.webp', encoding: 'webp-lossless', sha256: fakeSha('f') },
+                    { path: 'public/img/sillybunny/greeting-tewi@2x.webp', encoding: 'webp-lossless', scale: 2, sha256: fakeSha('0') },
+                ],
+            },
             'greeting-reisen': {
                 type: 'pinned',
                 key: null,

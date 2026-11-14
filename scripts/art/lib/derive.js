@@ -6,7 +6,7 @@ import { frameBox, renderFrame, SUBJECT_ALPHA } from './frame.js';
 import { encodeIco } from './ico.js';
 import { masterFile, outputsOf, parseRatio } from './manifest.js';
 import { ArtProblem } from './problem.js';
-import { createRaster, hasBinaryAlpha, opaqueBox, paste, readRaster, samePixels, sha256, upscaleNearest } from './raster.js';
+import { createRaster, hasBinaryAlpha, isOpaque, opaqueBox, paste, readRaster, samePixels, sha256, upscaleNearest } from './raster.js';
 import { rebuildRings } from './rings.js';
 
 /**
@@ -15,7 +15,7 @@ import { rebuildRings } from './rings.js';
  * @typedef {{ path: string, bytes: Buffer, sha256: string, kind: 'picture' | 'ico' | 'data' }} DerivedFile
  */
 
-const DERIVERS = Object.freeze({ still: deriveStill, scene: deriveScene, icon: deriveIcon, ico: deriveIco, copy: deriveCopy });
+const DERIVERS = Object.freeze({ still: deriveStill, scene: deriveScene, pair: derivePair, icon: deriveIcon, ico: deriveIco, copy: deriveCopy });
 
 /** Whether the files of an asset are made from masters, as opposed to pinned by their sha256. */
 export const isDerived = (asset) => Object.hasOwn(DERIVERS, asset.type);
@@ -179,6 +179,19 @@ async function deriveScene(context, asset) {
     }
     files.push(copyMotion(context, asset));
     return files;
+}
+
+/**
+ * A picture and the same picture at twice its size, as the greeting ships. The whole canvas ships. An opaque pair is
+ * written without an alpha channel even when its master has one, because the shipped files have none.
+ */
+async function derivePair(context, asset) {
+    const master = await readMaster(context, asset.master);
+    if (asset.opaque && !isOpaque(master)) {
+        throw new ArtProblem('master-not-opaque', `The master ${asset.master} has transparent pixels, but the pair is opaque.`, { asset: context.id, path: asset.master });
+    }
+    const placed = placementOf(context, asset)(asset.opaque ? { ...master, channels: 3 } : master);
+    return encodeOutputs(checkGrid(context, placed, asset.grid, 'The pair'), asset.outputs);
 }
 
 async function deriveIcon(context, asset) {
