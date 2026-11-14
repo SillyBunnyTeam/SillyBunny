@@ -122,6 +122,10 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install root dependencies
+        # The card tests load the app's card parser, whose packages come from the root node_modules.
+        run: npm ci --ignore-scripts
+
       - name: Install art derive dependencies
         run: npm ci --ignore-scripts --prefix scripts/art
 

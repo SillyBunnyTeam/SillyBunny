@@ -1446,9 +1446,9 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Target seam | `.github/workflows/`, launcher scripts, `scripts/dependency-state.js`, `src/runtime.js`, and Docker entrypoints. |
 | Adapter shape | Keep upstream-compatible commands and package contracts; isolate fork runtime selection, metadata, branding, and release gates in the named infrastructure files. |
 | Protecting tests | `tests/sillybunny-launcher-smol.test.js`, `tests/server-supervisor.test.js`, `tests/frontend-assets.test.js`, root lint, frontend build, README mirror check, and workflow static validation. |
-| Validation | `npm ci --dry-run`, launcher unit tests, shell/JSON/YAML syntax checks, `npm run lint`, `npm run build:frontend`, and release workflow smoke. 2026-11-14 (art derive job): `pr-checks.yml` parses as YAML, and the job's two commands, `npm ci --ignore-scripts --prefix scripts/art` and `npm test --prefix scripts/art`, pass on linux-x64 (WSL, Node 24.22.0, npm 11.19.1; 74 tests, byte proof included). |
+| Validation | `npm ci --dry-run`, launcher unit tests, shell/JSON/YAML syntax checks, `npm run lint`, `npm run build:frontend`, and release workflow smoke. 2026-11-14 (art derive job): `pr-checks.yml` parses as YAML, and the job's two commands, `npm ci --ignore-scripts --prefix scripts/art` and `npm test --prefix scripts/art`, pass on linux-x64 (WSL, Node 24.22.0, npm 11.19.1; 74 tests, byte proof included). 2026-11-14 (card tests): the job runs `npm ci --ignore-scripts` at the root first, because the card tests load the app's card parser, whose packages come from the root `node_modules`; the three commands pass on linux-x64 (WSL, Node 24.22.0; 88 tests, none skipped), and without the root packages the six parser tests fail with `card-parser-missing`. |
 | Rollback path | Revert each launcher, workflow, or packaging adapter independently while retaining user data and upstream application formats. |
-| Last reviewed | 2026-11-14, art derive module (PR checks job). |
+| Last reviewed | 2026-11-14, art derive module (PR checks job, root install for the card tests). |
 | Owner | Release integrator. |
 
 ### Bundled defaults and install-time content
