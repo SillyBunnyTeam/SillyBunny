@@ -15,8 +15,9 @@ import { sha256 } from './raster.js';
  * @typedef {{ result: Record<string, unknown>, exitCode: number }} CommandRun
  */
 
-function finish(command, payload, problems) {
-    return { result: { format: 1, command, ok: problems.length === 0, ...payload, problems }, exitCode: exitCodeOf(problems) };
+/** The result of a command. Its warnings never change the exit code, which comes from its problems alone. */
+function finish(command, payload, problems, warnings = []) {
+    return { result: { format: 1, command, ok: problems.length === 0, ...payload, problems, warnings }, exitCode: exitCodeOf(problems) };
 }
 
 function loadManifest(command, { root, manifestPath = MANIFEST_PATH }) {
@@ -52,10 +53,10 @@ export async function runCheck(options) {
     if (failed) {
         return failed;
     }
-    const { summary, problems } = await checkArt(options.root, manifest);
+    const { summary, problems, warnings } = await checkArt(options.root, manifest);
     problems.push(...keyProblems(options.root, manifest));
     problems.push(...noticeState(options.root, manifest).problems);
-    return finish('check', { summary }, problems);
+    return finish('check', { summary }, problems, warnings);
 }
 
 /**

@@ -19,15 +19,16 @@ export function tempDir(t, prefix = 'sb-art-') {
 
 /**
  * A scratch checkout with the art folder, every output of a derived asset and the files that hold the cache keys, so a
- * test can write without touching the real checkout.
+ * test can write without touching the real checkout. With `pinned`, the pinned files come too, so `check` passes on it.
  * @param {import('node:test').TestContext} t
+ * @param {{ pinned?: boolean }} [options]
  */
-export function copyOfArt(t) {
+export function copyOfArt(t, { pinned = false } = {}) {
     const root = tempDir(t, 'sb-art-copy-');
     cpSync(join(REPO_ROOT, 'assets-src/art'), join(root, 'assets-src/art'), { recursive: true });
     const { manifest } = readManifest(REPO_ROOT);
     const keyFiles = Object.values(KEY_SOURCES).flat().map(({ file }) => file);
-    const outputs = Object.values(manifest.assets).filter(isDerived).flatMap((asset) => outputsOf(asset).map(({ path }) => path));
+    const outputs = Object.values(manifest.assets).filter((asset) => pinned || isDerived(asset)).flatMap((asset) => outputsOf(asset).map(({ path }) => path));
     for (const path of new Set([...outputs, ...keyFiles])) {
         mkdirSync(dirname(join(root, path)), { recursive: true });
         cpSync(join(REPO_ROOT, path), join(root, path));

@@ -1,8 +1,11 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, posix, relative, sep } from 'node:path';
+import { placementOf } from './derive.js';
 import { masterFile, MASTER_ROOT, mastersOf, outputFile, outputsOf, picturesOf } from './manifest.js';
+import { ArtProblem } from './problem.js';
 import { needsRecord, recordPathOf, validateRecord } from './provenance.js';
 import { hasBinaryAlpha, isOpaque, readRaster, sha256 } from './raster.js';
+import { measureRings } from './rings.js';
 
 /** Every file in this folder ships through the manifest, so a file the manifest does not list is a stale one. */
 const SHIPPED_ART_FOLDER = 'public/img/sillybunny';
@@ -58,21 +61,60 @@ function filesUnder(folder) {
 }
 
 /**
+ * How a still is brought onto its grid, to measure its rings there; null when it names no rings, or when its ratio is
+ * one the derive refuses, which `derive` and `prove` report.
+ */
+function ringPlacementOf(id, asset) {
+    if (asset.type !== 'still' || !asset.rings) {
+        return null;
+    }
+    try {
+        return placementOf({ id }, asset);
+    } catch (error) {
+        if (error instanceof ArtProblem) {
+            return null;
+        }
+        throw error;
+    }
+}
+
+/**
+ * A warning when the rings of a figure, on its grid and before its frame is cut, measure other widths than the
+ * manifest gives.
+ */
+function ringWarnings(id, asset, master, placed) {
+    const measured = measureRings(placed);
+    if (measured.rim === asset.rings.rim && measured.band === asset.rings.band) {
+        return [];
+    }
+    return [{
+        code: 'ring-width',
+        asset: id,
+        path: master,
+        expected: asset.rings,
+        actual: measured,
+        message: `The rings of ${master} measure ${measured.rim}+${measured.band} art pixels, but the manifest gives ${asset.rings.rim}+${asset.rings.band}.`,
+    }];
+}
+
+/**
  * Checks everything that needs no encoding: the masters exist and are native-grid, each picture master has a current
  * provenance record, no master is left over, every output exists, every pinned file is the one pinned, and nothing
- * ships unlisted.
+ * ships unlisted. The rings of each figure that names them are measured, and other widths are a warning.
  * @param {string} root
  * @param {any} manifest A manifest that passed `validateManifest`.
- * @returns {Promise<{ summary: Record<string, number>, problems: object[] }>}
+ * @returns {Promise<{ summary: Record<string, number>, problems: object[], warnings: object[] }>}
  */
 export async function checkArt(root, manifest) {
     const problems = [];
+    const warnings = [];
     const masters = new Set();
     const used = new Set();
     let records = 0;
     let incomplete = 0;
     for (const [id, asset] of Object.entries(manifest.assets)) {
         const nativePictures = new Set(picturesOf(asset).map(({ master }) => master));
+        const place = ringPlacementOf(id, asset);
         for (const master of mastersOf(asset)) {
             masters.add(master);
             used.add(master);
@@ -88,6 +130,8 @@ export async function checkArt(root, manifest) {
                     problems.push({ code: 'master-not-native', asset: id, path: master, message: `The master ${master} has translucent pixels.` });
                 } else if (asset.opaque && !isOpaque(raster)) {
                     problems.push({ code: 'master-not-opaque', asset: id, path: master, message: `The master ${master} has transparent pixels, but the pair is opaque.` });
+                } else if (place) {
+                    warnings.push(...ringWarnings(id, asset, master, place(raster)));
                 }
             }
             if (!needsRecord(master)) {
@@ -142,5 +186,6 @@ export async function checkArt(root, manifest) {
             incompleteRecords: incomplete,
         },
         problems,
+        warnings,
     };
 }

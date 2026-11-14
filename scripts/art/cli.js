@@ -9,7 +9,8 @@ export const USAGE = `Usage: node scripts/art/cli.js <command> [options]
 
 Commands:
   list      List the assets of the art manifest with their masters and outputs.
-  check     Check the manifest, the masters, the provenance records and the shipped files, without encoding.
+  check     Check the manifest, the masters, the provenance records and the shipped files, without encoding,
+            and warn about each figure whose rings measure other widths than the manifest gives.
   derive    Derive every output from its master and report the files that would change.
   prove     Derive every output again and compare it with the shipped file, byte for byte.
   bump      Give a new cache key to every group whose files changed since its key did.
@@ -27,8 +28,9 @@ Options:
   --key <key>         bump: the key every changed key takes, such as 20261114a.
   --help              Show this text.
 
-The result is one JSON document on stdout. Exit codes: 0 no problem, 1 problems, 2 usage,
-3 the install (sharp is missing, or its encoder versions differ from the manifest).`;
+The result is one JSON document on stdout, with its problems and its warnings. Warnings never change the exit code.
+Exit codes: 0 no problem, 1 problems, 2 usage, 3 the install (sharp is missing, or its encoder versions differ from
+the manifest).`;
 
 const COMMANDS = Object.freeze({
     list: { run: 'runList', options: [] },
@@ -99,7 +101,7 @@ export async function main(argv) {
         if (!(error instanceof UsageError)) {
             throw error;
         }
-        return report({ format: 1, command: null, ok: false, problems: [{ code: 'usage', message: `${error.message} Run with --help for the commands.` }] }, 2);
+        return report({ format: 1, command: null, ok: false, problems: [{ code: 'usage', message: `${error.message} Run with --help for the commands.` }], warnings: [] }, 2);
     }
     if (parsed.help) {
         return { output: `${USAGE}\n`, exitCode: 0 };
@@ -109,7 +111,7 @@ export async function main(argv) {
         commands = await import('./lib/commands.js');
     } catch (error) {
         if (error?.code === 'ERR_MODULE_NOT_FOUND' && /'sharp'/.test(error.message)) {
-            return report({ format: 1, command: parsed.command, ok: false, problems: [{ code: 'sharp-missing', message: 'sharp is not installed for scripts/art. Run npm ci --prefix scripts/art.' }] }, 3);
+            return report({ format: 1, command: parsed.command, ok: false, problems: [{ code: 'sharp-missing', message: 'sharp is not installed for scripts/art. Run npm ci --prefix scripts/art.' }], warnings: [] }, 3);
         }
         throw error;
     }

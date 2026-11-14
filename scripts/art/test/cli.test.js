@@ -23,7 +23,7 @@ test('options are read per command, and a list is split', () => {
 test('a usage error is JSON with exit 2', async () => {
     for (const argv of [[], ['paint'], ['derive', '--pixels'], ['prove', '--only'], ['check', '--colour', 'red'], ['check', 'prove']]) {
         const result = await json(argv);
-        assert.deepEqual([result.ok, result.exitCode, result.problems[0].code], [false, 2, 'usage'], argv.join(' '));
+        assert.deepEqual([result.ok, result.exitCode, result.problems[0].code, result.warnings], [false, 2, 'usage', []], argv.join(' '));
     }
 });
 
@@ -54,5 +54,6 @@ test('the script prints one JSON document and exits with the code of its result'
     const run = spawnSync(process.execPath, [CLI, 'prove', '--only', 'about-tewi'], { encoding: 'utf8' });
 
     assert.equal(run.status, 0, run.stderr);
-    assert.deepEqual(JSON.parse(run.stdout).problems, []);
+    const result = JSON.parse(run.stdout);
+    assert.deepEqual([result.problems, result.warnings], [[], []]);
 });
