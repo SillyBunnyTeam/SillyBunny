@@ -55,6 +55,7 @@ import {
     createThumbnail,
     delay,
     download,
+    escapeHtml,
     getAudioDurationFromDataURL,
     getBase64Async,
     getFileText,
@@ -4475,9 +4476,10 @@ function getOpenRouterModelTemplate(option) {
 
     const price = 0 === Number(model.pricing?.prompt) ? 'Free' : `${tokens_rounded}k t/$ `;
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">
-            <div><strong>${DOMPurify.sanitize(model.name)}</strong> | ${model.context_length} ctx | <small>${price}</small></div>
+        <div class="flex-container flexFlowColumn" title="${escapeHtml(model.id)}">
+            <div><strong>${escapeHtml(model.name)}</strong> | ${escapeHtml(model.context_length)} ctx | <small>${escapeHtml(price)}</small></div>
         </div>
     `));
 }
@@ -4533,9 +4535,10 @@ function getElectronHubModelTemplate(option) {
 
     const capabilities = (iconsContainer.children.length) ? ` | ${iconsContainer.innerHTML}` : '';
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container alignItemsBaseline" title="${DOMPurify.sanitize(model.id)}">
-            <strong>${DOMPurify.sanitize(model.name)}</strong> | ${model.tokens} ctx | <small>${price}</small>${capabilities}
+        <div class="flex-container alignItemsBaseline" title="${escapeHtml(model.id)}">
+            <strong>${escapeHtml(model.name)}</strong> | ${escapeHtml(model.tokens)} ctx | <small>${escapeHtml(price)}</small>${capabilities}
         </div>
     `));
 }
@@ -4594,9 +4597,10 @@ function getChutesModelTemplate(option) {
 
     const capabilities = (iconsContainer.children.length) ? ` | ${iconsContainer.innerHTML}` : '';
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container alignItemsBaseline" title="${DOMPurify.sanitize(model.id)}">
-            <strong>${DOMPurify.sanitize(model.id)}</strong> | ${contextLength} ctx | <small>${price}</small>${capabilities}
+        <div class="flex-container alignItemsBaseline" title="${escapeHtml(model.id)}">
+            <strong>${escapeHtml(model.id)}</strong> | ${escapeHtml(contextLength)} ctx | <small>${escapeHtml(price)}</small>${capabilities}
         </div>
     `));
 }
@@ -5382,9 +5386,10 @@ function getAimlapiModelTemplate(option) {
 
     const vendor = model.id.split('/')[0];
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">
-            <div><strong>${DOMPurify.sanitize(model.info?.name || model.name || model.id)}</strong> | ${vendor}</div>
+        <div class="flex-container flexFlowColumn" title="${escapeHtml(model.id)}">
+            <div><strong>${escapeHtml(model.info?.name || model.name || model.id)}</strong> | ${escapeHtml(vendor)}</div>
         </div>
     `));
 }

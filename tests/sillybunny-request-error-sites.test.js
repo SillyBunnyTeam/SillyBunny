@@ -58,6 +58,7 @@ jest.unstable_mockModule('../public/scripts/sse-stream.js', () => ({
 jest.unstable_mockModule('../public/scripts/resumable-generation.js', () => ({ fetchResumable }));
 jest.unstable_mockModule('../public/scripts/utils.js', () => ({
     delay: nothing,
+    escapeHtml: nothing,
     getSortableDelay: nothing,
     getStringHash: nothing,
     onlyUnique: nothing,

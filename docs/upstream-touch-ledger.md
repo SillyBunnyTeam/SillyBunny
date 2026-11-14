@@ -807,6 +807,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-11 UI polish sweep (PR #870). |
 | Owner | UI overhaul integrator. |
 
+### `public/scripts/openai.js`, `public/scripts/textgen-models.js`, and `public/scripts/horde.js` - escaped fields in the select2 model templates
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/openai.js`, `public/scripts/textgen-models.js`, `public/scripts/horde.js`. |
+| Area | Settings: the select2 model templates (`templateResult`) of the model drop-downs, which build a string that jQuery parses from model catalogue fields. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `escapeHtml()` in `public/scripts/utils.js` and `plainText()` in `public/scripts/sillybunny-model-details.js`; no SillyBunny module owns the templates. |
+| Adapter shape | Under a `// SillyBunny:` marker in each template, every interpolated catalogue field (names, ids, descriptions, prices, context sizes, worker figures, and the `title` and `href` attributes) goes through `escapeHtml()` in place of `DOMPurify.sanitize()` or no escaping. `openai.js`: `getOpenRouterModelTemplate`, `getElectronHubModelTemplate`, `getChutesModelTemplate`, `getAimlapiModelTemplate`. `textgen-models.js`: `getMancerModelTemplate`, `getTogetherModelTemplate`, `getInfermaticAIModelTemplate`, `getDreamGenModelTemplate`, `getOpenRouterModelTemplate`, `getVllmModelTemplate`, `getAphroditeModelTemplate` (its `DOMPurify` import is gone). `horde.js`: `getHordeModelTemplate` reduces each field with `plainText()` instead of the `strip()` that set `innerHTML` on a detached element, escapes it where it is interpolated, and makes a link only for an `http(s)` address. Markup for a normal model is unchanged; a missing numeric field shows as empty where it showed the word `undefined`. `getNanoGptModelTemplate` already builds text nodes and is unchanged. |
+| Protecting tests | `tests/unit/select2-model-templates.test.js` (the markup for a normal model before and after, hostile names, descriptions, numbers and addresses, for every template); `tests/sillybunny-request-error-sites.test.js` (loads `horde.js`); `tests/nanogpt-controls.e2e.js`, `tests/horde-model-links.e2e.js`, `tests/openrouter-providers.e2e.js`. |
+| Validation | 2026-11-14: `npm run lint` in the root and in `tests/` (0 errors), `npm run test:unit` in `tests/` (641 suites, 12584 passed, 2 skipped), `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and 16 e2e specs that open the model pickers or load the three files (484 passed). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-14 UI polish sweep (task 4.16). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/openai.js` - impersonate first-person defaults
 | Field | Value |
 | --- | --- |

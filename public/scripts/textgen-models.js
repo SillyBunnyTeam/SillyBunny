@@ -1,4 +1,3 @@
-import { DOMPurify } from '../lib.js';
 import { amount_gen, eventSource, event_types, getRequestHeaders, max_context, online_status, setGenerationParamsFromPreset } from '../script.js';
 import { textgenerationwebui_settings as textgen_settings, textgen_types } from './textgen-settings.js';
 import { tokenizers } from './tokenizers.js';
@@ -6,7 +5,7 @@ import { renderTemplateAsync } from './templates.js';
 import { POPUP_TYPE, callGenericPopup } from './popup.js';
 import { t } from './i18n.js';
 import { accountStorage } from './util/AccountStorage.js';
-import { localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
+import { escapeHtml, localizePagination, PAGINATION_TEMPLATE, textValueMatcher } from './utils.js';
 import { isMobile } from './RossAscends-mods.js';
 import { updateServiceTierOptions } from './service-tiers.js';
 // SillyBunny: model details for the shared picker rows of the Connections select rows.
@@ -915,9 +914,10 @@ function getMancerModelTemplate(option) {
     const creditsPerCompletion = model.limits?.completion * model.pricing?.completion;
     const creditsTotal = Math.round(creditsPerPrompt + creditsPerCompletion).toFixed(0);
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.name)}</strong> | <span>${model.limits?.context} ctx</span> / <span>${model.limits?.completion} res</span> | <small>Credits per request (max): ${creditsTotal}</small></div>
+            <div><strong>${escapeHtml(model.name)}</strong> | <span>${escapeHtml(model.limits?.context)} ctx</span> / <span>${escapeHtml(model.limits?.completion)} res</span> | <small>Credits per request (max): ${escapeHtml(creditsTotal)}</small></div>
         </div>
     `));
 }
@@ -929,10 +929,11 @@ function getTogetherModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong> | <span>${model.context_length || '???'} tokens</span></div>
-            <div><small>${DOMPurify.sanitize(model.description)}</small></div>
+            <div><strong>${escapeHtml(model.id)}</strong> | <span>${escapeHtml(model.context_length || '???')} tokens</span></div>
+            <div><small>${escapeHtml(model.description)}</small></div>
         </div>
     `));
 }
@@ -944,9 +945,10 @@ function getInfermaticAIModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong></div>
+            <div><strong>${escapeHtml(model.id)}</strong></div>
         </div>
     `));
 }
@@ -958,9 +960,10 @@ function getDreamGenModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong></div>
+            <div><strong>${escapeHtml(model.id)}</strong></div>
         </div>
     `));
 }
@@ -977,9 +980,10 @@ function getOpenRouterModelTemplate(option) {
 
     const price = 0 === Number(model.pricing?.prompt) ? 'Free' : `${tokens_rounded}k t/$ `;
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
-        <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">
-            <div><strong>${DOMPurify.sanitize(model.name)}</strong> | ${model.context_length} ctx | <small>${price}</small></div>
+        <div class="flex-container flexFlowColumn" title="${escapeHtml(model.id)}">
+            <div><strong>${escapeHtml(model.name)}</strong> | ${escapeHtml(model.context_length)} ctx | <small>${escapeHtml(price)}</small></div>
         </div>
     `));
 }
@@ -991,9 +995,10 @@ function getVllmModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong></div>
+            <div><strong>${escapeHtml(model.id)}</strong></div>
         </div>
     `));
 }
@@ -1005,9 +1010,10 @@ function getAphroditeModelTemplate(option) {
         return option.text;
     }
 
+    // SillyBunny: catalogue fields are untrusted, so every interpolated field is escaped before jQuery parses the markup.
     return $((`
         <div class="flex-container flexFlowColumn">
-            <div><strong>${DOMPurify.sanitize(model.id)}</strong></div>
+            <div><strong>${escapeHtml(model.id)}</strong></div>
         </div>
     `));
 }
