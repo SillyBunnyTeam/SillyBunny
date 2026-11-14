@@ -13,6 +13,7 @@ Commands:
   derive    Derive every output from its master and report the files that would change.
   prove     Derive every output again and compare it with the shipped file, byte for byte.
   bump      Give a new cache key to every group whose files changed since its key did.
+  notice    Make the generated region of assets-src/art/NOTICE.md from the provenance records.
 
 Options:
   --root <dir>        The SillyBunny checkout. Default: the one that holds this script.
@@ -20,6 +21,7 @@ Options:
   --only <id,id>      derive, prove: only these assets.
   --write             derive: write the changed outputs and their sha256 in the manifest.
                       bump: write the new keys into their files and the manifest.
+                      notice: write the generated region.
   --pixels            prove: compare encoded pictures by their decoded pixels, for an encoder that gives other bytes.
   --today <day>       bump: the day of a new key, as YYYY-MM-DD. Default: today in UTC.
   --key <key>         bump: the key every changed key takes, such as 20261114a.
@@ -34,6 +36,7 @@ const COMMANDS = Object.freeze({
     derive: { run: 'runDerive', options: ['only', 'write'] },
     prove: { run: 'runProve', options: ['only', 'pixels'] },
     bump: { run: 'runBump', options: ['write', 'today', 'key'] },
+    notice: { run: 'runNotice', options: ['write'] },
 });
 const VALUE_OPTIONS = Object.freeze(['root', 'manifest', 'only', 'today', 'key']);
 const FLAG_OPTIONS = Object.freeze(['write', 'pixels', 'help']);

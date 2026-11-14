@@ -5,6 +5,7 @@ import { encoderMismatches } from './codec.js';
 import { deriveAsset, isDerived } from './derive.js';
 import { applyBump, keyProblems, planBump } from './keys.js';
 import { MANIFEST_PATH, mastersOf, outputFile, outputsOf, readManifest } from './manifest.js';
+import { NOTICE_PATH, noticeState } from './notice.js';
 import { ArtProblem, exitCodeOf } from './problem.js';
 import { proveArt } from './prove.js';
 import { sha256 } from './raster.js';
@@ -53,7 +54,28 @@ export async function runCheck(options) {
     }
     const { summary, problems } = await checkArt(options.root, manifest);
     problems.push(...keyProblems(options.root, manifest));
+    problems.push(...noticeState(options.root, manifest).problems);
     return finish('check', { summary }, problems);
+}
+
+/**
+ * Makes the generated region of NOTICE.md from the provenance records. Without `write` it only reports whether the
+ * region is stale.
+ * @param {CommandOptions} options
+ * @returns {Promise<CommandRun>}
+ */
+export async function runNotice(options) {
+    const { manifest, failed } = loadManifest('notice', options);
+    if (failed) {
+        return failed;
+    }
+    const { current, expected, problems } = noticeState(options.root, manifest);
+    const stale = problems.some(({ code }) => code === 'notice-stale');
+    if (!options.write || !stale) {
+        return finish('notice', { write: Boolean(options.write), path: NOTICE_PATH, stale }, problems);
+    }
+    writeAtomically(join(options.root, NOTICE_PATH), expected);
+    return finish('notice', { write: true, path: NOTICE_PATH, stale: false, written: current !== expected }, []);
 }
 
 /**
