@@ -57,6 +57,49 @@ describe('Data & Security settings split', () => {
     });
 });
 
+describe('Messages settings groups', () => {
+    let previousCSS;
+    beforeAll(() => {
+        previousCSS = globalThis.CSS;
+        globalThis.CSS = { ...previousCSS, escape: value => String(value) };
+    });
+    afterAll(() => {
+        globalThis.CSS = previousCSS;
+    });
+
+    const bodyOf = (container, id) => container.querySelector(`[data-sb-category="${id}"] > .sb-settings-category-body`);
+
+    test('moves every required section into the page', () => {
+        expect(splitAuthoredSettings().missing).toEqual([]);
+    });
+
+    test.each([
+        ['auto-swipe', '#auto_swipe', ['auto_swipe', 'auto_swipe_minimum_length', 'auto_swipe_blacklist', 'auto_swipe_blacklist_threshold']],
+        ['auto-continue', '#auto_continue_enabled', ['auto_continue_enabled', 'auto_continue_allow_chat_completions', 'auto_continue_target_length']],
+        ['smooth-streaming', '#smooth_streaming', ['smooth_streaming', 'smooth_streaming_no_think', 'smooth_streaming_speed']],
+    ])('%s is its own group, led by the switch that enables it', (id, enabler, controls) => {
+        const body = bodyOf(splitAuthoredSettings().messages, id);
+        expect(body.dataset.sbEnabledBy).toBe(enabler);
+        const ids = controls.map(control => body.querySelector(`#${control}`)?.id);
+        expect(ids).toEqual(controls);
+        const first = body.querySelector(':scope > :is(.checkbox_label, .ds-row, label)');
+        expect(first.contains(body.querySelector(enabler))).toBe(true);
+    });
+
+    test('Aggressive DOM Unloading is enabled by its own switch', () => {
+        const group = splitAuthoredSettings().messages.querySelector('[name="AggressiveDomUnloadToggles"]');
+        expect(group.dataset.sbEnabledBy).toBe('#aggressive_dom_unload');
+    });
+
+    test('the Messages group titles are group headings; the tabs that have not adopted the contract keep the flat header', () => {
+        const split = splitAuthoredSettings();
+        const titles = container => [...container.querySelectorAll('.sb-settings-category-title')];
+        expect(titles(split.messages).length).toBeGreaterThan(0);
+        expect(titles(split.messages).every(title => title.classList.contains('ds-pref-group-heading'))).toBe(true);
+        expect(titles(split.interface).some(title => title.classList.contains('ds-pref-group-heading'))).toBe(false);
+    });
+});
+
 describe('Account popup', () => {
     test('leaves Settings Snapshots and Download Backup to Data & Security', () => {
         const templateHtml = readFileSync(path.join(repoRoot, 'public', 'scripts', 'templates', 'userProfile.html'), 'utf8');

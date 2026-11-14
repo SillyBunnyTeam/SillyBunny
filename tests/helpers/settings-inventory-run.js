@@ -13,7 +13,7 @@ import {
     normalizeControl,
 } from './settings-inventory.js';
 import { ACCEPTED_DIFFERENCES, exceptionFor } from './settings-inventory-rules.js';
-import { SAVE_WATCH_MS, collectSection, markControl, reachMarked, roundTrip } from './settings-inventory-steps.js';
+import { SAVE_WATCH_MS, collectSection, enableDependentSets, markControl, reachMarked, restoreDependentSets, roundTrip } from './settings-inventory-steps.js';
 
 const describe = control => `${control.kind}${control.name ? ` "${control.name}"` : ''}${control.group ? ` under "${control.group}"` : ''}`;
 
@@ -94,7 +94,16 @@ async function warmUp(page, recorder, { root, skip }, controls) {
  * `only` keeps the controls for which it answers true (each has `shown`): what a Connections source shows and the standard one does not.
  * @returns {Promise<{ section: any, findings: string[] }>}
  */
-export async function recordSection(page, recorder, { key, root, skip, roundTrip: exercise, only = () => true }) {
+export async function recordSection(page, recorder, target) {
+    const turned = await enableDependentSets(page, recorder, target.root);
+    try {
+        return await recordEnabledSection(page, recorder, target);
+    } finally {
+        await restoreDependentSets(page, recorder, turned);
+    }
+}
+
+async function recordEnabledSection(page, recorder, { key, root, skip, roundTrip: exercise, only = () => true }) {
     const { before, after } = await collectSection(page, root, skip);
     const findings = [];
     const controls = [];
@@ -170,7 +179,16 @@ export async function recordSection(page, recorder, { key, root, skip, roundTrip
  * @param {{ key: string, root: string, section: any, fixture?: any, accepted?: readonly any[], only?: (live: any) => boolean }} target
  * @returns {Promise<string[]>} One message per failure.
  */
-export async function checkSection(page, recorder, { key, root, section: recorded, fixture = null, accepted = ACCEPTED_DIFFERENCES, only = () => true }) {
+export async function checkSection(page, recorder, target) {
+    const turned = await enableDependentSets(page, recorder, target.root);
+    try {
+        return await checkEnabledSection(page, recorder, target);
+    } finally {
+        await restoreDependentSets(page, recorder, turned);
+    }
+}
+
+async function checkEnabledSection(page, recorder, { key, root, section: recorded, fixture = null, accepted = ACCEPTED_DIFFERENCES, only = () => true }) {
     const skip = recorded.skip ?? [];
     const failures = [];
     const after = (await collectSection(page, root, skip)).after.filter(only);

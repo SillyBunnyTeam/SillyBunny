@@ -34,9 +34,10 @@ export const SB_DATA_SECURITY_CONTAINER_ID = 'sb-data-security-content';
  * Streaming and sound controls lifted out of `[name="MiscellaneousToggles"]`.
  *
  * They are listed individually rather than as one group because the group also holds Interface
- * toggles, and they stay in this order because `toggle-dependent.css` hides the speed and no-think
- * controls with sibling combinators off `#smooth_streaming_control` -- moving them apart would
- * silently stop that progressive disclosure from working.
+ * toggles, and they stay in this order because `toggle-dependent.css` still hides the speed and
+ * no-think controls with sibling combinators off `#smooth_streaming_control`. The Messages page
+ * overrides that and shows them insensitive instead (see `enabledBy`); other pages that carry the
+ * controls keep the upstream disclosure.
  */
 const SB_STREAMING_CONTROL_IDS = Object.freeze([
     'smooth_streaming_control',
@@ -304,7 +305,11 @@ export const SB_SETTINGS_CATEGORY_CLASS = 'sb-settings-category';
  * building, and diagnostics through one 2000px section. Each tab is regrouped by meaning into
  * named sub-categories, regardless of who authored a control.
  *
- * `root` names the element whose children are reordered. Entries come in three shapes:
+ * `root` names the element whose children are reordered. `contract: true` marks a tab that is built to
+ * the settings page contract: its group titles are `ds-pref-group-heading` elements, and `sillybunny-settings-presentation.js`
+ * turns its selects, numbers and text areas into rows. An entry's `enabledBy` names the switch that a group
+ * depends on: the switch is the group's first row and the other rows are insensitive while it is off.
+ * Entries come in three shapes:
  *
  * - `section`: an existing section that already reads as one sub-category, moved into place whole.
  * - `adopt`: an existing group that carries its own heading (an `h4`, and optionally the `small`
@@ -378,6 +383,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
     }),
     messages: Object.freeze({
         root: `#${SB_USER_SETTINGS_CONTAINER_IDS.messages}`,
+        contract: true,
         entries: Object.freeze([
             {
                 id: 'sending',
@@ -419,27 +425,57 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
                 rows: [
                     '.checkbox-container:has(#swipes-checkbox)',
                     '#image_overswipe',
-                    '[data-sb-settings-compound="auto-swipe"]',
-                    '[data-sb-settings-compound="auto-continue"]',
+                ],
+            },
+            {
+                id: 'auto-swipe',
+                title: 'Auto-swipe',
+                description: 'Automatically reject and re-generate AI message based on configurable criteria.',
+                descriptionKey: 'Automatically reject and re-generate AI message based on configurable criteria',
+                enabledBy: '#auto_swipe',
+                rows: [
+                    '#auto_swipe',
+                    '#auto_swipe_minimum_length',
+                    '#auto_swipe_blacklist',
+                    '#auto_swipe_blacklist_threshold',
+                ],
+            },
+            {
+                id: 'auto-continue',
+                title: 'Auto-Continue',
+                description: 'Automatically \'continue\' a response if the model stopped before reaching a certain amount of tokens.',
+                enabledBy: '#auto_continue_enabled',
+                rows: [
+                    '#auto_continue_enabled',
+                    '#auto_continue_allow_chat_completions',
+                    '#auto_continue_target_length',
                 ],
             },
             {
                 id: 'streaming',
                 title: 'Streaming',
                 description: 'Live text output while a reply generates',
-                // One parent and this order: `toggle-dependent.css` hides the speed and no-think
-                // rows with `~` combinators off `#smooth_streaming_control`.
                 rows: [
                     '#streaming_fps',
+                    '#stream_fade_in',
+                ],
+            },
+            {
+                id: 'smooth-streaming',
+                title: 'Smooth Streaming',
+                description: 'Reveal streamed replies character by character, with pauses at punctuation.',
+                enabledBy: '#smooth_streaming',
+                // One parent and this order: the upstream `~` combinators off `#smooth_streaming_control`
+                // in `toggle-dependent.css` still address the speed and no-think rows.
+                rows: [
                     '#smooth_streaming_control',
                     '#smooth_streaming_no_think_control',
                     '#smooth_streaming_speed_control',
-                    '#stream_fade_in',
                 ],
             },
             { id: 'ios-streaming', adopt: '[name="IOSWebKitStreamingToggles"]' },
             { id: 'android-streaming', adopt: '[name="AndroidStreamingToggles"]' },
-            { id: 'dom-unloading', adopt: '[name="AggressiveDomUnloadToggles"]' },
+            { id: 'dom-unloading', adopt: '[name="AggressiveDomUnloadToggles"]', enabledBy: '#aggressive_dom_unload' },
             {
                 id: 'sounds',
                 title: 'Sounds',
@@ -564,11 +600,20 @@ function ensureCategoryHeading(category) {
 }
 
 /**
+ * The class list of a category title. A tab built to the page contract uses the group heading class that the row factories use.
+ * @param {boolean} contract
+ */
+function categoryTitleClass(contract) {
+    return contract ? 'ds-pref-group-heading sb-settings-category-title' : 'sb-settings-category-title';
+}
+
+/**
  * Creates an empty category element for `entry`.
- * @param {{id: string, title?: string, description?: string}} entry
+ * @param {{id: string, title?: string, description?: string, descriptionKey?: string}} entry
+ * @param {boolean} [contract] whether the tab is built to the page contract
  * @returns {HTMLElement}
  */
-function createSettingsCategory(entry) {
+function createSettingsCategory(entry, contract = false) {
     const category = document.createElement('section');
     category.className = `${SB_FLAT_SECTION_CLASS} ${SB_SETTINGS_CATEGORY_CLASS}`;
     category.dataset.sbCategory = entry.id;
@@ -576,14 +621,14 @@ function createSettingsCategory(entry) {
     if (entry.title) {
         const heading = ensureCategoryHeading(category);
         const title = document.createElement('h4');
-        title.className = 'sb-settings-category-title';
+        title.className = categoryTitleClass(contract);
         title.dataset.i18n = entry.title;
         title.textContent = entry.title;
         heading.appendChild(title);
 
         if (entry.description) {
             const description = document.createElement('small');
-            description.dataset.i18n = entry.description;
+            description.dataset.i18n = entry.descriptionKey ?? entry.description;
             description.textContent = entry.description;
             heading.appendChild(description);
         }
@@ -601,7 +646,7 @@ function createSettingsCategory(entry) {
  * @param {Set<HTMLElement>} sources
  * @returns {HTMLElement|null}
  */
-function placeRowsCategory(root, entry, sources) {
+function placeRowsCategory(root, entry, sources, contract) {
     let category = root.querySelector(`:scope .${SB_SETTINGS_CATEGORY_CLASS}[data-sb-category="${entry.id}"]`);
 
     if (entry.body) {
@@ -610,7 +655,7 @@ function placeRowsCategory(root, entry, sources) {
             return category instanceof HTMLElement ? category : null;
         }
         if (!(category instanceof HTMLElement)) {
-            category = createSettingsCategory(entry);
+            category = createSettingsCategory(entry, contract);
         }
         body.classList.add('ds-pref-group', 'sb-settings-category-body');
         if (body.parentElement !== category) {
@@ -625,7 +670,7 @@ function placeRowsCategory(root, entry, sources) {
     }
 
     if (!(category instanceof HTMLElement)) {
-        category = createSettingsCategory(entry);
+        category = createSettingsCategory(entry, contract);
     }
 
     let body = category.querySelector(':scope > .sb-settings-category-body');
@@ -633,6 +678,9 @@ function placeRowsCategory(root, entry, sources) {
         body = document.createElement('div');
         body.className = 'ds-pref-group sb-settings-category-body';
         category.appendChild(body);
+    }
+    if (entry.enabledBy) {
+        body.dataset.sbEnabledBy = entry.enabledBy;
     }
 
     if (!areChildrenInOrder(body, rows)) {
@@ -647,11 +695,12 @@ function placeRowsCategory(root, entry, sources) {
 /**
  * Places one `adopt` entry: the group's own heading becomes the category heading.
  * @param {HTMLElement} root
- * @param {{id: string, adopt: string, boxed?: boolean}} entry
+ * @param {{id: string, adopt: string, boxed?: boolean, enabledBy?: string}} entry
  * @param {Set<HTMLElement>} sources
+ * @param {boolean} contract whether the tab is built to the page contract
  * @returns {HTMLElement|null}
  */
-function placeAdoptedCategory(root, entry, sources) {
+function placeAdoptedCategory(root, entry, sources, contract) {
     const existing = root.querySelector(`:scope .${SB_SETTINGS_CATEGORY_CLASS}[data-sb-category="${entry.id}"]`);
     if (existing instanceof HTMLElement) {
         return existing;
@@ -662,13 +711,13 @@ function placeAdoptedCategory(root, entry, sources) {
         return null;
     }
 
-    const category = createSettingsCategory(entry);
+    const category = createSettingsCategory(entry, contract);
     const headingElement = group.querySelector(':scope > :is(h3, h4, .standoutHeader)');
     if (headingElement instanceof HTMLElement) {
         const heading = ensureCategoryHeading(category);
         const description = headingElement.nextElementSibling;
         heading.appendChild(headingElement);
-        headingElement.classList.add('sb-settings-category-title');
+        headingElement.classList.add(...categoryTitleClass(contract).split(' '));
         if (description instanceof HTMLElement && description.tagName === 'SMALL') {
             heading.appendChild(description);
         }
@@ -678,6 +727,9 @@ function placeAdoptedCategory(root, entry, sources) {
     group.classList.add('sb-settings-category-body');
     if (entry.boxed !== false) {
         group.classList.add('ds-pref-group');
+    }
+    if (entry.enabledBy) {
+        group.dataset.sbEnabledBy = entry.enabledBy;
     }
 
     // The category takes the group's place first, so a group that is never reordered afterwards
@@ -751,9 +803,9 @@ export function applySettingsSectionOrder(scope, tabId) {
             // takes the top-level header metric like every sibling it now sits beside.
             element?.classList.add(SB_FLAT_SECTION_TOP_CLASS);
         } else if (entry.adopt) {
-            element = placeAdoptedCategory(root, entry, sources);
+            element = placeAdoptedCategory(root, entry, sources, order.contract === true);
         } else {
-            element = placeRowsCategory(root, entry, sources);
+            element = placeRowsCategory(root, entry, sources, order.contract === true);
         }
 
         if (element instanceof HTMLElement && !placed.includes(element)) {

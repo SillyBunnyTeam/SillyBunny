@@ -1,5 +1,6 @@
 import { yaml } from '../lib.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
+import { loadListEditorStyles } from './sillybunny-editor/list-shell.js';
 import { createButtonRow, createPropertyRow, createRow, createSpinRow, createSwitchRow, createTextAreaField } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { createDataSecurityGroup } from './sillybunny-data-security.js';
@@ -26,7 +27,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             autoStashEnabled: false,
         },
         consoleLogs: {
-            /** @type {{ statusPill: HTMLElement, refreshButton: HTMLButtonElement, pauseButton: HTMLButtonElement, statusNote: HTMLElement, output: HTMLElement, verboseLoggingStatus: HTMLElement, verboseLoggingActionButton: HTMLInputElement } | null} */
+            /** @type {{ statusPill: HTMLElement, refreshRow: { setDisabled: (disabled: boolean) => void }, pauseLabel: HTMLElement, statusNote: HTMLElement, output: HTMLElement, verboseLoggingStatus: HTMLElement, verboseLoggingActionButton: HTMLInputElement } | null} */
             refs: null,
             entries: [],
             latestId: 0,
@@ -118,8 +119,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             return;
         }
 
-        refs.pauseButton.textContent = state.paused ? 'Resume Live' : 'Pause Live';
-        setButtonDisabled(refs.refreshButton, state.busy);
+        refs.pauseLabel.textContent = state.paused ? 'Resume Live' : 'Pause Live';
+        refs.refreshRow.setDisabled(state.busy);
         refs.verboseLoggingActionButton.disabled = state.busy || state.configBusy || !state.configLoaded;
     }
 
@@ -1722,55 +1723,53 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
         const column = createElement('div', { className: 'sb-shell-column sb-console-log-column' });
         const { section: card, body: cardBody } = createServerToolsGroup('Console Logs', 'Watch the recent terminal output from the running SillyBunny process here, without keeping a terminal window open on the side. This mirrors the current process output captured from stdout and stderr. Only logs from the current SillyBunny session are available here.', 'sb-console-log-card');
-        const header = createElement('div', { className: 'ds-row ds-row-actions sb-console-log-toolbar' });
         const statusPill = createElement('span', { className: 'sb-server-pill', text: 'Loading…' });
-        const actions = createElement('div', { className: 'ds-row-suffix sb-console-log-actions' });
-        const buttonGroup = createElement('div', { className: 'ds-button-group' });
-        const refreshButton = createElement('button', { className: 'ds-button sb-server-action', text: 'Refresh Now', attrs: { type: 'button' } });
-        const pauseButton = createElement('button', { className: 'ds-button sb-server-action', text: 'Pause Live', attrs: { type: 'button' } });
-        const statusNote = createElement('div', { className: 'sb-server-note' });
+        const statusNote = createElement('small', { className: 'ds-row-subtitle sb-console-log-note' });
+        const { row: header } = createRow({ label: '', field: 'console-log-status' });
+        header.querySelector('.ds-row-label')?.append(statusPill);
+        header.querySelector('.ds-row-text')?.append(statusNote);
+        const state = getConsoleLogsState();
+        const refreshRow = createButtonRow({
+            label: 'Refresh Now',
+            field: 'console-log-refresh',
+            onActivate: () => {
+                void refreshConsoleLogs({ forceFull: state.latestId === 0 });
+            },
+        });
+        const pauseRow = createButtonRow({ label: 'Pause Live', field: 'console-log-pause', onActivate: toggleConsoleLogsPolling });
+        const pauseLabel = pauseRow.row.querySelector('.ds-row-label');
+
         const outputFrame = createElement('div', { className: 'sb-console-log-frame' });
         const output = createElement('pre', { className: 'sb-server-output sb-console-log-output', attrs: { tabindex: '0' } });
-        const verboseLoggingCard = createElement('section', { className: 'ds-pref-group sb-console-log-verbose-card', attrs: { 'data-sb-presentation': 'manual' } });
-        const verboseLoggingHeader = createElement('label', { className: 'ds-row ds-row-switch' });
-        const verboseLoggingCopy = createElement('span', { className: 'ds-row-text' });
-        const verboseLoggingTitle = createElement('strong', { className: 'ds-row-label', text: 'Verbose Debug Logging' });
-        const verboseLoggingDescription = createElement('small', { className: 'ds-row-subtitle', text: 'Enable full debugging console output for advanced troubleshooting. Changes are saved to config.yaml and apply after a restart.' });
-        const verboseLoggingStatus = createElement('span', { className: 'sb-server-inline-state', text: 'Loading…' });
-        const verboseLoggingSuffix = createElement('span', { className: 'ds-row-suffix' });
         const verboseLoggingActionButton = createElement('input', {
-            className: 'sb-switch sb-console-log-verbose-action',
-            attrs: { type: 'checkbox', role: 'switch', 'aria-label': 'Verbose Debug Logging' },
+            className: 'sb-console-log-verbose-action',
+            attrs: { type: 'checkbox', 'aria-label': 'Verbose Debug Logging' },
         });
+        const { row: verboseLoggingRow } = createSwitchRow({
+            label: 'Verbose Debug Logging',
+            subtitle: 'Enable full debugging console output for advanced troubleshooting. Changes are saved to config.yaml and apply after a restart.',
+            field: 'console-log-verbose',
+            input: verboseLoggingActionButton,
+        });
+        const verboseLoggingStatus = createElement('small', { className: 'ds-row-subtitle sb-console-log-state', text: 'Loading…' });
+        verboseLoggingRow.querySelector('.ds-row-text')?.append(verboseLoggingStatus);
 
-        buttonGroup.append(refreshButton, pauseButton);
-        actions.append(statusPill, buttonGroup);
-        header.append(actions);
         outputFrame.append(output);
-        cardBody.append(header, statusNote, outputFrame);
-        verboseLoggingCopy.append(verboseLoggingTitle, verboseLoggingDescription);
-        verboseLoggingSuffix.append(verboseLoggingActionButton);
-        verboseLoggingHeader.append(verboseLoggingCopy, verboseLoggingSuffix);
-        verboseLoggingCard.append(verboseLoggingHeader, verboseLoggingStatus);
+        cardBody.append(header, outputFrame, refreshRow.row, pauseRow.row, verboseLoggingRow);
         column.append(card);
-        column.append(verboseLoggingCard);
         scroller.appendChild(column);
+        void loadListEditorStyles();
 
-        const state = getConsoleLogsState();
         state.refs = {
             statusPill,
-            refreshButton,
-            pauseButton,
+            refreshRow,
+            pauseLabel,
             statusNote,
             output,
             verboseLoggingStatus,
             verboseLoggingActionButton,
         };
 
-        refreshButton.addEventListener('click', () => {
-            void refreshConsoleLogs({ forceFull: state.latestId === 0 });
-        });
-        pauseButton.addEventListener('click', toggleConsoleLogsPolling);
         verboseLoggingActionButton.addEventListener('change', () => {
             void toggleConsoleLogsVerboseLogging();
         });

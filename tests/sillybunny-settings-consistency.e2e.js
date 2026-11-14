@@ -414,6 +414,37 @@ test.describe('Settings header consistency', () => {
         }
     });
 
+    test('Messages keeps a dependent set in its own group and leaves its rows insensitive while the switch is off', async ({ page }) => {
+        const messages = await openSettingsTab(page, 'messages', 'right');
+        const groups = [
+            ['auto-swipe', '#auto_swipe', ['#auto_swipe_minimum_length', '#auto_swipe_blacklist', '#auto_swipe_blacklist_threshold']],
+            ['auto-continue', '#auto_continue_enabled', ['#auto_continue_allow_chat_completions', '#auto_continue_target_length']],
+            ['smooth-streaming', '#smooth_streaming', ['#smooth_streaming_no_think', '#smooth_streaming_speed']],
+        ];
+        for (const [group, enabler, dependents] of groups) {
+            const body = messages.locator(`[data-sb-category="${group}"] > .sb-settings-category-body`);
+            await expect(body.locator('.ds-row').first().locator(enabler), `${group} starts with its switch`).toHaveCount(1);
+            const input = body.locator(enabler);
+            await input.setChecked(false);
+            for (const dependent of dependents) {
+                await expect(body.locator('.ds-row', { has: page.locator(dependent) }), `${group} ${dependent} while off`).toHaveClass(/is-insensitive/);
+            }
+            await input.setChecked(true);
+            for (const dependent of dependents) {
+                await expect(body.locator('.ds-row', { has: page.locator(dependent) }), `${group} ${dependent} while on`).not.toHaveClass(/is-insensitive/);
+            }
+        }
+    });
+
+    test('Messages fields are select, spin and text-area rows with plain titles', async ({ page }) => {
+        const messages = await openSettingsTab(page, 'messages', 'right');
+        await expect(messages.locator('.ds-select-row:has(#send_on_enter)')).toHaveCount(1);
+        await expect(messages.locator('.ds-row--spin:has(#ooc_context_depth)')).toHaveCount(1);
+        await expect(messages.locator('.ds-row-textarea:has(#auto_swipe_blacklist)')).toHaveCount(1);
+        const titles = await messages.locator('.ds-pref-group .ds-row-label').evaluateAll(labels => labels.map(label => label.textContent.trim()).filter(Boolean));
+        expect(titles.filter(title => /[:：]$/.test(title)), 'row titles that still end in a colon').toEqual([]);
+    });
+
     test('Appearance and Formatting keep migrated groups flat and aligned', async ({ page }) => {
         const appearance = await openSettingsTab(page, 'appearance', 'right');
         const appearanceMetrics = await appearance.evaluate(root => {

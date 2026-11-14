@@ -37,8 +37,9 @@
 
 import { formatSettingsMacroExamples } from './sillybunny-settings-macros.js';
 import { t } from './i18n.js';
-import { createEntryRow, createSpinRow } from './sillybunny-editor/rows.js';
+import { createEntryRow, createSpinRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
+import { SB_SETTINGS_SECTION_ORDER } from './sillybunny-settings-content.js';
 
 /**
  * Placeholder description, used where a section has no copy of its own.
@@ -332,8 +333,138 @@ function normalizeBackgroundSettings(scope) {
     gallery.dataset.sbBackgroundObserverBound = 'true';
 }
 
-/** @param {HTMLElement} scope */
-function normalizeCustomizeRows(scope) {
+/**
+ * Whether a Customize tab is built to the settings page contract: its selects, numbers and text areas
+ * become rows, and a group that depends on a switch follows that switch (see `SB_SETTINGS_SECTION_ORDER`).
+ * @param {string} tabName
+ */
+function isContractTab(tabName) {
+    return SB_SETTINGS_SECTION_ORDER[tabName]?.contract === true;
+}
+
+/** Rows that already have the form of their control, or that hold more than one control. */
+const SB_ADOPTED_ROW_SELECTOR = '.ds-row-switch, .ds-row-slider, .ds-select-row, .ds-row--spin, .ds-row-textarea, .ds-row-entry, .ds-row-expander__header';
+
+/** The controllers of the rows this pass built, by row, so that a dependent set can make a row insensitive through its own controller. */
+const sbRowControllers = new WeakMap();
+
+/**
+ * The title a row shows, as plain text and without the colon an upstream label ends with. The source node keeps
+ * its text, so the translation key and the stored string do not change.
+ * @param {HTMLElement} label
+ */
+function readRowTitle(label) {
+    const copy = /** @type {HTMLElement} */ (label.cloneNode(true));
+    for (const part of copy.querySelectorAll('.ds-row-subtitle, .fa-circle-info, i, svg, script, style, .sr-only')) part.remove();
+    return normalizeFieldTitle(copy.textContent ?? '');
+}
+
+/**
+ * Gives a field row of a contract tab the row that fits its control: a select row, a spin row or a text-area field.
+ * The control keeps its node, id, value and listeners; the title and the subtitle move into the new row with their
+ * translation keys. A row with any other control, or with more than one, is left as the row pass made it.
+ * @param {HTMLElement} row
+ */
+function adoptFieldRow(row) {
+    if (row.matches(SB_ADOPTED_ROW_SELECTOR) || row.closest(`${SB_SKIP_SELECTOR}, .ds-row-expander-content`) || row.children.length !== 2) return;
+    const text = row.querySelector(':scope > .ds-row-text');
+    const suffix = row.querySelector(':scope > .ds-row-suffix');
+    const label = text?.querySelector(':scope > .ds-row-label');
+    if (!(text instanceof HTMLElement) || !(suffix instanceof HTMLElement) || !(label instanceof HTMLElement)) return;
+
+    const nodes = [...suffix.children].filter(node => !node.matches('.select2-container'));
+    const control = nodes[0];
+    if (nodes.length !== 1 || !(control instanceof HTMLSelectElement || control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement)) return;
+    const kind = control instanceof HTMLSelectElement ? (control.multiple || control.size > 1 ? null : 'select')
+        : control instanceof HTMLTextAreaElement ? 'textarea'
+            : control.type === 'number' && !control.dataset.for ? 'spin' : null;
+    const title = readRowTitle(label);
+    if (!kind || !title) return;
+
+    // The generic field pass flagged the control to fill its row; each factory lays its own control out.
+    control.classList.remove('ds-control-flex');
+    const subtitle = text.querySelector('.ds-row-subtitle');
+    const subtitleText = subtitle?.textContent?.trim() ?? '';
+    const field = control.id || control.name || 'customize-field';
+    const options = { label: title, subtitle: subtitleText || undefined, field };
+    /** @type {{row: HTMLElement}} */
+    let built;
+    if (kind === 'select') {
+        built = createSelectRow({ ...options, select: /** @type {HTMLSelectElement} */ (control), searchLabel: t`Search`, emptyText: t`No results` });
+    } else if (kind === 'spin') {
+        built = createSpinRow({ ...options, input: /** @type {HTMLInputElement} */ (control), normalize: false });
+    } else {
+        built = createTextAreaField({ ...options, input: /** @type {HTMLTextAreaElement} */ (control), expandLabel: t`Expand the editor` });
+    }
+
+    // The new captions take the nodes' content, so the translation keys, macro examples and copy placeholders survive.
+    const key = readLabelI18nKey(label);
+    const caption = built.row.querySelector('.ds-row-label');
+    if (key && caption instanceof HTMLElement) caption.dataset.i18n = key;
+    const newSubtitle = built.row.querySelector('.ds-row-subtitle');
+    if (subtitle instanceof HTMLElement && newSubtitle instanceof HTMLElement) {
+        moveCaption(newSubtitle, subtitle, { keepSource: true });
+        if (subtitle.dataset.sbCopyPlaceholder) newSubtitle.dataset.sbCopyPlaceholder = subtitle.dataset.sbCopyPlaceholder;
+    }
+    sbRowControllers.set(built.row, built);
+    row.replaceWith(built.row);
+}
+
+/** @param {HTMLElement} row @param {boolean} insensitive */
+function setRowInsensitive(row, insensitive) {
+    if (row.classList.contains('is-insensitive') === insensitive) return;
+    const controller = sbRowControllers.get(row);
+    if (controller) {
+        controller.setDisabled(insensitive);
+        return;
+    }
+    row.classList.toggle('is-insensitive', insensitive);
+    row.setAttribute('aria-disabled', String(insensitive));
+    for (const control of row.querySelectorAll('input, select, textarea, button')) {
+        if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement || control instanceof HTMLButtonElement)) continue;
+        // A control that something else disables stays disabled when the row becomes sensitive again.
+        if (insensitive && !control.disabled) {
+            control.disabled = true;
+            control.dataset.sbInsensitive = 'true';
+        } else if (!insensitive && control.dataset.sbInsensitive) {
+            control.disabled = false;
+            delete control.dataset.sbInsensitive;
+        }
+    }
+}
+
+const sbDependentBodies = new WeakSet();
+
+/**
+ * Keeps a dependent set in step with its switch: the rows after the enabling switch are insensitive while it is off.
+ * Other code sets the switch without an event, so the group also looks again when the pointer or focus reaches it.
+ * @param {HTMLElement} scope
+ */
+function bindDependentSets(scope) {
+    for (const body of scope.querySelectorAll('[data-sb-enabled-by]')) {
+        const enabler = body instanceof HTMLElement ? scope.querySelector(body.dataset.sbEnabledBy ?? '') : null;
+        if (!(body instanceof HTMLElement) || !(enabler instanceof HTMLInputElement)) continue;
+        const enablerRow = enabler.closest('.ds-row');
+        const sync = () => {
+            for (const row of body.children) {
+                if (row instanceof HTMLElement && row !== enablerRow && row.matches('.ds-row, .ds-row-expander')) setRowInsensitive(row, !enabler.checked);
+            }
+        };
+        if (!sbDependentBodies.has(body)) {
+            sbDependentBodies.add(body);
+            enabler.addEventListener('change', sync);
+            body.addEventListener('pointerover', sync);
+            body.addEventListener('focusin', sync);
+        }
+        sync();
+    }
+}
+
+/**
+ * @param {HTMLElement} scope
+ * @param {string} [tabName]
+ */
+function normalizeCustomizeRows(scope, tabName = '') {
     normalizeBackgroundSettings(scope);
     for (const header of scope.querySelectorAll('[data-sb-settings-compound] > .sb-settings-flat-header')) {
         if (header instanceof HTMLElement) ensureDescription(header, header, true);
@@ -379,6 +510,14 @@ function normalizeCustomizeRows(scope) {
     bindCustomizeSliderCounters(scope);
     bindSettingsSwitchKeyboard(scope);
     normalizeSwitchRowWrappers(scope);
+    if (isContractTab(tabName)) {
+        // A title wrapped in a flex container (upstream baseline layout) would add that container's own box to the row.
+        for (const wrapper of scope.querySelectorAll('.ds-row-label > .flex-container')) wrapper.replaceWith(...wrapper.childNodes);
+        for (const row of scope.querySelectorAll('.ds-row')) {
+            if (row instanceof HTMLElement) adoptFieldRow(row);
+        }
+        bindDependentSets(scope);
+    }
     if (scope.dataset.sbRowEvents === 'true') return;
     scope.dataset.sbRowEvents = 'true';
     // Upstream changes range availability when Fast UI or No Shadows is toggled.
@@ -958,7 +1097,7 @@ export function normalizeSettingsPresentation(scope, options = {}) {
 
     if (SB_CUSTOMIZE_TABS.has(tabName)) {
         const rowsRoot = tabName === 'data-security' ? scope.querySelector('#sb-data-security-content') ?? scope : scope;
-        if (rowsRoot instanceof HTMLElement) normalizeCustomizeRows(rowsRoot);
+        if (rowsRoot instanceof HTMLElement) normalizeCustomizeRows(rowsRoot, tabName);
     }
 
     return report;

@@ -1411,7 +1411,7 @@ const logsEmpty = status({
     title: 'Logs: no console output captured',
     component: 'own',
     root: LOGS_EMPTY,
-    masks: ['[data-sb-panel="logs"] .sb-server-note'],
+    masks: ['[data-sb-panel="logs"] .sb-console-log-note'],
     async open(page) {
         await page.route('**/api/server-admin/logs', route => route.fulfill({ json: { entries: [], latestId: 0, totalBuffered: 0, captureStartedAt: 0 } }));
         await openSettingsTab(page, { shell: 'right', tab: 'logs' });

@@ -321,8 +321,8 @@ export const surfaces = [
         title: 'Customize: Logs',
         shell: 'right',
         tab: 'logs',
-        ready: '[data-sb-panel="logs"] .sb-console-log-toolbar button',
-        masks: ['[data-sb-panel="logs"] .sb-console-log-output', '[data-sb-panel="logs"] .sb-server-pill', '[data-sb-panel="logs"] .sb-server-note'],
+        ready: '[data-sb-panel="logs"] .ds-button-row',
+        masks: ['[data-sb-panel="logs"] .sb-console-log-output', '[data-sb-panel="logs"] .sb-server-pill', '[data-sb-panel="logs"] .sb-console-log-note'],
         sources: [`${SCRIPTS}/sillybunny-server-tools.js`],
     })),
     characterShellPane({

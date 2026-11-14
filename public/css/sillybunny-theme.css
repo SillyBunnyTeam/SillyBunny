@@ -5575,7 +5575,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     min-width: 0;
 }
 
-#CharacterHandlingToggles,
 #MiscellaneousToggles,
 #STscriptToggles,
 .vectors_settings {
@@ -5584,33 +5583,12 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     gap: var(--sb-row-gap);
 }
 
-#CharacterHandlingToggles > .flex-container.alignitemscenter,
 #STscriptToggles > div,
 .vectors_settings .flex-container {
     gap: var(--sb-row-gap);
     min-width: 0;
 }
 
-#CharacterHandlingToggles > .flex-container.alignitemscenter {
-    flex-wrap: wrap;
-    align-items: center;
-    padding: var(--sb-settings-card-padding);
-    border-radius: var(--sb-radius-md);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 70%, transparent);
-}
-
-#CharacterHandlingToggles > .flex-container.alignitemscenter > label {
-    flex: 0 1 180px;
-    min-width: min(180px, 100%);
-    margin: 0;
-}
-
-#CharacterHandlingToggles > .flex-container.alignitemscenter > select {
-    flex: 1 1 190px;
-}
-
-#CharacterHandlingToggles .checkbox_label,
 #MiscellaneousToggles .checkbox_label,
 #STscriptToggles .checkbox_label,
 #tts_container .checkbox_label {
@@ -5910,31 +5888,17 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     gap: 0;
 }
 
-#ChatMessageHandlingSection > .inline-drawer-content > .flex-container:first-child {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 14px;
-}
-
-#ChatMessageHandlingSection > .inline-drawer-content > .flex-container:first-child > .alignitemscenter.flex-container.flexFlowColumn {
-    min-width: min(100%, 210px);
-}
-
-#ChatMessageHandlingSection > .inline-drawer-content > .flex-container:first-child > .alignitemscenter.flex-container.flexFlowColumn,
 #AppearanceLayoutSection [name="FontBlurChatWidthBlock"] > .alignitemscenter.flex-container.flexFlowColumn {
     gap: var(--sb-row-gap);
     align-items: stretch;
 }
 
-#ChatMessageHandlingSection .range-block,
 #AppearanceLayoutSection .range-block {
     gap: 8px 10px;
     margin-bottom: var(--sb-row-gap);
 }
 
-#ChatMessageHandlingSection .range-block-title,
 #AppearanceLayoutSection .range-block-title,
-#CharacterHandlingToggles h4,
 #STscriptToggles h4 {
     display: flex;
     align-items: center;

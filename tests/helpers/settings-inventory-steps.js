@@ -267,6 +267,36 @@ export async function openSection(page, { surface, backend, stateId, viewport })
 export const scrollerOf = root => (/^\[data-sb-panel="[^"]+"\]$/.test(root) ? `${root} .sb-shell-panel-scroller` : root);
 
 /**
+ * Turns on the enabling switch of every dependent set in a section (a group marked `data-sb-enabled-by`), through the switch the
+ * user sees, so that the controls of the set can be reached and changed: while the switch is off they are insensitive, as they
+ * should be, and a round trip cannot use a control that is. What was turned on is given back to `restoreDependentSets()`.
+ * @param {import('@playwright/test').Page} page
+ * @param {any} recorder
+ * @param {string} root
+ * @returns {Promise<string[]>} The selectors of the switches that this turned on.
+ */
+export async function enableDependentSets(page, recorder, root) {
+    const enablers = await page.evaluate(scope => [...new Set([...document.querySelectorAll(`${scope} [data-sb-enabled-by]`)].map(group => group.dataset.sbEnabledBy))], root);
+    const turned = [];
+    for (const selector of enablers) {
+        const input = page.locator(selector).first();
+        if (await input.count() === 0 || await input.isChecked()) {
+            continue;
+        }
+        await observeChange(page, recorder, () => input.setChecked(true, { timeout: 4000 }));
+        turned.push(selector);
+    }
+    return turned;
+}
+
+/** Puts the switches that `enableDependentSets()` turned on back as they were. */
+export async function restoreDependentSets(page, recorder, turned) {
+    for (const selector of turned) {
+        await observeChange(page, recorder, () => page.locator(selector).first().setChecked(false, { timeout: 4000 }));
+    }
+}
+
+/**
  * Collects the controls of a section twice: as the page opens, and once every expander is open.
  * @param {import('@playwright/test').Page} page
  * @param {string} root

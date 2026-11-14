@@ -5998,13 +5998,19 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
     background: var(--sb-flat-active-bg);
 }
 
-/* A slider's range and number field stay together; they move under the title as one. */
+/* A slider's range and number field stay together; they move under the title as one. The basis leaves the range
+   a usable length, so a row that cannot hold the title and that length stacks the control under the title. */
 .ds-row-slider > .ds-row-text {
     flex: 1 1 var(--sb-row-title-min);
 }
 
 .ds-row-slider > .ds-row-suffix {
     flex: 1 1 var(--sb-row-control-min);
+}
+
+/* A dependent set keeps its rows in view and makes them insensitive; upstream hides these two while Smooth Streaming is off. */
+#sb-settings-page .sb-settings-mounted-shell #smooth_streaming_control ~ :is(#smooth_streaming_speed_control, #smooth_streaming_no_think_control) {
+    display: flex;
 }
 
 #sb-interface-content .sb-interface-select-group > .ds-row-text {
@@ -7109,12 +7115,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     flex: 0 0 auto;
 }
 
-.sb-settings-mounted-shell .sb-settings-flat-section > .auto_swipe,
-.sb-settings-mounted-shell .sb-settings-flat-section > .auto_continue_settings_block {
-    padding: 0 var(--sb-density-row-padding-inline);
-    margin: 0;
-}
-
 @media (hover: hover) {
     /* Source panels can author a checkbox row outside the normalized category/flat-section
        wrappers. Keep hover feedback on the row that owns the control rather than tinting its whole
@@ -7573,8 +7573,11 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading > .sb-settings-category-title {
+    min-height: 0;
     margin: 0;
     padding: 0;
+    letter-spacing: 0;
+    text-transform: none;
     /* Formatting group titles are h3s; drop the theme's boxed h3 treatment (sillybunny-theme.css). */
     border: 0;
     border-radius: 0;
@@ -7854,9 +7857,15 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     box-shadow: none;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-row-label > :is(small, span) {
+/* A title that an upstream node supplies (a small, or a small inside a span) takes the row title's size, not the mounted shell's small. */
+#sb-settings-page .sb-settings-mounted-shell .ds-row-label :is(small, span):not(.ds-row-subtitle) {
     font-size: inherit;
     color: inherit;
+    opacity: 1;
+}
+
+#sb-settings-page .sb-settings-mounted-shell small.ds-row-label {
+    font-size: var(--sb-type-body);
     opacity: 1;
 }
 
@@ -7918,24 +7927,13 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     margin: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell :is(.sb-settings-row-stack, .checkbox-container, [name='themeToggles'], .auto_swipe, .auto_continue_settings_block) {
+#sb-settings-page .sb-settings-mounted-shell :is(.sb-settings-row-stack, .checkbox-container, [name='themeToggles']) {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     gap: 0;
     margin: 0;
     padding: 0;
-}
-
-#sb-settings-page .sb-settings-mounted-shell [data-sb-settings-compound] .ds-row {
-    width: 100%;
-    flex: 0 0 auto;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .auto_continue_settings_block .ds-row-label {
-    flex: 0 0 auto;
-    align-items: flex-start;
-    text-align: start;
 }
 
 #sb-settings-page .sb-settings-mounted-shell .ds-row-suffix > .doubleRangeContainer {
@@ -8053,131 +8051,21 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     display: none;
 }
 
-#sb-settings-page .sb-console-log-column > .ds-pref-group {
-    margin: 0;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group > .sb-console-log-frame {
-    padding: 0;
-    overflow: hidden;
-}
-
-#sb-settings-page .sb-console-log-output {
-    margin: 0;
-    border: 0;
-    border-radius: 0;
-    color: var(--sb-shell-text);
-    background: var(--sb-composer-input-bg);
-}
-
-#sb-settings-page .sb-console-log-card > .sb-server-note {
-    border-radius: 0;
-    border-inline: 0;
-    border-bottom: 0;
-    background: transparent;
-}
-
-:root[data-sb-surface-tone='light'] #sb-settings-page .sb-console-log-actions .sb-server-pill[data-tone='good'] {
+:root[data-sb-surface-tone='light'] #sb-settings-page .sb-server-pill[data-tone='good'] {
     color: color-mix(in srgb, var(--color-success, var(--sb-color-success)) 80%, black);
 }
 
-:root[data-sb-surface-tone='light'] #sb-settings-page .sb-console-log-actions .sb-server-pill[data-tone='warn'] {
+:root[data-sb-surface-tone='light'] #sb-settings-page .sb-server-pill[data-tone='warn'] {
     color: color-mix(in srgb, var(--color-warning, var(--sb-color-warning)) 80%, black);
 }
 
-:root[data-sb-surface-tone='light'] #sb-settings-page .sb-console-log-actions .sb-server-pill[data-tone='danger'] {
+:root[data-sb-surface-tone='light'] #sb-settings-page .sb-server-pill[data-tone='danger'] {
     color: color-mix(in srgb, var(--color-danger, var(--sb-color-danger)) 80%, black);
 }
 
-#sb-settings-page .sb-console-log-actions,
 #sb-settings-page .ds-row-actions > .ds-row-suffix {
     flex-wrap: wrap;
     justify-content: flex-end;
-}
-
-#sb-settings-page .sb-console-log-actions {
-    margin: 0;
-}
-
-#sb-settings-page .sb-console-log-actions > button {
-    width: auto;
-}
-
-#sb-settings-page .sb-console-log-actions {
-    gap: 8px;
-}
-
-#sb-settings-page .ds-button-group {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: stretch;
-    gap: 0;
-}
-
-#sb-settings-page .ds-button {
-    min-height: 36px;
-    padding: 7px 12px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 80%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-    color: var(--sb-shell-text);
-    font: inherit;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-console-log-actions .ds-button-group > .ds-button:first-child {
-    border-radius: var(--sb-radius-control) 0 0 var(--sb-radius-control) !important;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-console-log-actions .ds-button-group > .ds-button:last-child {
-    border-radius: 0 var(--sb-radius-control) var(--sb-radius-control) 0 !important;
-}
-
-#sb-settings-page .ds-button + .ds-button {
-    border-inline-start: 0;
-}
-
-@media (hover: hover) {
-    #sb-settings-page .ds-button:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
-    }
-}
-
-#sb-settings-page .ds-button:active {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
-}
-
-#sb-settings-page .ds-button:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-#sb-settings-page .ds-button:focus-visible {
-    position: relative;
-    z-index: 1;
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-@media (pointer: coarse) {
-    #sb-settings-page .sb-console-log-actions .ds-button {
-        min-height: 44px;
-    }
-}
-
-#sb-settings-page .sb-console-log-card .sb-console-log-toolbar {
-    border-bottom: 1px solid var(--sb-shell-border);
-}
-
-#sb-settings-page .sb-console-log-card .sb-console-log-frame {
-    padding: 0;
-    overflow: hidden;
-}
-
-#sb-settings-page .sb-console-log-card .sb-server-note {
-    border-radius: 0;
-    border-inline: 0;
-    background: transparent;
 }
 
 .ds-pref-group > .flex-container.alignitemscenter,
@@ -8195,10 +8083,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 @media screen and (max-width: 620px) {
-    #sb-settings-page .sb-console-log-actions {
-        justify-content: flex-start;
-    }
-
     #sb-settings-page .sb-console-log-output {
         min-height: 260px;
     }
@@ -9827,7 +9711,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets .menu_button,
     .sb-chat-history-cleanup-actions .menu_button,
     #sb-settings-page .sb-action-btn,
-    #sb-settings-page .ds-button,
     #sb-settings-page .ds-row-suffix :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, select),
     #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(button, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), .menu_button),
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"]) #rm_button_selected_ch {

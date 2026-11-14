@@ -89,13 +89,13 @@ async function expectSwitchGeometry(root) {
         const style = getComputedStyle(row);
         const rowRect = row.getBoundingClientRect();
         const switchRect = input.getBoundingClientRect();
-        // A switch row of sillybunny-editor/rows.js holds the switch itself at the end of the row, with no suffix around it.
+        // A switch row from the row factory holds the switch itself; an adopted one wraps it in a suffix.
         const suffix = input.closest('.ds-row-suffix') ?? input;
         const metrics = {
             padding: style.padding === '6px 12px',
             gap: style.gap === '6px',
             minHeight: parseFloat(style.minHeight) === 50,
-            suffixWidth: suffix && Math.abs(suffix.getBoundingClientRect().width - 46) <= 1,
+            suffixWidth: Math.abs(suffix.getBoundingClientRect().width - 46) <= 1,
             rightInset: Math.abs(rowRect.right - switchRect.right - parseFloat(style.borderRightWidth) - 12) <= 1,
             centered: Math.abs(switchRect.top + switchRect.height / 2 - rowRect.top - rowRect.height / 2) <= 1,
         };
@@ -327,6 +327,12 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
             }
             const logs = await openPanel(page, 'logs', 'right');
             await expect(logs.locator('.sb-console-log-verbose-action')).toBeVisible();
+            const consoleLogs = logs.locator('.sb-settings-category-body');
+            await expect(consoleLogs).toHaveCount(1);
+            await expect(consoleLogs.locator(':scope > .ds-row, :scope > .sb-console-log-frame')).toHaveCount(5);
+            await expect(consoleLogs.locator(':scope > .sb-console-log-frame')).toHaveCSS('padding-left', '12px');
+            await expect(consoleLogs.locator(':scope > .ds-button-row')).toHaveText([/Refresh Now/, /(Pause|Resume) Live/]);
+            await expect(consoleLogs.locator(':scope > .ds-row-switch:has(.sb-console-log-verbose-action)')).toHaveCount(1);
             await expectSwitchGeometry(logs);
             await expectNoOverflow(logs);
         });
