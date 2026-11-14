@@ -444,10 +444,6 @@
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-shell-close {
         top: 8px !important;
         right: 8px !important;
-        width: 36px !important;
-        min-width: 36px !important;
-        height: 36px !important;
-        min-height: 36px !important;
         border-radius: 999px !important;
     }
 
@@ -510,14 +506,11 @@
         padding: 3px 10px !important;
     }
 
-    /* The collapsed shell header parks the mode toggle + close button over the
-       right end of this band, and the characters button floats on its left;
-       inset the favorites block so the divider and strip sit cleanly between
-       the flanking controls instead of running underneath them.
-       Left 48px clears the 44px characters button; right 134px clears the
-       82px mode toggle + 36px close button and their edge offsets. */
+    /* The characters button floats on the left of this band; inset the
+       favorites block so the divider and strip do not run underneath it.
+       Left 48px clears the 44px characters button. */
     #right-nav-panel.openDrawer #HotSwapWrapper {
-        margin: 0 134px 0 48px !important;
+        margin: 0 0 0 48px !important;
         min-height: 44px;
         justify-content: center;
     }
@@ -2030,8 +2023,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     #right-nav-panel.openDrawer > .sb-character-shell-header {
         flex: 0 0 auto;
         gap: 3px;
-        padding: 10px 104px 8px 12px;
-        min-height: 60px;
         z-index: 3;
     }
 
@@ -2044,9 +2035,10 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         min-height: var(--sb-mobile-touch-target, 44px);
     }
 
+    /* The right margin is the close button width, its 8px right offset and an 8px gap, so the row never runs under the button. */
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-toggle {
-        top: 8px;
-        right: 56px;
+        margin: 4px calc(var(--sb-mobile-touch-target, 44px) + 16px) 4px 8px;
+        max-width: calc(100% - var(--sb-mobile-touch-target, 44px) - 24px);
         min-height: var(--sb-mobile-touch-target, 44px);
         padding: 3px;
         gap: 2px;
@@ -2055,10 +2047,17 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button {
-        min-width: 36px;
-        min-height: 36px;
+        min-width: var(--sb-mobile-touch-target, 44px);
+        min-height: var(--sb-mobile-touch-target, 44px);
         padding: 8px;
         pointer-events: auto;
+    }
+
+    #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     #right-nav-panel.openDrawer > .sb-character-shell-header .sb-character-shell-mode-button .fa-solid {
@@ -2097,9 +2096,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         min-width: 0;
         overflow: hidden;
         justify-content: flex-start;
-        /* The mode toggle (right: 56px) and close button float over this row;
-           reserve their footprint so the last favorites stay visible and tappable. */
-        margin-right: 136px;
     }
 
     /* Horizontal-rail treatment like .sb-character-create-bar: the strip must
@@ -2121,10 +2117,10 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
     }
 
     /* No-favorites hint (RossAscends-mods.js injects a <small> from no_favs).
-       The rail reserves 136px for the mode toggle and close button, so this line
-       is shrunk below its text width; the inherited justify-content: center then
-       overflows it evenly and clips both ends ("avorite ... Hot"). Pin it to the
-       start and ellipsize so it reads from the first word. */
+       On a narrow rail this line is shrunk below its text width; the inherited
+       justify-content: center then overflows it evenly and clips both ends
+       ("avorite ... Hot"). Pin it to the start and ellipsize so it reads from
+       the first word. */
     #right-nav-panel.openDrawer #HotSwapWrapper .hotswap > small {
         justify-content: flex-start;
         min-width: 0;
@@ -2175,13 +2171,6 @@ html.sb-ios-keyboard-inset-active #right-nav-panel.openDrawer > .scrollableInner
         margin: 0;
         padding: 0 !important;
         border-radius: 10px;
-    }
-
-    /* Must beat the generic 34px !important band height above: the parked mode toggle
-       (top 8px + 44px) otherwise hangs over the top of the editor sub-tab pills. */
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps {
-        min-height: 54px !important;
-        padding-block: 5px;
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #HotSwapWrapper {

@@ -8,12 +8,14 @@ const mobileShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillyb
 const tabsCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8').replace(/\r\n/g, '\n');
 const styleCss = readFileSync(path.join(repoRoot, 'public', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
 
-function getRuleBody(cssSource, selector) {
+function getRuleBodies(cssSource, selector) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const matches = [...cssSource.matchAll(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, 'gs'))];
-    const match = matches.at(-1);
 
-    return match?.groups?.body ?? '';
+    return [...cssSource.matchAll(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, 'gs'))].map(match => match.groups.body);
+}
+
+function getRuleBody(cssSource, selector) {
+    return getRuleBodies(cssSource, selector).at(-1) ?? '';
 }
 
 function getLastRuleIndex(cssSource, selector) {
@@ -69,11 +71,23 @@ describe('mobile character editor css', () => {
         expect(tagDropdownSelectRule).toContain('max-width: 100%;');
     });
 
-    test('keeps the parked mode toggle and close button clear of the editor sub-tabs on mobile', () => {
+    test('puts the workspace toggle in its own header row on phones, clear of the close button', () => {
+        const headerSelector = '#right-nav-panel.openDrawer > .sb-character-shell-header';
+        const rowRule = getRuleBody(tabsCss, '.sb-character-shell-mode-toggle');
+        const toggleRule = getRuleBody(mobileShellCss, `${headerSelector} .sb-character-shell-mode-toggle`);
+        const buttonRule = getRuleBody(mobileShellCss, `${headerSelector} .sb-character-shell-mode-button`);
+        const closeRules = getRuleBodies(mobileShellCss, `${headerSelector} .sb-shell-close`).join('\n');
         const editorBandRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) > #CharListButtonAndHotSwaps');
 
-        // The generic band rule is `min-height: 34px !important`; the toggle sits at top 8px with a 44px touch target.
-        expect(editorBandRule).toContain('min-height: 54px !important;');
+        expect(rowRule).toContain('position: relative;');
+        // On a relatively positioned toggle, right: 56px moves the row 56px past the left edge of the panel.
+        expect(toggleRule).not.toMatch(/(^|[;{\s])(top|right)\s*:/);
+        expect(toggleRule).toContain('margin: 4px calc(var(--sb-mobile-touch-target, 44px) + 16px) 4px 8px;');
+        expect(buttonRule).toContain('min-width: var(--sb-mobile-touch-target, 44px);');
+        expect(buttonRule).toContain('min-height: var(--sb-mobile-touch-target, 44px);');
+        expect(closeRules).toContain('width: var(--sb-mobile-touch-target, 44px);');
+        expect(closeRules).not.toContain('36px');
+        expect(editorBandRule).toBe('');
     });
 
     test('dims the spoiler-hidden editor sub-tabs without making them untappable', () => {

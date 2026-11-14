@@ -1804,7 +1804,7 @@ export function getCharacterSource(chId = this_chid) {
     return '';
 }
 
-export async function getCharacters() {
+export async function getCharacters({ refreshEditor = true } = {}) {
     const response = await fetch('/api/characters/all', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -1824,7 +1824,10 @@ export async function getCharacters() {
             const newCharacterId = characters.findIndex(x => x.avatar === previousAvatar);
             if (newCharacterId >= 0) {
                 setCharacterId(newCharacterId);
-                await selectCharacterById(newCharacterId, { switchMenu: false });
+                // SillyBunny: Creator refreshes the roster without replacing an unsaved field-editor form.
+                if (refreshEditor) {
+                    await selectCharacterById(newCharacterId, { switchMenu: false });
+                }
             } else {
                 await Popup.show.text(t`ERROR: The active character is no longer available.`, t`The page will be refreshed to prevent data loss. Press "OK" to continue.`);
                 return location.reload();
@@ -11164,41 +11167,45 @@ export function setSendButtonState(value) {
     is_send_press = value;
 }
 
+// SillyBunny: options.avatar lets the editor rename a card outside the active chat, and such a rename keeps the active chat.
 /**
- * Renames the currently selected character, updating relevant references and optionally renaming past chats.
+ * Renames the card given by `options.avatar`, or the currently selected character if no avatar is given,
+ * updating relevant references and optionally renaming past chats.
  *
  * If no name is provided, a popup prompts for a new name. If the new name matches the current name,
  * the renaming process is aborted. The function sends a request to the server to rename the character
  * and handles updates to other related fields such as tags, lore, and author notes.
  *
- * If the renaming is successful, the character list is reloaded and the renamed character is selected.
+ * If the renaming is successful, the character list and editor are refreshed without selecting another chat.
  * Optionally, past chats can be renamed to reflect the new character name.
  *
  * @param {string?} [name=null] - The new name for the character. If not provided, a popup will prompt for it.
  * @param {object} [options] - Additional options.
  * @param {boolean} [options.silent=false] - If true, suppresses popups and warnings.
  * @param {boolean?} [options.renameChats=null] - If true, renames past chats to reflect the new character name.
+ * @param {string?} [options.avatar=null] - Explicit card identity when editing outside the active chat.
  * @returns {Promise<boolean>} - Returns true if the character was successfully renamed, false otherwise.
  */
 
-export async function renameCharacter(name = null, { silent = false, renameChats = null } = {}) {
+export async function renameCharacter(name = null, { silent = false, renameChats = null, avatar = null } = {}) {
     if (!name && silent) {
         toastr.warning(t`No character name provided.`, t`Rename Character`);
         return false;
     }
-    if (this_chid === undefined) {
+    const character = avatar ? characters.find(item => item.avatar === avatar) : characters[this_chid];
+    if (!character) {
         toastr.warning(t`No character selected.`, t`Rename Character`);
         return false;
     }
 
-    const oldAvatar = characters[this_chid].avatar;
-    const newValue = name || await callGenericPopup('<h3>' + t`New name:` + '</h3>', POPUP_TYPE.INPUT, characters[this_chid].name);
+    const oldAvatar = character.avatar;
+    const newValue = name || await callGenericPopup('<h3>' + t`New name:` + '</h3>', POPUP_TYPE.INPUT, character.name);
 
     if (!newValue) {
         toastr.warning(t`No character name provided.`, t`Rename Character`);
         return false;
     }
-    if (newValue === characters[this_chid].name) {
+    if (newValue === character.name) {
         toastr.info(t`Same character name provided, so name did not change.`, t`Rename Character`);
         return false;
     }
@@ -11244,23 +11251,28 @@ export async function renameCharacter(name = null, { silent = false, renameChats
 
             await eventSource.emit(event_types.CHARACTER_RENAMED, oldAvatar, newAvatar);
 
-            // Unload current character
-            setCharacterId(undefined);
-            // Reload characters list
-            await getCharacters();
+            const renamingActiveCharacter = characters[this_chid]?.avatar === oldAvatar;
+            if (renamingActiveCharacter) setCharacterId(undefined);
+            await getCharacters({ refreshEditor: renamingActiveCharacter });
 
             // Find newly renamed character
             const newChId = characters.findIndex(c => c.avatar == data.avatar);
 
             if (newChId !== -1) {
-                // Select the character after the renaming
-                await selectCharacterById(newChId);
-
-                // Async delay to update UI
-                await delay(1);
-
-                if (this_chid === undefined) {
-                    throw new Error('New character not selected');
+                if (renamingActiveCharacter) {
+                    await selectCharacterById(newChId);
+                    await delay(1);
+                    if (this_chid === undefined) throw new Error('New character not selected');
+                } else {
+                    // SillyBunny: the editor shows this card without its chat. The roster can change while the full
+                    // card loads, and a save from a shallow card empties the fields that the card lacks.
+                    await unshallowCharacter(newChId);
+                    const renamedId = characters.findIndex(c => c.avatar === newAvatar);
+                    if (renamedId < 0 || characters[renamedId].shallow) {
+                        window.SillyBunnyShell?.showCharacterEditorEmptyState?.();
+                    } else {
+                        select_selected_character(renamedId);
+                    }
                 }
 
                 // Also rename as a group member
@@ -11277,7 +11289,7 @@ export async function renameCharacter(name = null, { silent = false, renameChats
 
                 if (renamePastChatsConfirm) {
                     await renamePastChats(oldAvatar, newAvatar, newValue);
-                    await reloadCurrentChat();
+                    if (renamingActiveCharacter) await reloadCurrentChat();
                     toastr.success(t`Character renamed and past chats updated!`, t`Rename Character`);
                 } else {
                     toastr.success(t`Character renamed!`, t`Rename Character`);
@@ -11302,7 +11314,8 @@ export async function renameCharacter(name = null, { silent = false, renameChats
 }
 
 async function renamePastChats(oldAvatar, newAvatar, newName) {
-    const pastChats = await getPastCharacterChats();
+    // SillyBunny: the renamed card is not always this_chid, so the chat list comes from the renamed card.
+    const pastChats = await getPastCharacterChats(characters.findIndex(character => character.avatar === newAvatar));
 
     for (const { file_name } of pastChats) {
         try {
@@ -14980,6 +14993,14 @@ export function select_rm_info(type, charId, previousCharId = null) {
     }
 }
 
+// SillyBunny: Creator can open the normal editor independently of the active chat.
+export function getCharacterEditorId() {
+    if (document.getElementById('form_create')?.getAttribute('actiontype') !== 'editcharacter') return undefined;
+    const avatar = document.getElementById('avatar_url_pole')?.value;
+    const index = characters.findIndex(character => character.avatar === avatar);
+    return index < 0 ? undefined : index;
+}
+
 /**
  * Selects the right menu for displaying the character editor.
  * @param {string} chid Character array index
@@ -15000,10 +15021,14 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#create_button').attr('value', 'Save');              // what is the use case for this?
     $('#dupe_button').show();
     $('#create_button_label').css('display', 'none');
-    $('#char_connections_button').show();
-
-    // Hide the chat scenario button if we're peeking the group member defs
-    $('#set_chat_character_settings').toggle(!selected_group);
+    // SillyBunny: the Creator opens this editor for cards other than this_chid, so controls that act on this_chid
+    // or on the current chat show only while chid is this_chid. The solo-chat ones also hide in group peek.
+    const editingSelectedCharacter = String(chid) === String(this_chid);
+    const editingActiveChat = !selected_group && editingSelectedCharacter;
+    $('#char_connections_button').toggle(editingActiveChat);
+    $('#set_chat_character_settings').toggle(editingActiveChat);
+    $('#creators_note_styles_button').toggle(editingSelectedCharacter);
+    $('.rm_stats_button').toggle(editingSelectedCharacter);
 
     // Don't update the navbar name if we're peeking the group member defs
     if (!selected_group) {
@@ -15056,10 +15081,12 @@ export function select_selected_character(chid, { switchMenu = true } = {}) {
     $('#renameCharButton').css('display', '');
 
     $('#form_create').attr('actiontype', 'editcharacter');
-    $('.form_create_bottom_buttons_block .chat_lorebook_button').show();
+    // SillyBunny: Chat Lore and the media overrides act on the current chat, and #tagList shows the editor card.
+    $('.form_create_bottom_buttons_block .chat_lorebook_button').toggle(editingSelectedCharacter);
+    applyTagsOnCharacterSelect(chid);
 
     const externalMediaState = isExternalMediaAllowed();
-    $('#character_open_media_overrides').toggle(!selected_group);
+    $('#character_open_media_overrides').toggle(editingActiveChat);
     $('#character_media_allowed_icon').toggle(externalMediaState);
     $('#character_media_forbidden_icon').toggle(!externalMediaState);
 
@@ -15142,6 +15169,9 @@ function select_rm_create({ switchMenu = true, resetForm = true } = {}) {
     $('#form_create').attr('actiontype', 'createcharacter');
     $('.form_create_bottom_buttons_block .chat_lorebook_button').hide();
     $('#character_open_media_overrides').hide();
+    // SillyBunny: select_selected_character hides these for a card other than this_chid, so the create form shows them again.
+    $('#creators_note_styles_button').show();
+    $('.rm_stats_button').show();
 }
 
 function select_rm_characters() {
@@ -15862,7 +15892,9 @@ async function openCharacterWorldPopup() {
         const el = evt?.currentTarget ?? this;
         const selectedValues = $(el).val();
         const selected = Array.isArray(selectedValues) ? selectedValues : [];
-        const fileName = getCharaFilename(null, {});
+        // SillyBunny: the list belongs to the editor card, which is not always this_chid. The create form keeps
+        // the active chat's file name, because updateAuxBooks() saves nothing without one.
+        const fileName = getCharaFilename(menu_type == 'create' ? null : chid, {});
         const nextList = selected.map(i => world_names[i]).filter(Boolean);
         charSetAuxWorlds(fileName, nextList);
     }
@@ -16108,12 +16140,16 @@ export async function createOrEditCharacter(e) {
             );
             $('#create_button').attr('value', 'Save');
             crop_data = undefined;
-            await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: this_chid, character: characters[this_chid] } });
+            // SillyBunny: the form can show a card other than this_chid. The event names the saved card, and only a save
+            // of the active chat's character can recreate the first message of the current chat.
+            const editedId = characters.findIndex(character => character.avatar === editedAvatar);
+            await eventSource.emit(event_types.CHARACTER_EDITED, { detail: { id: editedId, character: characters[editedId] } });
 
             // Recreate the chat if it hasn't been used at least once (i.e. with continue).
             const message = getFirstMessage();
             const shouldRegenerateMessage =
                 !isNewChat &&
+                editedAvatar === characters[this_chid]?.avatar &&
                 message.mes &&
                 !selected_group &&
                 !chat_metadata.tainted &&
@@ -17562,7 +17598,9 @@ jQuery(async function () {
 
         event.preventDefault();
         event.stopPropagation();
-        await renameCharacter();
+        // SillyBunny: the header shows the name of the editor card, which is not always this_chid.
+        const editorCharacter = characters[getCharacterEditorId()];
+        if (editorCharacter) await renameCharacter(null, { avatar: editorCharacter.avatar });
     });
 
     $(document).on('click', '.character_select', async function () {
@@ -17811,7 +17849,9 @@ jQuery(async function () {
     $('#form_create').on('submit', (e) => createOrEditCharacter(e.originalEvent));
 
     $('#delete_button').on('click', async function () {
-        if (this_chid === undefined || !characters[this_chid]) {
+        // SillyBunny: the editor can show a card other than this_chid, and the delete acts on that card.
+        const avatar = characters[getCharacterEditorId()]?.avatar;
+        if (!avatar) {
             toastr.warning('No character selected.');
             return;
         }
@@ -17825,7 +17865,7 @@ jQuery(async function () {
             return;
         }
 
-        await deleteCharacter(characters[this_chid].avatar, { deleteChats: deleteChats });
+        await deleteCharacter(avatar, { deleteChats: deleteChats });
     });
 
     //////// OPTIMIZED ALL CHAR CREATION/EDITING TEXTAREA LISTENERS ///////////////
@@ -17866,7 +17906,8 @@ jQuery(async function () {
 
     $('#creator_notes_textarea').on('input', function () {
         const notes = String($('#creator_notes_textarea').val());
-        const avatar = menu_type === 'create' ? '' : characters[this_chid]?.avatar;
+        // SillyBunny: the preview belongs to the editor card, which is not always this_chid.
+        const avatar = menu_type === 'create' ? '' : characters[getCharacterEditorId()]?.avatar;
         $('#creator_notes_spoiler').html(formatCreatorNotes(notes, avatar));
     });
 
@@ -18515,9 +18556,13 @@ jQuery(async function () {
         isExportPopupOpen = false;
         exportPopper.update();
 
+        // SillyBunny: the export takes the editor card, which is not always this_chid.
+        const avatar = characters[getCharacterEditorId()]?.avatar;
+        if (!avatar) return;
+
         // Save before exporting
         await createOrEditCharacter();
-        const body = { format, avatar_url: characters[this_chid].avatar };
+        const body = { format, avatar_url: avatar };
 
         const response = await fetch('/api/characters/export', {
             method: 'POST',
@@ -18526,7 +18571,7 @@ jQuery(async function () {
         });
 
         if (response.ok) {
-            const filename = characters[this_chid].avatar.replace('.png', `.${format}`);
+            const filename = avatar.replace('.png', `.${format}`);
             const blob = await response.blob();
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
@@ -18595,7 +18640,9 @@ jQuery(async function () {
     });
 
     $('#dupe_button').on('click', async function () {
-        await duplicateCharacter();
+        // SillyBunny: the copy is made from the editor card, which is not always this_chid.
+        const avatar = characters[getCharacterEditorId()]?.avatar;
+        if (avatar) await duplicateCharacter({ avatar });
     });
 
     $(document).on('click', '.mes_stop', function () {
@@ -18832,6 +18879,10 @@ jQuery(async function () {
     $('#char-management-dropdown').on('change', async (e) => {
         const targetElement = /** @type {HTMLSelectElement} */ (e.target);
         const target = $(targetElement.selectedOptions).attr('id');
+        // SillyBunny: the entries act on the editor card, which is not always this_chid. The listeners of
+        // CHARACTER_MANAGEMENT_DROPDOWN get its index as the second argument.
+        const editorId = getCharacterEditorId();
+        const editorCharacter = characters[editorId];
         switch (target) {
             case 'set_character_world':
                 await openCharacterWorldPopup();
@@ -18840,17 +18891,17 @@ jQuery(async function () {
                 await setCharacterSettingsOverrides();
                 break;
             case 'renameCharButton':
-                await renameCharacter();
+                if (editorCharacter) await renameCharacter(null, { avatar: editorCharacter.avatar });
                 break;
             case 'import_character_info':
                 await importEmbeddedWorldInfo();
                 saveCharacterDebounced();
                 break;
             case 'regenerate_thumbnail': {
-                if (this_chid === undefined || this_chid === -1 || !characters[this_chid]) {
+                if (!editorCharacter) {
                     break;
                 }
-                const avatarKey = characters[this_chid].avatar;
+                const avatarKey = editorCharacter.avatar;
                 if (!avatarKey || avatarKey === 'none') {
                     toastr.warning(t`This character has no avatar to regenerate a thumbnail from.`);
                     break;
@@ -18874,7 +18925,7 @@ jQuery(async function () {
                 }
             } break;
             case 'character_source': {
-                const source = getCharacterSource(this_chid);
+                const source = editorCharacter && getCharacterSource(editorId);
                 if (source && isValidUrl(source)) {
                     const url = new URL(source);
                     const confirm = await Popup.show.confirm('Open Source', `<span>Do you want to open the link to ${url.hostname} in a new tab?</span><var>${url}</var>`);
@@ -18886,7 +18937,8 @@ jQuery(async function () {
                 }
             } break;
             case 'replace_update': {
-                let onlineUrl = getCharacterSource(this_chid);
+                if (!editorCharacter) break;
+                let onlineUrl = getCharacterSource(editorId);
 
                 const POPUP_RESULT_URL = POPUP_RESULT.CUSTOM1, POPUP_RESULT_FILE = POPUP_RESULT.CUSTOM2;
                 const result = await Popup.show.confirm(t`Replace Character`,
@@ -18908,8 +18960,17 @@ jQuery(async function () {
                     });
 
                 // Remember the chat currently selected, so we can reload it after the replacement
-                const currentChatFile = characters[this_chid].chat;
+                const currentChatFile = editorCharacter.chat;
                 const postReplace = async () => {
+                    // SillyBunny: openCharacterChat() reloads this_chid. The editor card is not this_chid when the
+                    // import failed or did not open its chat, so the editor shows the stored card again instead.
+                    if (characters[this_chid]?.avatar !== editorCharacter.avatar) {
+                        const replacedId = characters.findIndex(character => character.avatar === editorCharacter.avatar);
+                        if (replacedId === -1) return;
+                        await unshallowCharacter(replacedId);
+                        select_selected_character(replacedId, { switchMenu: false });
+                        return;
+                    }
                     await openCharacterChat(currentChatFile);
                 };
 
@@ -18923,7 +18984,7 @@ jQuery(async function () {
 
                             try {
                                 const data = new Map();
-                                data.set(file, characters[this_chid].avatar);
+                                data.set(file, editorCharacter.avatar);
                                 await processDroppedFiles([file], data);
                                 await postReplace();
                             } catch {
@@ -18942,14 +19003,14 @@ jQuery(async function () {
                             break;
                         }
                         onlineUrl = inputUrl;
-                        await importFromExternalUrl(onlineUrl, { preserveFileName: characters[this_chid].avatar });
+                        await importFromExternalUrl(onlineUrl, { preserveFileName: editorCharacter.avatar });
                         await postReplace();
                         break;
                     }
                 }
             } break;
             case 'import_tags': {
-                await importTags(characters[this_chid], { importSetting: tag_import_setting.ASK });
+                if (editorCharacter) await importTags(editorCharacter, { importSetting: tag_import_setting.ASK });
             } break;
             /*case 'delete_button':
                 popup_type = "del_ch";
@@ -18961,7 +19022,7 @@ jQuery(async function () {
                 );
                 break;*/
             default:
-                await eventSource.emit(event_types.CHARACTER_MANAGEMENT_DROPDOWN, target);
+                await eventSource.emit(event_types.CHARACTER_MANAGEMENT_DROPDOWN, target, editorId);
         }
         $('#char-management-dropdown').prop('selectedIndex', 0);
     });

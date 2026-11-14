@@ -293,6 +293,7 @@ async function initGallery(items, url) {
     gallery.nanogallery2('resize');
 }
 
+// SillyBunny: the editor dropdown opens the gallery of its card through characterId, because that card is not always this_chid.
 /**
  * Displays a character gallery using the nanogallery2 library.
  *
@@ -303,9 +304,11 @@ async function initGallery(items, url) {
  * - Displaying the gallery in a popup.
  * - Cleaning up resources when the gallery popup is closed.
  *
+ * @param {boolean} [deleteModeState=false] Whether gallery deletion controls are enabled.
+ * @param {number|string|null} [characterId=null] Explicit editor card, or the active chat when omitted.
  * @returns {Promise<void>} - Promise representing the completion of the gallery display process.
  */
-async function showCharGallery(deleteModeState = false) {
+async function showCharGallery(deleteModeState = false, characterId = null) {
     // Load necessary files if it's the first time calling the function
     if (firstTime) {
         await loadFileToDocument(
@@ -323,8 +326,8 @@ async function showCharGallery(deleteModeState = false) {
     try {
         deleteModeActive = deleteModeState;
         let url = selected_group || this_chid;
-        if (!selected_group && this_chid !== undefined) {
-            url = getGalleryFolder(characters[this_chid]);
+        if (characterId !== null || (!selected_group && this_chid !== undefined)) {
+            url = getGalleryFolder(characters[characterId ?? this_chid]);
         }
 
         const items = await getGalleryItems(url);
@@ -836,9 +839,10 @@ export async function init() {
         delete context.extensionSettings.gallery.folders[avatar];
         context.saveSettingsDebounced();
     });
-    eventSource.on(event_types.CHARACTER_MANAGEMENT_DROPDOWN, (selectedOptionId) => {
-        if (selectedOptionId === 'show_char_gallery') {
-            showCharGallery();
+    // SillyBunny: the dropdown passes the editor card, which is not always this_chid.
+    eventSource.on(event_types.CHARACTER_MANAGEMENT_DROPDOWN, (selectedOptionId, characterId) => {
+        if (selectedOptionId === 'show_char_gallery' && characterId !== undefined) {
+            showCharGallery(false, characterId);
         }
     });
 
