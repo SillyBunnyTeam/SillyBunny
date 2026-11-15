@@ -4617,12 +4617,13 @@ body.reduced-motion .sb-search-entry {
 
 .ds-action-row-text {
     flex: 1;
-    min-width: 0;
+    min-width: auto;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
     gap: 2px;
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
 }
 
 .ds-action-row-title {
@@ -4666,9 +4667,14 @@ body.reduced-motion .sb-search-entry {
     flex-direction: column;
     flex: 1 1 var(--sb-row-title-min);
     gap: var(--sb-density-row-text-gap);
-    min-width: 0;
+    /* A title wraps at word boundaries. The column keeps its automatic minimum (its longest word, next to the
+       button that sits beside it), so the row wraps its control under the title before a word is cut, and `max-width` keeps
+       a word longer than the row inside it, where `break-word` breaks it. `anywhere` counted every letter as a break and let
+       the column shrink to a letter. */
+    min-width: auto;
+    max-width: 100%;
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
 }
 
 /* In a row laid out as a column, the title's minimum width as a basis would become its height. */

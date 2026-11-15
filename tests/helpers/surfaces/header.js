@@ -6,6 +6,7 @@
  * because the title is the element that truncates. Both modes show the title.
  */
 
+import { showSettingsSidebar } from '../settings-phone-pane.js';
 import { FIXTURES } from './fixture-data.js';
 import {
     AGENTS, LONG_TITLE, discardEdits, enterAgentSelection, enterCharacterSelection, enterWorldInfoSelection, gone, leaveSelection,
@@ -130,16 +131,10 @@ async function closeSettingsPage(page) {
     await gone(page, SETTINGS_PAGE);
 }
 
-/**
- * On a phone the sidebar is a page of its own, which the content header's Back button returns to. The sidebar is laid out
- * (and so "visible") off screen while the content page is shown, which is why the Back button is the test.
- */
+/** On a phone the sidebar is a page of its own, which the content header's Back button returns to. */
 async function openSettingsSidebar(page) {
     await openSettingsPage(page);
-    if (await page.locator('#sb-settings-back').isVisible()) {
-        await page.locator('#sb-settings-back').click();
-        await page.waitForFunction(() => !document.getElementById('sb-settings-page').classList.contains('sb-settings-page--content'));
-    }
+    await showSettingsSidebar(page);
     await shown(page, '#sb-settings-sidebar-header');
     await settle(page);
 }

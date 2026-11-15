@@ -73,7 +73,25 @@ export async function settle(page, { root = 'body', timeout = 5000 } = {}) {
 }
 
 /**
- * Opens a settings page of the shell and waits until its panel is shown.
+ * Waits until a settings page is built. A page that an on-demand module builds (Appearance, Interface, Messages, Formatting,
+ * Presets, Sampling, Data & Security, Logs) marks its panel `aria-busy` until it has, and Appearance (and the extensions
+ * list) also hides a container inside the panel the same way, so a read of the page before then sees the raw upstream rows
+ * or a loading status. A loaded machine makes that import slow enough to show. Every open step of the settings family goes through
+ * `openSettingsTab`, so this is the one place that waits for it.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} tab The value of `data-sb-panel`.
+ */
+export async function waitForPageBuilt(page, tab) {
+    const busy = `[data-sb-panel="${tab}"][aria-busy="true"], [data-sb-panel="${tab}"] .sb-shell-panel-scroller > [aria-busy="true"]`;
+    try {
+        await page.waitForFunction(selector => !document.querySelector(selector), busy, { timeout: 30_000 });
+    } catch {
+        throw new Error(`${surfaceLabels.get(page) ?? 'The page'}: the ${tab} page was still being built after 30 s (${busy}).`);
+    }
+}
+
+/**
+ * Opens a settings page of the shell and waits until its panel is shown and built.
  * From `sillybunny-settings-consistency.e2e.js` (`openSettingsTab`).
  * @param {import('@playwright/test').Page} page
  * @param {{ shell: 'left' | 'right', tab: string }} target `left` is Backend, `right` is Customize.
@@ -82,6 +100,7 @@ export async function openSettingsTab(page, { shell, tab }) {
     await page.evaluate(({ shell, tab }) => window.SillyBunnyShell.openTab(shell, tab), { shell, tab });
     await page.locator(`button[data-sb-settings-tab="${tab}"]`).evaluate(button => button.click());
     await page.waitForFunction(id => document.querySelector(`[data-sb-panel="${id}"]`)?.getAttribute('aria-hidden') === 'false', tab);
+    await waitForPageBuilt(page, tab);
     await page.locator(`[data-sb-panel="${tab}"] .sb-shell-panel-scroller`).evaluate(scroller => { scroller.scrollTop = 0; });
     await settle(page, { root: `[data-sb-panel="${tab}"]` });
 }

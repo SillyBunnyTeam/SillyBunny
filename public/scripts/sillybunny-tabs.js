@@ -165,7 +165,7 @@ const backendPagesContext = {
  * row is found before the page was opened.
  */
 function ensureBackendPages() {
-    backendPagesPromise ??= loadBackendPagesModule().then(module => {
+    backendPagesPromise ??= markPanelsBusyUntilBuilt('left', ['context', 'prompting'], loadBackendPagesModule().then(module => {
         backendPagesModule = module;
         groupAdvancedFormattingIntoDrawers();
         module.presentFormatting(backendPagesContext);
@@ -181,12 +181,31 @@ function ensureBackendPages() {
         backendPagesPromise = undefined;
         console.error('[SillyBunny] Could not build the Formatting and Presets rows:', error);
         throw error;
-    });
+    }));
     return backendPagesPromise;
 }
 
+/**
+ * Marks the panels that a deferred module fills as busy until it has built them, the way an on-demand panel is marked, so
+ * that a screen reader and the audit's open steps can tell a page that is still the raw upstream rows from a built one.
+ * @template T
+ * @param {'left' | 'right'} shellKey
+ * @param {string[]} tabIds
+ * @param {Promise<T>} build
+ * @returns {Promise<T>}
+ */
+function markPanelsBusyUntilBuilt(shellKey, tabIds, build) {
+    const panels = tabIds
+        .map(tabId => getShellState(shellKey)?.tabs.get(tabId)?.panel)
+        .filter(panel => panel instanceof HTMLElement);
+    for (const panel of panels) panel.setAttribute('aria-busy', 'true');
+    const done = () => panels.forEach(panel => panel.removeAttribute('aria-busy'));
+    build.then(done, done);
+    return build;
+}
+
 function initializeSettingsPanel() {
-    settingsPanelPromise ??= presentAppearancePage().then(() => {
+    settingsPanelPromise ??= markPanelsBusyUntilBuilt('right', ['appearance', 'interface', 'messages'], presentAppearancePage().then(() => {
         injectThemePicker();
         // SillyTavern's own settings tab UI is not used here: the settings page sidebar owns
         // navigation, so the inline drawers are opened directly instead.
@@ -198,7 +217,7 @@ function initializeSettingsPanel() {
         // already run its flatten pass -- so it is repeated once the panel is fully built.
         flattenRightShellSettingsDrawers();
         invalidateUserSettingsTabSearchIndexes();
-    }).catch(error => {
+    })).catch(error => {
         settingsPanelPromise = undefined;
         throw error;
     });
@@ -10117,10 +10136,9 @@ async function renderMobileQuickActionResults(query, box) {
     const request = Symbol();
     sbSearchRenderRequests.set(box, request);
 
-    setMobileQuickActionRegion(box, 'results', []);
-
     const trimmedQuery = String(query ?? '').trim();
     if (trimmedQuery.length < 2) {
+        box.removeAttribute('aria-busy');
         // HUMAN: replace — a title that names the state; the instruction becomes its description.
         setMobileQuickActionRegion(box, 'results', [createStatusPage({
             state: 'no-results',
@@ -10130,8 +10148,12 @@ async function renderMobileQuickActionResults(query, box) {
         return;
     }
 
+    // The first query waits for the on-demand settings pages. The box keeps what it shows until the answer replaces it
+    // in one step, so the results are never blank while the pages load.
+    box.setAttribute('aria-busy', 'true');
     await prepareShellSearch();
     if (sbSearchRenderRequests.get(box) !== request) return;
+    box.removeAttribute('aria-busy');
     const matches = getMobileQuickActionSearchMatches(trimmedQuery);
     if (!matches.length) {
         setMobileQuickActionRegion(box, 'results', [createStatusPage({
@@ -14633,6 +14655,51 @@ function deactivateSettingsPageRoot(shellKey) {
     setRootAttribute(root, 'aria-hidden', 'true');
 }
 
+let settingsTabSteerBound = false;
+const SB_TABBABLE_SELECTOR = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [tabindex], [contenteditable]';
+
+function isTabbableElement(element) {
+    if (!(element instanceof HTMLElement) || element.tabIndex < 0 || element.matches(':disabled') || element.closest('[inert]')) {
+        return false;
+    }
+    return typeof element.checkVisibility === 'function' ? element.checkVisibility({ visibilityProperty: true }) : true;
+}
+
+// SillyBunny: a phone shows the sidebar or the page and slides the other one out of a clipped box. Tab walks into that pane,
+// and focusing a control in it scrolls the clipped box sideways, which crops the pane that is showing (F-303). The pane is
+// left reachable for the pointer and for scripts, because the editors' leave guards read it as open, so only the keyboard is
+// steered: a Tab that would enter the pane that is not showing goes to the next stop outside it.
+function steerTabPastHiddenSettingsPane(event) {
+    if (event.key !== 'Tab' || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+    }
+    const page = getSettingsPage();
+    if (!(page instanceof HTMLElement) || page.hidden || !isMobileViewport() || !(event.target instanceof HTMLElement)) {
+        return;
+    }
+    const hiddenPane = document.getElementById(page.classList.contains('sb-settings-page--content') ? 'sb-settings-sidebar' : 'sb-settings-content');
+    if (!(hiddenPane instanceof HTMLElement)) {
+        return;
+    }
+    const stops = Array.from(document.querySelectorAll(SB_TABBABLE_SELECTOR));
+    const step = event.shiftKey ? -1 : 1;
+    const from = stops.indexOf(event.target);
+    if (from === -1) {
+        return;
+    }
+    const natural = stops.slice(step > 0 ? from + 1 : 0, step > 0 ? undefined : from);
+    if (step < 0) natural.reverse();
+    const next = natural.find(isTabbableElement);
+    if (!next || !hiddenPane.contains(next)) {
+        return;
+    }
+    const target = natural.find(stop => isTabbableElement(stop) && !hiddenPane.contains(stop));
+    if (target instanceof HTMLElement) {
+        event.preventDefault();
+        target.focus();
+    }
+}
+
 function setSettingsMobileContentView(showContent) {
     const page = getSettingsPage();
     if (!(page instanceof HTMLElement)) {
@@ -14744,6 +14811,11 @@ function initSettingsPageClose() {
         backButton.addEventListener('click', () => {
             setSettingsMobileContentView(false);
         });
+    }
+
+    if (!settingsTabSteerBound) {
+        settingsTabSteerBound = true;
+        document.addEventListener('keydown', steerTabPastHiddenSettingsPane, true);
     }
 
     const page = getSettingsPage();

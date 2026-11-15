@@ -11,6 +11,7 @@
  * surface); a state runs after its surface's `open` and works after any other state of the surface.
  */
 
+import { showSettingsSidebar } from '../settings-phone-pane.js';
 import { FIXTURES } from './fixture-data.js';
 import { closeSidePanelById, MOBILE_LAYOUT_VIEWPORTS, openAuditChat } from './panel-steps.js';
 import { chooseMenuItem, openCharactersTab, openSettingsTab, selectBackend, selectLogitBiasPreset, settle } from './steps.js';
@@ -992,10 +993,7 @@ const settingsSidebarNoMatch = status({
     async open(page) {
         await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'connections'));
         // A phone shows the page and hides the sidebar until Back is pressed.
-        const back = page.locator('#sb-settings-back');
-        if (await back.isVisible()) {
-            await back.click();
-        }
+        await showSettingsSidebar(page);
         await typeInto(page, '#sb-settings-search-toggle', '#sb-settings-search-input', 'zzzqqq');
         await page.locator('#sb-settings-tab-list .sb-settings-tab-empty').waitFor({ state: 'visible' });
         await settle(page);
