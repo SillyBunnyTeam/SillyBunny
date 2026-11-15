@@ -320,7 +320,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                 };
             });
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
-            await page.getByRole('listitem').filter({ hasText: 'Read chat messages aloud' }).click();
+            await page.locator('[data-sb-panel="extensions"]').getByRole('button').filter({ hasText: 'Read chat messages aloud' }).click();
             await expect(page.locator('#tts_settings')).toBeVisible();
             const provider = page.locator('#tts_provider');
             await expect(provider.locator('option[value="SpeechT5"]')).toHaveCount(1);
