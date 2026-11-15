@@ -756,7 +756,7 @@ test('Sampling keeps live nodes, provider visibility, numeric handlers and trans
     const temperature = sampling.locator('[data-sb-sampling-control="#temp_openai"]');
     // The wire control is a toggle row of its own after the slider row, in the same box.
     await expect(temperature.locator(':scope > .ds-row-slider + .ds-toggle-row.sb-sampling-wire')).toHaveCount(1);
-    const wire = temperature.getByRole('radiogroup', { name: 'Temperature Wire', exact: true });
+    const wire = temperature.getByRole('radiogroup', { name: 'Temperature Sent to the AI', exact: true });
     await expect(wire.getByRole('radio')).toHaveCount(3);
     // It is shown and hidden by the same provider gating as the slider row.
     const gating = row => row.evaluate(node => ['data-source', 'data-source-mode', 'data-tg-type', 'data-tg-samplers', 'data-sb-sampler-ungated'].map(name => node.getAttribute(name)));

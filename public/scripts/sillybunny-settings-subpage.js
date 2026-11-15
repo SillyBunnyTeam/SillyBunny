@@ -59,7 +59,7 @@ function prefersReducedMotion() {
  * @property {string} label the row's title
  * @property {string} [description] the row's second line
  * @property {string} [descriptionKey] localization key for the row's description
- * @property {string} [icon] a Font Awesome class for the row's leading glyph
+ * @property {string} [icon] a Font Awesome Free solid class (`fa-bug`) for the row's leading glyph; decorative, so the row's title names it
  * @property {{id: string, title: string}} [group] the titled group the row is listed under
  * @property {boolean} [builtIn] whether the section is one SillyBunny ships, so its page gets the shared rows
  * @property {() => (HTMLElement|null)} [source] the section to move into the detail page on open
@@ -193,10 +193,17 @@ export class SubpageStack {
         this.listBody.replaceChildren();
 
         for (const row of rows) {
+            let prefix;
+            if (row.icon) {
+                prefix = document.createElement('i');
+                prefix.className = `fa-solid ${row.icon} sb-subpage-row-icon`;
+                prefix.setAttribute('aria-hidden', 'true');
+            }
             const { row: button } = createRow({
                 label: row.label,
                 subtitle: row.description,
                 field: row.id,
+                prefix,
                 activatable: true,
                 onActivate: () => this.open(row.id),
             });

@@ -93,7 +93,31 @@ describe('Extensions list groups', () => {
 
         expect(rows.map(row => row.dataset.sbSubpageRow)).toEqual(['sd_container', 'regex_container', 'extension-1', 'dice_container']);
         expect(rows.every(row => row.matches('button.ds-row.ds-row--activatable'))).toBe(true);
-        expect(host.querySelector('.sb-subpage-row-icon')).toBeNull();
+    });
+
+    test('puts a decorative Font Awesome icon on System Extensions rows and none on user-installed ones', () => {
+        const { host } = mountStack(buildExtensionsSubpage(buildPanel()).rows);
+        const icons = id => [...host.querySelectorAll(`[data-sb-subpage-row="${id}"] > i.sb-subpage-row-icon`)];
+
+        expect(icons('sd_container').map(icon => icon.className)).toEqual(['fa-solid fa-image sb-subpage-row-icon']);
+        expect(icons('regex_container').map(icon => icon.className)).toEqual(['fa-solid fa-asterisk sb-subpage-row-icon']);
+        const [image] = icons('sd_container');
+        expect(image.getAttribute('aria-hidden')).toBe('true');
+        expect(image.nextElementSibling.matches('.ds-row-text')).toBe(true);
+        expect(host.querySelector('[data-sb-subpage-row="sd_container"] .ds-row-label').textContent).toBe('Image Generation');
+        expect(icons('extension-1')).toHaveLength(0);
+        expect(icons('dice_container')).toHaveLength(0);
+        expect(host.querySelector('[data-sb-subpage-group="user"] .sb-subpage-row-icon')).toBeNull();
+    });
+
+    test('reads each icon from the description of the built-in extension, and gives user-installed rows none to read', () => {
+        const panel = buildPanel();
+        panel.querySelector('#extensions_settings').insertAdjacentHTML('beforeend', `<div id="sbdbg-settings" class="extension_container">${drawer('Debugger')}</div>`);
+        const rows = buildExtensionsSubpage(panel).rows;
+
+        expect(rows.find(row => row.id === 'sbdbg-settings').icon).toBe('fa-bug');
+        expect(rows.filter(row => row.group.id === 'user').map(row => row.icon)).toEqual([undefined, undefined]);
+        expect(rows.filter(row => row.group.id === 'system').every(row => /^fa-[a-z-]+$/.test(row.icon))).toBe(true);
     });
 
     test('puts page-level groups in the lead above the list, and labels Back with the text it is given', () => {
@@ -190,8 +214,12 @@ describe('Extensions page lead groups', () => {
         const { sections } = buildExtensionsLead(panel, panel.querySelector('#assets_container'));
         const group = sections[0];
 
-        expect(group.querySelector('.ds-pref-group-heading').textContent).toBe('Extensions');
-        expect(group.querySelector('[role="group"]').getAttribute('aria-labelledby')).toBe(group.querySelector('.ds-pref-group-heading').id);
+        // The group has no title: no heading and no empty header block. Its name is the upstream heading, as an aria-label.
+        expect(group.querySelector('.ds-pref-group-heading, .ds-pref-group-header, h1, h2, h3, h4, h5, h6')).toBeNull();
+        const box = group.querySelector('[role="group"]');
+        expect(box.getAttribute('aria-label')).toBe('Extensions');
+        expect(box.dataset.i18n).toBe('[aria-label]Extensions');
+        expect(box.hasAttribute('aria-labelledby')).toBe(false);
         expect(group.querySelector('#extensions_details')).toBe(manage);
         expect(group.querySelector('#third_party_extension_button')).toBe(install);
         expect(manage.matches('.ds-row.ds-button-row--arrow')).toBe(true);

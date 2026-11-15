@@ -46,6 +46,29 @@ const SB_SYSTEM_EXTENSION_DESCRIPTIONS = new Map([
 ]);
 
 /**
+ * The Font Awesome (Free, solid) glyph that leads the row of each extension SillyBunny ships, by container. An extension
+ * with no entry here is listed without an icon, and a user-installed extension never has one.
+ */
+const SB_SYSTEM_EXTENSION_ICONS = new Map([
+    ['sbdbg-settings', 'fa-bug'],
+    ['bpt-settings', 'fa-layer-group'],
+    ['expressions_container', 'fa-face-smile'],
+    ['ChatCompletionTabs-drawer', 'fa-window-restore'],
+    ['ChatCompletionTabs-container', 'fa-window-restore'],
+    ['translation_container', 'fa-language'],
+    ['extension_settings_guided-generations', 'fa-compass'],
+    ['caption_container', 'fa-closed-captioning'],
+    ['sd_container', 'fa-image'],
+    ['extension_settings_in_chat_agents_pathfinder', 'fa-book-open'],
+    ['qig-settings', 'fa-images'],
+    ['qr_container', 'fa-bolt'],
+    ['regex_container', 'fa-asterisk'],
+    ['summarize_container', 'fa-file-lines'],
+    ['tts_container', 'fa-volume-high'],
+    ['vectors_container', 'fa-magnifying-glass'],
+]);
+
+/**
  * The containers of the extensions SillyBunny ships as its own, whose settings pages get the shared rows.
  *
  * It is a list of ids and not "everything with a description": Bunny Preset Tools and Chat Completion Tabs
@@ -149,8 +172,8 @@ function adoptNotifyRow(input) {
 }
 
 /**
- * The group of the page's own actions: the two windows it opens and the update notice. The group's title is the
- * heading that the upstream block gave these three controls.
+ * The group of the page's own actions: the two windows it opens and the update notice. It shows no heading; its
+ * accessible name is the heading that the upstream block gave these three controls.
  *
  * @param {HTMLElement} panel
  * @returns {HTMLElement|null}
@@ -168,11 +191,11 @@ function presentExtensionActions(panel) {
     if (!rows.length) return null;
 
     const source = panel.querySelector('.extensions_block > .alignitemscenter > h3');
-    const group = createPrefGroup({ title: textOf(source) || 'Extensions', field: 'extension-actions' });
+    // The group has no title, as an AdwPreferencesGroup may have none: the box takes its name from the upstream heading instead.
+    const group = createPrefGroup({ field: 'extension-actions' });
     group.section.dataset.sbPresentation = 'manual';
-    const heading = group.section.querySelector('.ds-pref-group-heading');
-    if (source) moveCaption(heading, source, { keepSource: true });
-    else heading.dataset.i18n = heading.textContent;
+    group.group.setAttribute('aria-label', textOf(source) || 'Extensions');
+    group.group.dataset.i18n = `[aria-label]${source?.dataset.i18n || 'Extensions'}`;
     group.append(...rows);
     return group.section;
 }
@@ -319,7 +342,7 @@ function collectExtensionRows(body) {
             description,
             descriptionKey: description,
             group: description ? SB_EXTENSION_GROUPS.system : SB_EXTENSION_GROUPS.user,
-            icon: 'fa-puzzle-piece',
+            icon: description ? SB_SYSTEM_EXTENSION_ICONS.get(container.id) : undefined,
             builtIn: isBuiltInExtensionContainer(container.id),
             source: () => container,
             isAvailable: () => !isContainerEmpty(container),

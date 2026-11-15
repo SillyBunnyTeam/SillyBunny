@@ -7425,6 +7425,15 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     border-bottom: 0;
 }
 
+/* The leading glyph of a System Extensions row: dimmed, in a fixed-width column so the glyphs line up. */
+.sb-subpage-row-icon {
+    flex: 0 0 auto;
+    width: 20px;
+    font-size: var(--sb-type-control);
+    text-align: center;
+    color: var(--sb-shell-text-secondary);
+}
+
 .sb-subpage-detail-bar {
     display: flex;
     align-items: center;

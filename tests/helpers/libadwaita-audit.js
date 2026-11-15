@@ -131,7 +131,10 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
             ?? siblingHeading
             ?? (group.matches('.sb-settings-category-body') ? group.previousElementSibling?.matches('.sb-settings-flat-header, .sb-settings-category-header') && isVisible(group.previousElementSibling) ? group.previousElementSibling : null : null);
 
-        if (!heading) {
+        if (!heading && group.getAttribute('role') === 'group' && group.getAttribute('aria-label')?.trim()) {
+            // An AdwPreferencesGroup may have no title. The group then names itself for assistive technology.
+            addRecord(group, 'group-anatomy', { untitled: true, name: group.getAttribute('aria-label').trim(), radius: groupStyle.borderRadius, borderColor: groupStyle.borderTopColor }, true);
+        } else if (!heading) {
             addRecord(group, 'group-anatomy', { headingCount: 0 }, false);
         } else {
             const headingRect = heading.getBoundingClientRect();

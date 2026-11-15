@@ -282,7 +282,6 @@ export function prepareSamplingBlock(selector, block, { root } = {}) {
     }
 }
 
-const WIRE_TITLE = 'Wire:';
 const WIRE_HELP = 'Controls how this setting is sent to the AI:\n\n• Auto: Normal default behavior.\n• Send: Force this slider\'s exact value to be sent.\n• Omit: Completely delete this setting from the request so models that reject it (like Grok or o1) won\'t crash.';
 const WIRE_CHOICES = Object.freeze([
     ['inherit', 'Auto', 'Auto: Normal default behavior'],
@@ -313,7 +312,7 @@ function addWireRow(card, wire) {
 
     const view = wire.read();
     const toggle = createToggleRow({
-        label: clean(WIRE_TITLE).replace(/\s*[:：]$/, ''),
+        label: t`Sent to the AI`,
         subtitle: WIRE_HELP,
         field: `wire-${range.id}`,
         choices: WIRE_CHOICES.map(([state, label]) => [state, label]),
@@ -333,7 +332,7 @@ function addWireRow(card, wire) {
         option.title = WIRE_CHOICES[index][2];
     });
 
-    // The group is named by its sampler as well as by "Wire", because the page holds one wire row for each sampler.
+    // The group is named by its sampler as well as by "Sent to the AI", because the page holds one wire row for each sampler.
     const sliderTitle = slider.querySelector(':scope > .ds-row-text > .ds-row-label');
     if (sliderTitle) {
         sliderTitle.id ||= `sb-sampler-${range.id}-label`;
