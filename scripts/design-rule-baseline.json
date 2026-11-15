@@ -16,9 +16,9 @@
         "public/css/sillybunny-character-list.css": {
             "radius-literal": 2,
             "shadow-literal": 1,
-            "important": 15,
+            "important": 14,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 40
+            "spacing-off-scale": 29
         },
         "public/css/sillybunny-chat-styles.css": {
             "shadow-literal": 1,

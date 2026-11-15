@@ -261,6 +261,31 @@
     display: none;
 }
 
+/* Show More: the last row of a list that loads in batches, a button row at the foot of the box. */
+.ds-entity-list__footer .sb-list-show-more__button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 40px;
+    margin: 0;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: var(--SmartThemeBodyColor);
+    font: inherit;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.ds-entity-list__footer .sb-list-show-more__button:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
 .ds-entity-list__footer .sb-list-pagination {
     display: flex;
     align-items: center;
@@ -378,7 +403,7 @@
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast);
 }
 
-.ds-entity-list__footer .paginationjs-pages ul li a:active {
+.ds-entity-list__footer .paginationjs-pages ul li:not(.disabled) a:active {
     background: var(--sb-flat-active-bg);
 }
 
@@ -726,6 +751,7 @@
 
     .ds-entity-row .ds-entity-row__button:hover,
     .ds-entity-row--activatable:hover,
+    .ds-entity-list__footer .sb-list-show-more__button:hover,
     .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):hover,
     .ds-entity-list__footer .paginationjs-pages ul li:not(.disabled) a:hover {
         background: var(--sb-flat-hover-bg);
@@ -756,11 +782,13 @@
 }
 
 .ds-entity-row .ds-entity-row__button:active,
-.ds-entity-row--activatable:active {
+.ds-entity-row--activatable:active,
+.ds-entity-row.is-selected:active {
     background: var(--sb-flat-active-bg);
 }
 
-.ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):active {
+.ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):active,
+.ds-entity-list__footer .sb-list-show-more__button:active {
     background: var(--sb-flat-active-bg);
 }
 
@@ -784,7 +812,8 @@
     }
 
     .ds-entity-list__footer .paginationjs-size-changer select,
-    .ds-entity-list__footer .sb-list-pagination .sb-list-pagination__size {
+    .ds-entity-list__footer .sb-list-pagination .sb-list-pagination__size,
+    .ds-entity-list__footer .sb-list-show-more__button {
         min-height: 44px;
     }
 
@@ -805,6 +834,7 @@
     .ds-entity-row--surface,
     .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size),
     .ds-entity-list__footer .paginationjs-pages ul li a,
+    .ds-entity-list__footer .sb-list-show-more__button,
     .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text),
     .ds-tag-filter .tag,
     .ds-tag-filter .sb-tag-filter-menu-button {
@@ -814,7 +844,7 @@
 
 body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-entity-row .ds-entity-row__button, .ds-entity-row--activatable, .ds-entity-row--surface,
     .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next, .sb-list-pagination__size),
-    .ds-entity-list__footer .paginationjs-pages ul li a,
+    .ds-entity-list__footer .paginationjs-pages ul li a, .ds-entity-list__footer .sb-list-show-more__button,
     .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text), .ds-tag-filter .tag, .ds-tag-filter .sb-tag-filter-menu-button) {
     transition: none;
 }

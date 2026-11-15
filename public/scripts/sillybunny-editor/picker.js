@@ -389,6 +389,11 @@ function applyPickerSearch(state) {
     if (activePicker !== state) return;
     state.activeIndex = 0;
     renderOptions(state);
+    // A multiple picker keeps its scroll through a re-render for a toggled item; a new query starts at the first match.
+    if (state.multiple) {
+        state.list.scrollTop = 0;
+        if (state.surface) state.surface.scrollTop = 0;
+    }
     handleResize();
 }
 

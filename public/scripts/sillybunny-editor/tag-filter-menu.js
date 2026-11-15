@@ -59,8 +59,7 @@ export function attachTagFilterMenu(controls, { title = t`Show Tag List` } = {})
         return { value: tag.id, label: tag.querySelector('.tag_name')?.textContent ?? '', icon: dot, muted: tag.classList.contains('tag-absent') };
     });
 
-    function refresh() {
-        if (destroyed) return;
+    function labelActions() {
         // Initial transports can render before this surface acquires its SillyBunny scope.
         for (const action of filter.querySelectorAll('.tag.actionable')) {
             const glyph = action.querySelector('.tag_name');
@@ -68,6 +67,11 @@ export function attachTagFilterMenu(controls, { title = t`Show Tag List` } = {})
             if (label) action.setAttribute('aria-label', label);
             glyph?.setAttribute('aria-hidden', 'true');
         }
+    }
+
+    function refresh() {
+        if (destroyed) return;
+        labelActions();
         const currentTags = tags();
         const count = currentTags.filter(tag => tag.matches('.selected, .excluded')).length;
         badge.textContent = String(count);
@@ -84,6 +88,14 @@ export function attachTagFilterMenu(controls, { title = t`Show Tag List` } = {})
         try {
             await loadPickerStyles();
             if (destroyed || !controls.isConnected || button.hidden || controls.closest('[data-selection-mode="true"]')) return;
+            // The upstream filter prints 50 tags and an expander chip; the picker searches the chips, so it needs them all.
+            const expander = filter.querySelector('.tag.placeholder-expander');
+            if (expander) {
+                expander.click();
+                // The options below are read after the reprint, so the picker need not render them a second time for it.
+                observer.takeRecords();
+                labelActions();
+            }
             const footer = [
                 ['.clearAllFilters', t`Clear all filters`, 'filter-circle-xmark'],
                 ['.manageTags', t`Manage tags`, 'tags'],

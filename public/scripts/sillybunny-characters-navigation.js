@@ -133,8 +133,8 @@ async function revealCharacterListRow(list, avatar, isCurrent) {
             row.focus({ preventScroll: true });
             return true;
         }
-        const next = document.querySelector('.sb-character-list .sb-list-pagination__next');
-        if (!next || next.disabled || snapshot.page >= characters.length) return false;
+        const showMore = document.querySelector('.sb-character-list .sb-list-show-more:not([hidden])');
+        if (!showMore || snapshot.page >= characters.length) return false;
         snapshot.page++;
     }
     return false;

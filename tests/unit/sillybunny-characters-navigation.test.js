@@ -545,7 +545,7 @@ describe('World Info and Persona destinations', () => {
 
     test('inactive-character Back clears hiding filters and finds the stable avatar beyond duplicate names on page one', async () => {
         characters[0].name = characters[1].name = 'Duplicate';
-        document.body.insertAdjacentHTML('beforeend', '<div id="rm_characters_block"><button class="clearAllFilters"></button></div><div class="sb-character-list"><button class="sb-list-pagination__next"></button></div>');
+        document.body.insertAdjacentHTML('beforeend', '<div id="rm_characters_block"><button class="clearAllFilters"></button></div><div class="sb-character-list"><div class="sb-list-show-more"><button class="sb-list-show-more__button"></button></div></div>');
         const clear = jest.fn();
         document.querySelector('.clearAllFilters').addEventListener('click', clear);
         restoreCharacterListState.mockImplementation(async snapshot => {

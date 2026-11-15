@@ -814,6 +814,43 @@ describe('limitTagChips', () => {
             expect(first.querySelector('.sb-tag-overflow').textContent).toBe('+2');
             expect(second.querySelector('.sb-tag-overflow').textContent).toBe('+2');
         });
+
+        test('measures every observed strip again, once per frame, when fonts finish loading', () => {
+            const fonts = new EventTarget();
+            Object.defineProperty(document, 'fonts', { configurable: true, value: fonts });
+            const frames = [];
+            const frame = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => frames.push(callback));
+            try {
+                const container = strip(['One', 'Two', 'Three', 'Four', 'Five'], 130, [50, 40, 60]);
+                const released = strip(['A', 'B', 'C', 'D'], 130, [50, 40, 60]);
+                limitTagChips(container);
+                limitTagChips(released);
+                resize();
+                expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(2);
+
+                // The web font arrives: the same chips are wider while the strip keeps its width.
+                [...container.children].forEach(chip => widths.set(chip, 70));
+                released.closest('.ds-entity-row').remove();
+                observe.mockClear();
+                unobserve.mockClear();
+                fonts.dispatchEvent(new Event('loadingdone'));
+                fonts.dispatchEvent(new Event('loadingdone'));
+                expect(frame).toHaveBeenCalledTimes(1);
+                frames.shift()();
+                expect(unobserve).toHaveBeenCalledWith(container);
+                expect(observe).toHaveBeenCalledWith(container);
+                expect(observe).not.toHaveBeenCalledWith(released);
+                resize([container]);
+                expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(1);
+                expect(container.querySelector('.sb-tag-overflow').textContent).toBe('+4');
+
+                fonts.dispatchEvent(new Event('loadingdone'));
+                expect(frame).toHaveBeenCalledTimes(2);
+            } finally {
+                frame.mockRestore();
+                delete document.fonts;
+            }
+        });
     });
 });
 

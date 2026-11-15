@@ -384,31 +384,52 @@ describe('shared Characters/Groups list', () => {
         }
     });
 
-    test('pagination clamps before slicing, changes size, and isolates equal-size views', async () => {
+    test('the list loads in batches: the page is the number of batches shown, clamped to the list, per view', async () => {
         model.entities = characters(26);
         model.sourceCount = 26;
         pages.characters = 99;
         await mount();
-        expect(rows()[0].id).toBe('CharID20');
+        expect(rows()).toHaveLength(26);
         expect(mounted.captureState().page).toBe(3);
-        const select = document.querySelector('.sb-list-pagination__size');
-        select.value = '25';
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-        await settle();
-        expect(sizes.characters).toBe(25);
-        expect(rows()[0].id).toBe('CharID0');
+        expect(document.querySelector('.sb-list-pagination')).toBeNull();
+        expect(document.querySelector('.ds-entity-list__footer').hidden).toBe(true);
+        pages.characters = 1;
+        await mounted.render(model);
+        expect(rows()).toHaveLength(10);
+        expect(document.querySelector('.ds-entity-list__footer').hidden).toBe(false);
         sizes.groups = 25;
         model.view = 'groups';
         model.entities = [{ type: 'group', id: 'g', item: { id: 'g', name: 'Group' } }];
         await mounted.render(model);
-        document.querySelector('.sb-list-pagination__size').value = '50';
-        document.querySelector('.sb-list-pagination__size').dispatchEvent(new Event('change'));
-        await settle();
-        expect(sizes.groups).toBe(50);
-        expect(sizes.characters).toBe(25);
+        expect(rows()).toHaveLength(1);
+        expect(sizes.characters).toBe(10);
+        expect(sizes.groups).toBe(25);
     });
 
-    test('superseded pagination renders cannot write into the new view', async () => {
+    test('Show More appends the next batch in place, keeps the rows that are shown, and hands focus on when it hides', async () => {
+        model.entities = characters(26);
+        model.sourceCount = 26;
+        await mount();
+        const first = rows()[0];
+        const showMore = () => document.querySelector('.sb-list-show-more__button');
+        expect(rows()).toHaveLength(10);
+        expect(showMore().getAttribute('data-sb-copy-placeholder')).toBe('true');
+        showMore().focus();
+        showMore().click();
+        await settle();
+        expect(pages.characters).toBe(2);
+        expect(rows()).toHaveLength(20);
+        expect(rows()[0]).toBe(first);
+        expect(document.activeElement).toBe(showMore());
+        showMore().click();
+        await settle();
+        expect(pages.characters).toBe(3);
+        expect(rows()).toHaveLength(26);
+        expect(showMore().closest('.sb-list-show-more').hidden).toBe(true);
+        expect(document.activeElement).toBe(rows()[20]);
+    });
+
+    test('superseded renders cannot write their batches into the new view', async () => {
         model.entities = characters(26);
         model.sourceCount = 26;
         pages.characters = 3;
@@ -470,8 +491,8 @@ describe('shared Characters/Groups list', () => {
         await mount();
         await mounted.restoreState({ query: 'Name', page: 2, scrollTop: 65, focusKey: 'character:10.png' });
         expect(setFilterData).toHaveBeenCalledWith('search', 'Name', true);
-        expect(rows()[0].id).toBe('CharID10');
-        expect(document.activeElement).toBe(rows()[0]);
+        expect(rows()).toHaveLength(20);
+        expect(document.activeElement).toBe(rows()[10]);
         expect(mounted.captureState()).toEqual({ query: 'Name', page: 2, scrollTop: 65, focusKey: 'character:10.png' });
     });
 
@@ -564,7 +585,9 @@ describe('shared Characters/Groups list', () => {
         button('new').click();
         expect(create).toHaveBeenCalledTimes(1);
         button('sort').click();
-        const sortItems = menu.sections.find(section => section.title === 'Sort').items;
+        const sortItems = menu.sections[0].items;
+        expect(menu.sections[0].title).toBeUndefined();
+        expect(menu.title).toBe('Sort');
         const checkedSortItems = sortItems.filter(item => item.checked);
         expect(checkedSortItems).toHaveLength(1);
         expect(checkedSortItems[0].label).toBe('Name (A-Z)');
@@ -1183,7 +1206,7 @@ describe('Characters/Groups shared selection mode', () => {
         document.querySelector('.sb-selection-select-all').click();
         expect(document.querySelector('.sb-selection-title').textContent).toBe('26 selected');
         await setListPage('characters', 2);
-        expect(document.querySelectorAll('.is-selection-selected')).toHaveLength(10);
+        expect(document.querySelectorAll('.is-selection-selected')).toHaveLength(20);
         model.entities = model.entities.slice(10, 12);
         await mounted.render(model);
         expect(document.querySelector('.sb-selection-title').textContent).toBe('26 selected');
@@ -1278,17 +1301,18 @@ describe('Characters/Groups shared selection mode', () => {
         expect(mounted.section.dataset.selectionMode).toBe('false');
     });
 
-    test('paging to a disabled Next button restores a keyboard target for Escape', async () => {
+    test('Show More works in selection mode and leaves a keyboard target for Escape', async () => {
         model.entities = characters(11);
         model.sourceCount = 11;
         await mount();
         await enterSelection();
-        const next = document.querySelector('.sb-list-pagination__next');
-        next.focus();
-        next.click();
+        const more = document.querySelector('.sb-list-show-more__button');
+        more.focus();
+        more.click();
         await settle();
-        expect(next.disabled).toBe(true);
-        expect(document.activeElement).toBe(document.querySelector('.sb-selection-cancel'));
+        expect(rows()).toHaveLength(11);
+        expect(document.activeElement).toBe(rows()[10]);
+        expect(mounted.section.dataset.selectionMode).toBe('true');
         document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
         expect(mounted.section.dataset.selectionMode).toBe('false');
     });

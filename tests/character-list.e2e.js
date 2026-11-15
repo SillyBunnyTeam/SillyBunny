@@ -8,10 +8,10 @@ import { parseComputedColor, readBodyColor, readSelectionCheckOutline, SELECTION
 
 const list = page => page.locator('.sb-character-list[data-mounted="true"]');
 const listRows = (page, view) => list(page).locator(view === 'groups' ? '.group_select' : '.character_select');
-const pageSize = page => list(page).getByRole('combobox', { name: 'Items per page' });
+const showMore = page => list(page).locator('.sb-list-show-more__button');
 const selectionLayout = {
-    1440: { titleX: 96, descriptionRight: 1118, truncated: false },
-    390: { titleX: 96, descriptionRight: 306, truncated: false },
+    1440: { titleX: 100, descriptionRight: 1116, truncated: false },
+    390: { titleX: 100, descriptionRight: 304, truncated: false },
 };
 
 test.beforeEach(async ({ page }) => {
@@ -330,6 +330,14 @@ async function readSort(page, view) {
     return page.evaluate(async view => (await import('/scripts/sillybunny-character-list-state.js')).getListSort(view), view);
 }
 
+async function showAllRows(page) {
+    for (let guard = 0; guard < 20 && await showMore(page).isVisible(); guard++) {
+        const before = await list(page).locator('[data-sb-list-key]').count();
+        await showMore(page).click();
+        await expect.poll(() => list(page).locator('[data-sb-list-key]').count()).toBeGreaterThan(before);
+    }
+}
+
 async function waitForChatActivation(page) {
     await expect(page.locator('#sb-settings-page')).toBeHidden();
     await expect(page.locator('#chat')).toBeVisible();
@@ -339,8 +347,7 @@ async function waitForChatActivation(page) {
 async function expectEditorBackRestoration(page, view) {
     await showView(page, view);
     if (view === 'groups') await setSearch(page, 'qa-list-group-');
-    await pageSize(page).selectOption('10');
-    await list(page).getByRole('button', { name: 'Next page', exact: true }).click();
+    await showMore(page).click();
     await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(2);
     const row = listRows(page, view).last();
     const key = await row.getAttribute('data-sb-list-key');
@@ -574,21 +581,21 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
             return { field: power_user.sort_field, order: power_user.sort_order };
         })).toMatchObject({ field: characterSort.field, order: characterSort.order });
         expect(await page.evaluate(async () => JSON.parse((await import('/scripts/util/AccountStorage.js')).accountStorage.getItem('GroupList_SortOrder')))).toMatchObject({ field: 'name', order: 'desc' });
-        await pageSize(page).selectOption('50');
+        // The page is the number of batches shown, and each view keeps its own; the batch size is the saved page size.
         await showView(page, 'characters');
-        await expect(pageSize(page)).toHaveValue('10');
-        await pageSize(page).selectOption('25');
+        await expect(listRows(page, 'characters')).toHaveCount(10);
+        await showMore(page).click();
+        await expect(listRows(page, 'characters')).toHaveCount(20);
         await chooseSortItem(page, 'Newest');
         await expect.poll(() => readSort(page, 'characters')).toMatchObject({ field: 'create_date', order: 'desc' });
         await showView(page, 'groups');
-        await expect(pageSize(page)).toHaveValue('50');
         expect(await readSort(page, 'groups')).toMatchObject({ field: 'name', order: 'desc' });
+        expect(await page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(1);
         await showView(page, 'characters');
-        await expect(pageSize(page)).toHaveValue('25');
         expect(await page.evaluate(async () => {
             const { accountStorage } = await import('/scripts/util/AccountStorage.js');
             return [accountStorage.getItem('Characters_PerPage'), accountStorage.getItem('Groups_PerPage')];
-        })).toEqual(['25', '50']);
+        })).toEqual(['10', '10']);
 
         await chooseSortItem(page, 'Grid');
         await expect(page.locator('body')).toHaveClass(/charListGrid/);
@@ -711,6 +718,114 @@ for (const width of [375, 390, 430, 768]) {
         await page.keyboard.press('Escape');
     });
 }
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`the header ends on More, the Sort sheet has one heading and a group count sits in its subtitle at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const header = list(page).locator('.sb-character-list__header');
+        const rightmost = await header.evaluate(element => {
+            const visible = [...element.querySelectorAll('button')].filter(button => button.getClientRects().length && getComputedStyle(button).visibility !== 'hidden');
+            return visible.reduce((best, button) => (button.getBoundingClientRect().right > best.getBoundingClientRect().right ? button : best)).dataset.actionId;
+        });
+        expect(rightmost).toBe('more');
+
+        await openHeaderMenu(page, 'sort');
+        await expect(page.locator('.sb-action-menu-section-title')).toHaveText(['View']);
+        await page.keyboard.press('Escape');
+
+        await showView(page, 'groups');
+        const subtitle = listRows(page, 'groups').first().locator('.ds-entity-row__subtitle');
+        const counter = subtitle.locator('.group_select_counter');
+        await expect(counter).toHaveCount(1);
+        await expect(counter).not.toBeEmpty();
+        expect(await subtitle.evaluate(element => element.firstElementChild?.classList.contains('group_select_counter'))).toBe(true);
+        await expect(listRows(page, 'groups').first().locator('.ds-entity-row__trailing .group_select_counter, .ds-entity-row__badge .group_select_counter')).toHaveCount(0);
+    });
+
+    test(`the selection bar keeps every action named, and labels fold into icons only at 390px, at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        await enterSelection(page);
+        const actions = list(page).locator('.sb-selection-action');
+        expect(await actions.count()).toBeGreaterThan(1);
+        for (const action of await actions.all()) {
+            await expect(action).toHaveAttribute('aria-label', /.+/);
+            await expect(action).toHaveAttribute('title', /.+/);
+            expect(await action.evaluate(element => element.title === element.getAttribute('aria-label'))).toBe(true);
+            await expect(action.locator('> span')).toBeVisible({ visible: viewport.width > 450 });
+        }
+        const box = await list(page).locator('.sb-selection-action-bar').boundingBox();
+        expect(box.height).toBeLessThan(viewport.width <= 450 ? 64 : 80);
+    });
+}
+
+test.describe('folder headers in list and grid view', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    async function addFolder(page) {
+        await prepareList(page, { width: 1440, height: 900 });
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            const folders = await import('/scripts/sillybunny-folders.js');
+            const folder = folders.createFolder('characters', 'QA Folder', { expanded: true });
+            folders.setFolder('characters', app.characters.slice(0, 2).map(character => character.avatar), folder.id);
+            await app.printCharacters(false);
+        });
+        const header = list(page).locator('.sb-folder-row').first();
+        await expect(header).toBeVisible();
+        return header;
+    }
+
+    test('a folder header in list view fills on hover and darker on press, like a row', async ({ page }) => {
+        const header = await addFolder(page);
+        const fill = () => header.evaluate(element => {
+            const style = getComputedStyle(element);
+            return `${style.backgroundColor}|${style.backgroundImage}`;
+        });
+        await page.mouse.move(1, 1);
+        await expect.poll(fill).toBe(await fill());
+        const rest = await fill();
+        await header.hover();
+        await expect.poll(fill).not.toBe(rest);
+        const hovered = await fill();
+        await page.mouse.down();
+        await expect.poll(fill).not.toBe(hovered);
+        await page.mouse.move(1, 1);
+        await page.mouse.up();
+    });
+
+    test('a folder header in grid view stays one list-view row across the grid', async ({ page }) => {
+        const header = await addFolder(page);
+        await page.evaluate(async () => {
+            const app = await import('/script.js');
+            const { power_user } = await import('/scripts/power-user.js');
+            power_user.charListGrid = true;
+            document.body.classList.add('charListGrid');
+            await app.printCharacters(false);
+        });
+        const folder = await header.boundingBox();
+        const card = await list(page).locator('.character_select').first().boundingBox();
+        expect(folder.height).toBeLessThan(70);
+        expect(folder.width).toBeGreaterThan(card.width * 1.5);
+    });
+});
+
+test.describe('Show More', () => {
+    test('loads one batch per press, keeps the placeholder label and focuses the first new row at the end', async ({ page }) => {
+        await prepareList(page, { width: 1440, height: 900 });
+        const button = showMore(page);
+        await expect(button).toBeVisible();
+        await expect(button).toHaveAttribute('data-sb-copy-placeholder', 'true');
+        await expect(listRows(page, 'characters')).toHaveCount(10);
+        await button.click();
+        await expect(listRows(page, 'characters')).toHaveCount(20);
+        await expect(button).toBeVisible();
+        await button.click();
+        await expect(listRows(page, 'characters')).toHaveCount(28);
+        await expect(button).toBeHidden();
+        await expect(listRows(page, 'characters').nth(20)).toBeFocused();
+        await expect(list(page).locator('.sb-list-pagination, .paginationjs')).toHaveCount(0);
+    });
+});
 
 async function chatState(page) {
     return page.evaluate(async () => {
@@ -837,7 +952,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         test(`${view} activation closes the shell and reopening reveals the current row at ${viewport.width}px`, async ({ page }) => {
             await prepareList(page, viewport);
             await showView(page, view);
-            await pageSize(page).selectOption('50');
+            await showAllRows(page);
             const row = listRows(page, view).last();
             const key = await row.getAttribute('data-sb-list-key');
             await row.evaluate(element => { window.__sbActivationRow = element; });
@@ -860,7 +975,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                 await waitForChatActivation(page);
                 await showView(page, view);
             }
-            await pageSize(page).selectOption('10');
+            await page.evaluate(async view => (await import('/scripts/sillybunny-character-list-state.js')).setListPage(view, 1), view);
             await page.evaluate(() => window.SillyBunnyShell.closeCharacters());
             await waitForChatActivation(page);
             await showView(page, view);
@@ -1033,7 +1148,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
 
     test(`tag filter menu cycles states and filters both list views at ${viewport.width}px`, async ({ page }) => {
         await prepareList(page, viewport);
-        await pageSize(page).selectOption('50');
+        // A filter starts the list again at its first batch, so the batch is made large enough to hold every row.
+        await page.evaluate(async () => {
+            (await import('/scripts/sillybunny-character-list-state.js')).setListPageSize('characters', 50);
+            await (await import('/script.js')).printCharacters(false);
+        });
         const characterTotal = await listRows(page, 'characters').count();
         const { button, picker, search } = await openTagPicker(page);
         await expect(search).toBeFocused();
@@ -1112,9 +1231,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         expect(await chatState(page)).toEqual(before);
         await list(page).getByRole('button', { name: 'Select All', exact: true }).click();
         await expect(list(page).locator('.sb-selection-title')).toHaveText(`${total} selected`);
-        await list(page).getByRole('button', { name: 'Next page', exact: true }).click();
+        await showMore(page).click();
         await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().page)).toBe(2);
-        await expect(listRows(page, 'characters').first().locator('.sb-selection-check')).toBeChecked();
+        await expect(listRows(page, 'characters').last().locator('.sb-selection-check')).toBeChecked();
         await expect(list(page).locator('.sb-selection-title')).toHaveText(`${total} selected`);
         await page.keyboard.press('Escape');
         await expect(list(page)).toHaveAttribute('data-selection-mode', 'false');

@@ -110,7 +110,7 @@ test('desktop Characters settings page opens from its top-bar trigger', async ({
     await expect(characterPanel).not.toHaveClass(/sb-settings-active-root/);
 });
 
-test('mobile Characters pager stays in the shared list footer after Home navigation', async ({ page, isMobile }) => {
+test('mobile Characters Show More stays in the shared list footer, with no pager, after Home navigation', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'The mobile character toolbar layout is mobile-only.');
     await page.route('**/api/settings/save', route => route.fulfill({ json: {} }));
     await page.goto('/');
@@ -123,13 +123,19 @@ test('mobile Characters pager stays in the shared list footer after Home navigat
     await expect(page.locator('#right-nav-panel')).toHaveClass(/openDrawer/);
     const list = page.locator('.sb-character-list[data-mounted="true"]');
     await expect(list).toBeVisible();
-    const pager = list.locator('.ds-entity-list__footer .sb-list-pagination');
+    // A batch of one row leaves Show More showing whatever the library holds.
+    await page.evaluate(async () => {
+        (await import('/scripts/sillybunny-character-list-state.js')).setListPageSize('characters', 1);
+        await (await import('/script.js')).printCharacters(false);
+    });
+    const pager = list.locator('.ds-entity-list__footer .sb-list-show-more__button');
     await expect(pager).toBeVisible();
-    await expect(pager.getByRole('combobox', { name: 'Items per page' })).toBeVisible();
+    await expect(list.locator('.sb-list-pagination')).toHaveCount(0);
+    await expect(list.getByRole('combobox', { name: 'Items per page' })).toHaveCount(0);
 
     const layout = await page.evaluate(() => {
         const toolbar = document.querySelector('.sb-character-list__header');
-        const pager = document.querySelector('.sb-character-list .sb-list-pagination');
+        const pager = document.querySelector('.sb-character-list .sb-list-show-more__button');
         const toolbarRect = toolbar.getBoundingClientRect();
         const pagerRect = pager.getBoundingClientRect();
         const overlapsToolbar = pagerRect.width > 0 && pagerRect.height > 0 && Array.from(toolbar.children).some((element) => {
@@ -140,7 +146,7 @@ test('mobile Characters pager stays in the shared list footer after Home navigat
         });
 
         return {
-            pagerParent: pager.parentElement?.className,
+            pagerParent: pager.closest('.ds-entity-list__footer')?.className,
             toolbarBottom: toolbarRect.bottom,
             pagerTop: pagerRect.top,
             overlapsToolbar,

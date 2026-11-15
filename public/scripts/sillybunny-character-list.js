@@ -3,7 +3,7 @@ import { t } from './i18n.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { createEntityRow, entityKey, entityRowMotionKey, limitTagChips } from './sillybunny-editor/entity-row.js';
 import { createListHeader } from './sillybunny-editor/list-header.js';
-import { createListPagination } from './sillybunny-editor/list-pagination.js';
+import { createListShowMore } from './sillybunny-editor/list-show-more.js';
 import { reconcileRows, bindListKeyboard, rowEntry } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
@@ -19,12 +19,12 @@ import { getFolders, getFolderId, setFolder, setFolderExpanded, subscribe as sub
 import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
-    { href: 'css/sillybunny-entity-list.css?v=20261116f', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261116j', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-character-editor.css?v=20261116f', id: 'deferred-editor-chrome-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261114e', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261116j', id: 'deferred-character-list-css' },
 ]);
-const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
+const DEFAULT_BATCH_SIZE = 50;
 const mountedLists = new WeakMap();
 const mountingLists = new WeakMap();
 const rowFactories = new WeakMap();
@@ -159,8 +159,12 @@ function buildSubtitle(data, item) {
 }
 
 function groupSubtitle(data, item) {
+    const count = textValue(data.memberCountText ?? data.memberCount);
     const names = valueFrom(data, item, 'memberNamesText');
-    return names ? [node('span', 'group_select_block_list ch_description', textValue(names))] : [];
+    return [
+        count ? node('span', 'group_select_counter', count) : null,
+        names ? node('span', 'group_select_block_list ch_description', textValue(names)) : null,
+    ].filter(Boolean);
 }
 
 function rowTags(row, key, data, tags) {
@@ -265,9 +269,6 @@ function rowOptions(entry) {
         const assistant = makeBadge('user-graduate', 'ch_assistant');
         assistant.title = t`This character will be used as a welcome page assistant.`;
         badges.push(assistant);
-    }
-    if (entry.kind === 'group') {
-        badges.push(node('span', 'group_select_counter', textValue(data.memberCountText ?? data.memberCount ?? '')));
     }
     return {
         key: entry.key,
@@ -418,7 +419,6 @@ function buildVisibleRows(model, view, query) {
 
     const filtered = Boolean(String(query ?? '').trim()) || Boolean(model.hasAnyFilter);
     const rows = [];
-    const headers = new Map();
     for (const folder of folders) {
         const members = membersByFolder.get(folder.id);
         if (filtered && !members.length) continue;
@@ -432,7 +432,6 @@ function buildVisibleRows(model, view, query) {
             expanded: filtered || folder.expanded,
             temporaryExpansion: filtered,
         };
-        headers.set(folder.id, header);
         rows.push(header);
         if (!header.expanded) continue;
         for (const entity of members) rows.push({
@@ -443,7 +442,7 @@ function buildVisibleRows(model, view, query) {
         });
     }
     for (const entity of unfiled) rows.push({ kind: 'entity', key: modelEntityKey(entity), entity, folderId: null });
-    return { rows, headers };
+    return rows;
 }
 
 /**
@@ -468,14 +467,6 @@ function decorateFolderSections(container) {
         row.classList.toggle('is-folder-section-start', Boolean(section) && (isHeader || previousSection !== section));
         row.classList.toggle('is-folder-section-end', Boolean(section) && (nextSection !== section || nextIsHeader));
     });
-}
-
-function pageVisibleRows(rows, headers, pagination) {
-    const pageRows = pagination.slice(rows);
-    const first = pageRows[0];
-    if (first?.kind !== 'entity' || !first.folderId) return pageRows;
-    const header = headers.get(first.folderId);
-    return header ? [header, ...pageRows] : pageRows;
 }
 
 async function loadStylesheets(stylesheets) {
@@ -541,19 +532,17 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         view: 'characters',
         rows: new Map(),
         lastQuery: '',
-        pageSync: 0,
         selectableKeys: [],
         visibleRows: [],
     };
     let header;
     let search;
-    let pagination;
+    let showMore;
     let overflowed = new Set();
     let resizeObserver;
     let extensionObserver;
     const dataModules = dependencies;
     let typingUntil = 0;
-    let paginationView = state.view;
     let renderRevision = 0;
     let suppressedStateRenders = 0;
     let handlingSearchInput = false;
@@ -702,8 +691,10 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const index = state.visibleRows.findIndex(entry => entry.kind === 'entity' && entry.key === key);
         if (index < 0) return false;
 
-        const pageSize = Number(dataModules.state.getListPageSize?.(view)) || pagination.pageSize;
-        await dataModules.state.setListPage?.(view, Math.floor(index / pageSize) + 1);
+        const pageSize = Number(dataModules.state.getListPageSize?.(view)) || DEFAULT_BATCH_SIZE;
+        // The list only grows: revealing a row never hides the batches that were already shown.
+        const batches = Math.max(Number(dataModules.state.getListPage?.(view)) || 1, Math.floor(index / pageSize) + 1);
+        await dataModules.state.setListPage?.(view, batches);
         if (destroyed || !isCurrent()) return false;
 
         let row = [...rowsContainer.children].find(element => element.dataset.sbListKey === key);
@@ -854,6 +845,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             getKey: row => row.dataset.sbListKey,
             rowLabel: row => row.querySelector('.ch_name')?.textContent ?? '',
             range: true,
+            iconOnlyAtNarrow: true,
             getAllKeys: () => state.selectableKeys,
             canEnter: () => !bulkBusy && state.selectableKeys.length > 0,
             actions,
@@ -865,35 +857,31 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         });
     }
 
-    async function writePagination(view, page, pageSize) {
+    /** The batch size is the saved page size; the page is the number of batches shown. */
+    const batchSizeOf = view => Number(dataModules.state.getListPageSize?.(view)) || DEFAULT_BATCH_SIZE;
+
+    async function writeBatches(view, batches, isCurrent = () => true) {
         suppressedStateRenders++;
         try {
-            if (dataModules.state.getListPageSize(view) !== pageSize) await dataModules.state.setListPageSize(view, pageSize);
-            if (dataModules.state.getListPage(view) !== page) await dataModules.state.setListPage(view, page);
+            // A render that a newer one overtook while it waited must not write its clamped count over the newer view's.
+            await Promise.resolve();
+            if (!isCurrent()) return;
+            if (dataModules.state.getListPage(view) !== batches) await dataModules.state.setListPage(view, batches);
         } finally {
             suppressedStateRenders--;
         }
     }
 
-    const createPagination = view => createListPagination({
-        pageSizes: PAGE_SIZES,
-        readPageSize: () => dataModules.state.getListPageSize(view),
-        // The helper commits its size after writePageSize; persist in onChange
-        // instead so C1's render callback sees both the new page and size.
-        onChange: ({ page, pageSize }) => {
-            if (state.pageSync) return;
-            run(async () => {
-                await writePagination(view, page, pageSize);
-                await refresh();
-                // Disabling Next/Previous on the last/first page can leave the browser without a keyboard target.
-                const focused = document.activeElement;
-                if (selection.isActive && (!section.contains(focused) || focused.matches?.(':disabled'))) {
-                    selectionHeader.querySelector('.sb-selection-cancel')?.focus({ preventScroll: true });
-                }
-            });
-        },
-        keepSizeVisible: true,
-    });
+    async function showMoreRows() {
+        const view = state.view;
+        const shownBefore = rowsContainer.children.length;
+        await dataModules.state.setListPage(view, (Number(dataModules.state.getListPage(view)) || 1) + 1);
+        if (destroyed || view !== state.view) return;
+        // A button that hides itself would drop the keyboard focus: continue at the first row that was added.
+        if (showMore.isComplete && (document.activeElement === showMore.button || !section.contains(document.activeElement))) {
+            rowsContainer.children[shownBefore]?.focus({ preventScroll: true });
+        }
+    }
 
     function currentSortOptions() {
         const options = dataModules.state.getListSortOptions?.(state.view);
@@ -918,7 +906,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             kind: 'radio',
             checked: power_user.charListGrid === (value === 'grid'),
         }));
-        menu(trigger, t`Sort`, [{ title: t`Sort`, items: sortItems }, { title: t`View`, items: viewItems }]);
+        menu(trigger, t`Sort`, [{ items: sortItems }, { title: t`View`, items: viewItems }]);
     }
 
     function openListMenu(trigger) {
@@ -1000,7 +988,8 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         extensionSlot = document.getElementById('rm_buttons_container');
         if (extensionSlot) {
             extensionSlot.classList.add('sb-character-list__extension-slot');
-            header.element.append(extensionSlot);
+            // The header ends on its menu button, as every list header does.
+            header.element.insertBefore(extensionSlot, header.button('more'));
         }
         return header.element;
     }
@@ -1069,10 +1058,10 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         header?.setTitle(state.view === 'groups' ? t`Groups` : t`Characters`);
         header?.setSubtitle(countLabel(model.sourceCount, state.view));
         setOverflow();
-        const { rows: visibleRows, headers } = buildVisibleRows(model, view, search.query);
+        const visibleRows = buildVisibleRows(model, view, search.query);
         state.visibleRows = visibleRows;
-        const pageSize = Number(dataModules.state.getListPageSize?.(state.view)) || pagination.pageSize;
-        let page = Number(dataModules.state.getListPage?.(state.view)) || 1;
+        const batchSize = batchSizeOf(state.view);
+        let batches = Number(dataModules.state.getListPage?.(state.view)) || 1;
         if (revealActiveOnRender && !selection.isActive) {
             const activeEntity = model.entities.find(entity => {
                 if (entity.type !== 'character' && entity.type !== 'group') return false;
@@ -1082,27 +1071,14 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 return Boolean(data.active ?? data.isActive);
             });
             const index = activeEntity ? visibleRows.findIndex(entry => entry.kind === 'entity' && entry.key === modelEntityKey(activeEntity)) : -1;
-            if (index >= 0) page = Math.floor(index / pageSize) + 1;
+            if (index >= 0) batches = Math.max(batches, Math.floor(index / batchSize) + 1);
         }
-        if (paginationView !== state.view || pagination.pageSize !== pageSize) {
-            pagination.destroy();
-            pagination = createPagination(state.view);
-            paginationView = state.view;
-            footer.replaceChildren(pagination.element);
-        }
-        const currentPagination = pagination;
-        currentPagination.setTotal(visibleRows.length);
-        const clampedPage = Math.min(currentPagination.pages, page);
-        state.pageSync++;
-        try {
-            await currentPagination.goTo(clampedPage);
-            if (revision !== renderRevision) return;
-            await writePagination(view, clampedPage, currentPagination.pageSize);
-        } finally {
-            state.pageSync--;
-        }
+        const clampedBatches = Math.min(Math.max(1, Math.ceil(visibleRows.length / batchSize)), batches);
+        await writeBatches(view, clampedBatches, () => revision === renderRevision);
         if (revision !== renderRevision) return;
-        const pageRows = pageVisibleRows(visibleRows, headers, currentPagination);
+        const pageRows = visibleRows.slice(0, clampedBatches * batchSize);
+        showMore.update({ shown: pageRows.length, total: visibleRows.length });
+        footer.hidden = showMore.isComplete;
         const pageEntries = pageRows.map(entry => entry.kind === 'folder'
             ? { ...entry, inert: selection.isActive }
             : { ...normalizeEntry(entry.entity, view, dataModules), folderId: entry.folderId });
@@ -1144,7 +1120,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         const focused = document.activeElement instanceof HTMLElement ? document.activeElement.closest('[data-sb-list-key]') : null;
         return {
             query: search?.query ?? searchInput.value,
-            page: dataModules.state.getListPage?.(state.view) ?? pagination.page,
+            page: dataModules.state.getListPage?.(state.view) ?? 1,
             scrollTop: box.scrollTop,
             focusKey: focused?.dataset.sbListKey ?? null,
         };
@@ -1159,8 +1135,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             dataModules.script.entitiesFilter?.clearFuzzySearchCaches?.();
         }
         if (Number.isInteger(snapshot.page) && snapshot.page > 0) {
-            const size = dataModules.state.getListPageSize(view);
-            await writePagination(view, snapshot.page, size);
+            await writeBatches(view, snapshot.page);
         }
     }
 
@@ -1272,8 +1247,9 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             typeToSearchSelector: '[data-sb-list-key]',
         });
         searchInput.addEventListener('input', endInput);
-        pagination = createPagination(state.view);
-        footer.append(pagination.element);
+        showMore = createListShowMore({ onShowMore: showMoreRows });
+        footer.append(showMore.element);
+        footer.hidden = true;
         unbindKeyboard = bindListKeyboard(rowsContainer, {
             rowSelector: '.ds-entity-row--activatable:not([aria-disabled="true"])',
             onOpen: (row, event) => {
@@ -1372,7 +1348,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 selection.destroy();
                 searchInput.removeEventListener('input', beginInput);
                 searchInput.removeEventListener('input', endInput);
-                pagination.destroy();
+                showMore.destroy();
                 header.destroy();
                 mountedLists.delete(container);
                 dataModules.script.setCharacterListRenderer(null);

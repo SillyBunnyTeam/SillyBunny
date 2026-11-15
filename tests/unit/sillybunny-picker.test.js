@@ -507,6 +507,20 @@ describe('multi-toggle picker', () => {
     });
 });
 
+describe('picker search scroll', () => {
+    test('a multiple picker returns to the first match when the query changes, and keeps its place when an item is toggled', () => {
+        const { input, list, picker } = makePicker({ multiple: true });
+        list.scrollTop = 40;
+        list.closest('.sb-picker').scrollTop = 25;
+        filter(input, 'a');
+        expect(list.scrollTop).toBe(0);
+        expect(list.closest('.sb-picker').scrollTop).toBe(0);
+        list.scrollTop = 40;
+        picker.refresh();
+        expect(list.scrollTop).toBe(40);
+    });
+});
+
 describe('picker search scheduling', () => {
     test.each([false, true])('search coalesces a burst for 300ms and Clear cancels pending work (mobile=%s)', mobile => {
         window.matchMedia.mockReturnValue({ matches: mobile });

@@ -84,6 +84,21 @@ describe('tag filter menu', () => {
         expect(clear).toHaveBeenCalledTimes(1);
     });
 
+    test('expands the upstream chip limit before it reads the options, so every tag can be found', async () => {
+        const filter = controls.querySelector('.rm_tag_filter');
+        filter.insertAdjacentHTML('beforeend', '<span class="tag actionable placeholder-expander" id="placeholder_1"><span class="tag_name">...</span></span>');
+        filter.querySelector('.placeholder-expander').addEventListener('click', event => {
+            event.stopPropagation();
+            filter.querySelector('.placeholder-expander').remove();
+            filter.insertAdjacentHTML('beforeend', tag('Gamma') + tag('Delta'));
+        });
+        menu = attachTagFilterMenu(controls);
+        button().click();
+        await settle();
+        expect(options.items.map(item => item.value)).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
+        expect(filter.querySelector('.placeholder-expander')).toBeNull();
+    });
+
     test('clicks the current element, counts selected/excluded states, and refreshes an open picker', async () => {
         menu = attachTagFilterMenu(controls);
         button().click();

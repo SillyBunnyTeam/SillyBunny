@@ -3,7 +3,10 @@ const entityKinds = new Set(['character', 'group', 'tag', 'persona', 'agent', 'a
 const rowSlotOrder = ['grip', 'avatar', 'text', 'badge', 'suffix', 'chevron'];
 const textSlotOrder = ['title', 'subtitle', 'preview', 'tags'];
 const tagStrips = new WeakMap();
+const observedStrips = new Set();
 let tagStripObserver = null;
+let fontRefitFrame = 0;
+let fontListenerBound = false;
 const slotClasses = {
     row: ['ds-entity-row'],
     grip: ['ds-entity-row__grip'],
@@ -122,6 +125,7 @@ function fitTagStrips(entries) {
         if (!strip || !container.isConnected) {
             tagStripObserver.unobserve(container);
             tagStrips.delete(container);
+            observedStrips.delete(container);
             continue;
         }
         const width = contentRect.width;
@@ -164,6 +168,27 @@ function fitTagStrips(entries) {
 }
 
 /**
+ * Chips are fitted with the font that is loaded when the strip is measured. A web font that arrives later changes their
+ * widths without changing the strip's, so every observed strip is measured again once fonts finish loading.
+ */
+function refitStripsAfterFontLoad() {
+    if (fontRefitFrame) return;
+    fontRefitFrame = requestAnimationFrame(() => {
+        fontRefitFrame = 0;
+        for (const container of observedStrips) {
+            const strip = tagStrips.get(container);
+            if (!strip || !container.isConnected) {
+                observedStrips.delete(container);
+                continue;
+            }
+            strip.width = null;
+            tagStripObserver.unobserve(container);
+            tagStripObserver.observe(container);
+        }
+    });
+}
+
+/**
  * Shows at most `max` tag chips and one "+N" chip naming the hidden tags.
  * Fits whole chips lazily on layout/resize; without ResizeObserver, uses the fixed maximum.
  * Calling it again after the chips change recomputes and replaces the previous observation.
@@ -181,6 +206,7 @@ export function limitTagChips(container, { max = 3, fit = true, allNames } = {})
     if (tagStrips.has(container)) {
         tagStripObserver.unobserve(container);
         tagStrips.delete(container);
+        observedStrips.delete(container);
     }
     const chips = [];
     for (const child of [...container.children]) {
@@ -193,7 +219,12 @@ export function limitTagChips(container, { max = 3, fit = true, allNames } = {})
     applyTagLimit(container, strip, max);
     if (!fit || !chips.length || max === 0 || typeof ResizeObserver !== 'function') return;
     tagStripObserver ??= new ResizeObserver(fitTagStrips);
+    if (!fontListenerBound && document.fonts?.addEventListener) {
+        fontListenerBound = true;
+        document.fonts.addEventListener('loadingdone', refitStripsAfterFontLoad);
+    }
     tagStrips.set(container, strip);
+    observedStrips.add(container);
     tagStripObserver.observe(container);
 }
 
