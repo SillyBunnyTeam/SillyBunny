@@ -124,7 +124,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                 probe.remove();
                 return color;
             });
-            await expect(key).toHaveCSS('border-top-color', dangerBorder);
+            // An entry row is the field (DESIGN.md, Entry rows), so the danger edge is the row's outline.
+            await expect(key.locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " ds-row-entry--floating ")][1]')).toHaveCSS('outline-color', dangerBorder);
             const toast = page.locator('.toast', { hasText: 'Missing key' });
             await expect(toast).toHaveCount(1);
             await expect(toast.locator('[data-sb-connection-notice="missing-key"]')).toHaveText('Enter your API key, then press Connect.');
@@ -141,16 +142,17 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             // The toast and the focus ring settle first, so that the edge is read at rest.
             await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
+            // The entry row is the field, and its danger edge is an outline drawn 2px inside the row.
             const box = await key.evaluate((node) => {
                 node.scrollIntoView({ block: 'center' });
-                const { left, top, width } = node.getBoundingClientRect();
+                const { left, top, width } = node.closest('.ds-row-entry--floating').getBoundingClientRect();
                 return { left, top, width };
             });
             const y = Math.round(box.top);
             const pixel = await decodeClip(page, { x: Math.floor(box.left), y: y - 6, width: Math.ceil(box.width), height: 12 });
             const x = Math.round(box.left + box.width / 2);
 
-            expect(contrastOf(pixel(x, y), pixel(x, y - 3)), 'the top edge of the field against the page above it').toBeGreaterThanOrEqual(GLYPH_CONTRAST);
+            expect(contrastOf(pixel(x, y + 1), pixel(x, y - 3)), 'the top edge of the field against the page above it').toBeGreaterThanOrEqual(GLYPH_CONTRAST);
         });
 
         test.describe('in forced colours', () => {
