@@ -490,6 +490,38 @@ test.describe('Settings header consistency', () => {
         expect(await account.evaluate(row => getComputedStyle(row).boxShadow)).not.toBe('none');
     });
 
+    test('a select row and a spin row on a settings page show the focus ring when the keyboard reaches their control', async ({ page }) => {
+        const messages = await openSettingsTab(page, 'messages', 'right');
+        const select = messages.locator('.ds-pref-group > .ds-row.ds-select-row:not(.is-insensitive)').first();
+        const spin = messages.locator('.ds-pref-group > .ds-row.ds-row--spin:not(.is-insensitive)').first();
+        for (const [row, control, name] of [
+            [select, select.locator('.ds-select-row__trigger'), 'select row'],
+            [spin, spin.locator('input.ds-spin'), 'spin row'],
+        ]) {
+            await expect(control, name).toBeVisible();
+            await control.focus();
+            await page.keyboard.press('Shift+Tab');
+            await page.keyboard.press('Tab');
+            await expect(control, name).toBeFocused();
+            expect(await row.evaluate(element => getComputedStyle(element).boxShadow), name).not.toBe('none');
+        }
+    });
+
+    test('an entry row on a settings page draws one ring round the row, none on its text, and no fill', async ({ page }) => {
+        const dataSecurity = await openSettingsTab(page, 'data-security', 'right');
+        const row = dataSecurity.locator('.ds-row-entry--floating').first();
+        const input = row.locator('.ds-row-entry__field > input');
+        await expect(row).toBeVisible();
+        await expect(row.locator('.ds-row-entry__edit')).toBeVisible();
+        await input.focus();
+        await expect.poll(() => row.evaluate(node => getComputedStyle(node).boxShadow)).toContain('inset');
+        expect(await input.evaluate(node => {
+            const style = getComputedStyle(node);
+            return { shadow: style.boxShadow, background: style.backgroundColor, border: style.borderTopWidth };
+        })).toEqual({ shadow: 'none', background: 'rgba(0, 0, 0, 0)', border: '0px' });
+        await expect(row.locator('.ds-row-entry__edit')).toBeHidden();
+    });
+
     test('Appearance and Formatting keep migrated groups flat and aligned', async ({ page }) => {
         const appearance = await openSettingsTab(page, 'appearance', 'right');
         const appearanceMetrics = await appearance.evaluate(root => {

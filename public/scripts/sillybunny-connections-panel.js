@@ -447,18 +447,21 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
     }
 
     function moveSecondaryStatusControls(row) {
-        const extras = document.createElement('div');
-        extras.className = 'flex-container sb-connections-status-extra';
-        extras.setAttribute('role', 'group');
-        extras.setAttribute('aria-label', t`Status`);
         const controls = [...row.querySelectorAll('.openrouter_authorize, #customize_additional_parameters')];
         if (!controls.length || !(row.parentElement instanceof HTMLElement)) return;
+        // One group per control: the regrouping places Authorize under the text that mentions it, and Parameters stays where it is.
+        let after = row;
         for (const control of controls) {
+            const extras = document.createElement('div');
+            extras.className = 'flex-container sb-connections-status-extra';
+            extras.setAttribute('role', 'group');
+            extras.setAttribute('aria-label', t`Status`);
             moveNode(control, extras);
             presentButtonRow(control, { moveNode, snapshotAttributes, addLegacyClass, generated: state.generated, controllers: state.controllers });
+            row.parentElement.insertBefore(extras, after.nextSibling);
+            state.generated.push(extras);
+            after = extras;
         }
-        row.parentElement.insertBefore(extras, row.nextSibling);
-        state.generated.push(extras);
     }
 
     function wrapProviderContent(slot) {

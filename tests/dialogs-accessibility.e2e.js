@@ -24,7 +24,8 @@ import { DESKTOP, PHONE, SURFACES, TEXT_SCALE, bootHomeWithDeletedReisen, bootMi
 
 // Elements that shorten their text with an ellipsis on purpose (a title, or the value shown in a select row).
 // Everything else must show its full label.
-const ELLIPSIZING = ['.sb-dialog__title', '.sb-dialog__subtitle', '.ds-select-row__trigger'];
+// An entry row's title ellipsizes while the row is empty and not being edited, as AdwEntryRow's empty title does; it floats at Caption size on focus.
+const ELLIPSIZING = ['.sb-dialog__title', '.sb-dialog__subtitle', '.ds-select-row__trigger', '.ds-row-entry--floating .ds-row-entry__title'];
 
 // A control that the browser gives no name shows in the accessibility snapshot as its role alone, with at most its states after it.
 const UNNAMED_CONTROL = /^\s*- (?:button|link|textbox|searchbox|switch|checkbox|radio|combobox|slider|spinbutton|tab|menuitem|option)(?: \[[^\]]+\])*:?\s*$/;

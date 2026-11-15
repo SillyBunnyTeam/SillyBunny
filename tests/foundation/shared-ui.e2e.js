@@ -32,19 +32,29 @@ function resolved(page, property, value) {
 async function expectEntryRows(page) {
     for (const compact of [false, true]) {
         await page.evaluate(value => document.documentElement.dataset.sbCompactMode = String(value), compact);
-        const token = parseFloat(await resolved(page, 'min-height', 'var(--sb-field-min-height)'));
+        // An entry row is a row, not a standalone field: it takes the row height.
+        const token = parseFloat(await resolved(page, 'min-height', 'var(--sb-density-row-min-height)'));
         for (const id of entryIds) {
-            const height = (await page.locator(`#${id}`).boundingBox()).height;
-            expect(height, `${id} takes its height from --sb-field-min-height (compact ${compact})`).toBeGreaterThanOrEqual(token);
-            expect(height, `${id} does not outgrow --sb-field-min-height (compact ${compact})`).toBeLessThanOrEqual(token + 1);
+            // The line plus the row's own padding is the row; a caption under the line (an error) is outside it.
+            const height = (await page.locator(`#${id}`).evaluate(input => input.closest('.ds-row-entry__line').getBoundingClientRect().height)) + 12;
+            expect(height, `${id} takes its height from --sb-density-row-min-height (compact ${compact})`).toBeGreaterThanOrEqual(token);
+            expect(height, `${id} does not outgrow --sb-density-row-min-height (compact ${compact})`).toBeLessThanOrEqual(token + 1);
         }
     }
     await page.evaluate(() => delete document.documentElement.dataset.sbCompactMode);
 
-    const border = id => page.locator(`#${id}`).evaluate(input => getComputedStyle(input).borderTopColor);
+    // The row is the field: the input draws no fill, border or radius, and a state is drawn on the row.
+    const drawn = id => page.locator(`#${id}`).evaluate(input => {
+        const row = getComputedStyle(input.closest('.ds-row'));
+        const style = getComputedStyle(input);
+        return { background: style.backgroundColor, border: style.borderTopWidth, radius: style.borderTopLeftRadius, outlineStyle: row.outlineStyle, outlineColor: row.outlineColor, shadow: row.boxShadow };
+    });
     const danger = await resolved(page, 'color', 'var(--sb-color-danger)');
-    expect(await border('entry-rest')).toBe('rgba(0, 0, 0, 0)');
-    expect(await border('entry-error')).toBe(danger);
+    for (const id of entryIds) {
+        expect(await drawn(id), `${id} draws nothing inside the row`).toMatchObject({ background: 'rgba(0, 0, 0, 0)', border: '0px', radius: '0px' });
+    }
+    expect(await drawn('entry-rest')).toMatchObject({ outlineStyle: 'none', shadow: 'none' });
+    expect(await drawn('entry-error')).toMatchObject({ outlineStyle: 'solid', outlineColor: danger });
     const error = page.locator('#entry-error');
     await expect(error).toHaveAttribute('aria-invalid', 'true');
     const caption = page.locator('.ds-row-entry__error');
@@ -53,15 +63,16 @@ async function expectEntryRows(page) {
     expect(await error.getAttribute('aria-describedby')).toContain(await caption.getAttribute('id'));
     await expect(page.locator('#entry-rest')).not.toHaveAttribute('aria-invalid', /.*/);
 
-    const focusBorder = await resolved(page, 'border-top-color', 'var(--sb-entry-focus-border)');
-    const focusRing = await resolved(page, 'box-shadow', 'var(--sb-entry-focus-ring)');
+    // An entry row draws the focus ring around the whole row; the input draws none.
+    const focusRing = await resolved(page, 'box-shadow', 'var(--sb-focus-ring-inset)');
     await page.locator('#entry-focus').focus();
-    await expect(page.locator('#entry-focus')).toHaveCSS('border-top-color', focusBorder);
-    await expect(page.locator('#entry-focus')).toHaveCSS('box-shadow', focusRing);
+    await expect(page.locator('.ds-row-entry--floating:has(#entry-focus)')).toHaveCSS('box-shadow', focusRing);
+    await expect(page.locator('#entry-focus')).toHaveCSS('box-shadow', 'none');
+    await expect(page.locator('.ds-row-entry--floating:has(#entry-focus) .ds-row-entry__edit')).toBeHidden();
     await page.locator('#entry-error').focus();
-    await expect(page.locator('#entry-error')).toHaveCSS('border-top-color', danger);
-    await expect(page.locator('#entry-error')).toHaveCSS('box-shadow', /inset/);
+    await expect(page.locator('.ds-row-entry--floating:has(#entry-error)')).toHaveCSS('outline-color', danger);
     await page.locator('#entry-error').blur();
+    await expect(page.locator('.ds-row-entry--floating:has(#entry-focus) .ds-row-entry__edit')).toBeVisible();
 
     const disabled = page.locator('#entry-disabled');
     await expect(disabled).toBeDisabled();

@@ -99,7 +99,29 @@ export function applyConnectionsGroups(block, { moveNode, addLegacyClass, snapsh
         generated.push(group.section);
         return [id, { ...group, units: [], lastSignature: null, destination: null }];
     }));
-    const priority = entry => entry.node.matches('.sb-connections-connect') ? -2 : entry.node.matches('.sb-connections-status-extra') ? -1
+    // "Click Authorize below" stands above the button: Authorize moves between that text and the field it offers instead.
+    // It keeps a unit of its own, outside the field's mirror, because it carries the same gate itself and must not meet it twice.
+    for (const entry of [...entries]) {
+        const authorize = entry.node.matches('.sb-connections-status-extra') ? entry.node.querySelector('.openrouter_authorize') : null;
+        if (!authorize) continue;
+        const gate = JSON.stringify([MIRROR_ATTRIBUTES.filter(name => authorize.hasAttribute(name)).map(name => [name, authorize.getAttribute(name)])]);
+        const owner = entries.find(candidate => candidate !== entry && candidate.group === 'connection' && candidate.signature === gate
+            && candidate.node.matches('.ds-row') && candidate.nodes.includes(candidate.node));
+        if (!owner) continue;
+        entries.splice(entries.indexOf(entry), 1);
+        const at = owner.nodes.indexOf(owner.node);
+        const field = { ...owner, nodes: owner.nodes.slice(at) };
+        owner.nodes = owner.nodes.slice(0, at);
+        entry.pinned = true;
+        const position = entries.indexOf(owner);
+        if (owner.nodes.length) {
+            owner.node = owner.nodes[0];
+            entries.splice(position + 1, 0, entry, field);
+        } else {
+            entries.splice(position, 1, entry, field);
+        }
+    }
+    const priority = entry => entry.pinned ? 0 : entry.node.matches('.sb-connections-connect') ? -2 : entry.node.matches('.sb-connections-status-extra') ? -1
         : matchesUnit(entry.node, '#openai_proxy_preset') ? 2 : entry.node.id === 'ReverseProxyWarningMessage' ? 3 : 0;
     entries.sort((a, b) => priority(a) - priority(b));
     for (const entry of entries) {

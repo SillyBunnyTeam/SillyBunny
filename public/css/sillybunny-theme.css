@@ -5865,7 +5865,7 @@ dialog.popup.sb-dialog .checkbox_label > input[type='checkbox'] {
     min-width: 0;
 }
 
-.sb-dialog .sb-dialog-rows .ds-row-entry__caption {
+.sb-dialog .sb-dialog-rows .ds-row-entry:not(.ds-row-entry--floating) .ds-row-entry__caption {
     margin-block-start: 6px;
 }
 

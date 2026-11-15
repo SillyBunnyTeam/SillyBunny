@@ -149,24 +149,47 @@ for (const width of [1440, 360]) {
             expect(isFloated(await geometry(page, 'programmatic'))).toBe(true);
         });
 
-        test('draws the field as a filled entry and shows one focus ring, on the field', async ({ page }) => {
+        test('is the field itself: the input draws no fill, border or radius, and one ring goes round the whole row', async ({ page }) => {
             await mountRows(page);
-            const rest = await page.locator('#empty').evaluate(input => {
-                const style = getComputedStyle(input);
-                return { background: style.backgroundColor, radius: parseFloat(style.borderTopLeftRadius) };
+            const style = input => ({
+                background: getComputedStyle(input).backgroundColor,
+                border: getComputedStyle(input).borderTopWidth,
+                radius: getComputedStyle(input).borderTopLeftRadius,
+                shadow: getComputedStyle(input).boxShadow,
+                outline: getComputedStyle(input).outlineStyle,
+                row: getComputedStyle(input.closest('.ds-row')).boxShadow,
+                rowOutline: getComputedStyle(input.closest('.ds-row')).outlineStyle,
+                textInset: input.getBoundingClientRect().left - input.closest('.ds-row').getBoundingClientRect().left,
+                rowHeight: input.closest('.ds-row').getBoundingClientRect().height,
+                minHeight: getComputedStyle(input.closest('.ds-row')).minHeight,
             });
-            expect(rest.background).not.toBe('rgba(0, 0, 0, 0)');
-            expect(rest.radius).toBeGreaterThan(0);
+            const rest = await page.locator('#empty').evaluate(style);
+            expect(rest).toMatchObject({ background: 'rgba(0, 0, 0, 0)', border: '0px', radius: '0px', shadow: 'none', row: 'none', rowOutline: 'none' });
+            expect(rest.textInset).toBe(12);
+            expect(rest.rowHeight).toBeGreaterThanOrEqual(parseFloat(rest.minHeight));
             await page.keyboard.press('Tab');
             await expect(page.locator('#empty')).toBeFocused();
-            const rings = await page.locator('#empty').evaluate(input => ({
-                row: getComputedStyle(input.closest('.ds-row')).boxShadow,
-                input: getComputedStyle(input).boxShadow,
-                outline: getComputedStyle(input).outlineStyle,
-            }));
-            expect(rings.row).toBe('none');
-            expect(rings.input).not.toBe('none');
-            expect(rings.outline).toBe('none');
+            const focus = await page.locator('#empty').evaluate(style);
+            expect(focus.row).not.toBe('none');
+            expect(focus).toMatchObject({ background: 'rgba(0, 0, 0, 0)', border: '0px', radius: '0px', shadow: 'none', outline: 'none' });
+        });
+
+        test('marks the row as editable with a pencil that hides while the text has focus', async ({ page }) => {
+            await mountRows(page);
+            const pencil = page.locator('[data-sb-editor-field="empty"] .ds-row-entry__edit');
+            await expect(pencil).toBeVisible();
+            await expect(pencil).toHaveAttribute('aria-hidden', 'true');
+            await page.locator('#empty').focus();
+            await expect(pencil).toBeHidden();
+            await page.locator('#empty').blur();
+            await expect(pencil).toBeVisible();
+        });
+
+        test('a press on the row, not on a control, starts editing', async ({ page }) => {
+            await mountRows(page);
+            const box = await page.locator('[data-sb-editor-field="empty"]').boundingBox();
+            await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
+            await expect(page.locator('#empty')).toBeFocused();
         });
 
         test('long titles stay on one line and nothing overflows', async ({ page }) => {
@@ -200,7 +223,7 @@ test.describe('floating entry row under forced colours', () => {
     test('keeps a visible focus indicator and a key status with text', async ({ page }) => {
         await mountRows(page);
         await page.keyboard.press('Tab');
-        const outline = await page.locator('#empty').evaluate(input => getComputedStyle(input).outlineStyle);
+        const outline = await page.locator('#empty').evaluate(input => getComputedStyle(input.closest('.ds-row')).outlineStyle);
         expect(outline).toBe('solid');
         const status = page.locator('.ds-row-entry__status');
         await expect(status).toHaveAttribute('data-state', 'missing');

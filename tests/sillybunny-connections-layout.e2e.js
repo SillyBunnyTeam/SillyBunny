@@ -414,22 +414,24 @@ for (const width of [1440, 390]) {
             await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         });
 
-        test('text fields are filled entries with their own focus ring, and keep their trailing controls outside', async ({ page }) => {
+        test('text fields are the row itself, with one focus ring round the row that holds the trailing controls', async ({ page }) => {
             await mountConnections(page);
             await page.locator('#chat_completion_source').selectOption('openrouter');
             const key = page.locator('#api_key_openrouter');
             const rest = await key.evaluate(input => {
                 const style = getComputedStyle(input);
                 const field = input.getBoundingClientRect();
+                const row = input.closest('.ds-row').getBoundingClientRect();
                 const suffix = input.closest('.ds-row-entry__line').querySelector('.ds-row-suffix')?.getBoundingClientRect();
-                return { background: style.backgroundColor, radius: parseFloat(style.borderTopLeftRadius), suffixOutside: !suffix || suffix.left >= field.right };
+                return { background: style.backgroundColor, border: style.borderTopWidth, radius: style.borderTopLeftRadius, inset: field.left - row.left, suffixOutside: !suffix || suffix.left >= field.right, suffixInside: !suffix || suffix.right <= row.right };
             });
-            expect(rest.background).not.toBe('rgba(0, 0, 0, 0)');
-            expect(rest.radius).toBeGreaterThan(0);
-            expect(rest.suffixOutside).toBe(true);
+            expect(rest).toMatchObject({ background: 'rgba(0, 0, 0, 0)', border: '0px', radius: '0px', inset: 12, suffixOutside: true, suffixInside: true });
+            const pencil = page.locator('[data-sb-editor-field="api_key_openrouter"] .ds-row-entry__edit');
+            await expect(pencil).toBeVisible();
             await key.focus();
-            expect(await key.evaluate(node => getComputedStyle(node).boxShadow)).not.toBe('none');
-            expect(await key.evaluate(node => getComputedStyle(node.closest('.ds-row')).boxShadow)).toBe('none');
+            expect(await key.evaluate(node => getComputedStyle(node).boxShadow)).toBe('none');
+            expect(await key.evaluate(node => getComputedStyle(node.closest('.ds-row')).boxShadow)).toContain('inset');
+            await expect(pencil).toBeHidden();
         });
     });
 }
@@ -854,6 +856,20 @@ test.describe('coarse-pointer status controls', () => {
         await expect(authorize).toBeVisible();
         expect(await authorize.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
     });
+});
+
+test('OpenRouter Authorize stands after the text that mentions it and before the key row', async ({ page }) => {
+    await mountConnections(page);
+    await page.locator('#chat_completion_source').selectOption('openrouter');
+    const order = await page.evaluate(() => {
+        const visible = node => node.getClientRects().length > 0;
+        const authorize = [...document.querySelectorAll('#openai_api .sb-connections-status-extra .openrouter_authorize')].find(visible);
+        const key = [...document.querySelectorAll('[data-sb-editor-field="api_key_openrouter"]')].find(visible);
+        const text = [...document.querySelectorAll('#openai_api .sb-connections-description')].find(node => visible(node) && /Authorize/.test(node.textContent));
+        const before = (first, second) => Boolean(first && second && first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+        return { textBeforeAuthorize: before(text, authorize), authorizeBeforeKey: before(authorize, key) };
+    });
+    expect(order).toEqual({ textBeforeAuthorize: true, authorizeBeforeKey: true });
 });
 
 test('the status line is one row, and Authorize is a button row rather than a boxed button', async ({ page }) => {

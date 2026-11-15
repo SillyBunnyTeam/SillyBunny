@@ -899,6 +899,25 @@ describe('createEntryRow floating title', () => {
         expect(control.labels[0]).toBe(title);
     });
 
+    test('a pencil that is hidden from assistive technology ends the editable area', () => {
+        const { control } = createEntryRow({ label: 'Name', field: 'name', floating: true });
+        const pencil = control.parentElement.querySelector('i.ds-row-entry__edit.fa-pencil');
+        expect(pencil.getAttribute('aria-hidden')).toBe('true');
+        expect(control.nextElementSibling).toBe(pencil);
+        expect(createEntryRow({ label: 'Name', field: 'name' }).row.querySelector('.ds-row-entry__edit')).toBeNull();
+    });
+
+    test('a press on the row but not on a control starts editing', () => {
+        const { row, control } = createEntryRow({ label: 'Name', field: 'name', floating: true });
+        document.body.append(row);
+        row.querySelector('.ds-row-entry__title').click();
+        expect(document.activeElement).toBe(control);
+        control.blur();
+        row.querySelector('.ds-row-entry__edit').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(document.activeElement).toBe(control);
+        row.remove();
+    });
+
     test('a floating hint moves to aria-description and the placeholder stays blank', () => {
         const { control } = createEntryRow({ label: 'Name', field: 'name', floating: true });
         expect(control.getAttribute('placeholder')).toBe(' ');

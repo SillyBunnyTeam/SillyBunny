@@ -44,17 +44,26 @@ describe('libadwaita surface and layer foundations', () => {
         expect(tabsCss).toMatch(/\.ds-row-entry--floating > \.ds-row-entry__caption \{[^}]*width: 100%;[^}]*white-space: normal;/);
     });
 
-    test('floating entry rows take their height from the field token and focus from the entry tokens', () => {
+    test('the floating entry row is the field: its height is the row token and its ring goes round the row', () => {
         expect(tabsCss).not.toContain('max(48px, 3.4em)');
-        expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__field \{[^}]*min-height: var\(--sb-field-min-height\);/);
-        expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__field > input \{[^}]*min-height: var\(--sb-field-min-height\);/);
-        expect(tabsCss).toMatch(/\.ds-row-entry__field > input:is\(:focus, :focus-visible\):not\(\[disabled\]\) \{[^}]*border-color: var\(--sb-entry-focus-border\);[^}]*box-shadow: var\(--sb-entry-focus-ring\);/);
-        expect(tabsCss).toMatch(/#sb-settings-page \.sb-connections-provider \.ds-row-entry__field > input:focus:not\(\[disabled\]\) \{[^}]*var\(--sb-entry-focus-border\);[^}]*var\(--sb-entry-focus-ring\);/);
+        expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__field \{[^}]*min-height: var\(--sb-entry-field-height\);/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating \{[^}]*--sb-entry-field-height: calc\(var\(--sb-density-row-min-height\) - 2 \* var\(--sb-density-row-padding-block\)\);/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating \.ds-row-entry__field > input,[^{]*\{[^}]*min-height: var\(--sb-entry-field-height\);[^}]*border: 0;[^}]*background: none;[^}]*box-shadow: none;/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:has\(\.ds-row-entry__field > input:focus\) \{[^}]*box-shadow: var\(--sb-focus-ring-inset\);/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:hover:not\(:has\(\.ds-row-entry__field > input:focus,/);
+        expect(tabsCss).not.toContain('.sb-connections-provider .ds-row-entry__field > input');
+    });
+
+    test('the floating entry row dims its title, floats it at Caption size and hides the pencil while the text has focus', () => {
+        expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__title \{[^}]*color: var\(--sb-input-placeholder\);[^}]*font-size: var\(--sb-type-body\);/);
+        expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__field:is\(:focus-within, [^{]*:-webkit-autofill[^{]*> \.ds-row-entry__title \{[^}]*font-size: var\(--sb-type-caption\);/);
+        expect(tabsCss).toMatch(/\.ds-row-entry__field:focus-within > \.ds-row-entry__edit \{[^}]*display: none;/);
     });
 
     test('floating entry rows draw an error in Destructive Red and fade when disabled', () => {
-        expect(tabsCss).toMatch(/\.ds-row-entry__field > input\[aria-invalid='true'\] \{[^}]*--sb-entry-focus-border: var\(--sb-color-danger\);[^}]*border-color: var\(--sb-color-danger\);/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:has\(\.ds-row-entry__field > input\[aria-invalid='true'\]\) \{[^}]*outline: 2px solid var\(--sb-color-danger\);/);
         expect(tabsCss).toMatch(/\.ds-row-entry__error \{[^}]*color: var\(--sb-color-danger\);/);
         expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > input:disabled\)\) \{[^}]*opacity: 0\.5;[^}]*cursor: not-allowed;/);
+        expect(tabsCss).toMatch(/\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > input:disabled\)\) \.ds-row-entry__edit \{[^}]*opacity: 0\.6;/);
     });
 });

@@ -615,15 +615,31 @@ function revealToggle(control, label) {
     return button;
 }
 
+/** The pencil at the end of an entry row's editable area; the stylesheet hides it while the text has focus. */
+export function createEntryEditIcon() {
+    const icon = element('i', 'fa-solid fa-pencil ds-row-entry__edit');
+    icon.setAttribute('aria-hidden', 'true');
+    return icon;
+}
+
+/** Pressing an entry row anywhere but on one of its own controls starts editing, as AdwEntryRow does. */
+function focusOnPress(row, control) {
+    row.addEventListener('click', event => {
+        if (event.defaultPrevented || !(event.target instanceof Element) || event.target.closest('input, select, textarea, button, a, [role="button"], .menu_button')) return;
+        control.focus();
+    });
+}
+
 function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
     prepareFloatingPlaceholder(control);
     const row = element('div', 'ds-row ds-row-entry ds-row-entry--floating');
     markField(row, field);
+    focusOnPress(row, control);
     const line = element('span', 'ds-row-entry__line');
     const fieldBox = element('span', 'ds-row-text ds-row-entry__field');
     const title = element('label', 'ds-row-label ds-row-entry__title', label);
     title.htmlFor = control.id;
-    fieldBox.append(title, control);
+    fieldBox.append(title, control, createEntryEditIcon());
     line.append(fieldBox);
     const trailing = [];
     const keyStatus = secret ? secretStatus(control, secret) : null;
@@ -655,7 +671,7 @@ function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
  * @param {string} [options.placeholder]
  * @param {number} [options.maxLength]
  * @param {string} [options.type='text']  `password` keeps the browser's own masking, with no reveal toggle. An adopted input keeps its type, which must agree.
- * @param {boolean} [options.floating=false]  Title inside the field that floats on focus or value (AdwEntryRow).
+ * @param {boolean} [options.floating=false]  AdwEntryRow: the row is the field. The title stands where the text goes and moves above it on focus or value; a pencil marks the row as editable while it is not being edited.
  * @param {Node|Node[]} [options.suffix]  Trailing controls; `floating` only.
  * @param {{savedText: string, missingText: string, revealLabel: string}} [options.secret]
  *     Mirrors key status from the placeholder and masks where supported; the input type never changes. `floating` only; not for a password input.

@@ -785,6 +785,18 @@ This is the largest class by a wide margin.
   - Several rows may be open at once; no adopter keeps one open.
 - **Tests:** `tests/unit/sillybunny-editor-rows.test.js`; `tests/foundation/shared-ui.e2e.js` (expander rows); `tests/persona-management-ui.e2e.js`.
 
+### Floating entry rows (the row is the field)
+
+- **Shape:** the input draws no fill, border, radius or ring; the ring (`--sb-focus-ring-inset`) is on the row through `:has(.ds-row-entry__field > input:focus)`, and a pencil (`createEntryEditIcon`) hides while the text has focus. The editable area is `--sb-entry-field-height`, the row's minimum height less its own padding, so the row keeps the canonical 6px padding the settings parity measures (`tests/audit/surface-parity.e2e.js` reported padding 0 when the row dropped it).
+- **Breaks:**
+  - The shell's `:is(.sb-shell-root, …) :is(textarea, input…):focus:not([disabled]):not([readonly])` rule (`sillybunny-theme.css`, specificity 0,5,1) outranks a plain `…__field > input:focus` rule and drew a second ring on the input; the entry input rules name that same `:focus:not(…)` form. A fixture without a shell root does not show this: `tests/sillybunny-settings-consistency.e2e.js` ("an entry row on a settings page draws one ring round the row") runs in the real app.
+  - The mounted-shell rule that sets `box-shadow: none` on rows must skip `.ds-row-entry--floating`, or the row ring never shows.
+  - `#openai_api .flex-container { flex-wrap: wrap }` outranks a class selector on the Connections model field, so its nowrap rule uses `#sb-settings-page`. Upstream code adds the list and favourite buttons before the pencil on some sources and after it on others, so the pencil and the buttons take `order`.
+  - Authorize carries its own `data-source` gate: put inside the mirror of the key row it met the same gate twice and `tests/sillybunny-connections-layout.e2e.js` ("gate signatures") failed, so it is a unit of its own between the description and the key row (`sillybunny-connections-groups.js`).
+  - `:is(:autofill, :-webkit-autofill)` inside `:has()` is safe because `:is()` drops the spelling an engine lacks; separate rules per spelling are not needed.
+  - Tests that read the focus ring from the focused element (`window.sbA11y.focusState`) read the row for an entry input, as for a spin row.
+- **Open:** the phone stylesheet `sillybunny-paper-theme.css` still sets `border-radius` with `!important` on every input, so an entry input has a radius at 768px and below (nothing draws on it). A text input with a `list` shows the browser's list arrow while focused. The Caps Lock indicator that DESIGN.md describes for secret fields does not exist in the code.
+
 ### Formatting and Presets pages
 
 - **Breaks:** rows that the generic row pass never reached (the Prompting root carries `data-sb-presentation="manual"`), upstream wrappers that Backend source rules show and hide, and old nodes that a later regroup pass moved back into a box.

@@ -163,7 +163,7 @@ export function prepareManualRunTargets(source) {
         rangeLabel.remove();
     }
     root.classList.add('sb-dialog-rows');
-    root.replaceChildren(...[heading, group.section, rangeRow?.row].filter(Boolean));
+    root.replaceChildren(...[heading, group.section, rangeRow && createPrefGroup({ field: 'manual-run-range', rows: [rangeRow] }).section].filter(Boolean));
     const state = {};
     preparedDialogs.set(root, state);
     return state;

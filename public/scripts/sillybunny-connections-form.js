@@ -1,4 +1,4 @@
-import { createEntryRow, prepareFloatingPlaceholder } from './sillybunny-editor/rows.js';
+import { createEntryEditIcon, createEntryRow, prepareFloatingPlaceholder } from './sillybunny-editor/rows.js';
 import { createDetailsMapper } from './sillybunny-editor/option-details.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 
@@ -203,7 +203,9 @@ export function applyConnectionsFormPass(block, ctx) {
         label.htmlFor = input.id;
         label.textContent = titleText(title);
         upstreamRow.prepend(label);
-        generated.push(shell, label);
+        const pencil = createEntryEditIcon();
+        input.after(pencil);
+        generated.push(shell, label, pencil);
         applyTitle(shell, title);
     }
 

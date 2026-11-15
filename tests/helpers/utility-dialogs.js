@@ -149,6 +149,6 @@ export async function expectUtilityFrame(popup, viewport, expect, tier = 'dialog
     }))).toBe(true);
     expect(await content.locator('.ds-row-entry--floating input').evaluateAll(inputs => inputs.every(input => {
         const style = getComputedStyle(input);
-        return style.backgroundColor !== 'rgba(0, 0, 0, 0)' && input.getBoundingClientRect().height >= 32;
+        return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.borderTopWidth === '0px' && input.closest('.ds-row').getBoundingClientRect().height >= 32;
     }))).toBe(true);
 }

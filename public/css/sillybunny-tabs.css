@@ -4672,7 +4672,7 @@ body.reduced-motion .sb-search-entry {
 }
 
 /* In a row laid out as a column, the title's minimum width as a basis would become its height. */
-.ds-row:is(.ds-row--stacked, .ds-row-entry--floating) > .ds-row-text,
+.ds-row.ds-row--stacked > .ds-row-text,
 #sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) > .ds-row-text {
     flex-basis: auto;
 }
@@ -4874,132 +4874,157 @@ body.reduced-motion .sb-search-entry {
     }
 }
 
-/* Floating-title entry row (AdwEntryRow): the title sits in the field and floats above the value on
-   focus or when filled. CSS alone tracks the state, so programmatic .val() writes float it too. */
+/* Entry row (AdwEntryRow): the row is the field, with no fill, border or radius inside it. The title stands where the text goes
+   (Body size) while the row is empty and not edited, and floats above it (Caption size) on focus, a value or autofill; CSS alone
+   tracks that, so a programmatic .val() floats it too. The row is as tall as any row, not as a standalone field (--sb-field-min-height). */
 .ds-row.ds-row-entry--floating {
+    --sb-entry-field-height: calc(var(--sb-density-row-min-height) - 2 * var(--sb-density-row-padding-block));
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: stretch;
     gap: 0 var(--sb-density-row-gap);
-    padding-block: 6px;
     cursor: text;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
 .ds-row-entry--floating > .ds-row-entry__line {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sb-density-row-gap);
     min-width: 0;
 }
 
+/* The editable area: title, text and the pencil. */
 .ds-row-entry--floating .ds-row-entry__field {
     position: relative;
-    flex: 1 1 auto;
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: row;
+    align-items: center;
     gap: 0;
     min-width: 0;
-    min-height: var(--sb-field-min-height);
-    justify-content: flex-end;
+    min-height: var(--sb-entry-field-height);
 }
 
-/* The field is a filled text entry like every other shell text field; the title sits inside its padding. */
 .ds-row-entry--floating .ds-row-entry__title {
     position: absolute;
-    inset-inline: 13px;
+    /* The end leaves room for the pencil (24px and its 6px margin), so a long title ends before it. */
+    inset-inline: 0 30px;
     top: 50%;
     overflow: hidden;
     color: var(--sb-input-placeholder);
     text-shadow: none !important;
-    /* At rest the title stands where the value will be, so it takes the size of the value. */
-    font-size: var(--sb-type-control);
+    font-size: var(--sb-type-body);
     font-weight: 400;
-    line-height: 1.2;
+    line-height: 1.3;
     white-space: nowrap;
     text-overflow: ellipsis;
     pointer-events: none;
     transform: translateY(-50%);
     transform-origin: 0 0;
-    transition: top var(--sb-transition-fast), transform var(--sb-transition-fast), font-size var(--sb-transition-fast), color var(--sb-transition-fast);
+    transition: top var(--sb-transition-fast), transform var(--sb-transition-fast), font-size var(--sb-transition-fast);
 }
 
 [dir='rtl'] .ds-row-entry--floating .ds-row-entry__title {
     transform-origin: 100% 0;
 }
 
-.ds-row-entry--floating .ds-row-entry__field:focus-within > .ds-row-entry__title,
-.ds-row-entry--floating .ds-row-entry__field:has(> input:not(:placeholder-shown)) > .ds-row-entry__title {
-    top: calc(0.35em - 0.2em * var(--sb-density-t));
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-meta);
+/* :is() drops the autofill spelling an engine lacks instead of invalidating the list. */
+.ds-row-entry--floating .ds-row-entry__field:is(:focus-within, :has(> input:is(:not(:placeholder-shown), :autofill, :-webkit-autofill))) > .ds-row-entry__title {
+    top: 0;
+    font-size: var(--sb-type-caption);
+    line-height: 1.2;
     transform: none;
 }
 
-/* Separate rules: an unsupported autofill selector would invalidate a shared selector list. */
-.ds-row-entry--floating .ds-row-entry__field:has(> input:-webkit-autofill) > .ds-row-entry__title {
-    top: calc(0.35em - 0.2em * var(--sb-density-t));
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-meta);
-    transform: none;
-}
-
-.ds-row-entry--floating .ds-row-entry__field:has(> input:autofill) > .ds-row-entry__title {
-    top: calc(0.35em - 0.2em * var(--sb-density-t));
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-meta);
-    transform: none;
-}
-
-.ds-row-entry--floating .ds-row-entry__field > input {
+/* Each state is named so that the shell's generic text-field rules (fill, border, ring) lose to this one. */
+.ds-row.ds-row-entry--floating .ds-row-entry__field > input,
+.ds-row.ds-row-entry--floating .ds-row-entry__field > input:focus,
+.ds-row.ds-row-entry--floating .ds-row-entry__field > input:focus-visible,
+.ds-row.ds-row-entry--floating .ds-row-entry__field > input:focus:not([disabled]):not([readonly]),
+.ds-row.ds-row-entry--floating .ds-row-entry__field > input[aria-invalid='true'],
+.ds-row.ds-row-entry--floating .ds-row-entry__field > input[aria-invalid='true']:focus:not([disabled]):not([readonly]) {
+    flex: 1 1 auto;
     width: 100%;
     min-width: 0;
     height: auto;
-    min-height: var(--sb-field-min-height);
+    min-height: var(--sb-entry-field-height);
     margin: 0;
-    padding: calc(1.45em - 0.4em * var(--sb-density-t)) 12px 0.25em;
-    border: 1px solid transparent;
-    border-radius: var(--sb-radius-button);
+    padding: calc(1.2 * var(--sb-type-caption)) 0 0;
+    border: 0;
+    border-radius: 0;
     outline: none;
-    background: var(--sb-composer-input-bg);
+    background: none;
     box-shadow: none;
     color: var(--sb-shell-text);
     font: inherit;
-    font-size: var(--sb-type-control);
-    line-height: 1.3;
+    font-size: var(--sb-type-body);
+    line-height: 1.2;
     box-sizing: border-box;
 }
 
-/* The title doubles as the placeholder until focus; !important matches the theme's placeholder contrast rule. */
+/* Clipped to the glyphs, the browser's autofill fill hides under text of the same ink. */
+.ds-row-entry--floating .ds-row-entry__field > input:-webkit-autofill {
+    -webkit-text-fill-color: var(--sb-shell-text);
+    background-clip: text;
+}
+
+/* The title is the placeholder; !important matches the theme's placeholder rule. */
 .ds-row-entry--floating .ds-row-entry__field > input::placeholder {
     color: transparent !important;
     opacity: 1;
     text-shadow: none !important;
 }
-/* Same focus treatment as the shell's other text entries (sillybunny-theme.css shell entry rules). */
-.ds-row.ds-row-entry--floating .ds-row-entry__field > input:is(:focus, :focus-visible):not([disabled]) {
-    border-color: var(--sb-entry-focus-border);
-    outline: none;
-    background: var(--sb-composer-input-bg);
-    box-shadow: var(--sb-entry-focus-ring);
+
+/* The pencil marks the row as editable while it is not being edited. */
+.ds-row-entry__edit {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-inline-start: 6px;
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-caption);
+    pointer-events: none;
 }
 
-/* An error keeps the Destructive colour on the border at rest and takes it into the focus ring. */
-.ds-row-entry--floating .ds-row-entry__field > input[aria-invalid='true'] {
-    --sb-entry-focus-border: var(--sb-color-danger);
-    --sb-entry-focus-ring: inset 0 0 0 1px var(--sb-color-danger);
-    border-color: var(--sb-color-danger);
+.ds-row-entry__field:focus-within > .ds-row-entry__edit {
+    display: none;
+}
+
+/* Hover fills the row until the text has focus. */
+@media (hover: hover) {
+    .ds-row.ds-row-entry--floating:hover:not(:has(.ds-row-entry__field > input:focus, .ds-row-entry__field > input:disabled), .is-insensitive) {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+/* The ring goes round the whole row, suffixes and caption included. */
+.ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input:focus) {
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* An error draws the ring in the Destructive colour, at rest as well as in focus. */
+.ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input[aria-invalid='true']) {
+    outline: 2px solid var(--sb-color-danger);
+    outline-offset: -2px;
+    box-shadow: none;
 }
 
 .ds-row-entry__error {
     color: var(--sb-color-danger);
 }
 
-.ds-row-entry--floating > .ds-row-entry__error + .ds-row-entry__caption {
-    margin-block-start: 0;
-}
-
-/* The whole row fades, the floating title with it. */
+/* The row fades, the pencil again to 30%. */
 .ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) .ds-row-entry__edit {
+    opacity: 0.6;
 }
 
 .ds-row-entry--floating .ds-row-entry__field > input:disabled {
@@ -5010,18 +5035,23 @@ body.reduced-motion .sb-search-entry {
     .ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) {
         opacity: 0.4;
     }
+
+    .ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) .ds-row-entry__edit {
+        opacity: 0.75;
+    }
 }
 
 .ds-row-entry--floating .ds-row-entry__field > input.is-masked {
     -webkit-text-security: disc;
 }
 
+/* A caption sits under the text, at the text's own inset, inside the ring. */
 .ds-row-entry--floating > .ds-row-entry__caption {
     flex: 0 0 auto;
     width: 100%;
     min-width: 0;
-    margin-block-start: 6px;
-    padding: 0 var(--sb-density-row-padding-inline) 8px;
+    margin-block: -2px 0;
+    padding: 0 0 2px;
     box-sizing: border-box;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -5085,13 +5115,14 @@ body.reduced-motion .sb-search-entry {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .ds-row.ds-row-entry--floating,
     .ds-row-entry--floating .ds-row-entry__title,
     .ds-row-entry__reveal {
         transition: none;
     }
 }
 
-body.reduced-motion :is(.ds-row-entry--floating .ds-row-entry__title, .ds-row-entry__reveal) {
+body.reduced-motion :is(.ds-row.ds-row-entry--floating, .ds-row-entry--floating .ds-row-entry__title, .ds-row-entry__reveal) {
     transition: none;
 }
 
@@ -5300,11 +5331,7 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
         outline-offset: -1px;
     }
 
-    .ds-row-entry--floating .ds-row-entry__field > input {
-        border-color: CanvasText;
-    }
-
-    .ds-row.ds-row-entry--floating .ds-row-entry__field > input:focus-visible:not([disabled]) {
+    .ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input:focus) {
         outline: 2px solid Highlight;
         outline-offset: -2px;
     }
@@ -7024,8 +7051,9 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     border-radius: 0;
 }
 
-/* A focused row keeps the shared focus ring, which this rule's id would otherwise beat. */
-#sb-settings-page .sb-settings-mounted-shell :is(.ds-pref-group, .sb-settings-flat-section) > .ds-row:not(:focus-visible) {
+/* A focused row, or a row whose control has keyboard focus (a select or spin row), keeps the shared focus ring, which this
+   rule's id would otherwise beat; an entry row draws its own around its text. */
+#sb-settings-page .sb-settings-mounted-shell :is(.ds-pref-group, .sb-settings-flat-section) > .ds-row:not(:focus-visible, :has(:focus-visible), .ds-row-entry--floating) {
     box-shadow: none;
 }
 
@@ -7655,12 +7683,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     margin-left: 0;
 }
 
-/* The address field is filled when the page opens, so its title stands in the floated place at rest. The muted ink of a floated title is
-   under the 4.5:1 that small text needs on the field fill in the dark theme; the placeholder ink is not. */
-.sb-assets-section .ds-row-entry__field:is(:focus-within, :has(> input:not(:placeholder-shown))) > .ds-row-entry__title {
-    color: var(--sb-input-placeholder);
-}
-
 /* ==========================================================================================
    Connections panel
    ------------------------------------------------------------------------------------------
@@ -7754,63 +7776,27 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     display: none !important;
 }
 
-.sb-connections-panel .sb-connections-model-field.sb-connections-model-field {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
+/* The upstream search row that holds the model ID keeps its list button inside the editable area, so the title ends before both
+   the pencil and that button. */
+#sb-settings-page .sb-connections-panel .sb-connections-model-field {
+    flex-wrap: nowrap;
     width: 100%;
     margin: 0;
     padding: 0;
 }
 
 .sb-connections-model-field > .ds-row-entry__title {
-    inset-inline-end: 44px;
+    inset-inline-end: 68px;
 }
 
-/* Outranks the generic shell .text_pole rules so the adopted input keeps the floating-entry field shape. */
-#sb-settings-page .sb-connections-provider .ds-row-entry__field > input {
-    margin: 0;
-    padding: calc(1.45em - 0.4em * var(--sb-density-t)) 12px 0.25em;
-    min-height: var(--sb-field-min-height);
-    border: 1px solid transparent;
-    border-radius: var(--sb-radius-button);
-    background: var(--sb-composer-input-bg);
-    box-shadow: none;
-    color: var(--sb-shell-text);
+/* The list and favourite buttons are added after the pencil on some sources and before it on others. */
+.sb-connections-model-field > .ds-row-entry__edit {
+    order: 1;
+    margin-inline-end: 6px;
 }
 
-#sb-settings-page .sb-connections-provider .ds-row-entry__field > input[aria-invalid='true'] {
-    border-color: var(--sb-color-danger);
-}
-
-#sb-settings-page .sb-connections-provider .ds-row-entry__field > input:focus:not([disabled]) {
-    border-color: var(--sb-entry-focus-border);
-    box-shadow: var(--sb-entry-focus-ring);
-}
-
-@media (forced-colors: active) {
-    #sb-settings-page .sb-connections-provider .ds-row-entry__field > input {
-        border-color: CanvasText;
-    }
-
-    #sb-settings-page .sb-connections-provider .ds-row-entry__field > input:focus-visible {
-        outline: 2px solid Highlight;
-        outline-offset: -2px;
-    }
-}
-
-#sb-settings-page .sb-connections-provider .ds-row-entry__field > input::placeholder {
-    color: transparent !important;
-    text-shadow: none;
-}
-
-.sb-connections-provider .ds-row-entry__line > .ds-row-entry__field {
-    flex: 1 1 0;
-}
-
-.sb-connections-provider .ds-row-entry__line > .ds-row-suffix {
-    flex: 0 0 auto;
-    gap: 6px;
+.sb-connections-model-field > button {
+    order: 2;
 }
 
 .sb-connections-provider .ds-select-row > .ds-row-suffix > .ds-select-row__trigger {
@@ -7854,7 +7840,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     background: var(--sb-flat-active-bg);
 }
 
-.sb-connections-provider :is(.ds-select-row, .ds-row-entry--floating) > .ds-row-entry__caption {
+.sb-connections-provider .ds-select-row > .ds-row-entry__caption {
     flex: 1 1 100%;
     width: 100%;
     min-width: 0;
