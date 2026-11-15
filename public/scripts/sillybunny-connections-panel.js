@@ -12,7 +12,7 @@ import { createButtonRow, createPrefGroup, createSwitchRow } from './sillybunny-
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
 import { createToggleRow } from './sillybunny-editor/toggle-row.js';
 import { t } from './i18n.js';
-import { applyConnectionsFormPass } from './sillybunny-connections-form.js';
+import { applyConnectionsFormPass, presentButtonRow } from './sillybunny-connections-form.js';
 import { applyConnectionsGroups } from './sillybunny-connections-groups.js';
 import { eventSource, event_types } from '../script.js';
 
@@ -277,7 +277,8 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
         const legacy = createElement('div', { className: 'sb-connections-legacy' });
         state.generated.push(legacy);
         moveNode(profileCard, legacy);
-        profileGroup.group.append(legacy);
+        // Outside the box: a hidden node in front of the row would still give it a separator above.
+        profileGroup.section.append(legacy);
 
         moveNode(profileSelect, profileGroup.group);
         if (spinner instanceof HTMLElement) moveNode(spinner, profileGroup.group);
@@ -370,6 +371,9 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
 
     function updateSourceRows() {
         for (const [backendId, row] of state.sourceRows) row.setVisible(backendId === state.backend);
+        // The box ends its last row without a separator, so the row that shows must also be the last child.
+        const shown = state.sourceRows.get(state.backend);
+        if (shown && backendGroup.group.lastElementChild !== shown.row) backendGroup.group.append(shown.row);
         const active = getActiveApi();
         if (state.otherSelect && SB_OTHER_BACKENDS.some(backend => backend.api === active)) {
             state.otherSelect.value = active;
@@ -380,6 +384,27 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
     function updateProviderSlots() {
         const active = getActiveApi();
         for (const [providerApi, slot] of state.providerSlots) slot.hidden = providerApi !== active;
+    }
+
+    /** The status line and its buttons as one row: the status is the title, and Connect and Test Message trail. */
+    function presentStatusRow(row) {
+        const status = row.querySelector(':scope > .online_status');
+        if (!(status instanceof HTMLElement)) return;
+        snapshotAttributes(row);
+        row.classList.remove('flex-container', 'flex');
+        addLegacyClass(row, 'ds-row');
+        const text = createElement('span', { className: 'ds-row-text' });
+        state.generated.push(text);
+        const title = status.querySelector('.online_status_text');
+        if (title) addLegacyClass(title, 'ds-row-label');
+        moveNode(status, text);
+        row.prepend(text);
+        const buttons = [...row.querySelectorAll(':scope > :is(.api_button, .api_loading, #test_api_button)')];
+        if (!buttons.length) return;
+        const suffix = createElement('span', { className: 'ds-row-suffix' });
+        state.generated.push(suffix);
+        for (const button of buttons) moveNode(button, suffix);
+        row.append(suffix);
     }
 
     function liftConnectRow(slot) {
@@ -394,6 +419,7 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
             form?.prepend(statusRow);
             moveNode(status, statusRow);
             state.generated.push(statusRow);
+            presentStatusRow(statusRow);
             return statusRow;
         }
         const button = slot.querySelector(SB_CONNECT_BUTTON_SELECTOR);
@@ -412,7 +438,11 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
 
         if (!row.contains(status)) moveNode(status, row);
         row.prepend(status);
-        row.querySelectorAll('.api_button, .api_loading').forEach(control => addLegacyClass(control, 'suggested-action'));
+        row.querySelectorAll('.api_button, .api_loading').forEach(control => {
+            addLegacyClass(control, 'suggested-action');
+            addLegacyClass(control, 'menu_button_primary');
+        });
+        presentStatusRow(row);
         return row;
     }
 
@@ -425,18 +455,7 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
         if (!controls.length || !(row.parentElement instanceof HTMLElement)) return;
         for (const control of controls) {
             moveNode(control, extras);
-            if (!control.matches('.openrouter_authorize')) continue;
-            addLegacyClass(control, 'ds-row');
-            addLegacyClass(control, 'ds-button-row');
-            control.setAttribute('role', 'button');
-            control.tabIndex = 0;
-            const keydown = event => {
-                if (event.target !== control || !['Enter', ' '].includes(event.key)) return;
-                event.preventDefault();
-                control.click();
-            };
-            control.addEventListener('keydown', keydown);
-            state.controllers.push({ destroy() { control.removeEventListener('keydown', keydown); } });
+            presentButtonRow(control, { moveNode, snapshotAttributes, addLegacyClass, generated: state.generated, controllers: state.controllers });
         }
         row.parentElement.insertBefore(extras, row.nextSibling);
         state.generated.push(extras);

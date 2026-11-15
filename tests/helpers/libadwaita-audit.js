@@ -111,6 +111,8 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
         const groupLeft = groupRect.left + parseFloat(groupStyle.borderLeftWidth || '0');
         const groupRight = groupRect.right - parseFloat(groupStyle.borderRightWidth || '0');
         const visibleChildren = [...group.children].filter(isVisible);
+        // A wrapper with `display: contents` draws no box (the Connections page gates its rows with them), so its children stand in for it.
+        const boxChildren = parent => [...parent.children].flatMap(child => (getComputedStyle(child).display === 'contents' ? boxChildren(child) : [child]));
         // SillyBunny: inner body groups (`.sb-prompting-group-body`) live inside a
         // parent <section> whose heading is a sibling, not a descendant. Accept that
         // sibling heading so the inner group does not report a false missing-heading.
@@ -120,6 +122,7 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
         const siblingHeading = [...(group.parentElement?.children ?? [])].find(
             child => child !== group && isVisible(child) && (
                 child.classList.contains('ds-pref-group-heading')
+                || child.classList.contains('ds-pref-group-header')
                 || child.classList.contains('sb-settings-flat-header')
             ),
         );
@@ -132,7 +135,7 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
             addRecord(group, 'group-anatomy', { headingCount: 0 }, false);
         } else {
             const headingRect = heading.getBoundingClientRect();
-            const firstContent = visibleChildren.find(child => child !== heading);
+            const firstContent = boxChildren(group).filter(isVisible).find(child => child !== heading);
             const headingGap = firstContent ? firstContent.getBoundingClientRect().top - headingRect.bottom : 0;
             headingGaps.push({ element: group, heading, headingGap });
             addRecord(group, 'group-anatomy', {
@@ -408,8 +411,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     // SillyBunny: upstream containers with bespoke layout — row-edges and content-inset checks expect full-width .ds-row anatomy.
     { selector: '#MovingUI-presets-block', rule: 'row-edges', reason: 'Moving UI presets block uses bespoke two-row layout; row-edge check does not apply' },
     { selector: '#MovingUI-presets-block', rule: 'content-inset', reason: 'Moving UI presets block uses bespoke two-row layout; inset check does not apply' },
-    // SillyBunny: Connections tab uses fully bespoke provider-slot layout with no .ds-row elements; cross-tab parity cannot derive a signature.
-    { selector: '[data-sb-panel="connections"]', rule: 'cross-tab-parity', reason: 'Connections uses bespoke provider-slot layout; no .ds-row elements for signature derivation' },
     // SillyBunny: tab root containers and structural mount points — row-edges and content-inset expect full-bleed .ds-row anatomy but these containers add their own wrapper padding.
     { selector: '#sb-appearance-content', rule: 'row-edges', reason: 'Tab root container with wrapper padding; row-edge inset check does not apply' },
     { selector: '#sb-appearance-content', rule: 'content-inset', reason: 'Tab root container with wrapper padding; content-inset check does not apply' },
@@ -425,8 +426,6 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#sb-openai-request', rule: 'row-edges', reason: 'Backend source rules hide sibling rows with inline display, so the first or last visible row keeps a separator that :first-child and :last-child cannot remove' },
     // SillyBunny: first/last row border leakage on specific groups whose inner rows retain their borders at the group boundary.
     { selector: '#sb-tc-context', rule: 'row-edges', reason: 'Context Template group; inner section rows retain border-top at the group boundary — upstream layout, addressed in Phase 4' },
-    // SillyBunny: #left-nav-panel inside Connections tab — bespoke provider-slot markup with no .ds-pref-group anatomy.
-    { selector: '#left-nav-panel', rule: 'group-anatomy', reason: 'Connections left panel uses provider-slot layout; no visible .ds-pref-group groups expected' },
     // SillyBunny: autoSetHeight textareas in Formatting sections — these resize to content and may render shorter than 32px when empty; they are multi-line inputs, not interactive controls.
     { selector: '#instruct_story_string_prefix', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
     { selector: '#instruct_story_string_suffix', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },

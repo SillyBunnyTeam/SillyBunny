@@ -734,8 +734,8 @@
     "settings.backend.connections@aphrodite": {
       "root": "[data-sb-panel=\"connections\"]",
       "controls": [
-        {"identity":"field:profile:link","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
-        {"identity":"field:profile:link@in:connection profile","kind":"link","where":"hidden"},
+        {"identity":"field:profile:link@as:help","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
+        {"identity":"field:profile:link@as:icon:fa-circle-question","kind":"link","where":"hidden"},
         {"identity":"#view_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#create_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#manage_profile_folders","kind":"button","where":"hidden"},
@@ -778,7 +778,7 @@
         {"identity":"field:api_key_makersuite:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_makersuite","kind":"button","where":"hidden"},
         {"identity":"#vertexai_auth_mode","kind":"select","where":"hidden"},
-        {"identity":"field:openai_api-connection:link@as:(express mode)","kind":"link","where":"hidden"},
+        {"identity":"field:api_key_vertexai:link","kind":"link","where":"hidden"},
         {"identity":"#api_key_vertexai","kind":"text","where":"hidden"},
         {"identity":"field:api_key_vertexai:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_vertexai","kind":"button","where":"hidden"},
@@ -1096,8 +1096,8 @@
     "settings.backend.connections@chat-completion": {
       "root": "[data-sb-panel=\"connections\"]",
       "controls": [
-        {"identity":"field:profile:link","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
-        {"identity":"field:profile:link@in:connection profile","kind":"link","where":"hidden"},
+        {"identity":"field:profile:link@as:help","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
+        {"identity":"field:profile:link@as:icon:fa-circle-question","kind":"link","where":"hidden"},
         {"identity":"#view_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#create_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#manage_profile_folders","kind":"button","where":"hidden"},
@@ -1140,7 +1140,7 @@
         {"identity":"field:api_key_makersuite:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_makersuite","kind":"button","where":"hidden"},
         {"identity":"#vertexai_auth_mode","kind":"select","where":"hidden"},
-        {"identity":"field:openai_api-connection:link@as:(express mode)","kind":"link","where":"hidden"},
+        {"identity":"field:api_key_vertexai:link","kind":"link","where":"hidden"},
         {"identity":"#api_key_vertexai","kind":"text","where":"hidden"},
         {"identity":"field:api_key_vertexai:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_vertexai","kind":"button","where":"hidden"},
@@ -1796,7 +1796,7 @@
       "root": "[data-sb-panel=\"connections\"]",
       "controls": [
         {"identity":"#vertexai_auth_mode","identityKind":"id","kind":"select","name":"Authentication Mode:","group":"Google Vertex AI Configuration","where":"visible","driver":"select-row","keys":["oai_settings.vertexai_auth_mode"],"selfSaves":true},
-        {"identity":"field:openai_api-connection:link@as:(express mode)","identityKind":"field","kind":"link","name":"(Express mode)","group":"Google Vertex AI Configuration","where":"visible"},
+        {"identity":"field:api_key_vertexai:link","identityKind":"field","kind":"link","name":"API Key","group":"Google Vertex AI Configuration","where":"visible"},
         {"identity":"#api_key_vertexai","identityKind":"id","kind":"text","name":"API Key:","group":"Google Vertex AI Configuration (Express mode)","where":"visible","secret":true,"exception":{"reason":"a secret field: its value is saved through the secrets API, and a round trip would write a key","lands":"the secrets store (/api/secrets/write), not the settings"}},
         {"identity":"field:api_key_vertexai:button","identityKind":"field","kind":"button","name":"Reveal API Key","group":"Google Vertex AI Configuration (Express mode)","where":"visible"},
         {"identity":"data:data-key=api_key_vertexai","identityKind":"data","kind":"button","name":"Manage API keys","group":"Google Vertex AI Configuration (Express mode)","where":"visible"},
@@ -1873,8 +1873,8 @@
     "settings.backend.connections@horde": {
       "root": "[data-sb-panel=\"connections\"]",
       "controls": [
-        {"identity":"field:profile:link","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
-        {"identity":"field:profile:link@in:connection profile","kind":"link","where":"hidden"},
+        {"identity":"field:profile:link@as:help","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
+        {"identity":"field:profile:link@as:icon:fa-circle-question","kind":"link","where":"hidden"},
         {"identity":"#view_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#create_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#manage_profile_folders","kind":"button","where":"hidden"},
@@ -1917,7 +1917,7 @@
         {"identity":"field:api_key_makersuite:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_makersuite","kind":"button","where":"hidden"},
         {"identity":"#vertexai_auth_mode","kind":"select","where":"hidden"},
-        {"identity":"field:openai_api-connection:link@as:(express mode)","kind":"link","where":"hidden"},
+        {"identity":"field:api_key_vertexai:link","kind":"link","where":"hidden"},
         {"identity":"#api_key_vertexai","kind":"text","where":"hidden"},
         {"identity":"field:api_key_vertexai:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_vertexai","kind":"button","where":"hidden"},
@@ -2235,8 +2235,8 @@
     "settings.backend.connections@koboldcpp": {
       "root": "[data-sb-panel=\"connections\"]",
       "controls": [
-        {"identity":"field:profile:link","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
-        {"identity":"field:profile:link@in:connection profile","kind":"link","where":"hidden"},
+        {"identity":"field:profile:link@as:help","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
+        {"identity":"field:profile:link@as:icon:fa-circle-question","kind":"link","where":"hidden"},
         {"identity":"#view_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#create_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#manage_profile_folders","kind":"button","where":"hidden"},
@@ -2279,7 +2279,7 @@
         {"identity":"field:api_key_makersuite:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_makersuite","kind":"button","where":"hidden"},
         {"identity":"#vertexai_auth_mode","kind":"select","where":"hidden"},
-        {"identity":"field:openai_api-connection:link@as:(express mode)","kind":"link","where":"hidden"},
+        {"identity":"field:api_key_vertexai:link","kind":"link","where":"hidden"},
         {"identity":"#api_key_vertexai","kind":"text","where":"hidden"},
         {"identity":"field:api_key_vertexai:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_vertexai","kind":"button","where":"hidden"},
@@ -2597,8 +2597,8 @@
     "settings.backend.connections@llamacpp": {
       "root": "[data-sb-panel=\"connections\"]",
       "controls": [
-        {"identity":"field:profile:link","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
-        {"identity":"field:profile:link@in:connection profile","kind":"link","where":"hidden"},
+        {"identity":"field:profile:link@as:help","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
+        {"identity":"field:profile:link@as:icon:fa-circle-question","kind":"link","where":"hidden"},
         {"identity":"#view_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#create_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#manage_profile_folders","kind":"button","where":"hidden"},
@@ -2641,7 +2641,7 @@
         {"identity":"field:api_key_makersuite:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_makersuite","kind":"button","where":"hidden"},
         {"identity":"#vertexai_auth_mode","kind":"select","where":"hidden"},
-        {"identity":"field:openai_api-connection:link@as:(express mode)","kind":"link","where":"hidden"},
+        {"identity":"field:api_key_vertexai:link","kind":"link","where":"hidden"},
         {"identity":"#api_key_vertexai","kind":"text","where":"hidden"},
         {"identity":"field:api_key_vertexai:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_vertexai","kind":"button","where":"hidden"},
@@ -2959,8 +2959,8 @@
     "settings.backend.connections@novelai": {
       "root": "[data-sb-panel=\"connections\"]",
       "controls": [
-        {"identity":"field:profile:link","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
-        {"identity":"field:profile:link@in:connection profile","kind":"link","where":"hidden"},
+        {"identity":"field:profile:link@as:help","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
+        {"identity":"field:profile:link@as:icon:fa-circle-question","kind":"link","where":"hidden"},
         {"identity":"#view_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#create_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#manage_profile_folders","kind":"button","where":"hidden"},
@@ -3003,7 +3003,7 @@
         {"identity":"field:api_key_makersuite:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_makersuite","kind":"button","where":"hidden"},
         {"identity":"#vertexai_auth_mode","kind":"select","where":"hidden"},
-        {"identity":"field:openai_api-connection:link@as:(express mode)","kind":"link","where":"hidden"},
+        {"identity":"field:api_key_vertexai:link","kind":"link","where":"hidden"},
         {"identity":"#api_key_vertexai","kind":"text","where":"hidden"},
         {"identity":"field:api_key_vertexai:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_vertexai","kind":"button","where":"hidden"},
@@ -3321,8 +3321,8 @@
     "settings.backend.connections@text-completion": {
       "root": "[data-sb-panel=\"connections\"]",
       "controls": [
-        {"identity":"field:profile:link","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
-        {"identity":"field:profile:link@in:connection profile","kind":"link","where":"hidden"},
+        {"identity":"field:profile:link@as:help","identityKind":"field","kind":"link","name":"Help","group":"Connection Profile","where":"visible"},
+        {"identity":"field:profile:link@as:icon:fa-circle-question","kind":"link","where":"hidden"},
         {"identity":"#view_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#create_connection_profile","kind":"button","where":"hidden"},
         {"identity":"#manage_profile_folders","kind":"button","where":"hidden"},
@@ -3365,7 +3365,7 @@
         {"identity":"field:api_key_makersuite:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_makersuite","kind":"button","where":"hidden"},
         {"identity":"#vertexai_auth_mode","kind":"select","where":"hidden"},
-        {"identity":"field:openai_api-connection:link@as:(express mode)","kind":"link","where":"hidden"},
+        {"identity":"field:api_key_vertexai:link","kind":"link","where":"hidden"},
         {"identity":"#api_key_vertexai","kind":"text","where":"hidden"},
         {"identity":"field:api_key_vertexai:button","kind":"button","where":"hidden"},
         {"identity":"data:data-key=api_key_vertexai","kind":"button","where":"hidden"},

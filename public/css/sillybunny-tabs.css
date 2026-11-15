@@ -1979,12 +1979,10 @@ body:not(.movingUI) .drawer-content.maximized {
     color: var(--sb-input-placeholder);
 }
 
-/* The settings-page row rule forces flex-direction: row; the floating entry row stacks its field over its caption.
-   Its parts stack, so only the row's own column-gap is restated for the 6px between parts. */
+/* The settings-page row rule forces flex-direction: row; the floating entry row stacks its field over its caption. */
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > .ds-row.ds-row-entry--floating {
     flex-direction: column;
     align-items: stretch;
-    column-gap: 6px;
 }
 
 /* A property row keeps the 6px block padding of every row. */
@@ -4882,7 +4880,7 @@ body.reduced-motion .sb-search-entry {
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: stretch;
-    gap: 0;
+    gap: 0 var(--sb-density-row-gap);
     padding-block: 6px;
     cursor: text;
 }
@@ -7024,6 +7022,10 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     flex-direction: row;
     width: 100%;
     border-radius: 0;
+}
+
+/* A focused row keeps the shared focus ring, which this rule's id would otherwise beat. */
+#sb-settings-page .sb-settings-mounted-shell :is(.ds-pref-group, .sb-settings-flat-section) > .ds-row:not(:focus-visible) {
     box-shadow: none;
 }
 
@@ -7964,17 +7966,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     display: none !important;
 }
 
-#sb-settings-page .sb-connections-parameters > .ds-button-row {
-    display: flex;
-    justify-content: center;
-    width: 100%;
-    margin: 0;
-    min-height: var(--sb-density-row-min-height);
-    border: 0;
-    border-radius: 0;
-    background: none;
-}
-
 .sb-connections-backend .ds-toggle-row__group--fill .sb-boolean-radio-option > span {
     overflow-wrap: normal;
     word-break: normal;
@@ -7997,89 +7988,16 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     display: none;
 }
 
-/* The shared status row keeps the upstream flex parent so mobile selectors and event wiring keep
-   seeing the original parent chain. It is the first row of the provider group, which supplies the
-   box, so it draws none of its own. Authorize retains a second row to preserve its visibility gates. */
-#sb-settings-page [data-sb-connections-panel] .sb-connections-connect {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    min-width: 0;
-    min-height: var(--sb-density-row-min-height);
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: none;
-}
-
+/* The status row is a row: its text is the title and Connect and Test Message trail. Upstream draws the status as a
+   tinted pill, which the title does not take. */
 #sb-settings-page [data-sb-connections-panel] .sb-connections-connect .online_status {
-    display: flex;
-    align-items: center;
-    flex: 1 1 auto;
-    min-width: 0;
-    gap: 8px;
     margin: 0;
     padding: 0;
     border: 0;
     border-radius: 0;
     background: none;
-    color: var(--sb-shell-text);
-    text-align: start;
-    flex-wrap: nowrap;
-}
-
-.sb-connections-provider .sb-connections-connect .online_status_text {
-    min-width: 0;
-    overflow-wrap: normal;
-    word-break: normal;
-}
-
-#sb-settings-page [data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading).suggested-action {
-    flex: 0 0 auto;
-    width: auto;
-    min-height: 38px;
-    padding: 10px 14px;
-    border: 0;
-    border-radius: var(--sb-radius-control);
-    background: var(--color-primary, var(--sb-accent));
-    color: var(--sb-on-solid-accent, var(--sb-on-accent));
-    font-weight: 600;
-}
-
-#sb-settings-page [data-sb-connections-panel] .sb-connections-connect #test_api_button {
-    flex: 0 0 auto;
-    width: auto;
-    border: 0;
-    background: transparent;
-}
-
-@media (hover: hover) {
-    #sb-settings-page [data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading).suggested-action:hover {
-        background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, var(--SmartThemeBodyColor));
-    }
-
-    #sb-settings-page [data-sb-connections-panel] .sb-connections-connect #test_api_button:hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-#sb-settings-page [data-sb-connections-panel] .sb-connections-connect #test_api_button:active {
-    background: var(--sb-flat-active-bg);
-}
-
-[data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading).suggested-action:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-#sb-settings-page [data-sb-connections-panel] .sb-connections-status-extra {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0;
-    min-height: var(--sb-density-row-min-height);
-    padding: 0;
+    color: inherit;
+    font-weight: inherit;
 }
 
 .sb-connections-status-extra:not(:has(> :not([style*='display: none']))) {
@@ -8093,25 +8011,15 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
         height: 44px;
     }
 
-    #sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle {
-        min-height: 56px;
-    }
-
     .sb-connections-help,
-    #sb-settings-page [data-sb-connections-panel] .sb-connections-status-extra > .menu_button,
     .sb-connections-provider .ds-row-suffix > :is(button, .menu_button, .right_menu_button) {
         min-width: 44px;
-        min-height: 44px;
-    }
-
-    #sb-settings-page [data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading, #test_api_button) {
         min-height: 44px;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #sb-settings-page .sb-connections-panel .sb-connections-expander .inline-drawer-icon,
-    [data-sb-connections-panel] .sb-connections-connect :is(.api_button, .api_loading).suggested-action {
+    #sb-settings-page .sb-connections-panel .sb-connections-expander .inline-drawer-icon {
         transition: none;
     }
 }
@@ -8183,11 +8091,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
 }
 
-/* The unit already supplies the row inset; the status row keeps only its vertical padding. */
-#sb-settings-page .sb-connections-panel .sb-connections-unit > .sb-connections-connect {
-    padding: 6px 0;
-}
-
 /* Units that hold several rows (#vertexai_form moves whole, drawer contents) separate them like units.
    Outranks the mounted-shell rule that drops the border of a row after a hidden upstream label (1,6,1). */
 #sb-settings-page .sb-settings-mounted-shell .sb-connections-panel .ds-pref-group .sb-connections-unit .ds-row.ds-row[data-sb-connections-row-separator] {
@@ -8227,7 +8130,8 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     cursor: pointer;
 }
 
-#sb-settings-page .sb-connections-panel :is(.sb-connections-flat-action, .sb-connections-status-extra > .menu_button, .ds-row.ds-button-row):focus-visible {
+#sb-settings-page .sb-connections-panel .ds-row.ds-button-row:focus-visible,
+#sb-settings-page .sb-connections-panel .sb-connections-flat-action:focus-visible {
     outline: none;
     background: transparent;
     box-shadow: var(--sb-focus-ring-inset);
@@ -8245,30 +8149,13 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     box-shadow: none;
 }
 
-#sb-settings-page .sb-connections-panel .sb-connections-status-extra > .openrouter_authorize {
-    flex: 1 1 100%;
-    width: 100%;
-    min-height: var(--sb-density-row-min-height);
-    margin: 0;
-    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    font-size: var(--sb-type-control);
-    font-weight: 700;
-    line-height: 1.3;
-    text-shadow: none;
-    transform: none;
-}
-
 @media (hover: hover) {
-    #sb-settings-page .sb-connections-panel :is(.sb-connections-flat-action, .sb-connections-status-extra > .menu_button, .ds-row.ds-button-row):hover {
+    #sb-settings-page .sb-connections-panel .sb-connections-flat-action:hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-#sb-settings-page .sb-connections-panel :is(.sb-connections-flat-action, .sb-connections-status-extra > .menu_button, .ds-row.ds-button-row):active {
+#sb-settings-page .sb-connections-panel .sb-connections-flat-action:active {
     background: var(--sb-flat-active-bg);
 }
 

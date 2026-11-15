@@ -478,6 +478,18 @@ test.describe('Settings header consistency', () => {
         await expect(actions.locator('.ds-button-row')).toHaveText(['Use desktop recommended', 'Use mobile recommended', 'Save thumbnails', 'Save & Clear Cache', 'Clear cache only']);
     });
 
+    test('a button row on a settings page shows the focus ring when the keyboard reaches it', async ({ page }) => {
+        const dataSecurity = await openSettingsTab(page, 'data-security', 'right');
+        const account = dataSecurity.locator('#account_button.ds-button-row');
+        await expect(account).toBeVisible();
+        await account.focus();
+        await page.keyboard.press('Shift+Tab');
+        await page.keyboard.press('Tab');
+        await expect(account).toBeFocused();
+        expect(await account.evaluate(row => row.matches(':focus-visible'))).toBe(true);
+        expect(await account.evaluate(row => getComputedStyle(row).boxShadow)).not.toBe('none');
+    });
+
     test('Appearance and Formatting keep migrated groups flat and aligned', async ({ page }) => {
         const appearance = await openSettingsTab(page, 'appearance', 'right');
         const appearanceMetrics = await appearance.evaluate(root => {

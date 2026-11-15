@@ -455,7 +455,7 @@ for (const width of [1440, 390]) {
                     typography: [title.fontFamily, title.fontSize, title.fontWeight, title.lineHeight],
                     referenceTypography: [label.fontFamily, label.fontSize, label.fontWeight, label.lineHeight],
                     height: node.getBoundingClientRect().height,
-                    referenceHeight: reference.getBoundingClientRect().height,
+                    referenceHeight: parseFloat(getComputedStyle(reference).minHeight),
                     padding: style.padding,
                     referencePadding: getComputedStyle(reference).padding,
                     titleX: node.querySelector('b').getBoundingClientRect().x,
@@ -489,7 +489,7 @@ for (const width of [1440, 390]) {
                     button.style.setProperty(property, '44px', 'important');
                 }
             });
-            const failures = await page.locator('.sb-connections-provider .ds-row-suffix > :is(button, .menu_button, .right_menu_button):not(.ds-select-row__trigger)').evaluateAll(buttons => buttons.flatMap(button => {
+            const failures = await page.locator('.sb-connections-provider .ds-row-suffix > :is(button, .menu_button, .right_menu_button):not(.ds-select-row__trigger, .api_button, .api_loading, #test_api_button)').evaluateAll(buttons => buttons.flatMap(button => {
                 const style = getComputedStyle(button);
                 const size = matchMedia('(pointer: coarse)').matches ? '44px' : '32px';
                 return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.borderTopWidth === '0px'
@@ -854,4 +854,21 @@ test.describe('coarse-pointer status controls', () => {
         await expect(authorize).toBeVisible();
         expect(await authorize.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
     });
+});
+
+test('the status line is one row, and Authorize is a button row rather than a boxed button', async ({ page }) => {
+    await mountConnections(page);
+    await page.locator('#chat_completion_source').selectOption('openrouter');
+    const status = page.locator('#openai_api .sb-connections-status-row').first();
+    await expect(status).toHaveClass(/ds-row/);
+    await expect(status.locator('.ds-row-text .online_status')).toHaveCount(1);
+    await expect(status.locator('.ds-row-suffix #api_button_openai')).toHaveCount(1);
+    await expect(status.locator('#api_button_openai')).toHaveClass(/menu_button_primary/);
+    const authorize = page.locator('#openai_api .sb-connections-status-extra .openrouter_authorize');
+    await expect(authorize).toHaveClass(/ds-button-row/);
+    await expect(authorize).not.toHaveClass(/menu_button/);
+    await expect(authorize.locator('.ds-row-label')).toHaveCount(1);
+    const headings = await page.evaluate(() => [...document.querySelectorAll('[data-sb-connections-panel] .ds-pref-group h4')]
+        .filter(heading => heading.getClientRects().length > 0 && getComputedStyle(heading).visibility !== 'hidden').length);
+    expect(headings).toBe(0);
 });

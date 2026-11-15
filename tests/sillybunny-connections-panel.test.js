@@ -101,6 +101,9 @@ describe('SillyBunny Connections panel', () => {
         expect(panelSource).toContain('sb-connections-status-extra');
         expect(panelSource).toContain('.openrouter_authorize, #customize_additional_parameters');
         expect(panelSource).toContain('suggested-action');
+        expect(panelSource).toContain('presentStatusRow(');
+        expect(panelSource).toContain('presentButtonRow(');
+        expect(panelSource).toContain('menu_button_primary');
         expect(panelSource).not.toContain('buildComboRow');
         expect(panelSource).not.toContain('sb-combo-');
     });

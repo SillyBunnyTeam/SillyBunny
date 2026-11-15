@@ -6,7 +6,7 @@ const GATES = '[data-source], [data-tg-type], [data-tg-type-mode], [data-source-
 const TITLES = 'h4, label, .range-block-title';
 const INTERACTIVE = 'a, button, .menu_button, .right_menu_button, i, .displayNone';
 const MODEL_IDS = 'input[id$="_model_id"], #generic_model_textgenerationwebui';
-const SUFFIX_ACTIONS = '.ds-row-suffix > :is(button, .menu_button, .right_menu_button):not(.ds-select-row__trigger), .sb-connections-model-field > :is(button, .menu_button, .right_menu_button)';
+const SUFFIX_ACTIONS = '.ds-row-suffix > :is(button, .menu_button, .right_menu_button):not(.ds-select-row__trigger, .api_button, .api_loading, #test_api_button), .sb-connections-model-field > :is(button, .menu_button, .right_menu_button)';
 
 function gateChain(node) {
     const gates = [];
@@ -89,6 +89,35 @@ function fieldContext(field, block) {
         anchor = parent;
     }
     return { anchor: field, title: null, help: [] };
+}
+
+/**
+ * An upstream button as a button row. The node keeps its id, handlers and visibility gates; its words become the title,
+ * and the translation key of the words moves with them, because a key on the node itself would rewrite the title away.
+ */
+export function presentButtonRow(control, { moveNode, snapshotAttributes, addLegacyClass, generated, controllers }) {
+    if (control.classList.contains('ds-button-row')) return;
+    snapshotAttributes(control);
+    control.setAttribute('role', 'button');
+    control.tabIndex = 0;
+    const keydown = event => {
+        if (event.target !== control || !['Enter', ' '].includes(event.key)) return;
+        event.preventDefault();
+        control.click();
+    };
+    control.addEventListener('keydown', keydown);
+    controllers.push({ destroy() { control.removeEventListener('keydown', keydown); } });
+    const key = control.dataset.i18n?.split(';')[0];
+    delete control.dataset.i18n;
+    control.classList.remove('menu_button', 'menu_button_icon');
+    addLegacyClass(control, 'ds-row');
+    addLegacyClass(control, 'ds-button-row');
+    const title = document.createElement('span');
+    title.className = 'ds-row-label';
+    generated.push(title);
+    for (const child of [...control.childNodes]) moveNode(child, title);
+    control.append(title);
+    if (key && !key.startsWith('[')) title.dataset.i18n = key;
 }
 
 /** Connections alone adopts upstream form fields; the generic settings normaliser keeps forms opaque. */
@@ -259,6 +288,36 @@ export function applyConnectionsFormPass(block, ctx) {
         }
     }
 
+    // A heading left inside a box names a form whose rows already carry its name. A heading with a link keeps its words and the
+    // link as the caption of the row that follows; one without is dropped from view.
+    for (const heading of block.querySelectorAll('h4:not(.sb-connections-field-title, .sb-connections-source-label, :has(+ #chat_completion_source, + #textgen_type))')) {
+        const scope = heading.closest(GATES) ?? block;
+        const row = [...scope.querySelectorAll('.ds-row')].find(candidate => heading.compareDocumentPosition(candidate) & Node.DOCUMENT_POSITION_FOLLOWING);
+        const control = row?.querySelector('input, select');
+        if (!control || !canMove(heading, row)) continue;
+        const marks = [...heading.querySelectorAll('[id]')];
+        const label = row.querySelector('.ds-row-label');
+        if (marks.length && !label) continue;
+        for (const mark of marks) moveNode(mark, label);
+        if (heading.querySelector('a')) {
+            const caption = document.createElement('div');
+            caption.className = 'ds-row-subtitle ds-row-entry__caption';
+            row.append(caption);
+            for (const child of [...heading.childNodes]) moveNode(child, caption);
+            describe(control, caption);
+        }
+        addLegacyClass(touch(heading), 'sb-connections-field-title');
+        addLegacyClass(heading, 'sb-legacy-search-hidden');
+    }
+
+    // The label of this switch already carries its description; upstream's own line says the same again.
+    for (const label of block.querySelectorAll('.checkbox_label:has(.ds-row-subtitle)')) {
+        const note = label.nextElementSibling;
+        if (!note?.matches('.toggle-description')) continue;
+        addLegacyClass(touch(note), 'sb-connections-empty');
+        addLegacyClass(note, 'sb-legacy-search-hidden');
+    }
+
     for (const drawer of block.querySelectorAll('.inline-drawer')) {
         const header = drawer.querySelector(':scope > .inline-drawer-toggle');
         const content = drawer.querySelector(':scope > .inline-drawer-content');
@@ -330,7 +389,6 @@ export function applyConnectionsFormPass(block, ctx) {
         body.append(wrapper);
         generated.push(wrapper);
         move(parameters, wrapper);
-        addLegacyClass(parameters, 'ds-row');
-        addLegacyClass(parameters, 'ds-button-row');
+        presentButtonRow(parameters, { moveNode, snapshotAttributes, addLegacyClass, generated, controllers });
     }
 }

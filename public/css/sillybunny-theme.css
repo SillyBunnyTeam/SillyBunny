@@ -3831,8 +3831,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     margin-left: 0;
 }
 
-[data-sb-connections-panel] .flex-container:has(> .manage-api-keys),
-[data-sb-connections-panel] .flex-container:has(> #openai_proxy_access_key_show),
 #openai_settings .flex-container:has(> .manage-api-keys),
 #openai_settings .flex-container:has(> #openai_proxy_access_key_show) {
     display: grid;
@@ -3842,8 +3840,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     width: 100%;
 }
 
-[data-sb-connections-panel] .flex-container:has(> .manage-api-keys) > .text_pole,
-[data-sb-connections-panel] .flex-container:has(> #openai_proxy_access_key_show) > .text_pole,
 #openai_settings .flex-container:has(> .manage-api-keys) > .text_pole,
 #openai_settings .flex-container:has(> #openai_proxy_access_key_show) > .text_pole {
     min-height: 44px;
@@ -3851,82 +3847,11 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     line-height: 1.25;
 }
 
-[data-sb-connections-panel] .flex-container:has(> .manage-api-keys) > .menu_button,
-[data-sb-connections-panel] .flex-container:has(> #openai_proxy_access_key_show) > .menu_button {
-    min-height: 44px;
-    margin-block: 0;
-}
-
-[data-sb-connections-panel] .manage-api-keys,
-[data-sb-connections-panel] #openai_proxy_access_key_show {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    align-self: center;
-    width: 44px;
-    min-width: 44px;
-    min-height: 44px;
-    line-height: 1;
-}
-
-[data-sb-connections-panel] .manage-api-keys::before,
-[data-sb-connections-panel] #openai_proxy_access_key_show::before {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-}
-
 #openai_api .flex-container:has(> :is([data-preset-manager-update], [data-preset-manager-rename], [data-preset-manager-new], [data-preset-manager-restore], [data-preset-manager-import], [data-preset-manager-export], [data-preset-manager-delete], .editor_maximize, .right_menu_button, .menu_button_icon)),
 #openai_settings .flex-container:has(> :is([data-preset-manager-update], [data-preset-manager-rename], [data-preset-manager-new], [data-preset-manager-restore], [data-preset-manager-import], [data-preset-manager-export], [data-preset-manager-delete], .editor_maximize, .right_menu_button, .menu_button_icon)),
 #range_block_openai .flex-container:has(> :is([data-preset-manager-update], [data-preset-manager-rename], [data-preset-manager-new], [data-preset-manager-restore], [data-preset-manager-import], [data-preset-manager-export], [data-preset-manager-delete], .editor_maximize, .right_menu_button, .menu_button_icon)) {
     align-items: center;
     gap: 6px;
-}
-
-[data-sb-connections-panel] .flex-container:has(> .api_button),
-[data-sb-connections-panel] .flex-container:has(> #test_api_button),
-[data-sb-connections-panel] .flex-container:has(> .openrouter_authorize),
-[data-sb-connections-panel] .flex-container:has(> #customize_additional_parameters) {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
-    align-items: stretch;
-    gap: 8px;
-    width: 100%;
-}
-
-[data-sb-connections-panel] .flex-container:has(> .api_button) > .menu_button,
-[data-sb-connections-panel] .flex-container:has(> #test_api_button) > .menu_button,
-[data-sb-connections-panel] .flex-container:has(> .openrouter_authorize) > .menu_button,
-[data-sb-connections-panel] .flex-container:has(> #customize_additional_parameters) > .menu_button {
-    width: 100%;
-    min-width: 0;
-    min-height: 34px;
-    padding: 7px 10px;
-    white-space: normal;
-    line-height: 1.3;
-    justify-content: center;
-    text-align: center;
-}
-
-[data-sb-connections-panel] .online_status {
-    display: flex;
-    max-width: 100%;
-    flex-wrap: wrap;
-}
-
-[data-sb-connections-panel] .flex-container.alignitemscenter.spaceBetween.wide100p {
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-}
-
-[data-sb-connections-panel] .flex-container.alignitemscenter.spaceBetween.wide100p > * {
-    min-width: 0;
-}
-
-[data-sb-connections-panel] .flex-container.alignitemscenter.spaceBetween.wide100p .checkbox_label {
-    flex: 1 1 220px;
 }
 
 #viewSecrets {
@@ -4016,16 +3941,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     #range_block_openai .oneline-dropdown select {
         width: 100%;
         min-width: 0;
-    }
-
-    [data-sb-connections-panel] .online_status,
-    [data-sb-connections-panel] .flex-container.alignitemscenter.spaceBetween.wide100p {
-        width: 100%;
-        justify-content: center;
-    }
-
-    [data-sb-connections-panel] .flex-container.alignitemscenter.spaceBetween.wide100p {
-        align-items: stretch;
     }
 }
 
