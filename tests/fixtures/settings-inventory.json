@@ -5,7 +5,7 @@
     "extension:ChatCompletionTabs-drawer": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#ChatCompletionTabs-enabled","identityKind":"id","kind":"checkbox","name":"Enable Chat Completion Tabs","where":"visible","keys":["extension_settings.ChatCompletionTabs.enabled"],"selfSaves":true}
       ]
@@ -13,7 +13,7 @@
     "extension:bpt-settings": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-up","kind":"button","where":"hidden"},
         {"identity":"#bpt-enable-sections","identityKind":"id","kind":"checkbox","name":"Enable collapsible prompt sections","where":"expander","keys":["extension_settings.BunnyPresetTools.enablePromptSections"],"selfSaves":true},
         {"identity":"#bpt-enable-animated","identityKind":"id","kind":"checkbox","name":"Enable animated backgrounds","where":"expander","keys":["extension_settings.BunnyPresetTools.enableAnimatedBackgrounds"],"selfSaves":true},
@@ -24,7 +24,7 @@
     "extension:caption_container": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#caption_source","identityKind":"id","kind":"select","name":"Source","where":"visible","keys":["extension_settings.caption.source"],"selfSaves":true},
         {"identity":"#caption_template","identityKind":"id","kind":"textarea","name":"Message Template (use {{caption}} macro)","where":"visible","keys":["extension_settings.caption.template"],"selfSaves":true},
@@ -47,7 +47,7 @@
     "extension:expressions_container": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#expression_translate","identityKind":"id","kind":"switch","name":"Translate text to English before classification","where":"visible","keys":["extension_settings.expressions.translate"],"selfSaves":true},
         {"identity":"#expressions_allow_multiple","identityKind":"id","kind":"switch","name":"Allow multiple sprites per expression","where":"visible","keys":["extension_settings.expressions.allowMultiple"],"selfSaves":true},
@@ -86,7 +86,7 @@
     "extension:extension_settings_guided-generations": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#gg_showFlushGuidesButton","identityKind":"id","kind":"switch","name":"Flush Guides button","where":"visible","keys":["extension_settings.guided-generations.showFlushGuidesButton"],"selfSaves":true},
         {"identity":"#gg_showSimpleSendButton","identityKind":"id","kind":"switch","name":"Simple Send button","where":"visible","keys":["extension_settings.guided-generations.showSimpleSendButton"],"selfSaves":true},
@@ -124,7 +124,7 @@
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "skip": ["#pf--lorebook-list"],
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#pf--settings-retry","kind":"button","where":"hidden"},
         {"identity":"#pf--master-enable","identityKind":"id","kind":"checkbox","name":"Enable Pathfinder for this chat","where":"visible","keys":["extension_settings.inChatAgents.globalSettings.scopedEnabledAgentIdsInitialized"],"selfSaves":true},
@@ -183,7 +183,7 @@
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "roundTrip": false,
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#qig-generate-btn","identityKind":"id","kind":"button","name":"Generate image with current settings","where":"visible"},
         {"identity":"label:button:quick setup","identityKind":"label","kind":"button","name":"Quick Setup","where":"visible"},
@@ -292,7 +292,7 @@
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "skip": [".qr--setList",".qr--set-qrListContents"],
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#qr--isEnabled","identityKind":"id","kind":"switch","name":"Enable Quick Replies","where":"visible","keys":["extension_settings.quickReplyV2.isEnabled","extension_settings.quickReplyV2.showPopoutButton"],"selfSaves":true},
         {"identity":"#qr--isCombined","identityKind":"id","kind":"switch","name":"Combine Quick Replies","where":"visible","keys":["extension_settings.quickReplyV2.isCombined"],"selfSaves":true},
@@ -322,7 +322,7 @@
     "extension:regex_container": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#open_regex_editor","identityKind":"id","kind":"button","name":"+ Global","where":"visible"},
         {"identity":"#open_preset_editor","identityKind":"id","kind":"button","name":"+ Preset","where":"visible"},
@@ -352,7 +352,7 @@
     "extension:sd_container": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:link:(no name)","kind":"link","where":"hidden"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#sd_refine_mode","identityKind":"id","kind":"switch","name":"Edit prompts before generation","where":"visible","keys":["extension_settings.sd.refine_mode"],"selfSaves":true},
@@ -493,7 +493,7 @@
     "extension:summarize_container": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"#summaryExtensionPopoutButton","kind":"button","where":"hidden"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#summary_source","identityKind":"id","kind":"select","name":"Summarize with:","where":"visible","keys":["extension_settings.memory.source"],"selfSaves":true},
@@ -529,7 +529,7 @@
     "extension:translation_container": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#translation_auto_mode","identityKind":"id","kind":"select","name":"Auto-mode","where":"visible","keys":["extension_settings.translate.auto_mode"],"selfSaves":true},
         {"identity":"#translation_provider","identityKind":"id","kind":"select","name":"Provider","where":"visible","keys":["extension_settings.translate.provider"],"selfSaves":true},
@@ -543,7 +543,7 @@
     "extension:tts_container": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#tts_provider","identityKind":"id","kind":"select","name":"","where":"visible","keys":["extension_settings.tts.AllTalk","extension_settings.tts.currentProvider"]},
         {"identity":"#tts_refresh","identityKind":"id","kind":"button","name":"Reload","where":"visible"},
@@ -571,7 +571,7 @@
     "extension:vectors_container": {
       "root": "[data-sb-panel=\"extensions\"] .sb-subpage-detail[aria-hidden=\"false\"]",
       "controls": [
-        {"identity":"label:button:icon:fa-chevron-left","identityKind":"label","kind":"button","name":"icon:fa-chevron-left","where":"visible"},
+        {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
         {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#vectors_source","identityKind":"id","kind":"select","name":"Vectorization Source","where":"visible","keys":["extension_settings.vectors.source"],"selfSaves":true},
         {"identity":"#vectors_chutes_model","kind":"select","where":"hidden"},
@@ -6976,27 +6976,26 @@
         {"identity":"#extensions_details","identityKind":"id","kind":"button","name":"Manage extensions","where":"visible"},
         {"identity":"#third_party_extension_button","identityKind":"id","kind":"button","name":"Install extension","where":"visible"},
         {"identity":"#extensions_notify_updates","identityKind":"id","kind":"switch","name":"Notify on extension updates","where":"visible","keys":["extension_settings.notifyUpdates"],"selfSaves":true},
-        {"identity":"label:button:icon:fa-circle-chevron-down","kind":"button","where":"hidden"},
         {"identity":"#assets-json-url-field","identityKind":"id","kind":"text","name":"Assets URL","where":"visible","lands":"none"},
         {"identity":"#assets-connect-button","identityKind":"id","kind":"button","name":"Load Asset List","where":"visible"},
         {"identity":"#assets_type_select","kind":"select","where":"hidden"},
         {"identity":"#assets_search","kind":"text","where":"hidden"},
         {"identity":"#assets-characters-button","kind":"button","where":"hidden"},
-        {"identity":"data:data-sb-subpage-row=expressions_container","identityKind":"data","kind":"button","name":"Character ExpressionsShow character sprites that change to match the emotions in their messages.","group":"System Extensions","where":"visible"},
-        {"identity":"data:data-sb-subpage-row=sd_container","identityKind":"data","kind":"button","name":"Image GenerationGenerate character portraits, scenes, and backgrounds with your chosen image service.","group":"System Extensions","where":"visible"},
-        {"identity":"data:data-sb-subpage-row=tts_container","identityKind":"data","kind":"button","name":"TTSRead chat messages aloud using your chosen voices and speech provider.","group":"System Extensions","where":"visible"},
-        {"identity":"data:data-sb-subpage-row=bpt-settings","identityKind":"data","kind":"button","name":"Bunny Preset ToolsOrganize prompts into collapsible sections, search them, and use video backgrounds.","group":"System Extensions","where":"visible"},
-        {"identity":"data:data-sb-subpage-row=extension_settings_guided-generations","identityKind":"data","kind":"button","name":"Guided GenerationsGuide replies, rewrites, and impersonation with instructions from the message box.","group":"System Extensions","where":"visible"},
-        {"identity":"data:data-sb-subpage-row=qig-settings","identityKind":"data","kind":"button","name":"Quick Image GenGenerate images from prompts or chat scenes, with style presets and a gallery.","group":"System Extensions","where":"visible"},
-        {"identity":"data:data-sb-subpage-row=qr_container","identityKind":"data","kind":"button","name":"Quick ReplyCreate buttons that insert or send saved text, or run commands.","group":"System Extensions","where":"visible"},
-        {"identity":"data:data-sb-subpage-row=translation_container","kind":"button","where":"hidden"},
-        {"identity":"data:data-sb-subpage-row=caption_container","kind":"button","where":"hidden"},
-        {"identity":"data:data-sb-subpage-row=summarize_container","kind":"button","where":"hidden"},
-        {"identity":"data:data-sb-subpage-row=regex_container","kind":"button","where":"hidden"},
-        {"identity":"data:data-sb-subpage-row=vectors_container","kind":"button","where":"hidden"},
-        {"identity":"data:data-sb-subpage-row=ChatCompletionTabs-drawer","kind":"button","where":"hidden"},
-        {"identity":"data:data-sb-subpage-row=extension_settings_in_chat_agents_pathfinder","kind":"button","where":"hidden"},
-        {"identity":"label:button:icon:fa-chevron-left","kind":"button","where":"hidden"}
+        {"identity":"data:data-sb-editor-field=expressions_container","identityKind":"data","kind":"button","name":"Character ExpressionsShow character sprites that change to match the emotions in their messages.","group":"System Extensions","where":"visible"},
+        {"identity":"data:data-sb-editor-field=sd_container","identityKind":"data","kind":"button","name":"Image GenerationGenerate character portraits, scenes, and backgrounds with your chosen image service.","group":"System Extensions","where":"visible"},
+        {"identity":"data:data-sb-editor-field=tts_container","identityKind":"data","kind":"button","name":"TTSRead chat messages aloud using your chosen voices and speech provider.","group":"System Extensions","where":"visible"},
+        {"identity":"data:data-sb-editor-field=bpt-settings","identityKind":"data","kind":"button","name":"Bunny Preset ToolsOrganize prompts into collapsible sections, search them, and use video backgrounds.","group":"System Extensions","where":"visible"},
+        {"identity":"data:data-sb-editor-field=extension_settings_guided-generations","identityKind":"data","kind":"button","name":"Guided GenerationsGuide replies, rewrites, and impersonation with instructions from the message box.","group":"System Extensions","where":"visible"},
+        {"identity":"data:data-sb-editor-field=qig-settings","identityKind":"data","kind":"button","name":"Quick Image GenGenerate images from prompts or chat scenes, with style presets and a gallery.","group":"System Extensions","where":"visible"},
+        {"identity":"data:data-sb-editor-field=qr_container","identityKind":"data","kind":"button","name":"Quick ReplyCreate buttons that insert or send saved text, or run commands.","group":"System Extensions","where":"visible"},
+        {"identity":"data:data-sb-editor-field=translation_container","kind":"button","where":"hidden"},
+        {"identity":"data:data-sb-editor-field=caption_container","kind":"button","where":"hidden"},
+        {"identity":"data:data-sb-editor-field=summarize_container","kind":"button","where":"hidden"},
+        {"identity":"data:data-sb-editor-field=regex_container","kind":"button","where":"hidden"},
+        {"identity":"data:data-sb-editor-field=vectors_container","kind":"button","where":"hidden"},
+        {"identity":"data:data-sb-editor-field=ChatCompletionTabs-drawer","kind":"button","where":"hidden"},
+        {"identity":"data:data-sb-editor-field=extension_settings_in_chat_agents_pathfinder","kind":"button","where":"hidden"},
+        {"identity":"label:button:back","kind":"button","where":"hidden"}
       ]
     },
     "settings.customize.interface": {

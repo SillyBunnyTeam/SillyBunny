@@ -36,18 +36,6 @@ label[for="extensions_autoconnect"]:not(.ds-row) {
     margin: 0 !important;
 }
 
-label[for="extensions_notify_updates"]:not(.ds-row) {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0 !important;
-}
-
-label[for="extensions_notify_updates"] input[type="checkbox"] {
-    margin: 0;
-    flex: 0 0 auto;
-}
-
 .extensions_url_block {
     display: flex;
     align-items: center;
@@ -174,36 +162,6 @@ input.extension_missing[type="checkbox"] {
     gap: 18px;
 }
 
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 12px;
-}
-
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > h3 {
-    flex: 1 1 220px;
-}
-
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] {
-    flex: 1 1 280px;
-    min-width: min(100%, 280px);
-    align-items: center;
-}
-
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] > span:not(.ds-row-suffix) {
-    flex: 1 1 auto;
-    min-width: 0;
-    white-space: normal;
-}
-
-/* Own row each: the panel is a resizable drawer, so a viewport media query cannot tell when
-   these two have been squeezed narrower than their own labels. */
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button,
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button_icon {
-    flex: 1 0 100%;
-}
-
 #rm_extensions_block .inline-drawer {
     width: 100%;
     margin: 0;
@@ -301,31 +259,7 @@ input.extension_missing[type="checkbox"] {
     border-end-end-radius: var(--sb-radius-button, 14px);
 }
 
-@media screen and (max-width: 1360px) and (min-width: 769px) {
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] {
-        flex-basis: 100%;
-        min-width: 100%;
-    }
-}
-
 @media screen and (max-width: 1100px) {
-    #rm_extensions_block .extensions_block {
-        gap: 12px;
-    }
-
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p {
-        display: grid;
-        grid-template-columns: 1fr;
-        align-items: stretch;
-    }
-
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > h3,
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label,
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button,
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button_icon {
-        width: 100%;
-    }
-
     .extensions_info .extension_actions {
         width: auto;
         justify-content: flex-end;
@@ -420,6 +354,17 @@ input.extension_missing[type="checkbox"] {
 .extensions_info .extension_block.sb-extension-actions-collapsed .extension_text_block > :not(.extension_actions) {
     flex: 1 1 40%;
     min-width: 40%;
+}
+
+/* SillyBunny: the page's action rows are the upstream buttons themselves, so the classes that script.js (extensions turned
+   off) and extensions.js (an extension failed to load) put on them still show. */
+:is(#extensions_details, #third_party_extension_button).ds-button-row.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+#extensions_details.ds-button-row.warning {
+    color: var(--warning);
 }
 
 @media (prefers-reduced-motion: reduce) {

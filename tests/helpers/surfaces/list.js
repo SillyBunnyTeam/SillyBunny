@@ -11,7 +11,7 @@
 import { FIXTURES } from './fixture-data.js';
 import { openGroupEditor } from './header-steps.js';
 import { MOBILE_LAYOUT_VIEWPORTS } from './panel-steps.js';
-import { chooseMenuItem, openSettingsTab, selectLogitBiasPreset, settle } from './steps.js';
+import { chooseMenuItem, selectLogitBiasPreset, settle } from './steps.js';
 import {
     AGENTS, ARCHIVE, CHAT_HISTORY, EXTENSIONS_MANAGER, FOLDER_MANAGER, MENU_ROOT, PERSONAS, TAG_MANAGER, WORLD_INFO,
     agentSearch, characterSearch, closeArchive, closeChatHistory, closeDataBank, closeExtensionsManager, closeManager, closeSwipePicker,
@@ -425,23 +425,8 @@ const chatHistory = {
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Lists that Customize and the windows hold: extensions, regex scripts, Quick Reply sets, backgrounds, Data Bank, swipes
+// Lists that Customize and the windows hold: the extensions manager, regex scripts, Quick Reply sets, backgrounds, Data Bank, swipes
 // ---------------------------------------------------------------------------------------------------------------------
-
-const extensionsSettingsList = {
-    id: 'list.extensions-settings',
-    family: 'list',
-    owner: 'A',
-    title: 'Extensions list (Customize)',
-    root: '[data-sb-panel="extensions"] .sb-subpage-list-body',
-    ready: '[data-sb-panel="extensions"] .sb-subpage-row:visible',
-    async open(page) {
-        await openSettingsTab(page, { shell: 'right', tab: 'extensions' });
-    },
-    masks: ['[data-sb-panel="extensions"] .sb-subpage-row-value'],
-    needs: [],
-    sources: [`${SCRIPTS}/sillybunny-settings-subpage.js`, `${SCRIPTS}/sillybunny-settings-subpage-descriptors.js`],
-};
 
 const extensionsManagerList = {
     id: 'list.extensions-manager',
@@ -605,7 +590,6 @@ export const surfaces = [
     folderManager,
     chatsArchive,
     chatHistory,
-    extensionsSettingsList,
     extensionsManagerList,
     regexList,
     quickReplyList,

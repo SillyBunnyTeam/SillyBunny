@@ -1190,7 +1190,8 @@ test('Extensions detail pages retain live controls and restore their list', asyn
     await page.setViewportSize({ width: 390, height: 844 });
     const extensions = await openPanel(page, 'extensions', 'right');
     const firstRow = extensions.locator('.sb-subpage-row').first();
-    await expect(firstRow.locator('.sb-subpage-row-icon')).toHaveCSS('font-family', /Font Awesome/);
+    await expect(firstRow).toHaveClass(/ds-row--activatable/);
+    await expect(firstRow.locator('.ds-row__chevron')).toHaveCSS('font-family', /Font Awesome/);
     const containerId = await firstRow.getAttribute('data-sb-subpage-row');
     await page.evaluate(id => {
         const container = document.getElementById(id);
@@ -1211,7 +1212,7 @@ test('Extensions lists user-installed extensions after System Extensions, withou
     await loadSettings(page, baseURL);
     await page.setViewportSize({ width: 390, height: 844 });
     const extensions = await openPanel(page, 'extensions', 'right');
-    const system = extensions.getByRole('list', { name: 'System Extensions', exact: true });
+    const system = extensions.getByRole('group', { name: 'System Extensions', exact: true });
     await expect.poll(() => system.locator('.sb-subpage-row').count()).toBeGreaterThan(0);
 
     // A user-installed extension mounts by appending its own markup to a settings column or to a
@@ -1221,9 +1222,9 @@ test('Extensions lists user-installed extensions after System Extensions, withou
         document.getElementById('extensions_settings').insertAdjacentHTML('beforeend', `<div class="qa-user-extension">${drawer('QA User Extension')}</div>`);
         document.getElementById('dice_container').insertAdjacentHTML('beforeend', drawer('QA Dice Slot'));
     });
-    const user = extensions.getByRole('list', { name: 'User-installed Extensions', exact: true });
-    await expect(user.locator('.sb-subpage-heading-title')).toHaveText(['QA User Extension', 'QA Dice Slot']);
-    await expect(user.locator('.sb-subpage-heading-description, [data-sb-copy-placeholder]')).toHaveCount(0);
+    const user = extensions.getByRole('group', { name: 'User-installed Extensions', exact: true });
+    await expect(user.locator('.ds-row-label')).toHaveText(['QA User Extension', 'QA Dice Slot']);
+    await expect(user.locator('.ds-row-subtitle, [data-sb-copy-placeholder]')).toHaveCount(0);
     await expect(extensions.locator('.sb-subpage-list')).not.toContainText('lorum ipsum');
     expect(await extensions.locator('[data-sb-subpage-group]').evaluateAll(groups => groups.map(group => group.dataset.sbSubpageGroup))).toEqual(['system', 'user']);
     await expectNoOverflow(extensions);

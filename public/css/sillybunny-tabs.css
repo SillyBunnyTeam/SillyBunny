@@ -7350,6 +7350,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 .sb-subpage-list {
+    gap: var(--sb-settings-group-gap);
     transition:
         transform var(--sb-subpage-duration) var(--sb-ease-out-cubic),
         opacity var(--sb-subpage-duration) var(--sb-ease-out-cubic);
@@ -7399,34 +7400,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     }
 }
 
-.sb-subpage-list-heading {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 12px;
-    padding: 0 4px;
-}
-
-.sb-subpage-heading {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-}
-
-.sb-subpage-heading-title {
-    font-size: var(--sb-type-body);
-    font-weight: var(--sb-weight-title);
-    line-height: 1.3;
-    color: var(--sb-shell-text);
-}
-
-.sb-subpage-heading-description {
-    font-size: var(--sb-type-caption);
-    line-height: 1.4;
-    color: var(--sb-shell-text-secondary);
-}
-
+/* The page's own groups lead the list of extensions; both are columns of groups at the page's group gap. */
+.sb-subpage-list-lead,
 .sb-subpage-list-body {
     display: flex;
     flex-direction: column;
@@ -7434,94 +7409,18 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     flex: 0 0 auto;
 }
 
-.sb-subpage-group {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.sb-subpage-group[hidden] {
+.sb-subpage-list-lead:empty {
     display: none;
 }
 
-/* Each group's list is the same pill every other settings section wears, so a converted panel reads
-   as the rest of the shell rather than as a page with its own idea of rows. */
-.sb-subpage-group-list {
-    display: flex;
-    flex-direction: column;
-    border-radius: var(--sb-radius-lg);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    overflow: hidden;
-}
-
-.sb-subpage-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    min-height: 52px;
-    padding: 10px 16px;
-    margin: 0;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    text-align: start;
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-}
-
-.sb-subpage-row + .sb-subpage-row {
-    border-top: 1px solid var(--sb-shell-border);
-}
-
+/* A group or a row whose section is not on the page leaves no heading over an empty box and no separator under the last row. */
+.sb-subpage-group[hidden],
 .sb-subpage-row[hidden] {
     display: none;
 }
 
-.sb-subpage-row-icon {
-    flex: 0 0 auto;
-    width: 20px;
-    font-size: 14px;
-    text-align: center;
-    color: var(--sb-shell-text-secondary);
-}
-
-.sb-subpage-row .sb-subpage-heading {
-    flex: 1 1 auto;
-}
-
-.sb-subpage-row-trailing {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex: 0 0 auto;
-    margin-inline-start: 4px;
-}
-
-.sb-subpage-row-value {
-    font-size: var(--sb-type-meta);
-    color: var(--sb-shell-text-secondary);
-}
-
-.sb-subpage-row-chevron {
-    font-size: 12px;
-    color: var(--sb-shell-text-secondary);
-    opacity: 0.7;
-}
-
-@media (hover: hover) {
-    .sb-subpage-row:hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-.sb-subpage-row:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
+.sb-subpage-row:not(:has(~ .sb-subpage-row:not([hidden]))) {
+    border-bottom: 0;
 }
 
 .sb-subpage-detail-bar {
@@ -7730,24 +7629,25 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     }
 }
 
-/* SillyBunny: Extensions — always-visible action pill and pinned download section.
-   The manage/install/notify header and the Download Extensions & Assets section are
-   moved out of the subpage store into the list heading so they are never hidden. */
-.sb-ext-actions-pill {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0;
-    padding: 0;
-    margin-bottom: var(--sb-shell-space-sm, 8px);
+/* SillyBunny: what the assets extension shows once an asset list is loaded sits under the section's box, a group gap away. */
+.sb-assets-section > :is(#assets_filters, #assets_menu) {
+    margin-top: var(--sb-settings-group-gap);
 }
 
-.sb-ext-pinned-section .inline-drawer-content {
-    display: block !important;
+/* The extension's own sheet sizes the address field and its connect button as 85% and 15% of a line; the entry row lays them out. */
+.sb-assets-section .ds-row-entry__line > .ds-row-entry__field > #assets-json-url-field {
+    width: 100%;
 }
 
-.sb-ext-pinned-section .inline-drawer-icon {
-    display: none;
+.sb-assets-section .ds-row-suffix > #assets-connect-button {
+    width: auto;
+    margin-left: 0;
+}
+
+/* The address field is filled when the page opens, so its title stands in the floated place at rest. The muted ink of a floated title is
+   under the 4.5:1 that small text needs on the field fill in the dark theme; the placeholder ink is not. */
+.sb-assets-section .ds-row-entry__field:is(:focus-within, :has(> input:not(:placeholder-shown))) > .ds-row-entry__title {
+    color: var(--sb-input-placeholder);
 }
 
 /* ==========================================================================================

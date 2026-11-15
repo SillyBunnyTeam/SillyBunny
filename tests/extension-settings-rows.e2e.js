@@ -209,7 +209,7 @@ test.describe('built-in extension settings rows', () => {
             await page.setViewportSize(viewport);
             await loadApp(page);
             const panel = await openExtensions(page);
-            const titles = await panel.locator('.sb-subpage-row').evaluateAll(rows => rows.map(row => row.querySelector('.sb-subpage-row-title')?.textContent.trim() ?? row.textContent.trim()));
+            const titles = await panel.locator('.sb-subpage-row').evaluateAll(rows => rows.map(row => row.querySelector('.ds-row-label')?.textContent.trim() ?? row.textContent.trim()));
             expect(titles.length).toBeGreaterThan(8);
             const BUILT_IN = ['Character Expressions', 'Image Generation', 'TTS', 'Guided Generations', 'Quick Reply', 'Chat Translation', 'Image Captioning', 'Summarize', 'Regex', 'Vector Storage'];
             for (const title of BUILT_IN) expect(titles.some(name => name.startsWith(title)), title).toBe(true);

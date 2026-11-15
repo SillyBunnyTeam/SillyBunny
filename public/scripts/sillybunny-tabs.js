@@ -87,7 +87,7 @@ import {
 } from './sillybunny-settings-content.js';
 import { normalizeBackendSettingsRows, normalizeSettingsDetail, normalizeSettingsPresentation, setAnimatedBackgroundPresenter } from './sillybunny-settings-presentation.js';
 import { createSubpageStack, SB_SUBPAGE_DURATION, SB_SUBPAGE_STORE_CLASS } from './sillybunny-settings-subpage.js';
-import { SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
+import { buildExtensionsLead, SB_SUBPAGE_BUILDERS } from './sillybunny-settings-subpage-descriptors.js';
 import { watchStrayExtensionDrawers } from './sillybunny-settings-stray-drawers.js';
 import { createConnectionsPanel } from './sillybunny-connections-panel.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
@@ -288,6 +288,7 @@ function installSettingsSubpage(shellKey, tabId) {
 
     const stack = createSubpageStack(scroller, {
         name: tabId,
+        backLabel: t`Back`,
         // The detail page gets the same presentation pass a normal panel gets, but scoped to the
         // section that was moved: these panels are skipped by the whole-panel pass, and their
         // sections are only readable as the pass reads them once the section is in its own page.
@@ -296,64 +297,29 @@ function installSettingsSubpage(shellKey, tabId) {
     stack.setRows(built.rows);
     sbSubpageStacks.set(key, stack);
 
-    // SillyBunny: Extensions — the manage/install/notify header and the Download Extensions &
-    // Assets section are always visible, above the extension row list. Move them out of the store
-    // (where the CSS hides them) and into the list page heading so they are never hidden.
+    // SillyBunny: the rows the page builds are styled by deferred sheets, so the stack stays out of sight until they apply.
+    const sheets = SB_PANEL_STYLESHEETS[`${shellKey}:${tabId}`];
+    if (sheets && window.SillyBunnyAssets?.loadStylesheetAsync) {
+        stack.root.setAttribute('aria-busy', 'true');
+        void Promise.all(sheets.map(sheet => window.SillyBunnyAssets.loadStylesheetAsync(sheet.href, { id: sheet.id })))
+            .catch(error => console.warn('Failed to load panel stylesheet:', error))
+            .finally(() => stack.root.removeAttribute('aria-busy'));
+    }
+
+    // SillyBunny: the page's own groups (the manage, install and notify controls, and Download Extensions &
+    // Assets) lead the list. They are moved out of the store, where the CSS hides them, so they are never hidden.
     if (tabId === 'extensions' && panel instanceof HTMLElement) {
-        const notifyLabel   = panel.querySelector('label[for="extensions_notify_updates"]');
-        const manageBtn     = panel.querySelector('#extensions_details');
-        const installBtn    = panel.querySelector('#third_party_extension_button');
-
-        if (notifyLabel || manageBtn || installBtn) {
-            const pill = document.createElement('div');
-            pill.className = 'ds-pref-group sb-ext-actions-pill';
-
-            // Action buttons row (Manage + Install)
-            if (manageBtn instanceof HTMLElement || installBtn instanceof HTMLElement) {
-                const btnRow = document.createElement('div');
-                btnRow.className = 'sb-ext-action-buttons ds-row';
-                if (manageBtn instanceof HTMLElement) btnRow.appendChild(manageBtn);
-                if (installBtn instanceof HTMLElement) btnRow.appendChild(installBtn);
-                pill.appendChild(btnRow);
-            }
-
-            // Notify toggle row — normalize via a temp wrapper because normalizeBackendSettingsRows
-            // queries descendants; passing the label itself finds nothing.
-            if (notifyLabel instanceof HTMLElement) {
-                const wrapper = document.createElement('div');
-                wrapper.appendChild(notifyLabel);
-                normalizeBackendSettingsRows(wrapper, { fields: false });
-                pill.appendChild(notifyLabel);
-            }
-
-            stack.listHeading.appendChild(pill);
-        }
-
-        if (built.pinned instanceof HTMLElement) {
-            built.pinned.classList.add('sb-ext-pinned-section');
-            stack.listHeading.appendChild(built.pinned);
-
-            // SillyBunny: The assets extension mounts async and builds a closed inline-drawer.
-            // Watch the container and expand the drawer the moment content appears; a closed
-            // drawer here looks like just another extension entry instead of a feature panel.
-            const expandPinnedDrawer = (container) => {
-                const content = container.querySelector('.inline-drawer-content');
-                if (content instanceof HTMLElement) {
-                    // Set inline style — the drawer starts display:none via CSS class, not inline style,
-                    // so removeProperty would be a no-op; an explicit inline display wins.
-                    content.style.display = 'block';
+        const lead = buildExtensionsLead(panel, built.pinned, {
+            // The assets extension mounts after the panel is built, so the index that a search took before it is short of its rows.
+            onPresented: () => {
+                const tab = getShellState(shellKey)?.tabs.get(tabId);
+                if (tab) {
+                    tab.searchIndex = null;
                 }
-            };
-            // Run immediately in case extension already mounted before we got here
-            expandPinnedDrawer(built.pinned);
-            const pinnedObserver = new MutationObserver(() => {
-                expandPinnedDrawer(built.pinned);
-                if (built.pinned.querySelector('.inline-drawer-content')) {
-                    pinnedObserver.disconnect();
-                }
-            });
-            pinnedObserver.observe(built.pinned, { childList: true, subtree: true });
-        }
+            },
+        });
+        stack.listLead.append(...lead.sections);
+        stack.observeWith(lead.disconnect);
     }
 
     if (built.observe instanceof HTMLElement) {
@@ -811,8 +777,10 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
     ],
+    // SillyBunny: the Extensions list builds button, entry and activatable rows, which the editor shell sheet styles.
     'right:extensions': [
-        { href: 'css/extensions-panel.css?v=20261114o', id: 'deferred-extensions-panel-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
+        { href: 'css/extensions-panel.css?v=20261115v', id: 'deferred-extensions-panel-css' },
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
     'right:data-security': [
@@ -10842,7 +10810,7 @@ function getSubpageSearchRoots(searchRoot) {
         if (!stack.host.contains(searchRoot) && !searchRoot.contains(stack.host)) {
             continue;
         }
-        headings.push(stack.listHeading);
+        headings.push(stack.listLead);
         for (const row of stack.rows) {
             const source = row.source?.();
             if (source instanceof HTMLElement) {

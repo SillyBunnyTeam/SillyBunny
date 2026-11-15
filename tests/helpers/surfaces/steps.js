@@ -87,6 +87,23 @@ export async function openSettingsTab(page, { shell, tab }) {
 }
 
 /**
+ * Opens Customize ▸ Extensions on its list. The stack stays out of sight until the sheets that style its rows apply, and
+ * a detail page that an earlier state left open is closed, so the list is what the caller measures.
+ * @param {import('@playwright/test').Page} page
+ */
+export async function openExtensionsList(page) {
+    const panel = '[data-sb-panel="extensions"]';
+    await openSettingsTab(page, { shell: 'right', tab: 'extensions' });
+    await page.locator(`${panel} .sb-subpage:not([aria-busy])`).waitFor({ state: 'visible' });
+    const back = page.locator(`${panel} .sb-subpage-detail[aria-hidden="false"] .sb-subpage-back`);
+    if (await back.count()) {
+        await back.click();
+        await page.locator(`${panel} .sb-subpage-detail[aria-hidden="true"]`).waitFor({ state: 'attached' });
+        await settle(page, { root: panel });
+    }
+}
+
+/**
  * Opens a tab of the Characters shell (`list`, `world-info`, `persona`, and the rest) and returns once the shell has
  * handled the request. From `world-info-editor.e2e.js` and `persona-editor.e2e.js`.
  * @param {import('@playwright/test').Page} page

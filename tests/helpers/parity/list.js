@@ -10,7 +10,7 @@ import { IF_FLEX, ROW_SUBTITLE, ROW_TITLE } from './settings.js';
 
 const OWN_ROW = ':is(.sb-prompt-row, .attachmentListItem, .regex-script-label, .qr--set-item, .openai_logit_bias_form, .tag_view_item, .sb-wi-row, .ds-row)';
 const OWN_TITLE = ':is(.ds-row-label, .sb-prompt-row-name, .attachmentListItemName, .regex_script_name, [class*="name" i]:not(input))';
-const READY_ROWS = '^list\\.(backgrounds|chat-history|sampler-order-|swipe-picker|extensions-settings)';
+const READY_ROWS = '^list\\.(backgrounds|chat-history|sampler-order-|swipe-picker)';
 
 export const rules = {
     family: 'list',

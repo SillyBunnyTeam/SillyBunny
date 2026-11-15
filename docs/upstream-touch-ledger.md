@@ -1436,6 +1436,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-12, UI polish sweep. |
 | Owner | `TODO(copy)` |
 
+### `public/css/extensions-panel.css` - Extensions page action rows
+| Field | Value |
+| --- | --- |
+| File | `public/css/extensions-panel.css` |
+| Area | Customize ▸ Extensions: the Manage extensions and Install extension buttons and the update notice switch at the top of the page. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-settings-subpage.js` builds the Extensions group and adopts the upstream buttons (`#extensions_details`, `#third_party_extension_button`) as button rows and `#extensions_notify_updates` as a switch row; ids and handlers are unchanged. |
+| Adapter shape | Two rules under one `SillyBunny:` marker keep the `.disabled` and `.warning` states that upstream sets on the two buttons once they are button rows. The SillyBunny rules that laid out the old header row and the notify label are removed. |
+| Protecting tests | `tests/unit/sillybunny-settings-subpage.test.js`; `tests/sillybunny-backend-settings.e2e.js`; the settings inventory, parity and axe of `settings.customize.extensions`. |
+| Validation | 2026-11-15: root and tests lint, the full unit run, the page specs, the inventory, parity, axe and registry smoke specs of the page and the list family. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-15, UI polish sweep (task 4.10). |
+| Owner | `TODO(copy)` |
+
 ### `public/css/extensions-panel.css` - built-in extension settings rows
 | Field | Value |
 | --- | --- |

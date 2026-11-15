@@ -22,6 +22,8 @@
  * dropped entirely under `prefers-reduced-motion: reduce`.
  */
 
+import { createPrefGroup, createRow, releaseRowIds } from './sillybunny-editor/rows.js';
+
 /** Marks the stack so the stylesheet can scope to it. */
 const SB_SUBPAGE_ATTRIBUTE = 'data-sb-subpage';
 
@@ -59,7 +61,6 @@ function prefersReducedMotion() {
  * @property {string} [descriptionKey] localization key for the row's description
  * @property {string} [icon] a Font Awesome class for the row's leading glyph
  * @property {{id: string, title: string}} [group] the titled group the row is listed under
- * @property {string} [value] trailing text, for a row that reports a current setting
  * @property {boolean} [builtIn] whether the section is one SillyBunny ships, so its page gets the shared rows
  * @property {() => (HTMLElement|null)} [source] the section to move into the detail page on open
  * @property {() => void} [onOpen] run before the slide, to drive the control the row stands for
@@ -82,7 +83,8 @@ function signatureOf(rows) {
 export class SubpageStack {
     /**
      * @param {HTMLElement} host the panel the stack is mounted in
-     * @param {{title?: string, description?: string, name?: string, onContent?: (content: HTMLElement, row: SubpageRow) => void}} [options]
+     * @param {{name?: string, backLabel?: string, onContent?: (content: HTMLElement, row: SubpageRow) => void}} [options]
+     *     `backLabel` is the translated name of the Back button, which carries an icon only.
      */
     constructor(host, options = {}) {
         /** @type {HTMLElement} */
@@ -124,16 +126,14 @@ export class SubpageStack {
         this.list = document.createElement('div');
         this.list.className = 'sb-subpage-list';
 
-        this.listHeading = document.createElement('div');
-        this.listHeading.className = 'sb-subpage-list-heading';
-        if (options.title) {
-            this.listHeading.appendChild(this.buildHeading(options.title, options.description));
-        }
+        /** The groups that belong to the page itself, above the groups the stack lists. */
+        this.listLead = document.createElement('div');
+        this.listLead.className = 'sb-subpage-list-lead';
 
         this.listBody = document.createElement('div');
         this.listBody.className = 'sb-subpage-list-body';
 
-        this.list.append(this.listHeading, this.listBody);
+        this.list.append(this.listLead, this.listBody);
 
         this.detail = document.createElement('div');
         this.detail.className = 'sb-subpage-detail';
@@ -152,6 +152,8 @@ export class SubpageStack {
         this.backButton.type = 'button';
         this.backButton.className = 'sb-subpage-back';
         this.backButton.innerHTML = '<i class="fa-solid fa-chevron-left" aria-hidden="true"></i>';
+        this.backButton.title = options.backLabel ?? 'Back';
+        this.backButton.setAttribute('aria-label', this.backButton.title);
         this.backButton.addEventListener('click', () => this.close());
 
         const detailHeading = document.createElement('div');
@@ -178,34 +180,6 @@ export class SubpageStack {
     }
 
     /**
-     * Builds a two-line heading, the shape every SillyBunny section already uses.
-     *
-     * @param {string} title
-     * @param {string} [description]
-     * @param {string} [descriptionKey]
-     * @returns {HTMLElement}
-     */
-    buildHeading(title, description, descriptionKey) {
-        const heading = document.createElement('div');
-        heading.className = 'sb-subpage-heading';
-
-        const titleElement = document.createElement('span');
-        titleElement.className = 'sb-subpage-heading-title';
-        titleElement.textContent = title;
-        heading.appendChild(titleElement);
-
-        if (description) {
-            const descriptionElement = document.createElement('small');
-            descriptionElement.className = 'sb-subpage-heading-description';
-            descriptionElement.textContent = description;
-            if (descriptionKey) descriptionElement.dataset.i18n = descriptionKey;
-            heading.appendChild(descriptionElement);
-        }
-
-        return heading;
-    }
-
-    /**
      * Replaces the list page's rows.
      *
      * @param {SubpageRow[]} rows
@@ -215,41 +189,22 @@ export class SubpageStack {
         this.signature = signatureOf(rows);
         this.rowElements.clear();
         this.groupElements.clear();
+        for (const group of this.listBody.children) releaseRowIds(group);
         this.listBody.replaceChildren();
 
         for (const row of rows) {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'sb-subpage-row';
-            button.setAttribute('role', 'listitem');
+            const { row: button } = createRow({
+                label: row.label,
+                subtitle: row.description,
+                field: row.id,
+                activatable: true,
+                onActivate: () => this.open(row.id),
+            });
+            button.classList.add('sb-subpage-row');
             button.dataset.sbSubpageRow = row.id;
-
-            if (row.icon) {
-                const icon = document.createElement('i');
-                icon.className = `sb-subpage-row-icon fa-solid ${row.icon}`;
-                icon.setAttribute('aria-hidden', 'true');
-                button.appendChild(icon);
+            if (row.description && row.descriptionKey) {
+                button.querySelector('.ds-row-subtitle').dataset.i18n = row.descriptionKey;
             }
-
-            button.appendChild(this.buildHeading(row.label, row.description, row.descriptionKey));
-
-            const trailing = document.createElement('span');
-            trailing.className = 'sb-subpage-row-trailing';
-
-            if (row.value) {
-                const value = document.createElement('span');
-                value.className = 'sb-subpage-row-value';
-                value.textContent = row.value;
-                trailing.appendChild(value);
-            }
-
-            const chevron = document.createElement('i');
-            chevron.className = 'sb-subpage-row-chevron fa-solid fa-chevron-right';
-            chevron.setAttribute('aria-hidden', 'true');
-            trailing.appendChild(chevron);
-
-            button.appendChild(trailing);
-            button.addEventListener('click', () => this.open(row.id));
 
             this.rowElements.set(row.id, button);
             this.getGroupList(row.group).appendChild(button);
@@ -272,31 +227,14 @@ export class SubpageStack {
             return existing.list;
         }
 
-        const section = document.createElement('section');
-        section.className = 'sb-subpage-group';
-
-        const list = document.createElement('div');
-        list.className = 'sb-subpage-group-list';
-        list.setAttribute('role', 'list');
-
+        const built = createPrefGroup({ title: group?.title, field: `subpage-${key || 'rows'}` });
+        const { section, group: list } = built;
+        section.classList.add('sb-subpage-group');
         if (group) {
             section.dataset.sbSubpageGroup = group.id;
-
-            const header = document.createElement('div');
-            header.className = 'ds-pref-group-header';
-
-            const heading = document.createElement('h3');
-            heading.className = 'ds-pref-group-heading';
-            heading.id = `sb-subpage-${this.name}-${group.id}-heading`;
-            heading.textContent = group.title;
-            heading.dataset.i18n = group.title;
-
-            header.appendChild(heading);
-            section.appendChild(header);
-            list.setAttribute('aria-labelledby', heading.id);
+            section.querySelector('.ds-pref-group-heading').dataset.i18n = group.title;
         }
 
-        section.appendChild(list);
         this.listBody.appendChild(section);
         this.groupElements.set(key, { section, list });
         return list;
@@ -543,7 +481,7 @@ export class SubpageStack {
  * Builds a stack inside a panel.
  *
  * @param {HTMLElement} host
- * @param {{title?: string, description?: string, name?: string}} [options]
+ * @param {{name?: string, backLabel?: string, onContent?: (content: HTMLElement, row: SubpageRow) => void}} [options]
  * @returns {SubpageStack}
  */
 export function createSubpageStack(host, options = {}) {

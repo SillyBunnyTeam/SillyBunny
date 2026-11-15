@@ -80,11 +80,15 @@ describe('focus outlines', () => {
         ['sillybunny-side-panel.css', '.sb-side-panel__menu-item:focus-visible', ring],
         ['sillybunny-tabs.css', '.sb-mode-menu-item:focus-visible', ring],
         ['sillybunny-tabs.css', '.sb-persona-option:focus-visible', ring],
-        ['sillybunny-tabs.css', '.sb-subpage-row:focus-visible', ring],
         ['sillybunny-tabs.css', '.sb-subpage-back:focus-visible', ring],
         ['sillybunny-tabs.css', '#sb-settings-page .sb-sampling-panel .sb-sampling-help-toggle:focus-visible', ring],
     ])('%s: %s draws the inset ring and no outline', (name, selector, expected) => {
         expect(declarationsOf(sheet(name), selector)).toBe(expected);
+    });
+
+    test('the activatable rows of the editor shell, which the Extensions list rows are, draw the inset ring and no outline', () => {
+        const css = sheet('sillybunny-editor-shell.css');
+        expect(blockAt(css, css.indexOf('.ds-row--activatable:focus-visible,')).replace(/\s+/g, ' ').trim()).toBe(ring);
     });
 
     test.each([

@@ -4603,88 +4603,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     display: none;
 }
 
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas:
-        'title title'
-        'notify notify'
-        'manage manage'
-        'install install';
-    gap: 12px 16px;
-    align-items: center;
-}
-
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > h3 {
-    grid-area: title;
-    margin: 0;
-    align-self: center;
-}
-
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label {
-    grid-area: notify;
-}
-
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label:not(.ds-row) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-start;
-    justify-self: start;
-    gap: 8px;
-    width: fit-content;
-    max-width: 100%;
-    min-width: 0;
-    min-height: 44px;
-    margin: 0;
-    padding: 10px 16px;
-    border-radius: var(--sb-radius-md);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
-}
-
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label > input {
-    margin: 0;
-    flex: 0 0 auto;
-}
-
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label:not(.ds-row) span {
-    min-width: 0;
-    font-size: var(--sb-type-control);
-    line-height: 1.35;
-    white-space: normal;
-}
-
-#rm_extensions_block label.checkbox_label.flexNoGap:not(.ds-row) {
-    gap: 8px;
-}
-
-#rm_extensions_block label[for='extensions_notify_updates']:not(.ds-row) {
-    gap: 8px !important;
-}
-
-#rm_extensions_block #extensions_notify_updates {
-    margin-inline-end: 0 !important;
-}
-
-#rm_extensions_block #extensions_notify_updates + span {
-    margin-inline-start: 0 !important;
-}
-
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button,
-#rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button_icon {
-    min-height: 44px;
-    width: 100%;
-    justify-self: stretch;
-}
-
-#rm_extensions_block #extensions_details {
-    grid-area: manage;
-}
-
-#rm_extensions_block #third_party_extension_button {
-    grid-area: install;
-}
-
 .sb-settings-subdrawer {
     margin-top: 12px;
 }
@@ -4774,7 +4692,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 /* These captions already take the dim strength from --sb-muted-fg; upstream's `small { opacity: 0.7 }` would dim them a second time. */
-:is(.sb-editor-section-hint, .sb-subpage-heading-description, .sb-subpage-detail-description, .sb-settings-subdrawer-toolbar small) {
+:is(.sb-editor-section-hint, .sb-subpage-detail-description, .sb-settings-subdrawer-toolbar small) {
     opacity: 1;
 }
 
@@ -4952,34 +4870,6 @@ body.reduced-motion *::after {
 
     #AdvancedFormatting > .flex-container.alignItemsBaseline {
         gap: 8px;
-    }
-
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > h3,
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label:not(.ds-row) {
-        flex: 0 0 auto;
-        min-height: 0;
-    }
-
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label[for='extensions_notify_updates'] {
-        flex: 0 0 auto;
-        min-width: 0;
-    }
-
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > label {
-        width: 100%;
-        justify-self: stretch;
-    }
-
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button,
-    #rm_extensions_block .extensions_block > .alignitemscenter.flex-container.wide100p > .menu_button_icon {
-        flex: 0 0 auto;
-        width: 100%;
     }
 
     .sb-settings-subdrawer-toolbar {

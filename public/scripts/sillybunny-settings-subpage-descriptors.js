@@ -16,6 +16,8 @@
  * User-installed Extensions, which show their name alone.
  */
 
+import { createButtonRow, createEntryRow, createPrefGroup, createSwitchRow, moveCaption } from './sillybunny-editor/rows.js';
+
 /** Marks a description that still needs human wording. */
 export const SB_SUBPAGE_PLACEHOLDER_ATTRIBUTE = 'data-sb-copy-placeholder';
 
@@ -102,6 +104,182 @@ export function buildExtensionsSubpage(panel) {
         // SillyBunny: always-visible section placed above the row list, not treated as a row.
         pinned: body.querySelector('#assets_container') ?? null,
     };
+}
+
+const textOf = node => node?.textContent.replace(/\s+/g, ' ').trim() ?? '';
+
+/**
+ * Turns one of the page's upstream action buttons into a button row that opens a window. The button keeps its node, so the
+ * handlers and the `disabled` and `warning` classes that `script.js` and `extensions.js` put on it by id still reach it.
+ *
+ * @param {HTMLElement} button
+ * @param {string} field
+ * @returns {object}
+ */
+function adoptActionRow(button, field) {
+    const label = textOf(button.querySelector('span') ?? button);
+    const labelKey = button.querySelector('[data-i18n]')?.dataset.i18n;
+    const ownKey = button.dataset.i18n;
+    const row = createButtonRow({ label, field, arrow: true, button });
+    // The row moves the button's own translation key to its label, which only fits a key that names text. A key that
+    // names the tooltip (`[title]…`) belongs to the button, and the label takes the key of the caption it replaced.
+    const caption = row.row.querySelector('.ds-row-label');
+    if (labelKey && !caption.dataset.i18n) caption.dataset.i18n = labelKey;
+    if (ownKey?.startsWith('[')) button.dataset.i18n = ownKey;
+    return row;
+}
+
+/**
+ * The switch row for the update notice. The switch input is the upstream control and keeps its id; the old label is
+ * dropped, and its title and caption move into the row with their translation keys.
+ *
+ * @param {HTMLInputElement} input
+ * @returns {object}
+ */
+function adoptNotifyRow(input) {
+    const oldLabel = input.closest('label');
+    const title = oldLabel?.querySelector('.ds-row-label, span');
+    const caption = oldLabel?.querySelector('.ds-row-subtitle, small');
+    const row = createSwitchRow({ label: textOf(title), subtitle: textOf(caption) || undefined, field: 'notify-updates', input });
+    moveCaption(row.row.querySelector('.ds-row-label'), title);
+    const subtitle = row.row.querySelector('.ds-row-subtitle');
+    if (subtitle && caption) moveCaption(subtitle, caption);
+    oldLabel?.remove();
+    return row;
+}
+
+/**
+ * The group of the page's own actions: the two windows it opens and the update notice. The group's title is the
+ * heading that the upstream block gave these three controls.
+ *
+ * @param {HTMLElement} panel
+ * @returns {HTMLElement|null}
+ */
+function presentExtensionActions(panel) {
+    const rows = [
+        ['#extensions_details', 'manage-extensions'],
+        ['#third_party_extension_button', 'install-extension'],
+    ].flatMap(([selector, field]) => {
+        const button = panel.querySelector(selector);
+        return button instanceof HTMLElement ? [adoptActionRow(button, field)] : [];
+    });
+    const notify = panel.querySelector('#extensions_notify_updates');
+    if (notify instanceof HTMLInputElement) rows.push(adoptNotifyRow(notify));
+    if (!rows.length) return null;
+
+    const source = panel.querySelector('.extensions_block > .alignitemscenter > h3');
+    const group = createPrefGroup({ title: textOf(source) || 'Extensions', field: 'extension-actions' });
+    group.section.dataset.sbPresentation = 'manual';
+    const heading = group.section.querySelector('.ds-pref-group-heading');
+    if (source) moveCaption(heading, source, { keepSource: true });
+    else heading.dataset.i18n = heading.textContent;
+    group.append(...rows);
+    return group.section;
+}
+
+/**
+ * Presents the Download Extensions & Assets section as a group: the drawer's title is the heading, its hint the
+ * description, and the asset list address a floating entry row with the connect button at its end. What the section
+ * shows once a list is loaded (the filters and the catalogue) is the assets extension's own and stays as it is.
+ *
+ * @param {HTMLElement} ui `#assets_ui`, as the assets extension mounts it
+ * @returns {boolean} whether the section was presented
+ */
+function presentAssets(ui) {
+    if (ui.dataset.sbPresentation === 'manual') {
+        return false;
+    }
+    const drawer = ui.querySelector(':scope > .inline-drawer');
+    const title = drawer?.querySelector(':scope > .inline-drawer-toggle > b');
+    const content = drawer?.querySelector(':scope > .inline-drawer-content');
+    const urlBlock = content?.querySelector('.assets-url-block');
+    const input = urlBlock?.querySelector('#assets-json-url-field');
+    if (!title || !(content instanceof HTMLElement) || !(input instanceof HTMLInputElement)) {
+        return false;
+    }
+
+    const hint = content.querySelector(':scope > small');
+    const group = createPrefGroup({ title: textOf(title), subtitle: textOf(hint) || undefined, field: 'assets' });
+    moveCaption(group.section.querySelector('.ds-pref-group-heading'), title);
+    if (hint) moveCaption(group.section.querySelector('.ds-pref-group-subtitle'), hint);
+
+    const label = urlBlock.querySelector('label[for="assets-json-url-field"]');
+    const caption = urlBlock.querySelector(':scope > small');
+    const connect = urlBlock.querySelector('#assets-connect-button');
+    if (connect instanceof HTMLElement) {
+        // The connect icon is the upstream control and a plain icon element: it needs a role, a tab stop and the keys of a button.
+        connect.setAttribute('role', 'button');
+        connect.tabIndex = 0;
+        connect.addEventListener('keydown', event => {
+            if (event.target === connect && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                connect.click();
+            }
+        });
+    }
+    const entry = createEntryRow({
+        label: textOf(label) || 'Assets URL',
+        subtitle: textOf(caption) || undefined,
+        field: 'assets-url',
+        input,
+        floating: true,
+        suffix: connect instanceof HTMLElement ? [connect] : undefined,
+    });
+    if (label) moveCaption(entry.row.querySelector('.ds-row-entry__title'), label);
+    const entryCaption = entry.row.querySelector('.ds-row-entry__caption');
+    if (entryCaption && caption) {
+        const tooltip = caption.title;
+        moveCaption(entryCaption, caption);
+        entryCaption.title = tooltip;
+    }
+    group.append(entry);
+
+    ui.classList.add('sb-editor-section', 'sb-assets-section');
+    ui.dataset.sbPresentation = 'manual';
+    ui.replaceChildren(...group.section.children);
+    ui.append(...['#assets_filters', '#assets_menu'].flatMap(selector => content.querySelector(`:scope > ${selector}`) ?? []));
+    return true;
+}
+
+/**
+ * Builds the groups that lead the Extensions page, ahead of the list of extensions: the page's actions, and the
+ * Download Extensions & Assets section that the assets extension mounts into `pinned`, which can be after this runs.
+ *
+ * @param {HTMLElement} panel
+ * @param {HTMLElement|null} pinned `#assets_container`
+ * @param {{onPresented?: () => void}} [hooks] `onPresented` runs once the assets section has been presented
+ * @returns {{sections: HTMLElement[], disconnect: () => void}}
+ */
+export function buildExtensionsLead(panel, pinned, { onPresented } = {}) {
+    const sections = [];
+    const actions = presentExtensionActions(panel);
+    if (actions) {
+        sections.push(actions);
+    }
+
+    let disconnect = () => {};
+    if (pinned instanceof HTMLElement) {
+        sections.push(pinned);
+        const present = () => {
+            const ui = pinned.querySelector(':scope > #assets_ui');
+            if (!(ui instanceof HTMLElement) || !presentAssets(ui)) {
+                return false;
+            }
+            onPresented?.();
+            return true;
+        };
+        if (!present()) {
+            const observer = new MutationObserver(() => {
+                if (present()) {
+                    observer.disconnect();
+                }
+            });
+            observer.observe(pinned, { childList: true });
+            disconnect = () => observer.disconnect();
+        }
+    }
+
+    return { sections, disconnect };
 }
 
 /**

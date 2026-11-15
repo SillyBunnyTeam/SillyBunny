@@ -13,7 +13,7 @@
 import { viewportById } from '../surface-matrix.js';
 import { FIXTURES } from './fixture-data.js';
 import { BACKENDS, DEFAULT_BACKEND } from './schema.js';
-import { chooseMenuItem, expandAll, openCharactersTab, openSettingsTab, selectBackend, selectLogitBiasPreset, settle } from './steps.js';
+import { chooseMenuItem, expandAll, openCharactersTab, openExtensionsList, openSettingsTab, selectBackend, selectLogitBiasPreset, settle } from './steps.js';
 
 const BACKEND_IDS = Object.keys(BACKENDS);
 /** The Presets page differs between sources only by a toggle, so it keeps the four backends and not the extra Text Completion sources. */
@@ -124,6 +124,11 @@ function agentsPage(id, label) {
 }
 
 const EXTENSIONS_PANEL = '[data-sb-panel="extensions"]';
+
+/** Opens the page on its list, whatever an earlier state left open over it. */
+function withExtensionsList(entry) {
+    return { ...entry, open: openExtensionsList };
+}
 
 /**
  * Pane of the Characters shell that opens from a header menu: World Info Global Settings and Persona Global Settings.
@@ -269,14 +274,13 @@ export const surfaces = [
         upstreamMarkup: true,
         sources: [`${SCRIPTS}/sillybunny-tabs.js`, `${SCRIPTS}/sillybunny-settings-presentation.js`],
     }),
-    shellPage({
+    withExtensionsList(shellPage({
         id: 'customize.extensions',
         title: 'Customize: Extensions (list and detail pages)',
         shell: 'right',
         tab: 'extensions',
         ready: `${EXTENSIONS_PANEL} .sb-subpage-row:visible`,
         upstreamMarkup: true,
-        masks: [`${EXTENSIONS_PANEL} .sb-subpage-row-value`],
         sources: [`${SCRIPTS}/sillybunny-settings-subpage.js`, `${SCRIPTS}/sillybunny-settings-subpage-descriptors.js`],
         states: [{
             id: 'detail-page',
@@ -287,7 +291,7 @@ export const surfaces = [
                 await settle(page);
             },
         }],
-    }),
+    })),
     shellPage({
         id: 'customize.interface',
         title: 'Customize: Interface',

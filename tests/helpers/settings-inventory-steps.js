@@ -347,7 +347,7 @@ export async function listExtensionRows(page) {
     await waitForStableCount(page, `${EXTENSIONS_PANEL} [data-sb-subpage-row]`);
     return page.evaluate(panel => [...document.querySelectorAll(`${panel} [data-sb-subpage-row]`)].map(row => ({
         container: row.getAttribute('data-sb-subpage-row'),
-        title: (row.querySelector('.sb-subpage-row-title')?.textContent ?? row.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+        title: (row.querySelector('.ds-row-label')?.textContent ?? row.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
     })), EXTENSIONS_PANEL);
 }
 
