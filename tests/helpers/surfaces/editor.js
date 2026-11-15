@@ -35,8 +35,9 @@ const EXPANDED = 'dialog.popup[open]:has(.maximized_textarea)';
 const LEAVE = 'dialog.popup[open]:has(.popup-button-cancel)';
 const LEAVE_READY = ['dialog.popup[open] .popup-button-cancel', 'dialog.popup[open] :text-is("Discard")'];
 
-// The character editor's count moves from the header to the toolbar's second row at 620px and narrower.
-const PHONE_READOUT_WIDTH = 620;
+// The character editor's count moves from the header to the toolbar's second row when the header is under 560px wide; a
+// viewport this narrow or narrower always has such a header.
+const PHONE_READOUT_WIDTH = 560;
 const PHONE_READOUT_OVER_BUDGET = '#sb_character_editor_toolbar .sb-editor-tokens--row.is-over-budget';
 const isPhoneReadout = ctx => Number(String(ctx?.viewport ?? '1440x900').split('x')[0]) <= PHONE_READOUT_WIDTH;
 
@@ -490,8 +491,12 @@ export const surfaces = [
                     await page.locator('#sb_character_editor_quick_edit').click();
                     await page.waitForFunction(() => document.getElementById('sb_character_editor_quick_edit').getAttribute('aria-pressed') === 'true');
                     // On a phone the first screen of the sheet is Essentials either way: the end of the sheet is where the
-                    // hidden sections would start.
+                    // hidden sections would start. The tags decide how tall Essentials is, so the step gives them a moment; a
+                    // scroll down hides the header and toolbar on a phone, and a short scroll up brings them back.
+                    await page.locator('#tagList .tag').first().waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
                     await page.locator(CHARACTER.scroller).evaluate(body => { body.scrollTop = body.scrollHeight; });
+                    await page.waitForTimeout(400);
+                    await page.locator(CHARACTER.scroller).evaluate(body => { body.scrollTop = Math.max(0, body.scrollTop - 24); });
                     await settle(page);
                 },
             },
@@ -557,7 +562,7 @@ export const surfaces = [
                 open: page => openCharacterEditor(page, LONG_NAMED_CHARACTER),
             },
         ],
-        masks: ['#sb_character_editor_tokens', '#sb_character_editor_toolbar .sb-editor-tokens--row', '#form_create .extension_token_counter', '#sb-topbar-title'],
+        masks: ['#sb_character_editor_tokens', '#sb_character_editor_toolbar .sb-editor-tokens--row', '#form_create .ds-row-textarea__count-value, #form_create [data-token-counter]', '#sb-topbar-title'],
         needs: ['character', 'characters-many'],
         sources: [`${SCRIPTS}/sillybunny-character-editor.js`, `${SCRIPTS}/sillybunny-editor/chrome.js`, `${CSS}/sillybunny-character-editor.css`],
         primaryFlow: true,

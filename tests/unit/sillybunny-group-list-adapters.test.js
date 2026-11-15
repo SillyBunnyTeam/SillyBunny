@@ -10,6 +10,19 @@ const $ = window.jQuery;
 const { createEntityRow, entityKey, limitTagChips } = await import('../../public/scripts/sillybunny-editor/entity-row.js');
 const { bindListKeyboard, reconcileRows } = await import('../../public/scripts/sillybunny-editor/list-rows.js');
 const { loadStylesheetAsync } = await import('../../public/scripts/dynamic-styles.js');
+// The shared page loads its sheet by a memoised id, which a later stylesheet test needs to see for itself.
+function createStatusPage({ state, title, compact }) {
+    const element = document.createElement('div');
+    element.className = `sb-status-page${compact ? ' sb-status-page--compact' : ''}`;
+    const heading = document.createElement('h3');
+    element.append(heading);
+    const update = values => {
+        if (values.state) element.dataset.state = values.state;
+        if (values.title !== undefined) heading.textContent = values.title;
+    };
+    update({ state, title });
+    return { element, update };
+}
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
     translate: text => text,
@@ -52,9 +65,11 @@ describe('group rows on the shared factory', () => {
         return loadFunctions([
             'getGroupCharacterBlock', 'updateGroupCharacterBlock', 'getGroupCharacterTags',
             'isGroupMember', 'isGroupMemberDisabled', 'reconcileGroupCharacterRows',
-            'printGroupMembers', 'printGroupCandidates', 'getMemberRowsContainers',
+            'printGroupMembers', 'printGroupCandidates', 'getMemberRowsContainers', 'syncGroupListEmptyPage',
         ], {
             $,
+            createStatusPage,
+            groupListEmptyPages: new WeakMap(),
             createEntityRow,
             entityKey,
             limitTagChips: jest.fn(limitTagChips),
@@ -94,7 +109,7 @@ describe('group rows on the shared factory', () => {
         expect(row.dataset).toMatchObject({ avatar: 'alice.png', chid: '0', sbMemberIndex: '4', sbListKey: 'character:alice.png' });
         expect(member.data('id')).toBe('alice.png');
         expect(row.tabIndex).toBe(0);
-        expect(row.querySelector('.ds-entity-row__chevron')).not.toBeNull();
+        expect(row.querySelector('.ds-entity-row__chevron')).toBeNull();
         expect(row.querySelector('.avatar img').getAttribute('loading')).toBe('lazy');
         expect(row.querySelector('.avatar img').getAttribute('decoding')).toBe('async');
         expect(row.querySelector('.avatar img').alt).toBe('');
@@ -148,6 +163,23 @@ describe('group rows on the shared factory', () => {
         expect(member.querySelector('input[type="checkbox"]')).toBe(control);
         expect(member.querySelector('.tag')).toBe(tag);
         expect(document.activeElement).toBe(control);
+    });
+
+    test('an empty list shows the compact status page beside its rows and drops it when rows return', () => {
+        const context = listSetup();
+        context.editorDraft.members.length = 0;
+        context.api.printGroupMembers();
+        const rows = document.getElementById('rm_group_members');
+        const page = rows.nextElementSibling;
+        expect(rows.childElementCount).toBe(0);
+        expect(page.matches('.sb-status-page.sb-status-page--compact[data-state="empty"]')).toBe(true);
+        expect(page.querySelector('h3').textContent).toBe('Group is empty.');
+        context.api.printGroupMembers();
+        expect(rows.nextElementSibling).toBe(page);
+        context.editorDraft.members.push('alice.png');
+        context.api.printGroupMembers();
+        expect(document.querySelector('.sb-status-page')).toBeNull();
+        expect(rows.childElementCount).toBe(1);
     });
 
     test('changed member presentation updates in place through the factory', () => {
@@ -236,7 +268,7 @@ describe('group row keyboard and pointer bindings', () => {
     test('member rows navigate with via; nested tags, grips and controls do not', async () => {
         document.body.innerHTML = '<div id="rm_group_members"><div class="group_member" data-avatar="alice.png" tabindex="0"><span class="ch_name">Alice</span><span class="tag">Tag</span><div class="sb-group-member-grip"></div><label><input type="checkbox"></label><button></button></div><div class="group_member" tabindex="0"></div></div>';
         const navigate = jest.fn(async () => ({ ok: true }));
-        const context = loadFunctions(['bindGroupListKeyboard', 'runGroupEditorAction', 'reportGroupEditorError'], {
+        const context = loadFunctions(['bindGroupListKeyboard', 'openGroupMemberEditor', 'runGroupEditorAction', 'reportGroupEditorError'], {
             bindListKeyboard,
             objectNavigation: { navigate },
             openGroupId: 'group-1',
@@ -325,8 +357,9 @@ describe('group row keyboard and pointer bindings', () => {
     test('member menu actions and model override catch asynchronous failures', async () => {
         document.body.innerHTML = '<div class="group_member" data-avatar="alice.png"><span class="ch_name">Alice</span><button></button></div>';
         const failure = new Error('Offline');
-        const context = loadFunctions(['onGroupMemberMenuClick', 'runGroupEditorAction', 'reportGroupEditorError'], {
+        const context = loadFunctions(['onGroupMemberMenuClick', 'openGroupMemberEditor', 'runGroupEditorAction', 'reportGroupEditorError'], {
             $, openGroupId: 'group-1', getEditedGroup: () => ({ members: ['alice.png', 'bob.png'] }),
+            objectNavigation: { navigate: jest.fn().mockRejectedValue(failure) },
             openActionMenu: jest.fn(), runGroupMemberAction: jest.fn().mockRejectedValue(failure),
             editGroupMemberModel: jest.fn().mockRejectedValue(failure),
             console: { error: jest.fn() }, toastr: { error: jest.fn() },
@@ -337,7 +370,7 @@ describe('group row keyboard and pointer bindings', () => {
         const items = context.openActionMenu.mock.calls[0][0].sections.flatMap(section => section.items);
         expect(items.filter(item => item.data?.sbReorder).map(item => item.data.sbReorder)).toEqual(['down']);
         for (const item of items.filter(item => !item.disabled)) await item.onSelect();
-        expect(context.toastr.error).toHaveBeenCalledTimes(4);
+        expect(context.toastr.error).toHaveBeenCalledTimes(5);
     });
 
     test('member menu leaves the move items out while a member filter is active', () => {

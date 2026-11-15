@@ -184,7 +184,7 @@ export function mountEditorChrome(config) {
         }
         for (const glyph of control.querySelectorAll('.fa-solid')) glyph.setAttribute('aria-hidden', 'true');
     }
-    for (const link of root.querySelectorAll('.ds-field-header > .notes-link')) {
+    for (const link of root.querySelectorAll('.ds-field-header > .notes-link, .ds-row-textarea__label-row > .notes-link')) {
         const label = link.parentElement.querySelector('label');
         if (label) link.setAttribute('aria-label', label.textContent.trim());
         for (const glyph of link.children) glyph.setAttribute('aria-hidden', 'true');

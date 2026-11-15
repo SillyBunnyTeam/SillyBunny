@@ -119,16 +119,17 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 12px;
+    padding: 6px;
     background: var(--sb-layer-view);
     border-bottom: 0;
     flex-shrink: 0;
     min-height: 52px;
 }
 
-/* Every explicit-save editor header is a size container, so the Cancel icon form below is one rule at one width.
-   Inline-size containment keeps the header as wide as its parent whatever the children ask for. */
-:is(.sb-editor-header, .sb-wi-entry-header, .sb-persona-entry-header) {
+/* Every explicit-save editor header is a size container, so the Cancel icon form below is one rule at one width, and the
+   second row of a single-content editor (its toolbar) shares the header's width and its condition. Inline-size containment
+   keeps the header as wide as its parent whatever the children ask for. */
+:is(.sb-editor-header, .sb-editor-toolbar, .sb-wi-entry-header, .sb-persona-entry-header) {
     container: sb-editor-header / inline-size;
 }
 
@@ -187,7 +188,7 @@
         text-underline-offset: 4px;
     }
 
-    .sb-editor-title-button:not(.is-static):hover .sb-editor-title-pencil {
+    .sb-editor-title-button:not(.is-static):hover .sb-editor-pencil {
         opacity: 1;
     }
 }
@@ -222,7 +223,7 @@
 }
 
 
-.sb-editor-title-pencil {
+.sb-editor-pencil {
     flex: 0 0 auto;
     font-size: 0.75em;
     color: var(--sb-muted-fg);
@@ -230,7 +231,7 @@
     transition: opacity var(--sb-transition-fast);
 }
 
-.sb-editor-title-button:focus-visible .sb-editor-title-pencil {
+.sb-editor-title-button:focus-visible .sb-editor-pencil {
     opacity: 1;
 }
 
@@ -348,6 +349,15 @@
     }
 }
 
+/* A press shows its own fill, after the hover rules so that it wins at the same specificity. */
+.sb-editor-action--primary.sb-editor-action--primary:not(:disabled):active {
+    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 76%, var(--SmartThemeBodyColor));
+}
+
+.sb-editor-action--secondary.sb-editor-action--secondary:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
 /* Icon form for crowded headers; hidden unless an editor's narrow layout opts in. */
 .sb-editor-action__icon {
     display: none;
@@ -377,9 +387,18 @@
     box-shadow: none;
 }
 
-/* Cancel takes its icon form where the header is narrow, the same in every editor; the label stays in the accessible
-   name. The editors' own header rules no longer repeat this. */
-@container sb-editor-header (width < 440px) {
+/* Where the header is narrow, one condition for every part of it: Cancel takes its icon form, the same in every editor, with
+   its label kept in the accessible name, and a single-content editor's token readout leaves the header for the second row. */
+@container sb-editor-header (width < 560px) {
+    .sb-editor-header > .sb-editor-tokens {
+        display: none;
+    }
+
+    .sb-editor-toolbar > .sb-editor-tokens--row:not([hidden]) {
+        display: inline-flex;
+        flex: 0 0 auto;
+    }
+
     .sb-editor-action.sb-editor-action--secondary.sb-editor-action--secondary {
         position: relative;
         width: var(--sb-control-icon-physical-size, 36px);
@@ -433,7 +452,7 @@
        causes the toolbar to eat all available space in the flex-column form */
     flex: 0 0 auto;
     gap: 2px;
-    padding: 6px 10px;
+    padding: 6px;
     background: var(--sb-layer-view);
     border-bottom: 1px solid var(--sb-shell-border);
     min-height: 48px;
@@ -512,7 +531,7 @@
 
 .sb-editor-section-hint {
     display: block;
-    padding: 10px 16px;
+    padding: 10px var(--sb-density-row-padding-inline);
     font-size: var(--sb-type-meta, 13px);
     color: var(--sb-muted-fg, color-mix(in srgb, var(--SmartThemeBodyColor) 70%, transparent));
     line-height: 1.4;
@@ -561,14 +580,26 @@
     line-height: 1.4;
 }
 
-.ds-field-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: auto;
+/* A field that took the row anatomy keeps no padding of its own: the row has it, and the separator below the field is the
+   wrapper's. */
+.ds-field:has(> :is(.ds-row-entry, .ds-row-textarea)) {
+    gap: 0;
+    padding: 0;
 }
 
-.ds-field-actions .menu_button,
+.ds-field > .ds-row:is(.ds-row-entry, .ds-row-textarea) {
+    border-bottom: 0;
+}
+
+/* The help link sits beside the label; the count, Edit/Preview and Expand keep the inline end. */
+.ds-row-textarea__label:has(+ .notes-link) {
+    flex: 0 1 auto;
+}
+
+.ds-row-textarea__label-row > .notes-link {
+    margin-inline-end: auto;
+}
+
 #tags_div .tags_view,
 #sb_creator_notes_maximize {
     margin: 0;
@@ -746,15 +777,19 @@
 /* Essentials section — avatar and name side by side
    ========================================================================= */
 
+/* The avatar and the field rows sit side by side while the box holds both, and stack where it does not (the rows' basis is
+   the narrowest box they take), the same in both editors; no viewport width decides it. */
 .sb-character-essentials {
     display: flex;
-    gap: 16px;
-    padding: 16px;
+    flex-wrap: wrap;
+    gap: 0;
+    padding: 0;
     align-items: flex-start;
 }
 
 .sb-character-essentials__avatar {
-    flex-shrink: 0;
+    flex: 0 0 auto;
+    padding: var(--sb-density-row-padding-inline);
 }
 
 .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) {
@@ -784,29 +819,24 @@
 }
 
 .sb-character-essentials__fields {
-    flex: 1 1 auto;
+    flex: 1 1 18rem;
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 0;
 }
 
-.sb-character-essentials__fields .ds-field {
+.sb-character-essentials__fields > .ds-field {
     padding: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
+.sb-character-essentials__fields > .ds-field:last-child {
     border-bottom: 0;
 }
 
-@media screen and (max-width: 620px) {
-    .sb-character-essentials {
-        flex-direction: row;
-        align-items: flex-start;
-    }
-
-    /* Fixed square that stays correct without cropping */
-    .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div) {
-        width: 72px;
-        height: 72px;
-    }
+.sb-character-essentials__fields > .ds-field > .ds-row {
+    border-bottom: 0;
 }
 
 /* Preview pane — rendered Markdown output
@@ -986,10 +1016,6 @@
     border-bottom: 0;
 }
 
-#form_create .sb-greeting-row > .ds-row-expander__header {
-    padding-inline: 16px;
-}
-
 .sb-greeting-row__snippet {
     display: block;
     overflow: hidden;
@@ -1005,7 +1031,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 12px 16px;
+    padding: 12px var(--sb-density-row-padding-inline);
 }
 
 #form_create .sb-greeting-row__textarea {
@@ -1136,46 +1162,17 @@ body.reduced-motion :is(
         padding: 12px;
         gap: 12px;
     }
-
-    .sb-editor-header {
-        padding: 6px 8px;
-        gap: 4px;
-    }
-
-    .sb-editor-toolbar {
-        padding: 6px 8px;
-    }
-
-    .ds-field {
-        padding: 10px 12px;
-    }
-
-    /* The readout leaves the header for the toolbar row, at its inline end before the trailing control, so the
-       title keeps its room. The context warning moves with the count. */
-    .sb-editor-header > .sb-editor-tokens {
-        display: none;
-    }
-
-    .sb-editor-toolbar > .sb-editor-tokens--row:not([hidden]) {
-        display: inline-flex;
-        flex: 0 0 auto;
-    }
 }
 
 /* Touch targets are 44px on coarse pointers; the toolbar and
    header are the primary hit areas in this editor. */
 @media (pointer: coarse) {
-    #right-nav-panel {
-        --sb-tag-remove-size: 44px;
-    }
-
-    .ds-field-actions .menu_button,
     #tags_div .tags_view,
     #sb_creator_notes_maximize {
         min-height: 44px;
     }
 
-    #right-nav-panel .ds-field-header > .notes-link {
+    #right-nav-panel .ds-row-textarea__label-row > .notes-link {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -1235,7 +1232,11 @@ body.reduced-motion :is(
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    padding: 6px 16px 10px;
+    padding: 6px var(--sb-density-row-padding-inline) 10px;
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags:empty {
+    display: none;
 }
 
 #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag {
@@ -1250,6 +1251,8 @@ body.reduced-motion :is(
     font-size: var(--sb-type-meta, 13px);
     font-weight: 500;
     color: var(--SmartThemeBodyColor);
+    /* tags.css dims the chips of #tagList to 60%, which leaves the name under the 4.5:1 contrast on the light tone. */
+    opacity: 1;
     line-height: 1.3;
     cursor: default;
     transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), color var(--sb-transition-fast);
@@ -1259,8 +1262,9 @@ body.reduced-motion :is(
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--sb-tag-remove-size, 16px);
-    height: var(--sb-tag-remove-size, 16px);
+    position: relative;
+    width: 16px;
+    height: 16px;
     padding: 0;
     border: 0;
     border-radius: 50%;
@@ -1271,6 +1275,19 @@ body.reduced-motion :is(
     line-height: 1;
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
     flex-shrink: 0;
+}
+
+/* The target is 44px on a coarse pointer. Padding and a negative margin give it the reach without the height, and the fill
+   stays the 16px disc because it paints in the content box only. */
+@media (pointer: coarse) {
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove {
+        box-sizing: border-box;
+        width: 44px;
+        height: 44px;
+        margin: -14px;
+        padding: 14px;
+        background-clip: content-box;
+    }
 }
 
 @media (hover: hover) {

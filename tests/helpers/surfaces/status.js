@@ -957,10 +957,9 @@ const promptsNoResults = status({
 const groupMembersEmpty = status({
     id: 'group.members-empty',
     title: 'Group editor: a new group without members',
-    component: 'own',
-    // The list draws its "Group is empty." text with `::before`, so the section that holds it is the root.
-    root: '[data-sb-section="members"]',
-    ready: '#rm_group_members:empty',
+    component: 'shared',
+    root: '[data-sb-section="members"] .sb-status-page',
+    ready: '[data-sb-section="members"]:has(#rm_group_members:empty) .sb-status-page',
     async open(page) {
         await showCharacterView(page, 'groups');
         await page.locator(`${CHARACTER_LIST} [data-action-id="new"]`).click();

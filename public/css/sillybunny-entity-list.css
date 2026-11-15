@@ -834,10 +834,23 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
     grid-template-columns: none;
     gap: 10px;
     min-height: 52px;
-    padding: 6px 8px;
+    padding: 6px var(--sb-density-row-padding-inline);
     position: relative;
     border-radius: 0;
     outline: none;
+}
+
+/* The slot keeps the legacy `group_member_name` class for extensions; the title, subtitle and chips set their own type. */
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row > .ds-entity-row__text {
+    font-size: var(--sb-type-body);
+    font-weight: 400;
+}
+
+/* A member's name wraps beside the switch and menu instead of being cut to a few letters. */
+:is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .ds-entity-row__title {
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
 }
 
 :is(#rm_group_chats_block, #groupMemberListPopout) .group_member.ds-entity-row .character_version {
@@ -997,16 +1010,16 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
     gap: 0;
 }
 
-#rm_group_members:empty::before,
+/* The editor's two lists show the shared status page beside their rows (group-chats.js); the popout still prints the text. */
+:is(#rm_group_members, #rm_group_add_members).ds-entity-list__empty:empty::before {
+    content: none;
+}
+
 #groupMemberListPopout .rm_group_members:empty::before {
     content: attr(group_empty_text);
 }
 
-#rm_group_add_members:empty::before {
-    content: attr(no_characters_text);
-}
-
-:is(#rm_group_members, #rm_group_add_members, #groupMemberListPopout .rm_group_members)[data-empty-text]:empty::before {
+#groupMemberListPopout .rm_group_members[data-empty-text]:empty::before {
     content: attr(data-empty-text);
 }
 

@@ -35,9 +35,10 @@ export const rules = {
         {
             id: 'entry',
             selectors: [
-                // The number of a spin row is part of the row, which draws the field (DESIGN.md Spin row).
-                { id: 'text-pole', selector: 'input.text_pole:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.ds-row--spin input.ds-spin)' },
-                { id: 'own', selector: ':is(input[type="text"], input:not([type])):not(.ds-row--spin input.ds-spin)' },
+                // The number of a spin row and the input of a floating entry row are part of a row, which draws the field
+                // (DESIGN.md Spin row, Entry rows: the row is the field, with no fill, border or radius of its own on the input).
+                { id: 'text-pole', selector: 'input.text_pole:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.ds-row--spin input.ds-spin):not(.ds-row-entry--floating input)' },
+                { id: 'own', selector: ':is(input[type="text"], input:not([type])):not(.ds-row--spin input.ds-spin):not(.ds-row-entry--floating input)' },
             ],
             properties: [
                 { property: 'offsetHeight', token: '--sb-field-min-height', source: 'DESIGN.md' },

@@ -87,11 +87,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Character and group editor header controls. |
 | Divergence reason | Upstream editor header controls carry their own hover and pressed styling, so they differ from the list and settings headers. SillyBunny adds one shared class so every visible header icon button looks and responds the same. |
 | Target seam | `public/css/sillybunny-editor-shell.css`; shared header-icon-button class. |
-| Adapter shape | Preserve existing IDs, handlers, transport nodes and icon geometry; add the shared state class to visible editor header controls. Since 2026-11-13 (UI polish sweep, task 2.11) the character and group editor headers follow the shared editor header order: Back is a chevron; the item menu (⋮) sits in the header before Cancel; Cancel is an icon with an `.sb-editor-action__label`; the Back and ⋮ `title` attributes are removed, and `sillybunny-editor/chrome.js` sets their tooltips. A `SillyBunny:` comment before the character Back button marks it. The item menu's accessible name is "Character Actions" and "Group Actions" (2026-11-14, worded with the user), and the chrome sets the same tooltip. |
-| Protecting tests | `tests/header-icon-button-parity.e2e.js`; `tests/character-list.e2e.js`; `tests/world-info-editor.e2e.js`; `tests/unit/sillybunny-editor-chrome-navigation.test.js`; `tests/character-editor-rendering.e2e.js`. |
-| Validation | 2026-10-24: root/tests lint, header parity E2E in both bundled themes, and `git diff --check`. 2026-11-13: root and tests lint, the full unit run, the e2e specs that name the editor header. |
+| Adapter shape | Preserve existing IDs, handlers, transport nodes and icon geometry; add the shared state class to visible editor header controls. Since 2026-11-13 (UI polish sweep, task 2.11) the character and group editor headers follow the shared editor header order: Back is a chevron; the item menu (⋮) sits in the header before Cancel; Cancel is an icon with an `.sb-editor-action__label`; the Back and ⋮ `title` attributes are removed, and `sillybunny-editor/chrome.js` sets their tooltips. A `SillyBunny:` comment before the character Back button marks it. The item menu's accessible name is "Character Actions" and "Group Actions" (2026-11-14, worded with the user), and the chrome sets the same tooltip. Since 2026-11-15 (task 5.3) the editor title spans also carry `sb-dialog__title`, the pencil is `sb-editor-pencil`, and the group Members heading's help link and pop-out button carry `sb-header-icon-button`. |
+| Protecting tests | `tests/header-icon-button-parity.e2e.js`; `tests/character-list.e2e.js`; `tests/world-info-editor.e2e.js`; `tests/unit/sillybunny-editor-chrome-navigation.test.js`; `tests/character-editor-rendering.e2e.js`. `tests/audit/surface-parity.e2e.js` (`header.editor.*`). |
+| Validation | 2026-10-24: root/tests lint, header parity E2E in both bundled themes, and `git diff --check`. 2026-11-13: root and tests lint, the full unit run, the e2e specs that name the editor header. 2026-11-15: lint, the full unit run, the related e2e specs, parity, axe and registry smoke of the editor surfaces. |
 | Rollback path | Remove the `sb-header-icon-button` class from the character and group editor header controls in `public/index.html`. Leave its rules in `public/css/sillybunny-editor-shell.css`, because list and settings headers use them too. IDs, handlers and icons do not change. Then drop `tests/header-icon-button-parity.e2e.js`. |
-| Last reviewed | 2026-11-13, UI polish sweep (task 2.11). |
+| Last reviewed | 2026-11-15, UI polish sweep (task 5.3). |
 | Owner | UI overhaul integrator. |
 
 ### Dialog frame surface and layer adjustments
@@ -1546,6 +1546,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | 2026-11-14: root and tests lint, the full unit run, `composer-menu-sheets.e2e.js`, `window-dialogs.e2e.js`. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-14, UI polish sweep (task 2.8). |
+| Owner | `TODO(copy)` |
+
+### `public/scripts/group-chats.js` - group member rows and empty state
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/group-chats.js` |
+| Area | The member and candidate rows of the group editor and their empty and no-results state. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The shared entity row (`activation`) and the shared status page (`createStatusPage` in `public/scripts/sillybunny-editor/status-page.js`). |
+| Adapter shape | Member rows use `activation: 'activate'` with no chevron, so a row keeps grip, switch and menu; a press and a new "View character card" menu item open the character through `openGroupMemberEditor`. `syncGroupListEmptyPage` puts the compact status page beside an empty list; the rows keep `:empty` and `data-empty-text`, which extensions read. Each change carries a `SillyBunny:` marker. |
+| Protecting tests | `tests/unit/sillybunny-group-list-adapters.test.js`; `tests/group-editor-member-lists.e2e.js`. |
+| Validation | 2026-11-15: lint, the full unit run, the related e2e specs, parity, axe and registry smoke of `list.group-members`, `list.group-candidates` and `status.group.members-empty`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-15, UI polish sweep (task 5.3). |
 | Owner | `TODO(copy)` |
 
 ### `public/scripts/group-chats.js` - group member move items

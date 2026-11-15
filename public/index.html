@@ -70,14 +70,14 @@
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261116g">
     <!-- SillyBunny: entity lists and tag filters load after startup; the group editor activates them on open. -->
-    <link rel="preload" as="style" href="css/sillybunny-entity-list.css?v=20261112o" data-sb-deferred-style data-sb-media="all">
+    <link rel="preload" as="style" href="css/sillybunny-entity-list.css?v=20261116f" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: the Characters/Groups list activates this deferred stylesheet on first mount. Keep this version aligned with the runtime loader URLs. -->
     <link rel="preload" as="style" href="css/sillybunny-character-list.css?v=20261114e" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261115m" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261112o">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261112q">
     <!-- SillyBunny: the editor chrome sheet is deferred, so it stays out of the blocking-CSS budget. The editors, the lists and the windows that use it load it through loadListEditorStyles() and wait for it before they show; the character and group editors are held hidden until it applies (holdEditorsUntilStyled() in sillybunny-editor/list-shell.js). Keep this version aligned with the runtime loader URLs. -->
-    <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261114q" data-sb-deferred-style data-sb-media="all">
+    <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261116f" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css?v=20261112k" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -6849,8 +6849,9 @@
                                      #rm_PinAndTabs). It is a real button so keyboard users get the
                                      same entry point; the controller focuses #character_name_pole. -->
                                 <button class="sb-editor-title-button" id="sb_character_editor_title_button" type="button" title="Rename character" data-i18n="[title]Rename character">
-                                    <span class="sb-editor-title" id="sb_character_editor_title"></span>
-                                    <i class="fa-solid fa-pencil sb-editor-title-pencil" aria-hidden="true"></i>
+                                    <!-- SillyBunny: the title takes the shared dialog title role; the pencil is the rename cue, not a title — see docs/ui-migration.md -->
+                                    <span class="sb-editor-title sb-dialog__title" id="sb_character_editor_title"></span>
+                                    <i class="fa-solid fa-pencil sb-editor-pencil" aria-hidden="true"></i>
                                 </button>
                                 <span class="sb-editor-dirty" id="sb_character_editor_dirty" role="status" aria-live="polite" hidden>
                                     <span class="sb-editor-dirty-dot" aria-hidden="true"></span>
@@ -7280,8 +7281,9 @@
                                  character editor's header (the legacy #rm_button_selected_ch h2 click
                                  target is inside the hidden #rm_PinAndTabs). -->
                             <button class="sb-editor-title-button" id="sb_group_editor_title_button" type="button" title="Rename group" data-i18n="[title]Rename group">
-                                <span class="sb-editor-title" id="sb_group_editor_title"></span>
-                                <i class="fa-solid fa-pencil sb-editor-title-pencil" aria-hidden="true"></i>
+                                <!-- SillyBunny: the title takes the shared dialog title role; the pencil is the rename cue, not a title — see docs/ui-migration.md -->
+                                <span class="sb-editor-title sb-dialog__title" id="sb_group_editor_title"></span>
+                                <i class="fa-solid fa-pencil sb-editor-pencil" aria-hidden="true"></i>
                             </button>
                             <span class="sb-editor-dirty" id="sb_group_editor_dirty" role="status" aria-live="polite" hidden>
                                 <span class="sb-editor-dirty-dot" aria-hidden="true"></span>
@@ -7370,10 +7372,11 @@
                                     <h3 class="ds-pref-group-heading" id="sb_group_section_members" data-i18n="Members">Members</h3>
                                     <p class="ds-pref-group-subtitle" data-i18n="group_members_subtitle">lorum ipsum</p>
                                     <div class="ds-row-suffix">
-                                        <a href="https://docs.sillytavern.app/usage/core-concepts/groupchats/" class="sb-editor-icon-button" target="_blank" rel="noopener noreferrer" aria-label="Open the group chats documentation" data-i18n="[aria-label]Open the group chats documentation">
+                                        <!-- SillyBunny: both heading buttons take the shared flat header-icon style — see docs/ui-migration.md -->
+                                        <a href="https://docs.sillytavern.app/usage/core-concepts/groupchats/" class="sb-editor-icon-button sb-header-icon-button" target="_blank" rel="noopener noreferrer" aria-label="Open the group chats documentation" data-i18n="[aria-label]Open the group chats documentation">
                                             <span class="fa-solid fa-circle-question" aria-hidden="true"></span>
                                         </a>
-                                        <button id="groupCurrentMemberPopoutButton" class="sb-editor-icon-button" type="button" title="Pop out member list" aria-label="Pop out member list" data-i18n="[title]Pop out member list;[aria-label]Pop out member list">
+                                        <button id="groupCurrentMemberPopoutButton" class="sb-editor-icon-button sb-header-icon-button" type="button" title="Pop out member list" aria-label="Pop out member list" data-i18n="[title]Pop out member list;[aria-label]Pop out member list">
                                             <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
                                         </button>
                                     </div>

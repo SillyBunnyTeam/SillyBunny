@@ -18,6 +18,7 @@ import {
     createButtonRow,
     createPrefGroup,
     moveCaption,
+    adoptEditorFields,
 } from '../../public/scripts/sillybunny-editor/rows.js';
 
 function node(tag, text = '') {
@@ -1900,5 +1901,85 @@ describe('createPrefGroup heading level', () => {
 
     test.each([0, 7, 3.5, '4', Number.NaN])('refuses the heading level %p', (headingLevel) => {
         expect(() => createPrefGroup({ title: 'Group', field: 'group', headingLevel })).toThrow(RangeError);
+    });
+});
+
+describe('adoptEditorFields', () => {
+    const t = strings => strings.join('');
+
+    function sheet() {
+        document.body.innerHTML = `<form id="sheet">
+            <div id="name_div" class="ds-field">
+                <label class="ds-field-label" for="name_input">Name</label>
+                <input id="name_input" name="ch_name" class="text_pole" data-sb-editor-field="name" data-i18n="[placeholder]Name this" placeholder="Name this">
+                <div class="extension_token_counter"><span>Tokens:</span> <span data-token-counter="name_input">3</span></div>
+            </div>
+            <div id="tags_div" class="ds-field">
+                <label class="ds-field-label" for="tagInput">Tags</label>
+                <div class="tag_controls"><input id="tagInput" class="text_pole"><button type="button" class="tags_view">View</button></div>
+                <div id="tagList" class="tags"></div>
+            </div>
+            <div id="descriptionWrapper" class="ds-field">
+                <div class="ds-field-header">
+                    <label class="ds-field-label" for="description_textarea">Description</label>
+                    <a class="notes-link" href="#help">?</a>
+                    <span class="ds-field-actions">
+                        <button type="button" class="sb-preview-toggle" data-sb-preview-for="description_textarea">Preview</button>
+                        <i class="editor_maximize" data-for="description_textarea"></i>
+                    </span>
+                </div>
+                <textarea id="description_textarea" name="description" data-sb-editor-field="description"></textarea>
+                <div class="sb-preview-pane" data-sb-preview-pane-for="description_textarea" hidden></div>
+                <div class="extension_token_counter"><span>Tokens:</span> <span data-token-counter="description_textarea">12</span></div>
+            </div>
+        </form>`;
+        return document.getElementById('sheet');
+    }
+
+    test('turns single-line fields into floating entry rows that keep their input and move the count and buttons in', () => {
+        const root = sheet();
+        const name = document.getElementById('name_input');
+        const tags = document.getElementById('tagInput');
+        adoptEditorFields(root, { t });
+        const nameRow = document.getElementById('name_div').querySelector(':scope > .ds-row-entry--floating');
+        expect(nameRow.contains(name)).toBe(true);
+        expect(name.name).toBe('ch_name');
+        expect(name.dataset.sbEditorField).toBe('name');
+        expect(name.dataset.i18n).toBeUndefined();
+        expect(nameRow.querySelector('.ds-row-entry__title').textContent).toBe('Name');
+        expect(nameRow.querySelector('.ds-row-suffix [data-token-counter="name_input"]').textContent).toBe('3');
+        expect(document.querySelector('#name_div .extension_token_counter')).toBeNull();
+        const tagRow = document.getElementById('tags_div').querySelector(':scope > .ds-row-entry--floating');
+        expect(tagRow.contains(tags)).toBe(true);
+        expect(tagRow.querySelector('.ds-row-suffix .tags_view')).not.toBeNull();
+        expect(document.querySelector('.tag_controls')).toBeNull();
+    });
+
+    test('turns a text area into a text-area field with its help, count, preview toggle and Expand in the label row', () => {
+        const root = sheet();
+        const area = document.getElementById('description_textarea');
+        adoptEditorFields(root, { t });
+        const wrapper = document.getElementById('descriptionWrapper');
+        const field = wrapper.querySelector(':scope > .ds-row-textarea');
+        const labelRow = field.querySelector('.ds-row-textarea__label-row');
+        expect(field.contains(area)).toBe(true);
+        expect(area.dataset.sbEditorField).toBe('description');
+        expect(labelRow.querySelector('.ds-row-textarea__label').textContent).toBe('Description');
+        expect(labelRow.querySelector('.notes-link')).not.toBeNull();
+        expect(labelRow.querySelector('[data-token-counter="description_textarea"]').textContent).toBe('12');
+        expect(labelRow.querySelector('.sb-preview-toggle[data-sb-preview-for="description_textarea"]')).not.toBeNull();
+        expect(labelRow.querySelector('.editor_maximize[data-for="description_textarea"]')).not.toBeNull();
+        expect(area.nextElementSibling.matches('.sb-preview-pane')).toBe(true);
+        expect(wrapper.querySelector(':scope > .ds-field-header, :scope > .extension_token_counter')).toBeNull();
+        expect(wrapper.closest('form').querySelectorAll('.editor_maximize')).toHaveLength(1);
+    });
+
+    test('adopting twice, or a sheet with no fields, changes nothing', () => {
+        const root = sheet();
+        adoptEditorFields(root, { t });
+        const html = root.innerHTML;
+        adoptEditorFields(root, { t });
+        expect(root.innerHTML).toBe(html);
+        expect(() => adoptEditorFields(null, { t })).not.toThrow();
     });
 });

@@ -101,6 +101,7 @@ import { createListSearch } from './sillybunny-editor/list-search.js';
 import { bindListKeyboard, reconcileRows } from './sillybunny-editor/list-rows.js';
 import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js'; // SillyBunny: shared move section for the member menu
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
+import { createStatusPage } from './sillybunny-editor/status-page.js'; // SillyBunny: an empty member list shows the shared status page
 import { accountStorage } from './util/AccountStorage.js';
 import { compressRequest } from './request-compression.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
@@ -2757,6 +2758,25 @@ const groupListSearches = new Map();
 // SillyBunny: each main list retains keyed rows and their factory update handles — see docs/ui-migration.md
 const groupRowCaches = new WeakMap();
 const groupRowViews = new WeakMap();
+const groupListEmptyPages = new WeakMap();
+
+// SillyBunny: an empty member list shows the shared status page beside the rows; the rows keep the `:empty` state extensions read — see docs/ui-migration.md
+function syncGroupListEmptyPage(rows, total) {
+    let page = groupListEmptyPages.get(rows);
+    if (rows.childElementCount > 0) {
+        page?.element.remove();
+        groupListEmptyPages.delete(rows);
+        return;
+    }
+    const values = { state: total ? 'no-results' : 'empty', title: rows.dataset.emptyText };
+    if (page) {
+        page.update(values);
+    } else {
+        page = createStatusPage({ ...values, compact: true });
+        groupListEmptyPages.set(rows, page);
+    }
+    rows.after(page.element);
+}
 
 function getGroupListPagination(onlyMembers) {
     const existing = onlyMembers ? membersPagination : candidatesPagination;
@@ -2801,6 +2821,7 @@ function printGroupCandidates({ animate = false } = {}) {
     const render = () => {
         // SillyBunny: unchanged candidates keep their nodes and focused controls — see docs/ui-migration.md
         reconcileGroupCharacterRows(rows, pagination.slice(candidates));
+        syncGroupListEmptyPage(rows, total);
         reportGroupList(false, candidates.length, total);
     };
     if (!animate) return render();
@@ -2819,6 +2840,7 @@ function printGroupMembers({ animate = false } = {}) {
         // SillyBunny: reconcile the main list; HTML-only popouts still mirror its page — see docs/ui-migration.md
         rows.dataset.emptyText = total ? t`No results` : t`Group is empty.`;
         reconcileGroupCharacterRows(rows, pagination.slice(members), { order, grip: true });
+        syncGroupListEmptyPage(rows, total);
         for (const container of getMemberRowsContainers()) {
             if (container === rows) continue;
             container.dataset.emptyText = rows.dataset.emptyText;
@@ -2908,7 +2930,8 @@ function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {
         subtitle: [aux, modelLabel],
         badges: [queueBadge],
         suffix,
-        activation: isMember ? 'navigate' : 'activate',
+        // SillyBunny: a member row keeps grip, switch and menu; its press opens the character without a chevron — see docs/ui-migration.md
+        activation: 'activate',
         compatClasses: {
             row: isMember ? ['group_member'] : ['group_member', 'sb-group-candidate'],
             avatar: ['avatar'],
@@ -3516,12 +3539,17 @@ function bindGroupListKeyboard(container, onlyMembers) {
                 return runGroupEditorAction(() => runGroupMemberAction('add', $(row)));
             }
             row.focus({ preventScroll: true });
-            return runGroupEditorAction(() => objectNavigation.navigate({ kind: 'character-editor', id: row.dataset.avatar, via: 'group-member' }, {
-                // SillyBunny: a leave-guard Save may turn a create draft into a persisted group — see docs/ui-migration.md
-                from: () => ({ kind: 'group-editor', id: openGroupId ?? 'create' }),
-            }));
+            return openGroupMemberEditor(row.dataset.avatar);
         },
     });
+}
+
+// SillyBunny: the row press and the member menu share one route to the character editor — see docs/ui-migration.md
+function openGroupMemberEditor(avatarId) {
+    return runGroupEditorAction(() => objectNavigation.navigate({ kind: 'character-editor', id: avatarId, via: 'group-member' }, {
+        // SillyBunny: a leave-guard Save may turn a create draft into a persisted group — see docs/ui-migration.md
+        from: () => ({ kind: 'group-editor', id: openGroupId ?? 'create' }),
+    }));
 }
 
 function onGroupMemberSwitchChange() {
@@ -3547,7 +3575,8 @@ function onGroupMemberMenuClick(event) {
     });
     const actions = [];
     if (openGroupId) actions.push(actionItem(t`Speak now`, 'comment', 'speak'));
-    // SillyBunny: the member row opens its character editor; the menu stays action-only — see docs/ui-migration.md
+    // SillyBunny: the row has no chevron, so the menu names the row's press — see docs/ui-migration.md
+    actions.push({ label: t`View character card`, icon: 'fa-solid fa-address-card', onSelect: () => openGroupMemberEditor(avatarId) });
     actions.push({ label: t`Model override…`, icon: 'fa-solid fa-microchip', onSelect: () => runGroupEditorAction(() => editGroupMemberModel(member)) });
     const title = member.find('.ch_name').text();
     // SillyBunny: the move items come from the shared reorder helper, which leaves them out at an end of the order and while a search or filter hides members

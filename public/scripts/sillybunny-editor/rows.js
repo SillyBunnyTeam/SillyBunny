@@ -1064,3 +1064,81 @@ export function createPrefGroup({ title, subtitle, field, id, rows = [], headerS
         },
     };
 }
+
+const ENTRY_INPUT = 'input:not([type]), input[type="text"]';
+
+/** The field wrappers of a sheet whose label names a control: `.ds-field` with a label (and its header row) above it. */
+function labelledFields(root) {
+    return [...root.querySelectorAll('.ds-field')].flatMap(wrapper => {
+        const label = wrapper.querySelector(':scope > label.ds-field-label, :scope > .ds-field-header > label.ds-field-label');
+        const control = label?.control ?? null;
+        return control && wrapper.contains(control) ? [{ wrapper, label, control, header: label.parentElement !== wrapper ? label.parentElement : null }] : [];
+    });
+}
+
+function tokenCounterOf(wrapper, control) {
+    return [...wrapper.querySelectorAll('[data-token-counter]')].find(counter => counter.dataset.tokenCounter === control.id) ?? null;
+}
+
+/**
+ * Puts the fields of a single-content editor sheet in the shared field anatomy, in place: a single-line field becomes an
+ * entry row and a multi-line field a text-area field, each keeping its control, id, name, classes and listeners. The label,
+ * its help link, the field's token count, the Edit/Preview placeholder and Expand move into the field's label row.
+ * @param {HTMLElement|null} root
+ * @param {{ t: (strings: TemplateStringsArray) => string }} options  The translator, for the names of the controls the rows add.
+ */
+export function adoptEditorFields(root, { t }) {
+    if (!root) return;
+    for (const { wrapper, label, control, header } of labelledFields(root)) {
+        if (control.closest('.ds-row-entry, .ds-row-textarea')) continue;
+        if (control instanceof HTMLTextAreaElement) {
+            const counter = tokenCounterOf(wrapper, control);
+            const expand = header?.querySelector('.editor_maximize');
+            const caption = wrapper.querySelector(':scope > :is(.ds-field-subtitle, .ds-field-hint)');
+            const view = createTextAreaField({
+                label: ' ',
+                field: `${control.dataset.sbEditorField || control.id}-field`,
+                input: control,
+                subtitle: caption ? ' ' : undefined,
+                count: counter ? { label: t`Tokens:`, element: counter } : undefined,
+                expand: Boolean(expand),
+                expandLabel: t`Expand the editor`,
+            });
+            const title = view.row.querySelector('.ds-row-textarea__label');
+            moveCaption(title, label);
+            if (caption) moveCaption(view.row.querySelector('.ds-row-textarea__caption'), caption);
+            const help = header?.querySelector(':scope > .notes-link');
+            if (help) title.after(help);
+            const preview = header?.querySelector('.sb-preview-toggle');
+            if (preview) view.labelRow.insertBefore(preview, view.expand);
+            const pane = wrapper.querySelector(':scope > .sb-preview-pane');
+            if (pane) control.after(pane);
+            header?.remove();
+            wrapper.querySelector(':scope > .extension_token_counter')?.remove();
+            wrapper.prepend(view.row);
+        } else if (control.matches(ENTRY_INPUT)) {
+            const controls = control.closest('.tag_controls');
+            const counter = tokenCounterOf(wrapper, control);
+            const suffix = [
+                ...(counter ? [textAreaCount({ label: t`Tokens:`, element: counter }).caption] : []),
+                ...(controls ? controls.querySelectorAll(':scope > button') : []),
+            ];
+            const view = createEntryRow({
+                label: ' ',
+                field: control.id,
+                input: control,
+                floating: true,
+                suffix: suffix.length ? suffix : undefined,
+            });
+            wrapper.querySelector(':scope > .extension_token_counter')?.remove();
+            moveCaption(view.row.querySelector('.ds-row-entry__title'), label);
+            // The title stands where the placeholder was, so a locale pass must not write the hint back.
+            if (control.dataset.i18n) control.dataset.i18n = control.dataset.i18n.split(';').filter(part => !part.startsWith('[placeholder]')).join(';');
+            if (!control.dataset.i18n) delete control.dataset.i18n;
+            controls?.remove();
+            wrapper.prepend(view.row);
+        } else {
+            continue;
+        }
+    }
+}

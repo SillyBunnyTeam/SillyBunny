@@ -43,7 +43,7 @@ import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } 
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
 import { holdEditorsUntilStyled } from './sillybunny-editor/list-shell.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
-import { adoptExpanderRow, createComboRow, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
+import { adoptExpanderRow, adoptEditorFields, createComboRow, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
 import { reconcileRows } from './sillybunny-editor/list-rows.js';
 import { getFolderId, getFolders, setFolder, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import './sillybunny-characters-navigation.js';
@@ -110,6 +110,7 @@ let draftGrpKeys = [];
 
 export function initCharacterEditor() {
     holdEditorsUntilStyled();
+    adoptEditorFields(document.getElementById('form_create'), { t });
     _mountChrome();
     _bindToolbarButtons();
     _bindExportMenu();
@@ -243,6 +244,7 @@ function _mountFolderField() {
     folderSelectRow = createComboRow({
         label: t`Folder`,
         field: 'folder',
+        wide: true,
         options: folderOptions(),
         value: '',
         onChange: () => session.changed({ immediate: true }),
@@ -251,20 +253,26 @@ function _mountFolderField() {
     host.replaceChildren(folderSelectRow.row);
     subscribeFolders(({ scope }) => {
         if (scope && scope !== 'characters') return;
-        const value = folderSelectRow.getValue();
-        folderSelectRow.control.replaceChildren(...folderOptions().map(option => {
-            const element = document.createElement('option');
-            element.value = option.value;
-            element.textContent = option.label;
-            return element;
-        }));
-        folderSelectRow.setValue(folderOptions().some(option => option.value === value) ? value : '', { silent: true });
+        _refreshFolderOptions(folderSelectRow.getValue());
     });
 }
 
+function _refreshFolderOptions(keep) {
+    const options = folderOptions();
+    folderSelectRow.control.replaceChildren(...options.map(option => {
+        const element = document.createElement('option');
+        element.value = option.value;
+        element.textContent = option.label;
+        return element;
+    }));
+    folderSelectRow.setValue(options.some(option => option.value === keep) ? keep : '', { silent: true });
+}
+
 function _setFolderDraft(folderId) {
+    if (!folderSelectRow) return;
     const value = folderId ? String(folderId) : '';
-    folderSelectRow?.setValue(value, { silent: true });
+    // The options are built once at mount; a folder that arrived after that is missing from the list and the select would show nothing.
+    _refreshFolderOptions(value);
 }
 
 function _folderDraft() {

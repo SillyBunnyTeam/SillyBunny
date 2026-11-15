@@ -19,9 +19,9 @@ import { getFolders, getFolderId, setFolder, setFolderExpanded, subscribe as sub
 import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
-    { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261116f', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-editor.css?v=20261114q', id: 'deferred-editor-chrome-css' },
+    { href: 'css/sillybunny-character-editor.css?v=20261116f', id: 'deferred-editor-chrome-css' },
     { href: 'css/sillybunny-character-list.css?v=20261114e', id: 'deferred-character-list-css' },
 ]);
 const PAGE_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);

@@ -30,7 +30,7 @@ import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } fr
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { MOTION_FAST, prefersReducedMotion } from './sillybunny-motion.js';
 import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
-import { createComboRow } from './sillybunny-editor/rows.js';
+import { adoptEditorFields, createComboRow } from './sillybunny-editor/rows.js';
 import { getFolders, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import { LIST_EDITOR_STYLESHEET, EDITOR_CHROME_STYLESHEET } from './sillybunny-editor/list-shell.js';
 import { loadStylesheetAsync } from './dynamic-styles.js';
@@ -38,7 +38,7 @@ import { loadStylesheetAsync } from './dynamic-styles.js';
 const GROUP_EDITOR_STYLESHEETS = [
     LIST_EDITOR_STYLESHEET,
     EDITOR_CHROME_STYLESHEET,
-    { href: 'css/sillybunny-entity-list.css?v=20261112o', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261116f', id: 'deferred-entity-list-css' },
     { href: 'css/rm-groups.css', id: 'deferred-rm-groups-css' },
 ];
 const groupEditorReveals = new WeakMap();
@@ -125,6 +125,7 @@ let callbacks = null;
  */
 export function initGroupEditor(config) {
     callbacks = config;
+    adoptEditorFields(document.getElementById('rm_group_chats_block'), { t });
     _mountChrome();
     _mountFolderField();
     _mountMemberSortable();

@@ -608,7 +608,7 @@ test('member row Enter, Space and pointer activation use object navigation', asy
     });
     try {
         const member = page.locator('#rm_group_members .group_member').first();
-        await expect(member.locator('.ds-entity-row__chevron')).toBeVisible();
+        await expect(member.locator('.ds-entity-row__chevron')).toHaveCount(0);
         await member.focus();
         await page.keyboard.press('ArrowDown');
         await expect(page.locator('#rm_group_members .group_member').last()).toBeFocused();
@@ -630,6 +630,10 @@ test('member row Enter, Space and pointer activation use object navigation', asy
         await member.locator('.sb-group-member-grip').click();
         await member.getByRole('switch').uncheck();
         expect(await page.evaluate(() => window.__sbMemberNavigationCalls.length)).toBe(3);
+        await member.getByRole('button', { name: 'Member actions', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'View character card', exact: true }).click();
+        await expect.poll(() => page.evaluate(() => window.__sbMemberNavigationCalls.length)).toBe(4);
+        expect(await page.evaluate(() => window.__sbMemberNavigationCalls[3].target)).toEqual({ kind: 'character-editor', id: fixture.members[0], via: 'group-member' });
     } finally {
         await page.evaluate(async () => {
             const { objectNavigation } = await import('/scripts/sillybunny-editor/object-navigation.js');
@@ -678,18 +682,23 @@ test('empty groups and filtered lists have distinct status and empty text', asyn
     await openCreateGroup(page, false);
     const members = page.locator('#rm_group_members');
     await expect(members).toHaveAttribute('data-empty-text', 'Group is empty.');
+    await expect(page.locator('[data-sb-section="members"] .sb-status-page')).toContainText('Group is empty.');
     await openFixtureGroup(page, { memberCount: 1 });
     const memberSearch = page.locator('#rm_group_members_filter');
     await expect(memberSearch).toHaveAccessibleName('Search');
     await memberSearch.fill('qa-no-such-member-967018');
     await expect(members.locator('.group_member')).toHaveCount(0);
     await expect(members).toHaveAttribute('data-empty-text', 'No results');
-    expect(await members.evaluate(node => getComputedStyle(node, '::before').content)).toContain('No results');
+    const memberStatus = page.locator('[data-sb-section="members"] .sb-status-page');
+    await expect(memberStatus).toHaveAttribute('data-state', 'no-results');
+    await expect(memberStatus).toContainText('No results');
+    expect(await members.evaluate(node => getComputedStyle(node, '::before').content)).toBe('none');
     await expect(page.locator('[data-sb-section="members"] [data-sb-group-list-status]')).toHaveText('No results');
     await memberSearch.press('Escape');
     await expect(memberSearch).toBeVisible();
     await expect(memberSearch).toHaveValue('');
     await expect(members.locator('.group_member')).toHaveCount(1);
+    await expect(memberStatus).toHaveCount(0);
     const candidateSearch = page.locator('#rm_group_filter');
     await expect(candidateSearch).toHaveAccessibleName('Search');
     await candidateSearch.fill('qa-no-such-candidate-967018');
