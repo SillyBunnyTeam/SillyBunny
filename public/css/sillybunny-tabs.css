@@ -4918,7 +4918,8 @@ body.reduced-motion .sb-search-entry {
     inset-inline: 0 30px;
     top: 50%;
     overflow: hidden;
-    color: var(--sb-input-placeholder);
+    /* libadwaita dims the title (`.dimmed`), so an empty row reads as a field waiting for text, not as a row title. */
+    color: var(--sb-muted-fg);
     text-shadow: none !important;
     font-size: var(--sb-type-body);
     font-weight: 400;
@@ -4991,8 +4992,9 @@ body.reduced-motion .sb-search-entry {
     width: 24px;
     height: 24px;
     margin-inline-start: 6px;
-    color: var(--sb-input-placeholder);
-    font-size: var(--sb-type-caption);
+    /* libadwaita's edit icon is a 16px symbolic icon in the row's own colour. */
+    color: var(--sb-shell-text);
+    font-size: 16px;
     pointer-events: none;
 }
 
