@@ -5648,80 +5648,8 @@ body.reduced-motion .ds-row-expander__toggle::after {
     white-space: nowrap;
 }
 
-/* The wire control is the last line of its slider row, under the title and the explanation. */
-#sb-settings-page .sb-sampling-panel .sb-sampling-transmission {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex: 0 0 100%;
-    flex-wrap: wrap;
-    gap: 6px 9px;
-    min-width: 0;
-}
-
-#sb-settings-page .sb-sampling-panel .sb-sampling-transmission__legend {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-#sb-settings-page .sb-sampling-panel .sb-sampling-transmission__label {
-    font-size: var(--sb-type-caption);
-    color: var(--sb-shell-text);
-}
-
-#sb-settings-page .sb-sampling-panel .sb-sampling-info-icon {
-    color: var(--sb-input-placeholder);
-    cursor: help;
-}
-
-#sb-settings-page .sb-sampling-panel .sb-sampling-transmission__options {
-    display: inline-flex;
-    gap: 3px;
-    padding: 3px;
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-control);
-    background: color-mix(in srgb, var(--sb-shell-surface) 90%, black 10%);
-}
-
-#sb-settings-page .sb-sampling-panel .sb-transmission-btn {
-    padding: 3px 9px;
-    border: 1px solid transparent;
-    border-radius: var(--sb-radius-inner);
-    background: transparent;
-    color: var(--sb-input-placeholder);
-    font-size: var(--sb-type-meta);
-    font-weight: 500;
-    cursor: pointer;
-}
-
-@media (hover: hover) {
-    #sb-settings-page .sb-sampling-panel .sb-transmission-btn:hover:not(.active, [disabled]) {
-        background: var(--sb-flat-hover-bg);
-        color: var(--sb-shell-text);
-    }
-}
-
-#sb-settings-page .sb-sampling-panel .sb-transmission-btn.active {
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 60%, transparent);
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 20%, transparent);
-    color: var(--sb-shell-text);
-    font-weight: 700;
-}
-
-#sb-settings-page .sb-sampling-panel .sb-transmission-btn[data-policy-state='omit'].active {
-    border-color: var(--SmartThemeQuoteColor);
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
-    text-decoration: line-through;
-}
-
-#sb-settings-page .sb-sampling-panel .sb-transmission-btn:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
 /* A parameter that is omitted from the request dims its slider. */
-#sb-settings-page .sb-sampling-panel .sb-sampling-control-card:has(.sb-transmission-btn[data-policy-state='omit'].active) :is(input[type='range'], .neo-range-input) {
+#sb-settings-page .sb-sampling-panel .sb-sampling-control-card:has(.sb-sampling-wire input[data-policy-state='omit']:checked) :is(input[type='range'], .neo-range-input) {
     opacity: 0.35;
     filter: grayscale(0.8);
 }
@@ -7043,7 +6971,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     gap: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .sb-prompting-row-with-help) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .sb-sampling-transmission, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .sb-prompting-row-with-help) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
     padding: 10px var(--sb-density-row-padding-inline);
 }
 
@@ -7087,6 +7015,11 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     white-space: normal;
     text-align: start;
     font-weight: 400;
+}
+
+/* The explanation of the wire row lists its three choices on lines of their own. */
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-wire.sb-sampling-help-row > .sb-sampling-help {
+    white-space: pre-line;
 }
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-help[hidden] {

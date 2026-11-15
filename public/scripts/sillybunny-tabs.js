@@ -68,12 +68,10 @@ import {
     SAMPLING_PARAMETER_DESCRIPTORS,
 } from './sampling-parameter-policy.js';
 import {
-    getSamplingParameterTransmissionState,
     setSamplingParameterTransmissionState,
     getSamplingParameterViewModel,
 } from './openai.js';
 import {
-    getTextSamplingParameterTransmissionState,
     setTextSamplingParameterTransmissionState,
     getTextSamplingParameterViewModel,
     showTGSamplerControls,
@@ -8367,124 +8365,34 @@ const SAMPLING_SELECTOR_TO_CANONICAL_ID = Object.freeze({
     '#typical_p_textgenerationwebui': 'typical_p',
 });
 
-function refreshSamplingTransmission(card, selector) {
+/**
+ * The transmission policy of a sampler, for the wire row that the Sampling module builds after its slider row.
+ * @param {string} selector
+ * @returns {{parameterId: string, read: Function, write: Function}|null}
+ */
+function getSamplingWire(selector) {
     const parameterId = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
-    const container = card.querySelector('.sb-sampling-transmission');
-    if (!parameterId || !container) {
-        return;
+    if (!parameterId || !SAMPLING_PARAMETER_DESCRIPTORS[parameterId]) {
+        return null;
     }
-    const viewModel = selector.includes('textgenerationwebui')
-        ? getTextSamplingParameterViewModel(parameterId)
-        : getSamplingParameterViewModel(parameterId);
-    container.querySelectorAll('.sb-transmission-btn').forEach(button => {
-        const selected = button.dataset.policyState === viewModel.storedState;
-        button.classList.toggle('active', selected);
-        button.setAttribute('aria-checked', String(selected));
-        button.disabled = !viewModel.targetKey;
-    });
-    const badge = container.querySelector('.sb-capability-forbidden-badge');
-    if (badge) {
-        badge.hidden = viewModel.reason !== 'capability-forbidden';
+    const textGeneration = selector.includes('textgenerationwebui');
+    return {
+        parameterId,
+        read: () => (textGeneration ? getTextSamplingParameterViewModel : getSamplingParameterViewModel)(parameterId),
+        write: state => (textGeneration ? setTextSamplingParameterTransmissionState : setSamplingParameterTransmissionState)(parameterId, state),
+    };
+}
+
+function refreshSamplingTransmission(card, selector) {
+    const wire = getSamplingWire(selector);
+    if (wire) {
+        samplingModule?.syncWireRow(card, wire.read());
     }
 }
 
 function decorateSamplingControlCard(card, selector) {
-    if (!(card instanceof HTMLElement)) {
-        return;
-    }
-
-    const parameterId = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
-    if (parameterId && SAMPLING_PARAMETER_DESCRIPTORS[parameterId]) {
-        card.dataset.samplingParameter = parameterId;
-        const descriptor = SAMPLING_PARAMETER_DESCRIPTORS[parameterId];
-
-        let container = card.querySelector('.sb-sampling-transmission');
-        if (!container) {
-            container = createElement('div', { className: 'sb-sampling-transmission' });
-            container.setAttribute('data-sampling-transmission-for', parameterId);
-
-            const labelContainer = createElement('div', {
-                className: 'sb-sampling-transmission__legend',
-            });
-            const label = createElement('small', {
-                className: 'sb-sampling-transmission__label',
-                text: 'Wire:',
-            });
-            const infoIcon = createElement('div', {
-                className: 'fa-solid fa-circle-info sb-sampling-info-icon',
-                attrs: {
-                    title: 'Controls how this setting is sent to the AI:\n\n• Auto: Normal default behavior.\n• Send: Force this slider\'s exact value to be sent.\n• Omit: Completely delete this setting from the request so models that reject it (like Grok or o1) won\'t crash.',
-                },
-            });
-            labelContainer.appendChild(label);
-            labelContainer.appendChild(infoIcon);
-            container.appendChild(labelContainer);
-
-            const options = createElement('div', {
-                className: 'sb-sampling-transmission__options',
-                attrs: {
-                    role: 'radiogroup',
-                    'aria-label': `Transmission policy for ${descriptor.label}`,
-                },
-            });
-
-            const states = [
-                { state: 'inherit', label: 'Auto', title: 'Auto: Normal default behavior' },
-                { state: 'include', label: 'Send', title: 'Send: Force this slider\'s exact value to be sent' },
-                { state: 'omit', label: 'Omit', title: 'Omit: Completely delete this setting from the request to prevent crashes' },
-            ];
-
-            const isTextGenParameter = selector.includes('textgenerationwebui');
-            const getPolicyState = isTextGenParameter
-                ? getTextSamplingParameterTransmissionState
-                : getSamplingParameterTransmissionState;
-            const getPolicyViewModel = isTextGenParameter
-                ? getTextSamplingParameterViewModel
-                : getSamplingParameterViewModel;
-            const currentStored = typeof getPolicyState === 'function'
-                ? getPolicyState(parameterId)
-                : 'inherit';
-            const viewModel = typeof getPolicyViewModel === 'function'
-                ? getPolicyViewModel(parameterId)
-                : { reason: 'provider-default' };
-
-            states.forEach(opt => {
-                const isSelected = opt.state === currentStored;
-                const btn = createElement('button', {
-                    className: `sb-transmission-btn ${isSelected ? 'active' : ''}`,
-                    text: opt.label,
-                    attrs: {
-                        type: 'button',
-                        role: 'radio',
-                        'data-policy-state': opt.state,
-                        'aria-checked': String(isSelected),
-                        title: opt.title,
-                    },
-                });
-
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const setPolicyState = isTextGenParameter
-                        ? setTextSamplingParameterTransmissionState
-                        : setSamplingParameterTransmissionState;
-                    if (setPolicyState(parameterId, opt.state)) {
-                        refreshSamplingTransmission(card, selector);
-                    }
-                });
-                options.appendChild(btn);
-            });
-
-            const forbiddenBadge = createElement('small', {
-                className: 'sb-capability-forbidden-badge',
-                text: '(Omitted: provider restriction)',
-            });
-            forbiddenBadge.hidden = viewModel.reason !== 'capability-forbidden';
-            container.append(options, forbiddenBadge);
-
-            card.appendChild(container);
-        }
-        refreshSamplingTransmission(card, selector);
+    if (card instanceof HTMLElement && getSamplingWire(selector)) {
+        card.dataset.samplingParameter = SAMPLING_SELECTOR_TO_CANONICAL_ID[selector];
     }
 }
 
@@ -8583,23 +8491,26 @@ function buildSamplingControlCard(selector, root = document) {
     // The lists stay lists: their entries are data, not settings rows.
     normalizeBackendSettingsRows(card, { skip: '.sb-sampling-list' });
     applySamplingSubtitleSource(card, entry, root);
+    samplingModule?.finishSamplingCard(card, { wire: getSamplingWire(selector) });
     addSamplingDescriptionToggles(card);
-    samplingModule?.finishSamplingCard(card);
     return card;
 }
 
 /** Slider explanations stay searchable and translated, but open only when the reader needs them. */
 function addSamplingDescriptionToggles(card) {
-    for (const row of card.querySelectorAll('.ds-row-slider')) {
+    for (const row of card.querySelectorAll('.ds-row-slider, .sb-sampling-wire')) {
         if (row.querySelector('.sb-sampling-help-toggle')) continue;
         const text = row.querySelector(':scope > .ds-row-text');
         const label = text?.querySelector(':scope > .ds-row-label');
         const subtitle = text?.querySelector(':scope > .ds-row-subtitle:not([data-sb-copy-placeholder])');
-        const control = row.querySelector('input[type="range"][id]');
+        // The wire row of a sampler is named by that sampler's slider.
+        const isWire = row.classList.contains('sb-sampling-wire');
+        const control = (isWire ? card.querySelector(':scope > .ds-row-slider') : row)?.querySelector('input[type="range"][id]');
         if (!label || !subtitle || !control) continue;
+        const key = isWire ? `${control.id}-wire` : control.id;
 
-        label.id ||= `sb-sampler-${control.id}-label`;
-        subtitle.id ||= `sb-sampler-${control.id}-help`;
+        label.id ||= `sb-sampler-${key}-label`;
+        subtitle.id ||= `sb-sampler-${key}-help`;
         subtitle.classList.add('sb-sampling-help');
         subtitle.hidden = true;
         const button = createElement('button', {
@@ -8608,9 +8519,10 @@ function addSamplingDescriptionToggles(card) {
         });
         const name = createElement('span', {
             className: 'sr-only', text: 'Details',
-            attrs: { id: `sb-sampler-${control.id}-help-label`, 'data-i18n': 'Details' },
+            attrs: { id: `sb-sampler-${key}-help-label`, 'data-i18n': 'Details' },
         });
-        button.setAttribute('aria-labelledby', `${label.id} ${name.id}`);
+        const sliderLabelId = isWire ? card.querySelector(':scope > .ds-row-slider > .ds-row-text > .ds-row-label')?.id : '';
+        button.setAttribute('aria-labelledby', [sliderLabelId, label.id, name.id].filter(Boolean).join(' '));
         button.append(createElement('i', { className: 'fa-solid fa-circle-info', attrs: { 'aria-hidden': 'true' } }), name);
         button.addEventListener('click', () => {
             subtitle.hidden = !subtitle.hidden;
@@ -8745,7 +8657,7 @@ function updateSamplingCardVisibility(section) {
         .map(card => {
             const content = card.querySelector(':scope > .ds-row-expander-content') ?? card;
             const hasVisibleContent = Array.from(content.children).some(child => child instanceof HTMLElement
-                && !child.classList.contains('sb-sampling-transmission')
+                && !child.classList.contains('sb-sampling-wire')
                 && getComputedStyle(child).display !== 'none');
             return [card, hasVisibleContent];
         });

@@ -197,12 +197,7 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
             // layout (narrow viewport stacking). The suffix sits below the label there
             // and the delta is always large; centering is not the intended constraint.
             const isColumnRow = getComputedStyle(row).flexDirection === 'column';
-            const textRect = row.querySelector(':scope > .ds-row-text')?.getBoundingClientRect() ?? null;
-            const textBottom = textRect?.bottom ?? Infinity;
-            // A row that wraps a full-width line under its title and control (the wire control of a sampler's slider)
-            // centres the control on the first line, beside the title, so the title is the reference there.
-            const hasLineBelow = [...row.children].some(child => isVisible(child) && child.getBoundingClientRect().top >= textBottom - 2);
-            const reference = hasLineBelow && textRect ? textRect : rect;
+            const textBottom = row.querySelector(':scope > .ds-row-text')?.getBoundingClientRect().bottom ?? Infinity;
             for (const control of verticalControls) {
                 if (isColumnRow) continue;
                 const controlRect = control.getBoundingClientRect();
@@ -210,7 +205,7 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
                 // layout at narrow viewports: the control moves under the title when the two do not
                 // fit). In that layout midpointDelta is always large and centering is not meaningful.
                 if (controlRect.top > rect.bottom - 2 || controlRect.top >= textBottom - 2) continue;
-                const midpointDelta = (controlRect.top + controlRect.height / 2) - (reference.top + reference.height / 2);
+                const midpointDelta = (controlRect.top + controlRect.height / 2) - (rect.top + rect.height / 2);
                 addRecord(control, 'row-geometry', { midpointDelta, tolerance: 2 }, Math.abs(midpointDelta) <= 2);
             }
 

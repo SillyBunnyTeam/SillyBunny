@@ -1,6 +1,7 @@
 import { t } from './i18n.js';
 import { createRow, createSwitchRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
+import { createToggleRow } from './sillybunny-editor/toggle-row.js';
 import { adoptSamplingFieldRows, bindDependentSets, carryGatingAttributes, readLabelI18nKey, readRowTitle } from './sillybunny-settings-presentation.js';
 
 /**
@@ -281,19 +282,98 @@ export function prepareSamplingBlock(selector, block, { root } = {}) {
     }
 }
 
+const WIRE_TITLE = 'Wire:';
+const WIRE_HELP = 'Controls how this setting is sent to the AI:\n\n• Auto: Normal default behavior.\n• Send: Force this slider\'s exact value to be sent.\n• Omit: Completely delete this setting from the request so models that reject it (like Grok or o1) won\'t crash.';
+const WIRE_CHOICES = Object.freeze([
+    ['inherit', 'Auto', 'Auto: Normal default behavior'],
+    ['include', 'Send', 'Send: Force this slider\'s exact value to be sent'],
+    ['omit', 'Omit', 'Omit: Completely delete this setting from the request to prevent crashes'],
+]);
+
+/** @type {WeakMap<HTMLElement, ReturnType<typeof createToggleRow>>} */
+const wireRows = new WeakMap();
+
 /**
- * The finishing pass of a card, after the generic row pass: the wire control joins its slider row as the last line,
+ * @typedef {object} WireSource How a sampler is sent to the AI, as the page's transmission policy keeps it.
+ * @property {string} parameterId
+ * @property {() => {storedState: string, targetKey?: unknown, reason?: string}} read
+ * @property {(state: string) => boolean} write
+ */
+
+/**
+ * The wire control of a sampler: a toggle row of its own after the slider row, with the same gating. Its radios carry the
+ * policy state in `data-policy-state`; a change goes through the policy and the row then shows what the policy kept.
+ * @param {HTMLElement} card
+ * @param {WireSource} wire
+ */
+function addWireRow(card, wire) {
+    const slider = card.querySelector(':scope > .ds-row-slider');
+    const range = slider?.querySelector('input[type="range"][id]');
+    if (!slider || !range || card.querySelector(':scope > .sb-sampling-wire')) return;
+
+    const view = wire.read();
+    const toggle = createToggleRow({
+        label: clean(WIRE_TITLE).replace(/\s*[:：]$/, ''),
+        subtitle: WIRE_HELP,
+        field: `wire-${range.id}`,
+        choices: WIRE_CHOICES.map(([state, label]) => [state, label]),
+        value: view.storedState,
+        onChange: state => {
+            wire.write(state);
+            syncWireRow(card, wire.read());
+        },
+    });
+    const row = toggle.row;
+    row.classList.add('sb-sampling-wire');
+    row.dataset.samplingTransmissionFor = wire.parameterId;
+    carryGatingAttributes(slider, row);
+    toggle.group.querySelectorAll('.sb-boolean-radio-option').forEach((option, index) => {
+        const input = option.querySelector('input[type="radio"]');
+        input?.setAttribute('data-policy-state', WIRE_CHOICES[index][0]);
+        option.title = WIRE_CHOICES[index][2];
+    });
+
+    // The group is named by its sampler as well as by "Wire", because the page holds one wire row for each sampler.
+    const sliderTitle = slider.querySelector(':scope > .ds-row-text > .ds-row-label');
+    if (sliderTitle) {
+        sliderTitle.id ||= `sb-sampler-${range.id}-label`;
+        toggle.group.setAttribute('aria-labelledby', `${sliderTitle.id} ${row.querySelector('.ds-row-label')?.id ?? ''}`.trim());
+    }
+
+    const badge = element('small', 'sb-capability-forbidden-badge');
+    badge.textContent = '(Omitted: provider restriction)';
+    badge.hidden = view.reason !== 'capability-forbidden';
+    row.querySelector(':scope > .ds-row-suffix')?.prepend(badge);
+
+    wireRows.set(row, toggle);
+    slider.after(row);
+    syncWireRow(card, view);
+}
+
+/**
+ * Shows what the transmission policy keeps: the chosen state, the provider restriction, and whether the row can be used at all.
+ * @param {HTMLElement} card
+ * @param {{storedState: string, targetKey?: unknown, reason?: string}} view
+ */
+export function syncWireRow(card, view) {
+    const row = card.querySelector(':scope > .sb-sampling-wire');
+    const toggle = row instanceof HTMLElement ? wireRows.get(row) : null;
+    if (!(row instanceof HTMLElement) || !toggle) return;
+    toggle.setValue(view.storedState);
+    const slider = card.querySelector(':scope > .ds-row-slider input[type="range"]');
+    toggle.setDisabled(!view.targetKey || (slider instanceof HTMLInputElement && slider.disabled));
+    const badge = row.querySelector('.sb-capability-forbidden-badge');
+    if (badge instanceof HTMLElement) badge.hidden = view.reason !== 'capability-forbidden';
+}
+
+/**
+ * The finishing pass of a card, after the generic row pass: a sampler gets its wire row after the slider row,
  * a seed and the DRY sequence breakers take the row that fits their control, and a dependent set follows its switch.
  * @param {HTMLElement} card
+ * @param {{wire?: WireSource | null}} [context]
  */
-export function finishSamplingCard(card) {
-    const wire = card.querySelector(':scope > .sb-sampling-transmission');
-    const slider = card.querySelector(':scope > .ds-row-slider');
-    if (wire && slider) {
-        const label = wire.querySelector('.sb-sampling-transmission__label');
-        if (label) label.textContent = clean(label.textContent).replace(/\s*[:：]$/, '');
-        slider.append(wire);
-    }
+export function finishSamplingCard(card, { wire = null } = {}) {
+    if (wire) addWireRow(card, wire);
     if (card.dataset.sbSamplerId === 'seed') {
         for (const wrapper of card.querySelectorAll('.ds-row-suffix > div')) {
             if (wrapper.children.length === 1 && wrapper.firstElementChild instanceof HTMLInputElement) wrapper.replaceWith(wrapper.firstElementChild);

@@ -645,8 +645,20 @@ test('Sampling keeps live nodes, provider visibility, numeric handlers and trans
     await sampling.locator('#temp_counter_openai').press('Enter');
     await expect(sampling.locator('#temp_openai')).toHaveValue('0.73');
     const temperature = sampling.locator('[data-sb-sampling-control="#temp_openai"]');
-    await temperature.getByRole('radio', { name: 'Omit', exact: true }).click();
-    await expect(temperature.getByRole('radio', { name: 'Omit', exact: true })).toHaveAttribute('aria-checked', 'true');
+    // The wire control is a toggle row of its own after the slider row, in the same box.
+    await expect(temperature.locator(':scope > .ds-row-slider + .ds-toggle-row.sb-sampling-wire')).toHaveCount(1);
+    const wire = temperature.getByRole('radiogroup', { name: 'Temperature Wire', exact: true });
+    await expect(wire.getByRole('radio')).toHaveCount(3);
+    // It is shown and hidden by the same provider gating as the slider row.
+    const gating = row => row.evaluate(node => ['data-source', 'data-source-mode', 'data-tg-type', 'data-tg-samplers', 'data-sb-sampler-ungated'].map(name => node.getAttribute(name)));
+    expect(await gating(temperature.locator('.sb-sampling-wire'))).toEqual(await gating(temperature.locator(':scope > .ds-row-slider')));
+    await expect(wire.getByRole('radio', { name: 'Auto', exact: true })).toBeChecked();
+    await wire.getByRole('radio', { name: 'Omit', exact: true }).click();
+    await expect(wire.getByRole('radio', { name: 'Omit', exact: true })).toBeChecked();
+    await expect(wire.getByRole('radio', { name: 'Auto', exact: true })).not.toBeChecked();
+    await expect(temperature.locator('#temp_openai')).toHaveCSS('opacity', '0.35');
+    await expect.poll(() => page.evaluate(() => Object.values(window.SillyTavern.getContext().chatCompletionSettings.model_sampling_policies.targets)
+        .map(target => target.parameters.temperature))).toContain('omit');
     await expect(sampling.locator('#sb-sampling-openai [data-sb-sampling-control]').first()).toHaveAttribute('data-sb-sampler-id', 'sampler_toolbar');
     await sampling.locator('.sb-neutralize-chat-samplers').click();
     await expect(sampling.locator('#temp_openai')).toHaveValue('1');
