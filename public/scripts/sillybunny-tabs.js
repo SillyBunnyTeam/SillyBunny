@@ -11519,11 +11519,14 @@ async function renderUniversalSearchResults(query) {
     const request = Symbol();
     sbSearchRenderRequests.set(results, request);
 
-    results.replaceChildren();
-    searchState.activeIndex = -1;
-    searchState.input?.removeAttribute('aria-activedescendant');
+    const clearResults = () => {
+        results.replaceChildren();
+        searchState.activeIndex = -1;
+        searchState.input?.removeAttribute('aria-activedescendant');
+    };
 
     if (!searchState.expanded) {
+        clearResults();
         results.classList.remove('is-visible');
         return;
     }
@@ -11537,13 +11540,21 @@ async function renderUniversalSearchResults(query) {
     }
 
     if (!trimmedQuery) {
+        results.removeAttribute('aria-busy');
+        clearResults();
         renderSearchEmptyState(results, SB_UNIVERSAL_SEARCH_IDLE_TITLE, SB_UNIVERSAL_SEARCH_IDLE_HINT);
         results.classList.add('is-visible');
         return;
     }
 
+    // The first query waits for the on-demand settings pages. The list keeps what it shows (the idle state, or the
+    // last answer) until the new answer replaces it in one step, so it is never blank while the pages load.
+    results.setAttribute('aria-busy', 'true');
     await prepareShellSearch();
-    if (sbSearchRenderRequests.get(results) !== request || !searchState.expanded) return;
+    if (sbSearchRenderRequests.get(results) !== request) return;
+    results.removeAttribute('aria-busy');
+    if (!searchState.expanded) return;
+    clearResults();
     const matches = collectGlobalSearchMatches(trimmedQuery, {
         limit: searchState.expandedAll ? Infinity : SB_UNIVERSAL_SEARCH_RESULT_LIMIT,
     });
@@ -15032,8 +15043,8 @@ function createSettingsSearchAdapter() {
         expand: expandHiddenAccordions,
         // A phone shows the sidebar or the page, and scrolling the hidden page shifts the clipped pane sideways.
         canReveal: () => !isMobileViewport() || Boolean(getSettingsPage()?.classList.contains('sb-settings-page--content')),
-        // HUMAN: replace — the match count of a page in the sidebar; the number is how many settings on the page match.
-        badgeLabel: count => t`TODO(copy) ${count}`,
+        // Two strings, one per number, as the entry counts of World Info do, so a language with more forms can translate each.
+        countDescription: count => count === 1 ? t`${count} matching setting` : t`${count} matching settings`,
         emptyLabel: 'No matching pages',
     };
 }

@@ -5,6 +5,7 @@ import {
     ROW_FILTERED_CLASS,
     SETTINGS_SEARCH_HIGHLIGHT,
     TAB_BADGE_CLASS,
+    TAB_COUNT_DESCRIPTION_CLASS,
     analyzeSearchRoots,
     applyRowFilter,
     applyTextHighlights,
@@ -12,9 +13,11 @@ import {
     createSidebarSearch,
     findMatchRanges,
     findWordMatches,
+    foldSearchText,
     getRowSearchText,
     hasWord,
     isRowMatch,
+    normalizeSearchText,
     parseAliases,
     restoreFilteredRows,
     revealClosedMatches,
@@ -39,19 +42,32 @@ afterEach(() => {
     delete window.Highlight;
 });
 
-describe('word-boundary matching', () => {
-    test('a word matches in any position, and never inside another word', () => {
+describe('start-of-word matching', () => {
+    test('a typed word has to begin a word of the text, in any position', () => {
         expect(hasWord('frequency penalty', 'frequency')).toBe(true);
         expect(hasWord('penalty frequency', 'frequency')).toBe(true);
-        expect(hasWord('frequencypenalty', 'frequency')).toBe(false);
-        expect(hasWord('myfrequency', 'frequency')).toBe(false);
-        expect(hasWord('frequency-penalty', 'frequency')).toBe(true);
+        expect(hasWord('frequency-penalty', 'penalty')).toBe(true);
         expect(hasWord('top-p', 'p')).toBe(true);
     });
 
-    test('a partial word does not match, so the sidebar waits for the whole word', () => {
-        expect(hasWord('frequency penalty', 'freq')).toBe(false);
-        expect(hasWord('frequency penalty', 'penalt')).toBe(false);
+    test('the end of the typed word is free, so partial typing finds the setting', () => {
+        expect(hasWord('frequency penalty', 'freq')).toBe(true);
+        expect(hasWord('frequency penalty', 'penalt')).toBe(true);
+        expect(textMatchesAll('frequency penalty', tokenizeQuery('Penalty Freq'))).toBe(true);
+    });
+
+    test('a typed word never starts inside another word', () => {
+        expect(hasWord('frequency penalty', 'quency')).toBe(false);
+        expect(hasWord('frequency penalty', 'equency')).toBe(false);
+        expect(hasWord('an attempt', 'temp')).toBe(false);
+        expect(hasWord('frequencypenalty', 'penalty')).toBe(false);
+        expect(hasWord('myfrequency', 'frequency')).toBe(false);
+    });
+
+    test('a typed compound word matches the compound word, and its second half does not match inside it', () => {
+        expect(hasWord('frequencypenalty', 'frequencypenalty')).toBe(true);
+        expect(hasWord('frequencypenalty', 'frequencyp')).toBe(true);
+        expect(textMatchesAll('frequencypenalty', ['penalty'])).toBe(false);
     });
 
     test('every token has to occur, in any order, and the case is ignored', () => {
@@ -63,16 +79,26 @@ describe('word-boundary matching', () => {
         expect(textMatchesAll('anything', [])).toBe(false);
     });
 
-    test('a token that starts or ends with a symbol needs no boundary on that side', () => {
+    test('a token that starts with a symbol needs no boundary at its start', () => {
         expect(hasWord('show {{char}}: in responses', '{{char}}')).toBe(true);
         expect(hasWord('edit config.yaml now', 'config.yaml')).toBe(true);
         expect(hasWord('myconfig.yaml', 'config.yaml')).toBe(false);
+        expect(hasWord('config.yaml', 'config.y')).toBe(true);
         expect(findWordMatches('a-b a-b', 'a-b')).toEqual([{ start: 0, end: 3 }, { start: 4, end: 7 }]);
     });
 
     test('letters outside ASCII count as letters', () => {
-        expect(hasWord('größe der schrift', 'größe')).toBe(true);
+        expect(hasWord('größe der schrift', 'grö')).toBe(true);
         expect(hasWord('schriftgröße', 'größe')).toBe(false);
+    });
+
+    test('accents and case are folded on both sides, and the fold keeps every offset', () => {
+        expect(normalizeSearchText('Résumé  Écran')).toBe('resume ecran');
+        expect(normalizeSearchText('Cafe\u0301')).toBe('cafe');
+        expect(textMatchesAll(normalizeSearchText('Écran de Résumé'), tokenizeQuery('ecran resume'))).toBe(true);
+        expect(textMatchesAll(normalizeSearchText('Ecran'), tokenizeQuery('ÉCR'))).toBe(true);
+        expect(foldSearchText('İstanbul ǅ ﬁ')).toHaveLength('İstanbul ǅ ﬁ'.length);
+        expect(foldSearchText('Éa')).toBe('ea');
     });
 
     test('tokenizing drops repeats and the empty query has no tokens', () => {
@@ -258,11 +284,13 @@ describe('row filter', () => {
         }
     });
 
-    test('a word inside a longer word matches nothing', () => {
+    test('the middle of a word matches nothing, and the start of one matches', () => {
         const root = html(MESSAGES_PAGE).querySelector('#root');
-        expect(analyze('strea', root).count).toBe(0);
-        expect(analyze('fad', root).count).toBe(0);
+        expect(analyze('treaming', root).count).toBe(0);
+        expect(analyze('ade', root).count).toBe(0);
         expect(analyze('streaming', root).count).toBe(2);
+        expect(analyze('strea', root).count).toBe(2);
+        expect(analyze('fad', root).count).toBe(1);
     });
 
     test('restores every row and group, and the attribute with them', () => {
@@ -303,6 +331,8 @@ describe('text highlight', () => {
         expect(applyTextHighlights([root.firstElementChild], ['frequency'])).toBe(2);
         const marked = registry.get(SETTINGS_SEARCH_HIGHLIGHT).ranges.map(range => range.toString());
         expect(marked).toEqual(['Frequency', 'frequency']);
+        expect(applyTextHighlights([root.firstElementChild], ['freq'])).toBe(2);
+        expect(registry.get(SETTINGS_SEARCH_HIGHLIGHT).ranges.map(range => range.toString())).toEqual(['Freq', 'freq']);
         expect(applyTextHighlights([root.firstElementChild], [])).toBe(0);
         expect(registry.has(SETTINGS_SEARCH_HIGHLIGHT)).toBe(false);
     });
@@ -344,7 +374,7 @@ describe('sidebar search', () => {
             scroll: element => calls.scroll.push(element),
             expand: element => calls.expand.push(element),
             canReveal,
-            badgeLabel: count => `${count} found`,
+            countDescription: count => count === 1 ? `${count} matching setting` : `${count} matching settings`,
             emptyLabel: 'No matching pages',
         };
         return { page, calls, search: createSidebarSearch(adapter) };
@@ -357,11 +387,47 @@ describe('sidebar search', () => {
         const { page, search } = setup();
         await search.update('fade');
         expect(tab(page, 'messages').classList.contains('sb-settings-tab--filtered')).toBe(false);
-        expect(tab(page, 'messages').querySelector(`.${TAB_BADGE_CLASS}`).textContent).toBe('1 found');
+        const badge = tab(page, 'messages').querySelector(`.${TAB_BADGE_CLASS}`);
+        expect(badge.textContent).toBe('1');
+        expect(badge.getAttribute('aria-hidden')).toBe('true');
+        expect(badge.hasAttribute('data-sb-copy-placeholder')).toBe(false);
+        const description = tab(page, 'messages').querySelector(`.${TAB_COUNT_DESCRIPTION_CLASS}`);
+        expect(description.textContent).toBe('1 matching setting');
+        expect(description.hidden).toBe(true);
+        expect(tab(page, 'messages').getAttribute('aria-describedby')).toBe(description.id);
         expect(tab(page, 'logs').classList.contains('sb-settings-tab--filtered')).toBe(true);
         expect(tab(page, 'logs').getAttribute('aria-hidden')).toBe('true');
         expect(page.querySelector('#fps').classList.contains(ROW_FILTERED_CLASS)).toBe(true);
         expect(page.querySelector('#fade').classList.contains(ROW_FILTERED_CLASS)).toBe(false);
+        jest.useRealTimers();
+    });
+
+    test('the count is described as one setting or as many, with the number in the text', async () => {
+        jest.useFakeTimers();
+        const { page, search } = setup();
+        await search.update('stream');
+        expect(tab(page, 'messages').querySelector(`.${TAB_COUNT_DESCRIPTION_CLASS}`).textContent).toBe('2 matching settings');
+        expect(tab(page, 'messages').querySelector(`.${TAB_BADGE_CLASS}`).textContent).toBe('2');
+        await search.update('fade');
+        expect(tab(page, 'messages').querySelector(`.${TAB_COUNT_DESCRIPTION_CLASS}`).textContent).toBe('1 matching setting');
+        jest.useRealTimers();
+    });
+
+    test('pages that are still loading keep the list: no empty message, and busy until they answer', async () => {
+        jest.useFakeTimers();
+        let finish;
+        const { page, search } = setup({ ensureReady: () => new Promise(resolve => { finish = resolve; }) });
+        const answered = search.update('quick');
+        await jest.advanceTimersByTimeAsync(5);
+        expect(page.querySelector('.sb-settings-tab-empty')).toBeNull();
+        expect(page.querySelectorAll('.sb-settings-tab--filtered')).toHaveLength(0);
+        expect(page.querySelector('#tabs').getAttribute('aria-busy')).toBe('true');
+        finish();
+        await answered;
+        expect(page.querySelector('#tabs').hasAttribute('aria-busy')).toBe(false);
+        expect(tab(page, 'extensions').classList.contains('sb-settings-tab--filtered')).toBe(false);
+        expect(tab(page, 'messages').classList.contains('sb-settings-tab--filtered')).toBe(true);
+        expect(page.querySelector('.sb-settings-tab-empty')).toBeNull();
         jest.useRealTimers();
     });
 
@@ -370,8 +436,8 @@ describe('sidebar search', () => {
         const { page, search } = setup();
         await search.update('swipes');
         expect(tab(page, 'extensions').classList.contains('sb-settings-tab--filtered')).toBe(false);
-        expect(tab(page, 'extensions').querySelector(`.${TAB_BADGE_CLASS}`).textContent).toBe('1 found');
-        await search.update('swipe');
+        expect(tab(page, 'extensions').querySelector(`.${TAB_BADGE_CLASS}`).textContent).toBe('1');
+        await search.update('wipes');
         expect(tab(page, 'extensions').classList.contains('sb-settings-tab--filtered')).toBe(true);
         jest.useRealTimers();
     });
@@ -420,7 +486,7 @@ describe('sidebar search', () => {
         const { page, search } = setup({ canHideRows: () => false });
         await search.update('fade');
         expect(page.querySelectorAll(`.${ROW_FILTERED_CLASS}`)).toHaveLength(0);
-        expect(tab(page, 'messages').querySelector(`.${TAB_BADGE_CLASS}`).textContent).toBe('1 found');
+        expect(tab(page, 'messages').querySelector(`.${TAB_BADGE_CLASS}`).textContent).toBe('1');
         jest.useRealTimers();
     });
 
@@ -432,7 +498,8 @@ describe('sidebar search', () => {
         expect(page.querySelector('.sb-settings-tab-empty').textContent).toBe('No matching pages');
         search.update('');
         expect(page.querySelectorAll(`.${ROW_FILTERED_CLASS}`)).toHaveLength(0);
-        expect(page.querySelectorAll(`.${TAB_BADGE_CLASS}`)).toHaveLength(0);
+        expect(page.querySelectorAll(`.${TAB_BADGE_CLASS}, .${TAB_COUNT_DESCRIPTION_CLASS}`)).toHaveLength(0);
+        expect(page.querySelectorAll('[aria-describedby]')).toHaveLength(0);
         expect(page.querySelectorAll('.sb-settings-tab--filtered')).toHaveLength(0);
         expect(page.querySelectorAll('.sb-settings-tab--by-content')).toHaveLength(0);
         expect(page.querySelector('.sb-settings-tab-empty')).toBeNull();

@@ -18,6 +18,7 @@ export const ROW_FILTERED_CLASS = 'sb-settings-row--filtered';
 export const TAB_FILTERED_CLASS = 'sb-settings-tab--filtered';
 export const TAB_BY_CONTENT_CLASS = 'sb-settings-tab--by-content';
 export const TAB_BADGE_CLASS = 'sb-settings-tab-badge';
+export const TAB_COUNT_DESCRIPTION_CLASS = 'sb-settings-tab-count-description';
 export const ALIAS_ATTRIBUTE = 'data-sb-search-aliases';
 
 const MAX_HIGHLIGHT_RANGES = 600;
@@ -46,9 +47,27 @@ const ATTRIBUTE_TEXT_NAMES = ['title', 'aria-label', 'placeholder', 'data-sb-sea
 
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 
-/** Lowercase, with runs of whitespace as one space. */
+const COMBINING_MARKS = /\p{M}/gu;
+
+/**
+ * Lowercase with the accents taken off ("Résumé" is "resume"), one code unit for one code unit, so an offset in
+ * the folded text is an offset in the original. A character whose folded form would have another length
+ * (a ligature, a letter with a long lowercase form) stays as it was typed.
+ */
+export function foldSearchText(value) {
+    let folded = '';
+    for (const character of String(value ?? '')) {
+        const stripped = character.normalize('NFD').replace(COMBINING_MARKS, '');
+        const lower = stripped.toLowerCase();
+        folded += lower.length === character.length ? lower : character;
+    }
+    return folded;
+}
+
+/** Folded, with runs of whitespace as one space. */
 export function normalizeSearchText(value) {
-    return String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    // A mark typed on its own (a decomposed "é") is dropped here, where offsets are no longer needed.
+    return foldSearchText(String(value ?? '').replace(/\s+/g, ' ').trim()).replace(COMBINING_MARKS, '');
 }
 
 /** The distinct words of a query, in the order typed. */
@@ -66,9 +85,11 @@ function isWordCharacterAt(text, index) {
 }
 
 /**
- * Where `token` occurs in `text` as a word of its own. A token that starts or ends with a letter or digit
- * needs a boundary on that side, so "frequency" finds "Frequency Penalty" and "Penalty Frequency" but not
- * "FrequencyPenalty" or "MyFrequency". Both strings are normalised with `normalizeSearchText`.
+ * Where `token` begins a word of `text`. A token that starts with a letter or digit must start at the start
+ * of a word, so "freq" finds "Frequency Penalty" and "Penalty Frequency", "penalty" does not find
+ * "FrequencyPenalty", and "temp" does not find "attempt". The end of the token is free: it is a prefix. A token
+ * that starts with a symbol needs no boundary. Both strings are folded with `foldSearchText`; the returned
+ * ranges cover the typed token only.
  * @param {string} text
  * @param {string} token
  * @returns {{start: number, end: number}[]}
@@ -77,24 +98,22 @@ export function findWordMatches(text, token) {
     const matches = [];
     if (!token) return matches;
     const startNeedsBoundary = WORD_CHARACTER.test(token[0]);
-    const endNeedsBoundary = WORD_CHARACTER.test(token[token.length - 1]);
     for (let from = 0; ;) {
         const start = text.indexOf(token, from);
         if (start === -1) return matches;
-        const end = start + token.length;
-        if ((!startNeedsBoundary || !isWordCharacterAt(text, start - 1)) && (!endNeedsBoundary || !isWordCharacterAt(text, end))) {
-            matches.push({ start, end });
+        if (!startNeedsBoundary || !isWordCharacterAt(text, start - 1)) {
+            matches.push({ start, end: start + token.length });
         }
         from = start + 1;
     }
 }
 
-/** Whether `token` occurs in `text` as a word. */
+/** Whether `token` begins a word of `text`. */
 export function hasWord(text, token) {
     return findWordMatches(text, token).length > 0;
 }
 
-/** Whether every token occurs in `text` as a word, in any order. */
+/** Whether every token begins a word of `text`, in any order. */
 export function textMatchesAll(text, tokens) {
     return tokens.length > 0 && tokens.every(token => hasWord(text, token));
 }
@@ -340,10 +359,8 @@ export function applyTextHighlights(elements, tokens) {
             },
         });
         for (let node = walker.nextNode(); node && ranges.length < MAX_HIGHLIGHT_RANGES; node = walker.nextNode()) {
-            const lower = node.data.toLowerCase();
-            // A character whose lowercase form has another length would shift every offset after it.
-            if (lower.length !== node.data.length) continue;
-            for (const { start, end } of findMatchRanges(lower, tokens)) {
+            // The fold keeps the length, so a range of the folded text is a range of the node.
+            for (const { start, end } of findMatchRanges(foldSearchText(node.data), tokens)) {
                 const range = new Range();
                 range.setStart(node, start);
                 range.setEnd(node, end);
@@ -372,7 +389,7 @@ export function applyTextHighlights(elements, tokens) {
  * - `changeSelector`: controls whose change shows other rows (the backend pickers).
  * - `pulse(element)`, `scroll(element)`, `expand(element)`: the shell's own reveal.
  * - `canReveal()`: optional, whether the open page is on screen (a phone shows the sidebar or the page, not both).
- * - `badgeLabel(count)` and `emptyLabel`: the strings.
+ * - `countDescription(count)`: the accessible text of a page's count ("2 matching settings"), and `emptyLabel`.
  */
 export function createSidebarSearch(adapter) {
     let request = 0;
@@ -388,19 +405,29 @@ export function createSidebarSearch(adapter) {
 
     const tabButtons = () => Array.from(adapter.getTabList()?.querySelectorAll('.sb-settings-tab') ?? []);
 
+    /**
+     * The count shows as a bare number that screen readers skip. The tab keeps its name, and a hidden element
+     * ("2 matching settings") that `aria-describedby` points at gives the count as its description.
+     */
     function setBadge(button, count) {
-        let badge = button.querySelector(`:scope > .${TAB_BADGE_CLASS}`);
+        const badge = button.querySelector(`:scope > .${TAB_BADGE_CLASS}`);
+        const description = button.querySelector(`:scope > .${TAB_COUNT_DESCRIPTION_CLASS}`);
         if (count <= 0) {
             badge?.remove();
+            description?.remove();
+            button.removeAttribute('aria-describedby');
             return;
         }
-        if (!badge) {
-            badge = document.createElement('span');
-            badge.className = TAB_BADGE_CLASS;
-            badge.setAttribute('data-sb-copy-placeholder', 'true');
-            button.append(badge);
-        }
-        badge.textContent = adapter.badgeLabel(count);
+        const label = adapter.countDescription(count);
+        if (badge && description && description.textContent === label && badge.textContent === String(count)) return;
+        const visibleBadge = badge ?? button.appendChild(Object.assign(document.createElement('span'), { className: TAB_BADGE_CLASS }));
+        visibleBadge.setAttribute('aria-hidden', 'true');
+        visibleBadge.textContent = String(count);
+        const hiddenDescription = description ?? button.appendChild(Object.assign(document.createElement('span'), { className: TAB_COUNT_DESCRIPTION_CLASS }));
+        hiddenDescription.hidden = true;
+        hiddenDescription.id = `sb-settings-tab-count-${adapter.getShellKey()}-${button.dataset.sbSettingsTab}`;
+        hiddenDescription.textContent = label;
+        button.setAttribute('aria-describedby', hiddenDescription.id);
     }
 
     function renderTabs(visibility) {
@@ -508,11 +535,22 @@ export function createSidebarSearch(adapter) {
             const byName = nameMatches(tab);
             visibility.set(tab.id, { match: byName, byName, count: 0 });
         }
-        // Names apply at once; what the pages hold refines them once every page is built.
-        renderTabs(visibility);
-
-        await adapter.ensureReady();
+        const ready = Promise.resolve(adapter.ensureReady());
+        // Pages that are already built answer within the same task. Pages that are still loading (the first query)
+        // keep the list as it is, so a query that only the pages' contents match does not flash the empty message.
+        const built = await Promise.race([ready.then(() => true), new Promise(resolve => setTimeout(resolve, 0, false))]);
         if (current !== request || shellKey !== adapter.getShellKey()) return;
+        const list = adapter.getTabList();
+        if (built) {
+            renderTabs(visibility);
+        } else {
+            list?.setAttribute('aria-busy', 'true');
+            // Names that match are shown at once; what the pages hold refines them once every page is built.
+            if ([...visibility.values()].some(state => state.match)) renderTabs(visibility);
+            await ready;
+            list?.removeAttribute('aria-busy');
+            if (current !== request || shellKey !== adapter.getShellKey()) return;
+        }
 
         applying = true;
         try {
@@ -566,6 +604,7 @@ export function createSidebarSearch(adapter) {
         lastRevealKey = '';
         clearTimeout(revealTimer);
         stopObserving();
+        adapter.getTabList()?.removeAttribute('aria-busy');
         restoreFilteredRows();
         clearTextHighlights();
         document.querySelectorAll('.highlighted-drawer').forEach(element => element.classList.remove('highlighted-drawer'));

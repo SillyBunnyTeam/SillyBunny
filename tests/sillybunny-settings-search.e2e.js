@@ -72,6 +72,19 @@ async function selectTab(page, tab) {
     await expect(page.locator(`button[data-sb-settings-tab="${tab}"]`)).toHaveAttribute('aria-selected', 'true');
 }
 
+/** The count of a page: a bare number on screen, "N matching setting(s)" as the tab's description, the tab's name unchanged. */
+async function expectCount(page, tab, label) {
+    const button = tabState(page, tab);
+    const badge = button.locator('.sb-settings-tab-badge');
+    await expect(badge).toHaveText(/^\d+$/);
+    await expect(badge).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
+    await expect(badge).toHaveAttribute('aria-hidden', 'true');
+    const count = Number(await badge.innerText());
+    await expect(button).toHaveAccessibleDescription(count === 1 ? '1 matching setting' : `${count} matching settings`);
+    await expect(button).toHaveAccessibleName(label);
+    return count;
+}
+
 const tabState = (page, tab) => page.locator(`button[data-sb-settings-tab="${tab}"]`);
 
 /** Records every element that gets the pulse class, so a 1.8 second pulse is never missed between two polls. */
@@ -143,9 +156,7 @@ for (const viewport of VIEWPORTS) {
             await saveEvidence(page, viewport, 'backend-sidebar-before');
             await page.locator('#sb-settings-search-input').fill('Frequency');
             await expect(tabState(page, 'sampling')).not.toHaveClass(/sb-settings-tab--filtered/);
-            const badge = tabState(page, 'sampling').locator('.sb-settings-tab-badge');
-            await expect(badge).toHaveText(/^TODO\(copy\) \d+$/);
-            await expect(badge).toHaveAttribute('data-sb-copy-placeholder', 'true');
+            const count = await expectCount(page, 'sampling', 'Sampling');
             await expect(tabState(page, 'connections')).toHaveClass(/sb-settings-tab--filtered/);
             await expect(tabState(page, 'connections')).toHaveAttribute('aria-hidden', 'true');
 
@@ -158,7 +169,6 @@ for (const viewport of VIEWPORTS) {
             expect(panel.rows.map(row => row.slice(0, 40))).toEqual(expect.arrayContaining([expect.stringMatching(/^Frequency Penalty/)]));
             expect(panel.rows.filter(row => !/\bfrequency\b/i.test(row)).map(row => row.slice(0, 40))).toEqual([]);
             expect(panel.rows.map(row => row.slice(0, 40))).not.toEqual(expect.arrayContaining([expect.stringMatching(/^Temperature/)]));
-            const count = Number((await badge.innerText()).replace(/\D+/g, ''));
             expect(count).toBe(panel.rows.length);
 
             expect(await highlightCount(page)).toBeGreaterThan(0);
@@ -183,17 +193,23 @@ for (const viewport of VIEWPORTS) {
             });
         }
 
-        test('Backend: part of a word, or a word inside another word, matches nothing', async ({ page }) => {
+        test('Backend: the start of a word finds the setting, the middle of a word matches nothing', async ({ page }) => {
             const input = await openSidebarSearch(page, 'left', 'sampling');
-            for (const query of ['Frequen', 'FrequencyPenalty', 'equency']) {
+            for (const query of ['Freq', 'penalty freq', 'FRÉQ']) {
+                await input.fill(query);
+                await expect(tabState(page, 'sampling')).not.toHaveClass(/sb-settings-tab--filtered/);
+                await expect.poll(async () => (await readPanel(page, 'sampling')).rows.some(row => /^Frequency Penalty/.test(row))).toBe(true);
+            }
+            await input.fill('Freq');
+            await expect.poll(() => page.evaluate(name => [...(CSS.highlights.get(name) ?? [])].map(range => range.toString()), HIGHLIGHT_NAME)).toContain('Freq');
+            await saveEvidence(page, viewport, 'backend-start-of-word');
+            for (const query of ['quency', 'equency', 'FrequencyPenalty']) {
                 await input.fill(query);
                 await expect(page.locator('#sb-settings-tab-list .sb-settings-tab-empty')).toHaveText('No matching pages');
                 await expect(page.locator('#sb-settings-tab-list .sb-settings-tab:not(.sb-settings-tab--filtered)')).toHaveCount(0);
                 expect((await readPanel(page, 'sampling')).filtered).toBe(0);
-                await saveEvidence(page, viewport, 'backend-partial-word-empty');
             }
-            await input.fill('penalty frequency');
-            await expect(tabState(page, 'sampling')).not.toHaveClass(/sb-settings-tab--filtered/);
+            await saveEvidence(page, viewport, 'backend-middle-of-word-empty');
         });
 
         test('clearing the field restores pages, rows, counts and marks inside the budget', async ({ page }, testInfo) => {
@@ -272,7 +288,7 @@ for (const viewport of VIEWPORTS) {
                 expect(panel.groups).not.toContain('Swipes');
             }).toPass({ timeout: 15000 });
             await expect.poll(() => page.evaluate(name => CSS.highlights.get(name)?.size ?? 0, HIGHLIGHT_NAME)).toBeGreaterThan(0);
-            await expect(tabState(page, 'messages').locator('.sb-settings-tab-badge')).toHaveText(/^TODO\(copy\) \d+$/);
+            await expectCount(page, 'messages', 'Messages');
         });
 
         test('Customize: Parser Flags and Import Your SillyTavern Setup find the groups that replaced them', async ({ page }) => {
@@ -311,14 +327,14 @@ for (const viewport of VIEWPORTS) {
             await input.fill('Persona');
             await expect(tabState(page, 'persona')).not.toHaveClass(/sb-settings-tab--filtered/);
             await saveEvidence(page, viewport, 'characters-persona-name');
-            await expect(tabState(page, 'persona').locator('.sb-settings-tab-badge')).toHaveText(/^TODO\(copy\) \d+$/);
+            await expectCount(page, 'persona', 'Persona');
             await expect(tabState(page, 'import')).toHaveClass(/sb-settings-tab--filtered/);
 
             const name = await page.evaluate(() => window.qaApp.characters[0].name);
             const firstWord = name.split(/[^\p{L}\p{N}]+/u).find(Boolean);
             await input.fill(firstWord);
             await expect(tabState(page, 'characters')).not.toHaveClass(/sb-settings-tab--filtered/);
-            await expect(tabState(page, 'characters').locator('.sb-settings-tab-badge')).toHaveText(/^TODO\(copy\) \d+$/);
+            await expectCount(page, 'characters', 'Characters');
             await input.fill('');
             await expect(page.locator('.sb-settings-tab--filtered')).toHaveCount(0);
         });
@@ -337,7 +353,7 @@ for (const viewport of VIEWPORTS) {
             const input = await openSidebarSearch(page, 'characters', 'editor');
             await input.fill('Description');
             await expect(tabState(page, 'editor')).not.toHaveClass(/sb-settings-tab--filtered/);
-            await expect(tabState(page, 'editor').locator('.sb-settings-tab-badge')).toHaveText(/^TODO\(copy\) \d+$/);
+            await expectCount(page, 'editor', 'Editor');
             await input.fill('zzzqqq');
             await expect(page.locator('#sb-settings-tab-list .sb-settings-tab-empty')).toBeVisible();
         });
@@ -355,7 +371,7 @@ for (const viewport of VIEWPORTS) {
                 await expect(page.locator('.sb-persona-settings .sb-persona-settings-switch:not(.sb-settings-row--filtered)')).toHaveCount(1);
                 await expect(page.locator('.sb-persona-settings .sb-settings-row--filtered')).toHaveCount(2);
                 await expect(page.locator('.sb-persona-settings .sb-settings-row--filtered[aria-hidden="true"]')).toHaveCount(2);
-                await expect(tabState(page, 'persona').locator('.sb-settings-tab-badge')).toHaveText(/^TODO\(copy\) \d+$/);
+                await expectCount(page, 'persona', 'Persona');
                 await saveEvidence(page, viewport, 'characters-persona-settings-rows');
                 await input.fill('Persona Management');
                 await expect(page.locator('.sb-persona-settings .sb-settings-row--filtered')).toHaveCount(0);
@@ -409,6 +425,56 @@ for (const viewport of VIEWPORTS) {
                 return target ? getComputedStyle(target).animationName : 'none';
             });
             expect(animation).toBe('none');
+        });
+
+        test('universal search keeps its idle state until the first answer, and never shows a blank list', async ({ page }) => {
+            await page.locator('#sb-topbar-search-toggle').click();
+            const results = page.locator('#sb-universal-search-results');
+            await expect(results.locator('.sb-search-empty')).toBeVisible();
+            await page.evaluate(() => {
+                const list = document.getElementById('sb-universal-search-results');
+                const log = { frames: 0, blankFrames: 0, idleFrames: 0, busyFrames: 0, firstAnswerFrame: -1 };
+                window.__sbFrames = log;
+                const sample = () => {
+                    log.frames += 1;
+                    if (list.classList.contains('is-visible') && list.childElementCount === 0) log.blankFrames += 1;
+                    if (list.querySelector('.sb-search-empty') && !list.querySelector('.sb-search-result')) log.idleFrames += 1;
+                    if (list.getAttribute('aria-busy') === 'true') log.busyFrames += 1;
+                    if (log.firstAnswerFrame < 0 && list.querySelector('.sb-search-result')) log.firstAnswerFrame = log.frames;
+                    if (log.firstAnswerFrame < 0 || log.frames < log.firstAnswerFrame + 3) requestAnimationFrame(sample);
+                };
+                requestAnimationFrame(sample);
+            });
+            await page.locator('#sb-universal-search input').fill('Show Bottom Chat Bar');
+            await expect(results.getByRole('option').first()).toBeVisible();
+            await expect.poll(() => page.evaluate(() => window.__sbFrames.firstAnswerFrame)).toBeGreaterThan(0);
+            const log = await page.evaluate(() => window.__sbFrames);
+            console.log(`F305_FRAMES ${viewport.name} ${JSON.stringify(log)}`);
+            expect(log.blankFrames).toBe(0);
+            await expect(results).not.toHaveAttribute('aria-busy', 'true');
+        });
+
+        test('the sidebar search never shows the empty message while the first query waits for the pages', async ({ page }) => {
+            const input = await openSidebarSearch(page, 'left', 'sampling');
+            await page.evaluate(() => {
+                const list = document.getElementById('sb-settings-tab-list');
+                const log = { frames: 0, emptyFrames: 0, busyFrames: 0, answered: false };
+                window.__sbTabFrames = log;
+                const sample = () => {
+                    log.frames += 1;
+                    if (list.querySelector('.sb-settings-tab-empty')) log.emptyFrames += 1;
+                    if (list.getAttribute('aria-busy') === 'true') log.busyFrames += 1;
+                    if (list.querySelector('.sb-settings-tab-badge')) log.answered = true;
+                    if (!log.answered || log.frames < 600) requestAnimationFrame(sample);
+                };
+                requestAnimationFrame(sample);
+            });
+            await input.fill('Frequency');
+            await expect.poll(() => page.evaluate(() => window.__sbTabFrames.answered)).toBe(true);
+            const log = await page.evaluate(() => window.__sbTabFrames);
+            console.log(`SIDEBAR_FRAMES ${viewport.name} ${JSON.stringify(log)}`);
+            expect(log.emptyFrames).toBe(0);
+            await expect(page.locator('#sb-settings-tab-list')).not.toHaveAttribute('aria-busy', 'true');
         });
 
         test('the other search surfaces still work: universal search, the character list filter and the persona title', async ({ page }) => {
