@@ -3839,8 +3839,10 @@ function groupOpenAISettingsIntoDrawers() {
         },
         {
             id: 'sb-openai-names',
-            title: 'Character Names & Prompt Formatting',
-            description: 'Control name formatting, system messages, and spacing when continuing replies.',
+            // SillyBunny: the radio sets became groups of their own, so this one holds the system messages; the settings search still finds it by its old title.
+            title: 'System Messages',
+            description: 'Choose how system messages and the system prompt are sent.',
+            searchAliases: ['Character Names & Prompt Formatting'],
             selectors: [
                 '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#character_names_none)',
                 '#openai_settings > div > :is(.inline-drawer, .sb-settings-flat-section):has(#continue_postfix_none)',
@@ -3915,6 +3917,8 @@ function groupOpenAISettingsIntoDrawers() {
 
     groupedBlocks.forEach(group => {
         const $drawer = createOpenAISettingsDrawer(group.id, group.title, group.description);
+        // SillyBunny: names a group had before its regrouping, for the settings search (`data-sb-search-aliases`).
+        if (group.searchAliases?.length) $drawer.attr('data-sb-search-aliases', group.searchAliases.join('|'));
         const $content = $drawer.children('.inline-drawer-content');
 
         group.blocks.forEach($block => $content.append($block));

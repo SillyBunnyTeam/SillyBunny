@@ -334,9 +334,12 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
         entries: Object.freeze([
             { section: '#sb-af-tokenizer' },
             { section: '#sb-af-stopping' },
+            { section: '#sb-af-reply-prefix' },
             { section: '#sb-af-cleanup' },
             { section: '#sb-af-reasoning' },
+            { section: '#sb-af-reasoning-prompts' },
             { section: '#sb-af-rendering' },
+            { section: '#sb-af-advanced' },
         ]),
     }),
     appearance: Object.freeze({

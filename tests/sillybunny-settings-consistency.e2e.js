@@ -525,16 +525,16 @@ test.describe('Settings header consistency', () => {
         });
         const formatting = await openSettingsTab(page, 'context', 'left');
         const groups = formatting.locator('#AdvancedFormatting > .sb-formatting-group');
-        await expect(groups).toHaveCount(7);
+        await expect(groups).toHaveCount(8);
         await expect(groups.locator(':scope > .sb-settings-category-header .sb-settings-category-title')).toHaveText([
-            'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering',
+            'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering', 'Advanced Formatting',
         ]);
         await expect(groups.locator(':scope > .sb-settings-category-header .sb-settings-category-heading > small')).toHaveText([
             'Choose a tokenizer and adjust prompt token counts with padding.',
             'Choose text that stops generation, with optional macro replacement.',
             'Set how replies begin and whether that text appears in chat.',
             'Control line breaks, extra spaces, and unfinished sentences in replies.',
-            'TODO(copy)',
+            'These settings apply to every chat, whichever template is chosen.',
             'Keep specified standalone text from being treated as Markdown.',
         ]);
         const failures = await groups.evaluateAll((groups, expectedTitle) => groups.flatMap(group => {
@@ -557,10 +557,16 @@ test.describe('Settings header consistency', () => {
             return Object.entries(checks).filter(([, pass]) => !pass).map(([check]) => `${group.id}: ${check}`);
         }), titleMetrics);
         expect(failures).toEqual([]);
-        const help = formatting.locator('#AdvancedFormatting a.notes-link[href$="/advancedformatting/"]');
+        // The upstream heading is the last group, with its documentation link beside the title; the old heading block is gone.
+        await expect(formatting.locator('#AdvancedFormatting > .sb-settings-flat-header:visible')).toHaveCount(0);
+        const help = formatting.locator('#sb-af-advanced a.notes-link[href$="/advancedformatting/"]');
+        // The group hides with its buttons while a message-style Chat Completions backend is active.
+        await expect(help).toBeHidden();
+        await page.evaluate(() => $('#main_api').val('textgenerationwebui').trigger('change'));
         await expect(help).toBeVisible();
+        await expect(help).toHaveAccessibleName('Help');
         expect(await help.evaluate(link => {
-            const title = link.closest('h3')?.querySelector('span[data-i18n="Advanced Formatting"]');
+            const title = link.closest('.sb-settings-category-title-row')?.querySelector('h3[data-i18n="Advanced Formatting"]');
             const titleRect = title?.getBoundingClientRect();
             const helpRect = link.getBoundingClientRect();
             return Boolean(titleRect && helpRect.left >= titleRect.right - 1
@@ -575,7 +581,7 @@ test.describe('Prompting and Sampling consistency', () => {
     test('Chat and Text Completions open with Presets and render their full prompting flows', async ({ page }) => {
         const chatGroups = [
             'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names Behavior', 'Continue Postfix',
-            'Character Names & Prompt Formatting', 'Reply Prefill', 'Request Options', 'Enable function calling',
+            'System Messages', 'Reply Prefill', 'Request Options', 'Enable function calling',
             'Send inline media', 'Request model reasoning', 'Reasoning Template',
         ];
         const textGroups = [

@@ -26,11 +26,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     flex-wrap: nowrap;
     gap: 8px;
     min-width: 0;
-    padding: 6px 10px;
-}
-
-.sb-prompt-owned > .sb-backend-section-header > p {
-    display: none;
 }
 
 #sb-settings-page .sb-prompt-owned .sb-backend-title-row {
@@ -792,7 +787,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     #sb-settings-page .sb-prompt-owned > .sb-backend-section-header {
         flex-wrap: wrap;
         gap: 6px;
-        padding-inline: 6px;
     }
 
     #sb-settings-page .sb-prompt-owned .sb-backend-title-row {

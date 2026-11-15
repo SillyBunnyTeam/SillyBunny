@@ -1,8 +1,8 @@
 import { t } from './i18n.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
-import { createButtonRow, createEntryRow, createSpinRow, createSwitchRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
+import { createButtonRow, createEntryRow, createPropertyRow, createSpinRow, createSwitchRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
-import { adoptFieldRow, bindDependentSets, readRowTitle, unwrapLoneSelects } from './sillybunny-settings-presentation.js';
+import { adoptButtonRows, adoptFieldRow, bindDependentSets, readRowTitle, unwrapLoneSelects } from './sillybunny-settings-presentation.js';
 
 /**
  * Backend ▸ Formatting and Backend ▸ Presets. `sillybunny-tabs.js` builds the groups (a heading above one boxed list) and
@@ -76,7 +76,7 @@ function field(id, root = document.body) {
 }
 
 /**
- * Advanced Formatting: Tokenizer & Padding, Stopping Strings, Reply Prefix, Text Cleanup, Reasoning, Add to Prompts and Rendering.
+ * Advanced Formatting: Tokenizer & Padding, Stopping Strings, Reply Prefix, Text Cleanup, Reasoning, Add to Prompts, Rendering and Advanced Formatting.
  * @param {{revealGroup: (tabId: string, groupId: string) => void}} context
  */
 export function presentFormatting(context) {
@@ -90,6 +90,7 @@ export function presentFormatting(context) {
         reasoning: body('sb-af-reasoning'),
         prompts: body('sb-af-reasoning-prompts'),
         rendering: body('sb-af-rendering'),
+        advanced: body('sb-af-advanced'),
     };
     if (Object.values(bodies).some(node => !(node instanceof HTMLElement))) return;
     formatting.dataset.sbFormattingPresented = 'true';
@@ -188,6 +189,53 @@ export function presentFormatting(context) {
         bodies.rendering.append(entry.row);
         retire(source);
     }
+
+    presentAdvancedFormatting(formatting);
+}
+
+/**
+ * The last group of Formatting. Upstream heads the page with "Advanced Formatting", its documentation link and the Master Import and
+ * Master Export buttons; they become the group's heading, the link beside it, and two button rows. The buttons are the upstream nodes
+ * themselves (the handlers bind to their ids), and the hidden file input stays in the document beside the box. The group carries
+ * `data-cc-null`, so it hides with the buttons while a message-style Chat Completions backend is active.
+ * @param {HTMLElement} formatting
+ */
+function presentAdvancedFormatting(formatting) {
+    const section = formatting.querySelector('#sb-af-advanced');
+    const body = section && bodyOf(section);
+    const heading = section?.querySelector('.sb-settings-category-title');
+    if (!(section instanceof HTMLElement && body && heading instanceof HTMLElement)) return;
+    section.dataset.ccNull = '';
+
+    const link = formatting.querySelector('a.notes-link[href*="advancedformatting"]');
+    const legacyTitle = link?.closest('h3');
+    if (link instanceof HTMLElement) {
+        const row = document.createElement('div');
+        row.className = 'sb-settings-category-title-row';
+        heading.before(row);
+        row.append(heading, link);
+        if (!link.hasAttribute('aria-label')) link.setAttribute('aria-label', t`Help`);
+    }
+    const buttons = ['af_master_import', 'af_master_export'].map(id => document.getElementById(id)).filter(button => button instanceof HTMLElement);
+    body.append(...buttons);
+    adoptButtonRows(section);
+    // Upstream translates the first line of the import tooltip only; the rest stays a second caption line under it.
+    for (const button of buttons) {
+        const subtitle = button.closest('.ds-row')?.querySelector('.ds-row-subtitle');
+        const [first, ...rest] = button.title.split(/\n+/).map(line => line.trim()).filter(Boolean);
+        if (!subtitle || !rest.length) continue;
+        subtitle.textContent = first;
+        const more = document.createElement('small');
+        more.className = 'ds-row-subtitle';
+        more.textContent = rest.join(' ');
+        subtitle.after(more);
+    }
+    const file = document.getElementById('af_master_import_file');
+    if (file instanceof HTMLElement) section.append(file);
+
+    // What is left of the old heading block and its button bar. The upstream title goes, so that no pass builds a header from it again.
+    legacyTitle?.remove();
+    for (const old of formatting.querySelectorAll(':scope > .sb-settings-flat-header, :scope > .flex-container.alignItemsBaseline')) retire(old);
 }
 
 const ADOPT_OPTIONS = Object.freeze({ keepWrapper: true, keepLinks: true, manual: true });
@@ -825,13 +873,39 @@ function adoptHeadings(root) {
 }
 
 /**
+ * "Max prompt cost" of OpenRouter, Electron Hub and Chutes: a property row that keeps the upstream value node, which the model
+ * list writes the cost into, and the provider attribute that shows the row for its provider only.
+ * @param {HTMLElement} body
+ */
+function presentPromptCosts(body) {
+    for (const id of ['openrouter_max_prompt_cost', 'electronhub_max_prompt_cost', 'chutes_max_prompt_cost']) {
+        const value = field(id, body);
+        const wrapper = value?.parentElement;
+        if (!(value instanceof HTMLElement && wrapper && wrapper.parentElement === body)) continue;
+        const { row } = createPropertyRow({ label: '', value: '', field: id.replaceAll('_', '-') });
+        moveCaption(row.querySelector('.ds-row-subtitle'), wrapper.querySelector(':scope > span:not([id])'), { stripColon: true });
+        const display = row.querySelector('.ds-row-property__value');
+        if (!(display instanceof HTMLElement)) continue;
+        value.className = display.className;
+        value.style.cssText = display.style.cssText;
+        display.replaceWith(value);
+        carryVisibility(row, wrapper);
+        wrapper.replaceWith(row);
+    }
+}
+
+/**
  * Chat Completions groups.
  * @param {HTMLElement} root
  */
 function presentChatCompletion(root) {
     adoptHeadings(root);
     const budget = root.querySelector('#sb-openai-budget');
-    if (budget instanceof HTMLElement) adoptRows(budget);
+    if (budget instanceof HTMLElement) {
+        const body = bodyOf(budget);
+        if (body) presentPromptCosts(body);
+        adoptRows(budget);
+    }
     presentNames(root);
     presentPrefill(root);
     presentRequestOptions(root);

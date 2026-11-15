@@ -1988,7 +1988,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 /* A property row keeps the 6px block padding of every row. */
-.sb-data-security-group .ds-row.ds-row-property {
+:is(.sb-data-security-group, .sb-prompting-group-body) .ds-row.ds-row-property {
     padding-block: 6px;
 }
 
@@ -6897,7 +6897,8 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     min-width: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading > .sb-settings-category-title {
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading > .sb-settings-category-title,
+#sb-settings-page .sb-settings-mounted-shell .sb-settings-category-heading > .sb-settings-category-title-row > .sb-settings-category-title {
     min-height: 0;
     margin: 0;
     padding: 0;

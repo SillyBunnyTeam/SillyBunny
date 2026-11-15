@@ -493,12 +493,8 @@ function mountPresetRows(root) {
         source.hidden = true;
         sbPresetRows.push(preset);
     }
-    for (const hidden of [
-        root.querySelector('#openai_api-presets > div > .standoutHeader'),
-        document.getElementById('af_master_import')?.parentElement,
-    ]) {
-        if (hidden instanceof HTMLElement && !hidden.hidden) hidden.hidden = true;
-    }
+    const hidden = root.querySelector('#openai_api-presets > div > .standoutHeader');
+    if (hidden instanceof HTMLElement && !hidden.hidden) hidden.hidden = true;
 }
 
 /** Keeps Edit Prompts and then the autosave switch directly below the active backend's preset block. */
@@ -669,7 +665,6 @@ function flattenSettingsPanelDrawers(shellKey, tabId) {
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
         applySettingsSectionOrder(panel, tabId);
         normalizeSettingsPresentation(panel, { name: tabId });
-        if (tabId === 'context') positionAdvancedFormattingHelpLink();
     }
 }
 
@@ -779,7 +774,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
         { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261114q', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261114t', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261115r', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
@@ -8065,7 +8060,6 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
                 flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
                 applySettingsSectionOrder(panel, tabConfig.id);
                 normalizeSettingsPresentation(panel, { name: tabConfig.id });
-                if (tabConfig.id === 'context') positionAdvancedFormattingHelpLink();
             }
             installSettingsSubpage(shellKey, tabConfig.id);
             const tab = getShellState(shellKey)?.tabs.get(tabConfig.id);
@@ -8193,28 +8187,24 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
         apiIds: ['openai'],
         title: 'Chat Completions',
         usesContextSettings: false,
-        description: 'Uses the active Chat Completions provider and its provider-specific sampler support.',
     },
     {
         id: 'textgenerationwebui',
         apiIds: ['textgenerationwebui'],
         title: 'Text Completions',
         usesContextSettings: true,
-        description: 'Uses the selected Text Completions backend and sampler visibility rules.',
     },
     {
         id: 'kobold',
         apiIds: ['kobold', 'koboldhorde'],
         title: 'Kobold/Horde',
         usesContextSettings: true,
-        description: 'Kobold Horde reuses Kobold sampler settings; Horde still requires a non-GUI preset.',
     },
     {
         id: 'novel',
         apiIds: ['novel'],
         title: 'NovelAI',
         usesContextSettings: true,
-        description: 'Uses NovelAI preset sampling fields without changing the backend request format.',
     },
 ]);
 
@@ -8790,12 +8780,14 @@ function updateSamplingPanelVisibility(root) {
     }
 }
 
-function createBackendSectionHeader({ title = '', description, modeAttrs = {}, descriptionAttrs = {} }) {
+// SillyBunny: one line under the page header, without a box: the backend label, and a note when the page has one.
+function createBackendSectionHeader({ title = '', modeAttrs = {}, note = '' }) {
     const header = createElement('div', { className: 'sb-backend-section-header' });
     const titleRow = createElement('div', { className: 'sb-backend-title-row' });
     const mode = createElement('span', { className: 'sb-sampling-mode-pill', text: title, attrs: modeAttrs });
     titleRow.append(mode);
-    header.append(titleRow, createElement('p', { text: description, attrs: descriptionAttrs }));
+    header.append(titleRow);
+    if (note) header.append(createElement('p', { className: 'sb-sampling-header-note', text: note, attrs: { 'data-i18n': note } }));
     return header;
 }
 
@@ -8835,16 +8827,10 @@ async function buildSamplingPanel() {
                 'data-sb-sampling-apis': backend.apiIds.join(','),
             },
         });
-        const header = createBackendSectionHeader({
+        section.append(createBackendSectionHeader({
             title: `Backend: ${backend.title}`,
-            description: `Active backend samplers are shown here. ${backend.description}`,
-        });
-        header.append(createElement('p', {
-            className: 'sb-sampling-header-note',
-            text: 'Some backends ignore samplers they do not support.',
-            attrs: { 'data-i18n': 'Some backends ignore samplers they do not support.' },
+            note: 'Some backends ignore samplers they do not support.',
         }));
-        section.append(header);
         for (const group of SB_SAMPLING_GROUPS) {
             const category = createElement('section', {
                 className: 'sb-sampling-group',
@@ -8937,12 +8923,7 @@ function prepareEditorPanel(root) {
     root.dataset.sbEditorPrepared = 'true';
     root.dataset.sbPresentation = 'manual';
     root.classList.add('sb-prompting-panel', 'sb-editor-panel');
-    const description = getShellConfig('left').customTabs.find(tab => tab.id === 'editor').description;
-    const header = createBackendSectionHeader({
-        description,
-        modeAttrs: { 'data-sb-editor-mode': '' },
-        descriptionAttrs: { 'data-i18n': description },
-    });
+    const header = createBackendSectionHeader({ modeAttrs: { 'data-sb-editor-mode': '' } });
     const meta = createElement('div', { className: 'sb-editor-meta' });
     meta.append(
         createElement('span', { attrs: { 'data-sb-editor-preset': '', 'aria-live': 'polite' } }),
@@ -8957,7 +8938,7 @@ function prepareEditorPanel(root) {
     });
     back.addEventListener('click', () => openShell('left', 'prompting'));
     header.querySelector('.sb-backend-title-row').append(back);
-    header.querySelector(':scope > p').after(meta);
+    header.append(meta);
     root.append(header);
     for (const [id, title] of [
         ['sb-editor-utility', 'Utility Prompts'],
@@ -9068,12 +9049,7 @@ function preparePromptingPanel(root) {
     const configuration = root.querySelector('#ai_response_configuration');
     if (!(configuration instanceof HTMLElement)) return;
 
-    const header = createBackendSectionHeader({
-        description: 'Manage presets and their settings, prompt templates, and reply options.',
-        modeAttrs: { 'data-sb-prompting-mode': '' },
-        descriptionAttrs: { 'data-i18n': 'Manage presets and their settings, prompt templates, and reply options.' },
-    });
-    configuration.prepend(header);
+    configuration.prepend(createBackendSectionHeader({ modeAttrs: { 'data-sb-prompting-mode': '' } }));
     const presetsContainer = configuration.querySelector('#respective-presets-block');
 
     for (const [id, title, description] of [
@@ -9119,7 +9095,7 @@ function preparePromptingPanel(root) {
         ['sb-tc-instruct', 'Instruct Template', 'Choose an instruct template and adjust how it formats messages for the AI.'],
         ['sb-tc-context', 'Context Template', 'Choose a context template and adjust its stopping rules.'],
         ['sb-tc-names', 'Character Names', 'Choose whether to add the character\'s name outside Instruct Mode.'],
-        ['sb-reasoning-template', 'Reasoning Template', 'TODO(copy)'],
+        ['sb-reasoning-template', 'Reasoning Template', 'Saves the reasoning prefix, suffix and separator under a name.'],
     ]) createPromptingGroup(id, title, description);
 
     // SillyBunny: keep range_block_openai around its groups for provider visibility and preset lookups.
@@ -9344,7 +9320,7 @@ function setServerAdminMessage(element, message, tone = 'neutral') {
 function groupAdvancedFormattingIntoDrawers() {
     const formatting = document.getElementById('AdvancedFormatting');
     if (!(formatting instanceof HTMLElement)) return;
-    const groupOrder = ['sb-af-tokenizer', 'sb-af-stopping', 'sb-af-reply-prefix', 'sb-af-cleanup', 'sb-af-reasoning', 'sb-af-reasoning-prompts', 'sb-af-rendering'];
+    const groupOrder = ['sb-af-tokenizer', 'sb-af-stopping', 'sb-af-reply-prefix', 'sb-af-cleanup', 'sb-af-reasoning', 'sb-af-reasoning-prompts', 'sb-af-rendering', 'sb-af-advanced'];
     const orderGroups = () => {
         const groups = groupOrder.map(id => formatting.querySelector(`#${id}`)).filter(group => group instanceof HTMLElement);
         const currentGroups = [...formatting.children].filter(child => child.classList.contains('sb-formatting-group'));
@@ -9388,9 +9364,11 @@ function groupAdvancedFormattingIntoDrawers() {
         ['reply-prefix', createGroup('sb-af-reply-prefix', 'Reply Prefix', 'Set how replies begin and whether that text appears in chat.')],
         ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup', 'Control line breaks, extra spaces, and unfinished sentences in replies.')],
         // SillyBunny: the caption of the Reasoning group says that its settings are global (placeholder P4).
-        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'TODO(copy)')],
+        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'These settings apply to every chat, whichever template is chosen.')],
         ['reasoning-prompts', createGroup('sb-af-reasoning-prompts', 'Add to Prompts')],
         ['rendering', createGroup('sb-af-rendering', 'Rendering', 'Keep specified standalone text from being treated as Markdown.')],
+        // SillyBunny: the upstream page heading, its documentation link and Master Import/Export are this group (filled by sillybunny-backend-pages.js).
+        ['advanced', createGroup('sb-af-advanced', 'Advanced Formatting')],
     ]);
 
     // SillyBunny: a block that the Formatting and Presets rows emptied stays out of the box it came from.
@@ -9421,7 +9399,6 @@ function groupAdvancedFormattingIntoDrawers() {
     };
 
     moveToPrompting('[name="bindModelPresetBlock"]', 'respective-presets-block');
-    moveToPrompting('#AdvancedFormatting > .flex-container.alignItemsBaseline > .flex-container[data-cc-null]', 'respective-presets-block');
     document.querySelectorAll('.sb-sampling-section').forEach(updateSamplingCardVisibility);
     const systemPromptBlock = systemColumn.querySelector('#SystemPromptBlock');
     movePromptingNode(systemColumn.querySelector(':scope > .title_restorable[data-cc-null]'), 'sb-tc-sysprompt');
@@ -9468,47 +9445,8 @@ function groupAdvancedFormattingIntoDrawers() {
         normalizeBackendSettingsRows(body, { fields: false });
     }
 
-    positionAdvancedFormattingHelpLink();
     updateEditorPanel();
     updatePromptingPanel(prompting);
-}
-
-function positionAdvancedFormattingHelpLink() {
-    const formatting = document.getElementById('AdvancedFormatting');
-    if (!(formatting instanceof HTMLElement)) return;
-
-    // SillyBunny: the legacy Advanced Formatting help link lived in the old baseline bar. The
-    // presentation pass moves the title into the flat header but leaves that link behind, which
-    // renders the question mark on its own line below the title. Move the live link beside the
-    // title and remove the now-empty legacy wrapper after presentation has built the header.
-    const advancedHeader = formatting.querySelector(':scope > .sb-settings-flat-header');
-    if (advancedHeader instanceof HTMLElement && formatting.firstElementChild !== advancedHeader) {
-        formatting.prepend(advancedHeader);
-    }
-
-    const advancedHeading = advancedHeader?.querySelector(':scope > .sb-settings-category-heading');
-    const advancedDescription = advancedHeading?.querySelector(':scope > small');
-    if (advancedDescription instanceof HTMLElement && advancedDescription.dataset.sbCopyPlaceholder === 'true') {
-        const description = 'Adjust token counting, stopping strings, text cleanup, and reasoning display.';
-        advancedDescription.textContent = description;
-        advancedDescription.dataset.i18n = description;
-        delete advancedDescription.dataset.sbCopyPlaceholder;
-    }
-    const notesLink = formatting.querySelector('a.notes-link[href*="advancedformatting"]');
-    const advancedTitle = advancedHeading?.querySelector(':scope > .sb-settings-category-title');
-    const legacyBar = formatting.querySelector(':scope > .flex-container.alignItemsBaseline');
-    if (legacyBar instanceof HTMLElement && legacyBar.childElementCount === 0) legacyBar.remove();
-    if (!(advancedHeader instanceof HTMLElement) || !(advancedHeading instanceof HTMLElement)
-        || !(notesLink instanceof HTMLElement) || !(advancedTitle instanceof HTMLElement)
-        || advancedHeading.querySelector(':scope > .sb-settings-category-title-row')) return;
-
-    const legacyTitle = notesLink.closest('h3');
-    const notesLegacyBar = legacyTitle?.closest('.flex-container.alignItemsBaseline');
-    const titleRow = createElement('div', { className: 'sb-settings-category-title-row' });
-    advancedTitle.before(titleRow);
-    titleRow.append(advancedTitle, notesLink);
-    legacyTitle?.remove();
-    if (notesLegacyBar instanceof HTMLElement && notesLegacyBar.childElementCount === 0) notesLegacyBar.remove();
 }
 
 function updateFormattingGroupVisibility(formatting) {
@@ -12968,7 +12906,6 @@ function reflattenRuntimeDrawers() {
         }
         flattenNestedSettingsDrawers(panel, { includeTopLevel: true });
         normalizeSettingsPresentation(panel, { name: tabId });
-        if (tabId === 'context') positionAdvancedFormattingHelpLink();
     }
 }
 

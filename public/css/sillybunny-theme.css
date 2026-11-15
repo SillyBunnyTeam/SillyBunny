@@ -3262,19 +3262,18 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .sb-backend-section-header {
-    display: grid;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     align-self: stretch;
-    align-content: start;
-    gap: 4px;
-    padding: 12px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
-    border-radius: var(--sb-radius-card);
-    background: color-mix(in srgb, var(--sb-shell-surface) 78%, transparent);
+    gap: 4px 12px;
+    min-width: 0;
 }
 
 .sb-backend-section-header > p {
     min-width: 0;
     overflow-wrap: anywhere;
+    font-size: var(--sb-type-caption, 12px);
 }
 
 .sb-backend-section-header p,

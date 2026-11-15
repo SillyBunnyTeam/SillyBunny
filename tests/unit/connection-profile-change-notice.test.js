@@ -263,6 +263,51 @@ describe('snapshot diff', () => {
         expect(resolveRegexPresetName(undefined, 'x')).toBe('');
         expect(resolveRegexPresetName([{ id: 'x', name: 'Mine' }], 'x')).toBe('Mine');
     });
+    test('each entry names the page and group that show its setting', () => {
+        // The Presets groups are the ones of Backend ▸ Presets after the regrouping: the radio sets, the Request Options
+        // dependent sets and the system messages each have a group of their own.
+        expect(Object.fromEntries(PROFILE_WATCH_LIST.map(entry => [entry.id, entry.group]))).toEqual({
+            'preset.openai': 'Presets > Presets',
+            'preset.textgenerationwebui': 'Presets > Presets',
+            'preset.kobold': 'Presets > Presets',
+            'preset.novel': 'Presets > Presets',
+            'gen.openai_max_tokens': 'Presets > Generation Settings',
+            'gen.openai_max_context': 'Presets > Generation Settings',
+            'gen.amount_gen': 'Presets > Generation Settings',
+            'gen.max_context': 'Presets > Generation Settings',
+            'gen.stream_openai': 'Presets > Generation Settings',
+            'gen.streaming_textgen': 'Presets > Generation Settings',
+            'gen.streaming_kobold': 'Presets > Generation Settings',
+            'gen.n_openai': 'Presets > Generation Settings',
+            'gen.n_textgen': 'Presets > Generation Settings',
+            'gen.nai_prefix': 'Presets > Generation Settings',
+            'sysprompt.enabled': 'Presets > System Prompt',
+            'sysprompt.name': 'Presets > System Prompt',
+            'sysprompt.content': 'Editor > System Prompt',
+            'instruct.enabled': 'Presets > Instruct Template',
+            'instruct.name': 'Presets > Instruct Template',
+            'context.name': 'Presets > Context Template',
+            'names.always_force_name2': 'Presets > Character Names',
+            'names.names_behavior_openai': 'Presets > Character Names Behavior',
+            'request.show_thoughts': 'Presets > Request model reasoning',
+            'request.reasoning_effort': 'Presets > Request Options',
+            'request.verbosity': 'Presets > Request Options',
+            'request.enable_web_search': 'Presets > Request Options',
+            'request.request_images': 'Presets > Request inline images',
+            'request.request_image_resolution': 'Presets > Request inline images',
+            'request.request_image_aspect_ratio': 'Presets > Request inline images',
+            'reasoning.name': 'Presets > Reasoning Template',
+            'reasoning.content': 'Presets > Reasoning Template',
+            'fmt.tokenizer': 'Formatting > Tokenizer & Padding',
+            'fmt.custom_stopping_strings': 'Formatting > Stopping Strings',
+            'prefill.user_prompt_bias': 'Formatting > Reply Prefix',
+            'fmt.single_line': 'Formatting > Text Cleanup',
+            'fmt.trim_sentences': 'Formatting > Text Cleanup',
+            'samplers': 'Sampling',
+            'regex.preset': 'Customize > Extensions > Regex',
+            'regex.content': 'Customize > Extensions > Regex',
+        });
+    });
     test('getWatchEntriesForApi filters by mode and the list has 39 entries', () => {
         expect(PROFILE_WATCH_LIST).toHaveLength(39);
         expect(getWatchEntriesForApi('openai').map(e => e.id)).not.toContain('fmt.tokenizer');

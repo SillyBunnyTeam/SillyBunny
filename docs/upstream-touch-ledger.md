@@ -1871,6 +1871,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-01, PR #870. |
 | Owner | Runtime and release integrator. |
 
+### `public/scripts/openai.js` - System Messages group and group search aliases
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/openai.js` |
+| Area | Presets page, Chat Completions: the group configs of `groupOpenAISettingsIntoDrawers()`. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The group configs of `groupOpenAISettingsIntoDrawers()`; `searchAliases` on a config is written as `data-sb-search-aliases` on the group, which `public/scripts/sillybunny-settings-search.js` reads. |
+| Adapter shape | Two `SillyBunny:` markers. The `sb-openai-names` config is titled "System Messages" with a new description, and carries its old title, "Character Names & Prompt Formatting", as a search alias; the drawer builder writes a config's aliases to the group. Setting ids, inputs and stored keys are unchanged. |
+| Protecting tests | `tests/sillybunny-backend-settings.e2e.js` (the System Messages group and its old title in search); `tests/sillybunny-settings-consistency.e2e.js` (Prompting group titles). |
+| Validation | 2026-11-15: root and tests lint, the full unit run, the settings inventory, parity and axe of Backend ▸ Formatting, Presets and Sampling, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-15, UI polish sweep (Phase 4, wave 3 sheet). |
+| Owner | `TODO(copy)` |
+
 ### `public/index.html` and `public/scripts/openai.js` - Preset API/Sampler Linking group
 
 | Field | Value |

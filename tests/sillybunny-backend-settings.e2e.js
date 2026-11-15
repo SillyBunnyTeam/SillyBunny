@@ -6,6 +6,7 @@ import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { selectTheme } from './helpers/page-contrast.js';
 import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
+import { getWatchEntriesForApi } from '../public/scripts/extensions/connection-manager/profile-change-model.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -120,7 +121,7 @@ async function expectPromptingFlow(prompting, api) {
     }
     await expect(prompting.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
         'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names Behavior', 'Continue Postfix',
-        'Character Names & Prompt Formatting', 'Reply Prefill', 'Request Options', 'Enable function calling', 'Send inline media',
+        'System Messages', 'Reply Prefill', 'Request Options', 'Enable function calling', 'Send inline media',
         'Request model reasoning', 'Reasoning Template',
     ]);
     await expect(prompting.locator('#completion_prompt_manager')).toHaveCount(0);
@@ -191,14 +192,16 @@ async function readBackendHeaderMetrics(header) {
     return header.evaluate(element => {
         const style = getComputedStyle(element);
         const titleRow = element.querySelector(':scope > .sb-backend-title-row');
-        const description = element.querySelector(':scope > p');
-        const descriptionStyle = description ? getComputedStyle(description) : null;
+        const note = element.querySelector(':scope > p');
+        const noteStyle = note ? getComputedStyle(note) : null;
         return {
             padding: style.padding,
             rowGap: style.rowGap,
+            // One line under the page header, without a box.
+            boxed: parseFloat(style.borderTopWidth) > 0 || style.backgroundColor !== 'rgba(0, 0, 0, 0)',
             titleRowHeight: titleRow?.getBoundingClientRect().height ?? 0,
-            descriptionFont: descriptionStyle ? `${descriptionStyle.fontSize}/${descriptionStyle.lineHeight}` : '',
-            descriptionWraps: descriptionStyle?.whiteSpace !== 'nowrap',
+            note: note?.textContent.trim() ?? null,
+            noteWraps: noteStyle ? noteStyle.whiteSpace !== 'nowrap' : null,
         };
     });
 }
@@ -286,7 +289,7 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 const promptingHeader = prompting.locator('#ai_response_configuration > .sb-backend-section-header');
                 await expect(promptingHeader).toBeVisible();
                 await expect(promptingHeader.locator(':scope > .sb-backend-title-row > [data-sb-prompting-mode]')).toBeVisible();
-                await expect(promptingHeader.locator(':scope > p')).toHaveText('Manage presets and their settings, prompt templates, and reply options.');
+                await expect(promptingHeader.locator(':scope > p')).toHaveCount(0);
                 await expect(promptingHeader.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
                 await expect(promptingHeader.locator('.sb-backend-disclaimer, button')).toHaveCount(0);
                 expect(await promptingHeader.evaluate(header => {
@@ -320,8 +323,10 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 expect(samplingHeaderMetrics.padding).toBe(promptingHeaderMetrics.padding);
                 expect(samplingHeaderMetrics.rowGap).toBe(promptingHeaderMetrics.rowGap);
                 expect(Math.abs(samplingHeaderMetrics.titleRowHeight - promptingHeaderMetrics.titleRowHeight)).toBeLessThanOrEqual(1);
-                expect(samplingHeaderMetrics.descriptionFont).toBe(promptingHeaderMetrics.descriptionFont);
-                expect(samplingHeaderMetrics.descriptionWraps && promptingHeaderMetrics.descriptionWraps).toBe(true);
+                expect(samplingHeaderMetrics.boxed || promptingHeaderMetrics.boxed).toBe(false);
+                expect(promptingHeaderMetrics.note).toBeNull();
+                expect(samplingHeaderMetrics.note).toBe('Some backends ignore samplers they do not support.');
+                expect(samplingHeaderMetrics.noteWraps).toBe(true);
                 await expectSamplingTaxonomy(sampling, api);
                 await expectNoOverflow(sampling);
                 await sampling.locator('.ds-row-expander__toggle[aria-expanded="false"]').evaluateAll(toggles => toggles.forEach(toggle => toggle.click()));
@@ -479,7 +484,7 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
     await selectBackend(page, 'textgenerationwebui', 'ooba');
     const textFormatting = await openPanel(page, 'context');
     await expect(textFormatting.locator('.sb-formatting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
-        'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering',
+        'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering', 'Advanced Formatting',
     ]);
 });
 
@@ -567,20 +572,110 @@ test('Preset API/Sampler Linking is a Chat Completions group of its own after Pr
     await expect(linking).toBeHidden();
 });
 
-test('The Reasoning groups of Formatting and Presets open each other and carry one placeholder caption each', async ({ page, baseURL }) => {
+test('The Reasoning groups of Formatting and Presets open each other and carry their captions', async ({ page, baseURL }) => {
     await loadSettings(page, baseURL);
     for (const api of ['openai', 'textgenerationwebui']) {
         await selectBackend(page, api, api === 'openai' ? 'openrouter' : 'ooba');
         const formatting = await openPanel(page, 'context');
         const reasoning = formatting.locator('#sb-af-reasoning');
-        await expect(reasoning.locator('.sb-settings-category-heading > small[data-sb-copy-placeholder="true"]')).toHaveText('TODO(copy)');
+        await expect(reasoning.locator('.sb-settings-category-heading > small')).toHaveText('These settings apply to every chat, whichever template is chosen.');
+        await expect(reasoning.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
         await reasoning.getByRole('button', { name: 'Reasoning Template', exact: true }).click();
         const prompting = page.locator('[data-sb-panel="prompting"]');
         const template = prompting.locator('#sb-reasoning-template');
         await expect(template.locator('.sb-settings-category-title')).toBeInViewport();
-        await expect(template.locator('.sb-settings-category-heading > small[data-sb-copy-placeholder="true"]')).toHaveText('TODO(copy)');
+        await expect(template.locator('.sb-settings-category-heading > small')).toHaveText('Saves the reasoning prefix, suffix and separator under a name.');
+        await expect(template.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
         await template.getByRole('button', { name: 'Reasoning', exact: true }).click();
         await expect(reasoning.locator('.sb-settings-category-title')).toBeInViewport();
+    }
+});
+
+test('Formatting ends with the Advanced Formatting group: its documentation link and the upstream Master Import and Export buttons', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    const formatting = await openPanel(page, 'context');
+    const group = formatting.locator('#sb-af-advanced');
+    await expect(formatting.locator('.sb-formatting-group:visible').last()).toHaveAttribute('id', 'sb-af-advanced');
+    await expect(group.locator('.sb-settings-category-title')).toHaveText('Advanced Formatting');
+    await expect(group.locator('.sb-settings-category-title-row > a.notes-link')).toHaveAccessibleName('Help');
+    await expect(group.locator('.sb-settings-category-heading > small')).toHaveCount(0);
+    await expect(group.locator('.ds-row-label')).toHaveText(['Master Import', 'Master Export']);
+    // The buttons are the upstream nodes: their ids and handlers are what the preset manager bound.
+    for (const id of ['af_master_import', 'af_master_export']) {
+        await expect(group.locator(`.ds-row > .ds-row-suffix > #${id}`)).toBeVisible();
+        await expect(page.locator(`#${id}`)).toHaveCount(1);
+    }
+    await expect(group.locator(':scope > #af_master_import_file')).toHaveCount(1);
+    await expect(formatting.locator('#AdvancedFormatting > .sb-settings-flat-header:visible, #AdvancedFormatting > .flex-container:visible')).toHaveCount(0);
+    const chooser = page.waitForEvent('filechooser');
+    await group.locator('#af_master_import').click();
+    expect((await chooser).isMultiple()).toBe(false);
+
+    await selectBackend(page, 'openai', 'makersuite');
+    await openPanel(page, 'context');
+    await expect(group).toBeHidden();
+    await selectBackend(page, 'kobold');
+    await openPanel(page, 'context');
+    await expect(group.locator('#af_master_export')).toBeVisible();
+});
+
+test('System Messages is the former Character Names & Prompt Formatting group, which the settings search still finds by that title', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'openai', 'makersuite');
+    const prompting = await openPanel(page, 'prompting');
+    const group = prompting.locator('#sb-openai-names');
+    await expect(group.locator('.sb-settings-category-title')).toHaveText('System Messages');
+    await expect(group.locator('.sb-settings-category-heading > small')).toHaveText('Choose how system messages and the system prompt are sent.');
+    await expect(group).toHaveAttribute('data-sb-search-aliases', 'Character Names & Prompt Formatting');
+    await expect(group.locator('.ds-row-label:visible')).toHaveText(['Squash system messages', 'Use system prompt']);
+
+    const toggle = page.locator('#sb-settings-search-toggle');
+    if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+    await page.locator('#sb-settings-search-input').fill('Prompt Formatting');
+    await expect(group).toBeVisible();
+    // The search hides what does not match with aria-hidden.
+    await expect(prompting.locator('#sb-openai-request')).toHaveAttribute('aria-hidden', 'true');
+    await expect(group).not.toHaveAttribute('aria-hidden', 'true');
+});
+
+test('Max prompt cost is a property row of Generation Settings, shown for the providers that price a prompt', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    const costs = { openrouter: 'openrouter_max_prompt_cost', electronhub: 'electronhub_max_prompt_cost', chutes: 'chutes_max_prompt_cost' };
+    for (const source of ['openrouter', 'electronhub', 'chutes', 'openai']) {
+        await selectBackend(page, 'openai', source);
+        const prompting = await openPanel(page, 'prompting');
+        const rows = prompting.locator('#sb-openai-budget .ds-row-property');
+        await expect(rows).toHaveCount(3);
+        await expect(rows.filter({ visible: true })).toHaveCount(source in costs ? 1 : 0);
+        if (!(source in costs)) continue;
+        const value = prompting.locator(`#${costs[source]}`);
+        await expect(value).toBeVisible();
+        await expect(value).toHaveClass(/ds-row-property__value/);
+        await expect(value.locator('xpath=ancestor::*[contains(@class, "ds-row-property")][1]').locator('.ds-row-subtitle')).toHaveText('Max prompt cost');
+        // The model list writes the cost into the upstream node.
+        await value.evaluate(node => { node.textContent = '$0.123'; });
+        await expect(value).toHaveText('$0.123');
+    }
+});
+
+test('The connection profile change notice names the Presets and Formatting groups that show each setting', async ({ page, baseURL }) => {
+    test.setTimeout(120000);
+    await loadSettings(page, baseURL);
+    const pages = { Presets: 'prompting', Formatting: 'context' };
+    // Gemini shows every Request Options set: inline images, reasoning, web search.
+    for (const [api, source] of [['openai', 'makersuite'], ['textgenerationwebui', 'ooba'], ['kobold', null], ['koboldhorde', null], ['novel', null]]) {
+        await selectBackend(page, api, source);
+        const titles = {};
+        for (const [name, tab] of Object.entries(pages)) {
+            const panel = await openPanel(page, tab);
+            titles[name] = await panel.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE).allTextContents();
+        }
+        for (const entry of getWatchEntriesForApi(api)) {
+            const [name, group, ...rest] = entry.group.split(' > ');
+            if (!(name in pages) || rest.length) continue;
+            expect(titles[name], `${entry.id} is shown in ${entry.group} for ${api}`).toContain(group);
+        }
     }
 });
 
