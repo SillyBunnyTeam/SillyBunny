@@ -23,12 +23,12 @@ function stylesheetReady() {
 /**
  * Loads the sheet that draws the page unless it has loaded. A page that appears before the sheet is ready stays
  * invisible until it is, so that it never shows unstyled.
- * @param {HTMLElement} element
+ * @param {(unstyled: boolean) => void} setUnstyled
  */
-function holdUntilStyled(element) {
+function holdUntilStyled(setUnstyled) {
     const load = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
     if (!load || stylesheetReady()) return;
-    element.style.visibility = 'hidden';
+    setUnstyled(true);
     const loading = Promise.resolve(load(STYLESHEET.href, { id: STYLESHEET.id }));
     // The sheet's own load event also shows the page: a loader that waits for more than the sheet must not hold it back.
     const link = document.getElementById(STYLESHEET.id);
@@ -38,7 +38,7 @@ function holdUntilStyled(element) {
     }) : loading;
     Promise.race([loading, loaded])
         .catch(error => console.warn('Failed to load the status page styles.', error))
-        .finally(() => element.style.removeProperty('visibility'));
+        .finally(() => setUnstyled(false));
 }
 
 /**
@@ -53,10 +53,11 @@ function holdUntilStyled(element) {
  * @param {{id?: string, label: string, onActivate?: (event: MouseEvent) => void, primary?: boolean}[]} [options.actions=[]] A loading page keeps the first only, such as Cancel.
  * @param {boolean} [options.compact=false]
  * @param {number} [options.delay] Milliseconds before the page shows: `STATUS_PAGE_LOADING_DELAY` for `loading`, none otherwise.
+ * @param {boolean} [options.reserveSpace=false] The page keeps its place during the delay and is only unpainted, for a region that would otherwise collapse to nothing while it waits.
  * @param {HTMLElement} [options.busy] The region that waits. It is marked busy until `release` or an update to another state.
  * @returns {{element: HTMLDivElement, update: (values: {state?: string, icon?: string, title?: string, description?: string}) => void, release: () => void}}
  */
-export function createStatusPage({ state, icon, title, description, actions = [], compact = false, delay, busy }) {
+export function createStatusPage({ state, icon, title, description, actions = [], compact = false, delay, reserveSpace = false, busy }) {
     checkState(state);
     const id = `sb-status-page-${++pageCount}`;
     const element = document.createElement('div');
@@ -72,11 +73,19 @@ export function createStatusPage({ state, icon, title, description, actions = []
     let region = null;
     let timer = 0;
     let currentIcon = icon ?? DEFAULT_ICONS[state];
+    let held = false;
+    let unstyled = false;
+    const paint = () => {
+        if (held || unstyled) element.style.visibility = 'hidden';
+        else element.style.removeProperty('visibility');
+    };
 
     const reveal = () => {
         clearTimeout(timer);
         timer = 0;
         element.hidden = false;
+        held = false;
+        paint();
     };
     let labelled = false;
 
@@ -175,9 +184,14 @@ export function createStatusPage({ state, icon, title, description, actions = []
     if (state === 'loading') markBusy();
     const wait = delay ?? (state === 'loading' ? STATUS_PAGE_LOADING_DELAY : 0);
     if (wait > 0) {
-        element.hidden = true;
+        if (reserveSpace) held = true;
+        else element.hidden = true;
         timer = setTimeout(reveal, wait);
     }
-    holdUntilStyled(element);
+    holdUntilStyled(value => {
+        unstyled = value;
+        paint();
+    });
+    paint();
     return { element, update, release };
 }

@@ -6,6 +6,7 @@ import path from 'node:path';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tabsCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8').replace(/\r\n/g, '\n');
 const importCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-character-import.css'), 'utf8');
+const editorShellCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-editor-shell.css'), 'utf8');
 
 function getRuleBodies(selector) {
     const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -24,11 +25,10 @@ describe('mobile shell icon alignment css', () => {
         expect(tabIconRule).toContain('justify-content: center;');
     });
 
-    test('centers the rebuilt Import drop-zone contents in its deferred stylesheet, not retired tiles', () => {
-        const zone = importCss.match(/\.sb-import-drop\s*\{([^}]+)\}/)[1];
-        expect(zone).toContain('display: flex;');
-        expect(zone).toContain('align-items: center;');
-        expect(zone).toContain('justify-content: center;');
+    test('the rebuilt Import drop area is a button row, so its contents are centred by the shared row and not by a rule of its own', () => {
+        expect(importCss).not.toMatch(/\.sb-import-drop\s*\{/);
+        const buttonRow = [...editorShellCss.matchAll(/\.ds-row\.ds-button-row\s*\{([^}]*)\}/g)].map(match => match[1]).join('\n');
+        expect(buttonRow).toContain('justify-content: center;');
         expect(tabsCss).not.toContain('.sb-character-import-action');
     });
 });

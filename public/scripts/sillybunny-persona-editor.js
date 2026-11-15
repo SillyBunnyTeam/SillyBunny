@@ -419,7 +419,7 @@ export function mountPersonaEditor(container) {
     };
     shell.root.addEventListener('keydown', onEscape);
     function isOpen() {
-        return !destroyed && !shell.root.hidden && !shell.root.closest('[hidden], [aria-hidden="true"], [inert]');
+        return !destroyed && !shell.root.hidden && !shell.root.closest('[hidden], [aria-hidden="true"]');
     }
     const unregister = registerEditorNavigation({
         session: {

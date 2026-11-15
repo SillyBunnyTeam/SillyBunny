@@ -6721,6 +6721,16 @@
         {"identity":"#min_length_counter_novel","kind":"number","where":"hidden"}
       ]
     },
+    "settings.characters.import": {
+      "root": "#sb_character_import_content",
+      "controls": [
+        {"identity":"#sb_character_import_drop","identityKind":"id","kind":"button","name":"Import Character from File","group":"Import from file","where":"visible"},
+        {"identity":"#sb_character_import_files","kind":"file","where":"hidden"},
+        {"identity":"#sb_character_import_urls","identityKind":"id","kind":"textarea","name":"Enter the URL of the content to import","where":"visible","lands":"none"},
+        {"identity":"#sb_character_import_url_action","identityKind":"id","kind":"button","name":"Import","where":"visible"},
+        {"identity":"data:data-sb-editor-field=character-library","identityKind":"data","kind":"button","name":"Browse Characters","where":"visible"}
+      ]
+    },
     "settings.conversation.panel": {
       "root": "#sb_conversation_settings_drawer",
       "skip": [".sb-conversation-partner-list"],

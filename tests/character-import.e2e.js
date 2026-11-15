@@ -111,6 +111,18 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     });
 }
 
+test('an import that cannot refresh the character list ends on the Error page, which a user reaches', async ({ page }) => {
+    await bootImport(page);
+    // Every file is imported on its own, so a failure of the whole run can only come after them: the list is read again once they are in.
+    await page.route('**/api/characters/all', route => route.fulfill({ status: 500, contentType: 'text/plain', body: 'The server is down' }));
+    await page.setInputFiles('#sb_character_import_files', [upload()]);
+    const results = page.locator('#sb_character_import_results');
+    await expect(results).toHaveAttribute('data-state', 'error');
+    await expect(results.locator('.sb-status-page[data-state="error"]')).toBeVisible();
+    await expect(page.locator('#sb_character_import_drop')).toBeEnabled();
+    await expect(page.locator('#sb_character_import_content')).toHaveAttribute('aria-busy', 'false');
+});
+
 const typography = node => {
     const style = getComputedStyle(node);
     return { fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight, color: style.color };
@@ -144,11 +156,11 @@ for (const width of [1440, 768, 390]) {
                 await window.SillyBunnyShell.openTab('characters', 'import');
             }, theme);
             const suffix = `${width}-${theme.replaceAll(' ', '-')}`;
-            const importHeading = await page.locator('#sb_import_heading_file').evaluate(typography);
-            const importFrame = await page.locator('.sb-import-fields').first().evaluate(frame);
+            const importHeading = await page.locator('#sb_character_import_panel [data-sb-editor-field="import-file"] .ds-pref-group-heading').evaluate(typography);
+            const importFrame = await page.locator('#sb_character_import_panel .ds-pref-group').first().evaluate(frame);
             await expect(page.locator('#sb_character_import_panel .ds-pref-group h3')).toHaveCount(0);
             await expect(page.locator('#sb_character_import_library')).toHaveText('Browse Characters');
-            await page.locator('#sb_import_heading_file').scrollIntoViewIfNeeded();
+            await page.locator('#sb_character_import_panel [data-sb-editor-field="import-file"] .ds-pref-group-heading').scrollIntoViewIfNeeded();
             await page.mouse.move(0, 0);
             await page.screenshot({ path: test.info().outputPath(`step7-import-${suffix}-top.png`) });
             const results = page.locator('#sb_character_import_results');

@@ -254,6 +254,24 @@ test('closing Settings over an unsaved World Info entry asks first and Discard s
     expect(saved.map(entry => entry.content)).not.toContain(EDITED);
 });
 
+// A phone keeps the pane that is off screen inert; the editor in it is still the open one, so leaving it still asks.
+for (const [name, open, fill] of [
+    ['persona', openPersonaEditor, entry => entry.getByRole('textbox', { name: 'Persona Description', exact: true }).fill(EDITED)],
+    ['World Info entry', openBookEntry, content => content.fill(EDITED)],
+]) {
+    test(`at 390px, going Back to the sidebar over an unsaved ${name} edit still asks before another tab opens`, async ({ page }) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await bootFixtures(page);
+        await bootApp(page);
+        await fill(await open(page));
+        await page.locator('#sb-settings-back').click();
+        await expect(page.locator('#sb-settings-content')).toHaveJSProperty('inert', true);
+        await page.locator('button[data-sb-settings-tab="import"]').click();
+        await expect(page.locator('dialog.popup[open]:not([closing])', { hasText: 'You have unsaved changes' })).toBeVisible();
+        await expect(page.locator('#sb_character_import_panel')).toBeHidden();
+    });
+}
+
 test('closing Settings over an unsaved card edit asks first at 390px and Discard sends no card edit', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const writes = await bootFixtures(page);

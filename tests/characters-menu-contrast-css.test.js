@@ -130,7 +130,8 @@ describe('Characters menu contrast and token contracts', () => {
     test('migrated cards and overlays use their own radius roles without decorative accent', () => {
         expect(rule(editor, '.sb-editor-sheet .ds-pref-group')).toContain('border-radius: var(--sb-radius-card);');
         expect(rule(sheet('editor-shell'), '.sb-list-editor .ds-pref-group')).toContain('border-radius: var(--sb-radius-card);');
-        expect(sheet('character-import')).toContain('border-radius: var(--sb-radius-card);');
+        // Import's groups are the shared groups; their frame is held equal to the editor's by the framing check of character-import.e2e.js.
+        expect(sheet('character-import')).not.toMatch(/\.ds-pref-group/);
         expect(sheet('tag-manager')).not.toContain('--sb-radius-dialog');
         // The Tag Manager sheet is the shared dialog frame (sillybunny-editor/dialog.js).
         expect(rule(theme, '.sb-dialog-host[data-presentation=\'sheet\'] .sb-dialog')).toContain('border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;');

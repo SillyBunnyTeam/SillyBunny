@@ -11,7 +11,7 @@
         "public/css/sillybunny-character-import.css": {
             "important": 2,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 12
+            "spacing-off-scale": 6
         },
         "public/css/sillybunny-character-list.css": {
             "radius-literal": 2,
@@ -117,7 +117,7 @@
             "breakpoint-off-set": 12,
             "breakpoint-1000": 2,
             "focus-outline": 1,
-            "spacing-off-scale": 170,
+            "spacing-off-scale": 169,
             "spacing-off-scale-fallback": 2
         },
         "public/css/sillybunny-tag-manager.css": {

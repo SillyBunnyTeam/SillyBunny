@@ -87,7 +87,7 @@ function isSettingsUiVisible() {
     if (!element) return false;
     // Detached panels are populated once before being handed to the host.
     if (!element.isConnected) return true;
-    if (element.closest('[hidden], [aria-hidden="true"], [inert], .closedDrawer, .sb-subpage-store, dialog:not([open]), .sb-shell-panel:not(.sb-shell-panel-active), .sb-settings-mounted-shell:not(.sb-settings-active-root)')) return false;
+    if (element.closest('[hidden], [aria-hidden="true"], .closedDrawer, .sb-subpage-store, dialog:not([open]), .sb-shell-panel:not(.sb-shell-panel-active), .sb-settings-mounted-shell:not(.sb-settings-active-root)')) return false;
     for (let node = element; node; node = node.parentElement) {
         if (node.style.display === 'none') return false;
     }

@@ -98,6 +98,56 @@ for (const width of [1440, 390]) {
     });
 
     for (const tab of ['world-info', 'persona', 'import']) {
+        test(`${tab} first open holds its place from the first frame and paints the loading page only after its delay at ${width}`, async ({ page }) => {
+            await prepare(page, width);
+            await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
+            await settleNavigation(page);
+            const hostId = { 'world-info': 'sb_character_world_info_panel', persona: 'sb_character_persona_panel', import: 'sb_character_import_panel' }[tab];
+            await page.evaluate(({ tab, hostId }) => {
+                const load = window.SillyBunnyAssets.loadStylesheetAsync;
+                const gate = new Promise(resolve => { window.__p5Release = resolve; });
+                window.SillyBunnyAssets.loadStylesheetAsync = async (...args) => {
+                    await load(...args);
+                    await gate;
+                };
+                window.__p5Frames = [];
+                window.__p5Sampling = true;
+                const host = document.getElementById(hostId);
+                const start = performance.now();
+                const sample = () => {
+                    const status = document.querySelector('.sb-character-panel-loading');
+                    window.__p5Frames.push({
+                        at: performance.now() - start,
+                        shown: !host.hidden,
+                        waiting: Boolean(status) && !status.hidden,
+                        painted: Boolean(status) && !status.hidden && getComputedStyle(status).visibility !== 'hidden',
+                        height: status?.getBoundingClientRect().height ?? 0,
+                    });
+                    if (window.__p5Sampling) requestAnimationFrame(sample);
+                };
+                window.__p5Opening = window.SillyBunnyShell.openTab('characters', tab);
+                requestAnimationFrame(sample);
+            }, { tab, hostId });
+            await page.waitForFunction(() => window.__p5Frames.some(frame => frame.painted));
+            await page.evaluate(() => window.__p5Release());
+            await page.evaluate(() => window.__p5Opening);
+            await expect(page.locator(`#${hostId}`)).toBeVisible();
+            const { frames, delay } = await page.evaluate(async () => {
+                for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame);
+                window.__p5Sampling = false;
+                return { frames: window.__p5Frames, delay: (await import('/scripts/sillybunny-editor/status-page.js')).STATUS_PAGE_LOADING_DELAY };
+            });
+            const before = frames.filter(frame => !frame.shown);
+            expect(before.length).toBeGreaterThan(delay / 40);
+            // The page is there, with its size, on every frame the panel is not; it is painted only once its delay has passed.
+            for (const frame of before) {
+                expect(frame.waiting).toBe(true);
+                expect(frame.height).toBeGreaterThan(0);
+            }
+            expect(before.filter(frame => frame.painted).map(frame => frame.at).filter(at => at < delay)).toEqual([]);
+            expect(before.filter(frame => !frame.painted).map(frame => frame.at).filter(at => at >= delay + 150)).toEqual([]);
+        });
+
         test(`${tab} first open has only loading then a settled final layout at ${width}`, async ({ page }) => {
             await prepare(page, width);
             await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));

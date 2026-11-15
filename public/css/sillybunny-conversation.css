@@ -3438,7 +3438,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     z-index: 5;
     pointer-events: none;
 }
-#rm_button_characters,
 #rightNavDrawerIcon {
     position: relative;
 }

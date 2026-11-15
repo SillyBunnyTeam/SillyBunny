@@ -60,6 +60,7 @@ test.describe('phone settings page: the keyboard never enters the pane that is o
         await loadApp(page, baseURL, { viewport: { width: 390, height: 844 } });
         await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'sampling'));
         await expect(page.locator('button[data-sb-settings-tab="sampling"]')).toHaveAttribute('aria-selected', 'true');
+        await showSettingsSidebar(page);
     });
 
     test('with the sidebar showing, Tab from the search field never enters the page or scrolls the pane sideways', async ({ page }) => {
@@ -113,6 +114,31 @@ test.describe('phone settings page: the keyboard never enters the pane that is o
         await expect(page.locator('#sb-settings-search-input')).toBeFocused();
         expect(await scrollLeftOfPane(page)).toBe(0);
         expect((await page.locator('#sb-settings-sidebar').boundingBox()).x).toBe(0);
+    });
+
+    test('Back pressed while a page is still being built stays on the sidebar when the build finishes', async ({ page }) => {
+        let requested = 0;
+        await page.route('**/scripts/sillybunny-appearance.js*', async route => {
+            requested++;
+            await new Promise(resolve => setTimeout(resolve, 2500));
+            await route.continue();
+        });
+        await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'appearance'));
+        const busy = page.locator('[data-sb-panel="appearance"] [aria-busy="true"], [data-sb-panel="appearance"][aria-busy="true"]');
+        await expect(busy.first()).toBeAttached();
+        await page.locator('#sb-settings-back').click();
+        await expect(page.locator('#sb-settings-page')).not.toHaveClass(/sb-settings-page--content/);
+        await expect(busy).toHaveCount(0, { timeout: 15_000 });
+        expect(requested, 'the Appearance module was requested after the route was set').toBeGreaterThan(0);
+        await expect(page.locator('#sb-settings-page')).not.toHaveClass(/sb-settings-page--content/);
+        await expect(page.locator('#sb-settings-content')).toHaveJSProperty('inert', true);
+        await expect(page.locator('#sb-settings-sidebar')).toHaveJSProperty('inert', false);
+    });
+
+    test('Escape closes the page from the sidebar, where the Close button is off screen and inert', async ({ page }) => {
+        await expect(page.locator('#sb-settings-content')).toHaveJSProperty('inert', true);
+        await page.keyboard.press('Escape');
+        await expect(page.locator('#sb-settings-page')).toBeHidden();
     });
 
     test('the audit helper does not press the Back button that is off screen', async ({ page }) => {

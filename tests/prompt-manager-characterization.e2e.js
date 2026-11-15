@@ -1089,7 +1089,6 @@ test.describe('Prompt editor mobile interaction', () => {
         const store = await installFixture(page);
         const ui = promptEditorDriver(page);
         await ui.open();
-        await page.getByRole('tab', { name: 'Editor', exact: true }).click();
         await ui.openEditor('sbFixtureInChat');
         const editor = page.locator('.sb-prompt-detail');
         await expect(page.locator('.sb-prompt-owned > .sb-backend-section-header')).toBeHidden();
@@ -1119,7 +1118,6 @@ test.describe('Prompt editor mobile interaction', () => {
             const store = await installFixture(page);
             const ui = promptEditorDriver(page);
             await ui.open();
-            await page.getByRole('tab', { name: 'Editor', exact: true }).click();
             const root = page.locator('.sb-prompt-editor');
             const list = page.locator('.sb-prompt-list');
             const editor = page.locator('.sb-prompt-detail');

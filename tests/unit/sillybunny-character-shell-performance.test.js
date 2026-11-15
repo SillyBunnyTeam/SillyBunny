@@ -167,11 +167,11 @@ describe('Characters tab shell', () => {
         prepared.resolve();
         expect(await first).toBe(false);
         expect(host.hidden).toBe(true);
-        expect(status.hidden).toBe(true);
+        expect(status.isConnected).toBe(false);
         expect(controller.onReveal).not.toHaveBeenCalled();
         expect(await api.revealDeferredCharacterPanel(host, host, mount)).toBe(controller);
         expect(host.hidden).toBe(false);
-        expect(status.hidden).toBe(true);
+        expect(host.nextElementSibling).toBeNull();
         expect(host.getAttribute('aria-hidden')).toBe('false');
         expect(controller.onReveal).toHaveBeenCalledTimes(1);
     });
@@ -209,7 +209,7 @@ describe('Characters tab shell', () => {
         nextReady.resolve();
         expect(await next).toBe(nextController);
         expect(host.hidden).toBe(false);
-        expect(host.nextElementSibling.hidden).toBe(true);
+        expect(host.nextElementSibling).toBeNull();
     });
 
     test('closing the page retains ready WI layout but cancels stale reveals and keeps the adapter inactive', async () => {
@@ -243,7 +243,7 @@ describe('Characters tab shell', () => {
         pending.resolve();
         expect(await reopening).toBe(false);
         expect(host.hidden).toBe(true);
-        expect(host.nextElementSibling.hidden).toBe(true);
+        expect(host.nextElementSibling).toBeNull();
     });
 
     test('hidden Related rows mark dirty without reconciling; the next reveal consumes the dirty state', () => {

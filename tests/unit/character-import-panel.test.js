@@ -29,7 +29,7 @@ let host;
 beforeEach(() => {
     jest.clearAllMocks();
     extension_settings.disabledExtensions.length = 0;
-    document.body.innerHTML = '<div id="sb_character_import_panel"><div id="sb_character_import_loading"></div><div id="sb_character_import_content" hidden></div></div>';
+    document.body.innerHTML = '<div id="sb_character_import_panel"><div id="sb_character_import_content" hidden></div></div>';
     host = document.getElementById('sb_character_import_panel');
     runCharacterImport.mockResolvedValue([]);
     globalThis.requestAnimationFrame = callback => { callback(); };
@@ -75,7 +75,7 @@ describe('Import tab', () => {
         const running = controller.run({ files: [] });
         expect(host.querySelector('#sb_character_import_results').dataset.state).toBe('loading');
         expect(host.querySelector('#sb_character_import_content').getAttribute('aria-busy')).toBe('true');
-        expect(host.querySelector('#sb_character_import_file_action').disabled).toBe(true);
+        expect(host.querySelector('#sb_character_import_drop').disabled).toBe(true);
         finish([character, { kind: 'character', name: '<bad>', ok: false, error: '<script>server error</script>' }]);
         await running;
         expect(runCharacterImport).toHaveBeenCalledWith({ files: [], policy: 'stay' });
@@ -83,7 +83,7 @@ describe('Import tab', () => {
         expect(host.querySelectorAll('[data-import-status]')).toHaveLength(2);
         expect(host.querySelector('script')).toBeNull();
         expect(host.textContent).toContain('<script>server error</script>');
-        expect(host.querySelector('#sb_character_import_file_action').disabled).toBe(false);
+        expect(host.querySelector('#sb_character_import_drop').disabled).toBe(false);
     });
     test('Chat selects without opening the editor; Edit records Import as the Back destination', async () => {
         runCharacterImport.mockResolvedValue([character]);
@@ -122,6 +122,7 @@ describe('Import tab', () => {
         const library = host.querySelector('#sb_character_import_library');
         expect(library.hidden).toBe(false);
         expect(library.textContent).toBe('Browse Characters');
+        expect(library.querySelector('[role="group"]').getAttribute('aria-label')).toBe('Browse Characters');
         library.querySelector('button').click();
         expect(emit).toHaveBeenCalledWith('library', false);
         extension_settings.disabledExtensions.push('assets');
@@ -133,7 +134,7 @@ describe('Import tab', () => {
         await mountCharacterImport(host).run({});
         await tick();
         expect(host.querySelector('.ds-pref-group h3')).toBeNull();
-        expect(host.querySelectorAll('.sb-import-section > header > h3')).toHaveLength(3);
+        expect(host.querySelectorAll('.sb-import-section > .ds-pref-group-header > h3')).toHaveLength(3);
         expect(host.querySelector('.sb-import-source-botbooru').textContent).toBe('BotBooru');
         const img = host.querySelector('.ds-entity-row img');
         expect(img.getAttribute('src')).toBe('/thumbnail?file=card.png');

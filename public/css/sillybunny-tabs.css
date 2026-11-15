@@ -1357,8 +1357,6 @@ body:not(.movingUI) .drawer-content.maximized {
     flex: 0 0 auto;
 }
 
-#right-nav-panel #rm_button_panel_pin_div,
-#right-nav-panel #rm_button_characters,
 #right-nav-panel #character_import_button,
 #right-nav-panel #external_import_button {
     position: absolute !important;
@@ -1423,28 +1421,6 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-character-world-info-panel #WorldInfoheader {
     display: none !important;
-}
-
-
-#sb_character_editor_exit {
-    display: none;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: center;
-    width: 42px;
-    min-width: 42px;
-    height: 42px;
-    min-height: 42px;
-    margin-left: 8px;
-    padding: 0;
-    border-radius: var(--sb-radius-pill);
-}
-
-@media screen and (min-width: 769px) {
-    #right-nav-panel[data-menu-type="character_edit"] #sb_character_editor_exit,
-    #right-nav-panel[data-menu-type="create"] #sb_character_editor_exit {
-        display: inline-flex;
-    }
 }
 
 
@@ -3464,10 +3440,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         justify-content: center;
     }
 }
-
-/* SillyBunny: the editors' rename affordance is the header title button, so the
-   legacy #rm_button_selected_ch h2 pointing-hand styling is gone with it; the
-   element itself still lives in #rm_PinAndTabs and is written to as a transport. */
 
 #character_popup.sb-character-popup-compat-stub {
     display: none !important;
@@ -8482,7 +8454,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
         min-height: 48px;
     }
 
-    :is(.sb-shell-nav-scroll, .sb-mobile-panel-close, #sb_character_editor_exit, .sb-settings-search-toggle-btn, .sb-settings-close-button, .sb-settings-back-button, .sb-subpage-back, .sb-connections-help) {
+    :is(.sb-shell-nav-scroll, .sb-mobile-panel-close, .sb-settings-search-toggle-btn, .sb-settings-close-button, .sb-settings-back-button, .sb-subpage-back, .sb-connections-help) {
         width: 44px;
         min-width: 44px;
         max-width: none;

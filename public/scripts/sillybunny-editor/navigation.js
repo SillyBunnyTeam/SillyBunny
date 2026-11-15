@@ -10,7 +10,8 @@ import { askLeaveEditor } from './leave-dialog.js';
 /**
  * @typedef {object} EditorRegistration
  * @property {ReturnType<typeof import('./session.js').createEditorSession>} session
- * @property {() => boolean} isActive  Authoritative "this editor is on screen" check.
+ * @property {() => boolean} isActive  Authoritative "this editor is the open one" check. An editor in a pane that a phone has slid
+ *     off screen is still the open one, and that pane is inert, so inertness must not count against it.
  * @property {() => void} close  Leaves the editor (navigates back to its list).
  * @property {() => void} [afterDiscard]  Editor-specific resync after a discard.
  * @property {string} [guardSelector]  Click targets that must pass the leave guard first.

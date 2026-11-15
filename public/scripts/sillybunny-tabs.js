@@ -791,7 +791,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:import': [
         { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261116f', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-import.css?v=20261112m', id: 'deferred-character-import-css' },
+        { href: 'css/sillybunny-character-import.css?v=20261116i', id: 'deferred-character-import-css' },
     ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
@@ -6514,34 +6514,37 @@ function hideDeferredCharacterPanel(host, content = host, { preserveLayout = fal
     if (state) {
         state.requested = false;
         state.revision++;
-        state.status.element.hidden = true;
-        state.status.release();
+        dismissCharacterPanelStatus(state);
     }
     if (!preserveLayout) host.hidden = true;
     host.setAttribute('aria-hidden', 'true');
     content?.setAttribute('aria-hidden', 'true');
 }
 
+function dismissCharacterPanelStatus(state) {
+    state.status?.release();
+    state.status?.element.remove();
+    state.status = null;
+}
+
 function revealDeferredCharacterPanel(host, content, mount) {
     if (!(host instanceof HTMLElement)) return Promise.resolve(false);
     let state = deferredCharacterPanels.get(host);
     if (!state) {
-        // A panel that is switched to shows nothing else while it loads, so this page has no delay: a frame is never blank.
-        // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
-        const status = createStatusPage({ state: 'loading', title: t`Loading...`, delay: 0, busy: host });
-        status.element.classList.add('sb-character-panel-loading');
-        status.element.hidden = true;
-        status.release();
-        host.after(status.element);
-        state = { status, revision: 0, requested: false, reveal: null };
+        state = { status: null, revision: 0, requested: false, reveal: null };
         deferredCharacterPanels.set(host, state);
     }
     if (state.requested) return state.reveal;
     hideDeferredCharacterPanel(host, content);
     state.requested = true;
     const revision = ++state.revision;
-    state.status.update({ state: 'loading', title: t`Loading...` });
-    state.status.element.hidden = false;
+    // A fast load shows no loading page, because the page waits like any other. This one keeps its place meanwhile, so that
+    // no frame between the old panel and the new one is empty.
+    // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+    const status = createStatusPage({ state: 'loading', title: t`Loading...`, reserveSpace: true, busy: host });
+    status.element.classList.add('sb-character-panel-loading');
+    host.after(status.element);
+    state.status = status;
     const isCurrent = () => state.requested && state.revision === revision;
     state.reveal = (async () => {
         const controller = await mount();
@@ -6549,8 +6552,7 @@ function revealDeferredCharacterPanel(host, content, mount) {
         if (!controller || !isCurrent()) return false;
         await controller.prepareReveal?.();
         if (!isCurrent()) return false;
-        state.status.element.hidden = true;
-        state.status.release();
+        dismissCharacterPanelStatus(state);
         host.hidden = false;
         host.setAttribute('aria-hidden', 'false');
         content?.setAttribute('aria-hidden', 'false');
@@ -6560,7 +6562,7 @@ function revealDeferredCharacterPanel(host, content, mount) {
         if (isCurrent()) {
             state.requested = false;
             // HUMAN: replace — a title that names the error and a description of what to do next.
-            state.status.update({ state: 'error', title: t`Error` });
+            status.update({ state: 'error', title: t`Error` });
         }
         throw error;
     });
@@ -14096,6 +14098,8 @@ function initAll() {
 
             if (SB_SHELLS[shellKey]) {
                 openShell(shellKey, tabId);
+                // A named page is the page to show: the pane that is off screen on a phone is inert, so the page it names must not be in it.
+                if (tabId && isMobileViewport() && sbSettingsState.open) setSettingsMobileContentView(true);
             }
         },
         openCharacters() {
@@ -14360,10 +14364,12 @@ function openSettingsPage(shellKey, tabId = null) {
     if (wasOpen) {
         // Switching sections while open: no page-level animation, just swap content.
         page.hidden = false;
+        syncSettingsPaneInert();
         return;
     }
 
     page.hidden = false;
+    syncSettingsPaneInert();
     animateSettingsPage(page, 'in', () => page.classList.remove('sb-settings-page--opening'));
 
     if (isMobileViewport()) {
@@ -14396,6 +14402,7 @@ function closeSettingsPage() {
             return;
         }
         page.hidden = true;
+        syncSettingsPaneInert();
         if (sbSettingsState.closeTimer) {
             clearTimeout(sbSettingsState.closeTimer);
             sbSettingsState.closeTimer = 0;
@@ -14655,49 +14662,19 @@ function deactivateSettingsPageRoot(shellKey) {
     setRootAttribute(root, 'aria-hidden', 'true');
 }
 
-let settingsTabSteerBound = false;
-const SB_TABBABLE_SELECTOR = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [tabindex], [contenteditable]';
+let settingsPaneInertBound = false;
 
-function isTabbableElement(element) {
-    if (!(element instanceof HTMLElement) || element.tabIndex < 0 || element.matches(':disabled') || element.closest('[inert]')) {
-        return false;
-    }
-    return typeof element.checkVisibility === 'function' ? element.checkVisibility({ visibilityProperty: true }) : true;
-}
-
-// SillyBunny: a phone shows the sidebar or the page and slides the other one out of a clipped box. Tab walks into that pane,
-// and focusing a control in it scrolls the clipped box sideways, which crops the pane that is showing (F-303). The pane is
-// left reachable for the pointer and for scripts, because the editors' leave guards read it as open, so only the keyboard is
-// steered: a Tab that would enter the pane that is not showing goes to the next stop outside it.
-function steerTabPastHiddenSettingsPane(event) {
-    if (event.key !== 'Tab' || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
-        return;
-    }
+// SillyBunny: a phone shows the sidebar or the page and slides the other one out of a clipped box. The pane that is not showing is
+// inert, so Tab, the pointer and a screen reader's cursor all stay in the one that is; a control focused in the clipped pane
+// would scroll the box sideways and crop the pane that is showing.
+function syncSettingsPaneInert() {
     const page = getSettingsPage();
-    if (!(page instanceof HTMLElement) || page.hidden || !isMobileViewport() || !(event.target instanceof HTMLElement)) {
-        return;
-    }
-    const hiddenPane = document.getElementById(page.classList.contains('sb-settings-page--content') ? 'sb-settings-sidebar' : 'sb-settings-content');
-    if (!(hiddenPane instanceof HTMLElement)) {
-        return;
-    }
-    const stops = Array.from(document.querySelectorAll(SB_TABBABLE_SELECTOR));
-    const step = event.shiftKey ? -1 : 1;
-    const from = stops.indexOf(event.target);
-    if (from === -1) {
-        return;
-    }
-    const natural = stops.slice(step > 0 ? from + 1 : 0, step > 0 ? undefined : from);
-    if (step < 0) natural.reverse();
-    const next = natural.find(isTabbableElement);
-    if (!next || !hiddenPane.contains(next)) {
-        return;
-    }
-    const target = natural.find(stop => isTabbableElement(stop) && !hiddenPane.contains(stop));
-    if (target instanceof HTMLElement) {
-        event.preventDefault();
-        target.focus();
-    }
+    const split = page instanceof HTMLElement && !page.hidden && isMobileViewport();
+    const showContent = split && page.classList.contains('sb-settings-page--content');
+    const sidebar = document.getElementById('sb-settings-sidebar');
+    const content = document.getElementById('sb-settings-content');
+    if (sidebar) sidebar.inert = showContent;
+    if (content) content.inert = split && !showContent;
 }
 
 function setSettingsMobileContentView(showContent) {
@@ -14707,6 +14684,7 @@ function setSettingsMobileContentView(showContent) {
     }
     sbSettingsState.mobileContentView = showContent;
     page.classList.toggle('sb-settings-page--content', showContent);
+    syncSettingsPaneInert();
 
     if (showContent) {
         document.getElementById('sb-settings-close')?.focus({ preventScroll: true });
@@ -14813,9 +14791,9 @@ function initSettingsPageClose() {
         });
     }
 
-    if (!settingsTabSteerBound) {
-        settingsTabSteerBound = true;
-        document.addEventListener('keydown', steerTabPastHiddenSettingsPane, true);
+    if (!settingsPaneInertBound) {
+        settingsPaneInertBound = true;
+        window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', syncSettingsPaneInert);
     }
 
     const page = getSettingsPage();

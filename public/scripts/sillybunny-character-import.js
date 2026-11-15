@@ -3,7 +3,7 @@ import { extensionNames, extension_settings } from './extensions.js';
 import { eventSource, event_types } from './events.js';
 import { t } from './i18n.js';
 import { renderTemplateAsync } from './templates.js';
-import { createRow } from './sillybunny-editor/rows.js';
+import { createButtonRow, createPrefGroup, createRow, createTextAreaField } from './sillybunny-editor/rows.js';
 import { createEntityRow } from './sillybunny-editor/entity-row.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
@@ -29,17 +29,10 @@ function button(label, action, id = '') {
     return control;
 }
 
-function section(label, field) {
-    const section = element('section', 'sb-editor-section sb-import-section');
-    const header = element('header', 'ds-pref-group-header');
-    const heading = element('h3', 'ds-pref-group-heading', label);
-    heading.id = `sb_import_heading_${field}`;
-    header.append(heading);
-    const group = element('div', 'ds-pref-group sb-import-group');
-    group.setAttribute('role', 'group');
-    group.setAttribute('aria-labelledby', heading.id);
-    section.append(header, group);
-    return { section, group };
+function group({ label, field, subtitle, rows = [] }) {
+    const { section, group: box } = createPrefGroup({ title: label, subtitle, field: `import-${field}`, rows });
+    section.classList.add('sb-import-section');
+    return { section, group: box, heading: section.querySelector('.ds-pref-group-heading'), subtitle: section.querySelector('.ds-pref-group-subtitle') };
 }
 
 function resultButton(label, glyph, action) {
@@ -87,30 +80,24 @@ export function mountCharacterImport(host) {
     let busy = false;
     let returnFocus = null;
     const hostListeners = new AbortController();
-    const { section: fileSection, group: fileGroup } = section(t`Import from file`, 'file');
-    fileGroup.classList.add('sb-import-fields');
-    const zone = element('div', 'sb-import-drop');
-    zone.id = 'sb_character_import_drop';
-    zone.tabIndex = 0;
-    zone.setAttribute('role', 'button');
-    zone.setAttribute('aria-label', t`Import Character from File`);
-    zone.append(element('i', 'fa-solid fa-file-import'), element('span', '', t`Drop the associated character file here, or click to browse for it.`));
-    zone.firstChild.setAttribute('aria-hidden', 'true');
     const picker = document.createElement('input');
     picker.type = 'file';
     picker.multiple = true;
     picker.accept = '.png,.json,.yaml,.yml,.charx,.byaf';
     picker.id = 'sb_character_import_files';
     picker.hidden = true;
-    const choose = button(t`Import Character from File`, () => picker.click(), 'sb_character_import_file_action');
-    choose.classList.add('menu_button_primary');
-    const formats = element('small', 'ds-row-subtitle', t`Upload PNG, JSON, YAML, CHARX, or BYAF character files.`);
-    zone.addEventListener('click', () => { if (!busy) picker.click(); });
-    zone.addEventListener('keydown', event => {
-        if (!['Enter', ' '].includes(event.key)) return;
-        event.preventDefault();
-        if (!busy) picker.click();
+    // The row is the drop area and the way to browse: a file dragged anywhere over the panel lands on it.
+    const drop = createButtonRow({
+        label: t`Import Character from File`, icon: 'file-import', field: 'file-drop', id: 'sb_character_import_drop',
+        onActivate: () => { if (!busy) picker.click(); },
     });
+    drop.row.classList.add('sb-import-drop');
+    const zone = drop.row;
+    const { section: fileSection } = group({
+        label: t`Import from file`, field: 'file', rows: [drop],
+        subtitle: `${t`Drop the associated character file here, or click to browse for it.`} ${t`Upload PNG, JSON, YAML, CHARX, or BYAF character files.`}`,
+    });
+    fileSection.append(picker);
     picker.addEventListener('change', () => {
         const files = [...picker.files];
         picker.value = '';
@@ -132,42 +119,46 @@ export function mountCharacterImport(host) {
             }
         }, { signal: hostListeners.signal });
     }
-    fileGroup.append(zone, choose, formats, picker);
 
-    const { section: urlSection, group: urlGroup } = section(t`Import from URL`, 'url');
-    urlGroup.classList.add('sb-import-fields');
-    const entry = element('textarea', 'text_pole');
-    entry.id = 'sb_character_import_urls';
-    entry.rows = 4;
-    const label = element('label', 'ds-row-label', t`Enter the URL of the content to import`);
-    label.htmlFor = entry.id;
-    const hint = element('small', 'ds-row-subtitle', t`Write each URL or ID into a new line.`);
-    hint.id = 'sb_character_import_url_hint';
-    entry.setAttribute('aria-describedby', hint.id);
-    const submit = button(t`Import`, () => {
-        const urls = entry.value.split(/\r?\n/).map(url => url.trim()).filter(Boolean);
-        if (urls.length) return run({ urls });
-    }, 'sb_character_import_url_action');
-    submit.classList.add('menu_button_primary');
-    const sources = element('div', 'sb-import-sources ds-row-subtitle');
-    urlGroup.append(label, entry, hint, submit, sources);
+    const entry = createTextAreaField({
+        label: t`Enter the URL of the content to import`, subtitle: t`Write each URL or ID into a new line.`,
+        field: 'urls', id: 'sb_character_import_urls', rows: 4, expand: false,
+    });
+    const submit = createButtonRow({
+        label: t`Import`, icon: 'cloud-arrow-down', field: 'url-action', id: 'sb_character_import_url_action',
+        onActivate: () => {
+            const urls = entry.getValue().split(/\r?\n/).map(url => url.trim()).filter(Boolean);
+            if (urls.length) return run({ urls });
+        },
+    });
+    // The providers are a description of the group, filled in once the template that names them has loaded.
+    const { section: urlSection, subtitle: sources } = group({ label: t`Import from URL`, field: 'url', rows: [entry, submit], subtitle: '\u00a0' });
+    sources.classList.add('sb-import-sources');
+    sources.replaceChildren();
 
-    const library = element('div', 'ds-pref-group sb-import-group');
-    library.id = 'sb_character_import_library';
-    library.append(createRow({
-        label: t`Browse Characters`, field: 'character-library', activatable: true,
-        onActivate: () => { void eventSource.emit(event_types.OPEN_CHARACTER_LIBRARY, false); },
-    }).row);
+    const libraryGroup = createPrefGroup({
+        field: 'import-library', id: 'sb_character_import_library',
+        rows: [createRow({
+            label: t`Browse Characters`, field: 'character-library', activatable: true,
+            onActivate: () => { void eventSource.emit(event_types.OPEN_CHARACTER_LIBRARY, false); },
+        })],
+    });
+    // A group without a heading names itself for assistive technology.
+    libraryGroup.group.setAttribute('aria-label', t`Browse Characters`);
+    const library = libraryGroup.section;
 
-    const { section: resultsSection, group: resultsGroup } = section(t`Results.`, 'results');
+    const resultsGroup = group({ label: t`Results.`, field: 'results', subtitle: '\u00a0' });
+    const resultsSection = resultsGroup.section;
     resultsSection.id = 'sb_character_import_results';
     resultsSection.hidden = true;
-    const summary = element('div', 'sb-import-summary');
+    const summary = resultsGroup.subtitle;
+    summary.classList.add('sb-import-summary');
     summary.setAttribute('role', 'status');
     summary.setAttribute('aria-live', 'polite');
+    summary.textContent = '';
     const results = element('div', 'ds-entity-list');
     results.setAttribute('role', 'list');
-    resultsGroup.append(summary, results);
+    resultsGroup.group.append(results);
     content.replaceChildren(fileSection, urlSection, library, resultsSection);
 
     function refreshLibrary() {
@@ -212,8 +203,9 @@ export function mountCharacterImport(host) {
         resultsSection.hidden = false;
         resultsSection.dataset.state = 'loading';
         content.setAttribute('aria-busy', 'true');
-        choose.disabled = submit.disabled = picker.disabled = true;
-        zone.setAttribute('aria-disabled', 'true');
+        drop.setDisabled(true);
+        submit.setDisabled(true);
+        picker.disabled = true;
         // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
         results.replaceChildren(createStatusPage({ state: 'loading', title: t`Loading...` }).element);
         summary.textContent = '';
@@ -229,8 +221,9 @@ export function mountCharacterImport(host) {
         } finally {
             busy = false;
             content.setAttribute('aria-busy', 'false');
-            choose.disabled = submit.disabled = picker.disabled = false;
-            zone.setAttribute('aria-disabled', 'false');
+            drop.setDisabled(false);
+            submit.setDisabled(false);
+            picker.disabled = false;
         }
     }
 
@@ -269,7 +262,6 @@ export function mountCharacterImport(host) {
         const botbooru = element('span', 'sb-import-source-botbooru', t`BotBooru`);
         sources.append(document.createTextNode('; '), botbooru);
     }).then(() => {
-        host.querySelector('#sb_character_import_loading')?.setAttribute('hidden', '');
         content.hidden = false;
         host.dataset.mounted = 'true';
     }).catch(error => {

@@ -733,7 +733,7 @@ export function mountAgentsPanel(column) {
     });
     const unregisterNavigation = registerEditorNavigation({
         session: detailSession,
-        isActive: () => !destroyed && !shell.root.hidden && !shell.root.closest('[hidden], [aria-hidden="true"], [inert]'),
+        isActive: () => !destroyed && !shell.root.hidden && !shell.root.closest('[hidden], [aria-hidden="true"]'),
         close: () => run(backToOrigin), escape: false,
         guardSelector: '[data-sb-settings-tab]:not([data-sb-settings-tab="agents"]), #sb-settings-close, [data-sb-drawer-close]',
     });
@@ -756,7 +756,7 @@ export function mountAgentsPanel(column) {
         capturePageState: () => pageController?.captureState?.(),
         restorePageState: state => pageController?.restoreState?.(state),
         focusControl: id => pageController?.focusControl?.(id),
-        isVisible: () => !destroyed && !shell.root.closest('[hidden], [aria-hidden="true"], [inert]'),
+        isVisible: () => !destroyed && !shell.root.closest('[hidden], [aria-hidden="true"]'),
         currentKey: () => shell.selectedKey,
         captureState: () => ({
             query: input.value,

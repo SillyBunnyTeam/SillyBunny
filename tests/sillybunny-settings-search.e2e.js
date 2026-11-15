@@ -310,7 +310,10 @@ for (const viewport of VIEWPORTS) {
                 expect(panel.rows.some(row => /Download Backup/.test(row))).toBe(false);
             }).toPass({ timeout: 15000 });
 
+            // The search field is in the sidebar, which a phone leaves inert while the page shows.
+            await showSettingsSidebar(page);
             await input.fill('Server Tools');
+            await selectTab(page, 'data-security');
             await expect(async () => {
                 const panel = await readPanel(page, 'data-security');
                 expect(panel.rows.some(row => /^Runtime/.test(row))).toBe(true);

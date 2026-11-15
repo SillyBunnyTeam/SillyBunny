@@ -1376,6 +1376,8 @@ test.describe('Settings entry regressions', () => {
                 await page.setViewportSize({ width: mobile ? 1440 : 390, height: 900 });
                 await expect(page.locator('html')).toHaveAttribute('data-sb-compact-mode', String(next));
                 await expect(compact).toBeChecked({ checked: next });
+                // A page that was open at the wider layout shows its sidebar first on a phone, where the page is inert.
+                await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
                 await compact.setChecked(!next);
                 await expect(page.locator('html')).toHaveAttribute('data-sb-compact-mode', String(!next));
             });

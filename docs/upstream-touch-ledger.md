@@ -1395,6 +1395,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-10-31, PR #870 theme text contrast. |
 | Owner | Settings and conversation integrator. |
 
+### `public/style.css`, `public/css/mobile-styles.css`, `public/css/toggle-dependent.css` and `public/index.html` - right-nav block transports and the Import tab loading text
+| Field | Value |
+| --- | --- |
+| File | `public/style.css`, `public/css/mobile-styles.css`, `public/css/toggle-dependent.css`, `public/index.html` |
+| Area | The legacy right-nav block (`#rm_PinAndTabs`, `#CharListButtonAndHotSwaps`, the Characters button and the token readout) and the static loading line of the Characters Import tab (`#sb_character_import_loading`). |
+| Divergence reason | `TODO(copy)` |
+| Target seam | One unconditional rule in `public/css/sillybunny-tabs.css` keeps the right-nav pin and hot swaps hidden as transports; the Characters shell's loading page (`createStatusPage` in `public/scripts/sillybunny-tabs.js`) covers the Import tab until it is ready. |
+| Adapter shape | The per-type, shrink and mobile-grid rules of the block are deleted from the three sheets, with a `SillyBunny:` comment where they stood; the static loading line is deleted from `index.html` and `import.js` stops writing it. Ids, handlers and stored keys are unchanged. |
+| Protecting tests | `tests/mobile-character-toggle-and-panels.e2e.js`; `tests/character-import.e2e.js`; `tests/character-shell-performance.e2e.js`; `tests/unit/character-import-panel.test.js`; `tests/characters-menu-contrast-css.test.js`. |
+| Validation | 2026-11-15: root and tests lint, the full unit run, budgets, contracts, design rules, the related e2e specs, parity, axe and registry smoke of the settings family, the Characters panel and the Import tab. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-15, UI polish sweep (tasks 5.1 and 5.4). |
+| Owner | `TODO(copy)` |
+
 ### `public/style.css` - libadwaita shell foundation
 | Field | Value |
 | --- | --- |

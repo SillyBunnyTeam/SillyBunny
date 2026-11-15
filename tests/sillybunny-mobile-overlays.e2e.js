@@ -48,7 +48,6 @@ async function openPersonaEntry(page) {
 
 async function openPromptEntry(page) {
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'editor'));
-    await page.getByRole('tab', { name: 'Editor', exact: true }).click();
     await page.locator('.sb-prompt-row[data-prompt-id="main"] .sb-prompt-row-name').click();
     const editor = page.locator('.sb-prompt-detail');
     await expect(editor).toBeVisible();

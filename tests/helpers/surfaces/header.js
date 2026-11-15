@@ -127,7 +127,12 @@ async function openSettingsPage(page) {
 }
 
 async function closeSettingsPage(page) {
-    await page.locator('#sb-settings-close').click();
+    // The Close button sits in the page, which is off screen and inert while a phone shows the sidebar; Escape closes from there.
+    if (await page.locator('#sb-settings-content[inert]').count() > 0) {
+        await page.keyboard.press('Escape');
+    } else {
+        await page.locator('#sb-settings-close').click();
+    }
     await gone(page, SETTINGS_PAGE);
 }
 

@@ -943,7 +943,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                 }, { shell, tab });
                 const selected = page.locator(`#sb-settings-tab-list [data-sb-settings-tab="${tab}"]`);
                 await expect(selected).toHaveAttribute('aria-selected', 'true');
-                const destinationFocus = page.locator('#sb-settings-page button:visible').first();
+                const destinationFocus = page.locator('#sb-settings-page :is(#sb-settings-sidebar, #sb-settings-content):not([inert]) button:visible').first();
                 await destinationFocus.focus();
                 try {
                     release();

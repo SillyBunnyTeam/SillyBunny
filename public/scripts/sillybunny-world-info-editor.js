@@ -790,13 +790,13 @@ export function mountWorldInfoEditor(container) {
             // The entry controller owns its pagehide backup listener and draft timer.
             flushDraft: () => {},
         },
-        isActive: () => !shell.root.hidden && !worldInfo.closest('[hidden], [aria-hidden="true"], [inert]'),
+        isActive: () => !shell.root.hidden && !worldInfo.closest('[hidden], [aria-hidden="true"]'),
         close: () => run(() => shell.deselectItem()),
         guardSelector: characterTabGuardSelector('world-info'), escape: false,
     });
 
     function isOpen() {
-        return !destroyed && !shell.root.hidden && !worldInfo.closest('[hidden], [aria-hidden="true"], [inert]');
+        return !destroyed && !shell.root.hidden && !worldInfo.closest('[hidden], [aria-hidden="true"]');
     }
 
     async function renderBook({ name, data, navigation = navigation_option.none }) {
@@ -879,7 +879,7 @@ export function mountWorldInfoEditor(container) {
             return new Promise(resolve => {
                 const check = () => {
                     if (destroyed || !isCurrent()) return resolve(false);
-                    const visible = !shell.root.hidden && !worldInfo.closest('[hidden], [aria-hidden="true"], [inert]');
+                    const visible = !shell.root.hidden && !worldInfo.closest('[hidden], [aria-hidden="true"]');
                     const rendered = shownRevision > afterRender && shownRevision === renderRevision;
                     if (visible && rendered && state.name === name && state.data && bookLabel.textContent === name) return resolve(true);
                     if (Date.now() >= deadline) return resolve(false);

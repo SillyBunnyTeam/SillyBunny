@@ -359,6 +359,23 @@ export const surfaces = [
         sources: [`${SCRIPTS}/sillybunny-persona-settings.js`],
     }),
     {
+        id: 'settings.characters.import',
+        family: 'settings',
+        owner: 'A',
+        title: 'Characters shell: Import',
+        root: '#sb_character_import_content',
+        ready: ['#sb_character_import_drop', '#sb_character_import_urls', '#sb_character_import_url_action'],
+        async open(page) {
+            await openCharactersTab(page, 'import');
+            await page.locator('#sb_character_import_panel[data-mounted="true"]').waitFor();
+            await page.locator('#sb_character_import_content').waitFor({ state: 'visible' });
+            await settle(page);
+        },
+        needs: [],
+        sources: [`${SCRIPTS}/sillybunny-character-import.js`, 'public/css/sillybunny-character-import.css'],
+        primaryFlow: true,
+    },
+    {
         id: 'settings.conversation.panel',
         family: 'settings',
         owner: 'A',

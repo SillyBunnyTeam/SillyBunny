@@ -594,13 +594,21 @@ describe('Persona editor shell', () => {
         expect(mountDetail).toHaveBeenCalledTimes(1);
     });
 
-    test.each(['hidden', 'aria-hidden', 'inert'])('adapter visibility respects ancestor %s', async attribute => {
+    test.each(['hidden', 'aria-hidden'])('adapter visibility respects ancestor %s', async attribute => {
         await mount();
         const panel = document.getElementById('sb_character_persona_panel');
         panel.setAttribute(attribute, attribute === 'aria-hidden' ? 'true' : '');
         expect(adapter.isOpen()).toBe(false);
         panel.removeAttribute(attribute);
         expect(adapter.isOpen()).toBe(true);
+    });
+
+    test('an inert ancestor does not close the open editor, because a phone keeps the pane that is off screen inert', async () => {
+        await mount();
+        const panel = document.getElementById('sb_character_persona_panel');
+        panel.setAttribute('inert', '');
+        expect(adapter.isOpen()).toBe(true);
+        panel.removeAttribute('inert');
     });
 
     test('rows match the boxed list pattern, with lazy avatars, subtitles and labelled badges', async () => {

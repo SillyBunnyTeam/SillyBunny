@@ -1656,10 +1656,6 @@ body.hideAllSwipeButtons :is(.swipe_left, .swipe_right),
     justify-content: space-evenly;
 }
 
-#HotSwapWrapper {
-    justify-content: space-evenly;
-}
-
 .avatar.interactable {
     opacity: 0.6;
 }
@@ -2977,66 +2973,11 @@ input[type="file"] {
     display: none;
 }
 
-#right-nav-panel-tabs {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    width: 100%;
-    padding: 8px;
-    background: color-mix(in srgb, var(--color-surface-strong, color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, var(--SmartThemeBodyColor) 10%)) 80%, transparent);
-    border-bottom: 1px solid var(--color-border, var(--SmartThemeBorderColor));
-    border-radius: 1.65rem 1.65rem 0 0;
-    position: -webkit-sticky;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-
-/* Navigation pill style for panel tabs */
-#right-nav-panel-tabs .right_menu_button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-radius: 9999px;
-    border: 1px solid transparent;
-    padding: 8px 16px;
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
-    font-weight: 600;
-    color: var(--color-text-secondary, var(--SmartThemeEmColor));
-    transition: all 200ms ease;
-    opacity: 1;
-    filter: none;
-}
-
-#right-nav-panel-tabs .right_menu_button.active {
-    border-color: var(--color-border, var(--SmartThemeBorderColor));
-    background-color: var(--color-surface, var(--SmartThemeBlurTintColor));
-    color: var(--color-text, var(--SmartThemeBodyColor));
-}
-
-#right-nav-panel-tabs .right_menu_button:hover {
-    color: var(--color-text, var(--SmartThemeBodyColor));
-    background-color: var(--color-surface-hover, color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, var(--SmartThemeBodyColor) 16%));
-}
-
-#rm_PinAndTabs {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    padding: 0;
-}
-
-#chartokenwarning.menu_button {
-    font-size: unset;
-    height: fit-content;
-    aspect-ratio: unset;
-}
-
 /* ##################################################################### */
 /*                      Right Panel's Upper Tabs                         */
 /* ##################################################################### */
+
+/* SillyBunny: #rm_PinAndTabs and #CharListButtonAndHotSwaps never show; the one rule that hides them is in sillybunny-tabs.css. */
 
 .right_menu_button {
     display: inline-flex;
@@ -3057,89 +2998,44 @@ input[type="file"] {
     color: var(--color-primary);
 }
 
-#rm_button_characters,
-#rm_button_panel_pin_div,
 #WI_button_panel_pin_div {
     font-size: 24px;
     display: inline;
     padding: 1px;
 }
 
-#rm_button_panel_pin_div,
 #WI_button_panel_pin_div {
     opacity: 0.5;
     transition: var(--animation-duration-2x);
 }
 
-#rm_button_panel_pin_div:hover,
-#rm_button_panel_pin_div:has(:focus-visible),
 #WI_button_panel_pin_div:hover,
 #WI_button_panel_pin_div:has(:focus-visible) {
     opacity: 1;
 }
 
-#rm_button_panel_pin,
 #WI_panel_pin {
     display: none;
 }
 
-#rm_button_panel_pin:checked+label,
 #WI_panel_pin:checked+label {
     display: inline;
 }
 
-#rm_button_panel_pin:checked+label .checked,
 #WI_panel_pin:checked+label .checked {
     display: inline;
 }
 
-#rm_button_panel_pin:checked+label .unchecked,
 #WI_panel_pin:checked+label .unchecked {
     display: none;
 }
 
-#rm_button_panel_pin:not(:checked)+label .checked,
 #WI_panel_pin:not(:checked)+label .checked {
     display: none;
 }
 
-#rm_button_panel_pin:not(:checked)+label .unchecked,
 #WI_panel_pin:not(:checked)+label .unchecked {
     display: inline;
-}
-
-#rm_button_selected_ch {
-    flex: 1;
-    overflow: hidden;
-    padding: 6px 14px;
-    border-radius: 9999px;
-    border: 1px solid transparent;
-    transition: all 200ms ease;
-    cursor: pointer;
-}
-
-#rm_button_selected_ch:hover {
-    background-color: var(--color-surface-hover, color-mix(in srgb, var(--SmartThemeBlurTintColor) 84%, var(--SmartThemeBodyColor) 16%));
-}
-
-#rm_button_selected_ch h2 {
-    cursor: pointer;
-    text-overflow: ellipsis;
-    overflow: hidden;
-    text-align: left;
-    white-space: nowrap;
-    margin: 0;
-    font-size: calc(var(--mainFontSize) * 1.25);
-}
-
-#rm_button_selected_ch h2:empty {
-    display: none;
-}
-
-.selected-right-tab {
-    border-color: var(--color-border, var(--SmartThemeBorderColor)) !important;
-    background-color: var(--color-surface, var(--SmartThemeBlurTintColor)) !important;
-    color: var(--color-text, var(--SmartThemeBodyColor)) !important;
 }
 
 #rm_print_characters_pagination {
@@ -4065,25 +3961,6 @@ grammarly-extension {
     background-color: var(--fullred) !important;
 }
 
-#result_info {
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 1px 3px;
-}
-
-#result_info_text {
-    display: flex;
-    flex-direction: column;
-    line-height: 0.9;
-    text-align: right;
-}
-
-#result_info .right_menu_button {
-    padding: 4px;
-}
-
 /* Focus */
 
 #bulk_tag_popup,
@@ -4982,10 +4859,6 @@ input[type="range"]::-webkit-slider-thumb {
 
 .whitespacenowrap {
     white-space: nowrap;
-}
-
-#chartokenwarning a {
-    color: var(--SmartThemeBodyColor);
 }
 
 #char-management-dropdown {

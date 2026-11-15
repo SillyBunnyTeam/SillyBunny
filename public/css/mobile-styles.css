@@ -86,14 +86,7 @@
         min-width: 0;
     }
 
-    #rm_button_panel_pin_div {
-        display: none;
-    }
-
-    #rm_button_characters {
-        font-size: var(--topBarIconSize);
-    }
-
+    /* SillyBunny: the pin, the Characters button and the token readout of the right-nav block are hidden transports (sillybunny-tabs.css), so they take no rules here. */
     #right-nav-panel.openDrawer,
     #right-nav-panel.sb-shell-root.fillRight.openDrawer {
         min-width: 0 !important;
@@ -754,10 +747,6 @@
 
     #right-nav-panel h4 {
         margin: 5px auto;
-    }
-
-    #result_info {
-        font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
     }
 
     /*     .avatar_div {

@@ -33,6 +33,12 @@ test.describe('round 1 character opening measurements', () => {
     for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 740 }, { width: 412, height: 915 }]) {
         test(`round 1 character opening measurement ${viewport.width}`, async ({ page }) => {
             await boot(page, viewport);
+            // A fresh data root makes its thumbnails on the first request, which holds the list back by up to a second;
+            // the measurement is of the opening, so the thumbnails are made before it starts.
+            await page.evaluate(async () => {
+                const app = await import('/script.js');
+                await Promise.all(app.characters.map(character => fetch(app.getThumbnailUrl('avatar', character.avatar))));
+            });
             if (viewport.width === 360) {
                 await page.evaluate(async () => {
                     const app = await import('/script.js');

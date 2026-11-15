@@ -72,7 +72,6 @@ for (const width of [390, 360, 320]) {
             test.setTimeout(120000);
             await loadApp(page, baseURL, { viewport: { width, height: 844 } });
             await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'sampling'));
-            await page.locator('button[data-sb-settings-tab="sampling"]').click();
             await expect(page.locator('#sb-settings-content')).toBeVisible();
             await expect(page.locator('[data-sb-panel="sampling"] [aria-busy="true"]')).toHaveCount(0);
         });

@@ -30,11 +30,7 @@ body.hideChatAvatars .mesAvatarWrapper .avatar {
     display: none !important;
 }
 
-body.no-hotswap #CharListButtonAndHotSwaps .flex-container {
-    flex-wrap: nowrap;
-    align-items: flex-end;
-    flex-flow: row;
-}
+/* SillyBunny: #CharListButtonAndHotSwaps is a hidden transport (sillybunny-tabs.css), so the no-hotswap layout rule is gone. */
 
 body.hideChatAvatars .last_mes:not(.smallSysMes) {
     padding-bottom: 20px !important;
