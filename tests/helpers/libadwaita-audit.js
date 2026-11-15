@@ -282,7 +282,7 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
                 }
             }
 
-            const overflowTargets = row.querySelectorAll('.ds-row-label, .ds-row-subtitle, button, .sb-action-btn, .menu_button');
+            const overflowTargets = row.querySelectorAll('.ds-row-label, .ds-row-subtitle, button, .menu_button');
             for (const target of overflowTargets) {
                 if (!isVisible(target)) continue;
                 const overflow = target.scrollWidth - target.clientWidth;
@@ -434,8 +434,10 @@ export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
     { selector: '#context_chat_start', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
     // SillyBunny: Formatting panel uses sb-settings-flat-section rows (14px padding, different separator token); structural divergence from the standard ds-row Prompting layout is intentional.
     { selector: '[data-sb-panel="context"]', rule: 'cross-tab-parity', reason: 'Formatting uses sb-settings-flat-section rows with 14px padding and a different separator token — divergence from the standard Prompting ds-row layout is intentional' },
-    // SillyBunny: Agents panel hosts ICA extension settings with its own type scale; font-size parity against Prompting is not enforced.
-    { selector: '[data-sb-panel="agents"]', rule: 'cross-tab-parity', reason: 'Agents panel hosts ICA extension settings with its own type scale; cross-tab parity against Prompting is not enforced' },
+    // SillyBunny: the Editor and Agents pages are list editors; they hold no preference group, and the Agents page opens on a list of entity rows.
+    { selector: '[data-sb-panel="editor"]', rule: 'group-anatomy', reason: 'A list editor page holds no preference group; the groups of the old Editor layout stay hidden while the prompt editor owns the page' },
+    { selector: '[data-sb-panel="agents"]', rule: 'group-anatomy', reason: 'A list editor page holds no preference group; its settings pages open inside the editor pane' },
+    { selector: '[data-sb-panel="agents"]', rule: 'cross-tab-parity', reason: 'The Agents page opens on a list of entity rows, so it has no preference row to take a signature from' },
     // SillyBunny: the right-shell Logs tab has a different row density from the Appearance reference in some backend/theme scenarios.
     { selector: '[data-sb-panel="logs"]', rule: 'cross-tab-parity', reason: 'Logs panel row density differs from the Appearance reference in some scenarios; cross-tab parity within the right shell is not enforced' },
     // SillyBunny: #bg-header-fixed image picker on mobile uses a stacked control layout; midpointDelta check is not meaningful for that row.

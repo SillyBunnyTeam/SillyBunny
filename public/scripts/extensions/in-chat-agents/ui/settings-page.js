@@ -1,9 +1,8 @@
-import { createPrefGroup, createRow, createSwitchRow, createButtonRow, releaseRowIds } from '../../../sillybunny-editor/rows.js';
+import { createPrefGroup, createSwitchRow, createButtonRow, createTextAreaField, releaseRowIds } from '../../../sillybunny-editor/rows.js';
 import { createProfileRow } from '../../../sillybunny-editor/select-row.js';
 import { createToggleRow } from '../../../sillybunny-editor/toggle-row.js';
 import { closePicker } from '../../../sillybunny-editor/picker.js';
 import { t, translate } from '../../../i18n.js';
-import { attachTextareaFullscreen } from '../textarea-fullscreen.js';
 import { createSettingsPageController } from './settings-page-controller.js';
 
 export function pageElement(tag, className = '', text) {
@@ -80,9 +79,7 @@ export function mountAgentSettings({ host, services, onClose, preparePopup }) {
                 suffix.append(input);
                 row.row.append(suffix);
             } else {
-                row = createRow({ ...options, suffix: input, stacked: true });
-                attachTextareaFullscreen(input);
-                input.setAttribute('aria-label', options.label);
+                row = createTextAreaField({ ...options, input, rows: 6, expandLabel: t`Expand the editor` });
             }
             row.row.title = translate(descriptor.title);
             if (staleCaption) row.row.querySelector('.ds-row-subtitle').dataset.sbCopyPlaceholder = 'true';

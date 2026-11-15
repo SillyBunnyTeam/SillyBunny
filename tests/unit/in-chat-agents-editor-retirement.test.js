@@ -14,7 +14,8 @@ test('generic modal is retired while public routing and shared helper assets rem
     expect(source).toContain('ui.openAgentDetail(');
     expect(source).toContain('openPathfinderEditor(saved)');
     expect(source).toContain('newCompanion: autoOpenCompanionMaker => openEditor(');
-    expect(settingsPage).toContain('attachTextareaFullscreen(input)');
+    expect(settingsPage).toContain('createTextAreaField({ ...options, input');
+    expect(settingsPage).not.toContain('attachTextareaFullscreen');
     expect(source).toContain('openOverview:');
     expect(css).not.toContain('ica--editor-fullscreen');
     expect(css).toContain('.ica--editor-row');

@@ -774,7 +774,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
         { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261114q', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261115r', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261115u', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
@@ -8932,7 +8932,7 @@ function prepareEditorPanel(root) {
         createElement('span', { text: 'Read-only', attrs: { 'data-sb-editor-read-only': '', 'data-i18n': 'Read-only', hidden: '' } }),
     );
     const back = createElement('button', {
-        className: 'menu_button sb-action-btn sb-backend-navigation-pill',
+        className: 'menu_button',
         text: 'Presets',
         attrs: { type: 'button', 'data-sb-editor-presets': '', 'data-i18n': 'Presets' },
     });

@@ -5728,36 +5728,6 @@ body.reduced-motion .ds-row-expander__toggle::after {
     width: 100%;
 }
 
-#sb-settings-page .sb-action-btn.sb-backend-navigation-pill {
-    flex: 0 1 auto;
-    align-self: flex-start;
-    min-height: 44px;
-    max-width: 100%;
-    padding: 8px 18px;
-    border: 0;
-    border-radius: var(--sb-shell-control-radius);
-    background: var(--sb-raised-bg);
-    white-space: normal;
-}
-
-#sb-settings-page .sb-backend-navigation-pill:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-#sb-settings-page .sb-editor-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 16px;
-    color: var(--sb-muted-fg);
-    overflow-wrap: anywhere;
-}
-
-#sb-settings-page .sb-editor-meta [data-sb-editor-read-only] {
-    font-weight: 600;
-    color: var(--SmartThemeBodyColor);
-}
-
 #sb-settings-page .sb-editor-panel #InstructSequencesColumn {
     padding: 0;
 }
@@ -5803,12 +5773,6 @@ body.reduced-motion .ds-row-expander__toggle::after {
 
 #sb-settings-page .sb-editor-panel .disabled {
     opacity: 0.6;
-}
-
-@media (hover: hover) {
-    #sb-settings-page .sb-action-btn.sb-backend-navigation-pill:hover {
-        background: var(--sb-raised-hover-bg);
-    }
 }
 
 #sb-settings-page .sb-prompting-panel :is(.sb-prompting-group, .sb-prompting-group-body) {
@@ -5892,58 +5856,6 @@ body.reduced-motion .ds-row-expander__toggle::after {
 
 #sb-settings-page .sb-settings-mounted-shell .sb-prompting-panel :is(#kobold_api-presets, #novel_api-presets, #textgenerationwebui_api-presets, #openai_api-presets) > div:where(:not(.ds-row, .sb-non-chat-preset-row)) {
     padding-inline: 0;
-}
-
-#sb-settings-page .sb-action-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    min-width: 0;
-    width: auto;
-    max-width: none;
-    min-height: 32px;
-    height: auto;
-    max-height: none;
-    padding: 5px 10px;
-    gap: 6px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 80%, transparent);
-    border-radius: var(--sb-radius-control);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-    color: var(--SmartThemeBodyColor);
-    font-family: inherit;
-    font-size: calc(var(--mainFontSize) * 0.82);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast);
-    user-select: none;
-    -webkit-user-select: none;
-}
-
-@media (hover: hover) {
-    #sb-settings-page .sb-action-btn:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 12%, transparent);
-        border-color: color-mix(in srgb, var(--sb-shell-border, var(--SmartThemeBorderColor)) 100%, transparent);
-    }
-}
-
-#sb-settings-page .sb-action-btn:active {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
-}
-
-#sb-settings-page .sb-action-btn:focus-visible {
-    outline: 2px solid var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor)));
-    outline-offset: 2px;
-    box-shadow: none;
-}
-
-@media screen and (max-width: 450px) {
-    #sb-settings-page .sb-action-btn {
-        flex: 1 1 auto;
-        min-width: 90px;
-        padding: 5px 8px;
-        font-size: calc(var(--mainFontSize) * 0.76);
-    }
 }
 
 #sb-settings-page .sb-sampling-panel .sb-sampling-group > .sb-settings-flat-header,
@@ -7812,34 +7724,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     flex: 1 1 auto;
 }
 
-/* ------------------------------------------------------------------------------------------
-   Agents panel chrome
-   ------------------------------------------------------------------------------------------
-   The In-Chat Agents dashboard draws itself inside an `extension_container`, and it arrived with
-   its own metrics: 6px button gaps beside the 12px the other panels use, a filter row that read as
-   two loose controls, and an action legend and quick section on a different rhythm from the cards
-   under them. The rules here do not redraw it -- they line its chrome up with the primitives every
-   other settings page uses, so the dashboard reads as part of the same page. */
-
-.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar,
-.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar-actions,
-.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar-secondary {
-    gap: var(--sb-row-gap, 10px);
-    align-items: center;
-}
-
-.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar-actions,
-.sb-shell-panel[data-sb-panel='agents'] .ica--toolbar-secondary {
-    row-gap: 8px;
-}
-
-/* The legend above the list is a caption, not a control: it takes the meta type step so it does
-   not compete with the cards' own titles. */
-.sb-shell-panel[data-sb-panel='agents'] .ica--action-legend {
-    font-size: var(--sb-type-meta);
-    color: var(--sb-shell-text-secondary);
-}
-
 @media screen and (max-width: 768px) {
     .sb-subpage-host {
         padding: 0;
@@ -8808,7 +8692,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     .sb-model-id-picker-option,
     :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets .menu_button,
     .sb-chat-history-cleanup-actions .menu_button,
-    #sb-settings-page .sb-action-btn,
     #sb-settings-page .ds-row-suffix :is(input:not([type='checkbox'], [type='radio'], [type='range']), textarea, select),
     #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(button, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']), .menu_button) {
         min-height: 44px;

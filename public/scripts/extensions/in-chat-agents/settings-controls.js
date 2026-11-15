@@ -65,7 +65,6 @@ export function createAgentSettingsControls() {
         else {
             input.className = 'text_pole';
             if (row.kind === 'textarea') {
-                input.classList.add('ica--helper-prefill-field');
                 input.rows = 4;
                 input.placeholder = field.placeholder;
             } else {

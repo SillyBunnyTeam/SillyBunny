@@ -11,45 +11,42 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 #sb-settings-page .sb-editor-panel.sb-prompt-owned {
-    display: flex;
-    flex-direction: column;
     height: 100%;
     min-height: 0;
-    gap: 8px;
     padding-bottom: 8px;
 }
 
+/* The line keeps to one row on a wide page, because the layout pass hides it when it overflows. */
 #sb-settings-page .sb-prompt-owned > .sb-backend-section-header {
-    display: flex;
     flex: none;
-    align-items: center;
     flex-wrap: nowrap;
-    gap: 8px;
-    min-width: 0;
 }
 
 #sb-settings-page .sb-prompt-owned .sb-backend-title-row {
     flex: none;
     flex-wrap: nowrap;
-    gap: 6px;
-    min-width: 0;
 }
 
 #sb-settings-page .sb-prompt-owned .sb-editor-meta {
+    display: flex;
     flex: 1;
-    flex-wrap: nowrap;
     gap: 12px;
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.8);
+    font-size: var(--sb-type-caption);
 }
 
 .sb-prompt-owned .sb-editor-meta > span {
     overflow: hidden;
     min-width: 0;
     text-overflow: ellipsis;
+}
+
+#sb-settings-page .sb-prompt-owned .sb-editor-meta > [data-sb-editor-read-only] {
+    color: var(--SmartThemeBodyColor);
+    font-weight: 600;
 }
 
 #sb-settings-page .sb-prompt-owned.sb-prompt-hide-header > .sb-backend-section-header {
@@ -144,7 +141,8 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-list-titles h2 {
     margin: 0;
-    font-size: calc(var(--mainFontSize) * 1.08);
+    font-size: var(--sb-type-title);
+    font-weight: 700;
     line-height: 1.25;
 }
 
@@ -786,22 +784,11 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 @media (max-width: 768px) {
     #sb-settings-page .sb-prompt-owned > .sb-backend-section-header {
         flex-wrap: wrap;
-        gap: 6px;
-    }
-
-    #sb-settings-page .sb-prompt-owned .sb-backend-title-row {
-        display: flex;
-        flex: 1 1 100%;
-        flex-wrap: nowrap;
     }
 
     #sb-settings-page .sb-prompt-owned :is(.sb-sampling-mode-pill, .sb-backend-title-row .menu_button) {
         flex: none;
         white-space: nowrap;
-    }
-
-    #sb-settings-page .sb-prompt-owned .sb-sampling-mode-pill {
-        font-size: calc(var(--mainFontSize) * 0.76);
     }
 
     #sb-settings-page .sb-prompt-owned .sb-editor-meta {

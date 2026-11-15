@@ -73,13 +73,6 @@
     text-decoration: none;
 }
 
-.ica--helper-prefill-field {
-    flex: 1 1 320px;
-    width: 100%;
-    min-height: 92px;
-    resize: vertical;
-}
-
 /* ── Prompt Manager button ──────────────────────────── */
 
 .prompt-manager-send-to-agents-action {
@@ -1268,21 +1261,6 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     padding-bottom: 8px;
 }
 
-/* Top and side gutters match the World Info, Persona, and Characters editor frames, including compact mode. */
-[data-sb-panel='agents'] > .sb-shell-panel-scroller,
-:root[data-sb-compact-mode='true'] [data-sb-panel='agents'] > .sb-shell-panel-scroller {
-    padding-top: calc(var(--sb-shell-panel-padding-block) - 4px);
-    padding-inline: var(--sb-shell-panel-padding-inline);
-}
-
-@media screen and (max-width: 768px) {
-    [data-sb-panel='agents'] > .sb-shell-panel-scroller,
-    :root[data-sb-compact-mode='true'] [data-sb-panel='agents'] > .sb-shell-panel-scroller {
-        padding-top: 14px;
-        padding-inline: 14px;
-    }
-}
-
 .ica-agents-list {
     display: flex;
     flex-direction: column;
@@ -1566,21 +1544,20 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
 }
 
 .ica-agents-page-body {
+    display: flex;
     flex: 1 1 0;
+    flex-direction: column;
+    gap: var(--sb-settings-group-gap);
     min-width: 0;
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: var(--sb-settings-inset-top) var(--sb-settings-inset) calc(var(--sb-settings-inset-top) + env(safe-area-inset-bottom, 0px));
 }
 
-.ica-agents-page-body > .sb-editor-section {
-    margin: 0 0 24px;
-}
-
-.ica-agents-page-body > .sb-editor-section:last-child {
-    margin-bottom: 0;
+.ica-agents-page-body > * {
+    flex: none;
 }
 
 #sb-settings-page .ica-agents-page-header > .menu_button {
@@ -1634,17 +1611,13 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
 }
 
 .ica-agents-page-notice {
-    margin: 0 0 24px;
+    margin: 0;
     color: var(--sb-muted-fg);
 }
 
 @media (max-width: 768px) {
     .ica-agents-page-header {
         padding-inline: 4px;
-    }
-
-    .ica-agents-page-body {
-        padding-inline: 8px;
     }
 }
 

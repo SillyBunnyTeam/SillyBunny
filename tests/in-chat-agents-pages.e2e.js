@@ -183,6 +183,10 @@ for (const width of [1440, 390]) {
             const settings = await destination(page, driver, 'Settings', 'settings');
             await expect(settings.locator('.ds-pref-group')).toHaveCount(6);
             await expect(settings.locator('.editor_maximize')).toHaveCount(1);
+            // The prefill is a text-area field with Expand in its label row, and the page pads its content as a settings page does.
+            await expect(settings.locator('.ds-row-textarea:has(#ica--helperPrefillMessages) > .ds-row-textarea__label-row > .editor_maximize')).toHaveCount(1);
+            await expect(settings.locator('.ica-agents-page-body')).toHaveCSS('padding-top', '24px');
+            await expect(settings.locator('.ica-agents-page-body')).toHaveCSS('padding-left', '12px');
             const changes = [];
             for (const [id, key, kind] of fields) {
                 const input = settings.locator(`#ica--${id}`);

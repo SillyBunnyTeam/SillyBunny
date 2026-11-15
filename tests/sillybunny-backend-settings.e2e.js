@@ -309,6 +309,20 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 const editor = await openPanel(page, 'editor');
                 await expect(editor.locator('[data-sb-editor-mode]')).toHaveText(`Backend: ${label}`);
                 await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveText(api === 'openai' ? 'Prompts' : 'Prompt templates');
+                // The Editor line is the same unboxed line as the other Backend pages, and its button is the shared one.
+                const editorHeader = editor.locator('.sb-prompt-owned > .sb-backend-section-header');
+                const presetsButton = editorHeader.locator(':scope > .sb-backend-title-row > [data-sb-editor-presets]');
+                await expect(presetsButton).toHaveClass(/\bmenu_button\b/);
+                await expect(presetsButton).not.toHaveClass(/sb-action-btn|sb-backend-navigation-pill/);
+                const editorHeaderMetrics = await readBackendHeaderMetrics(editorHeader);
+                expect(editorHeaderMetrics.padding).toBe(promptingHeaderMetrics.padding);
+                expect(editorHeaderMetrics.rowGap).toBe(promptingHeaderMetrics.rowGap);
+                expect(editorHeaderMetrics.boxed).toBe(false);
+                // The title of the list is a heading in the Title role, and the editor sits one group gap under the line.
+                const groupHeading = await prompting.locator('.ds-pref-group-heading').first().evaluate(heading => ({ size: getComputedStyle(heading).fontSize, weight: getComputedStyle(heading).fontWeight }));
+                await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveCSS('font-size', groupHeading.size);
+                await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveCSS('font-weight', groupHeading.weight);
+                expect(await editor.evaluate(panel => panel.querySelector('.sb-prompt-editor').getBoundingClientRect().top - panel.querySelector('.sb-backend-section-header').getBoundingClientRect().bottom)).toBeCloseTo(24, 0);
                 await expect(editor.locator('.sb-prompt-section:visible h3')).toHaveText(api === 'openai'
                     ? ['Prompt order', 'Available', 'Utility prompts'] : ['System prompt', 'Context', 'Instruct']);
                 await expect(editor.locator('#completion_prompt_manager, #context_story_string')).toHaveCount(2);
