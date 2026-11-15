@@ -5068,7 +5068,21 @@ body.reduced-motion .sb-search-entry {
 .ds-row-entry__status {
     display: inline-flex;
     flex: 0 0 auto;
+    align-items: center;
+    margin-inline-start: 6px;
     font-size: var(--sb-type-control);
+}
+
+/* The buttons after an entry row's field are targets of their own: a vertical separator sets them apart from the field and
+   its pencil, as GNOME Settings draws one before a row's separate button. */
+.ds-row-entry--floating > .ds-row-entry__line > .ds-row-suffix:has(> :not([hidden], .sr-only))::before {
+    content: '';
+    flex: 0 0 auto;
+    align-self: center;
+    width: 1px;
+    height: 24px;
+    margin-inline: 6px;
+    background: var(--sb-shell-border);
 }
 
 .ds-row-entry__status[data-state='saved'] {
@@ -7805,6 +7819,24 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 .sb-connections-model-field > button {
     order: 2;
+}
+
+/* The list and favourite buttons are targets of their own: a separator before the first sets them apart from the field and its
+   pencil, as before the buttons of any entry row. */
+.sb-connections-model-field > button:first-of-type {
+    position: relative;
+    margin-inline-start: 18px;
+}
+
+.sb-connections-model-field > button:first-of-type::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: -12px;
+    top: 50%;
+    width: 1px;
+    height: 24px;
+    background: var(--sb-shell-border);
+    transform: translateY(-50%);
 }
 
 .sb-connections-provider .ds-select-row > .ds-row-suffix > .ds-select-row__trigger {

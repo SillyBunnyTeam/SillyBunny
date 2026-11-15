@@ -639,11 +639,12 @@ function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
     const fieldBox = element('span', 'ds-row-text ds-row-entry__field');
     const title = element('label', 'ds-row-label ds-row-entry__title', label);
     title.htmlFor = control.id;
-    fieldBox.append(title, control, createEntryEditIcon());
+    // The key status belongs to the field, before the pencil, where AdwEntryRow keeps its indicator; the buttons after it
+    // are separate targets, set apart by the separator the stylesheet draws before them.
+    const keyStatus = secret ? secretStatus(control, secret) : null;
+    fieldBox.append(title, control, ...(keyStatus ? [keyStatus.status] : []), createEntryEditIcon());
     line.append(fieldBox);
     const trailing = [];
-    const keyStatus = secret ? secretStatus(control, secret) : null;
-    if (keyStatus) trailing.push(keyStatus.status);
     const reveal = secret ? revealToggle(control, secret.revealLabel) : null;
     if (reveal) trailing.push(reveal);
     if (suffix) trailing.push(...(Array.isArray(suffix) ? suffix : [suffix]));

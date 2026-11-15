@@ -57,6 +57,7 @@ describe('libadwaita surface and layer foundations', () => {
     test('the floating entry row dims its title, floats it at Caption size and hides the pencil while the text has focus', () => {
         expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__title \{[^}]*color: var\(--sb-muted-fg\);[^}]*font-size: var\(--sb-type-body\);/);
         expect(tabsCss).toMatch(/\.ds-row-entry__edit \{[^}]*color: var\(--sb-shell-text\);[^}]*font-size: 16px;/);
+        expect(tabsCss).toMatch(/\.ds-row-entry--floating > \.ds-row-entry__line > \.ds-row-suffix:has\(> :not\(\[hidden\], \.sr-only\)\)::before \{[^}]*width: 1px;[^}]*height: 24px;[^}]*background: var\(--sb-shell-border\);/);
         expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__field:is\(:focus-within, [^{]*:-webkit-autofill[^{]*> \.ds-row-entry__title \{[^}]*font-size: var\(--sb-type-caption\);/);
         expect(tabsCss).toMatch(/\.ds-row-entry__field:focus-within > \.ds-row-entry__edit \{[^}]*display: none;/);
     });

@@ -1006,6 +1006,16 @@ describe('createEntryRow secret', () => {
         expect(status(row).querySelector('.sr-only').textContent).toBe('✔️ Key saved (Work)');
     });
 
+    test('keeps the key status in the field, before the pencil, and the Reveal button after it in the suffix', () => {
+        const control = input('text');
+        control.placeholder = '❌ Missing key';
+        const { row } = createEntryRow({ label: 'API Key', field: 'key', floating: true, secret, input: control });
+        const field = row.querySelector('.ds-row-entry__field');
+        expect(status(row).parentElement).toBe(field);
+        expect(status(row).nextElementSibling).toBe(field.querySelector('.ds-row-entry__edit'));
+        expect(row.querySelector('.ds-row-suffix')?.contains(status(row)) ?? false).toBe(false);
+    });
+
     test('an unrecognised placeholder hides the status', () => {
         const control = input('text');
         control.placeholder = 'sk-…';
