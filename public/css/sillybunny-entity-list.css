@@ -787,6 +787,14 @@
     background: var(--sb-flat-active-bg);
 }
 
+@media (forced-colors: active) {
+    /* A flat row button's fills are its only edge, and forced colours remove them. */
+    .ds-entity-row .ds-entity-row__button {
+        outline: 1px solid ButtonBorder;
+        outline-offset: -1px;
+    }
+}
+
 .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):active,
 .ds-entity-list__footer .sb-list-show-more__button:active {
     background: var(--sb-flat-active-bg);
