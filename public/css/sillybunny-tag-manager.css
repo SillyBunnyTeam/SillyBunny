@@ -2,7 +2,7 @@
    Window-tier dialog in sillybunny-theme.css (sillybunny-editor/dialog.js); the box, rows and
    buttons are the shared entity list in sillybunny-entity-list.css. */
 #tag_view_list .text_pole::placeholder {
-    color: var(--SmartThemeBodyColor) !important;
+    color: var(--sb-input-placeholder) !important;
     opacity: 1;
 }
 
@@ -14,10 +14,6 @@
 .sb-tag-manager .ds-entity-row__avatar {
     display: grid;
     place-items: center;
-}
-
-.sb-tag-manager .ds-entity-row__subtitle {
-    color: var(--SmartThemeBodyColor);
 }
 
 .sb-tag-manager__dot {

@@ -430,6 +430,54 @@ describe('createListSearch', () => {
         expect(escape.defaultPrevented).toBe(false);
     });
 
+    describe('closeEmptyOnBlur', () => {
+        const blur = (input, relatedTarget) => input.dispatchEvent(new FocusEvent('blur', { relatedTarget }));
+
+        test('is off by default', () => {
+            const { search, input, row } = makeSearch();
+            search.open();
+            blur(input, row);
+            expect(search.isOpen).toBe(true);
+        });
+
+        test('closes an empty field when the focus goes outside it, and keeps it for the trigger, the field and a query', async () => {
+            const { search, field, input, row, trigger } = makeSearch({ closeEmptyOnBlur: true });
+            const inside = document.createElement('button');
+            field.append(inside);
+            search.open();
+            blur(input, trigger);
+            blur(input, inside);
+            expect(search.isOpen).toBe(true);
+            typeQuery(input, 'abc');
+            blur(input, row);
+            expect(search.isOpen).toBe(true);
+            input.value = '';
+            blur(input, row);
+            await Promise.resolve();
+            expect(search.isOpen).toBe(false);
+            expect(document.activeElement).toBe(row);
+        });
+
+        test('waits for the pointer that caused the blur to finish its click', () => {
+            const { search, input, row } = makeSearch({ closeEmptyOnBlur: true });
+            search.open();
+            input.focus();
+            row.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+            blur(input, row);
+            expect(search.isOpen).toBe(true);
+            row.dispatchEvent(new Event('click', { bubbles: true }));
+            expect(search.isOpen).toBe(false);
+        });
+
+        test('stops listening once destroyed', () => {
+            const { search, input, row } = makeSearch({ closeEmptyOnBlur: true });
+            search.open();
+            search.destroy();
+            blur(input, row);
+            expect(search.isOpen).toBe(true);
+        });
+    });
+
     test('destroy cancels a pending debounced notification', () => {
         jest.useFakeTimers();
         const { search, input, onChange } = makeSearch({ debounce: 300 });

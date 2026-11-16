@@ -149,7 +149,8 @@ describe('createListHeader', () => {
         const { titleButton } = header;
 
         expect(titleButton.matches('button.sb-list-header__title-button.book-switcher[type="button"][aria-haspopup="dialog"][aria-expanded="false"]')).toBe(true);
-        expect(titleButton.getAttribute('aria-label')).toBe('Books');
+        expect(titleButton.getAttribute('aria-label')).toBe('Book 3 entries, Books');
+        expect(titleButton.textContent).toBe('Book 3 entries');
         expect(titleButton.title).toBe('Books');
         expect([...header.element.children].map(node => node.className.split(' ')[0])).toEqual(['sb-list-header__title-button', 'sb-list-header__spacer', 'sb-list-header__button']);
         expect(titleButton.querySelector('.sb-list-header__titles > .sb-list-header__title.book-name').textContent).toBe('Book');
@@ -164,6 +165,21 @@ describe('createListHeader', () => {
         header.destroy();
         titleButton.click();
         expect(open).toHaveBeenCalledTimes(1);
+    });
+
+    test('names the picker button by its visible text first and keeps the name current', () => {
+        const header = createListHeader({ title: 'Book', subtitle: '3 entries', titleButton: { label: 'Books', onActivate: jest.fn() } });
+        const { titleButton } = header;
+
+        header.setTitle('Other Book');
+        expect(titleButton.getAttribute('aria-label')).toBe('Other Book 3 entries, Books');
+        header.setSubtitle('1 entry');
+        expect(titleButton.getAttribute('aria-label')).toBe('Other Book 1 entry, Books');
+        header.setSubtitleHidden(true);
+        expect(titleButton.getAttribute('aria-label')).toBe('Other Book, Books');
+        header.setTitle('');
+        expect(titleButton.getAttribute('aria-label')).toBe('Books');
+        expect(titleButton.title).toBe('Books');
     });
 
     test('has no title button by default and hides only the subtitle on request', () => {

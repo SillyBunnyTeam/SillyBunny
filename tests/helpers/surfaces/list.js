@@ -156,8 +156,9 @@ const characterList = [
 
 const WI_ROWS = `${WORLD_INFO} .sb-wi-row`;
 
-/** Chooses a radio item of the World Info sort and filter menu. */
+/** Chooses a radio item of the World Info sort and filter menu, which sits beside the search field. */
 async function chooseWorldInfoView(page, name) {
+    await openSearch(page, worldInfoSearch);
     await page.locator(`${WORLD_INFO} .sb-wi-sort-button`).click();
     await page.locator('.sb-action-menu').last().getByRole('menuitemradio', { name, exact: true }).click();
     await settle(page);

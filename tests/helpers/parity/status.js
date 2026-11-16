@@ -51,7 +51,8 @@ export const rules = {
             id: 'title',
             selectors: [
                 { id: 'shared', selector: '.sb-status-page__title' },
-                { id: 'own', selector: `:scope :is(h1, h2, h3, h4, [class*="title" i])${NOT_IN_ACTION}` },
+                // A class that holds "title" also holds it in "subtitle", which is the description's role.
+                { id: 'own', selector: `:scope :is(h1, h2, h3, h4, [class*="title" i]:not([class*="subtitle" i]))${NOT_IN_ACTION}` },
             ],
             properties: [
                 { property: 'fontSize', token: '--sb-type-headline', forms: [{ form: 'defaultSet', token: '--sb-type-display' }], source: 'DESIGN.md' },

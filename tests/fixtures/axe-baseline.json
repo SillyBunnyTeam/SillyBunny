@@ -663,7 +663,6 @@
         {"surface":"header.conversation.content","rule":"label-content-name-mismatch","target":"div#sb_conversation_header.sb-conversation-headerbar > button.sb-conversation-header-title"},
         {"surface":"header.conversation.group","rule":"label-content-name-mismatch","target":"div#sb_conversation_header.sb-conversation-headerbar > button.sb-conversation-header-title"},
         {"surface":"header.conversation.group","rule":"target-size","target":"div#sb_conversation_header.sb-conversation-headerbar > div.sb-conversation-header-avatar > span.sb-conversation-participant-avatar"},
-        {"surface":"header.list.worldinfo","rule":"label-content-name-mismatch","target":"header.sb-list-header.sb-wi-list-header > button.sb-list-header__title-button.sb-wi-book-switcher"},
         {"surface":"header.topbar.icons-only","state":"search-open","rule":"aria-allowed-attr","target":"div#top-bar > div#sb-topbar-stack > div#sb-topbar-search-row > div#sb-universal-search.sb-universal-search"},
         {"surface":"header.topbar.icons-only","state":"search-open","rule":"aria-required-children","target":"div#sb-topbar-stack > div#sb-topbar-search-row > div#sb-universal-search.sb-universal-search > div.sb-universal-search-panel > div#sb-universal-search-results.sb-search-results"},
         {"surface":"header.topbar.labelled","rule":"label-content-name-mismatch","target":"div#sb-topbar-stack > div#sb-topbar-primary > div#sb-topbar-inner > div.sb-topbar-group.sb-topbar-group-left > button#sb-right-shell-toggle.sb-proxy-button","viewport":"1440x900"},

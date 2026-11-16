@@ -33,7 +33,8 @@ export const rules = {
                 { id: 'picker', selector: '.sb-picker__option' },
                 { id: 'side-panel', selector: '.sb-side-panel__menu-item' },
                 { id: 'legacy-list', selector: '.list-group-item, .actionButton' },
-                { id: 'own', selector: ':is(a, li, button, [role="menuitem"], [role="option"]):not(.sb-picker__search)' },
+                // A plain button is an item only inside a menu or a listbox: the close button of a sheet, the response buttons and the rows of a popover are not items.
+                { id: 'own', selector: ':is(a, li, [role^="menuitem"], [role="option"], :is([role="menu"], [role="listbox"]) button):not(.sb-picker__search)' },
             ],
             properties: [
                 { property: 'offsetHeight', value: { fine: 32, coarse: 44 }, floor: true, forms: [{ form: 'sheet', value: 44 }], source: 'DESIGN.md' },

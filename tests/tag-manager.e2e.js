@@ -94,6 +94,24 @@ test('row buttons press to their own fill and a tag with one entry keeps its num
     await expect(row(page, 'qa-tag-beta').locator('.ds-entity-row__subtitle')).toContainText('entries');
 });
 
+test('the row subtitle and the search placeholder take the shared muted inks, not the body ink', async ({ page }) => {
+    await prepare(page, 1440);
+    await openFromList(page);
+    const token = name => page.evaluate(name => {
+        const probe = document.createElement('i');
+        probe.style.color = `var(${name})`;
+        document.body.append(probe);
+        const { color } = getComputedStyle(probe);
+        probe.remove();
+        return color;
+    }, name);
+    await expect(row(page, 'qa-tag-beta').locator('.ds-entity-row__subtitle')).toHaveCSS('color', await token('--sb-muted-fg'));
+    await manager(page).locator('.sb-dialog__search-toggle').click();
+    const search = manager(page).locator('.sb-dialog__search-input');
+    await expect(search).toBeVisible();
+    expect(await search.evaluate(node => getComputedStyle(node, '::placeholder').color)).toBe(await token('--sb-input-placeholder'));
+});
+
 async function openFromList(page) {
     await page.locator('.sb-character-list [data-action-id="more"]').click();
     await page.getByRole('menuitem', { name: 'Manage tags', exact: true }).click();

@@ -187,7 +187,10 @@ test.describe('character list and editor header icon parity', () => {
                 const { openWorldInfoEditor } = await import('./scripts/world-info.js');
                 await openWorldInfoEditor(name);
             }, worldInfoBook);
-            const worldInfoButtons = page.locator('#WorldInfo .sb-wi-list-header .sb-header-icon-button');
+            // The sort button sits in the search bar beside the entry, so the bar is opened to reach it.
+            await expect(page.locator('#WorldInfo .sb-wi-list-header .sb-header-icon-button')).toHaveCount(3);
+            await page.locator('#WorldInfo .sb-wi-list-header button[aria-label="Search"]').click();
+            const worldInfoButtons = page.locator('#WorldInfo :is(.sb-wi-list-header, .sb-wi-search-field) .sb-header-icon-button');
             await expect(worldInfoButtons).toHaveCount(4);
             for (let index = 0; index < await worldInfoButtons.count(); index++) {
                 const button = worldInfoButtons.nth(index);

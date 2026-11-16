@@ -96,8 +96,15 @@ async function selectSettings(page, editor) {
     await page.locator('.sb-action-menu').last().getByRole('menuitem', { name: 'Global Settings', exact: true }).click();
 }
 
-async function selectSortOrFilter(page, editor, label) {
+/** The sort button sits beside the search field, so the search bar opens first. */
+async function openSortMenu(editor) {
+    const toggle = editor.locator('.sb-wi-list-header button[aria-label="Search"]');
+    if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
     await editor.locator('.sb-wi-sort-button').click();
+}
+
+async function selectSortOrFilter(page, editor, label) {
+    await openSortMenu(editor);
     await page.locator('.sb-action-menu').last().getByRole('menuitemradio', { name: label, exact: true }).click();
 }
 
@@ -364,7 +371,10 @@ test.describe('World Info editor', () => {
         await picker.click();
         await expect(popover).toBeHidden();
         await expect(picker).toHaveAttribute('aria-expanded', 'false');
-        for (const trigger of [editor.locator('.sb-wi-list-header button:has(.fa-ellipsis-vertical)'), editor.locator('.sb-wi-sort-button'), row(editor, 'Alpha').locator('.sb-wi-row-menu')]) {
+        const sortButton = editor.locator('.sb-wi-sort-button');
+        await editor.locator('.sb-wi-list-header button[aria-label="Search"]').click();
+        await expect(sortButton).toBeVisible();
+        for (const trigger of [sortButton, editor.locator('.sb-wi-list-header button:has(.fa-ellipsis-vertical)'), row(editor, 'Alpha').locator('.sb-wi-row-menu')]) {
             await trigger.click();
             await expect(trigger).toHaveAttribute('aria-expanded', 'true');
             await trigger.click();
@@ -381,6 +391,66 @@ test.describe('World Info editor', () => {
         await expect(editor.locator('.sb-wi-book-actions')).toBeFocused();
     });
 });
+
+for (const width of [1440, 390]) {
+    test.describe(`World Info search bar and book switcher at ${width}px`, () => {
+        test.use({ viewport: { width, height: 900 } });
+
+        test('the sort button sits beside the search entry, and the search toggle shows pressed while a sort or filter is on', async ({ page }) => {
+            const editor = await openBook(page);
+            const toggle = editor.locator('.sb-wi-list-header').getByRole('button', { name: 'Search', exact: true });
+            const sort = editor.locator('.sb-wi-sort-button');
+            await expect(sort).toBeHidden();
+            await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+            await toggle.click();
+            await expect(sort).toBeVisible();
+            await expect(sort).toHaveAttribute('aria-haspopup', 'menu');
+            await expect(editor.locator('.sb-wi-search-field')).toHaveAttribute('data-state', 'open');
+            const entry = await editor.locator('.sb-wi-search-field .sb-search-entry').boundingBox();
+            const button = await sort.boundingBox();
+            expect(button.x).toBeGreaterThanOrEqual(entry.x + entry.width);
+            expect(Math.abs(button.y + button.height / 2 - (entry.y + entry.height / 2))).toBeLessThanOrEqual(1);
+
+            await selectSortOrFilter(page, editor, 'Title A-Z');
+            await expect(sort).toBeFocused();
+            await expect(sort).toHaveAttribute('aria-pressed', 'true');
+            await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+            await toggle.click();
+            await expect(sort).toBeHidden();
+            await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+            await selectSortOrFilter(page, editor, 'Priority');
+            await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+            await selectSortOrFilter(page, editor, 'Disabled');
+            await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+            await selectSortOrFilter(page, editor, 'All');
+            await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        });
+
+        test('an empty search bar closes when the focus goes to the list, and stays for its own sort button', async ({ page }) => {
+            const editor = await openBook(page);
+            const toggle = editor.locator('.sb-wi-list-header').getByRole('button', { name: 'Search', exact: true });
+            const search = editor.locator('.sb-wi-search');
+            await toggle.click();
+            await expect(search).toBeFocused();
+            await editor.locator('.sb-wi-sort-button').focus();
+            await expect(search).toBeVisible();
+            await search.focus();
+            await row(editor, 'Alpha').focus();
+            await expect(search).toBeHidden();
+            await expect(row(editor, 'Alpha')).toBeFocused();
+        });
+
+        test('the book switcher is named by the book and its counts first, then by what it does', async ({ page }) => {
+            const editor = await openBook(page);
+            const switcher = editor.locator('.sb-wi-book-switcher');
+            await expect(switcher).toHaveAttribute('aria-label', `${BOOK} 3 entries · 2 active, Worlds/Lorebooks`);
+            await expect(editor.getByRole('button', { name: `${BOOK} 3 entries · 2 active, Worlds/Lorebooks`, exact: true })).toBeVisible();
+            await expect(switcher).toHaveAttribute('title', 'Worlds/Lorebooks');
+            expect(await switcher.evaluate(node => node.innerText.replace(/\s+/g, ' ').trim())).toBe(`${BOOK} 3 entries · 2 active`);
+        });
+    });
+}
 
 test.describe('World Info pressed fills', () => {
     test('rows, the row menu and the book button show the shared pressed fill while the pointer is down', async ({ page }) => {

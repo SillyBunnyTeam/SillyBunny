@@ -19,7 +19,8 @@ export const BAR = [
 
 export const SHELL_TITLE = '#sb-topbar-title, .sb-brand-title, .sb-settings-title, #sb-settings-sidebar-title';
 
-const OWN_TITLE = `:scope :is(h1, h2, h3, input[class*="title" i], input[class*="name" i], [class*="title" i]:not([class*="titles" i]):not([class*="button" i]), [class*="name" i]:not(button)):not(:is(${SHELL_TITLE}))`;
+/** A class that holds "title" also holds it in "subtitle" and "titles" (the wrapper of a title and its subtitle), which are not titles. */
+const OWN_TITLE = `:scope :is(h1, h2, h3, input[class*="title" i], input[class*="name" i], [class*="title" i]:not([class*="subtitle" i]):not([class*="titles" i]):not([class*="button" i]), [class*="name" i]:not(button)):not(:is(${SHELL_TITLE}))`;
 const OWN_BUTTON = ':scope :is(button, [role="button"]):not(.sb-editor-action):not(.sb-dialog__response)';
 
 export const rules = {

@@ -13,7 +13,7 @@
 
 /**
  * @typedef {object} HeaderTitleButton
- * @property {string} label Accessible name and tooltip.
+ * @property {string} label What the button does: its tooltip, and the end of its accessible name, which starts with the text the button shows.
  * @property {(trigger: HTMLButtonElement) => void} onActivate
  * @property {string} [className] Extra classes for the button.
  */
@@ -47,7 +47,9 @@ export function createListHeader({
     const subtitleElement = document.createElement('span');
     subtitleElement.className = ['sb-list-header__subtitle', subtitleClassName].filter(Boolean).join(' ');
     subtitleElement.textContent = subtitle;
-    titles.append(titleElement, subtitleElement);
+    // Block spans give no space in their text, so axe reads the title and subtitle of a button as one word ("Book3 entries") and finds it missing from the name.
+    if (titleButtonOptions) titles.append(titleElement, document.createTextNode(' '), subtitleElement);
+    else titles.append(titleElement, subtitleElement);
     const spacer = document.createElement('span');
     spacer.className = 'sb-list-header__spacer';
     spacer.setAttribute('aria-hidden', 'true');
@@ -57,7 +59,6 @@ export function createListHeader({
         titleButton = document.createElement('button');
         titleButton.type = 'button';
         titleButton.className = ['sb-list-header__title-button', titleButtonOptions.className].filter(Boolean).join(' ');
-        titleButton.setAttribute('aria-label', titleButtonOptions.label);
         titleButton.title = titleButtonOptions.label;
         titleButton.setAttribute('aria-haspopup', 'dialog');
         titleButton.setAttribute('aria-expanded', 'false');
@@ -70,6 +71,14 @@ export function createListHeader({
         cleanups.push(() => titleButton.removeEventListener('click', onTitleClick));
     }
     element.append(titleButton ?? titles, spacer);
+
+    // Label in Name: the name has to contain all the text the button shows, so it starts with the titles and ends with what the button does.
+    const nameTitleButton = () => {
+        if (!titleButton) return;
+        const shown = [titleElement, subtitleElement].filter(node => !node.hidden).map(node => node.textContent.trim()).filter(Boolean).join(' ');
+        titleButton.setAttribute('aria-label', shown ? `${shown}, ${titleButtonOptions.label}` : titleButtonOptions.label);
+    };
+    nameTitleButton();
 
     const buttons = new Map();
     for (const action of actions) {
@@ -101,12 +110,15 @@ export function createListHeader({
         titleButton,
         setTitle(text) {
             if (titleElement.textContent !== text) titleElement.textContent = text;
+            nameTitleButton();
         },
         setSubtitle(text) {
             if (subtitleElement.textContent !== text) subtitleElement.textContent = text;
+            nameTitleButton();
         },
         setSubtitleHidden(hidden) {
             subtitleElement.hidden = hidden;
+            nameTitleButton();
         },
         button: id => buttons.get(id) ?? null,
         setPressed(id, pressed) {

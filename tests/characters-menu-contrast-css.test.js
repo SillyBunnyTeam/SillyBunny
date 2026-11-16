@@ -75,10 +75,10 @@ describe('Characters menu contrast and token contracts', () => {
             [editor, '.sb-editor-sheet .text_pole::placeholder'],
             [sheet('character-list'), '.sb-character-list .text_pole::placeholder'],
             [sheet('editor-shell'), '.sb-list-editor .text_pole::placeholder'],
+            [sheet('tag-manager'), '#tag_view_list .text_pole::placeholder'],
         ]) {
             expect(rule(source, selector)).toContain('color: var(--sb-input-placeholder) !important;');
         }
-        expect(rule(sheet('tag-manager'), '#tag_view_list .text_pole::placeholder')).toContain('color: var(--SmartThemeBodyColor) !important;');
         expect(rule(editor, '.ds-field-subtitle')).toContain('opacity: 1;');
     });
 
@@ -87,7 +87,12 @@ describe('Characters menu contrast and token contracts', () => {
             expect(rule(entities, selector)).toContain('color: var(--SmartThemeBodyColor);');
         }
         expect(rule(entities, '.ds-entity-row__tags .tag.sb-tag-overflow')).toContain('color: var(--SmartThemeBodyColor) !important;');
-        expect(rule(sheet('tag-manager'), '.sb-tag-manager .ds-entity-row__subtitle')).toContain('color: var(--SmartThemeBodyColor);');
+    });
+
+    test('the Tag Manager row subtitle takes the muted ink of the shared rows', () => {
+        expect(rule(entities, '.ds-entity-row__subtitle')).toContain('color: var(--sb-muted-fg);');
+        expect(sheet('tag-manager')).not.toMatch(/\.ds-entity-row__subtitle/);
+        expect(sheet('tag-manager')).not.toMatch(/color:\s*var\(--SmartThemeBodyColor\)\s*!important/);
     });
 
     test('editor chrome uses shared motion and prefixed sticky geometry', () => {

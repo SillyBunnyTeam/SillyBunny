@@ -21,6 +21,9 @@ import { t } from '../i18n.js';
  * @param {boolean} [options.shortcuts=true] Enables Ctrl/Cmd+F and type-to-search inside `scope`.
  * @param {boolean} [options.escapeClearsFirst=false] Keeps an open search visible for one Escape after clearing its query.
  * @param {string} [options.typeToSearchSelector='[data-sb-list-key]'] Focus target filter for type-to-search.
+ * @param {boolean} [options.closeEmptyOnBlur=false] Closes the open field when the input loses focus to something outside it
+ *   while the query is empty (a field that also holds a filter button keeps the focus inside). A close that a pointer press
+ *   caused waits for the click to finish, so the list does not move under the pointer.
  * @returns {{ toggle: (show?: boolean) => void, open: () => void, close: () => void, clear: () => void,
  *   setQuery: (value: string, options?: { notify?: boolean }) => void, report: (shown: number, total: number) => void,
  *   readonly query: string, readonly isOpen: boolean, destroy: () => void }}
@@ -38,11 +41,16 @@ export function createListSearch({
     shortcuts = true,
     escapeClearsFirst = false,
     typeToSearchSelector = '[data-sb-list-key]',
+    closeEmptyOnBlur = false,
 }) {
     let query = input.value ?? '';
     let timer = 0;
     let savedScroll = null;
     let lastReport = '';
+    let destroyed = false;
+    let pointerActive = false;
+    let pendingBlur = null;
+    let blurFrame = 0;
 
     if (!input.id) input.id = `sb-list-search-${Math.random().toString(36).slice(2, 9)}`;
     if (trigger) {
@@ -193,9 +201,46 @@ export function createListSearch({
         schedule();
     };
 
+    const finishPointer = () => {
+        pointerActive = false;
+        cancelAnimationFrame(blurFrame);
+        blurFrame = 0;
+        const close = pendingBlur;
+        pendingBlur = null;
+        close?.(true);
+    };
+    const startPointer = event => {
+        pointerActive = document.activeElement === input && !field.contains(event.target);
+    };
+    const releasePointer = () => {
+        pointerActive = false;
+        if (pendingBlur) blurFrame = requestAnimationFrame(finishPointer);
+    };
+    const onBlur = event => {
+        const nextFocus = event.relatedTarget;
+        if (input.value || field.contains(nextFocus) || (trigger && nextFocus === trigger)) return;
+        const closeNow = (restoreImmediately = false) => {
+            if (destroyed || input.value || field.hidden) return;
+            close();
+            if (!(nextFocus instanceof HTMLElement) || !nextFocus.isConnected) return;
+            if (restoreImmediately) nextFocus.focus({ preventScroll: true });
+            else queueMicrotask(() => nextFocus.focus({ preventScroll: true }));
+        };
+        // Keep pointer-down coordinates stable until the browser has resolved the click target.
+        if (pointerActive) pendingBlur = closeNow;
+        else closeNow();
+    };
+
     input.addEventListener('input', onInput);
     input.addEventListener('keydown', onInputKeydown);
     scope?.addEventListener('keydown', onScopeKeydown);
+    if (closeEmptyOnBlur) {
+        input.addEventListener('blur', onBlur);
+        document.addEventListener('pointerdown', startPointer, true);
+        document.addEventListener('click', finishPointer, true);
+        document.addEventListener('pointerup', releasePointer, true);
+        document.addEventListener('pointercancel', finishPointer, true);
+    }
 
     return {
         toggle,
@@ -207,10 +252,18 @@ export function createListSearch({
         get query() { return query; },
         get isOpen() { return !field.hidden; },
         destroy() {
+            destroyed = true;
             clearTimeout(timer);
+            cancelAnimationFrame(blurFrame);
+            pendingBlur = null;
             input.removeEventListener('input', onInput);
             input.removeEventListener('keydown', onInputKeydown);
+            input.removeEventListener('blur', onBlur);
             scope?.removeEventListener('keydown', onScopeKeydown);
+            document.removeEventListener('pointerdown', startPointer, true);
+            document.removeEventListener('click', finishPointer, true);
+            document.removeEventListener('pointerup', releasePointer, true);
+            document.removeEventListener('pointercancel', finishPointer, true);
         },
     };
 }

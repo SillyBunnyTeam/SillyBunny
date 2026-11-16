@@ -548,6 +548,70 @@ describe('World Info shell', () => {
         expect(openPicker).toHaveBeenCalledWith(expect.objectContaining({ trigger, matchTriggerWidth: true }));
     });
 
+    test('the book switcher is named by what it shows first, then what it does, and follows the book', async () => {
+        await mount();
+        const switcher = container.querySelector('.sb-wi-book-switcher');
+        expect(switcher.getAttribute('aria-label')).toBe('--- Pick to Edit ---, Worlds/Lorebooks');
+        await render({ name: 'Book A', data: book(2) });
+        expect(switcher.getAttribute('aria-label')).toBe('Book A 2 entries · 2 active, Worlds/Lorebooks');
+        await render({ name: 'Book B', data: book(1) });
+        expect(switcher.getAttribute('aria-label')).toBe('Book B 1 entry · 1 active, Worlds/Lorebooks');
+        expect(switcher.title).toBe('Worlds/Lorebooks');
+    });
+
+    test('the sort button sits in the search bar beside the entry, and the header keeps search, new and the book menu', async () => {
+        await mount({ name: 'Book A', data: book() });
+        const bar = container.querySelector('.sb-wi-search-field');
+        expect([...bar.children].map(node => node.className.split(' ')[0])).toEqual(['sb-search-entry', 'sb-list-header__button']);
+        const sort = bar.querySelector('.sb-wi-sort-button');
+        expect(sort.getAttribute('aria-label')).toBe('lorum ipsum');
+        expect(sort.getAttribute('aria-haspopup')).toBe('menu');
+        expect(container.querySelector('.sb-wi-list-header .sb-wi-sort-button')).toBeNull();
+        expect([...container.querySelectorAll('.sb-wi-list-header .sb-list-header__button')].map(button => button.dataset.actionId)).toEqual(['search', 'new', 'book']);
+    });
+
+    test('the search toggle and the sort button show pressed while the sort or the view filter is not the default', async () => {
+        await mount({ name: 'Book A', data: book() });
+        const toggle = container.querySelector('.sb-wi-list-header [aria-label="Search"]');
+        const sort = container.querySelector('.sb-wi-sort-button');
+        const pressed = () => [toggle.getAttribute('aria-pressed'), sort.getAttribute('aria-pressed')];
+        expect(pressed()).toEqual(['false', 'false']);
+        document.getElementById('world_info_sort_order').value = '13';
+        await render({ name: 'Book A', data: book() });
+        expect(pressed()).toEqual(['true', 'true']);
+        document.getElementById('world_info_sort_order').value = '0';
+        container.querySelector('.world_info_view_filter[data-filter="all"]').classList.remove('is-active');
+        container.querySelector('.world_info_view_filter[data-filter="active"]').classList.add('is-active');
+        await render({ name: 'Book A', data: book() });
+        expect(pressed()).toEqual(['true', 'true']);
+        container.querySelector('.world_info_view_filter[data-filter="active"]').classList.remove('is-active');
+        container.querySelector('.world_info_view_filter[data-filter="all"]').classList.add('is-active');
+        await render({ name: 'Book A', data: book() });
+        expect(pressed()).toEqual(['false', 'false']);
+    });
+
+    test('an empty search bar closes when the focus leaves it, but not for the sort button beside it', async () => {
+        await mount({ name: 'Book A', data: book() });
+        const toggle = container.querySelector('.sb-wi-list-header [aria-label="Search"]');
+        const bar = container.querySelector('.sb-wi-search-field');
+        const input = container.querySelector('.sb-wi-search');
+        toggle.click();
+        await settle();
+        input.focus();
+        expect(bar.hidden).toBe(false);
+        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: bar.querySelector('.sb-wi-sort-button') }));
+        expect(bar.hidden).toBe(false);
+        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: container.querySelector('.sb-wi-row') }));
+        await settle();
+        expect(bar.hidden).toBe(true);
+        toggle.click();
+        await settle();
+        input.value = 'Entry';
+        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: container.querySelector('.sb-wi-row') }));
+        await settle();
+        expect(bar.hidden).toBe(false);
+    });
+
     test('numeric UID navigation opens its page, including UID zero', async () => {
         await mount({ name: 'Book A', data: book(25) });
         await render(liveState, 154);

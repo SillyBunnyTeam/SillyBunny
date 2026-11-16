@@ -55,6 +55,7 @@ test.describe('World Info sorting controls', () => {
             const entries = editor.locator('.sb-wi-row');
             await expect(editor).toBeAttached();
             await expect(entries).toHaveCount(3);
+            await editor.locator('.sb-wi-list-header button[aria-label="Search"]').click();
             await editor.locator('.sb-wi-sort-button').click();
             await page.locator('.sb-action-menu [role^="menuitem"]', { hasText: 'Title A-Z' }).click();
             await expect(entries.first()).toContainText('Alpha');
