@@ -8,7 +8,7 @@
 
 import { FIXTURES } from './fixture-data.js';
 import { openPersonaEditorEntry } from './panel-steps.js';
-import { selectBackend, settle } from './steps.js';
+import { isBottomBarChipRow, selectBackend, settle } from './steps.js';
 
 /** An action menu or a popover: the popover on a desktop window, the sheet under the overlay breakpoint. */
 export const MENU_ROOT = '.sb-action-popover, .sb-action-sheet:not([hidden])';
@@ -261,7 +261,7 @@ export async function openChatHistory(page) {
     if (await page.locator('.sb-chat-history-dialog').first().isVisible()) {
         return;
     }
-    const paged = page.viewportSize().width <= 768;
+    const paged = await isBottomBarChipRow(page);
     if (paged) {
         await page.locator('.sb-bottom-chat-chip').click();
     }

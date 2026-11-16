@@ -47,9 +47,8 @@ describe('group chat greetings QoL', () => {
         expect(indexSource).toContain('class="fa-solid fa-hand-sparkles"');
         expect(indexSource).toContain('Add New Greeting');
         expect(groupChatSource).toContain('container.on(\'click\', \'#group_add_greeting\', addSelectedGroupGreeting);');
-        expect(styleSource).toContain('grid-template-areas: "typing typing typing typing" "avatars greeting speak hide";');
-        expect(styleSource).toContain('#group_add_greeting span,');
-        expect(styleSource).toMatch(/#group_add_greeting\s*\{[\s\S]*?grid-area:\s*greeting;\s*}/);
+        // Desktop: the bar wraps, and its three buttons drop their labels (keeping the tooltip) once the bar is narrower than 900px.
+        expect(styleSource).toMatch(/@container \(max-width: 900px\) \{[^@]*#group_add_greeting, #group_speaker_now, #group_speaker_hide\) > span \{\s*display:\s*none;/);
         expect(mobileStyleSource).toContain('grid-template-areas: "avatars greeting speak hide" !important;');
         expect(mobileStyleSource).toContain('#group_add_greeting span,');
         expect(mobileStyleSource).toMatch(/#group_add_greeting\s*\{[\s\S]*?grid-area:\s*greeting\s*!important;\s*}/);
@@ -76,11 +75,25 @@ describe('group chat greetings QoL', () => {
         expect(styleSource).toMatch(/#extensionsMenu>#wand_group_speaker_controls\s*\{\s*display:\s*none;\s*}/);
         expect(styleSource).toMatch(/body\.groupSpeakerControlsHidden\s+#extensionsMenu>#wand_group_speaker_controls\s*\{\s*display:\s*flex;\s*}/);
 
-        // The mobile grids reserve a column for the new button instead of overlapping the avatars.
-        expect(styleSource).toContain('grid-template-columns: minmax(0, 1fr) 34px 34px 34px;');
-        expect(styleSource).toContain('grid-template-columns: minmax(0, 1fr) 30px 30px 30px;');
-        expect(styleSource).toMatch(/#group_speaker_hide\s*\{[\s\S]*?grid-area:\s*hide;\s*}/);
+        // The phone grid (mobile-styles.css) reserves a column for each button instead of overlapping the avatars.
+        expect(mobileStyleSource).toMatch(/\.group_speaker_controls\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) var\(--sb-mobile-touch-target, 44px\) var\(--sb-mobile-touch-target, 44px\) var\(--sb-mobile-touch-target, 44px\)\s*!important;/);
         expect(mobileStyleSource).toMatch(/#group_speaker_hide\s*\{[\s\S]*?grid-area:\s*hide\s*!important;\s*}/);
+    });
+
+    test('the typing line is a row of its own on a phone and never hides the speaker chips', async () => {
+        const mobileStyleSource = await fs.readFile(fileURLToPath(new URL('../public/css/mobile-styles.css', import.meta.url)), 'utf8');
+
+        expect(mobileStyleSource).toMatch(/\.group_speaker_controls\.is-typing\s*\{[^}]*grid-template-areas:\s*"typing typing typing typing" "avatars greeting speak hide"\s*!important;/);
+        expect(mobileStyleSource).toMatch(/\.group_typing_indicator\s*\{[^}]*grid-area:\s*typing\s*!important;/);
+        expect(mobileStyleSource).not.toMatch(/\.is-typing \.group_speaker_list\s*\{[^}]*visibility:\s*hidden/);
+    });
+
+    test('speaker chips report the chosen speaker as a pressed state', async () => {
+        const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
+
+        expect(groupChatSource).toContain('item.attr(\'aria-pressed\', String(avatarId === selectedGroupSpeakerAvatar));');
+        expect(groupChatSource).toContain('$(this).attr(\'aria-pressed\', String(avatarId === selectedGroupSpeakerAvatar));');
+        expect(groupChatSource).toContain('.removeClass(\'selected\').attr(\'aria-pressed\', \'false\');');
     });
 
     test('clears a stale typing indicator when generation finishes', async () => {

@@ -739,7 +739,8 @@ function getMessageSpeakerName(message) {
 
 function clearSelectedGroupSpeaker() {
     // Unhighlight first: a listener of the change event may already pick the next speaker.
-    $('#group_speaker_controls .group_speaker_avatar').removeClass('selected');
+    // SillyBunny: aria-pressed follows the selected class.
+    $('#group_speaker_controls .group_speaker_avatar').removeClass('selected').attr('aria-pressed', 'false');
     changeSelectedGroupSpeaker('');
 }
 
@@ -816,6 +817,8 @@ function updateGroupSpeakerControls() {
             item.attr('title', `${character.name}: speak next / now`);
             item.attr('data-avatar', avatarId);
             item.toggleClass('selected', avatarId === selectedGroupSpeakerAvatar);
+            // SillyBunny: the chosen speaker is also a state for assistive technology, not only a colour.
+            item.attr('aria-pressed', String(avatarId === selectedGroupSpeakerAvatar));
             item.append($('<img alt="">').attr({
                 src: getThumbnailUrl('avatar', avatarId),
                 loading: 'lazy',
@@ -829,6 +832,8 @@ function updateGroupSpeakerControls() {
     container.find('.group_speaker_avatar').each(function () {
         const avatarId = String($(this).data('avatar') || '');
         $(this).toggleClass('selected', avatarId === selectedGroupSpeakerAvatar);
+        // SillyBunny: keeps the pressed state in step with the selected class.
+        $(this).attr('aria-pressed', String(avatarId === selectedGroupSpeakerAvatar));
     });
 }
 

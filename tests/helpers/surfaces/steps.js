@@ -19,6 +19,15 @@ export function labelPage(page, label) {
 }
 
 /**
+ * Whether the bottom chat bar is its chip row and sheet (the shell's `data-sb-mobile-ui-mode="mobile"`) rather than the desktop bar.
+ * That is every width up to 768px, and a touch screen under 450px tall, so the page says, not its width.
+ * @param {import('@playwright/test').Page} page
+ */
+export async function isBottomBarChipRow(page) {
+    return await page.locator('html[data-sb-mobile-ui-mode="mobile"]').count() > 0;
+}
+
+/**
  * Waits for the fonts and two frames, then until no animation or transition that has an end is running inside `root`
  * (an animation that repeats forever, such as a spinner, is ignored), so that a measured box is the settled one.
  * The wait is bounded: after `timeout` ms it fails with the animations that are still running and the surface's label.

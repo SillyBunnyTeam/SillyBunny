@@ -7,7 +7,7 @@
  */
 
 import { openAuditChat } from './panel-steps.js';
-import { chooseMenuItem, openCharactersTab, openSettingsTab, selectBackend, settle } from './steps.js';
+import { chooseMenuItem, isBottomBarChipRow, openCharactersTab, openSettingsTab, selectBackend, settle } from './steps.js';
 
 export const shown = (page, selector) => page.locator(selector).first().waitFor({ state: 'visible' });
 export const gone = (page, selector) => page.locator(selector).first().waitFor({ state: 'hidden' });
@@ -367,7 +367,7 @@ export async function closeChatHistory(page) {
 export async function openChatHistory(page) {
     await closeChatHistory(page);
     await openAuditChat(page);
-    const paged = page.viewportSize().width <= 768;
+    const paged = await isBottomBarChipRow(page);
     if (paged) {
         await page.locator('.sb-bottom-chat-chip').click();
     }

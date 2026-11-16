@@ -10,7 +10,7 @@
 import { FIXTURES } from './fixture-data.js';
 import { stubAccounts } from './dialog-form.js';
 import { ALERT_FRAME, auditCharacterIndex, closeDialogs, closeFrame, closeMenus, oncePerPage, openAuditChat, settleFrame, waitForChatQuiet, WINDOW_FRAME, within } from './dialog-steps.js';
-import { selectBackend, settle } from './steps.js';
+import { isBottomBarChipRow, selectBackend, settle } from './steps.js';
 
 const SCRIPTS = 'public/scripts';
 const ADAPTERS = `${SCRIPTS}/sillybunny-editor/adapters`;
@@ -573,7 +573,7 @@ export const surfaces = [
         async open(page) {
             await closeDialogs(page);
             await openAuditChat(page);
-            const paged = page.viewportSize().width <= 768;
+            const paged = await isBottomBarChipRow(page);
             if (paged) {
                 await page.locator('.sb-bottom-chat-chip').click();
             }

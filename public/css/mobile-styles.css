@@ -274,20 +274,6 @@
         font-size: var(--sb-composer-action-icon-size, calc(var(--mainFontSize) * 1.1));
     }
 
-    /* Ensure consistent hamburger button sizing */
-    #sb-hamburger {
-        width: var(--sb-mobile-toggle-size) !important;
-        min-width: var(--sb-mobile-toggle-size) !important;
-        max-width: var(--sb-mobile-toggle-size) !important;
-        height: var(--sb-mobile-toggle-size) !important;
-        min-height: var(--sb-mobile-toggle-size) !important;
-        padding: 0 !important;
-    }
-
-    #sb-hamburger i {
-        font-size: var(--sb-topbar-compact-icon-size);
-    }
-
     .bg_folder_tile .jg-button {
         width: 44px;
         height: 44px;
@@ -1282,17 +1268,9 @@
         align-items: center !important;
         justify-content: center !important;
         box-sizing: border-box !important;
-        border-radius: 10px !important;
+        border-radius: var(--sb-radius-control) !important;
         line-height: 1 !important;
         font-size: var(--sb-composer-action-icon-size) !important;
-    }
-
-    :root[data-sb-compact-mode='true'] #leftSendForm > div,
-    :root[data-sb-compact-mode='true'] #rightSendForm > div:not(.stscript_btn),
-    :root[data-sb-compact-mode='true'] #send_but,
-    :root[data-sb-compact-mode='true'] #send_form .mes_stop,
-    :root[data-sb-compact-mode='true'] #send_form.sb-generating-controls #mes_stop {
-        border-radius: 9px !important;
     }
 
     #send_textarea {
@@ -1377,9 +1355,16 @@
         align-items: center !important;
         min-height: calc(var(--sb-mobile-touch-target, 44px) + 8px) !important;
         padding: 4px 6px !important;
-        margin-bottom: 2px !important;
-        border-radius: 9px !important;
+        margin-bottom: 0 !important;
+        /* SillyBunny: a full-bleed bar in the stack, as the chat bar and the composer are. */
+        border-width: 1px 0 0 !important;
+        border-radius: 0 !important;
         overflow: hidden !important;
+    }
+
+    /* SillyBunny: the typing line is a row of its own above the chips, so the chips stay in view. */
+    .group_speaker_controls.is-typing {
+        grid-template-areas: "typing typing typing typing" "avatars greeting speak hide" !important;
     }
 
     .group_speaker_controls.displayNone {
@@ -1387,16 +1372,15 @@
     }
 
     .group_typing_indicator {
-        grid-area: avatars !important;
-        align-self: center !important;
+        grid-area: typing !important;
         min-width: 0 !important;
         width: 100% !important;
         padding: 0 2px !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         white-space: nowrap !important;
-        font-size: 14px !important;
-        line-height: var(--sb-mobile-touch-target, 44px) !important;
+        font-size: calc(var(--mainFontSize) * 0.86) !important;
+        line-height: 1.35 !important;
         pointer-events: none !important;
     }
 
@@ -1418,16 +1402,6 @@
         display: none !important;
     }
 
-    .group_speaker_controls.is-typing .group_speaker_list {
-        visibility: hidden !important;
-        pointer-events: none !important;
-    }
-
-    .group_speaker_controls.is-typing .group_typing_indicator {
-        display: block !important;
-        z-index: 2 !important;
-    }
-
     .group_speaker_avatar {
         width: var(--sb-mobile-touch-target, 44px) !important;
         min-width: var(--sb-mobile-touch-target, 44px) !important;
@@ -1440,7 +1414,7 @@
         padding: 4px !important;
         gap: 0 !important;
         justify-content: center !important;
-        border-radius: 999px !important;
+        border-radius: var(--sb-radius-control) !important;
         overflow: visible !important;
     }
 
@@ -1471,7 +1445,7 @@
         align-items: center !important;
         justify-content: center !important;
         gap: 0 !important;
-        border-radius: 9px !important;
+        border-radius: var(--sb-radius-control) !important;
         box-sizing: border-box !important;
         font-size: 16px !important;
     }

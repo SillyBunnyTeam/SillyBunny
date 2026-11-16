@@ -102,7 +102,7 @@ import { collectEntitySearchEntries, primeWorldInfoSearchCache } from './sillybu
 import { eventSource, event_types } from './events.js';
 import { registerHelpKeys } from './sillybunny-help/help-keys.js';
 import { openHelp, openKeyboardShortcuts } from './sillybunny-home/windows.js';
-import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
+import { BOTTOM_BAR_COMPACT_QUERY, LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 const sbMobileShellLifecycle = createMobileShellLifecycle();
 const sbPresetApiSyncLifecycle = createPresetApiSyncLifecycle();
 const sbSearchRenderRequests = new WeakMap();
@@ -13007,11 +13007,11 @@ function initializeMobileShellUi() {
     initializeMobileBottomBar();
     applyMobileShellUiState();
 
-    window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', applyMobileShellUiState);
+    window.matchMedia(BOTTOM_BAR_COMPACT_QUERY).addEventListener('change', applyMobileShellUiState);
 }
 
 function applyMobileShellUiState() {
-    const isMobile = isMobileViewport();
+    const isMobile = window.matchMedia(BOTTOM_BAR_COMPACT_QUERY).matches;
     document.documentElement.dataset.sbMobileUiMode = isMobile ? 'mobile' : 'desktop';
     syncMobileBottomBar(isMobile);
     const search = getUniversalSearchState();

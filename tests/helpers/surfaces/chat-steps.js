@@ -10,6 +10,7 @@
  * answered without being stored.
  */
 
+import { VIEWPORT_IDS, viewportById } from '../surface-matrix.js';
 import { FIXTURES } from './fixture-data.js';
 import { closeComposerSheets, closeOverlays, dismissDialogs, openLegacyToggle } from './menu-steps.js';
 import { selectBackend, settle } from './steps.js';
@@ -17,12 +18,18 @@ import { selectBackend, settle } from './steps.js';
 /** The shell switches to its mobile layout at this width (`(max-width: 768px)`). */
 const PAGED_WIDTH = 768;
 
+/** The bottom chat bar also folds into its chip row on a touch screen this short (breakpoints.js `BOTTOM_BAR_COMPACT_QUERY`). */
+const PAGED_TOUCH_HEIGHT = 450;
+
 /**
- * Whether a run's viewport shows the mobile layout. The viewport id is `<width>x<height>`; a run without one is read as a desktop window.
+ * Whether a run's viewport shows the bottom bar as its chip row. The viewport id is `<width>x<height>`; a run without one is read as a desktop window.
  * @param {{ viewport?: string }} [ctx]
  */
 export function isPaged(ctx) {
-    return Number(String(ctx?.viewport ?? '1440x900').split('x')[0]) <= PAGED_WIDTH;
+    const id = String(ctx?.viewport ?? '1440x900');
+    const [width, height] = id.split('x').map(Number);
+    const coarse = VIEWPORT_IDS.includes(id) && viewportById(id).pointer === 'coarse';
+    return width <= PAGED_WIDTH || (coarse && height <= PAGED_TOUCH_HEIGHT);
 }
 
 /** The message at `id` of the transcript. */

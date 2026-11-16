@@ -33,6 +33,8 @@ function getComposerSpacing(page) {
             leftRailPaintClearance: leftRail.getBoundingClientRect().right - rightmostLeftControl.getBoundingClientRect().right,
             leftControlBorderRadius: getComputedStyle(rightmostLeftControl).borderTopRightRadius,
             rightClearance: Math.min(...rightControlRects.map(rect => rect.left)) - textareaRect.right,
+            railsBelowClearance: Math.min(...[...leftControlRects, ...rightControlRects].map(rect => rect.top)) - textareaRect.bottom,
+            railsAreaWidth: composer.getBoundingClientRect().width,
             textareaWidth: textareaRect.width,
             composerBorderRadius: getComputedStyle(composer).borderRadius,
             composerBackgroundImage: getComputedStyle(composer).backgroundImage,
@@ -80,7 +82,8 @@ test.describe('mobile composer spacing at 320x568', () => {
             expect(Number.parseFloat(defaultState.textareaBorderRadius)).toBeGreaterThan(0);
             expect(defaultState.textareaBackgroundColor).not.toBe('rgba(0, 0, 0, 0)');
             expect(defaultState.leftRailPaintClearance).toBeGreaterThanOrEqual(1);
-            expect(Number.parseFloat(defaultState.leftControlBorderRadius)).toBeGreaterThanOrEqual(compactMode === 'true' ? 9 : 10);
+            // Composer buttons sit at the Control radius (--sb-radius-control, 9px) in both densities.
+            expect(Number.parseFloat(defaultState.leftControlBorderRadius)).toBe(9);
 
             await page.locator('#send_textarea').focus();
             await waitForAnimationFrames(page, 2);
@@ -88,10 +91,9 @@ test.describe('mobile composer spacing at 320x568', () => {
             const focusState = await getComposerSpacing(page);
 
             expect(focusState).not.toBeNull();
-            expect(focusState.columnGap).toBeGreaterThanOrEqual(8);
-            expect(focusState.leftClearance).toBeGreaterThanOrEqual(6);
-            expect(focusState.rightClearance).toBeGreaterThanOrEqual(6);
-            expect(focusState.textareaWidth).toBeGreaterThanOrEqual(100);
+            // At 450px and below the field takes the whole first row and both rails sit under it, so a short message does not wrap every few words.
+            expect(focusState.railsBelowClearance).toBeGreaterThanOrEqual(2);
+            expect(focusState.textareaWidth).toBeGreaterThanOrEqual(focusState.railsAreaWidth - 16);
             expect(focusState.formOutlineStyle).toBe('none');
             expect(focusState.textareaBoxShadow).not.toBe(defaultState.textareaBoxShadow);
 

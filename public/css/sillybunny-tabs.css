@@ -2351,10 +2351,10 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     font-size: calc(var(--mainFontSize) * 0.85 * var(--sb-bottom-bar-scale));
     line-height: 1.1;
     color: var(--SmartThemeBodyColor);
-    /* libadwaita dropdown button: borderless raised pill. */
+    /* libadwaita dropdown button: borderless raised. */
     background: var(--sb-raised-bg);
     border: 1px solid transparent;
-    border-radius: var(--sb-radius-pill);
+    border-radius: var(--sb-radius-control);
     transition: background-color var(--sb-transition-fast);
     -webkit-appearance: none;
     appearance: none;
@@ -2382,7 +2382,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     /* libadwaita search entry: borderless raised fill, same as the chat select beside it. */
     background: var(--sb-raised-bg);
     border: 1px solid transparent;
-    border-radius: var(--sb-radius-pill);
+    border-radius: var(--sb-radius-control);
     overflow: hidden;
 }
 
@@ -2482,7 +2482,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     margin: 0;
     padding: calc(2px * var(--sb-bottom-bar-scale)) calc(6px * var(--sb-bottom-bar-scale));
     box-sizing: border-box;
-    border-radius: var(--sb-radius-pill);
+    border-radius: var(--sb-radius-control);
     font-size: calc(var(--mainFontSize) * 0.9 * var(--sb-bottom-bar-scale));
     transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
@@ -2596,7 +2596,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         padding: 0 clamp(6px, calc(8px * var(--sb-bottom-bar-scale)), 10px);
         font-size: clamp(calc(var(--mainFontSize) * 0.68), calc(var(--mainFontSize) * 0.76 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.86));
         line-height: var(--sb-bottom-chat-mobile-select-height);
-        border-radius: var(--sb-radius-control);
     }
 
     .sb-bottom-chat-collapse-toggle {
@@ -2651,7 +2650,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         min-height: var(--sb-bottom-chat-mobile-select-height);
         max-height: var(--sb-bottom-chat-mobile-select-height);
         padding: 0 clamp(8px, calc(9px * var(--sb-bottom-bar-scale)), 11px);
-        border-radius: var(--sb-radius-control);
     }
 
     #sb-bottom-chat-bar:not(.sb-bottom-chat-search-open) .sb-bottom-chat-search-field {
@@ -2700,7 +2698,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         min-height: var(--sb-bottom-chat-mobile-button-size);
         max-height: var(--sb-bottom-chat-mobile-button-size);
         padding: 0;
-        border-radius: var(--sb-radius-pill);
         font-size: clamp(calc(var(--mainFontSize) * 0.68), calc(var(--mainFontSize) * 0.78 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.88));
         line-height: 1;
     }

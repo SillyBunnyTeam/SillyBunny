@@ -126,7 +126,7 @@
             "spacing-off-scale": 3
         },
         "public/css/sillybunny-theme.css": {
-            "radius-literal": 2,
+            "radius-literal": 1,
             "shadow-literal": 25,
             "important": 185,
             "hover-ungated": 6,

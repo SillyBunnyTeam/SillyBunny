@@ -70,6 +70,10 @@ This is the largest class by a wide margin.
   - **`SillyBunnyShell.openTab(shell, tabId)` shows the page on a phone:** for every shell, as it already did for Characters. A named page that opened under the sidebar would be in the inert pane. Tests that open a page and then use the sidebar call `showSettingsSidebar()`.
   - **Tests:** `tests/sillybunny-settings-pane-focus.e2e.js` (the Tab cases pass with the native tab order, and fail again if the pane is not inert), `tests/editor-close-guard.e2e.js` (Back to the sidebar over a dirty persona or World Info editor still asks; both fail with the old `isActive()`), `tests/unit/sillybunny-persona-editor.test.js`.
 
+- **The composer field was 172px wide at 390px, and the chat 0px tall at 844x390 (F-090, found in 7.3):** the two action rails took 218px of a 390px row, so a short message wrapped every few words; at 450px and below the field now takes the first row and the rails share the row under it (the grid reads `--sb-composer-columns`, `--sb-composer-rows`, `--sb-composer-areas` and `--sb-composer-row-gap`, which a narrow block sets, so no `!important` is added). Another `#nonQRFormItems` block later in `sillybunny-mobile-shell.css` resets `gap` with the same specificity, so a row gap set in the earlier block is lost. A phone held sideways (844x390) matched no mobile rule, because `data-sb-mobile-ui-mode` followed `(max-width: 768px)` alone: the desktop stack of two bottom-bar rows, the speaker bar and the tray left the chat no height. The attribute now follows `BOTTOM_BAR_COMPACT_QUERY` (`(max-width: 768px), (pointer: coarse) and (max-height: 450px)`), and the registry's `isPaged()` and the steps that open the bottom-bar sheet read the same mode (`isBottomBarChipRow`, from the page).
+- **Upstream paints a hovered Quick Reply button `#4d4d4d`, and a tap leaves `:hover` behind:** dark text on it fails contrast on Libadwaita Light. A resting fill on `#send_form #qr--bar .qr--button.menu_button` (two ids) beats upstream's one-id hover rule in every state, so no ungated `:hover` rule is needed (`hover-ungated` counts one).
+- **Tests:** `tests/composer-bar-controls.e2e.js`, `tests/mobile-composer-spacing.e2e.js`.
+
 ### Scroll, streaming and cancellation
 
 - **Breaks:** rendering or resizing moves the reader's position; cancelling leaves stream state behind.
@@ -128,6 +132,9 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/group-turn-routing.test.js`, `tests/group-member-rename.test.js`, `tests/generation-lifecycle-wiring.test.js`.
 - **No test:** `1527a1d29` (v1.2.8 hotfix: stale group IDs cause a missing `.jsonl` file).
 - **Fixes:** #821 (the "typing" indicator stays on), `2e2d0fc94` (member renames propagate), `3e8c42b6c` (route turns only after the user message is saved).
+
+- **The speaker bar hid its own chips while a member typed (F-088):** `mobile-styles.css` set `visibility: hidden` on `.group_speaker_list` under `.is-typing` and drew the typing line over the same grid cell, so a held generation left the member chips unreachable on a phone. The typing line now has its own grid row (`grid-template-areas: "typing typing typing typing" "avatars greeting speak hide"`), so the chips stay in view. On a desktop window the chips were cut off in a fixed 328px list (F-087): the list wraps, and the bar is a size container whose queries drop the button labels at 900px and the chip names at 520px, by its own width and not the window's. The chips are `<button>`s, so the chosen one also carries `aria-pressed`, set in the three places that set `.selected` (`tests/util/group-chats-sandbox.js` stubs it).
+- **Tests:** `tests/composer-bar-controls.e2e.js` (chips unclipped at 1440, label steps, typing row above the chips at 390), `tests/group-chat-greetings-qol.test.js`, `tests/group-speaker-selection-api.test.js`.
 
 ### Chat writes, reloads and backups
 
@@ -443,6 +450,8 @@ This is the largest class by a wide margin.
 - **A hidden icon that keeps spinning:** `.hidden` only sets `visibility`, so the hidden connection profile spinner ran an endless `fa-spin` animation for the whole session, and a test that waits for running animations saw it. `:is(.fa-spin, .fa-spin-pulse, .fa-pulse).hidden` no longer animates (`public/css/sillybunny-theme.css`, `362bfdb4d`); `tests/header-icon-button-parity.e2e.js` covers both states of the spinner.
 - **Tests that need a connection or saved data:** a throwaway data root has no API connection and no saved tracker. `tests/frontend/ConversationLorebooks.e2e.js` sets a connected status before it sends, and the long-tracker test in `tests/in-chat-agents-editor.e2e.js` creates and removes its own saved tracker through a pass-through that is open only for those two calls (`638cb6157`). `tests/card-script-sandbox.e2e.js` holds Shift over the message to reveal its actions, because the run button is hidden until the row is expanded (`bc29198c0`).
 - **The startup request count is an exact ratchet:** `STARTUP_RESOURCE_LIMIT` in `tests/frontend-performance.e2e.js` equals the present count, so a new module that loads at startup fails the test until its commit raises the limit on purpose (`bc29198c0`, `55244b488`). The budget for compressed JavaScript there is 13 MiB (`646f13755`).
+
+- **A page already has its own `#qr--bar`, and on a phone it sits in the collapsed extension tray:** a test that injects a second `#qr--bar` reads the real, empty one through `querySelector`. `tests/composer-bar-controls.e2e.js` fills the page's own bar and opens the tray with `.sb-bottom-chat-tray-toggle`; the tray opens with a scale animation, so a height is polled (`expect.poll`) and not read after a few frames (42.1px against 44px).
 
 ### Unit tests that run git
 

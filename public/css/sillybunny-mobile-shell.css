@@ -85,11 +85,11 @@
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 3px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 3px);
         display: grid !important;
-        grid-template-columns: var(--sb-composer-left-rail-width) minmax(0, 1fr) var(--sb-composer-right-rail-width) !important;
-        grid-template-rows: minmax(var(--sb-mobile-composer-input-height), auto) !important;
-        grid-template-areas: 'tools input action' !important;
+        grid-template-columns: var(--sb-composer-columns, var(--sb-composer-left-rail-width) minmax(0, 1fr) var(--sb-composer-right-rail-width)) !important;
+        grid-template-rows: var(--sb-composer-rows, minmax(var(--sb-mobile-composer-input-height), auto)) !important;
+        grid-template-areas: var(--sb-composer-areas, 'tools input action') !important;
         align-items: center !important;
-        gap: 0 clamp(8px, 2vw, 10px) !important;
+        gap: var(--sb-composer-row-gap, 0) clamp(8px, 2vw, 10px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 4px) !important;
         padding: 2px 4px !important;
         box-sizing: border-box !important;
@@ -103,7 +103,7 @@
         --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size);
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 4px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 4px);
-        gap: 0 clamp(8px, 2vw, 10px) !important;
+        gap: var(--sb-composer-row-gap, 0) clamp(8px, 2vw, 10px) !important;
     }
 
     #leftSendForm {
@@ -1357,7 +1357,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size);
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 3px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 3px);
-        gap: 0 clamp(8px, 2vw, 10px) !important;
+        gap: var(--sb-composer-row-gap, 0) clamp(8px, 2vw, 10px) !important;
         min-height: calc(var(--sb-mobile-composer-input-height) + 3px) !important;
         padding: 1px 4px !important;
     }
@@ -1369,6 +1369,21 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size);
         --sb-composer-left-rail-width: calc(var(--sb-composer-action-size) * 2 + 3px);
         --sb-composer-right-rail-width: calc(var(--sb-composer-action-size) + var(--sb-composer-send-width) + 3px);
+    }
+
+    /* On a narrow phone the two rails leave the field about 170px, so a short message wraps every few words.
+       The field takes the whole first row and the rails share the row under it. The grid rules above read these. */
+    @media (max-width: 450px) {
+        #nonQRFormItems {
+            --sb-composer-columns: minmax(0, 1fr) minmax(0, 1fr);
+            --sb-composer-rows: auto auto;
+            --sb-composer-areas: 'input input' 'tools action';
+            --sb-composer-row-gap: 4px;
+        }
+
+        :root[data-sb-compact-mode='true'] #nonQRFormItems {
+            --sb-composer-row-gap: 2px;
+        }
     }
 
     #send_textarea {

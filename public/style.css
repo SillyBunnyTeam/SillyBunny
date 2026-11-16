@@ -7484,15 +7484,17 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 
+/* SillyBunny: speaker bar on the Bottom bar layer, chips and buttons at the Control radius. */
 .group_speaker_controls {
+    container-type: inline-size;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 4px 8px;
-    background: var(--SmartThemeBlurTintColor);
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 10px;
+    gap: 6px;
+    padding: 3px 6px;
+    background: var(--sb-layer-bottombar);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: var(--sb-radius-overlay);
     margin-bottom: 4px;
 }
 
@@ -7511,42 +7513,52 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
 
 .group_typing_indicator {
     flex: 0 0 100%;
-    width: 100%;
     color: var(--SmartThemeQuoteColor);
     font-size: calc(var(--mainFontSize) * 0.86);
-    line-height: 1.2;
     padding: 1px 4px;
-    opacity: 0.9;
 }
 
 .group_speaker_list {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
-    overflow-x: auto;
-    flex: 1;
+    flex: 1 1 0;
     min-width: 0;
 }
 
 .group_speaker_avatar {
-    position: relative;
-    isolation: isolate;
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 5px;
-    border: 1px solid transparent;
-    border-radius: 999px;
-    background: transparent;
-    color: var(--SmartThemeBodyColor);
-    padding: 2px 7px 2px 2px;
+    gap: 6px;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: var(--sb-density-floor);
     max-width: 150px;
+    padding: 2px 9px 2px 3px;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-raised-bg);
+    color: var(--SmartThemeBodyColor);
     cursor: pointer;
-    flex: 0 0 auto;
-    overflow: visible;
 }
 
 .group_speaker_avatar.selected {
-    border-color: var(--SmartThemeQuoteColor);
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+    background: color-mix(in srgb, var(--sb-accent) 16%, transparent);
+}
+
+@media (hover: hover) {
+    .group_speaker_avatar:hover {
+        background: var(--sb-raised-hover-bg);
+    }
+}
+
+.group_speaker_avatar:active {
+    background: var(--sb-raised-active-bg);
+}
+
+.group_speaker_avatar:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .group_speaker_avatar img {
@@ -7554,7 +7566,7 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
     height: 24px;
     border-radius: 50%;
     object-fit: cover;
-    flex: 0 0 auto;
+    flex-shrink: 0;
 }
 
 .group_speaker_avatar span {
@@ -7563,106 +7575,33 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
     text-overflow: ellipsis;
 }
 
-@media screen and (max-width: 600px) {
-    .group_speaker_controls {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 34px 34px 34px;
-        grid-template-areas: "typing typing typing typing" "avatars greeting speak hide";
-        align-items: center;
-        gap: 4px;
-        padding: 4px 6px;
-        overflow: hidden;
+/* Narrow bar: icon-only buttons. */
+@container (max-width: 900px) {
+    .group_speaker_controls :is(#group_add_greeting, #group_speaker_now, #group_speaker_hide) {
+        width: var(--sb-control-min-height);
+        padding: 0;
     }
 
-    .group_typing_indicator {
-        grid-area: typing;
-        font-size: calc(var(--mainFontSize) * 0.72);
-        padding: 0 2px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .group_speaker_list {
-        grid-area: avatars;
-        flex: none;
-        max-width: 100%;
-        min-width: 0;
-        min-height: 30px;
-        gap: 4px;
-        padding-bottom: 0;
-        overflow-x: auto;
-        scrollbar-width: none;
-    }
-
-    .group_speaker_list::-webkit-scrollbar {
+    .group_speaker_controls :is(#group_add_greeting, #group_speaker_now, #group_speaker_hide) > span {
         display: none;
     }
+}
 
+@container (max-width: 520px) {
     .group_speaker_avatar {
-        flex: 0 0 30px;
-        max-width: 30px;
-        min-width: 30px;
-        width: 30px;
-        height: 30px;
-        padding: 1px;
         justify-content: center;
+        min-width: var(--sb-density-floor);
+        padding: 2px;
     }
 
-    .group_speaker_avatar span,
-    #group_add_greeting span,
-    #group_speaker_now span,
-    #group_speaker_hide span {
+    .group_speaker_avatar span {
         display: none;
     }
 
     .group_speaker_avatar img {
-        width: 24px;
-        height: 24px;
+        width: calc(var(--sb-density-floor) - 8px);
+        height: calc(var(--sb-density-floor) - 8px);
     }
-
-    #group_add_greeting,
-    #group_speaker_now,
-    #group_speaker_hide {
-        width: 34px;
-        min-width: 34px;
-        max-width: 34px;
-        height: 30px;
-        min-height: 30px;
-        max-height: 30px;
-        padding: 0;
-        justify-content: center;
-        gap: 0;
-        font-size: calc(var(--mainFontSize) * 0.95);
-    }
-
-    #group_add_greeting {
-        grid-area: greeting;
-    }
-
-    #group_speaker_now {
-        grid-area: speak;
-    }
-
-    #group_speaker_hide {
-        grid-area: hide;
-    }
-
-}
-
-@media screen and (max-width: 420px) {
-    .group_speaker_controls {
-        grid-template-columns: minmax(0, 1fr) 30px 30px 30px;
-    }
-
-    #group_add_greeting,
-    #group_speaker_now,
-    #group_speaker_hide {
-        width: 30px;
-        min-width: 30px;
-        max-width: 30px;
-    }
-
 }
 
 /* Mobile chat input guardrails: keep send/stop controls square and centered. */

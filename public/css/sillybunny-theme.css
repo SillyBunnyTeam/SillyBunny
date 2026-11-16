@@ -2261,10 +2261,10 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     display: none;
 }
 
-/* Guided Generations and input-history composer buttons: libadwaita flat toolbar buttons, circular. */
+/* Guided Generations and input-history composer buttons: libadwaita flat toolbar buttons at the Control radius. */
 #send_form :is(.gg-action-button, .stih--button).menu_button {
     border-color: transparent;
-    border-radius: var(--sb-radius-pill);
+    border-radius: var(--sb-radius-control);
     background: transparent;
     box-shadow: none;
     transform: none;
@@ -6964,35 +6964,68 @@ body.no-blur #send_form {
     }
 }
 
-/* Composer icon buttons - flat circles. #send_but and .mes_stop are excluded so the suggested/destructive fills win. */
-#send_form .menu_button:not(#send_but),
+/* Flat composer buttons; send and stop stay circles, Quick Reply buttons are raised (below). */
+#send_form .menu_button:not(#send_but, .qr--button),
 #leftSendForm > div:not(.stscript_btn),
 #rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop) {
     background: transparent !important;
     border: none !important;
-    border-radius: 50% !important;
+    border-radius: var(--sb-radius-control) !important;
     color: var(--SmartThemeBodyColor) !important;
 }
 
 @media (hover: hover) {
-    #send_form .menu_button:not(#send_but):hover,
+    #send_form .menu_button:not(#send_but, .qr--button):hover,
     #leftSendForm > div:not(.stscript_btn):hover,
     #rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):hover {
         background: var(--sb-flat-hover-bg) !important;
     }
 }
 
-#send_form .menu_button:not(#send_but):active,
+#send_form .menu_button:not(#send_but, .qr--button):active,
 #leftSendForm > div:not(.stscript_btn):active,
 #rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):active {
     background: var(--sb-flat-active-bg) !important;
 }
 
-#send_form .menu_button:not(#send_but):focus-visible,
+#send_form .menu_button:not(#send_but, .qr--button):focus-visible,
 #leftSendForm > div:not(.stscript_btn):focus-visible,
 #rightSendForm > div:not(.stscript_btn, #send_but, .mes_stop):focus-visible {
     outline: 2px solid transparent !important;
     box-shadow: var(--sb-focus-ring-inset) !important;
+}
+
+/* Quick Reply buttons: one line each; the row wraps, or scrolls with a coarse pointer. */
+#send_form #qr--bar {
+    opacity: 1;
+}
+
+@media (pointer: coarse) {
+    #send_form #qr--bar > .qr--buttons {
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        overflow-x: auto;
+    }
+}
+
+#send_form #qr--bar .qr--button.menu_button {
+    flex: 0 0 auto;
+    max-width: 16em;
+    margin: 0;
+    padding: 0 12px;
+    border: none;
+    border-radius: var(--sb-radius-control);
+    background-color: var(--sb-raised-bg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The resting fill above also beats upstream's #4d4d4d hover fill, which a tap leaves behind. */
+@media (hover: hover) {
+    #send_form #qr--bar .qr--button.menu_button:hover {
+        background-color: var(--sb-raised-hover-bg);
+    }
 }
 
 /* Placeholder contrast >= 4.5:1 */

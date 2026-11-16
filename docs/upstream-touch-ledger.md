@@ -1503,7 +1503,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/density-tokens-css.test.js`, `tests/mobile-composer-spacing.e2e.js`, `tests/mobile-ios26-keyboard-layout.e2e.js`. |
 | Validation | 2026-11-12: the full unit run; the e2e specs that name the changed classes; captures of the chat at 390x844 in both densities. |
 | Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-12, UI polish sweep. |
+| Last reviewed | 2026-11-16, UI polish sweep (task 7.3: at 450px and below the text area takes the composer's first row and both action rails share the row under it, through `--sb-composer-columns`, `--sb-composer-rows`, `--sb-composer-areas` and `--sb-composer-row-gap`, F-090). |
 | Owner | `TODO(copy)` |
 
 ### `public/scripts/RossAscends-mods.js` - the Characters pin only on desktop
@@ -1969,6 +1969,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | 2026-11-16 (UI polish sweep, task 6.5a): root and tests lint, the full unit run, `tests/extension-settings-rows.e2e.js` and the Quick Reply specs, the parity, axe and smoke audits of the touched surfaces. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-16, UI polish sweep (task 6.5a). |
+| Owner | `TODO(copy)` |
+
+### `public/style.css`, `public/css/mobile-styles.css` and `public/scripts/group-chats.js` - group speaker bar
+| Field | Value |
+| --- | --- |
+| File | `public/style.css` (the `.group_speaker_controls` block); `public/css/mobile-styles.css` (the phone group bar and its typing row); `public/scripts/group-chats.js` (`updateGroupSpeakerControls`, `clearSelectedGroupSpeaker`). |
+| Area | The group chat's speaker bar above the composer: speaker chips, the typing line and the bar's buttons. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The bar's own rules in `style.css`, which replace upstream's 600px and 420px blocks with two `@container` queries on the bar; the `.is-typing` grid areas in `mobile-styles.css`; the three places in `group-chats.js` that set `.selected` on a chip. |
+| Adapter shape | Since 2026-11-16 (UI polish sweep, task 7.3) the chips wrap instead of being clipped in a fixed 328px list (F-087), and the bar is a size container: from 900px down its three buttons show their icons only, and from 520px down a chip shows its avatar only. On a phone the typing line has its own grid row above the chips, and the rule that hid the chips while a member types is gone (F-088). Each chip carries `aria-pressed` beside `.selected`. The dead `#sb-hamburger` rules of `mobile-styles.css` are removed (F-106, in part). Each change carries a `SillyBunny:` marker. |
+| Protecting tests | `tests/composer-bar-controls.e2e.js`; `tests/group-chat-greetings-qol.test.js`; `tests/group-speaker-selection-api.test.js`. |
+| Validation | 2026-11-16: root and tests lint, the full unit run, the related e2e specs, the audit of `chat.group.speaker-controls` and `chat.group.transcript`, and the capture comparison against `p6-end`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-16, UI polish sweep (task 7.3). |
 | Owner | `TODO(copy)` |
 
 ## Review Checklist
