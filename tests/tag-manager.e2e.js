@@ -537,8 +537,10 @@ for (const width of [1440, 768, 390]) {
             const wiBox = page.locator('.sb-wi-list-box');
             // The book list is hidden until a book is selected; its resolved frame tokens still apply.
             await expect(wiBox).toBeAttached();
-            const wiFrame = await wiBox.evaluate(node => ({ border: getComputedStyle(node).borderTopColor, background: getComputedStyle(node).backgroundColor }));
-            expect([styles.boxBorder, styles.boxBackground]).toEqual([wiFrame.border, wiFrame.background]);
+            // The book list is the shared entity box now (no border of its own, the card shadow instead), so only its fill is shared.
+            const wiFrame = await wiBox.evaluate(node => ({ border: getComputedStyle(node).borderTopWidth, background: getComputedStyle(node).backgroundColor }));
+            expect(wiFrame.border).toBe('0px');
+            expect(styles.boxBackground).toBe(wiFrame.background);
             await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
             await openFromList(page);
         }

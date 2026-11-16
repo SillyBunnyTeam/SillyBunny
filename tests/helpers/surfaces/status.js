@@ -420,28 +420,6 @@ const worldInfoSettingsNoResults = status({
     sources: [`${SCRIPTS}/sillybunny-world-info-settings.js`, STATUS_PAGE_SOURCE],
 });
 
-const worldInfoSettingsNoBooks = status({
-    id: 'worldinfo.settings-no-books',
-    title: 'World Info Global Settings: no books on the server',
-    component: 'shared',
-    root: worldInfoSettingsStatus,
-    ready: titled(worldInfoSettingsStatus, '-- World Info not found --'),
-    async open(page) {
-        // The list of books comes from the settings answer, so a page that reads it again sees no books.
-        await page.route('**/api/settings/get', async route => {
-            const response = await route.fetch();
-            const data = await response.json();
-            return route.fulfill({ response, json: { ...data, world_names: [] } });
-        });
-        await page.evaluate(async () => (await import('/scripts/world-info.js')).updateWorldInfoList());
-        await openWorldInfoSettings(page);
-        await page.locator(worldInfoSettingsStatus).waitFor({ state: 'visible' });
-        await settle(page);
-    },
-    close: closeWorldInfoSettings,
-    sources: [`${SCRIPTS}/sillybunny-world-info-settings.js`, STATUS_PAGE_SOURCE],
-});
-
 // --- Manager dialogs --------------------------------------------------------------------------------------------------
 
 const FOLDER_HOST = '.sb-dialog-host[open]:has(> .sb-folder-manager)';
@@ -1742,7 +1720,6 @@ export const surfaces = [
     worldInfoNoEntries,
     worldInfoNoResults,
     worldInfoSettingsNoResults,
-    worldInfoSettingsNoBooks,
     foldersEmpty,
     foldersNoResults,
     foldersNoMembers,

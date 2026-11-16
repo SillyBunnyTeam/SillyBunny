@@ -102,7 +102,8 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     cursor: not-allowed;
 }
 
-/* The list header takes the entity-list header anatomy: title and subtitle at the start, icon buttons at the end. */
+/* The list header takes the entity-list header anatomy: title and subtitle at the start, icon buttons at the end. The title, the
+   Caption subtitle and the spacer are the shared rules of sillybunny-editor-shell.css. */
 .sb-prompt-list-header {
     display: flex;
     align-items: center;
@@ -120,33 +121,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 .sb-prompt-list-header .sb-list-header__titles {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    padding-inline: 6px;
     line-height: 1.2;
-}
-
-.sb-prompt-list-header :is(.sb-list-header__title, .sb-list-header__subtitle) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.sb-prompt-list-header .sb-list-header__title {
-    font-size: var(--sb-type-title);
-    font-weight: 700;
-    line-height: 1.25;
-}
-
-.sb-prompt-list-header .sb-list-header__subtitle {
-    color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.75);
-}
-
-.sb-prompt-list-header .sb-list-header__spacer {
-    flex: 1 1 0;
-    min-width: 0;
 }
 
 .sb-prompt-list-header .sb-list-header__button {

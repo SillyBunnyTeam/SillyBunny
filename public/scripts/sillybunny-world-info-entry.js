@@ -5,7 +5,8 @@ import { t, translate } from './i18n.js';
 import { getCurrentUserHandle } from './user.js';
 import { getTokenCountAsync } from './tokenizers.js';
 import * as model from './sillybunny-world-info-model.js';
-import { createRow, createSwitchRow, createComboRow, createSpinRow, createEntryRow, createPropertyRow, createExpanderRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
+import { createRow, createSwitchRow, createSpinRow, createEntryRow, createPropertyRow, createExpanderRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { createChipEntry } from './sillybunny-editor/chip-entry.js';
 import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
@@ -93,8 +94,9 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     let lastState = { dirty: false, saving: false };
     const fields = new Map();
     const chips = [];
+    const selectRows = [];
     const root = element('section', 'sb-wi-entry');
-    const header = element('header', 'sb-wi-detail-header sb-wi-entry-header');
+    const header = element('header', 'sb-editor-header sb-wi-detail-header sb-wi-entry-header');
     const back = button(t`Back`, 'menu_button_icon sb-wi-detail-back sb-editor-icon-button sb-header-icon-button');
     back.setAttribute('aria-label', t`Back`);
     const backIcon = element('i', 'fa-solid fa-chevron-left');
@@ -117,7 +119,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
     more.hidden = !actions;
     const modes = createSegmentedControl(t`Edit / Preview`, [[false, t`Edit`], [true, t`Preview`]], false, setPreview, { compact: true, detachFromForm: true });
     modes.classList.add('sb-wi-entry-modes');
-    const modeToggle = button(t`Preview`, 'menu_button_icon sb-wi-entry-mode-toggle');
+    const modeToggle = button(t`Preview`, 'menu_button_icon sb-wi-entry-mode-toggle sb-editor-icon-button sb-header-icon-button');
     modeToggle.addEventListener('click', () => setPreview(!showingPreview));
     const cancel = element('button', 'sb-editor-action sb-editor-action--secondary sb-wi-entry-cancel');
     cancel.type = 'button';
@@ -519,7 +521,18 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         const options = { field: field.id, label, value, onChange: next => writeField(field, next) };
         switch (field.control) {
             case 'switch': return createSwitchRow({ ...options, checked: value });
-            case 'combo': return createComboRow({ ...options, options: field.options.map(option => ({ ...option, label: translate(option.label, option.i18n) })) });
+            case 'combo': {
+                const select = element('select');
+                for (const option of field.options) {
+                    const node = new Option(translate(option.label, option.i18n), option.value);
+                    node.disabled = Boolean(option.disabled);
+                    select.append(node);
+                }
+                select.value = value;
+                const row = createSelectRow({ select, label, field: field.id, searchLabel: t`Search`, emptyText: t`No results`, onChange: options.onChange });
+                selectRows.push(row);
+                return row;
+            }
             case 'spin': {
                 // rows.js normally clamps; the model alone owns legacy coercion (order is not clamped).
                 const spin = createSpinRow({ ...options, nullable: true, step: 'any', placeholder: field.placeholder ? translate(field.placeholder, field.placeholderI18n) : '' });
@@ -822,6 +835,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
             stopMotion(contentField.textarea);
             stopMotion(contentField.pane);
             for (const chip of chips) chip.destroy();
+            for (const row of selectRows) row.destroy();
             dismissDraftRecoveryToast();
             eventSource.removeListener(event_types.WORLDINFO_DELETED, onBookDeleted);
             eventSource.removeListener(event_types.WORLDINFO_RENAMED, onBookRenamed);

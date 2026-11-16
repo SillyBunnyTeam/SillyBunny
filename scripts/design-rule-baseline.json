@@ -142,8 +142,8 @@
             "spacing-off-scale": 31
         },
         "public/css/sillybunny-world-info-editor.css": {
-            "important": 15,
-            "spacing-off-scale": 47
+            "important": 14,
+            "spacing-off-scale": 25
         },
         "public/css/spacing-system.css": {
             "breakpoint-off-set": 1,

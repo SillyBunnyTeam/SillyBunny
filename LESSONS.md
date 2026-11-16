@@ -765,6 +765,17 @@ This is the largest class by a wide margin.
 - **Parity rules:** the editor-family part `entry` does not measure a floating entry row's input, because the row is the field (`tests/helpers/parity/editor.js`); the list-family row rule holds `DESIGN.md`'s 12px inline padding, and its title selector skips tag chips (`tests/helpers/parity/list.js`).
 - **Tests:** `tests/unit/sillybunny-editor-rows.test.js` (`adoptEditorFields`), `tests/unit/sillybunny-group-list-adapters.test.js`, `tests/group-editor-member-lists.e2e.js`, `tests/character-editor-rendering.e2e.js`, `tests/character-list.e2e.js` (tag removal size), the audit specs for `editor.character`, `editor.group`, `list.group-members`, `status.group.members-empty`.
 
+### World Info editor (list-content editor)
+
+- **Breaks:** the list, its header and the entry and settings pages kept their own geometry, resting rules that named an id outranked the shared hover and pressed fills, and a coarse-pointer `min-height: 44px` on `input[type=range]` fattened the shared 4px trough (F-129).
+- **Files:** `public/scripts/sillybunny-world-info-editor.js`, `sillybunny-world-info-entry.js`, `sillybunny-world-info-settings.js`, `public/css/sillybunny-world-info-editor.css`; the shared list header (`sillybunny-editor/list-header.js`: `titleButton`, `setSubtitleHidden`) and its rules in `sillybunny-editor-shell.css`.
+- **Guards:**
+  - A resting rule that names an id beats a shared `:hover` or `:active` rule, so the pressed fill never shows: lower the resting rule with `:where()`.
+  - The list-header title, Caption subtitle and spacer are shared rules in `sillybunny-editor-shell.css`; a list editor keeps only its geometry, or a scoped copy holds an old size (the prompt list kept `0.75 × --mainFontSize` until the 6.1 merge).
+  - The parity `own` title selector `[class*="title" i]` also matches `__subtitle`, so list-header title entries read the subtitle's size.
+  - The World Info empty page has one action; New and Import sit in the book picker's footer and Global Settings first in the book menu.
+- **Tests:** `tests/world-info-editor.e2e.js`, `tests/unit/sillybunny-world-info-*.test.js`, the audit surfaces `worldinfo|world-info|lorebook`.
+
 ### Prompt editor (list-content editor)
 
 - **Breaks:** the Prompt Manager list kept its own header, `.menu_button` row controls, a Role dropdown and a Triggers popover with a Done button; a search left empty group headings, a prompt title overflowed a 390px row, the property sheet's switch and number inputs drew at the wrong height on touch, and the editor header's compact tray was shorter than its icon buttons.

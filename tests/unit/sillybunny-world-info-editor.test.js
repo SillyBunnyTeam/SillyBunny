@@ -399,20 +399,19 @@ describe('World Info shell', () => {
 
     test('shell is not revealed until its deferred stylesheets resolve', async () => {
         // A sheet can be requested more than once: the status page asks for the one that draws it, as the shell does.
-        // The shell, the editor chrome and the World Info sheet are three.
+        // The shell, the editor chrome, the entity rows and the World Info sheet are four.
         const resolvers = new Map();
         globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(href => new Promise(done => { resolvers.set(href, [...(resolvers.get(href) ?? []), done]); }));
         mounted = mountWorldInfoEditor(container);
         await settle();
         expect(container.querySelector('.sb-wi-editor').hidden).toBe(true);
         expect(container.classList.contains('sb-wi-editor-mounted')).toBe(false);
-        expect(resolvers.size).toBe(3);
-        const [first, second, third] = [...resolvers.values()];
-        first.forEach(done => done());
-        second.forEach(done => done());
+        expect(resolvers.size).toBe(4);
+        const pending = [...resolvers.values()];
+        pending.slice(0, -1).forEach(dones => dones.forEach(done => done()));
         await settle();
         expect(container.querySelector('.sb-wi-editor').hidden).toBe(true);
-        third.forEach(done => done());
+        pending.at(-1).forEach(done => done());
         await settle();
         expect(container.querySelector('.sb-wi-editor').hidden).toBe(false);
         expect(container.classList.contains('sb-wi-editor-mounted')).toBe(true);
@@ -421,11 +420,14 @@ describe('World Info shell', () => {
     test('no book routes to the picker/new status while keeping settings reachable', async () => {
         await mount();
         expect(container.querySelector('.sb-wi-list-status').textContent).toContain('--- Pick to Edit ---');
-        expect(container.querySelectorAll('.sb-wi-list-status button')).toHaveLength(3);
+        // One action: the picker. New and Import sit in the picker footer, Global Settings in the book menu.
+        expect([...container.querySelectorAll('.sb-wi-list-status button')].map(node => node.textContent)).toEqual(['Worlds/Lorebooks']);
         expect(container.querySelector('.sb-wi-book-actions').hidden).toBe(false);
         expect(container.querySelector('.sb-wi-settings-button')).toBeNull();
         expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(true);
-        container.querySelector('.sb-wi-list-status button:last-child').click();
+        container.querySelector('.sb-wi-book-actions').click();
+        await settle();
+        actionMenu.sections[0].items[0].onSelect();
         await settle();
         expect(mountSettings).toHaveBeenCalled();
     });

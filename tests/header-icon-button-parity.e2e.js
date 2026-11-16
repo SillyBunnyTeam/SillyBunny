@@ -226,16 +226,8 @@ test.describe('character list and editor header icon parity', () => {
                 expect(await chooseWorld.evaluate(node => getComputedStyle(node).color)).toBe(await readColorToken(page, '--sb-on-solid-accent'));
                 await expect(chooseWorld).toHaveCSS('min-height', width === 390 ? '44px' : '38px');
 
-                const secondaryActions = page.locator('#WorldInfo .sb-status-page__action:not(.is-suggested)');
-                await expect(secondaryActions).toHaveCount(2);
-                const shellText = await readColorToken(page, '--sb-shell-text');
-                for (let index = 0; index < await secondaryActions.count(); index++) {
-                    const button = secondaryActions.nth(index);
-                    expect(await button.evaluate(node => getComputedStyle(node).color)).toBe(shellText);
-                    await expect(button).toHaveCSS('border-radius', '9px');
-                    await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-                    expect(await button.evaluate(node => getComputedStyle(node).border)).toMatch(/^0px none/);
-                }
+                // New lives in the picker footer and Global Settings in the book menu, so the page has the one action.
+                await expect(page.locator('#WorldInfo .sb-status-page__action')).toHaveCount(1);
             });
 
             test('empty Persona keeps the suggested New action accent treatment', async ({ page }) => {
@@ -256,23 +248,6 @@ test.describe('character list and editor header icon parity', () => {
             });
         });
     }
-
-    test('World Info secondary status actions keep shell foreground and button hover fill', async ({ page }) => {
-        await setTheme(page, 'Libadwaita');
-        await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
-        const secondaryActions = page.locator('#WorldInfo .sb-status-page__action:not(.is-suggested)');
-        await expect(secondaryActions).toHaveCount(2);
-        const shellText = await readColorToken(page, '--sb-shell-text');
-        const hoverFill = await readColorToken(page, '--sb-flat-hover-bg');
-        for (let index = 0; index < await secondaryActions.count(); index++) {
-            const button = secondaryActions.nth(index);
-            expect(await button.evaluate(node => getComputedStyle(node).color)).toBe(shellText);
-            expect(await button.evaluate(node => getComputedStyle(node).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
-            expect(await button.evaluate(node => getComputedStyle(node).border)).toMatch(/^0px none/);
-            await expect(button).toHaveCSS('border-radius', '9px');
-            await expect.poll(() => readHeaderHover(button)).toMatchObject({ backgroundColor: hoverFill });
-        }
-    });
 });
 
 test.describe('hidden spin icons', () => {

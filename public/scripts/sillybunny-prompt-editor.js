@@ -1526,7 +1526,7 @@ export function initializePromptEditor(column) {
     Promise.all([
         loadListEditorStyles(),
         window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261116j', { id: 'deferred-entity-list-css' }),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261116t', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261116u', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

@@ -138,6 +138,46 @@ describe('createListHeader', () => {
         expect(header.element.querySelector('strong, img')).toBeNull();
     });
 
+    test('puts the titles and a chevron in one picker button when asked, with caller classes on every part', () => {
+        const open = jest.fn();
+        const sort = jest.fn();
+        const header = createListHeader({
+            title: 'Book', subtitle: '3 entries', className: 'book-header', titleClassName: 'book-name', subtitleClassName: 'book-count',
+            titleButton: { label: 'Books', className: 'book-switcher', onActivate: open },
+            actions: [{ id: 'sort', label: 'Sort', icon: 'arrow-down-wide-short', menu: true, className: 'sort-button', onActivate: sort }],
+        });
+        const { titleButton } = header;
+
+        expect(titleButton.matches('button.sb-list-header__title-button.book-switcher[type="button"][aria-haspopup="dialog"][aria-expanded="false"]')).toBe(true);
+        expect(titleButton.getAttribute('aria-label')).toBe('Books');
+        expect(titleButton.title).toBe('Books');
+        expect([...header.element.children].map(node => node.className.split(' ')[0])).toEqual(['sb-list-header__title-button', 'sb-list-header__spacer', 'sb-list-header__button']);
+        expect(titleButton.querySelector('.sb-list-header__titles > .sb-list-header__title.book-name').textContent).toBe('Book');
+        expect(titleButton.querySelector('.sb-list-header__subtitle.book-count').textContent).toBe('3 entries');
+        expect(titleButton.lastElementChild.matches('i.fa-solid.fa-chevron-down[aria-hidden="true"]')).toBe(true);
+        expect(header.button('sort').classList.contains('sort-button')).toBe(true);
+
+        titleButton.click();
+        header.button('sort').click();
+        expect(open).toHaveBeenCalledWith(titleButton);
+        expect(sort).toHaveBeenCalledWith(header.button('sort'));
+        header.destroy();
+        titleButton.click();
+        expect(open).toHaveBeenCalledTimes(1);
+    });
+
+    test('has no title button by default and hides only the subtitle on request', () => {
+        const header = createListHeader({ title: 'Characters', subtitle: '3' });
+
+        expect(header.titleButton).toBeNull();
+        expect(header.element.firstElementChild.matches('.sb-list-header__titles')).toBe(true);
+        header.setSubtitleHidden(true);
+        expect(header.element.querySelector('.sb-list-header__subtitle').hidden).toBe(true);
+        expect(header.element.querySelector('.sb-list-header__title').hidden).toBe(false);
+        header.setSubtitleHidden(false);
+        expect(header.element.querySelector('.sb-list-header__subtitle').hidden).toBe(false);
+    });
+
     test('hides exactly the overflowed actions and restores them without reordering', () => {
         const header = createListHeader({ title: 'Characters', actions: actions() });
         const order = [...header.element.children];

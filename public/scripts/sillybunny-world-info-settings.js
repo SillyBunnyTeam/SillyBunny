@@ -3,6 +3,7 @@ import { t } from './i18n.js';
 import { world_names } from './world-info.js';
 import { createPrefGroup, createRow, releaseRowIds } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 
 const PRESENTATION_ATTRIBUTES = ['class', 'role', 'aria-checked', 'aria-labelledby', 'aria-describedby', 'disabled'];
@@ -112,8 +113,8 @@ export function mountWorldInfoSettings({ host, onClose }) {
     };
 
     const root = element('section', 'sb-wi-settings');
-    const header = element('header', 'sb-wi-detail-header sb-wi-settings-header');
-    const back = element('button', 'menu_button menu_button_icon sb-wi-detail-back');
+    const header = element('header', 'sb-editor-header sb-wi-detail-header sb-wi-settings-header');
+    const back = element('button', 'sb-wi-detail-back sb-editor-icon-button sb-header-icon-button');
     back.type = 'button';
     back.title = t`Back`;
     back.setAttribute('aria-label', t`Back`);
@@ -138,8 +139,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
         onInput: () => { if (!destroyed) filterBooks(); },
     });
     const search = searchEntry.input;
-    books.group.before(searchEntry.element);
-    const empty = createStatusPage({ state: 'empty', icon: 'globe', title: t`-- World Info not found --`, compact: true });
+    const empty = createStatusPage({ state: 'empty', icon: 'globe', title: t`No results`, compact: true });
     empty.element.classList.add('sb-wi-settings-empty');
     books.section.append(empty.element);
     const bookRows = new Map();
@@ -151,9 +151,12 @@ export function mountWorldInfoSettings({ host, onClose }) {
             row.hidden = !name.toLocaleLowerCase().includes(query);
             if (!row.hidden) shown++;
         }
+        // With no book at all the list pane already says so; the section would only repeat it.
+        const hasBooks = bookRows.size > 0;
+        searchEntry.element.hidden = !hasBooks;
+        books.section.hidden = !hasBooks;
         books.group.hidden = shown === 0;
         empty.element.hidden = shown > 0;
-        empty.update({ title: bookRows.size ? t`No results` : t`-- World Info not found --` });
     }
 
     function refreshBooks() {
@@ -210,13 +213,12 @@ export function mountWorldInfoSettings({ host, onClose }) {
         descriptor.row = row;
         return row;
     });
-    const strategyRow = createRow({ label: t`Insertion Strategy`, field: strategy.id, suffix: strategy }).row;
-    strategy.classList.add('ds-control-flex');
-    describeControls(strategyRow, [strategy]);
+    // The select stays the source of truth and keeps its id and handlers; the row adopts it and opens the shared picker.
+    const strategySelect = createSelectRow({ select: strategy, label: t`Insertion Strategy`, field: strategy.id, searchLabel: t`Search`, emptyText: t`No results` });
     const switchRows = switches.map(({ input, label, subtitle, id }) => switchRow({ input, label, subtitle, field: id, listen }));
-    activationRows.push(strategyRow, ...switchRows.map(({ row }) => row));
+    activationRows.push(strategySelect.row, ...switchRows.map(({ row }) => row));
     const activation = createPrefGroup({ title: t`Global World Info/Lorebook activation settings`, field: 'activation-settings', rows: activationRows });
-    body.append(books.section, activation.section);
+    body.append(searchEntry.element, books.section, activation.section);
     host.append(root);
 
     const minimum = sliders.find(({ id }) => id === 'world_info_min_activations');
@@ -260,7 +262,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
     refreshSettings();
 
     return {
-        focusTarget: () => destroyed ? null : search,
+        focusTarget: () => destroyed ? null : (searchEntry.element.hidden ? back : search),
         destroy() {
             if (destroyed) return;
             destroyed = true;
@@ -269,6 +271,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
             eventSource.removeListener(event_types.WORLDINFO_SETTINGS_UPDATED, refreshSettings);
             listeners.forEach(dispose => dispose());
             bookRows.forEach(entry => entry.dispose());
+            strategySelect.destroy();
             for (const { control, parent, next, attributes } of [...origins].reverse()) {
                 for (const [name, value] of attributes) {
                     if (value === null) control.removeAttribute(name);

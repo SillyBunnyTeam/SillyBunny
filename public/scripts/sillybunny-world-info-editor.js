@@ -21,7 +21,8 @@ import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
-import { createRow } from './sillybunny-editor/rows.js';
+import { createEntityRow } from './sillybunny-editor/entity-row.js';
+import { createListHeader } from './sillybunny-editor/list-header.js';
 import { openPicker, isPickerOpen } from './sillybunny-editor/picker.js';
 import { characterTabGuardSelector, registerEditorNavigation } from './sillybunny-editor/navigation.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
@@ -31,7 +32,10 @@ import {
 import { mountWorldInfoSettings } from './sillybunny-world-info-settings.js';
 import { mountWorldInfoEntry, worldInfoDraftKey } from './sillybunny-world-info-entry.js';
 
-const STYLESHEET = { href: 'css/sillybunny-world-info-editor.css?v=20261114t', id: 'deferred-world-info-editor-css' };
+const STYLESHEETS = [
+    { href: 'css/sillybunny-entity-list.css?v=20261116j', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-world-info-editor.css?v=20261116u', id: 'deferred-world-info-editor-css' },
+];
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'settings' ? 'settings' : `entry:${item.uid}`;
 
@@ -75,20 +79,6 @@ function icon(name) {
 
 function run(action) {
     Promise.resolve().then(action).catch(error => globalThis.toastr?.error(error.message));
-}
-
-function button(label, glyph, action, className = '') {
-    const node = element('button', `menu_button ${glyph ? 'menu_button_icon' : ''} ${className}`);
-    node.type = 'button';
-    node.setAttribute('aria-label', label);
-    node.title = label;
-    if (glyph) node.append(icon(glyph));
-    else node.textContent = label;
-    node.addEventListener('click', event => {
-        event.stopPropagation();
-        run(() => action(node));
-    });
-    return node;
 }
 
 function menuItem(label, glyph, action, danger = false, disabled = false) {
@@ -184,29 +174,27 @@ export function mountWorldInfoEditor(container) {
     let selection = null;
     let bulkBusy = false;
 
-    const listHeader = element('header', 'sb-wi-list-header');
-    const bookSwitcher = button(t`Worlds/Lorebooks`, null, trigger => openBookPicker(trigger), 'sb-wi-book-switcher');
-    const bookTitles = element('span', 'sb-wi-list-titles');
-    const bookLabel = element('span', 'sb-wi-book-name');
-    const bookSubtitle = element('span', 'sb-wi-list-subtitle');
-    bookTitles.append(bookLabel, bookSubtitle);
-    bookSwitcher.replaceChildren(bookTitles, icon('chevron-down'));
-    bookSwitcher.setAttribute('aria-haspopup', 'dialog');
-    bookSwitcher.setAttribute('aria-expanded', 'false');
-    const headerSpacer = element('span', 'sb-wi-list-header-spacer');
-    headerSpacer.setAttribute('aria-hidden', 'true');
-    const bookActions = button(t`World Info`, 'ellipsis-vertical', trigger => openBookMenu(trigger), 'sb-wi-book-actions');
-    bookActions.setAttribute('aria-haspopup', 'menu');
-    bookActions.setAttribute('aria-expanded', 'false');
     const toggleSettings = () => shell.selectedKey === 'settings' ? shell.deselectItem() : shell.selectItem({ kind: 'settings' });
-    const newEntryButton = button(t`New Entry`, 'plus', () => clickTransport('world_popup_new'));
-    const searchButton = button(t`Search`, 'magnifying-glass', () => searchControl.toggle());
-    // HUMAN: replace — Sort control label.
-    const filterButton = button(t`lorum ipsum`, 'arrow-down-wide-short', trigger => openFilterMenu(trigger), 'sb-wi-sort-button');
-    [bookActions, newEntryButton, searchButton, filterButton].forEach(control => control.classList.add('sb-header-icon-button'));
-    filterButton.setAttribute('aria-haspopup', 'menu');
-    filterButton.setAttribute('aria-expanded', 'false');
-    listHeader.append(bookSwitcher, headerSpacer, searchButton, newEntryButton, filterButton, bookActions);
+    const listHeader = createListHeader({
+        title: '',
+        className: 'sb-wi-list-header',
+        titleClassName: 'sb-wi-book-name',
+        subtitleClassName: 'sb-wi-list-subtitle',
+        titleButton: { label: t`Worlds/Lorebooks`, className: 'sb-wi-book-switcher', onActivate: trigger => run(() => openBookPicker(trigger)) },
+        actions: [
+            { id: 'search', label: t`Search`, icon: 'magnifying-glass', onActivate: () => run(() => searchControl.toggle()) },
+            { id: 'new', label: t`New Entry`, icon: 'plus', onActivate: () => run(() => clickTransport('world_popup_new')) },
+            // HUMAN: replace — Sort control label.
+            { id: 'sort', label: t`lorum ipsum`, icon: 'arrow-down-wide-short', menu: true, className: 'sb-wi-sort-button', onActivate: trigger => run(() => openFilterMenu(trigger)) },
+            { id: 'book', label: t`World Info`, icon: 'ellipsis-vertical', menu: true, className: 'sb-wi-book-actions', onActivate: trigger => run(() => openBookMenu(trigger)) },
+        ],
+    });
+    const bookSwitcher = listHeader.titleButton;
+    const bookLabel = listHeader.element.querySelector('.sb-wi-book-name');
+    const bookActions = listHeader.button('book');
+    const newEntryButton = listHeader.button('new');
+    const searchButton = listHeader.button('search');
+    const filterButton = listHeader.button('sort');
     const selectionHeader = element('header', 'sb-wi-selection-header');
     const selectionBar = element('div', 'sb-wi-selection-bar');
     const searchEntry = createSearchEntry({
@@ -222,7 +210,7 @@ export function mountWorldInfoEditor(container) {
     const listBody = element('div', 'sb-wi-list-body');
     const entriesHeading = element('h3', 'sb-wi-list-heading', t`Lorebook entries`);
     entriesHeading.tabIndex = -1;
-    const entryBox = element('div', 'sb-wi-list-box ds-pref-group');
+    const entryBox = element('div', 'sb-wi-list-box ds-entity-list');
     entryBox.setAttribute('role', 'list');
     const listStatus = element('div', 'sb-wi-list-status');
     listBody.append(entriesHeading, entryBox, listStatus);
@@ -583,30 +571,36 @@ export function mountWorldInfoEditor(container) {
         enabled.addEventListener('change', () => run(() => setEntryEnabled(entry.uid, enabled.checked)));
         const enableTarget = element('label', 'sb-wi-row-enable');
         enableTarget.append(enabled);
-        const more = button(t`Actions for ${title}`, 'ellipsis-vertical', trigger => openEntryMenu(trigger, entry.uid), 'sb-wi-row-menu');
+        const more = element('button', 'sb-wi-row-menu ds-entity-row__button');
+        more.type = 'button';
+        more.setAttribute('aria-label', t`Actions for ${title}`);
+        more.title = t`Actions for ${title}`;
+        more.append(icon('ellipsis-vertical'));
+        more.addEventListener('click', event => {
+            event.stopPropagation();
+            run(() => openEntryMenu(more, entry.uid));
+        });
         more.setAttribute('aria-haspopup', 'menu');
         more.setAttribute('aria-expanded', 'false');
         const strategy = entryStrategy(entry);
-        const row = createRow({
+        const reorderable = customSort() && !searchControl.query;
+        const { row, slots } = createEntityRow({
+            key: `entry:${entry.uid}`,
             label: title,
+            avatar: icon(strategy === 'constant' ? 'circle-dot' : strategy === 'vectorized' ? 'vector-square' : 'key'),
             // Position·order shares the subtitle so it survives narrow sidebars.
             subtitle: [entryKeyPreview(entry) || '—', entryBadge(entry)].join(' · '),
-            field: `entry:${entry.uid}`,
-            prefix: icon(strategy === 'constant' ? 'circle-dot' : strategy === 'vectorized' ? 'vector-square' : 'key'),
+            grip: reorderable,
             suffix: [enableTarget, more],
-        }).row;
-        row.classList.add('sb-wi-row');
-        row.dataset.uid = String(entry.uid);
-        row.tabIndex = 0;
-        row.setAttribute('role', 'listitem');
-        row.setAttribute('aria-label', title);
-        if (customSort() && !searchControl.query) {
-            const grip = element('div', 'sb-wi-grip menu_button menu_button_icon');
-            grip.setAttribute('role', 'button');
-            grip.setAttribute('aria-disabled', 'false');
-            grip.setAttribute('aria-label', t`Drag to reorder ${title}`);
-            grip.append(icon('grip-vertical'));
-            row.prepend(grip);
+            activation: 'activate',
+            compatClasses: { row: ['sb-wi-row'], grip: ['sb-wi-grip'], avatar: ['sb-wi-row-icon'] },
+            attributes: { 'data-uid': String(entry.uid) },
+        });
+        if (slots.grip) {
+            slots.grip.removeAttribute('aria-hidden');
+            slots.grip.setAttribute('role', 'button');
+            slots.grip.setAttribute('aria-disabled', 'false');
+            slots.grip.setAttribute('aria-label', t`Drag to reorder ${title}`);
         }
         return row;
     }
@@ -631,25 +625,22 @@ export function mountWorldInfoEditor(container) {
             return;
         }
         listDirty = false;
-        bookLabel.textContent = state.name || t`--- Pick to Edit ---`;
+        listHeader.setTitle(state.name || t`--- Pick to Edit ---`);
+        bookLabel.title = state.name || '';
         for (const control of [newEntryButton, searchButton, filterButton]) control.disabled = !state.data;
-        bookSubtitle.hidden = !state.data;
+        listHeader.setSubtitleHidden(!state.data);
         const allEntries = Object.values(state.data?.entries ?? {}).filter(entry => entry && typeof entry === 'object');
         const total = allEntries.length;
         const active = allEntries.filter(entry => !entry.disable).length;
         if (selection?.isActive) selection.select(existingSelectedUids());
-        bookSubtitle.textContent = total === 1 ? t`${total} entry · ${active} active` : t`${total} entries · ${active} active`;
+        listHeader.setSubtitle(total === 1 ? t`${total} entry · ${active} active` : t`${total} entries · ${active} active`);
         listStatus.hidden = Boolean(state.data && entries.length);
         entriesHeading.hidden = !listStatus.hidden;
         entryBox.hidden = !listStatus.hidden;
         if (!state.data) {
             showStatus(listStatus, {
                 state: 'empty', icon: 'book-atlas', title: t`--- Pick to Edit ---`, compact: true,
-                actions: [
-                    { label: t`Worlds/Lorebooks`, primary: true, onActivate: () => openBookPicker(bookSwitcher) },
-                    { label: t`New`, onActivate: () => run(() => clickTransport('world_create_button')) },
-                    { label: t`Global Settings`, onActivate: () => run(toggleSettings) },
-                ],
+                actions: [{ label: t`Worlds/Lorebooks`, primary: true, onActivate: () => openBookPicker(bookSwitcher) }],
             });
         } else if (!entries.length) {
             showStatus(listStatus, {
@@ -733,13 +724,13 @@ export function mountWorldInfoEditor(container) {
         focusTarget: () => activeController?.focusTarget() ?? null,
     });
     shell.root.hidden = true;
-    listContent.append(listHeader, selectionHeader, searchField, listBody, pagination.element, selectionBar);
+    listContent.append(listHeader.element, selectionHeader, searchField, listBody, pagination.element, selectionBar);
     shell.sidebar.append(listContent, searchStatus);
     selection = createSelectionMode({
         root: shell.root, list: entryBox, header: selectionHeader, actionBar: selectionBar,
         rowSelector: '.sb-wi-row', getKey: row => row.dataset.uid, keySourceSelector: '.sb-wi-grip',
         canEnter: () => Boolean(state.name && Object.keys(state.data?.entries ?? {}).length),
-        title: selectionTitle, selectAllLabel: t`Select All`,
+        title: selectionTitle, selectAllLabel: t`Select All`, iconOnlyAtNarrow: true,
         actions: [
             { id: 'enable', label: t`Enable`, icon: 'fa-solid fa-toggle-on', onActivate: () => run(() => bulkAction(uids => setEntryEnabled(uids, true))) },
             { id: 'disable', label: t`Disable`, icon: 'fa-solid fa-toggle-off', onActivate: () => run(() => bulkAction(uids => setEntryEnabled(uids, false))) },
@@ -918,6 +909,7 @@ export function mountWorldInfoEditor(container) {
             worldInfo.removeEventListener('change', onTransportChange, true);
             worldInfo.removeEventListener('click', onTransportClick, true);
             unbindRows();
+            listHeader.destroy();
             searchControl.destroy();
             selection.destroy();
             pagination.destroy();
@@ -931,7 +923,7 @@ export function mountWorldInfoEditor(container) {
     controller.ready = Promise.all([
         Promise.resolve().then(() => { if (!destroyed) return setWorldInfoEditorAdapter(adapter); }),
         loadListEditorStyles(),
-        globalThis.SillyBunnyAssets?.loadStylesheetAsync?.(STYLESHEET.href, { id: STYLESHEET.id }) ?? Promise.resolve(),
+        ...STYLESHEETS.map(({ href, id }) => globalThis.SillyBunnyAssets?.loadStylesheetAsync?.(href, { id }) ?? Promise.resolve()),
     ]).then(() => {
         if (destroyed) return;
         worldInfo.classList.add('sb-wi-editor-mounted');

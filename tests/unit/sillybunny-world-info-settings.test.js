@@ -16,6 +16,7 @@ await jest.unstable_mockModule('../../public/scripts/world-info.js', () => ({ wo
 await jest.unstable_mockModule('../../public/scripts/events.js', () => ({ eventSource, event_types: eventTypes }));
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
+    translate: text => text,
 }));
 
 const { mountWorldInfoSettings } = await import('../../public/scripts/sillybunny-world-info-settings.js');
@@ -154,6 +155,24 @@ describe('World Info settings transport adoption', () => {
             expect(counter.getAttribute('aria-labelledby')).toBe(range.getAttribute('aria-labelledby'));
             expect(control(counter.getAttribute('aria-labelledby')).textContent).not.toBe('');
         }
+    });
+
+    test('the strategy select is adopted by a select row (trigger and picker), follows its changes and goes back on destroy', () => {
+        const strategy = control('world_info_character_strategy');
+        const parent = strategy.parentNode;
+        mount();
+        const row = host.querySelector('.ds-select-row[data-sb-editor-field="world_info_character_strategy"]');
+        const trigger = row.querySelector('.ds-select-row__trigger');
+        expect(row.contains(strategy)).toBe(true);
+        expect(strategy.matches('.ds-select-row__native[aria-hidden="true"]')).toBe(true);
+        expect(row.querySelector('.ds-row-label').textContent).toBe('Insertion Strategy');
+        expect(trigger.textContent.trim()).toBe(strategy.selectedOptions[0].textContent.trim());
+        strategy.value = strategy.options[strategy.options.length - 1].value;
+        change(strategy);
+        expect(trigger.textContent.trim()).toBe(strategy.selectedOptions[0].textContent.trim());
+        controller.destroy();
+        expect(parent.contains(strategy)).toBe(true);
+        expect(strategy.classList.contains('ds-select-row__native')).toBe(false);
     });
 
     test('original checkbox and strategy handlers keep their native events', () => {
@@ -426,15 +445,18 @@ describe('active books', () => {
         expect(book(0).checked).toBe(true);
     });
 
-    test('empty books use the existing no-world status and become available after options arrive', async () => {
+    test('with no books the active-books section and its search are hidden, and they return after options arrive', async () => {
         setBooks([]);
-        mount();
+        const controller = mount();
         expect(host.querySelectorAll('.sb-wi-settings-book')).toHaveLength(0);
-        expect(host.querySelector('.sb-wi-settings-empty .sb-status-page__title').textContent).toBe('-- World Info not found --');
-        expect(host.querySelector('.sb-wi-settings-empty').hidden).toBe(false);
+        expect(host.querySelector('.sb-wi-settings-books').hidden).toBe(true);
+        expect(host.querySelector('.sb-wi-settings-search-field').hidden).toBe(true);
+        expect(controller.focusTarget()).toBe(host.querySelector('.sb-wi-detail-back'));
         setBooks(['New book'], [0]);
         await Promise.resolve();
         expect(book(0).checked).toBe(true);
+        expect(host.querySelector('.sb-wi-settings-books').hidden).toBe(false);
+        expect(host.querySelector('.sb-wi-settings-search-field').hidden).toBe(false);
         expect(host.querySelector('.sb-wi-settings-empty').hidden).toBe(true);
     });
 

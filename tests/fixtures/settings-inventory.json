@@ -7165,8 +7165,8 @@
       "root": "#WorldInfo .sb-wi-settings",
       "controls": [
         {"identity":"label:button:back","identityKind":"label","kind":"button","name":"Back","where":"visible"},
-        {"identity":"field:active-worlds:text","identityKind":"field","kind":"text","name":"Search...","group":"Active World(s) for all chats","where":"visible","lands":"none"},
-        {"identity":"field:active-worlds:button","kind":"button","where":"hidden"},
+        {"identity":"label:text:search","identityKind":"label","kind":"text","name":"Search...","where":"visible","lands":"none"},
+        {"identity":"label:button:clear entry","kind":"button","where":"hidden"},
         {"identity":"#sb-wi-settings-book-0","identityKind":"id","kind":"switch","name":"audit-lorebook-entries","group":"Active World(s) for all chats","where":"visible","keys":["world_info_settings.world_info.globalSelect"],"selfSaves":true},
         {"identity":"#sb-wi-settings-book-1","identityKind":"id","kind":"switch","name":"audit-lorebook","group":"Active World(s) for all chats","where":"visible","keys":["world_info_settings.world_info.globalSelect"],"selfSaves":true},
         {"identity":"#sb-wi-settings-book-2","identityKind":"id","kind":"switch","name":"Eldoria","group":"Active World(s) for all chats","where":"visible","keys":["world_info_settings.world_info.globalSelect"],"selfSaves":true},

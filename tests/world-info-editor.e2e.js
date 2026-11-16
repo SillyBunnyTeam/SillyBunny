@@ -11,8 +11,8 @@ import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
 const TARGET_BOOK = `${BOOK}_TARGET`;
 const selectionLayout = {
-    1440: { titleX: 46, descriptionRight: 1126, truncated: false },
-    390: { titleX: 38, descriptionRight: 310, truncated: false },
+    1440: { titleX: 50, descriptionRight: 1124, truncated: false },
+    390: { titleX: 50, descriptionRight: 304, truncated: false },
 };
 
 test.beforeEach(async ({ page }) => {
@@ -382,6 +382,63 @@ test.describe('World Info editor', () => {
     });
 });
 
+test.describe('World Info pressed fills', () => {
+    test('rows, the row menu and the book button show the shared pressed fill while the pointer is down', async ({ page }) => {
+        const editor = await openBook(page);
+        const pressed = await page.evaluate(() => {
+            const probe = document.createElement('i');
+            probe.style.background = 'var(--sb-flat-active-bg)';
+            document.body.append(probe);
+            const color = getComputedStyle(probe).backgroundColor;
+            probe.remove();
+            return color;
+        });
+        for (const target of [row(editor, 'Beta'), row(editor, 'Beta').locator('.sb-wi-row-menu'), editor.locator('.sb-wi-book-switcher')]) {
+            const box = await target.boundingBox();
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+            await page.mouse.down();
+            await expect(target).toHaveCSS('background-color', pressed);
+            await page.mouse.move(2, 2);
+            await page.mouse.up();
+            await page.keyboard.press('Escape');
+        }
+    });
+});
+
+test.describe('World Info without a book picked', () => {
+    test('the empty page keeps one action; New and Import sit in the picker and Global Settings in the book menu', async ({ page }) => {
+        await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
+        const editor = page.locator('#WorldInfo .sb-wi-editor');
+        await expect(editor.locator('.sb-wi-list-status .sb-status-page__action')).toHaveText(['Worlds/Lorebooks']);
+        await editor.locator('.sb-wi-list-status .sb-status-page__action').click();
+        const picker = page.locator('.sb-picker');
+        await expect(picker.locator('.sb-picker__footer-item')).toHaveText(['New', 'Import World Info']);
+        await page.keyboard.press('Escape');
+        await expect(picker).toBeHidden();
+        await selectSettings(page, editor);
+        await expect(editor.locator('.sb-wi-settings')).toBeVisible();
+    });
+
+    test('Global Settings with no book on the server hides the books section and its search', async ({ page }) => {
+        await page.route('**/api/settings/get', async route => {
+            const payload = await fetchJsonOrSkip(route);
+            if (!payload) return;
+            return route.fulfill({ json: { ...payload, world_names: [] } });
+        });
+        await page.evaluate(async () => (await import('./scripts/world-info.js')).updateWorldInfoList());
+        await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
+        const editor = page.locator('#WorldInfo .sb-wi-editor');
+        await expect(editor.locator('.sb-wi-list-status')).toContainText('--- Pick to Edit ---');
+        await selectSettings(page, editor);
+        const settings = editor.locator('.sb-wi-settings');
+        await expect(settings).toBeVisible();
+        await expect(settings.locator('.sb-wi-settings-books')).toBeHidden();
+        await expect(settings.locator('.sb-wi-settings-search')).toBeHidden();
+        await expect(settings.locator('.sb-status-page')).toBeHidden();
+        await expect(settings.locator('.sb-wi-settings-body .ds-pref-group:visible')).toHaveCount(1);
+    });
+});
+
 test.describe('World Info editor on mobile', () => {
     test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
 
@@ -472,8 +529,8 @@ test.describe('World Info selection mode', () => {
                 const bounds = element.getBoundingClientRect();
                 const radius = getComputedStyle(element).borderRadius;
                 const rowBounds = element.parentElement.getBoundingClientRect();
-                const title = element.parentElement.querySelector('.ds-row-label');
-                const description = element.parentElement.querySelector('.ds-row-subtitle');
+                const title = element.parentElement.querySelector('.ds-entity-row__title');
+                const description = element.parentElement.querySelector('.ds-entity-row__subtitle');
                 return {
                     width: bounds.width, height: bounds.height, radius: parseFloat(radius) * (radius.endsWith('%') ? bounds.width / 100 : 1),
                     titleX: title.getBoundingClientRect().x - rowBounds.x,

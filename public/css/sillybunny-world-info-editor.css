@@ -54,7 +54,7 @@
 }
 
 .sb-wi-editor[data-selection-mode='true'] .sb-wi-list-header,
-.sb-wi-editor[data-selection-mode='true'] .sb-wi-row > :is(i, .sb-wi-grip, .ds-row-suffix) {
+.sb-wi-editor[data-selection-mode='true'] .sb-wi-row > :is(.ds-entity-row__avatar, .ds-entity-row__grip, .ds-entity-row__suffix) {
     display: none !important;
 }
 
@@ -77,31 +77,13 @@
 
 .sb-wi-editor .sb-wi-selection-bar {
     flex: none;
-    justify-content: space-evenly;
-    flex-wrap: nowrap;
-    gap: 2px;
-    padding-inline: 4px;
-}
-
-#WorldInfo .sb-wi-editor .sb-wi-selection-bar .sb-selection-action {
-    flex: 1 1 0;
-    flex-direction: column;
-    min-width: 0;
-    gap: 6px;
-    padding: 8px 2px;
-    font-size: calc(var(--mainFontSize) * 0.75);
 }
 
 #WorldInfo .sb-wi-editor .sb-wi-row.is-selection-selected {
     background: var(--sb-flat-selected-bg);
 }
 
-.sb-wi-editor[data-selection-mode='true'] .sb-selection-check {
-    margin-inline: 2px -2px;
-}
-
-.sb-wi-list-header,
-.sb-wi-detail-header {
+.sb-wi-list-header {
     display: flex;
     align-items: center;
     flex: none;
@@ -110,20 +92,44 @@
     height: 60px;
     min-height: 60px;
     max-height: 60px;
-    gap: 4px;
-    padding: 6px 8px;
+    gap: 6px;
+    padding: 6px;
     min-width: 0;
+    overflow: hidden;
     background: transparent;
 }
 
-.sb-wi-list-header {
-    overflow: hidden;
-    gap: 2px;
-    padding-inline: 10px;
+/* The title button takes the free space, so the spacer and its two gaps do not cost the name 12px. */
+.sb-wi-list-header .sb-list-header__spacer {
+    display: none;
+}
+
+.sb-wi-list-header .sb-wi-book-switcher {
+    margin-inline-end: auto;
+}
+
+.sb-wi-list-header .sb-list-header__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    box-sizing: border-box;
+    width: var(--sb-control-icon-physical-size);
+    min-width: var(--sb-control-icon-physical-size);
+    height: var(--sb-control-icon-physical-size);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-icon-control-radius);
+    font-size: var(--sb-type-control);
+    line-height: 1;
+    cursor: pointer;
 }
 
 .sb-wi-detail-header {
-    border-bottom: var(--sb-headerbar-shade);
+    flex: none;
+    min-width: 0;
+    min-height: 60px;
 }
 
 .sb-wi-editor :is(button, input, textarea) {
@@ -164,18 +170,25 @@
 }
 
 #WorldInfo .sb-wi-editor .sb-wi-book-switcher {
+    display: inline-flex;
+    align-items: center;
     flex: 0 1 auto;
-    justify-content: flex-start;
-    min-width: 0;
     gap: 6px;
+    min-width: 0;
+    min-height: var(--sb-control-icon-physical-size);
+    margin: 0;
+    padding: 0 6px 0 0;
+    border: 0;
+    border-radius: var(--sb-radius-control);
+    background: transparent;
+    color: inherit;
+    font: inherit;
     text-align: start;
-    font-size: calc(var(--mainFontSize) * 1.08);
-    font-weight: 700;
-    padding-inline: 6px;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-#WorldInfo .sb-wi-editor .sb-wi-book-switcher:is(:active, [aria-expanded='true']) {
-    transform: none;
+#WorldInfo .sb-wi-editor .sb-wi-book-switcher.sb-wi-book-switcher[aria-expanded='true'] {
     background: var(--sb-flat-selected-bg);
 }
 
@@ -185,31 +198,8 @@
     color: var(--sb-muted-fg);
 }
 
-.sb-wi-list-header-spacer {
-    flex: 1 1 0;
-    min-width: 0;
-}
-
-.sb-wi-list-titles {
+.sb-wi-book-switcher > .sb-list-header__titles {
     flex: 0 1 auto;
-    min-width: 0;
-}
-
-.sb-wi-list-titles > span {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.sb-wi-book-name {
-    line-height: 1.25;
-}
-
-.sb-wi-list-subtitle {
-    color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.75);
-    font-weight: 400;
 }
 
 .sb-wi-list-body {
@@ -227,100 +217,29 @@
     font-weight: 700;
 }
 
-#sb-settings-page #WorldInfo .sb-wi-list-box {
-    display: block;
-    gap: normal;
-    overflow: hidden;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-card);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+/* The shared row pads 8px; list parity wants 12px inline, and the shared rule belongs to the list-editor sheets (the Characters list restates it the same way). */
+.sb-wi-editor .sb-wi-row {
+    padding-inline: 12px;
 }
 
-:root[data-sb-surface-tone='light'] #sb-settings-page #WorldInfo .sb-wi-list-box {
-    background: var(--sb-layer-view);
-}
-
-#sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-row {
+.sb-wi-row > .sb-wi-row-icon {
     display: flex;
-    flex-direction: row;
     align-items: center;
-    gap: 10px;
-    width: 100%;
-    min-height: 52px;
-    padding: 6px 8px;
-    border: 0;
-    border-radius: 0;
-    color: inherit;
-    font-family: inherit;
-    text-align: start;
-    cursor: pointer;
-    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
-}
-
-#sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-row:not(:last-child) {
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
-}
-
-.sb-wi-row > i {
-    flex: none;
-    width: 18px;
+    justify-content: center;
     color: var(--sb-muted-fg);
-    text-align: center;
 }
 
-.sb-wi-row .ds-row-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-}
-
-.sb-wi-row :is(.ds-row-label, .ds-row-subtitle) {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#sb-settings-page #WorldInfo .sb-wi-row .ds-row-label {
-    font-size: calc(var(--mainFontSize) * 0.9);
-    font-weight: 600;
-    line-height: 1.6;
-}
-
-.sb-wi-row .ds-row-suffix {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-#sb-settings-page #WorldInfo .sb-wi-row .ds-row-subtitle {
-    color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.75);
-    line-height: 1.6;
-}
-
-.sb-wi-row.is-disabled .ds-row-text {
+.sb-wi-row.is-disabled .ds-entity-row__text {
     opacity: 0.6;
 }
 
-#WorldInfo .sb-wi-editor .sb-wi-row.is-selected {
-    background: var(--sb-flat-selected-bg);
-}
-
-.sb-wi-row.is-selected > i {
+.sb-wi-row.is-selected > .sb-wi-row-icon {
     color: var(--sb-accent);
 }
 
-#WorldInfo .sb-wi-editor .sb-wi-grip {
-    width: 24px;
-    min-width: 24px;
-    color: var(--sb-muted-fg);
+.sb-wi-editor .sb-wi-grip {
     cursor: grab;
+    touch-action: none;
 }
 
 .sb-wi-editor .sb-switch {
@@ -343,33 +262,38 @@
     font-size: calc(var(--mainFontSize) * 0.75);
 }
 
-/* Split view keeps rows single-line like the Prompt Editor; the ⋯ menu stays so
-   Duplicate/Move/Delete remain reachable. */
-.sb-wi-editor[data-open='true'][data-collapsed='false'] .sb-wi-row .ds-row-subtitle {
-    display: none !important;
-}
-
-@container sb-list-editor-sidebar (width < 440px) {
-    #sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-row {
-        gap: 6px;
-        padding-inline: 4px;
-    }
+/* Beside an open pane the rows keep the title and the switch; the subtitle and the ⋮ go, and the header menu of the open entry holds the same actions. */
+.sb-wi-editor[data-open='true'][data-collapsed='false']:not([data-selection-mode='true']) .sb-wi-row :is(.ds-entity-row__subtitle, .ds-entity-row__button) {
+    display: none;
 }
 
 @container sb-list-editor-sidebar (width < 300px) {
-    .sb-wi-row > i {
+    .sb-wi-row > .sb-wi-row-icon {
         display: none;
     }
 }
 
 @media (hover: hover) {
-    #WorldInfo .sb-wi-editor :is(.menu_button:not(.menu_button_primary):not(:disabled), .sb-wi-row):not(.sb-header-icon-button):where(:not(.sb-status-page__action)):hover {
+    #WorldInfo .sb-wi-editor .menu_button:where(:not(.menu_button_primary):not(:disabled):not(.sb-header-icon-button):not(.sb-status-page__action)):hover,
+    #WorldInfo .sb-wi-editor .sb-wi-row:hover,
+    #WorldInfo .sb-wi-editor .sb-wi-book-switcher:hover,
+    .sb-wi-editor .sb-wi-row-menu:hover {
         background: var(--sb-flat-hover-bg);
     }
 
     #WorldInfo .sb-wi-editor .sb-wi-row:is(.is-selected, .is-selection-selected):hover {
         background: var(--sb-flat-selected-hover-bg);
     }
+}
+
+/* Pressed fills: each resting rule above and below names an id, so the shared :active rule would lose to it. */
+#WorldInfo .sb-wi-editor .sb-wi-row.sb-wi-row:active,
+#WorldInfo .sb-wi-editor .sb-wi-book-switcher:active,
+.sb-wi-editor .sb-wi-row-menu:active,
+#WorldInfo .sb-wi-editor .menu_button:where(:not(.sb-header-icon-button):not(.sb-status-page__action):not(.menu_button_primary):not(:disabled)):active,
+#sb-settings-page .sb-wi-entry :is(.editor_maximize[data-for], .sb-wi-entry-banner .menu_button):not(:disabled):active,
+:is(.sb-wi-property-sheet, .sb-dialog.sb-world-info-properties-dialog) .menu_button:not(.sb-wi-dropdown):not(:disabled):active {
+    background: var(--sb-flat-active-bg);
 }
 
 #WorldInfo .sb-wi-editor :is(button, .sb-wi-row):not(.sb-header-icon-button):focus-visible {
@@ -384,21 +308,19 @@
     cursor: not-allowed;
 }
 
-/* Flat header icon buttons stay flat when disabled (no book open); only the glyph dims. */
-.sb-wi-list-titles > span[hidden] {
-    display: none;
-}
-
 @media (pointer: coarse) {
     .sb-wi-row-enable {
         min-width: 44px;
         min-height: 44px;
     }
 
-    #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-button),
-    #WorldInfo .sb-wi-editor .sb-wi-grip {
+    #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-button) {
         min-width: 44px;
         min-height: 44px;
+    }
+
+    .sb-wi-editor .sb-wi-grip {
+        min-width: 44px;
     }
 }
 
@@ -452,24 +374,6 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     white-space: nowrap;
 }
 
-#sb-settings-page .sb-wi-settings .sb-wi-detail-back {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: var(--sb-radius-control);
-    background: transparent;
-    color: inherit;
-    box-shadow: none;
-}
-
 .sb-wi-settings-body {
     flex: 1 1 0;
     min-width: 0;
@@ -477,11 +381,11 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: var(--sb-settings-inset-top) var(--sb-settings-inset) calc(var(--sb-settings-inset-top) + env(safe-area-inset-bottom, 0px));
 }
 
 .sb-wi-settings-body > .sb-editor-section {
-    margin: 0 0 24px;
+    margin: 0 0 var(--sb-settings-group-gap);
 }
 
 .sb-wi-settings-body > .sb-editor-section:last-child {
@@ -512,39 +416,8 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     border-bottom: 0;
 }
 
-#sb-settings-page .sb-wi-settings .sb-wi-detail-back:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-@media (hover: hover) {
-    #sb-settings-page .sb-wi-settings .sb-wi-detail-back:hover {
-        background: var(--sb-flat-hover-bg);
-    }
-}
-
-#sb-settings-page .sb-wi-settings .sb-wi-detail-back:active {
-    background: var(--sb-flat-active-bg);
-}
-
-@media (max-width: 768px) {
-    .sb-wi-settings > .sb-wi-detail-header {
-        padding-inline: 4px;
-    }
-
-    .sb-wi-settings-body {
-        padding-inline: 8px;
-    }
-}
-
 @media (pointer: coarse) {
-    #sb-settings-page .sb-wi-settings .sb-wi-detail-back {
-        width: 44px;
-        min-width: 44px;
-        height: 44px;
-    }
-
-    #sb-settings-page .sb-wi-settings :is(.ds-row-suffix > input[type='number'], .ds-row-suffix > input[type='range'], .ds-row-suffix > select) {
+    #sb-settings-page .sb-wi-settings :is(.ds-row-suffix > input[type='number'], .ds-row-suffix > select) {
         min-height: 44px;
     }
 }
@@ -694,19 +567,35 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
 }
 
 .sb-dialog.sb-world-info-properties-dialog .sb-dialog__body {
-    padding: 0;
+    padding: var(--sb-settings-inset);
 }
 
+/* The sheet holds the same controls as the bar, drawn as a boxed list: card fill, 12px radius, rows with the list's inline padding. */
 .sb-dialog.sb-world-info-properties-dialog .sb-wi-properties {
     flex-direction: column;
     align-items: stretch;
+    gap: 0;
     padding: 0;
+    overflow: hidden;
     border: 0;
+    border-radius: var(--sb-radius-card);
+    background: var(--sb-card-fill);
+    box-shadow: var(--sb-shadow-card);
 }
 
 .sb-dialog.sb-world-info-properties-dialog .sb-wi-property {
-    min-height: 44px;
+    min-height: 50px;
+    padding: 6px 12px;
     justify-content: space-between;
+    font-size: var(--sb-type-body);
+}
+
+.sb-dialog.sb-world-info-properties-dialog .sb-wi-property {
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+}
+
+.sb-dialog.sb-world-info-properties-dialog .sb-wi-property:not([hidden]):not(:has(~ .sb-wi-property:not([hidden]))) {
+    border-bottom: 0;
 }
 
 .sb-wi-property-popover {
@@ -801,14 +690,28 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     color: inherit;
 }
 
+/* Text first: the Content section takes the height the other sections leave, and the text area fills it. */
+.sb-wi-entry-body > [data-sb-editor-field='section-content'] {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+}
+
 #sb-settings-page #WorldInfo .sb-wi-entry [data-sb-editor-field='section-content'] > .ds-pref-group {
-    border: 0;
-    border-radius: 0;
-    background: transparent;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
 }
 
 #sb-settings-page #WorldInfo .sb-wi-entry .ds-pref-group > [data-sb-editor-field='content'] {
+    flex: 1 1 auto;
     padding: 0;
+}
+
+#sb-settings-page #WorldInfo .sb-wi-entry [data-sb-editor-field='content'] > .ds-row-suffix {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
 }
 
 #sb-settings-page .sb-wi-entry .ds-pref-group .ds-row.ds-row--stacked {
@@ -923,19 +826,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     }
 }
 
-@container sb-list-editor-detail (width < 440px) {
-    .sb-wi-entry-header {
-        padding-inline: 4px;
-        gap: 2px;
-    }
-}
-
 @media (max-width: 768px) {
-    .sb-wi-entry-header {
-        gap: 2px;
-        padding-inline: 4px;
-    }
-
     #sb-settings-page .sb-wi-entry .sb-wi-entry-title {
         flex: 1 1 0;
         min-width: 56px;

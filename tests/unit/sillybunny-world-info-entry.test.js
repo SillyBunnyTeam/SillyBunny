@@ -350,6 +350,27 @@ describe('World Info schema form', () => {
         expect(row(host, 'selectiveLogic').hidden).toBe(false);
     });
 
+    test('combo fields are select rows: the trigger shows the choice and picking from the picker writes the draft', () => {
+        const { host, controller } = mount();
+        edit(host, 'keysecondary', 'beta');
+        keydown(control(host, 'keysecondary'), 'Enter');
+        const logic = row(host, 'selectiveLogic');
+        const select = control(host, 'selectiveLogic');
+        const trigger = logic.querySelector('.ds-select-row__trigger');
+        const options = model.FIELD_BY_ID.get('selectiveLogic').options;
+        expect(logic.matches('.ds-select-row')).toBe(true);
+        expect(select.matches('select.ds-select-row__native[aria-hidden="true"]')).toBe(true);
+        expect([...select.options].map(option => option.value)).toEqual(options.map(option => option.value));
+        const before = trigger.textContent;
+        trigger.click();
+        const items = [...document.querySelectorAll('.sb-picker__option')];
+        expect(items).toHaveLength(options.length);
+        items.at(-1).click();
+        expect(select.value).toBe(options.at(-1).value);
+        expect(trigger.textContent).not.toBe(before);
+        expect(controller.isDirty()).toBe(true);
+    });
+
     test('numbers use model coercion instead of the generic spin clamp', async () => {
         const { host, controller, data } = mount();
         edit(host, 'order', '-120', 'change');

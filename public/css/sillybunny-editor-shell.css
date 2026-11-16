@@ -574,6 +574,43 @@ body.reduced-motion .sb-spinner {
     animation: none;
 }
 
+.sb-list-header__titles {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding-inline: 6px;
+    text-align: start;
+}
+
+.sb-list-header__title,
+.sb-list-header__subtitle {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-list-header__title {
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.sb-list-header__subtitle {
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-caption);
+    font-weight: 400;
+}
+
+.sb-list-header__subtitle[hidden] {
+    display: none;
+}
+
+.sb-list-header__spacer {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
 .sb-header-icon-button,
 .sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     border: 0;

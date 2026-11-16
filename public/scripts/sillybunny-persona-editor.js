@@ -24,7 +24,7 @@ import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail
 
 const STYLESHEETS = [
     { href: 'css/sillybunny-entity-list.css?v=20261116j', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261113t', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261116u', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261114t', id: 'deferred-persona-detail-css' },
 ];
 const mountedEditors = new WeakMap();

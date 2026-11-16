@@ -8,42 +8,74 @@
  * @property {boolean} [toggle=false]
  * @property {boolean} [pressed=false]
  * @property {number} [overflowPriority]
+ * @property {string} [className] Extra classes for this action's button.
+ */
+
+/**
+ * @typedef {object} HeaderTitleButton
+ * @property {string} label Accessible name and tooltip.
+ * @property {(trigger: HTMLButtonElement) => void} onActivate
+ * @property {string} [className] Extra classes for the button.
  */
 
 /**
  * Creates a list header with caller-owned actions and overflow policy.
+ * With `titleButton` the titles and a chevron sit inside one button that opens a picker.
  * @param {object} options
  * @param {string} options.title
  * @param {string} [options.subtitle]
  * @param {HeaderAction[]} [options.actions=[]]
  * @param {string} [options.className]
- * @returns {{ element: HTMLElement, setTitle: (text: string) => void, setSubtitle: (text: string) => void,
+ * @param {HeaderTitleButton} [options.titleButton]
+ * @param {string} [options.titleClassName]
+ * @param {string} [options.subtitleClassName]
+ * @returns {{ element: HTMLElement, titleButton: HTMLButtonElement|null, setTitle: (text: string) => void,
+ *   setSubtitle: (text: string) => void, setSubtitleHidden: (hidden: boolean) => void,
  *   button: (id: string) => HTMLButtonElement|null, setPressed: (id: string, pressed: boolean) => void,
  *   setOverflowed: (ids: string[]) => void, destroy: () => void }}
  */
-export function createListHeader({ title, subtitle = '', actions = [], className = '' }) {
+export function createListHeader({
+    title, subtitle = '', actions = [], className = '', titleButton: titleButtonOptions = null, titleClassName = '', subtitleClassName = '',
+}) {
     const element = document.createElement('header');
     element.className = ['sb-list-header', className].filter(Boolean).join(' ');
     const titles = document.createElement('div');
     titles.className = 'sb-list-header__titles';
     const titleElement = document.createElement('span');
-    titleElement.className = 'sb-list-header__title';
+    titleElement.className = ['sb-list-header__title', titleClassName].filter(Boolean).join(' ');
     titleElement.textContent = title;
     const subtitleElement = document.createElement('span');
-    subtitleElement.className = 'sb-list-header__subtitle';
+    subtitleElement.className = ['sb-list-header__subtitle', subtitleClassName].filter(Boolean).join(' ');
     subtitleElement.textContent = subtitle;
     titles.append(titleElement, subtitleElement);
     const spacer = document.createElement('span');
     spacer.className = 'sb-list-header__spacer';
     spacer.setAttribute('aria-hidden', 'true');
-    element.append(titles, spacer);
+    const cleanups = [];
+    let titleButton = null;
+    if (titleButtonOptions) {
+        titleButton = document.createElement('button');
+        titleButton.type = 'button';
+        titleButton.className = ['sb-list-header__title-button', titleButtonOptions.className].filter(Boolean).join(' ');
+        titleButton.setAttribute('aria-label', titleButtonOptions.label);
+        titleButton.title = titleButtonOptions.label;
+        titleButton.setAttribute('aria-haspopup', 'dialog');
+        titleButton.setAttribute('aria-expanded', 'false');
+        const chevron = document.createElement('i');
+        chevron.className = 'fa-solid fa-chevron-down';
+        chevron.setAttribute('aria-hidden', 'true');
+        titleButton.append(titles, chevron);
+        const onTitleClick = () => titleButtonOptions.onActivate(titleButton);
+        titleButton.addEventListener('click', onTitleClick);
+        cleanups.push(() => titleButton.removeEventListener('click', onTitleClick));
+    }
+    element.append(titleButton ?? titles, spacer);
 
     const buttons = new Map();
-    const cleanups = [];
     for (const action of actions) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'sb-list-header__button sb-header-icon-button';
+        button.className = ['sb-list-header__button', 'sb-header-icon-button', action.className].filter(Boolean).join(' ');
         button.dataset.actionId = action.id;
         button.setAttribute('aria-label', action.label);
         button.title = action.label;
@@ -66,11 +98,15 @@ export function createListHeader({ title, subtitle = '', actions = [], className
 
     return {
         element,
+        titleButton,
         setTitle(text) {
             if (titleElement.textContent !== text) titleElement.textContent = text;
         },
         setSubtitle(text) {
             if (subtitleElement.textContent !== text) subtitleElement.textContent = text;
+        },
+        setSubtitleHidden(hidden) {
+            subtitleElement.hidden = hidden;
         },
         button: id => buttons.get(id) ?? null,
         setPressed(id, pressed) {

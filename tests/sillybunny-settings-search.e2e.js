@@ -387,7 +387,8 @@ for (const viewport of VIEWPORTS) {
 
             test('Characters shell: the Global Settings of World Info hide the rows that miss while they are open', async ({ page }) => {
                 await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
-                await page.locator('#sb_character_world_info_panel').getByRole('button', { name: 'Global Settings' }).click();
+                await page.locator('#sb_character_world_info_panel .sb-wi-book-actions').click();
+                await page.getByRole('menuitem', { name: 'Global Settings', exact: true }).click();
                 await expect(page.locator('.sb-wi-settings')).toBeVisible();
                 const rows = page.locator('.sb-wi-settings .ds-pref-group > .ds-row');
                 const total = await rows.count();

@@ -149,7 +149,7 @@
 
 .sb-persona-list-subtitle {
     color: var(--sb-muted-fg);
-    font-size: calc(var(--sb-type-body) * 0.75);
+    font-size: var(--sb-type-caption);
     font-weight: 400;
 }
 
