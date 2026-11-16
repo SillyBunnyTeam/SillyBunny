@@ -1,6 +1,7 @@
 /* Folder Manager content. The frame and the members page are the shared Window-tier dialog in
    sillybunny-theme.css (sillybunny-editor/dialog.js); the box, rows and buttons are the shared
    entity list in sillybunny-entity-list.css. */
+.sb-folder-manager[data-selection-mode='true'] :is(.drag-handle, .ds-entity-row__suffix) { display: none; }
 .sb-folder-manager__folder-row { flex-wrap: wrap; }
 .sb-folder-manager__folder-row .ds-entity-row__avatar { display: grid; place-items: center; }
 .sb-folder-manager__dot { width: 12px; height: 12px; border-radius: 50%; background: var(--sb-folder-color, var(--sb-muted-fg)); }

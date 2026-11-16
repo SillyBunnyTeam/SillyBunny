@@ -10,7 +10,7 @@ import { mountArchive } from './root.js';
 import { closeMentionsOnEscape, createSearchField, handleQueryChange } from './search.js';
 import { createViewModel } from './view-model.js';
 
-const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261117c', id: 'deferred-entity-list-css' };
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' };
 
 export let dialog = null;
 

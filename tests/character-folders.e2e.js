@@ -271,6 +271,65 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expect(reloaded.locator('.character_select')).toHaveCount(3);
         });
 
+        test('a folder closes and opens with motion on its rows and a turning chevron, and reduced motion skips both', async ({ page }) => {
+            const characters = makeCharacters(3);
+            await routeSettings(page, settings => {
+                clearListFilters(settings);
+                settings.power_user.sb_folders = {
+                    version: 1,
+                    migratedFromTags: true,
+                    characters: {
+                        folders: [{ id: 'folder-qa', name: 'QA Folder', color: 'rgb(53, 132, 228)', expanded: true }],
+                        members: { [characters[0].avatar]: 'folder-qa', [characters[1].avatar]: 'folder-qa' },
+                    },
+                    groups: { folders: [], members: {} },
+                };
+            });
+            await routeCharacters(page, characters);
+            await page.goto('/');
+            await waitForApp(page);
+            const list = await openCharacters(page);
+            const header = list.locator('[data-sb-list-key="folder:characters:folder-qa"]');
+            const members = list.locator('.character_select.is-folder-member');
+            const chevron = header.locator('.ds-entity-row__chevron');
+            await expect(members).toHaveCount(2);
+            await expect(chevron).toHaveCSS('transform', 'matrix(-1, 0, 0, -1, 0, 0)');
+
+            const closing = await header.evaluate(node => {
+                const rows = [...node.parentElement.querySelectorAll('.is-folder-member')];
+                node.click();
+                return { animated: rows.map(row => row.getAnimations().length), kept: rows.map(row => row.isConnected), expanded: node.getAttribute('aria-expanded') };
+            });
+            expect(closing).toEqual({ animated: [1, 1], kept: [true, true], expanded: 'false' });
+            await expect(members).toHaveCount(0);
+            await expect(chevron).toHaveCSS('transform', 'none');
+
+            // The rows arrive with the next render, which is asynchronous: watch for them instead of polling frames.
+            const opening = await header.evaluate(node => new Promise(resolve => {
+                const container = node.parentElement;
+                const observer = new MutationObserver(() => {
+                    const rows = [...container.querySelectorAll('.is-folder-member')];
+                    if (rows.length < 2) return;
+                    observer.disconnect();
+                    resolve(rows.map(row => row.getAnimations().length));
+                });
+                observer.observe(container, { childList: true, attributes: true, subtree: true });
+                node.click();
+            }));
+            expect(opening).toEqual([1, 1]);
+            await expect(chevron).toHaveCSS('transform', 'matrix(-1, 0, 0, -1, 0, 0)');
+
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            await expect(members).toHaveCount(2);
+            const still = await header.evaluate(node => {
+                const rows = [...node.parentElement.querySelectorAll('.is-folder-member')];
+                node.click();
+                return rows.map(row => row.getAnimations().length);
+            });
+            expect(still).toEqual([0, 0]);
+            await expect(members).toHaveCount(0);
+        });
+
         test('converts opt-in tag folders once at startup and leaves tags untouched', async ({ page }) => {
             await protectMaintainerServer(page);
             const characters = makeCharacters(4);

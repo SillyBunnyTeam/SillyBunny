@@ -126,6 +126,13 @@ async function headerMenu(page) {
     return page.locator('#sb-action-menu:visible').last();
 }
 
+/** The sort button ends the search bar, so the bar opens first. */
+async function sortMenu(page) {
+    if (!await manager(page).locator('.sb-dialog__search-input').isVisible()) await manager(page).locator('.sb-dialog__search-toggle').click();
+    await manager(page).locator('.sb-tag-manager__sort').click();
+    return page.locator('#sb-action-menu:visible').last();
+}
+
 for (const width of [1440, 390]) {
     test.describe(`${width}px tag manager`, () => {
         test('opens from both entry points; searches, creates, validates and reverts without keystroke saves', async ({ page }) => {
@@ -384,7 +391,7 @@ for (const width of [1440, 390]) {
         test('dragging an automatically sorted tag switches to manual order', async ({ page }) => {
             await prepare(page, width);
             await openFromList(page);
-            const menu = await headerMenu(page);
+            const menu = await sortMenu(page);
             await menu.getByRole('menuitemradio', { name: 'Alphabetical (A-Z)', exact: true }).click();
             const grip = row(page, fixtureTag).locator('.drag-handle');
             await expect(grip).toBeVisible();
@@ -438,7 +445,7 @@ for (const width of [1440, 390]) {
         test('header and row menus retain sort, Backup, Restore, Prune and delete/merge flows', async ({ page }) => {
             await prepare(page, width);
             await openFromList(page);
-            let menu = await headerMenu(page);
+            let menu = await sortMenu(page);
             const indicator = menu.locator('[role="menuitemradio"] .sb-action-menu-indicator').first();
             const label = menu.locator('[role="menuitemradio"] .sb-action-menu-label').first();
             expect((await indicator.boundingBox()).x).toBeLessThan((await label.boundingBox()).x);
@@ -451,7 +458,12 @@ for (const width of [1440, 390]) {
             await expect(row(page, fixtureTag).locator('.sb-tag-manager__folder')).toHaveCount(0);
             await page.keyboard.press('Escape');
             menu = await headerMenu(page);
+            await expect(menu.getByRole('menuitemradio')).toHaveCount(0);
+            await expect(menu.getByRole('menuitem', { name: 'Select', exact: true })).toBeVisible();
+            await page.keyboard.press('Escape');
+            menu = await sortMenu(page);
             await menu.getByRole('menuitemradio', { name: 'Alphabetical (A-Z)', exact: true }).click();
+            await expect(manager(page).locator('.sb-tag-manager__sort')).toHaveAttribute('aria-pressed', 'true');
             await row(page, fixtureTag).locator('.sb-tag-manager__row-menu').click();
             await expect(page.getByRole('menuitem', { name: /^Move / })).toHaveCount(0);
             await page.keyboard.press('Escape');
@@ -483,6 +495,40 @@ for (const width of [1440, 390]) {
         });
     });
 }
+
+test.describe('selection mode', () => {
+    for (const width of [1440, 390]) {
+        test(`selects tags, keeps the rows' own controls out of use and deletes the selection at ${width}px`, async ({ page }) => {
+            await prepare(page, width);
+            await openFromList(page);
+            const menu = await headerMenu(page);
+            await menu.getByRole('menuitem', { name: 'Select', exact: true }).click();
+            await expect(manager(page).locator('.sb-dialog__selection-cancel')).toBeVisible();
+            await expect(row(page, fixtureTag).locator('.drag-handle')).toBeHidden();
+            await expect(row(page, fixtureTag).locator('.sb-tag-manager__row-menu')).toBeHidden();
+            await expect(row(page, fixtureTag).locator('input.sb-tag-manager__name')).toHaveJSProperty('inert', true);
+            const bar = manager(page).locator('.sb-tag-manager__selection-bar');
+            await row(page, fixtureTag).locator('.sb-selection-check').click();
+            await expect(bar.locator('[data-action-id="delete"]')).toBeVisible();
+            await expect(bar.locator('[data-action-id]')).toHaveCount(1);
+            await bar.locator('[data-action-id="delete"]').click();
+            const confirm = page.locator('dialog.popup.sb-popup-destructive-confirm:visible');
+            await expect(confirm).toBeVisible();
+            await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
+            await expect(confirm).toHaveCount(0);
+            await expect(row(page, fixtureTag)).toBeVisible();
+            await bar.locator('[data-action-id="delete"]').click();
+            await page.locator('dialog.popup.sb-popup-destructive-confirm:visible').getByRole('button', { name: 'Delete', exact: true }).click();
+            await expect(row(page, fixtureTag)).toHaveCount(0);
+            await expect(row(page, 'qa-tag-beta')).toBeVisible();
+            await expect(manager(page).locator('.sb-dialog__selection-cancel')).toHaveCount(0);
+            expect(await page.evaluate(async () => {
+                const tags = await import('/scripts/tags.js');
+                return { ids: tags.tags.map(tag => tag.id), mapped: tags.tag_map['qa-tag-character.png'] };
+            })).toEqual({ ids: ['qa-tag-beta'], mapped: [] });
+        });
+    }
+});
 
 test('desktop Create a new tag trigger closes its open popover on repeat activation', async ({ page }) => {
     await prepare(page, 1440);

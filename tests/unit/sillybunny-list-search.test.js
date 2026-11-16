@@ -469,6 +469,20 @@ describe('createListSearch', () => {
             expect(search.isOpen).toBe(false);
         });
 
+        test('a press on a control inside the field keeps it open when the browser gives that control no focus', () => {
+            const { search, field, input, row } = makeSearch({ closeEmptyOnBlur: true });
+            const inside = document.createElement('button');
+            field.append(inside);
+            search.open();
+            input.focus();
+            inside.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+            blur(input, null);
+            inside.dispatchEvent(new Event('pointerup', { bubbles: true }));
+            expect(search.isOpen).toBe(true);
+            blur(input, row);
+            expect(search.isOpen).toBe(false);
+        });
+
         test('stops listening once destroyed', () => {
             const { search, input, row } = makeSearch({ closeEmptyOnBlur: true });
             search.open();

@@ -49,6 +49,7 @@ export function createListSearch({
     let lastReport = '';
     let destroyed = false;
     let pointerActive = false;
+    let pointerInside = false;
     let pendingBlur = null;
     let blurFrame = 0;
 
@@ -203,6 +204,7 @@ export function createListSearch({
 
     const finishPointer = () => {
         pointerActive = false;
+        pointerInside = false;
         cancelAnimationFrame(blurFrame);
         blurFrame = 0;
         const close = pendingBlur;
@@ -211,14 +213,17 @@ export function createListSearch({
     };
     const startPointer = event => {
         pointerActive = document.activeElement === input && !field.contains(event.target);
+        // Safari does not focus a pressed button, so the blur has no related target; a press on the field's own controls keeps it open.
+        pointerInside = document.activeElement === input && field.contains(event.target);
     };
     const releasePointer = () => {
         pointerActive = false;
+        pointerInside = false;
         if (pendingBlur) blurFrame = requestAnimationFrame(finishPointer);
     };
     const onBlur = event => {
         const nextFocus = event.relatedTarget;
-        if (input.value || field.contains(nextFocus) || (trigger && nextFocus === trigger)) return;
+        if (input.value || pointerInside || field.contains(nextFocus) || (trigger && nextFocus === trigger)) return;
         const closeNow = (restoreImmediately = false) => {
             if (destroyed || input.value || field.hidden) return;
             close();

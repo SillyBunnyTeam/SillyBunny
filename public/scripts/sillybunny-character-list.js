@@ -8,7 +8,7 @@ import { reconcileRows, bindListKeyboard, rowEntry } from './sillybunny-editor/l
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
-import { createFolderRow, folderCountLabel } from './sillybunny-editor/folder-row.js';
+import { createFolderMotion, createFolderRow, folderCountLabel } from './sillybunny-editor/folder-row.js';
 import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
 import { closePicker, isPickerOpen } from './sillybunny-editor/picker.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
@@ -19,10 +19,10 @@ import { getFolders, getFolderId, setFolder, setFolderExpanded, subscribe as sub
 import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
-    { href: 'css/sillybunny-entity-list.css?v=20261117c', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-editor-shell.css?v=20261116u', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261117h', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-character-editor.css?v=20261116z', id: 'deferred-editor-chrome-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261116u', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261117h', id: 'deferred-character-list-css' },
 ]);
 const DEFAULT_BATCH_SIZE = 50;
 const mountedLists = new WeakMap();
@@ -504,11 +504,24 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     const status = node('div', 'sb-character-list__status');
     status.append(loading.element);
 
-    const searchField = node('label', 'sb-character-list__search');
+    const searchEntry = node('label', 'sb-character-list__search-entry');
+    const searchField = node('div', 'sb-character-list__search sb-list-search-bar');
     searchField.hidden = true;
     const searchInput = document.getElementById('character_search_bar');
     if (!(searchInput instanceof HTMLInputElement)) throw new Error('Character search input is missing.');
-    searchField.append(icon('magnifying-glass'), searchInput);
+    searchEntry.append(icon('magnifying-glass'), searchInput);
+    // The sort button ends the search bar, as the other list editors' sort and filter buttons do.
+    const sortButton = node('button', 'sb-list-header__button sb-header-icon-button sb-character-list__sort');
+    sortButton.type = 'button';
+    sortButton.dataset.actionId = 'sort';
+    sortButton.title = t`Sort`;
+    sortButton.setAttribute('aria-label', t`Sort`);
+    sortButton.setAttribute('aria-haspopup', 'menu');
+    sortButton.setAttribute('aria-expanded', 'false');
+    sortButton.setAttribute('aria-pressed', 'false');
+    sortButton.append(icon('arrow-down-wide-short'));
+    sortButton.addEventListener('click', () => openSortMenu(sortButton));
+    searchField.append(searchEntry, sortButton);
     searchInput.setAttribute('aria-label', t`Search`);
     const filters = document.querySelector('#rm_characters_block #charListFixedTop > .rm_tag_controls');
     if (!(filters instanceof HTMLElement)) throw new Error('Character list filters are missing.');
@@ -543,6 +556,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     let extensionObserver;
     const dataModules = dependencies;
     let typingUntil = 0;
+    const folderMotion = createFolderMotion();
     let renderRevision = 0;
     let suppressedStateRenders = 0;
     let handlingSearchInput = false;
@@ -909,10 +923,17 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         menu(trigger, t`Sort`, [{ items: sortItems }, { title: t`View`, items: viewItems }]);
     }
 
+    /** The Search toggle and the sort button show that the list is not in its default order or view. */
+    function syncSortState() {
+        const sort = dataModules.state.getListSort?.(state.view) ?? {};
+        const altered = sort.field !== 'name' || sort.order !== 'asc' || (sort.rule ?? null) !== null || Boolean(power_user.charListGrid);
+        sortButton.setAttribute('aria-pressed', String(altered));
+        header?.setPressed('search', altered);
+    }
+
     function openListMenu(trigger) {
         const filter = selector => document.querySelector(`#rm_characters_block ${selector}`);
         const sections = [];
-        if (overflowed.has('sort')) sections.push({ items: [makeMenuItem(t`Sort`, 'arrow-down-wide-short', () => openSortMenu(trigger))] });
         if (overflowed.has('search')) sections.push({ items: [makeMenuItem(t`Search`, 'magnifying-glass', () => search.toggle())] });
         sections.push({ items: [makeMenuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), { disabled: bulkBusy || !state.selectableKeys.length })] });
         sections.push({ items: [
@@ -976,12 +997,11 @@ function createCharacterListController(container, dependencies, restoreDOM) {
 
     function createHeader() {
         const actions = [
-            { id: 'search', label: t`Search`, icon: 'magnifying-glass', onActivate: () => search.toggle(), overflowPriority: 2 },
+            { id: 'search', label: t`Search`, icon: 'magnifying-glass', toggle: true, onActivate: () => search.toggle(), overflowPriority: 2 },
             { id: 'new', label: t`New`, icon: 'plus', onActivate: () => {
                 globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.(state.view);
                 clickTransport(state.view === 'groups' ? '#rm_button_group_chats' : '#rm_button_create');
             } },
-            { id: 'sort', label: t`Sort`, icon: 'arrow-down-wide-short', menu: true, onActivate: openSortMenu, overflowPriority: 1 },
             { id: 'more', label: t`More...`, icon: 'ellipsis-vertical', menu: true, onActivate: openListMenu },
         ];
         header = createListHeader({ title: t`Characters`, actions, className: 'sb-character-list__header' });
@@ -1057,6 +1077,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         section.dataset.view = state.view;
         header?.setTitle(state.view === 'groups' ? t`Groups` : t`Characters`);
         header?.setSubtitle(countLabel(model.sourceCount, state.view));
+        syncSortState();
         setOverflow();
         const visibleRows = buildVisibleRows(model, view, search.query);
         state.visibleRows = visibleRows;
@@ -1097,11 +1118,13 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 update: (row, entry) => updateRow(row, entry, dataModules, listVisible),
             });
             decorateFolderSections(rowsContainer);
+            folderMotion.reveal(rowsContainer);
         };
         for (const child of [...rowsContainer.children]) {
             if (!child.hasAttribute('data-sb-list-key')) child.remove();
         }
-        if (listVisible && !viewChanged && !revealActiveOnRender && state.rows.size > 0 && pageEntries.length <= 50 && Date.now() >= typingUntil && state.lastQuery === search.query) animateListChange(rowsContainer, updateRows, { key: entityRowMotionKey });
+        // A folder opening reveals its own rows, so the list-wide change motion would play over it.
+        if (listVisible && !viewChanged && !revealActiveOnRender && !folderMotion.pending && state.rows.size > 0 && pageEntries.length <= 50 && Date.now() >= typingUntil && state.lastQuery === search.query) animateListChange(rowsContainer, updateRows, { key: entityRowMotionKey });
         else updateRows();
         decorateSelection();
         box.scrollTop = model.fullRefresh ? 0 : scrollTop;
@@ -1257,7 +1280,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 const entry = rowEntry(row);
                 if (entry?.kind === 'folder') {
                     if (entry.temporaryExpansion) return true;
-                    setFolderExpanded(entry.scope, entry.folder.id, !entry.expanded);
+                    folderMotion.toggle(row, entry.expanded, () => setFolderExpanded(entry.scope, entry.folder.id, !entry.expanded));
                     row.focus({ preventScroll: true });
                     return true;
                 }

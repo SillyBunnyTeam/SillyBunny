@@ -16,17 +16,19 @@ import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { createListShowMore } from './sillybunny-editor/list-show-more.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
+import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
+import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
 import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
-import { createFolderRow, folderCountLabel } from './sillybunny-editor/folder-row.js';
-import { getFolderId, getFolders, setFolderExpanded, subscribe as subscribeFolders } from './sillybunny-folders.js';
+import { createFolderMotion, createFolderRow, folderCountLabel } from './sillybunny-editor/folder-row.js';
+import { getFolderId, getFolders, setFolder, setFolderExpanded, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import { characterTabGuardSelector, registerEditorNavigation } from './sillybunny-editor/navigation.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { mountPersonaSettings } from './sillybunny-persona-settings.js';
 import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-entity-list.css?v=20261117c', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261116v', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261117h', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261117a', id: 'deferred-persona-detail-css' },
 ];
 const DEFAULT_BATCH_SIZE = 50;
@@ -151,6 +153,9 @@ export function mountPersonaEditor(container) {
     let preparingReveal = false;
     let pendingRefresh = null;
     let refreshPromise = null;
+    let selection = null;
+    let bulkBusy = false;
+    const folderMotion = createFolderMotion();
 
     const listHeader = element('header', 'sb-persona-list-header');
     const titles = element('div', 'sb-persona-list-titles');
@@ -167,14 +172,17 @@ export function mountPersonaEditor(container) {
         control.setAttribute('aria-haspopup', 'menu');
         control.setAttribute('aria-expanded', 'false');
     }
-    listHeader.append(titles, spacer, searchButton, newButton, sortButton, listMenu);
+    for (const control of [searchButton, sortButton]) control.setAttribute('aria-pressed', 'false');
+    listHeader.append(titles, spacer, searchButton, newButton, listMenu);
 
     const searchEntry = createSearchEntry({
         clearLabel: t`Clear Entry`,
-        variant: 'bar', className: 'sb-persona-search-field', inputClassName: 'sb-persona-search',
+        variant: 'bar', className: 'sb-persona-search-entry', inputClassName: 'sb-persona-search',
         placeholder: t`Search...`, label: t`Search`, clearOnEscape: false,
     });
-    const searchField = searchEntry.element;
+    // The sort button ends the search bar, so the header keeps its other buttons and the title keeps its room.
+    const searchField = element('div', 'sb-persona-search-field sb-list-search-bar');
+    searchField.append(searchEntry.element, sortButton);
     const searchInput = searchEntry.input;
     searchField.hidden = true;
     const listBody = element('div', 'sb-persona-list-body');
@@ -189,11 +197,13 @@ export function mountPersonaEditor(container) {
     const listStatus = element('div', 'sb-persona-list-status');
     listBody.append(heading, listBox, listStatus);
     const listContent = element('div', 'sb-persona-list-content');
+    const selectionHeader = element('header', 'sb-persona-selection-header');
+    const selectionBar = element('div', 'sb-persona-selection-bar');
     const searchStatus = element('div', 'sb-list-editor__status');
     searchStatus.setAttribute('aria-live', 'polite');
     const searchControl = createListSearch({
         field: searchField, input: searchInput, trigger: searchButton, scope: listContent,
-        status: searchStatus, scroller: listBody, debounce: 300,
+        status: searchStatus, scroller: listBody, debounce: 300, closeEmptyOnBlur: true,
         onChange: () => {
             heldOrder = null;
             batches = 1;
@@ -240,6 +250,7 @@ export function mountPersonaEditor(container) {
     function openListMenu(trigger) {
         menu(trigger, t`Persona Management`, [
             [menuItem(t`Global Settings`, 'gear', () => shell.selectedKey === 'settings' ? shell.deselectItem() : shell.selectItem({ kind: 'settings' }))],
+            [menuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), false, bulkBusy || !allIds.length)],
             [menuItem(t`Manage Folders`, 'folder', openFolderManager)],
             [menuItem(t`Backup`, 'file-export', () => clickTransport('#personas_backup')), menuItem(t`Restore`, 'file-import', () => clickTransport('#personas_restore'))],
             [menuItem(t`Usage Stats`, 'chart-simple', () => clickTransport('.user_stats_button'))],
@@ -264,6 +275,13 @@ export function mountPersonaEditor(container) {
         }]);
     }
 
+    /** The Search toggle and the sort button show that the list is not in its default order. */
+    function syncSortState() {
+        const altered = power_user.persona_sort_order !== 'asc';
+        sortButton.setAttribute('aria-pressed', String(altered));
+        searchButton.setAttribute('aria-pressed', String(altered));
+    }
+
     async function duplicatePersona(avatarId) {
         if (!(await shell.guardLeave())) return;
         const duplicatedId = await duplicatePersonaRecord(avatarId);
@@ -279,6 +297,70 @@ export function mountPersonaEditor(container) {
             shell.deselectNow();
         }
         await refresh('list');
+    }
+
+    const existingSelected = (keys = selection.selectedKeys) => keys.filter(avatarId => getPersonaRecord(avatarId));
+
+    async function bulkAction(action) {
+        if (bulkBusy) return;
+        const avatarIds = existingSelected();
+        if (!avatarIds.length) return;
+        bulkBusy = true;
+        selectionBar.inert = true;
+        selectionBar.setAttribute('aria-busy', 'true');
+        try {
+            return await action(avatarIds);
+        } finally {
+            bulkBusy = false;
+            selectionBar.inert = false;
+            selectionBar.removeAttribute('aria-busy');
+        }
+    }
+
+    function moveSelectedToFolder(trigger, avatarIds) {
+        const folders = getFolders('personas');
+        const inFolder = folderId => avatarIds.every(avatarId => (folders.some(folder => folder.id === getFolderId('personas', avatarId))
+            ? getFolderId('personas', avatarId) : null) === folderId);
+        const place = folderId => () => {
+            setFolder('personas', avatarIds, folderId);
+            selection.exit();
+        };
+        menu(trigger, t`Move to Folder`, [[
+            { ...menuItem(t`No folder`, 'folder', place(null)), kind: 'radio', checked: inFolder(null) },
+            ...folders.map(folder => ({ ...menuItem(folder.name, 'folder', place(folder.id)), kind: 'radio', checked: inFolder(folder.id) })),
+        ]]);
+    }
+
+    async function duplicateSelected(avatarIds) {
+        if (!(await shell.guardLeave())) return;
+        for (const avatarId of avatarIds) await duplicatePersonaRecord(avatarId);
+        await refresh('list');
+        selection.exit();
+    }
+
+    async function deleteSelected(avatarIds) {
+        if (!(await shell.guardLeave())) return;
+        // HUMAN: replace — bulk delete confirmation; the selected count remains explicit.
+        const text = avatarIds.length === 1 ? t`Delete this persona? This cannot be undone.` : t`Delete ${avatarIds.length} personas? This cannot be undone.`;
+        if (!await confirmDestructiveAction({ text, confirmLabel: t`Delete` })) return;
+        const states = avatarIds.map(avatarId => getPersonaEditorStates(avatarId));
+        const deleted = [];
+        // One confirmation covers the set, so each persona goes through the single delete without its own.
+        for (const avatarId of avatarIds) {
+            if (await deletePersonaRecord(avatarId, { silent: true })) deleted.push(avatarId);
+        }
+        if (states.some((state, index) => state.default && deleted.includes(avatarIds[index]))) {
+            globalThis.toastr?.warning(t`The default persona was deleted. You will need to set a new default persona.`, t`Default Persona Deleted`);
+        }
+        if (states.some((state, index) => state.locked.chat && deleted.includes(avatarIds[index]))) {
+            globalThis.toastr?.warning(t`The locked persona was deleted. You will need to set a new persona for this chat.`, t`Persona Deleted`);
+        }
+        if (deleted.includes(selectedAvatarId())) {
+            destroyDetail();
+            shell.deselectNow();
+        }
+        await refresh('list');
+        selection.exit();
     }
 
     function openPersonaMenu(trigger, avatarId) {
@@ -362,6 +444,7 @@ export function mountPersonaEditor(container) {
                 countLabel: folderCountLabel(members.length, 'personas'),
                 expanded,
                 temporaryExpansion: filtered,
+                inert: Boolean(selection?.isActive),
             });
             if (expanded) for (const avatarId of members) rowsList.push(personaRow(avatarId, folder.id));
         }
@@ -421,14 +504,35 @@ export function mountPersonaEditor(container) {
                     changes.attributes = { 'data-avatar-revision': String(avatarRevision) };
                 }
                 entity.update(changes);
-                row.classList.toggle('is-selected', selectedAvatarId() === avatarId);
+                row.classList.toggle('is-selected', !selection?.isActive && selectedAvatarId() === avatarId);
                 const more = entity.slots.suffix.firstElementChild;
                 more.setAttribute('aria-label', t`Actions for ${name}`);
                 more.title = t`Actions for ${name}`;
             },
         });
         decorateFolderSections(rowsContainer);
+        folderMotion.reveal(rowsContainer);
+        syncSortState();
+        if (selection?.isActive) selection.decorate({ prune: true });
+        syncSelectionState();
         searchControl.report(entries.length, allIds.length);
+    }
+
+    /** Selection hides the open-row mark and takes the rows' own controls and the folder headers out of use. */
+    function syncSelectionState() {
+        const active = Boolean(selection?.isActive);
+        for (const row of rowsContainer.children) {
+            const entry = rowEntry(row);
+            if (entry?.kind === 'folder') {
+                row.inert = active;
+                row.tabIndex = active ? -1 : 0;
+                if (active) row.setAttribute('aria-disabled', 'true');
+                else row.removeAttribute('aria-disabled');
+                continue;
+            }
+            row.classList.toggle('is-selected', !active && selectedAvatarId() === entry?.avatarId);
+            for (const suffix of row.querySelectorAll('.ds-entity-row__suffix')) suffix.inert = active;
+        }
     }
 
     function showMoreRows() {
@@ -499,15 +603,28 @@ export function mountPersonaEditor(container) {
         focusTarget: () => activeController?.focusTarget() ?? null,
     });
     shell.root.hidden = true;
-    listContent.append(listHeader, searchField, listBody);
+    listContent.append(listHeader, selectionHeader, searchField, listBody, selectionBar);
     shell.sidebar.append(listContent, searchStatus);
+    selection = createSelectionMode({
+        root: shell.root, list: rowsContainer, header: selectionHeader, actionBar: selectionBar,
+        rowSelector: '.sb-persona-row', getKey: row => row.dataset.avatarId,
+        getAllKeys: () => entries, range: true, iconOnlyAtNarrow: true,
+        canEnter: () => !bulkBusy && allIds.length > 0,
+        actions: [
+            { id: 'folder', label: t`Move to Folder`, icon: 'fa-solid fa-folder', onActivate: keys => moveSelectedToFolder(selectionBar.querySelector('[data-action-id="folder"]'), existingSelected(keys)) },
+            { id: 'duplicate', label: t`Duplicate`, icon: 'fa-solid fa-copy', onActivate: () => run(() => bulkAction(duplicateSelected)) },
+            { id: 'delete', label: t`Delete`, icon: 'fa-solid fa-trash', danger: true, onActivate: () => run(() => bulkAction(deleteSelected)) },
+        ],
+        onChange: () => syncSelectionState(), onExit: () => syncSelectionState(),
+    });
     const unbindRows = bindListKeyboard(listBody, {
         rowSelector: '.sb-persona-row, .sb-folder-row:not([aria-disabled="true"])',
         onOpen: row => {
             const entry = rowEntry(row);
+            if (selection.isActive) return true;
             if (entry?.kind === 'folder') {
                 if (!entry.temporaryExpansion) {
-                    setFolderExpanded('personas', entry.folder.id, !entry.expanded);
+                    folderMotion.toggle(row, entry.expanded, () => setFolderExpanded('personas', entry.folder.id, !entry.expanded));
                     row.focus({ preventScroll: true });
                 }
                 return true;
@@ -651,6 +768,7 @@ export function mountPersonaEditor(container) {
             subscriptions.forEach(dispose => dispose());
             shell.root.removeEventListener('keydown', onEscape);
             unbindRows();
+            selection.destroy();
             searchControl.destroy();
             showMore.destroy();
             rows.clear();

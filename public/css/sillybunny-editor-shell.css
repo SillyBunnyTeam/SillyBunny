@@ -611,6 +611,24 @@ body.reduced-motion .sb-spinner {
     min-width: 0;
 }
 
+/* A list's search bar: the entry and, at its end, the list's sort or filter button. The entry keeps its own margin, which is also
+   the gap to the button; the padding lines the button up with the header's buttons. */
+.sb-list-search-bar {
+    display: flex;
+    align-items: center;
+    flex: none;
+    padding-inline-end: 6px;
+}
+
+/* The entry takes the height of the button beside it when that is taller. */
+.sb-list-search-bar > .sb-search-entry[data-variant='bar'] {
+    flex: 1;
+    align-self: stretch;
+    min-width: 0;
+    height: auto;
+    min-height: var(--sb-search-entry-height);
+}
+
 .sb-header-icon-button,
 .sb-header-icon-button.menu_button:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     border: 0;
@@ -1180,6 +1198,12 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     .sb-picker .sb-picker__search {
         min-block-size: 44px;
     }
+}
+
+/* A window's search bar holds the list's sort or filter buttons after its entry. */
+.sb-dialog__search > .sb-dialog__search-control {
+    flex: none;
+    margin-inline-start: 6px;
 }
 
 .sb-selection-header {

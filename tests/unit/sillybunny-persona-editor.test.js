@@ -41,6 +41,8 @@ await jest.unstable_mockModule('../../public/scripts/util/AccountStorage.js', ()
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((out, string, index) => out + string + (values[index] ?? ''), ''),
 }));
+const confirmDestructiveAction = jest.fn(async () => popupChoice === 1);
+await jest.unstable_mockModule('../../public/scripts/sillybunny-delete-confirm.js', () => ({ confirmDestructiveAction }));
 const popupShow = jest.fn(async () => popupChoice);
 const Popup = jest.fn(function () {
     this.okButton = document.createElement('button');
@@ -108,10 +110,10 @@ const personasSource = readFileSync(new URL('../../public/scripts/personas.js', 
 const personaMountSource = tabsSource.split('let personaEditorMountPromise = null;')[1].split('function setCharacterImportPanelVisible')[0];
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261116u', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261117h', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-character-editor.css?v=20261116z', id: 'deferred-editor-chrome-css' },
-    { href: 'css/sillybunny-entity-list.css?v=20261117c', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261116v', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261117h', id: 'deferred-persona-editor-css' },
     { href: 'css/sillybunny-persona-detail.css?v=20261117a', id: 'deferred-persona-detail-css' },
 ];
 let container;
@@ -450,7 +452,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a failed adopted preload is removed and a fresh stylesheet can load on retry', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261117c&retry-test=adopted', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261117h&retry-test=adopted', id: 'deferred-entity-list-css' };
         const existing = document.createElement('link');
         existing.rel = 'preload';
         existing.setAttribute('as', 'style');
@@ -475,7 +477,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a deferred stylesheet that failed before Persona subscribed is replaced and loaded', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261117c&retry-test=failed-before-subscribe', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261117h&retry-test=failed-before-subscribe', id: 'deferred-entity-list-css' };
         const { link, activate } = await activateDeferredStylesheet(stylesheet);
         expect(link.dataset.sbStyleState).toBe('loading');
         link.dispatchEvent(new Event('error'));
@@ -496,7 +498,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a failed-before-subscribe stylesheet gets only one replacement and a second failure rejects', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261117c&retry-test=failed-twice', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261117h&retry-test=failed-twice', id: 'deferred-entity-list-css' };
         const { link } = await activateDeferredStylesheet(stylesheet);
         link.dispatchEvent(new Event('error'));
         globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
@@ -512,7 +514,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a deferred stylesheet loaded before Persona subscribed resolves without another load event', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261117c&retry-test=loaded-before-subscribe', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261117h&retry-test=loaded-before-subscribe', id: 'deferred-entity-list-css' };
         const { link, activate } = await activateDeferredStylesheet(stylesheet);
         link.dispatchEvent(new Event('load'));
         expect(link.dataset.sbStyleState).toBe('loaded');
@@ -916,6 +918,131 @@ describe('Persona editor shell', () => {
         });
     });
 
+    describe('sort in the search bar', () => {
+        test('the sort button ends the search bar and the header keeps its other buttons', async () => {
+            await mount();
+            const field = container.querySelector('.sb-persona-search-field');
+            const sort = container.querySelector('.sb-persona-sort-button');
+            expect(field.lastElementChild).toBe(sort);
+            expect(container.querySelector('.sb-persona-list-header').contains(sort)).toBe(false);
+            expect([...container.querySelectorAll('.sb-persona-list-header button')].map(node => node.getAttribute('aria-label')))
+                .toEqual(['Search', 'New', 'Persona Management']);
+        });
+
+        test('the Search toggle and the sort button show a non-default order', async () => {
+            await mount();
+            const sort = container.querySelector('.sb-persona-sort-button');
+            const search = container.querySelector('.sb-persona-list-header button[aria-label="Search"]');
+            expect([sort.getAttribute('aria-pressed'), search.getAttribute('aria-pressed')]).toEqual(['false', 'false']);
+            await menuAction('Z-A', '.sb-persona-sort-button');
+            expect([sort.getAttribute('aria-pressed'), search.getAttribute('aria-pressed')]).toEqual(['true', 'true']);
+            await menuAction('A-Z', '.sb-persona-sort-button');
+            expect([sort.getAttribute('aria-pressed'), search.getAttribute('aria-pressed')]).toEqual(['false', 'false']);
+        });
+
+        test('pressing the sort button keeps an empty search open', async () => {
+            await mount();
+            const search = container.querySelector('.sb-persona-list-header button[aria-label="Search"]');
+            search.click();
+            await settle();
+            const input = container.querySelector('.sb-persona-search');
+            expect(container.querySelector('.sb-persona-search-field').hidden).toBe(false);
+            input.focus();
+            expect(document.activeElement).toBe(input);
+            container.querySelector('.sb-persona-sort-button').dispatchEvent(new Event('pointerdown', { bubbles: true }));
+            input.dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+            expect(container.querySelector('.sb-persona-search-field').hidden).toBe(false);
+        });
+    });
+
+    describe('selection mode', () => {
+        const check = index => container.querySelectorAll('.sb-persona-row .sb-selection-check')[index];
+        const bar = id => container.querySelector(`.sb-persona-selection-bar [data-action-id="${id}"]`);
+
+        async function select(...indexes) {
+            await menuAction('Select');
+            for (const index of indexes) check(index).click();
+            await settle();
+        }
+
+        test('the list menu starts it, and it replaces the header and takes the row buttons out of use', async () => {
+            await mount();
+            await select(0, 1);
+            const editor = container.querySelector('.sb-persona-editor');
+            expect(editor.dataset.selectionMode).toBe('true');
+            expect(container.querySelector('.sb-persona-selection-header .sb-selection-header')).not.toBeNull();
+            expect([...container.querySelectorAll('.sb-persona-selection-bar [data-action-id]')].map(node => node.dataset.actionId))
+                .toEqual(['folder', 'duplicate', 'delete']);
+            expect([...container.querySelectorAll('.sb-persona-row .ds-entity-row__suffix')].every(node => node.inert)).toBe(true);
+            container.querySelector('.sb-selection-cancel').click();
+            await settle();
+            expect(editor.dataset.selectionMode).toBe('false');
+            expect([...container.querySelectorAll('.sb-persona-row .ds-entity-row__suffix')].some(node => node.inert)).toBe(false);
+        });
+
+        test('a click on a row selects it and opens no persona', async () => {
+            await mount();
+            await select(0);
+            container.querySelector('[data-avatar-id="avatar-1.png"]').click();
+            await settle();
+            expect(mountDetail).not.toHaveBeenCalled();
+        });
+
+        test('Move to Folder files the selection and leaves selection mode', async () => {
+            await mount();
+            const folder = folderStore.createFolder('personas', 'Cast');
+            await select(0, 2);
+            bar('folder').click();
+            await settle();
+            const items = actionMenu.sections.flatMap(section => section.items);
+            expect(items.map(item => item.label)).toEqual(['No folder', 'Cast']);
+            items[1].onSelect();
+            await settle();
+            expect(folderStore.getFolderId('personas', 'avatar-0.png')).toBe(folder.id);
+            expect(folderStore.getFolderId('personas', 'avatar-2.png')).toBe(folder.id);
+            expect(folderStore.getFolderId('personas', 'avatar-1.png')).toBeNull();
+            expect(container.querySelector('.sb-persona-editor').dataset.selectionMode).toBe('false');
+        });
+
+        test('Duplicate copies each selected persona once', async () => {
+            await mount();
+            await select(0, 1);
+            bar('duplicate').click();
+            await settle();
+            expect(duplicate.mock.calls.map(([id]) => id)).toEqual(['avatar-0.png', 'avatar-1.png']);
+        });
+
+        test('Delete asks once for the set, then deletes each persona silently', async () => {
+            await mount();
+            popupChoice = 1;
+            states['avatar-1.png'] = { ...defaultState(), default: true };
+            await select(0, 1);
+            globalThis.toastr = { warning: jest.fn(), error: jest.fn() };
+            try {
+                remove.mockImplementation(async () => true);
+                bar('delete').click();
+                await settle();
+                expect(confirmDestructiveAction).toHaveBeenCalledTimes(1);
+                expect(confirmDestructiveAction).toHaveBeenCalledWith({ text: 'Delete 2 personas? This cannot be undone.', confirmLabel: 'Delete' });
+                expect(remove.mock.calls).toEqual([['avatar-0.png', { silent: true }], ['avatar-1.png', { silent: true }]]);
+                expect(globalThis.toastr.warning).toHaveBeenCalledTimes(1);
+                expect(globalThis.toastr.warning).toHaveBeenCalledWith('The default persona was deleted. You will need to set a new default persona.', 'Default Persona Deleted');
+            } finally {
+                delete globalThis.toastr;
+            }
+        });
+
+        test('declining the confirmation deletes nothing and keeps the selection', async () => {
+            await mount();
+            popupChoice = 0;
+            await select(0);
+            bar('delete').click();
+            await settle();
+            expect(remove).not.toHaveBeenCalled();
+            expect(container.querySelector('.sb-persona-editor').dataset.selectionMode).toBe('true');
+        });
+    });
+
     describe('folders', () => {
         const headers = () => [...container.querySelectorAll('.sb-folder-row')];
         const order = () => [...container.querySelectorAll('.sb-persona-list-rows > *')]
@@ -1030,7 +1157,7 @@ describe('Persona editor shell', () => {
                 container.querySelector('.sb-persona-list-menu').click();
                 await settle();
                 expect(actionMenu.sections.flatMap(section => section.items).map(item => item.label)).toEqual([
-                    'Global Settings', 'Manage Folders', 'Backup', 'Restore', 'Usage Stats',
+                    'Global Settings', 'Select', 'Manage Folders', 'Backup', 'Restore', 'Usage Stats',
                 ]);
                 await menuAction('Manage Folders');
                 expect(open).toHaveBeenCalledWith('personas');

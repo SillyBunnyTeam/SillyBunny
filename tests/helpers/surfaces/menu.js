@@ -12,6 +12,7 @@ import {
     openLegacyToggle, openPromptDetail, openPromptEditor, openPromptProperties, PICKER_ROOT, POPOVER_ROOT, settleFade, settleOverlay, showConversationPage,
 } from './menu-steps.js';
 import { FIXTURES } from './fixture-data.js';
+import { characterSearch, openSearch } from './list-steps.js';
 import { openCharactersTab, openSettingsTab, selectBackend, settle } from './steps.js';
 
 const SCRIPTS = 'public/scripts';
@@ -126,13 +127,9 @@ export const surfaces = [
         sources: [`${SCRIPTS}/sillybunny-character-list.js`, ACTION_MENU],
         async open(page) {
             await openCharacterList(page);
-            // Where the header has no room for the Sort button, the More menu carries it as a submenu.
-            if (await page.locator('.sb-character-list [data-action-id="sort"]').isVisible()) {
-                await openFrom(page, '.sb-character-list [data-action-id="sort"]');
-            } else {
-                await openFrom(page, '.sb-character-list [data-action-id="more"]');
-                await chooseItem(page, 'Sort');
-            }
+            // The Sort button ends the search bar, so the bar opens first.
+            await openSearch(page, characterSearch);
+            await openFrom(page, '.sb-character-list__sort');
         },
     }),
     menu({
@@ -326,6 +323,19 @@ export const surfaces = [
         async open(page) {
             await openManagerFromList(page, 'Manage tags', TAG_MANAGER);
             await openFrom(page, `${TAG_MANAGER} .sb-dialog__menu`);
+        },
+    }),
+    menu({
+        id: 'tag-manager.sort',
+        title: 'Tag Manager sort menu',
+        ready: menuItemWith('Most Used (By Count)'),
+        needs: ['character', 'tags'],
+        sources: [`${SCRIPTS}/sillybunny-tag-manager.js`, ACTION_MENU],
+        async open(page) {
+            await openManagerFromList(page, 'Manage tags', TAG_MANAGER);
+            // The Sort button ends the manager's search bar, so the bar opens first.
+            await openSearch(page, { input: `${TAG_MANAGER} .sb-dialog__search-input`, toggle: `${TAG_MANAGER} .sb-dialog__search-toggle` });
+            await openFrom(page, `${TAG_MANAGER} .sb-tag-manager__sort`);
         },
     }),
     menu({

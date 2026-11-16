@@ -11,6 +11,11 @@
     flex-wrap: wrap;
 }
 
+/* Selection takes the grips and the manage buttons out of the rows; the check opens each row. */
+.sb-tag-manager[data-selection-mode='true'] :is(.drag-handle, .ds-entity-row__suffix) {
+    display: none;
+}
+
 .sb-tag-manager .ds-entity-row__avatar {
     display: grid;
     place-items: center;

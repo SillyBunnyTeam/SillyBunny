@@ -8,6 +8,8 @@ import { openAlert, openDialog, createIconButton } from './sillybunny-editor/dia
 import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
+import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
+import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
 import {
     createFolder,
     deleteFolder,
@@ -22,9 +24,9 @@ import {
 } from './sillybunny-folders.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261116u', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-entity-list.css?v=20261117c', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-folder-manager.css?v=20261116x', id: 'deferred-folder-manager-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261117h', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-folder-manager.css?v=20261117h', id: 'deferred-folder-manager-css' },
 ];
 
 const MEMBER_KINDS = Object.freeze({ characters: 'character', groups: 'group', personas: 'persona' });
@@ -198,11 +200,15 @@ export function createFolderManager(scope, adapter) {
     /** @type {{ folderId: string, page: object, toolbar: HTMLElement, list: HTMLElement }|null} */
     let members = null;
     let addButton = null;
+    let selection = null;
+    let bulkBusy = false;
+    let visibleIds = [];
 
     const status = element('div', 'sb-folder-manager__status');
     status.setAttribute('aria-live', 'polite');
     const list = element('div', 'ds-entity-list sb-folder-manager__list');
     list.setAttribute('role', 'list');
+    const selectionBar = element('div', 'sb-folder-manager__selection-bar');
     const content = document.createDocumentFragment();
     content.append(list, status);
     let sortable;
@@ -368,7 +374,8 @@ export function createFolderManager(scope, adapter) {
         for (const id of entries.keys()) if (!liveIds.has(id)) entries.delete(id);
         const query = frame?.search?.query.trim().toLowerCase() ?? '';
         for (const row of list.children) row.hidden = Boolean(query) && !row.querySelector('.sb-folder-manager__name')?.value.toLowerCase().includes(query);
-        const shown = [...list.children].filter(row => !row.hidden).length;
+        visibleIds = [...list.children].filter(row => !row.hidden).map(row => row.dataset.folderId);
+        const shown = visibleIds.length;
         list.hidden = !shown;
         if (!shown) {
             status.hidden = false;
@@ -382,6 +389,38 @@ export function createFolderManager(scope, adapter) {
             }).element));
         } else status.hidden = true;
         frame?.search?.report(shown, folders.length);
+        selection?.decorate({ prune: true });
+        syncSelectionState();
+    }
+
+    /** Rows take no edit while they are being selected: the name field and the manage button leave the tab order. */
+    function syncSelectionState() {
+        const active = Boolean(selection?.isActive);
+        for (const entry of entries.values()) {
+            entry.input.inert = active;
+            for (const suffix of entry.row.querySelectorAll('.ds-entity-row__suffix')) suffix.inert = active;
+        }
+        sortable?.setDisabled(active);
+    }
+
+    async function deleteSelected(keys) {
+        const live = new Set(getFolders(scope).map(folder => folder.id));
+        const ids = keys.filter(id => live.has(id));
+        if (!ids.length || bulkBusy) return;
+        bulkBusy = true;
+        selectionBar.inert = true;
+        try {
+            // HUMAN: replace — bulk delete confirmation; the selected count remains explicit.
+            const text = `${PLACEHOLDER_COPY} (${ids.length}) ${scopeCopy(scope).deleteBody}`;
+            if (!await confirmDestructiveAction({ text, confirmLabel: t`Delete`, copyPlaceholder: true }) || disposed) return;
+            // The same removal as one folder's Delete: its members stay and leave the folder.
+            for (const id of ids) deleteFolder(scope, id);
+            selection.exit();
+            refresh();
+        } finally {
+            bulkBusy = false;
+            selectionBar.inert = false;
+        }
     }
 
     function renderMemberList(folder) {
@@ -486,6 +525,7 @@ export function createFolderManager(scope, adapter) {
     function dispose() {
         if (disposed) return;
         disposed = true;
+        selection?.destroy();
         sortable?.destroy();
         unbindKeyboard?.();
         unsubscribe?.();
@@ -525,7 +565,7 @@ export function createFolderManager(scope, adapter) {
     unbindKeyboard = bindListKeyboard(list, {
         rowSelector: '.sb-folder-manager__folder-row',
         keySourceSelector: '.drag-handle',
-        onRename: row => { row.querySelector('input')?.focus(); return true; },
+        onRename: row => { if (!selection?.isActive) row.querySelector('input')?.focus(); return true; },
     });
     sortable = bindSortable(list, {
         handle: '.drag-handle',
@@ -560,6 +600,30 @@ export function createFolderManager(scope, adapter) {
                 className: 'sb-folder-manager',
                 content,
                 search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.sb-folder-manager__folder-row', debounce: 300, onChange: () => refresh() },
+                menu: trigger => [{ items: [{
+                    label: t`Select`, icon: 'fa-solid fa-check-double', disabled: bulkBusy || !getFolders(scope).length,
+                    onSelect: () => selection.enter(null, trigger),
+                }] }],
+                menuLabel: t`Folders`,
+            });
+            frame.body.after(selectionBar);
+            const slots = {
+                get header() { return frame.header; },
+                get headerStart() { return frame.headerStart; },
+                get headerEnd() { return frame.headerEnd; },
+                get titleNode() { return frame.titleNode; },
+                get search() { return frame.search; },
+                get closeButton() { return frame.closeButton; },
+            };
+            selection = createSelectionMode({
+                root: frame.surface, list, rowSelector: '.sb-folder-manager__folder-row', getKey: row => row.dataset.folderId,
+                keySourceSelector: '.drag-handle', range: true, iconOnlyAtNarrow: true, headerSlots: slots, actionBar: selectionBar,
+                getAllKeys: () => visibleIds,
+                canEnter: () => !bulkBusy && getFolders(scope).length > 0,
+                actions: [
+                    { id: 'delete', label: t`Delete`, icon: 'fa-solid fa-trash', danger: true, onActivate: keys => deleteSelected(keys) },
+                ],
+                onChange: () => syncSelectionState(), onExit: () => syncSelectionState(),
             });
             const add = createIconButton(t`New Folder`, 'plus', 'sb-folder-manager__add');
             add.addEventListener('click', () => openCreatePopover(add));

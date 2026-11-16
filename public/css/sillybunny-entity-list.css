@@ -163,6 +163,25 @@
     font-size: var(--sb-type-meta);
 }
 
+/* A folder header keeps one chevron glyph and turns it, so opening and closing animate. */
+.sb-folder-row .ds-entity-row__chevron {
+    transition: transform var(--sb-transition-fast);
+}
+
+.sb-folder-row[aria-expanded='true'] .ds-entity-row__chevron {
+    transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-folder-row .ds-entity-row__chevron {
+        transition: none;
+    }
+}
+
+body.reduced-motion .sb-folder-row .ds-entity-row__chevron {
+    transition: none;
+}
+
 .ds-entity-row .ds-entity-row__button {
     display: inline-flex;
     align-items: center;

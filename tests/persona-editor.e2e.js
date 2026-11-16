@@ -199,6 +199,37 @@ test.describe('Persona editor', () => {
         }, { avatarId: persona.avatarId, title: persona.descriptor.title ?? '' });
     });
 
+    test('Sort ends the search bar, and Select files the selected personas into a folder', async ({ page }) => {
+        const persona = await currentPersona(page);
+        const folderId = await page.evaluate(async () => (await import('./scripts/sillybunny-folders.js')).createFolder('personas', 'Cast').id);
+        const editor = await openList(page);
+        const searchToggle = editor.locator('.sb-persona-list-header').getByRole('button', { name: 'Search', exact: true });
+        await expect(editor.locator('.sb-persona-list-header .sb-persona-sort-button')).toHaveCount(0);
+        await searchToggle.click();
+        const sort = editor.locator('.sb-persona-search-field > .sb-persona-sort-button');
+        await expect(sort).toBeVisible();
+        await expect(sort).toHaveAttribute('aria-pressed', 'false');
+        await sort.click();
+        await page.getByRole('menuitemradio', { name: 'Z-A', exact: true }).click();
+        await expect(sort).toHaveAttribute('aria-pressed', 'true');
+        await expect(searchToggle).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.getByRole('menuitemradio')).toHaveCount(0);
+        await sort.click();
+        await page.getByRole('menuitemradio', { name: 'A-Z', exact: true }).click();
+        await expect(sort).toHaveAttribute('aria-pressed', 'false');
+
+        await editor.getByRole('button', { name: 'Persona Management', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
+        await expect(editor.locator('.sb-persona-selection-header .sb-selection-header')).toBeVisible();
+        await expect(editor.locator('.sb-persona-list-header')).toBeHidden();
+        await editor.getByRole('listitem', { name: persona.name, exact: true }).locator('.sb-selection-check').click();
+        await editor.locator('.sb-persona-selection-bar [data-action-id="folder"]').click();
+        await page.getByRole('menuitemradio', { name: 'Cast', exact: true }).click();
+        await expect(editor.locator('.sb-persona-selection-header .sb-selection-header')).toHaveCount(0);
+        await expect(editor.locator('.sb-persona-list-header')).toBeVisible();
+        expect(await page.evaluate(async avatarId => (await import('./scripts/sillybunny-folders.js')).getFolderId('personas', avatarId), persona.avatarId)).toBe(folderId);
+    });
+
     test('a desktop editor shows the property bar and keeps the summary for the collapsed layout', async ({ page }) => {
         const persona = await currentPersona(page);
         const editor = await openList(page);

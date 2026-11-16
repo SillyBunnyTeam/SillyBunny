@@ -16,7 +16,7 @@ import {
     AGENTS, ARCHIVE, CHAT_HISTORY, EXTENSIONS_MANAGER, FOLDER_MANAGER, MENU_ROOT, PERSONAS, TAG_MANAGER, WORLD_INFO,
     agentSearch, characterSearch, closeArchive, closeChatHistory, closeDataBank, closeExtensionsManager, closeManager, closeSwipePicker,
     openAgentList, openArchiveList, openBackgrounds, openChatHistory, openCharacterListView, openDataBank, openExtensionBlock, openExtensionsManager,
-    openHeaderAction, openManager, openSamplingList, openPersonaList, openPromptList, openSearch, openSwipePicker, openWorldInfoEntries, personaSearch, promptSearch,
+    openManager, openSamplingList, openPersonaList, openPromptList, openSearch, openSwipePicker, openWorldInfoEntries, personaSearch, promptSearch,
     scrollIntoView, searchFor, selectCharacterRows, settled, shown, waitForRowCount, worldInfoSearch,
 } from './list-steps.js';
 
@@ -111,9 +111,12 @@ const characterList = [
                 id: 'grid-view',
                 ready: ['body.charListGrid .sb-character-list .character_select'],
                 async open(page) {
-                    await openHeaderAction(page, { scope: '.sb-character-list', action: 'sort', label: 'Sort' });
+                    await openSearch(page, characterSearch);
+                    await page.locator('.sb-character-list__sort').click();
                     await page.locator('.sb-action-menu').last().getByRole('menuitemradio', { name: 'Grid', exact: true }).click();
                     await page.locator('body.charListGrid').waitFor();
+                    await page.locator(characterSearch.toggle).first().evaluate(button => button.click());
+                    await page.locator(characterSearch.input).first().waitFor({ state: 'hidden' });
                     await settle(page);
                 },
             },
@@ -221,6 +224,18 @@ const personaList = {
     states: [
         searchResults({ search: personaSearch, query: 'fixture', rows: PERSONA_ROWS, atMost: 4 }),
         rowMenu(`${PERSONA_ROWS} .sb-persona-row-menu`, PERSONA_ROWS),
+        {
+            id: 'selection-mode',
+            ready: [PERSONA_ROWS, `${PERSONAS} .sb-persona-selection-header .sb-selection-header`, `${PERSONAS} .sb-persona-selection-bar [data-action-id="folder"]`],
+            async open(page) {
+                await chooseMenuItem(page, `${PERSONAS} .sb-persona-list-menu`, 'Select');
+                await shown(page, `${PERSONAS} .sb-persona-selection-header .sb-selection-header`);
+                await page.locator(`${PERSONA_ROWS} .sb-selection-check`).nth(0).click();
+                await page.locator(`${PERSONA_ROWS} .sb-selection-check`).nth(1).click();
+                await shown(page, `${PERSONAS} .sb-persona-selection-bar [data-action-id="folder"]`);
+                await settle(page);
+            },
+        },
     ],
     needs: ['persona', 'personas-many'],
     sources: [`${SCRIPTS}/sillybunny-persona-editor.js`, `${CSS}/sillybunny-persona-editor.css`, ...LIST_SHELL],
@@ -300,6 +315,18 @@ const tagManager = {
     states: [
         searchResults({ search: dialogSearch(TAG_MANAGER), query: 'Beta', rows: TAG_ROWS, atMost: 3 }),
         rowMenu(`${TAG_MANAGER} .sb-tag-manager__row-menu`, TAG_ROWS),
+        {
+            id: 'selection-mode',
+            ready: [TAG_ROWS, `${TAG_MANAGER} .sb-dialog__selection-cancel`, `${TAG_MANAGER} .sb-tag-manager__selection-bar [data-action-id="delete"]`],
+            async open(page) {
+                await chooseMenuItem(page, `${TAG_MANAGER} .sb-dialog__menu`, 'Select');
+                await shown(page, `${TAG_MANAGER} .sb-dialog__selection-cancel`);
+                await page.locator(`${TAG_ROWS} .sb-selection-check`).nth(0).click();
+                await page.locator(`${TAG_ROWS} .sb-selection-check`).nth(1).click();
+                await shown(page, `${TAG_MANAGER} .sb-tag-manager__selection-bar [data-action-id="delete"]`);
+                await settled(page, TAG_MANAGER);
+            },
+        },
         {
             id: 'members-page',
             root: '.sb-tag-manager__members',

@@ -133,6 +133,49 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expect(row).toBeVisible();
         });
 
+        test('a folder closes and opens with motion on its rows and a turning chevron, and reduced motion skips both', async ({ page }) => {
+            const persona = await currentPersona(page);
+            await page.evaluate(async ({ avatarId }) => {
+                const folders = await import('./scripts/sillybunny-folders.js');
+                folders.setFolder('personas', [avatarId], folders.createFolder('personas', 'Cast').id);
+            }, { avatarId: persona.avatarId });
+            const editor = await openList(page);
+            const header = editor.locator('.sb-folder-row');
+            const members = editor.locator('.sb-persona-row.is-folder-member');
+            const chevron = header.locator('.ds-entity-row__chevron');
+            await expect(members).toHaveCount(1);
+            await expect(chevron).toHaveCSS('transform', 'matrix(-1, 0, 0, -1, 0, 0)');
+            await expect(chevron).toHaveClass(/fa-chevron-down/);
+
+            const closing = await header.evaluate(node => {
+                const rows = [...node.parentElement.querySelectorAll('.is-folder-member')];
+                node.click();
+                return { animated: rows.map(row => row.getAnimations().length), kept: rows.map(row => row.isConnected), expanded: node.getAttribute('aria-expanded') };
+            });
+            expect(closing).toEqual({ animated: [1], kept: [true], expanded: 'false' });
+            await expect(members).toHaveCount(0);
+            await expect(chevron).toHaveCSS('transform', 'none');
+            expect((await storedFolders(page)).personas.folders[0].expanded).toBe(false);
+
+            const opening = await header.evaluate(node => {
+                node.click();
+                return [...node.parentElement.querySelectorAll('.is-folder-member')].map(row => row.getAnimations().length);
+            });
+            expect(opening).toEqual([1]);
+            await expect(chevron).toHaveCSS('transform', 'matrix(-1, 0, 0, -1, 0, 0)');
+
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            await expect(members).toHaveCount(1);
+            const still = await header.evaluate(node => {
+                const rows = [...node.parentElement.querySelectorAll('.is-folder-member')];
+                node.click();
+                return rows.map(row => row.getAnimations().length);
+            });
+            expect(still).toEqual([0]);
+            await expect(members).toHaveCount(0);
+            await expect(chevron).toHaveCSS('transition-duration', '0s');
+        });
+
         test('a duplicate keeps the folder of its source and a deleted persona leaves its folder', async ({ page }) => {
             const persona = await currentPersona(page);
             const folderId = await page.evaluate(async ({ avatarId }) => {

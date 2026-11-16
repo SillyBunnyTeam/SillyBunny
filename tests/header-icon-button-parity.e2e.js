@@ -174,7 +174,10 @@ test.describe('character list and editor header icon parity', () => {
             });
 
             await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'persona'));
-            const personaButtons = page.locator('#PersonaManagement .sb-persona-list-header .sb-header-icon-button');
+            // The sort button sits in the search bar beside the entry, so the bar is opened to reach it.
+            await expect(page.locator('#PersonaManagement .sb-persona-list-header .sb-header-icon-button')).toHaveCount(3);
+            await page.locator('#PersonaManagement .sb-persona-list-header button[aria-label="Search"]').click();
+            const personaButtons = page.locator('#PersonaManagement :is(.sb-persona-list-header, .sb-persona-search-field) .sb-header-icon-button');
             await expect(personaButtons).toHaveCount(4);
             for (let index = 0; index < await personaButtons.count(); index++) {
                 const button = personaButtons.nth(index);

@@ -16,6 +16,8 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js',
     closeActionMenu,
     MOBILE_QUERY: '(max-width: 768px)',
 }));
+const confirmDestructiveAction = jest.fn(async () => true);
+await jest.unstable_mockModule('../../public/scripts/sillybunny-delete-confirm.js', () => ({ confirmDestructiveAction }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({ closePicker, openPicker }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-sheet.js', () => ({
     blockUpstreamDrawerClose: jest.fn(),
@@ -230,5 +232,65 @@ describe('Folder Manager', () => {
         expect(action.textContent).toBe('Add');
         action.click();
         expect(pickerOptions.items).toHaveLength(2);
+    });
+});
+
+describe('Folder Manager selection mode', () => {
+    const checks = () => [...manager.root.querySelectorAll('.sb-folder-manager__folder-row > .sb-selection-check')];
+    const deleteButton = () => manager.root.querySelector('.sb-folder-manager__selection-bar [data-action-id="delete"]');
+
+    function enter() {
+        manager.root.querySelector('.sb-dialog__menu').click();
+        menuOptions.sections.flatMap(section => section.items).find(item => item.label === 'Select').onSelect();
+    }
+
+    test('the header menu carries Select, and selecting takes the rows\' name fields and buttons out of use', () => {
+        folders.createFolder('groups', 'First');
+        mount();
+        manager.root.querySelector('.sb-dialog__menu').click();
+        expect(menuOptions.title).toBe('Folders');
+        expect(menuOptions.sections.flatMap(section => section.items).map(item => item.label)).toEqual(['Select']);
+        enter();
+        expect(manager.root.dataset.selectionMode).toBe('true');
+        expect(manager.root.querySelector('.sb-folder-manager__name').inert).toBe(true);
+        expect([...manager.root.querySelectorAll('.sb-folder-manager__folder-row .ds-entity-row__suffix')].every(node => node.inert)).toBe(true);
+        expect([...manager.root.querySelectorAll('.sb-folder-manager__selection-bar [data-action-id]')].map(node => node.dataset.actionId)).toEqual(['delete']);
+    });
+
+    test('Select is disabled while there is no folder', () => {
+        mount();
+        manager.root.querySelector('.sb-dialog__menu').click();
+        expect(menuOptions.sections[0].items[0].disabled).toBe(true);
+    });
+
+    test('Delete confirms once with the count, deletes each folder and leaves its members unfiled', async () => {
+        const first = folders.createFolder('groups', 'First');
+        folders.createFolder('groups', 'Second');
+        const third = folders.createFolder('groups', 'Third');
+        folders.setFolder('groups', ['g1'], first.id);
+        mount();
+        enter();
+        checks()[0].click();
+        checks()[1].click();
+        deleteButton().click();
+        await settle();
+        expect(confirmDestructiveAction).toHaveBeenCalledTimes(1);
+        expect(confirmDestructiveAction.mock.calls[0][0]).toMatchObject({ confirmLabel: 'Delete', copyPlaceholder: true });
+        expect(confirmDestructiveAction.mock.calls[0][0].text).toMatch(/^TODO\(copy\) \(2\) /);
+        expect(folders.getFolders('groups').map(folder => folder.id)).toEqual([third.id]);
+        expect(folders.getFolderId('groups', 'g1')).toBeNull();
+        expect(manager.root.dataset.selectionMode).toBe('false');
+    });
+
+    test('declining the confirmation keeps every folder and the selection', async () => {
+        folders.createFolder('groups', 'First');
+        mount();
+        enter();
+        confirmDestructiveAction.mockResolvedValueOnce(false);
+        checks()[0].click();
+        deleteButton().click();
+        await settle();
+        expect(folders.getFolders('groups')).toHaveLength(1);
+        expect(manager.root.dataset.selectionMode).toBe('true');
     });
 });

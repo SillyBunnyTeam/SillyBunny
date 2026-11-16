@@ -160,10 +160,11 @@
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-character-list__search {
+.sb-character-list__search-entry {
     display: flex;
     align-items: center;
-    flex: 0 0 40px;
+    flex: 1 1 0;
+    min-width: 0;
     gap: 8px;
     height: 40px;
     min-height: 40px;
@@ -176,7 +177,7 @@
     box-sizing: border-box;
 }
 
-.sb-character-list__search:focus-within {
+.sb-character-list__search-entry:focus-within {
     border-color: var(--sb-entry-focus-border);
     box-shadow: var(--sb-entry-focus-ring);
 }
@@ -199,8 +200,8 @@
     white-space: nowrap;
 }
 
-.sb-character-list__search input,
-.sb-character-list__search #character_search_bar {
+.sb-character-list__search-entry input,
+.sb-character-list__search-entry #character_search_bar {
     flex: 1 1 0;
     width: 0;
     min-width: 0;
@@ -689,7 +690,7 @@ body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row
         min-height: 44px;
     }
 
-    .sb-character-list__search {
+    .sb-character-list__search-entry {
         height: 44px;
         min-height: 44px;
     }

@@ -7,15 +7,18 @@ import { openDialog, createIconButton } from './sillybunny-editor/dialog.js';
 import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
+import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261116u', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-entity-list.css?v=20261117c', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-tag-manager.css?v=20261117b', id: 'deferred-tag-manager-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261117h', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-tag-manager.css?v=20261117h', id: 'deferred-tag-manager-css' },
 ];
 const BATCH_SIZE = 50;
 /** @type {typeof import('./sillybunny-editor/list-show-more.js').createListShowMore|null} */
 let createListShowMore = null;
+/** @type {typeof import('./sillybunny-editor/selection-mode.js').createSelectionMode|null} */
+let createSelectionMode = null;
 let activeManager = null;
 let opening = null;
 let refreshQueued = false;
@@ -90,9 +93,12 @@ export function updateTagColors(tag, root = document) {
     }
 }
 
-/** The Show More row is only needed once the dialog opens, so its module stays out of the startup graph. */
+/** The Show More row and the selection mode are only needed once the dialog opens, so their modules stay out of the startup graph. */
 export async function loadTagManagerModules() {
-    ({ createListShowMore } = await import('./sillybunny-editor/list-show-more.js'));
+    [{ createListShowMore }, { createSelectionMode }] = await Promise.all([
+        import('./sillybunny-editor/list-show-more.js'),
+        import('./sillybunny-editor/selection-mode.js'),
+    ]);
 }
 
 /** Loads the dialog's nonblocking styles; failed attempts are removable/retryable like Persona. */
@@ -161,6 +167,9 @@ export function createTagManager(adapter) {
     let revealId = null;
     let lastView = null;
     let addButton = null;
+    let visibleIds = [];
+    let selection = null;
+    let bulkBusy = false;
     let finish;
     const closed = new Promise(resolve => finish = resolve);
     /** @type {ReturnType<typeof openDialog>|null} */
@@ -184,6 +193,11 @@ export function createTagManager(adapter) {
     footer.append(showMore.element);
     box.append(list, footer);
     const empty = element('div', 'sb-tag-manager__empty');
+    const selectionBar = element('div', 'sb-tag-manager__selection-bar');
+    const sortButton = createIconButton(t`Sort`, 'arrow-down-wide-short', 'sb-header-icon-button sb-tag-manager__sort');
+    sortButton.setAttribute('aria-haspopup', 'menu');
+    sortButton.setAttribute('aria-pressed', 'false');
+    sortButton.addEventListener('click', () => openMenu(sortButton, sortSections(), t`Sort`));
     const restoreInput = element('input');
     restoreInput.type = 'file';
     restoreInput.id = 'tag_view_restore_input';
@@ -239,6 +253,7 @@ export function createTagManager(adapter) {
     function dispose() {
         if (disposed) return;
         disposed = true;
+        selection?.destroy();
         sortable?.destroy();
         unbindKeyboard();
         finish();
@@ -258,19 +273,63 @@ export function createTagManager(adapter) {
         } };
     }
 
-    function headerSections() {
-        const { settings } = getState();
+    function headerSections(trigger) {
         return [
-            { title: t`Sort mode`, items: [
-                ['manual', t`Manual (Drag & Drop)`], ['alphabetical', t`Alphabetical (A-Z)`], ['by_entries', t`Most Used (By Count)`],
-            ].map(([mode, label]) => item(label, 'arrow-down-wide-short', () => mutate(() => settings.tag_sort_mode = mode), { kind: 'radio', checked: settings.tag_sort_mode === mode })) },
+            { items: [item(t`Select`, 'check-double', () => selection.enter(null, trigger), { disabled: bulkBusy || !getState().tags.length })] },
             { items: [item(t`Backup`, 'file-export', actions.backup), item(t`Restore`, 'file-import', actions.restore), item(t`Prune`, 'scissors', actions.prune)] },
         ];
     }
 
-    function openMenu(trigger, sections) {
+    function sortSections() {
+        const { settings } = getState();
+        return [{ title: t`Sort mode`, items: [
+            ['manual', t`Manual (Drag & Drop)`], ['alphabetical', t`Alphabetical (A-Z)`], ['by_entries', t`Most Used (By Count)`],
+        ].map(([mode, label]) => item(label, 'arrow-down-wide-short', () => mutate(() => settings.tag_sort_mode = mode), { kind: 'radio', checked: settings.tag_sort_mode === mode })) }];
+    }
+
+    /** The Search toggle and the sort button show that the list is not in its manual order. */
+    function syncSortState() {
+        const altered = getState().settings.tag_sort_mode !== 'manual';
+        sortButton?.setAttribute('aria-pressed', String(altered));
+        frame?.searchToggle?.setAttribute('aria-pressed', String(altered));
+    }
+
+    const existingSelected = (keys = selection.selectedKeys) => {
+        const live = new Set(getState().tags.map(tag => tag.id));
+        return keys.filter(id => live.has(id));
+    };
+
+    async function deleteSelected(keys) {
+        const ids = existingSelected(keys);
+        if (!ids.length || bulkBusy || !canClose()) return;
+        bulkBusy = true;
+        selectionBar.inert = true;
+        try {
+            // HUMAN: replace — bulk delete confirmation; the selected count remains explicit.
+            const text = ids.length === 1 ? t`Delete this tag? This cannot be undone.` : t`Delete ${ids.length} tags? This cannot be undone.`;
+            if (!await confirmDestructiveAction({ text, confirmLabel: t`Delete` })) return;
+            await actions.deleteMany(existingSelected(ids));
+            selection.exit();
+            refresh();
+        } finally {
+            bulkBusy = false;
+            selectionBar.inert = false;
+        }
+    }
+
+    /** Rows take no edit while they are being selected: the name field and the manage button leave the tab order. */
+    function syncSelectionState() {
+        const active = Boolean(selection?.isActive);
+        for (const entry of controls.values()) {
+            entry.input.inert = active;
+            for (const suffix of entry.entity.row.querySelectorAll('.ds-entity-row__suffix')) suffix.inert = active;
+        }
+        sortable?.setDisabled(active || Boolean(search.query));
+    }
+
+    function openMenu(trigger, sections, title = t`Tag Management`) {
         if (!canClose()) return;
-        openActionMenu({ trigger, title: t`Tag Management`, sections, bounds: frame?.surface ?? null });
+        openActionMenu({ trigger, title, sections, bounds: frame?.surface ?? null });
     }
 
     function move(tag, direction) {
@@ -504,6 +563,8 @@ export function createTagManager(adapter) {
             batches = 1;
         }
         const matches = query ? sorted.filter(tag => tag.name.toLowerCase().includes(query)) : sorted;
+        visibleIds = matches.map(tag => tag.id);
+        syncSortState();
         if (revealId !== null) {
             const index = matches.findIndex(tag => tag.id === revealId);
             if (index >= 0) batches = Math.max(batches, Math.ceil((index + 1) / BATCH_SIZE));
@@ -563,7 +624,8 @@ export function createTagManager(adapter) {
         showMore.update({ shown, total: matches.length });
         footer.hidden = showMore.isComplete;
         search.report(matches.length, state.tags.length);
-        sortable?.setDisabled(Boolean(query));
+        selection?.decorate({ prune: true });
+        syncSelectionState();
     }
 
     function createPending(input, error, popover) {
@@ -609,8 +671,11 @@ export function createTagManager(adapter) {
     }
     const unbindKeyboard = bindListKeyboard(list, {
         keySourceSelector: '.drag-handle',
-        onOpen: row => { openMembers(getState().tags.find(tag => tag.id === row.id)); return true; },
-        onRename: row => row.querySelector('input')?.focus(),
+        onOpen: row => {
+            if (!selection?.isActive) openMembers(getState().tags.find(tag => tag.id === row.id));
+            return true;
+        },
+        onRename: row => { if (!selection?.isActive) row.querySelector('input')?.focus(); },
     });
     const sortable = bindSortable(list, {
         handle: '.drag-handle', items: '.tag_view_item', touch: () => layout.matches,
@@ -640,13 +705,32 @@ export function createTagManager(adapter) {
                 title: t`Tag Management`,
                 className: 'sb-tag-manager',
                 content,
-                search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.tag_view_item', debounce: 300, onChange: () => refresh() },
+                search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.tag_view_item', debounce: 300, controls: [sortButton], onChange: () => refresh() },
                 // A pending invalid rename blocks the menus as it blocks closing.
-                menu: () => (canClose() ? headerSections() : []),
+                menu: trigger => (canClose() ? headerSections(trigger) : []),
                 menuLabel: t`Tag Management`,
                 canClose: () => canClose(),
             });
             frame.surface.id = 'tag_view_list';
+            frame.body.after(selectionBar);
+            const slots = {
+                get header() { return frame.header; },
+                get headerStart() { return frame.headerStart; },
+                get headerEnd() { return frame.headerEnd; },
+                get titleNode() { return frame.titleNode; },
+                get search() { return frame.search; },
+                get closeButton() { return frame.closeButton; },
+            };
+            selection = createSelectionMode({
+                root: frame.surface, list, rowSelector: '.tag_view_item', getKey: row => row.id, keySourceSelector: '.drag-handle',
+                range: true, iconOnlyAtNarrow: true, headerSlots: slots, actionBar: selectionBar,
+                getAllKeys: () => visibleIds,
+                canEnter: () => !bulkBusy && canClose() && getState().tags.length > 0,
+                actions: [
+                    { id: 'delete', label: t`Delete`, icon: 'fa-solid fa-trash', danger: true, onActivate: keys => deleteSelected(keys) },
+                ],
+                onChange: () => syncSelectionState(), onExit: () => syncSelectionState(),
+            });
             const add = createIconButton(t`Create a new tag`, 'plus', 'sb-tag-manager__add');
             add.addEventListener('click', () => openCreatePopover(add));
             add.addEventListener('keydown', event => {

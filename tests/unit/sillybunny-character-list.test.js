@@ -238,7 +238,7 @@ describe('shared Characters/Groups list', () => {
     test('mounts keyed character rows with upstream hooks and updates retained nodes', async () => {
         await mount();
         const row = rows()[0];
-        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261116u', { id: 'deferred-editor-shell-css' });
+        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261117h', { id: 'deferred-editor-shell-css' });
         expect(attachTagFilterMenu).toHaveBeenCalledWith(document.querySelector('.rm_tag_controls'));
         expect(row.id).toBe('CharID0');
         expect(row.getAttribute('data-chid')).toBe('0');
@@ -564,18 +564,18 @@ describe('shared Characters/Groups list', () => {
         const header = document.querySelector('.sb-list-header');
         const styles = jest.spyOn(window, 'getComputedStyle');
         resize([
-            { target: header, contentRect: { width: 300 } },
+            { target: header, contentRect: { width: 250 } },
             { target: header.querySelector('.sb-list-header__titles'), borderBoxSize: [{ inlineSize: 96 }] },
             ...[...header.querySelectorAll('button')].map(target => ({ target, borderBoxSize: [{ inlineSize: 44 }] })),
             { target: document.getElementById('rm_buttons_container'), borderBoxSize: [{ inlineSize: 40 }] },
         ]);
-        expect(button('sort').hidden).toBe(true);
+        expect(button('search').hidden).toBe(true);
         expect(frames).toHaveLength(1);
         frames[0]();
         expect(mounted.section.classList.contains('sb-character-list--preparing')).toBe(true);
         frames[1]();
         expect(mounted.section.classList.contains('sb-character-list--preparing')).toBe(false);
-        expect(button('sort').hidden).toBe(true);
+        expect(button('search').hidden).toBe(true);
         expect(styles).not.toHaveBeenCalled();
     });
 
@@ -616,10 +616,8 @@ describe('shared Characters/Groups list', () => {
             ...[...widths].map(([target, width]) => ({ target, contentRect: { width } })),
         ]);
         measure(375);
-        expect(button('sort').hidden).toBe(false);
         expect(button('search').hidden).toBe(false);
         measure(320);
-        expect(button('sort').hidden).toBe(true);
         expect(button('search').hidden).toBe(false);
         measure(270);
         expect(button('search').hidden).toBe(true);
@@ -633,15 +631,30 @@ describe('shared Characters/Groups list', () => {
         action('Manage Folders').onSelect();
         await settle();
         expect(openFolderManager).toHaveBeenCalledWith('characters');
-        expect(action('Sort')).toBeDefined();
+        expect(action('Sort')).toBeUndefined();
         expect(action('Search')).toBeDefined();
         measure(375);
-        expect(button('sort').hidden).toBe(false);
         expect(button('search').hidden).toBe(false);
         widths.set(extensions, 120);
         measure(375);
-        expect(button('sort').hidden).toBe(true);
         expect(button('search').hidden).toBe(true);
+    });
+
+    test('the sort button ends the search bar, and the Search toggle and the button show a non-default sort or grid', async () => {
+        await mount();
+        const field = document.querySelector('.sb-character-list__search');
+        const sort = button('sort');
+        expect(field.lastElementChild).toBe(sort);
+        expect(document.querySelector('.sb-list-header').contains(sort)).toBe(false);
+        expect(sort.getAttribute('aria-haspopup')).toBe('menu');
+        expect([sort.getAttribute('aria-pressed'), button('search').getAttribute('aria-pressed')]).toEqual(['false', 'false']);
+        sorts.characters = { field: 'create_date', order: 'desc' };
+        await mounted.render(model);
+        expect([sort.getAttribute('aria-pressed'), button('search').getAttribute('aria-pressed')]).toEqual(['true', 'true']);
+        sorts.characters = { field: 'name', order: 'asc' };
+        power_user.charListGrid = true;
+        await mounted.render(model);
+        expect(sort.getAttribute('aria-pressed')).toBe('true');
     });
 
     test('late extension buttons retain their intrinsic width when the slot flex-shrinks', async () => {
@@ -652,12 +665,12 @@ describe('shared Characters/Groups list', () => {
         await mount();
         const header = document.querySelector('.sb-list-header');
         resize([
-            { target: header, contentRect: { width: 326 } },
+            { target: header, contentRect: { width: 262 } },
             { target: header.querySelector('.sb-list-header__titles'), borderBoxSize: [{ inlineSize: 104 }] },
             ...[...header.querySelectorAll('button')].map(target => ({ target, borderBoxSize: [{ inlineSize: 44 }] })),
             { target: extensions, borderBoxSize: [{ inlineSize: 4 }] },
         ]);
-        expect(button('sort').hidden).toBe(false);
+        expect(button('search').hidden).toBe(false);
         const archive = document.createElement('button');
         archive.title = 'Chat Archive';
         extensions.append(archive);
@@ -669,25 +682,23 @@ describe('shared Characters/Groups list', () => {
             { target: extensions, borderBoxSize: [{ inlineSize: 20 }] },
             { target: archive, borderBoxSize: [{ inlineSize: 40 }] },
         ]);
-        expect(button('sort').hidden).toBe(true);
-        expect(button('search').hidden).toBe(false);
+        expect(button('search').hidden).toBe(true);
         resize([{ target: extensions, borderBoxSize: [{ inlineSize: 40 }] }]);
-        expect(button('sort').hidden).toBe(true);
+        expect(button('search').hidden).toBe(true);
         resize([{ target: archive, borderBoxSize: [{ inlineSize: 84 }] }]);
         expect(button('search').hidden).toBe(true);
         resize([
             { target: extensions, borderBoxSize: [{ inlineSize: 4 }] },
             { target: archive, borderBoxSize: [{ inlineSize: 0 }] },
         ]);
-        expect(button('sort').hidden).toBe(false);
         expect(button('search').hidden).toBe(false);
         resize([{ target: archive, borderBoxSize: [{ inlineSize: 40 }] }]);
-        expect(button('sort').hidden).toBe(true);
+        expect(button('search').hidden).toBe(true);
         archive.remove();
         await settle();
         expect(unobserve).toHaveBeenCalledWith(archive);
         resize([{ target: extensions, borderBoxSize: [{ inlineSize: 4 }] }]);
-        expect(button('sort').hidden).toBe(false);
+        expect(button('search').hidden).toBe(false);
         expect(styles).not.toHaveBeenCalled();
         expect(bounds).not.toHaveBeenCalled();
     });

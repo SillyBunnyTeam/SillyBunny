@@ -305,13 +305,19 @@ async function openTagPicker(page) {
 }
 
 async function openHeaderMenu(page, action) {
+    if (action === 'sort') {
+        // The Sort button ends the search bar.
+        if (!await page.locator('#character_search_bar').isVisible()) await openHeaderMenu(page, 'search');
+        await list(page).locator('.sb-character-list__sort').click();
+        return;
+    }
     const button = list(page).locator(`[data-action-id="${action}"]`);
     if (await button.isVisible()) {
         await button.click();
         return;
     }
     await list(page).locator('[data-action-id="more"]').click();
-    await page.getByRole('menuitem', { name: action === 'sort' ? 'Sort' : 'Search', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Search', exact: true }).click();
 }
 
 async function chooseSortItem(page, label) {
@@ -703,7 +709,7 @@ for (const { tone, theme } of SELECTION_TONES) {
 }
 
 for (const width of [375, 390, 430, 768]) {
-    test(`header controls and Chat Archive fit within the list at ${width}px`, async ({ page }) => {
+    test(`header controls and Chat Archive fit within the list and Sort ends the search bar at ${width}px`, async ({ page }) => {
         await prepareList(page, { width, height: 844 });
         const header = list(page).locator('.sb-character-list__header');
         await expect(header.locator('#sbca_drawer_button')).toBeVisible();
@@ -717,10 +723,16 @@ for (const width of [375, 390, 430, 768]) {
                 })
                 .map(control => control.getAttribute('aria-label') || control.title);
         })).toEqual([]);
-        await expect(header.locator('[data-action-id="sort"]')).toBeVisible({ visible: width > 390 });
+        await expect(header.locator('[data-action-id="sort"]')).toHaveCount(0);
         await header.locator('[data-action-id="more"]').click();
-        await expect(page.getByRole('menuitem', { name: 'Sort', exact: true })).toBeVisible({ visible: width <= 390 });
+        await expect(page.getByRole('menuitem', { name: 'Sort', exact: true })).toHaveCount(0);
         await page.keyboard.press('Escape');
+        await openHeaderMenu(page, 'search');
+        const sort = list(page).locator('.sb-character-list__search > .sb-character-list__sort');
+        await expect(sort).toBeVisible();
+        const [bar, button] = await Promise.all([list(page).locator('.sb-character-list__search').boundingBox(), sort.boundingBox()]);
+        expect(button.x).toBeGreaterThan(bar.x);
+        expect(button.x + button.width).toBeLessThanOrEqual(bar.x + bar.width + 0.5);
     });
 }
 

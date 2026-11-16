@@ -39,7 +39,7 @@ import { loadStylesheetAsync } from './dynamic-styles.js';
 const GROUP_EDITOR_STYLESHEETS = [
     LIST_EDITOR_STYLESHEET,
     EDITOR_CHROME_STYLESHEET,
-    { href: 'css/sillybunny-entity-list.css?v=20261117c', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
     { href: 'css/rm-groups.css', id: 'deferred-rm-groups-css' },
 ];
 const groupEditorReveals = new WeakMap();

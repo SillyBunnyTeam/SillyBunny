@@ -572,6 +572,10 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
         field.id = uid('sb-dialog-search');
         entry.append(icon('magnifying-glass'), searchInput);
         field.append(entry);
+        for (const control of search.controls ?? []) {
+            control.classList.add('sb-dialog__search-control');
+            field.append(control);
+        }
         page.append(field);
         (start.childElementCount ? end : start).append(searchToggle);
         searchKeydownHandler = event => {
@@ -641,13 +645,14 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
  * `search.toggleLabel` is the accessible name and tooltip of the header search button, "Search" by default.
  * A window with other controls named "Search" gives it a more specific name, for example "Search Help".
  * `search.label` names the field in the same way.
+ * `search.controls` are the list's sort or filter buttons: they sit at the end of the search bar, as in the list editors.
  *
  * @param {object} o
  * @param {'dialog'|'window'} [o.tier='dialog']
  * @param {string} o.title
  * @param {string} [o.subtitle]
  * @param {HTMLElement|((body: HTMLElement) => void)} [o.content]
- * @param {{ placeholder?: string, label?: string, toggleLabel?: string, debounce?: number, input?: HTMLInputElement, ariaAutocomplete?: string, ariaControls?: string, enterKeyHint?: string, escapeClearsFirst?: boolean, onEscape?: (event: KeyboardEvent) => boolean, onChange: (query: string) => void }|null} [o.search]
+ * @param {{ placeholder?: string, label?: string, toggleLabel?: string, debounce?: number, input?: HTMLInputElement, ariaAutocomplete?: string, ariaControls?: string, enterKeyHint?: string, escapeClearsFirst?: boolean, onEscape?: (event: KeyboardEvent) => boolean, controls?: HTMLElement[], onChange: (query: string) => void }|null} [o.search]
  * @param {((trigger: HTMLElement) => object[])|null} [o.menu] Sections for openActionMenu.
  * @param {string} [o.menuLabel]
  * @param {null|{ cancel?: { label?: string }, affirmative?: { id?: string, label: string, appearance?: 'suggested'|'destructive', enabled?: boolean }, extra?: { id: string, label: string }[] }} [o.responses]

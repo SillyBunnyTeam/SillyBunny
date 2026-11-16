@@ -1864,6 +1864,8 @@ async function onViewTagsListClick() {
                 await onTagDeleteClick.call(row);
                 refreshTagManagementFilters();
             },
+            // SillyBunny: bulk Delete of the Tag Manager's selection mode.
+            deleteMany: deleteTagsById,
             folder: row => onTagAsFolderClick.call(row),
             color: (event, property) => onTagColorize(event, (tag, color) => tag[property] = color, property === 'color' ? 'background-color' : 'color'),
             addMember: (tag, key) => addTagsToEntity(tag, key),
@@ -2246,6 +2248,38 @@ function updateDrawTagFolder(element, tag) {
     indicator.css('font-size', `calc(var(--mainFontSize) * ${tagFolder.size})`);
 }
 
+/**
+ * Removes a tag from every entity that uses it and from the tag list. A replacement tag takes its place on those entities.
+ * SillyBunny: shared by the row's Delete and the Tag Manager's bulk Delete, so both keep the tag map consistent.
+ * @param {string} id The tag to remove
+ * @param {string|null} [mergeTagId=null] The tag that replaces it
+ */
+function removeTagById(id, mergeTagId = null) {
+    for (const key of Object.keys(tag_map)) {
+        if (tag_map[key].includes(id)) {
+            tag_map[key] = tag_map[key].filter(x => x !== id);
+            if (mergeTagId) tag_map[key].push(mergeTagId);
+        }
+    }
+
+    const index = tags.findIndex(x => x.id === id);
+    if (index >= 0) tags.splice(index, 1);
+    $(`.tag[id="${id}"]`).remove();
+    $(`.tag_view_item[id="${id}"]`).remove();
+}
+
+/**
+ * Deletes several tags at once, as the Tag Manager's selection mode asks. The caller has confirmed.
+ * @param {string[]} ids The tags to delete
+ */
+function deleteTagsById(ids) {
+    for (const id of ids) removeTagById(String(id));
+    printCharactersDebounced();
+    saveSettingsDebounced();
+    applyCharacterTagsToMessageDivs();
+    refreshTagManagementFilters();
+}
+
 async function onTagDeleteClick() {
     const id = $(this).closest('.tag_view_item').attr('id');
     const tag = tags.find(x => x.id === id);
@@ -2298,19 +2332,8 @@ async function onTagDeleteClick() {
     const mergeValue = mergeSelect.val();
     const mergeTagId = mergeValue ? String(mergeValue) : null;
 
-    // Remove the tag from all entities that use it
-    // If we have a replacement tag, add that one instead
-    for (const key of Object.keys(tag_map)) {
-        if (tag_map[key].includes(id)) {
-            tag_map[key] = tag_map[key].filter(x => x !== id);
-            if (mergeTagId) tag_map[key].push(mergeTagId);
-        }
-    }
-
-    const index = tags.findIndex(x => x.id === id);
-    tags.splice(index, 1);
-    $(`.tag[id="${id}"]`).remove();
-    $(`.tag_view_item[id="${id}"]`).remove();
+    // SillyBunny: the removal moved into removeTagById(), which the Tag Manager's bulk Delete shares.
+    removeTagById(id, mergeTagId);
 
     toastr.success(`'${tag.name}' deleted${mergeTagId ? ` and merged into '${tags.find(x => x.id === mergeTagId).name}'` : ''}`, 'Delete Tag');
 

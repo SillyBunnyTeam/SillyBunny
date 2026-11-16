@@ -104,23 +104,6 @@
     display: none;
 }
 
-/* The entry keeps its own margin, which is also the gap to the sort button; the padding lines the button up with the header's buttons. */
-.sb-wi-search-field {
-    display: flex;
-    align-items: center;
-    flex: none;
-    padding-inline-end: 6px;
-}
-
-/* The entry takes the height of the sort button beside it when that is taller. */
-.sb-wi-search-field > .sb-search-entry[data-variant='bar'] {
-    flex: 1;
-    align-self: stretch;
-    min-width: 0;
-    height: auto;
-    min-height: var(--sb-search-entry-height);
-}
-
 :is(.sb-wi-list-header, .sb-wi-search-field) .sb-list-header__button {
     display: inline-flex;
     align-items: center;

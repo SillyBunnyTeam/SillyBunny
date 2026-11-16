@@ -12,6 +12,8 @@ const openPopover = jest.fn(options => { popoverOptions = options; return { clos
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
     openActionMenu, openPopover, closeActionMenu, MOBILE_QUERY: '(max-width: 768px)', positionPopover: jest.fn(),
 }));
+const confirmDestructiveAction = jest.fn(async () => true);
+await jest.unstable_mockModule('../../public/scripts/sillybunny-delete-confirm.js', () => ({ confirmDestructiveAction }));
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
     translate: text => text,
@@ -47,7 +49,7 @@ beforeEach(async () => {
         rename: jest.fn((tag, name) => tag.name = name),
         sort: tags => tags.slice().sort((a, b) => a.sort_order - b.sort_order),
         folderTypes: { NONE: { tooltip: 'No Folder' }, OPEN: { tooltip: 'Open Folder', fa_icon: 'fa-folder-open' }, CLOSED: { tooltip: 'Closed Folder', fa_icon: 'fa-eye-slash' } },
-        actions: Object.fromEntries(['backup', 'restore', 'prune', 'delete', 'folder', 'color'].map(action => [action, jest.fn()])),
+        actions: Object.fromEntries(['backup', 'restore', 'prune', 'delete', 'deleteMany', 'folder', 'color'].map(action => [action, jest.fn()])),
     };
     globalThis.SillyBunnyAssets = { loadStylesheetAsync: jest.fn(async () => {}) };
 });
@@ -391,6 +393,8 @@ describe('tag manager interactions', () => {
 
     test('the singleton reprint entry coalesces refreshes of an open manager', async () => {
         const opening = openTagManager(adapter);
+        // Both lazy modules load before the first render, which takes a macrotask.
+        await new Promise(resolve => setTimeout(resolve, 0));
         await settle();
         const sort = jest.spyOn(adapter, 'sort');
         state.tags.push({ id: 'external', name: 'External' });
@@ -439,7 +443,8 @@ describe('tag manager batches, counts and refresh cost', () => {
     test('the Show More module loads when the dialog opens, not at startup', () => {
         const source = fs.readFileSync(new URL('../../public/scripts/sillybunny-tag-manager.js', import.meta.url), 'utf8');
         expect(source).not.toMatch(/^import .*list-show-more/m);
-        expect(source).toContain('await import(\'./sillybunny-editor/list-show-more.js\')');
+        expect(source).toContain('import(\'./sillybunny-editor/list-show-more.js\')');
+        expect(source).not.toMatch(/^import .*selection-mode/m);
     });
 
     test('rows sit in the rows container and the footer sits in the box', () => {
@@ -556,5 +561,84 @@ describe('tag manager batches, counts and refresh cost', () => {
         jest.advanceTimersByTime(300);
         expect(manager.root.querySelector('.sb-tag-manager__empty .sb-status-page__title').textContent).toBe('No results');
         expect(manager.root.querySelector('.sb-tag-manager__empty .sb-status-page__action')).toBeNull();
+    });
+});
+
+describe('tag manager sort in the search bar', () => {
+    test('the sort button ends the search bar and carries the sort menu; the header menu keeps no sort', () => {
+        mount();
+        const sort = manager.root.querySelector('.sb-tag-manager__sort');
+        const bar = manager.root.querySelector('.sb-dialog__search');
+        expect(bar.lastElementChild).toBe(sort);
+        manager.root.querySelector('.sb-dialog__menu').click();
+        const header = menuOptions.sections.flatMap(section => section.items);
+        expect(header.map(item => item.label)).toEqual(['Select', 'Backup', 'Restore', 'Prune']);
+        sort.click();
+        expect(menuOptions.title).toBe('Sort');
+        expect(menuOptions.sections[0].title).toBe('Sort mode');
+        expect(menuOptions.sections[0].items.filter(item => item.checked).map(item => item.label)).toEqual(['Manual (Drag & Drop)']);
+    });
+
+    test('choosing a sort mode presses the Search toggle and the sort button, and manual releases them', async () => {
+        mount();
+        const sort = manager.root.querySelector('.sb-tag-manager__sort');
+        const toggle = manager.root.querySelector('.sb-dialog__search-toggle');
+        expect([sort.getAttribute('aria-pressed'), toggle.getAttribute('aria-pressed')]).toEqual(['false', 'false']);
+        sort.click();
+        menuOptions.sections[0].items.find(item => item.label === 'Alphabetical (A-Z)').onSelect();
+        await settle();
+        expect(state.settings.tag_sort_mode).toBe('alphabetical');
+        expect([sort.getAttribute('aria-pressed'), toggle.getAttribute('aria-pressed')]).toEqual(['true', 'true']);
+        sort.click();
+        menuOptions.sections[0].items.find(item => item.label === 'Manual (Drag & Drop)').onSelect();
+        await settle();
+        expect([sort.getAttribute('aria-pressed'), toggle.getAttribute('aria-pressed')]).toEqual(['false', 'false']);
+    });
+});
+
+describe('tag manager selection mode', () => {
+    const checks = () => [...manager.root.querySelectorAll('.tag_view_item > .sb-selection-check')];
+    const deleteButton = () => manager.root.querySelector('.sb-tag-manager__selection-bar [data-action-id="delete"]');
+
+    async function enter() {
+        manager.root.querySelector('.sb-dialog__menu').click();
+        menuOptions.sections.flatMap(section => section.items).find(item => item.label === 'Select').onSelect();
+        await settle();
+    }
+
+    test('the header menu starts it, and the rows lose their name fields and buttons', async () => {
+        mount();
+        await enter();
+        expect(manager.root.dataset.selectionMode).toBe('true');
+        expect(manager.root.querySelector('.sb-dialog__selection-cancel')).not.toBeNull();
+        expect(input('alpha').inert).toBe(true);
+        expect([...manager.root.querySelectorAll('.tag_view_item .ds-entity-row__suffix')].every(node => node.inert)).toBe(true);
+        expect([...manager.root.querySelectorAll('.sb-tag-manager__selection-bar [data-action-id]')].map(node => node.dataset.actionId)).toEqual(['delete']);
+        manager.root.querySelector('.sb-dialog__selection-cancel').click();
+        expect(manager.root.dataset.selectionMode).toBe('false');
+        expect(input('alpha').inert).toBe(false);
+    });
+
+    test('Delete confirms once with the count, then hands the selected ids to the adapter and leaves selection', async () => {
+        mount();
+        await enter();
+        checks().forEach(check => check.click());
+        deleteButton().click();
+        await settle();
+        expect(confirmDestructiveAction).toHaveBeenCalledTimes(1);
+        expect(confirmDestructiveAction).toHaveBeenCalledWith({ text: 'Delete 2 tags? This cannot be undone.', confirmLabel: 'Delete' });
+        expect(adapter.actions.deleteMany).toHaveBeenCalledWith(['alpha', 'beta']);
+        expect(manager.root.dataset.selectionMode).toBe('false');
+    });
+
+    test('declining the confirmation deletes nothing and keeps the selection', async () => {
+        mount();
+        await enter();
+        confirmDestructiveAction.mockResolvedValueOnce(false);
+        checks()[0].click();
+        deleteButton().click();
+        await settle();
+        expect(adapter.actions.deleteMany).not.toHaveBeenCalled();
+        expect(manager.root.dataset.selectionMode).toBe('true');
     });
 });
