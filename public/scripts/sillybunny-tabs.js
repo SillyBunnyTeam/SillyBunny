@@ -12579,7 +12579,7 @@ function togglePersonaPicker() {
     openPersonaPicker();
 }
 
-function openPersonaPicker({ focus = true } = {}) {
+function openPersonaPicker({ focus = true, place = null } = {}) {
     const context = getSillyTavernContext();
     if (!context) return;
 
@@ -12633,7 +12633,7 @@ function openPersonaPicker({ focus = true } = {}) {
     const bubble = document.getElementById('sb-persona-bubble');
     if (bubble instanceof HTMLElement) {
         document.body.appendChild(picker);
-        positionPersonaPicker(picker, bubble);
+        positionPersonaPicker(picker, bubble, place);
         if (focus) {
             const activeOption = picker.querySelector('.sb-persona-option.is-active');
             const firstOption = picker.querySelector('.sb-persona-option');
@@ -12649,8 +12649,11 @@ function refreshOpenPersonaPicker() {
         return;
     }
 
+    // The new picker starts where the old one stood: placed like a new one, it is hidden at the corner until the next frame.
+    // An old picker that is still hidden has not been placed, so there is nothing to keep.
+    const place = existing.style.visibility === 'hidden' ? null : { left: existing.style.left, top: existing.style.top };
     existing.remove();
-    openPersonaPicker({ focus: false });
+    openPersonaPicker({ focus: false, place });
 }
 
 function renderPersonaPickerAppendixControls(picker, context, avatarId) {
@@ -12720,11 +12723,20 @@ async function openPersonaAppendicesManager() {
     await openPersonaEditor({ avatarId: currentAvatarId, section: 'notes' });
 }
 
-function positionPersonaPicker(picker, bubble) {
+/**
+ * Places the picker above its bubble on the next frame, when its size is known. A new picker is hidden at the corner until
+ * then; one that replaces a shown picker (`place`) keeps that picker's position and stays shown.
+ * @param {HTMLElement} picker
+ * @param {HTMLElement} bubble
+ * @param {{ left: string, top: string } | null} [place]
+ */
+function positionPersonaPicker(picker, bubble, place = null) {
     const bubbleRect = bubble.getBoundingClientRect();
-    picker.style.visibility = 'hidden';
-    picker.style.left = '0px';
-    picker.style.top = '0px';
+    if (!place) {
+        picker.style.visibility = 'hidden';
+    }
+    picker.style.left = place?.left || '0px';
+    picker.style.top = place?.top || '0px';
     picker.style.right = 'auto';
     picker.style.bottom = 'auto';
 

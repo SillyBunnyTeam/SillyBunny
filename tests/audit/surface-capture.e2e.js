@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { applyVariant, isOverlaySurface, variantContextOptions } from '../helpers/surface-matrix.js';
-import { bootSurfaceApp, openSurface } from '../helpers/surfaces/boot.js';
+import { isOverlaySurface, variantContextOptions } from '../helpers/surface-matrix.js';
+import { bootSurfaceApp, openSurface, rebootSurfaceApp } from '../helpers/surfaces/boot.js';
 import {
     MAX_PAGES, NOISE_PIXELS, captureDirectory, captureMode, captureName, compareRegion, describeBox, maskDifference, pageOverlap, pagesFor, planPages, planRun,
     radiusChange, readComparison, selectThreshold, variantCells,
@@ -51,9 +51,10 @@ import {
 //                                nothing covers it (see `holdArtStill`). `always` and `off` are for finding out what the hold changes.
 //   CAPTURE_INJECT_CSS           test-only: a stylesheet added to every page after its boot, to prove that a small change shows in
 //                                the comparison. Refused in record mode.
-//   CAPTURE_BOOT                 `reuse` (default): one boot per surface and viewport, and the variants are applied to the open
-//                                page with `applyVariant`. `fresh`: a new context and boot for every capture; slower, and the
-//                                reference that the shared boot can be checked against.
+//   CAPTURE_BOOT                 `reuse` (default): one context and page per surface and viewport, loaded again for each variant
+//                                (`rebootSurfaceApp`), so that a cell does not start from the last state of the one before.
+//                                `fresh`: a new context and boot for every capture; slower, and the reference that the shared
+//                                boot can be checked against.
 //
 // Files: `captures/<name>.png` for each capture, `<name>` being
 //   <surface id>[@<backend>]__<state id | as-found>__<viewport>__<variant id>.png
@@ -438,7 +439,7 @@ for (const viewport of [...new Set(plan.tests.map(planned => planned.viewport))]
                             });
                         }
                         await restoreScroll();
-                        if (item.state === null && surface.close && BOOT_MODE === 'reuse' && !dry) {
+                        if (item.state === null && surface.close && BOOT_MODE === 'reuse') {
                             try {
                                 await surface.close(booted.page);
                             } catch (error) {
@@ -455,6 +456,14 @@ for (const viewport of [...new Set(plan.tests.map(planned => planned.viewport))]
                     return itemResults;
                 };
 
+                /** Loads the booted page again in the variant of the cell, with the injected stylesheet that the load dropped. */
+                const loadAgain = async (cell) => {
+                    await rebootSurfaceApp(booted.page, { variant: { ...cell.variant, viewport } });
+                    if (INJECT_CSS) {
+                        await booted.page.addStyleTag({ content: INJECT_CSS });
+                    }
+                };
+
                 /**
                  * A capture that changed is taken once more after a fresh open of its surface. When that equals the baseline the
                  * capture was not stable: it is `unstable` (and fails the run all the same, with both counts).
@@ -464,7 +473,13 @@ for (const viewport of [...new Set(plan.tests.map(planned => planned.viewport))]
                     if (changed.length === 0 || mode.mode !== 'compare') {
                         return;
                     }
+                    // A fresh open means a page that is loaded again: an open step that starts from what the first one left (a
+                    // search that is typed, a menu that its button would now close) otherwise waits for what never shows.
+                    if (BOOT_MODE === 'reuse') {
+                        await loadAgain(cell);
+                    }
                     const again = await captureItem(cell, item, true);
+                    itemResults.push(...again.filter(result => result.name.endsWith(' [close]')));
                     for (const result of changed) {
                         const second = again.find(candidate => candidate.name === result.name);
                         if (second?.status === 'same') {
@@ -482,7 +497,7 @@ for (const viewport of [...new Set(plan.tests.map(planned => planned.viewport))]
                             if (booted === null) {
                                 booted = await bootFor(cell);
                             } else {
-                                await applyVariant(booted.page, { ...cell.variant, viewport });
+                                await loadAgain(cell);
                             }
                         }
                         for (const item of items) {

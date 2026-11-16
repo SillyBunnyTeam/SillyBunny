@@ -6,6 +6,7 @@
  * fixtures for the surface's `needs`.
  */
 
+import { gunzipSync } from 'node:zlib';
 import { applyVariant, densityInitScript } from '../surface-matrix.js';
 import { assertIsolatedServer, protectMaintainerServer } from '../maintainer-server.js';
 import { fetchJsonOrSkip } from '../route-fetch.js';
@@ -14,6 +15,29 @@ import { applyAnswerFixtures, applySettingsFixtures } from './fixture-data.js';
 import { SERVER_ADMIN_FIXED, SERVER_ADMIN_FIXED_ROUTE } from './server-admin-fixed.js';
 import { seedFailuresOf } from './seed-guard.js';
 import { labelPage, settle } from './steps.js';
+
+const ARCHIVE_ORGANIZATION_FILE = '_sbca_organization.json';
+
+/**
+ * The Chats Archive keeps its saved views, folders and the view it last showed in a file on the server, which its search and
+ * filters write half a second after any change. Left alone, the search of one surface is the filter of the next boot on the same
+ * server, so the write is answered without happening, and the file reads as absent.
+ * @param {import('@playwright/test').Page} page
+ */
+async function keepArchiveOrganizationOffServer(page) {
+    await page.route('**/api/files/upload', route => {
+        const request = route.request();
+        const body = request.postDataBuffer();
+        let name;
+        try {
+            name = JSON.parse((request.headers()['content-encoding'] === 'gzip' ? gunzipSync(body) : body).toString())?.name;
+        } catch {
+            return route.fallback();
+        }
+        return name === ARCHIVE_ORGANIZATION_FILE ? route.fulfill({ json: { path: `user/files/${ARCHIVE_ORGANIZATION_FILE}` } }) : route.fallback();
+    });
+    await page.route(`**/user/files/${ARCHIVE_ORGANIZATION_FILE}`, route => route.fulfill({ status: 404, body: 'Not found' }));
+}
 
 /**
  * Boots the app on the server at `baseURL` and waits until it is ready, in the cell of the matrix given by `variant`.
@@ -30,6 +54,7 @@ export async function bootSurfaceApp(page, baseURL, { variant, needs = [] } = {}
         throw new Error(`Fixture data is missing, because seeding failed: ${unseeded.map(([need, message]) => `${need} (${message})`).join('; ')}`);
     }
     await protectMaintainerServer(page);
+    await keepArchiveOrganizationOffServer(page);
     await page.addInitScript(...densityInitScript(variant));
     let failBoot;
     const bootFailed = new Promise((_, reject) => { failBoot = reject; });
@@ -53,6 +78,16 @@ export async function bootSurfaceApp(page, baseURL, { variant, needs = [] } = {}
     // The page that shows the server's state reads the git state of the checkout, which differs between checkouts and moments.
     await page.route(SERVER_ADMIN_FIXED_ROUTE, route => route.fulfill({ json: SERVER_ADMIN_FIXED[new URL(route.request().url()).pathname] }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await finishBoot(page, variant, bootFailed);
+}
+
+/**
+ * Waits until the app that a page loaded is ready, and puts it in `variant`.
+ * @param {import('@playwright/test').Page} page
+ * @param {Partial<import('../surface-matrix.js').Variant> | undefined} variant
+ * @param {Promise<never>} [bootFailed] Rejects when the settings of the boot cannot be built.
+ */
+async function finishBoot(page, variant, bootFailed) {
     // getContext() throws while the app's modules are still initialising, so a throw means not ready yet.
     const ready = page.waitForFunction(() => {
         try {
@@ -62,11 +97,32 @@ export async function bootSurfaceApp(page, baseURL, { variant, needs = [] } = {}
         }
     }, null, { timeout: 60_000 });
     ready.catch(() => {});
-    await Promise.race([ready, bootFailed]);
+    await Promise.race(bootFailed ? [ready, bootFailed] : [ready]);
     await page.waitForFunction(() => !document.getElementById('preloader'));
     // Scrolling is not an animation that `settle()` can see, so reads of a scroll position must not wait for a smooth one.
     await page.addStyleTag({ content: '*, *::before, *::after { scroll-behavior: auto !important; }' });
     await applyVariant(page, variant);
+}
+
+/**
+ * Loads the app again on a page that `bootSurfaceApp()` booted, and puts it in `variant`. The routes and scripts of the boot
+ * stay on the page. A surface that is captured in several cells on one page starts each cell from here, because the last state
+ * of the cell before (a search that is typed, a filter that is set, a menu that is open) is still on the page, and an open step
+ * that toggles a control would then undo it and wait for what never shows.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ variant?: Partial<import('../surface-matrix.js').Variant> }} [options]
+ */
+export async function rebootSurfaceApp(page, { variant } = {}) {
+    // An editor with a draft that is not saved asks "leave site?", and a dialog that nobody answers is dismissed, which
+    // cancels the reload and leaves it waiting.
+    const leave = dialog => dialog.accept().catch(() => {});
+    page.on('dialog', leave);
+    try {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+    } finally {
+        page.off('dialog', leave);
+    }
+    await finishBoot(page, variant);
 }
 
 /**

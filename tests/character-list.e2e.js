@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
+import { waitForAppReady } from './helpers/app-ready.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { q56Screenshot } from './helpers/q56-review.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
@@ -62,7 +63,7 @@ test.beforeEach(async ({ page }) => {
 test('Start new chat reflects current-chat deletion in its destructive response and Return default', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page);
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.evaluate(async () => {
         const app = await import('/script.js');
@@ -122,7 +123,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     test(`Groups filter toolbar avoids extra vertical padding at ${viewport.width}px`, async ({ page }) => {
         await page.setViewportSize(viewport);
         await page.goto('/');
-        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+        await waitForAppReady(page);
         await page.waitForFunction(() => !document.getElementById('preloader'));
         await showView(page, 'groups');
 
@@ -149,7 +150,7 @@ for (const { label, width, reducedMotion, appReducedMotion = false } of [
         test('first visible frames have settled panes, header actions and single-line rows', async ({ page }) => {
             await page.emulateMedia({ reducedMotion });
             await page.goto('/');
-            await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+            await waitForAppReady(page);
             await page.waitForFunction(() => !document.getElementById('preloader'));
             await page.evaluate(async appReducedMotion => {
                 const app = await import('/script.js');
@@ -235,7 +236,7 @@ for (const { label, width, reducedMotion, appReducedMotion = false } of [
 async function prepareList(page, viewport) {
     await page.setViewportSize(viewport);
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page);
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.addStyleTag({ content: '#toast-container { display: none !important; }' });
     await showView(page, 'characters');
@@ -536,6 +537,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
     });
 
     test(`shared lists activate chats and pencil/Back preserves the origin at ${viewport.width}px`, async ({ page }) => {
+        // Boots the app, then opens two editors and comes back from each: 15 s on a narrow width, 22 s with workers sharing a
+        // server, against the default 30 s.
+        test.setTimeout(90000);
         await prepareList(page, viewport);
         const character = listRows(page, 'characters').first();
         const chid = Number(await character.getAttribute('data-chid'));
@@ -556,6 +560,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
     });
 
     test(`favorites, search, sort, page size and grid stay per view at ${viewport.width}px`, async ({ page }) => {
+        // Sets favorites, search, sort, page size and grid in two views: 16 s on a narrow width, 22 s with workers sharing a
+        // server, against the default 30 s.
+        test.setTimeout(90000);
         await prepareList(page, viewport);
         const favorite = () => list(page).locator('.filterByFavorites');
         await favorite().click();

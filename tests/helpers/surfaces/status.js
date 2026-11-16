@@ -13,6 +13,7 @@
 
 import { showSettingsSidebar } from '../settings-phone-pane.js';
 import { FIXTURES } from './fixture-data.js';
+import { openAuditChat as openAuditChatAfterFocus } from './dialog-steps.js';
 import { closeSidePanelById, MOBILE_LAYOUT_VIEWPORTS, openAuditChat } from './panel-steps.js';
 import { chooseMenuItem, openCharactersTab, openSettingsTab, selectBackend, selectLogitBiasPreset, settle } from './steps.js';
 
@@ -1151,14 +1152,12 @@ const PERSONA_NOTES_EMPTY = `${PERSONA_PICKER} .sb-persona-picker-appendices-emp
 /**
  * Opens the persona menu of the bottom chat bar, with no personas defined when `withoutPersonas` is set. `getChat()`
  * (`script.js`) clicks and focuses the message box a moment after a chat loads, and that click closes an open persona
- * menu, so the menu is opened once the box has the focus.
+ * menu, so the menu is opened once the box has the focus. A chat that the boot restored has had that focus already, and
+ * nothing moves it again (the persona bubble holds it in about one boot in fifty): only a load that this step starts is
+ * waited for, which is what `openAuditChatAfterFocus()` does.
  */
 async function openPersonaMenu(page, target, { withoutPersonas }) {
-    await openAuditChat(page);
-    await page.waitForFunction(() => {
-        const active = document.activeElement;
-        return active instanceof HTMLElement && active.matches('input, textarea') && active.offsetParent !== null;
-    });
+    await openAuditChatAfterFocus(page);
     await reveal(page, '#sb-persona-bubble', { hints: ['#sb-bottom-chat-bar'] });
     await page.evaluate(() => {
         // The notes are kept in the persona's descriptor in the account settings, so the page's copy of them is emptied.
@@ -1175,7 +1174,11 @@ async function openPersonaMenu(page, target, { withoutPersonas }) {
             Object.defineProperty(settings, 'personas', { configurable: true, enumerable: true, get: () => ({}), set: () => {} });
         });
     }
-    await page.locator('#sb-persona-bubble').click();
+    // The app renders an open picker again on a persona or settings event, and a picker is hidden until the frame after it is built.
+    // A capture that finds it hidden opens its surface again, and the bubble would close the picker that is still there.
+    if (await page.locator(PERSONA_PICKER).count() === 0) {
+        await page.locator('#sb-persona-bubble').click();
+    }
     await reveal(page, target, { hints: ['#sb-persona-bubble', PERSONA_PICKER, '.sb-persona-options'] });
     await settle(page);
 }

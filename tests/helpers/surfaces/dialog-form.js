@@ -12,7 +12,7 @@
 import { FIXTURES } from './fixture-data.js';
 import { closeDialogs, closeFrame, closeMenus, DIALOG_FRAME, oncePerPage, openAuditChat, settleFrame, WINDOW_FRAME, within } from './dialog-steps.js';
 import { openCharacterEditor } from './header-steps.js';
-import { chooseMenuItem, openSettingsTab, selectBackend } from './steps.js';
+import { chooseMenuItem, openExtensionsList, openSettingsTab, selectBackend } from './steps.js';
 
 const SCRIPTS = 'public/scripts';
 const ADAPTERS = `${SCRIPTS}/sillybunny-editor/adapters`;
@@ -322,8 +322,10 @@ export const surfaces = [
             await page.evaluate(async () => (await import('/scripts/util/AccountStorage.js')).accountStorage.setItem('extensionInstallationWarningShown', '1'));
             await closeDialogs(page);
             await closeMenus(page);
-            await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
-            await page.locator('#third_party_extension_button').click();
+            await openExtensionsList(page);
+            // A click of the test scrolls the button into view, and so scrolls the clipped stack of the page behind the dialog by
+            // a few pixels sideways and down, in three of four runs; the page then differs between two captures.
+            await page.locator('#third_party_extension_button').evaluate(button => button.click());
             await settleFrame(page, DIALOG_FRAME);
         },
         sources: [`${ADAPTERS}/misc-dialogs.js`, `${SCRIPTS}/extensions.js`],

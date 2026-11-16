@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { waitForAppReady } from './helpers/app-ready.js';
 import { acceptPopup } from './helpers/popup.js';
 import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
@@ -58,7 +59,7 @@ async function loadSettings(page, baseURL, settingsStore) {
         return route.continue();
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page);
 }
 
 async function openPanel(page, tab, shell = 'left') {
@@ -681,15 +682,18 @@ test('The connection profile change notice names the Presets and Formatting grou
     // Gemini shows every Request Options set: inline images, reasoning, web search.
     for (const [api, source] of [['openai', 'makersuite'], ['textgenerationwebui', 'ooba'], ['kobold', null], ['koboldhorde', null], ['novel', null]]) {
         await selectBackend(page, api, source);
-        const titles = {};
         for (const [name, tab] of Object.entries(pages)) {
             const panel = await openPanel(page, tab);
-            titles[name] = await panel.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE).allTextContents();
-        }
-        for (const entry of getWatchEntriesForApi(api)) {
-            const [name, group, ...rest] = entry.group.split(' > ');
-            if (!(name in pages) || rest.length) continue;
-            expect(titles[name], `${entry.id} is shown in ${entry.group} for ${api}`).toContain(group);
+            // A page builds its groups after its tab opens, so the titles are polled rather than read once. Only the open
+            // page has visible groups, so each page is checked while it is open.
+            for (const entry of getWatchEntriesForApi(api)) {
+                const [entryName, group, ...rest] = entry.group.split(' > ');
+                if (entryName !== name || rest.length) continue;
+                await expect.poll(
+                    () => panel.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE).allTextContents(),
+                    { message: `${entry.id} is shown in ${entry.group} for ${api}` },
+                ).toContain(group);
+            }
         }
     }
 });
@@ -1353,7 +1357,7 @@ test('Backend edits and quick context actions survive settings serialization and
     expect(store.saved.textgenerationwebui_settings.dry_multiplier).toBe(0.7);
     expect(store.saved.max_context).toBe(8192);
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page);
     await openPanel(page, 'sampling');
     await expect(sampling.locator('#temp_openai')).toHaveValue('0.71');
     await expect(sampling.locator('#temp_counter_openai')).toHaveValue('0.71');

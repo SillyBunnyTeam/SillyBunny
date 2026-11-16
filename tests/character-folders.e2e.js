@@ -77,6 +77,10 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
         test.use({ viewport: { width, height: 844 }, hasTouch: width === 390, isMobile: width === 390 });
 
         test('Manager create, editor assignment, bulk move, search expansion, and delete preserve characters', async ({ page }) => {
+            // With motion this journey takes 20 s on desktop and 30 s on a phone, the whole default timeout: each sheet springs
+            // in before it can be tapped, and a folder and the manager animate out. Without motion it takes 18 s on both. The
+            // motion has its own test below.
+            await page.emulateMedia({ reducedMotion: 'reduce' });
             const characters = makeCharacters(3);
             const settingsState = await routeSettings(page, settings => {
                 clearListFilters(settings);

@@ -664,8 +664,9 @@ for (const width of [1440, 768, 390, 360]) {
             page,
             baseURL,
         }) => {
-            // Twelve fixtures each exercise both the narrow overflow and section menus.
-            test.setTimeout(60000);
+            // Twelve fixtures each exercise both the narrow overflow and section menus. The journey takes about 30 s on a phone
+            // width and 40 s when workers share a server, so the limit leaves room for a slower start.
+            test.setTimeout(120000);
             const editor = await setup(page, baseURL, width);
             for (const fixture of editorCases) {
                 await test.step(
@@ -1091,6 +1092,9 @@ for (const width of [1440, 390]) {
             page,
             baseURL,
         }) => {
+            // The journey boots the app twice (the reload) and takes 16 s alone on a phone width, 23 s with workers sharing a
+            // server, against the default 30 s.
+            test.setTimeout(90000);
             const editor = await setup(page, baseURL, width);
             await editor.open('pre');
             await editor.name.fill('Recovered draft');

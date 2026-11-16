@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import { agentFixture, toolFixture } from '../fixtures/in-chat-agents-editor.js';
+import { waitForAppReady } from './app-ready.js';
 import { assertIsolatedServer } from './maintainer-server.js';
 
 const READS = new Set([
@@ -274,7 +275,7 @@ export async function openEditorAgents(page, baseURL, width, { seed = true } = {
 }
 
 export async function waitForEditorApp(page) {
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'));
+    await waitForAppReady(page);
 }
 
 export async function activatePromptAction(page, detail, label) {
