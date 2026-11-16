@@ -70,6 +70,30 @@ test.describe('coarse-pointer Tag Manager close target', () => {
     }
 });
 
+test('row buttons press to their own fill and a tag with one entry keeps its number', async ({ page }) => {
+    await prepare(page, 1440);
+    await openFromList(page);
+    const menu = row(page, fixtureTag).locator('.sb-tag-manager__row-menu');
+    await expect(menu).toHaveClass(/ds-entity-row__button/);
+    await expect(menu).not.toHaveClass(/menu_button/);
+    const fill = () => menu.evaluate(node => getComputedStyle(node).backgroundColor);
+    const rest = await fill();
+    const box = await menu.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect.poll(fill).not.toBe(rest);
+    const hovered = await fill();
+    await page.mouse.down();
+    await expect.poll(fill).not.toBe(hovered);
+    await page.mouse.move(0, 0);
+    await page.mouse.up();
+
+    const counted = row(page, fixtureTag);
+    await expect(counted.locator('.tag_view_counter_value')).toHaveText('1');
+    await expect(counted.locator('[data-sb-copy-placeholder="true"]')).toHaveText('TODO(copy)');
+    await expect(row(page, 'qa-tag-beta').locator('.tag_view_counter_value')).toHaveText('0');
+    await expect(row(page, 'qa-tag-beta').locator('.ds-entity-row__subtitle')).toContainText('entries');
+});
+
 async function openFromList(page) {
     await page.locator('.sb-character-list [data-action-id="more"]').click();
     await page.getByRole('menuitem', { name: 'Manage tags', exact: true }).click();
@@ -272,7 +296,7 @@ for (const width of [1440, 390]) {
             await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(1);
             await managerWindow.locator('.sb-tag-manager__members .sb-tag-manager__member-remove').click();
             await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(0);
-            await managerWindow.getByRole('button', { name: 'Add', exact: true }).click();
+            await managerWindow.locator('.sb-dialog__header-end').getByRole('button', { name: 'Add', exact: true }).click();
             const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
             await picker.getByRole('option', { name: 'QA tag character', exact: true }).click();
             await expect(managerWindow.locator('.sb-tag-manager__members .ds-entity-row')).toHaveCount(1);
@@ -503,7 +527,7 @@ for (const width of [1440, 768, 390]) {
                 const name = row.querySelector('.sb-tag-manager__name');
                 const subtitle = row.querySelector('.ds-entity-row__subtitle');
                 const input = getComputedStyle(name);
-                const box = getComputedStyle(node.querySelector('.tag_view_list_tags'));
+                const box = getComputedStyle(node.querySelector('.sb-tag-manager__list'));
                 return {
                     border: computed.borderTopWidth, background: computed.backgroundColor, header: header.backgroundColor,
                     nameX: name.getBoundingClientRect().x + parseFloat(input.paddingLeft) + parseFloat(input.borderLeftWidth),
@@ -529,7 +553,7 @@ for (const width of [1440, 768, 390]) {
                 size: getComputedStyle(node.querySelector('.ds-entity-row__title')).fontSize,
                 subtitleSize: getComputedStyle(node.querySelector('.ds-entity-row__subtitle')).fontSize,
             }));
-            expect(styles.rowPadding).toBe('6px 8px');
+            expect(styles.rowPadding).toBe('6px 12px');
             expect([styles.gap, styles.weight, styles.size, styles.subtitleSize]).toEqual([
                 personaMetrics.gap, personaMetrics.weight, personaMetrics.size, personaMetrics.subtitleSize,
             ]);

@@ -1957,6 +1957,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-10, Home offline link. |
 | Owner | `TODO(copy)` |
 
+### Regex and Quick Reply empty-list text
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/regex/dropdown.html`; `public/scripts/extensions/regex/style.css`; `public/scripts/extensions/quick-reply/html/settings.html`; `public/scripts/extensions/quick-reply/style.css`. |
+| Area | The empty Regex script lists (global, preset and scoped) and the empty Quick Reply set list. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The three Regex list containers' `data-no-scripts-text` attribute, read by the `::after` rule in `regex/style.css`; `#qr--set-qrList`'s `data-no-qrs-text` attribute, read by a `:has(> .qr--set-qrListContents:empty)::after` rule in `quick-reply/style.css`. |
+| Adapter shape | `renderExtensionTemplateAsync` sanitises extension templates with DOMPurify, which drops the non-data `no-scripts-text` attribute, so the Regex lists rendered 0px tall with no text; the attribute is renamed to `data-no-scripts-text` and its `data-i18n` target follows (`[data-no-scripts-text]`, same locale key). The Quick Reply set list gets the same pattern; its text is a `TODO(copy)` placeholder with `data-sb-copy-placeholder="true"`. `quick-reply/style.less` is not mirrored, because `style.css` is the file the manifest loads. Each change carries a `SillyBunny:` marker. |
+| Protecting tests | `tests/extension-settings-rows.e2e.js` (the empty-list text shows; a placeholder carrier whose `::after` is `none` is ignored); the parity and axe audits of the Regex lists. |
+| Validation | 2026-11-16 (UI polish sweep, task 6.5a): root and tests lint, the full unit run, `tests/extension-settings-rows.e2e.js` and the Quick Reply specs, the parity, axe and smoke audits of the touched surfaces. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-16, UI polish sweep (task 6.5a). |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

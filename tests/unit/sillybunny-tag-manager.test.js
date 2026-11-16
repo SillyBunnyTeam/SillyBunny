@@ -16,7 +16,7 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
     translate: text => text,
 }));
-const { createTagManager, parseTagName, countLiveTagEntities, updateTagColors, loadTagManagerStyles, openTagManager, refreshTagManager } = await import('../../public/scripts/sillybunny-tag-manager.js');
+const { createTagManager, parseTagName, countLiveTagEntities, updateTagColors, loadTagManagerStyles, loadTagManagerModules, openTagManager, refreshTagManager } = await import('../../public/scripts/sillybunny-tag-manager.js');
 const settle = async () => { for (let index = 0; index < 15; index++) await Promise.resolve(); };
 let manager;
 let state;
@@ -26,7 +26,8 @@ const names = () => [...manager.root.querySelectorAll('.tag_view_item')].map(row
 const input = id => manager.root.querySelector(`[id="${id}"] .sb-tag-manager__name`);
 const key = (node, value, options = {}) => node.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true, ...options }));
 
-beforeEach(() => {
+beforeEach(async () => {
+    await loadTagManagerModules();
     jest.clearAllMocks();
     menuOptions = null;
     popoverOptions = null;
@@ -289,7 +290,8 @@ describe('tag manager interactions', () => {
         expect(document.activeElement).toBe(field);
         expect(scroller.scrollTop).toBe(100);
         expect(names()).toContain('external');
-        expect(manager.root.querySelector('[id="beta"] .ds-entity-row__subtitle').textContent).toBe('1\u00a0entries');
+        expect(manager.root.querySelector('[id="beta"] .tag_view_counter_value').textContent).toBe('1');
+        expect(manager.root.querySelector('[id="external"] .ds-entity-row__subtitle').textContent).toBe('0\u00a0entries');
         expect(manager.root.querySelector('[data-sb-tag-id="alpha"]').style.getPropertyValue('--sb-tag-color')).toBe('blue');
         expect(adapter.commit).not.toHaveBeenCalled();
     });
@@ -349,7 +351,7 @@ describe('tag manager interactions', () => {
         expect(document.activeElement).toBe(field);
     });
 
-    test('search uses the shared debounce and retains mounted pending fields', () => {
+    test('search uses the shared debounce, drops rows that do not match and retains a pending field', () => {
         jest.useFakeTimers();
         mount();
         const search = manager.root.querySelector('.sb-dialog__search-input');
@@ -357,13 +359,20 @@ describe('tag manager interactions', () => {
         search.value = 'alpha';
         search.dispatchEvent(new Event('input'));
         jest.advanceTimersByTime(300);
-        expect(manager.root.querySelector('[id="beta"]').hidden).toBe(true);
+        expect(manager.root.querySelector('[id="beta"]')).toBeNull();
         expect(manager.root.querySelector('[id="alpha"]').hidden).toBe(false);
-        expect(input('beta')).not.toBeNull();
         key(search, 'Escape');
         expect(manager.root.querySelector('.sb-dialog__search').hidden).toBe(false);
         expect(search.value).toBe('');
         expect(manager.root.querySelector('[id="beta"]').hidden).toBe(false);
+        const pending = input('beta');
+        pending.value = ' ';
+        key(pending, 'Enter');
+        search.value = 'alpha';
+        search.dispatchEvent(new Event('input'));
+        jest.advanceTimersByTime(300);
+        expect(input('beta')).toBe(pending);
+        expect(pending.closest('.tag_view_item').hidden).toBe(true);
     });
 
     test('failed deferred styles remove only failed links and permit a retry', async () => {
@@ -403,5 +412,148 @@ describe('tag manager interactions', () => {
         for (const handler of ['backup: onTagsBackupClick', 'restore: onBackupRestoreClick', 'prune: onTagsPruneClick', 'await onTagDeleteClick.call(row)', 'folder: row => onTagAsFolderClick.call(row)']) expect(source).toContain(handler);
         expect(source).toContain('tag_map[key].splice(indexOf, 1);');
         expect(source).toContain('if (mergeTagId) tag_map[key].push(mergeTagId);');
+    });
+});
+
+describe('tag manager batches, counts and refresh cost', () => {
+    const fill = total => {
+        state.tags = Array.from({ length: total }, (_, index) => ({ id: `t${index}`, name: `Tag ${String(index).padStart(3, '0')}`, sort_order: index }));
+        state.tagMap = {};
+    };
+    const showMore = () => manager.root.querySelector('.sb-list-show-more__button');
+
+    test('mounts one batch of 50 and Show More loads the next', async () => {
+        fill(120);
+        mount();
+        expect(names()).toHaveLength(50);
+        expect(manager.root.querySelector('.ds-entity-list__footer').hidden).toBe(false);
+        showMore().click();
+        await settle();
+        expect(names()).toHaveLength(100);
+        showMore().click();
+        await settle();
+        expect(names()).toHaveLength(120);
+        expect(manager.root.querySelector('.ds-entity-list__footer').hidden).toBe(true);
+    });
+
+    test('the Show More module loads when the dialog opens, not at startup', () => {
+        const source = fs.readFileSync(new URL('../../public/scripts/sillybunny-tag-manager.js', import.meta.url), 'utf8');
+        expect(source).not.toMatch(/^import .*list-show-more/m);
+        expect(source).toContain('await import(\'./sillybunny-editor/list-show-more.js\')');
+    });
+
+    test('rows sit in the rows container and the footer sits in the box', () => {
+        fill(60);
+        mount();
+        const box = manager.root.querySelector('.sb-tag-manager__list');
+        expect(box.classList.contains('ds-entity-list')).toBe(true);
+        expect(box.classList.contains('ds-pref-group')).toBe(false);
+        expect([...box.children].map(node => node.className)).toEqual(['ds-entity-list__rows tag_view_list_tags', 'ds-entity-list__footer']);
+        expect(manager.root.querySelector('.tag_view_list_tags > .tag_view_item')).not.toBeNull();
+        expect(manager.root.querySelector('.tag_view_item .menu_button')).toBeNull();
+        expect(manager.root.querySelector('.sb-tag-manager__row-menu').classList.contains('ds-entity-row__button')).toBe(true);
+    });
+
+    test('a search filters the whole collection before the batch limit applies', () => {
+        jest.useFakeTimers();
+        fill(120);
+        state.tags[110].name = 'Needle';
+        mount();
+        expect(manager.root.querySelector('[id="t110"]')).toBeNull();
+        const search = manager.root.querySelector('.sb-dialog__search-input');
+        manager.root.querySelector('.sb-dialog__search-toggle').click();
+        search.value = 'needle';
+        search.dispatchEvent(new Event('input'));
+        jest.advanceTimersByTime(300);
+        expect(names()).toEqual(['t110']);
+        expect(manager.root.querySelector('.ds-entity-list__footer').hidden).toBe(true);
+    });
+
+    test('a created tag and a moved tag are revealed with their batch', () => {
+        fill(120);
+        mount();
+        manager.root.querySelector('.sb-tag-manager__add').click();
+        const field = popoverOptions.content.querySelector('input');
+        field.value = 'Zzz new';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        adapter.create.mockImplementationOnce(name => { const tag = { id: 'new', name, sort_order: 500 }; state.tags.push(tag); return tag; });
+        key(field, 'Enter');
+        expect(input('new')).not.toBeNull();
+        expect(names()).toHaveLength(121);
+    });
+
+    test('a move across the batch edge keeps the moved tag on screen', () => {
+        fill(120);
+        mount();
+        const row = manager.root.querySelector('[id="t49"]');
+        row.querySelector('.sb-tag-manager__row-menu').click();
+        menuOptions.sections.flatMap(section => section.items).find(item => item.label === 'Move Down').onSelect();
+        return settle().then(() => {
+            expect(input('t49')).not.toBeNull();
+            expect(names()).toHaveLength(100);
+        });
+    });
+
+    test('dragging with unloaded rows keeps their order after the loaded rows', () => {
+        fill(120);
+        const sortable = jest.fn();
+        globalThis.$ = Object.assign(() => ({ sortable }), { fn: { sortable() {} } });
+        mount();
+        const options = sortable.mock.calls[0][0];
+        options.start();
+        const list = manager.root.querySelector('.tag_view_list_tags');
+        list.insertBefore(list.lastElementChild, list.firstElementChild);
+        options.update();
+        options.stop();
+        const order = adapter.sort(state.tags).map(tag => tag.id);
+        expect(order.slice(0, 3)).toEqual(['t49', 't0', 't1']);
+        expect(order.slice(50)).toEqual(Array.from({ length: 70 }, (_, index) => `t${index + 50}`));
+    });
+
+    test('the entries label takes the placeholder for exactly one entry', () => {
+        state.tagMap = { 'Alice.png': ['alpha', 'beta'], group: ['beta'] };
+        mount();
+        const label = id => manager.root.querySelector(`[id="${id}"] .ds-entity-row__subtitle`);
+        expect(label('alpha').textContent).toBe('1\u00a0TODO(copy)');
+        expect(label('alpha').querySelector('[data-sb-copy-placeholder="true"]')).not.toBeNull();
+        expect(label('beta').textContent).toBe('2\u00a0entries');
+        expect(label('beta').querySelector('[data-sb-copy-placeholder]')).toBeNull();
+        state.tagMap = { 'Alice.png': ['beta', 'alpha'], group: ['alpha'] };
+        manager.refresh();
+        expect(label('alpha').textContent).toBe('2\u00a0entries');
+        expect(label('beta').textContent).toBe('1\u00a0TODO(copy)');
+    });
+
+    test('an unchanged state skips the reconcile pass and a changed one runs it', () => {
+        mount();
+        const row = manager.root.querySelector('[id="alpha"]');
+        row.hidden = true;
+        manager.refresh();
+        expect(row.hidden).toBe(true);
+        state.tags[0].name = 'Alpha 2';
+        manager.refresh();
+        expect(row.hidden).toBe(false);
+        expect(input('alpha').value).toBe('Alpha 2');
+    });
+
+    test('the empty page offers New and opens the create popover', () => {
+        state.tags = [];
+        mount();
+        const action = manager.root.querySelector('.sb-tag-manager__empty .sb-status-page__action');
+        expect(action.textContent).toBe('New');
+        action.click();
+        expect(popoverOptions.title).toBe('Create a new tag');
+    });
+
+    test('a search without a match offers no action', () => {
+        jest.useFakeTimers();
+        mount();
+        const search = manager.root.querySelector('.sb-dialog__search-input');
+        manager.root.querySelector('.sb-dialog__search-toggle').click();
+        search.value = 'zzz';
+        search.dispatchEvent(new Event('input'));
+        jest.advanceTimersByTime(300);
+        expect(manager.root.querySelector('.sb-tag-manager__empty .sb-status-page__title').textContent).toBe('No results');
+        expect(manager.root.querySelector('.sb-tag-manager__empty .sb-status-page__action')).toBeNull();
     });
 });

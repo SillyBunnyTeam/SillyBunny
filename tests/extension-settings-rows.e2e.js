@@ -237,7 +237,10 @@ test.describe('built-in extension settings rows', () => {
                         titleless: [...entries.filter(control => !control.labels?.length && !control.getAttribute('aria-label')).map(control => control.id), ...unnamedSelects],
                         doubleNamed: entries.filter(control => control.labels?.length > 1).map(control => control.id),
                         visibleRetired: [...element.querySelectorAll('[data-sb-adopted-label]')].filter(visible).length,
-                        placeholders: element.querySelectorAll('[data-sb-copy-placeholder]').length,
+                        // An empty-list text that a stylesheet draws from a data-*-text attribute counts only while it is drawn.
+                        placeholders: [...element.querySelectorAll('[data-sb-copy-placeholder]')]
+                            .filter(node => !([...node.attributes].some(({ name, value }) => /^data-.+-text$/.test(name) && value === 'TODO(copy)')
+                                && getComputedStyle(node, '::after').content === 'none')).length,
                     };
                 });
                 report.push({ title, ...result });

@@ -1487,3 +1487,13 @@ dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modal
 .popup.sb-dialog:has(.qr--transferModal) :is(.popup-button-ok, .qr--copy)::after {
   content: none;
 }
+
+/* SillyBunny: a set with no Quick Replies shows its empty text, like the regex lists. */
+#qr--settings #qr--set-qrList:has(> .qr--set-qrListContents:empty)::after {
+  content: attr(data-no-qrs-text);
+  display: block;
+  padding: 0.5em;
+  font-size: 0.95em;
+  opacity: 0.7;
+  text-align: center;
+}

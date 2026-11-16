@@ -68,7 +68,7 @@ async function createFolderInManager(page, editor, name) {
     await page.getByRole('menuitem', { name: 'Manage Folders', exact: true }).click();
     const manager = page.locator('.sb-dialog-host[open]:has(> .sb-folder-manager)');
     await expect(manager).toBeVisible();
-    await manager.getByRole('button', { name: 'New Folder', exact: true }).click();
+    await manager.locator('.sb-dialog__header-end').getByRole('button', { name: 'New Folder', exact: true }).click();
     const input = page.locator('.sb-custom-popover:visible, .sb-action-sheet:visible').getByRole('textbox', { name: 'New Folder', exact: true });
     await expect(input).toBeFocused();
     await input.fill(name);

@@ -2532,11 +2532,12 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     block-size: 40px;
     padding: 0;
     border-radius: var(--sb-radius-pill);
+    cursor: pointer;
     transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast), transform var(--sb-transition-fast);
 }
 
-.swipe_picker_block :is(.swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete) {
-    cursor: pointer;
+.swipe_picker_block .swipe_picker_delete:not(.disabled) {
+    animation: none;
 }
 
 .swipe_picker_block :is([role="button"], .swipe_picker_expand_label):focus-visible {

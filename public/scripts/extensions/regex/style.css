@@ -16,8 +16,9 @@
     margin-bottom: 10px;
 }
 
+/* SillyBunny: the template is sanitised, which drops the old non-data attribute. */
 .regex-script-container:empty::after {
-    content: attr(no-scripts-text);
+    content: attr(data-no-scripts-text);
     font-size: 0.95em;
     opacity: 0.7;
     display: block;

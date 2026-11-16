@@ -87,7 +87,8 @@
 						<input type="checkbox" id="qr--onlyBorderColor"> <span data-i18n="Only apply color as accent">Only apply color as accent</span>
 					</label>
 				</div>
-				<div id="qr--set-qrList" class="qr--qrList"></div>
+				<!-- SillyBunny: empty-set text, read by the :has() rule in style.css. -->
+				<div id="qr--set-qrList" class="qr--qrList" data-no-qrs-text="TODO(copy)" data-sb-copy-placeholder="true"></div>
 				<div class="qr--set-qrListActions">
 					<div class="qr--add menu_button menu_button_icon fa-solid fa-plus" id="qr--set-add" title="Add quick reply"></div>
 					<div class="qr--paste menu_button menu_button_icon fa-solid fa-paste" id="qr--set-paste" title="Paste quick reply from clipboard"></div>

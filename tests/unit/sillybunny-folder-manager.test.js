@@ -195,4 +195,40 @@ describe('Folder Manager', () => {
         expect(manager.root.textContent).toContain('No Folders');
         expect(manager.root.textContent).toContain('Create a folder to sort characters in the list.');
     });
+
+    test('the empty page offers New Folder and opens the create popover', () => {
+        mount();
+        const action = manager.root.querySelector('.sb-status-page__action');
+        expect(action.textContent).toBe('New Folder');
+        action.click();
+        expect(popoverOptions.title).toBe('New Folder');
+        expect(popoverOptions.trigger).toBe(manager.root.querySelector('.sb-folder-manager__add'));
+    });
+
+    test('a search without a match offers no action', () => {
+        jest.useFakeTimers();
+        folders.createFolder('groups', 'Alpha');
+        mount();
+        manager.root.querySelector('.sb-dialog__search-toggle').click();
+        const search = manager.root.querySelector('.sb-dialog__search-input');
+        search.value = 'zzz';
+        search.dispatchEvent(new Event('input'));
+        jest.advanceTimersByTime(300);
+        expect(manager.root.querySelector('.sb-status-page__title').textContent).toBe('No results');
+        expect(manager.root.querySelector('.sb-status-page__action')).toBeNull();
+        jest.useRealTimers();
+    });
+
+    test('the members page offers Add when the folder is empty and rows use the shared row button', () => {
+        const folder = folders.createFolder('groups', 'Empty');
+        mount();
+        expect(manager.root.querySelector('.sb-folder-manager__list').classList.contains('ds-pref-group')).toBe(false);
+        expect(manager.root.querySelector('.sb-folder-manager__row-menu').classList.contains('ds-entity-row__button')).toBe(true);
+        expect(manager.root.querySelector('.sb-folder-manager__folder-row .menu_button')).toBeNull();
+        manager.root.querySelector(`[data-folder-id="${folder.id}"]`).click();
+        const action = manager.root.querySelector('.sb-dialog__page:not([hidden]) .sb-status-page__action');
+        expect(action.textContent).toBe('Add');
+        action.click();
+        expect(pickerOptions.items).toHaveLength(2);
+    });
 });

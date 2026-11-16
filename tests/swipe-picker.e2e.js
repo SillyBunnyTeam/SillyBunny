@@ -121,6 +121,16 @@ test.describe('swipe picker shared Window', () => {
                 expect(Math.abs(space - 5)).toBeLessThanOrEqual(1);
             });
         }
+
+        test('hovering the delete button takes the hover fill and does not spin the icon', async ({ page }) => {
+            await page.setViewportSize({ width: 1440, height: 900 });
+            await createSwipeFixture(page, 6, 1);
+            const deleteButton = page.locator('dialog[open] .swipe_picker_block .swipe_picker_delete:not(.disabled)').first();
+            await deleteButton.hover();
+            await expect.poll(() => deleteButton.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+            expect(await deleteButton.evaluate(node => ({ name: getComputedStyle(node).animationName, running: node.getAnimations().filter(animation => animation.animationName).length })))
+                .toEqual({ name: 'none', running: 0 });
+        });
     });
 
     test('desktop supports selection, actions, navigation, scrolling and safe deletion', async ({ page }, testInfo) => {

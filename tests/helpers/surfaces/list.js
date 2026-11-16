@@ -291,7 +291,7 @@ const tagManager = {
     family: 'list',
     owner: 'A',
     title: 'Tag Manager list',
-    root: `${TAG_MANAGER} .tag_view_list_tags`,
+    root: `${TAG_MANAGER} .sb-tag-manager__list`,
     ready: TAG_ROWS,
     open: page => openManager(page, { item: 'Manage tags', root: TAG_MANAGER }),
     close: page => closeManager(page, TAG_MANAGER),

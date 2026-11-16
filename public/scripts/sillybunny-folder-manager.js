@@ -4,7 +4,7 @@ import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
 import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
-import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
+import { openAlert, openDialog, createIconButton } from './sillybunny-editor/dialog.js';
 import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
@@ -24,7 +24,7 @@ import {
 const STYLESHEETS = [
     { href: 'css/sillybunny-editor-shell.css?v=20261116u', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261116v', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-folder-manager.css?v=20261116v', id: 'deferred-folder-manager-css' },
+    { href: 'css/sillybunny-folder-manager.css?v=20261116x', id: 'deferred-folder-manager-css' },
 ];
 
 const MEMBER_KINDS = Object.freeze({ characters: 'character', groups: 'group', personas: 'persona' });
@@ -69,8 +69,8 @@ function icon(glyph) {
     return node;
 }
 
-function button(label, glyph, action, className = '') {
-    const node = element('button', `menu_button sb-folder-manager__button ${className}`);
+function rowButton(label, glyph, action, className = '') {
+    const node = element('button', `ds-entity-row__button ${className}`.trim());
     node.type = 'button';
     node.title = label;
     node.setAttribute('aria-label', label);
@@ -164,7 +164,7 @@ function colorPicker(entry, folder, refresh) {
             setFolderColor(entry.scope, folder.id, String(color));
             refresh();
         });
-        const close = button(t`Close`, 'xmark', () => wrapper.hidden = true);
+        const close = rowButton(t`Close`, 'xmark', () => wrapper.hidden = true);
         wrapper.append(picker, close);
         entry.row.append(wrapper);
         entry.picker = picker;
@@ -197,10 +197,11 @@ export function createFolderManager(scope, adapter) {
     let frame = null;
     /** @type {{ folderId: string, page: object, toolbar: HTMLElement, list: HTMLElement }|null} */
     let members = null;
+    let addButton = null;
 
     const status = element('div', 'sb-folder-manager__status');
     status.setAttribute('aria-live', 'polite');
-    const list = element('div', 'ds-pref-group ds-entity-list sb-folder-manager__list');
+    const list = element('div', 'ds-entity-list sb-folder-manager__list');
     list.setAttribute('role', 'list');
     const content = document.createDocumentFragment();
     content.append(list, status);
@@ -217,7 +218,7 @@ export function createFolderManager(scope, adapter) {
         const key = String(adapter.getKey(item));
         const name = String(adapter.getName(item) ?? key);
         const avatar = adapter.getAvatar?.(item) ?? null;
-        const remove = button(t`Remove`, 'minus', () => {
+        const remove = rowButton(t`Remove`, 'minus', () => {
             setFolder(scope, [key], null);
             refresh();
         }, 'sb-folder-manager__remove');
@@ -267,10 +268,10 @@ export function createFolderManager(scope, adapter) {
         input.setAttribute('aria-label', t`Rename`);
         const error = element('small', 'sb-folder-manager__error');
         error.hidden = true;
-        const name = element('div', 'sb-folder-manager__name-field');
+        const name = element('div', 'sb-folder-manager__field');
         name.append(input, error);
         const count = element('span', 'sb-folder-manager__count', countLabel(getFolderMembers(scope, folder.id).length, scope));
-        const more = button(t`Manage folder`, 'ellipsis-vertical', trigger => folderMenu(trigger, folder), 'sb-folder-manager__row-menu');
+        const more = rowButton(t`Manage folder`, 'ellipsis-vertical', trigger => folderMenu(trigger, folder), 'sb-folder-manager__row-menu');
         more.setAttribute('aria-haspopup', 'menu');
         const entity = createEntityRow({
             key: `folder:${scope}:${folder.id}`,
@@ -377,6 +378,7 @@ export function createFolderManager(scope, adapter) {
                 title: query ? t`No results` : t`No Folders`,
                 description: query ? '' : scopeCopy(scope).empty,
                 compact: true,
+                actions: query ? [] : [{ label: t`New Folder`, primary: true, onActivate: () => openCreatePopover(addButton) }],
             }).element));
         } else status.hidden = true;
         frame?.search?.report(shown, folders.length);
@@ -391,6 +393,7 @@ export function createFolderManager(scope, adapter) {
             title: t`No Members`,
             description: scopeCopy(scope).noMembers,
             compact: true,
+            actions: [{ label: t`Add`, primary: true, onActivate: () => addMember(folder) }],
         }).element));
         members.list.replaceChildren(...rows);
     }
@@ -399,13 +402,13 @@ export function createFolderManager(scope, adapter) {
     function openMembers(folderId) {
         const folder = getFolders(scope).find(candidate => candidate.id === folderId);
         if (!folder || !frame || members) return;
-        const add = button(t`Add`, 'plus', () => addMember(folder), 'sb-folder-manager__add-member');
-        const memberList = element('div', 'ds-pref-group ds-entity-list sb-folder-manager__members');
+        const add = createIconButton(t`Add`, 'plus', 'sb-folder-manager__add-member');
+        add.addEventListener('click', () => addMember(folder));
+        const memberList = element('div', 'ds-entity-list sb-folder-manager__members');
         memberList.setAttribute('role', 'list');
         const pageContent = document.createDocumentFragment();
         pageContent.append(memberList);
         const page = frame.push({ title: folder.name, content: pageContent, initialFocus: () => add });
-        add.classList.add('sb-dialog__icon-button');
         page.header.querySelector('.sb-dialog__header-end').append(add);
         members = { folderId: folder.id, page, add, list: memberList };
         renderMemberList(folder);
@@ -558,8 +561,9 @@ export function createFolderManager(scope, adapter) {
                 content,
                 search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.sb-folder-manager__folder-row', debounce: 300, onChange: () => refresh() },
             });
-            const add = button(t`New Folder`, 'plus', openCreatePopover, 'sb-folder-manager__add');
-            add.classList.add('sb-dialog__icon-button');
+            const add = createIconButton(t`New Folder`, 'plus', 'sb-folder-manager__add');
+            add.addEventListener('click', () => openCreatePopover(add));
+            addButton = add;
             add.addEventListener('keydown', event => {
                 if (event.key === 'Enter') event.stopPropagation();
             });

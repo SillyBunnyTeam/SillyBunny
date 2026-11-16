@@ -93,7 +93,8 @@
                 <small data-i18n="ext_regex_global_scripts_desc">
                     Available for all characters. Saved to local settings.
                 </small>
-                <div id="saved_regex_scripts" no-scripts-text="No scripts found" data-i18n="[no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
+                <!-- SillyBunny: DOMPurify drops non-data attributes, so the empty-list text lives in data-no-scripts-text. -->
+                <div id="saved_regex_scripts" data-no-scripts-text="No scripts found" data-i18n="[data-no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
             </div>
             <hr />
             <div id="preset_scripts_block">
@@ -108,7 +109,8 @@
                 <small data-i18n="ext_regex_preset_scripts_desc">
                     Only available for this preset. Saved to the preset data.
                 </small>
-                <div id="saved_preset_scripts" no-scripts-text="No scripts found" data-i18n="[no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
+                <!-- SillyBunny: DOMPurify drops non-data attributes, so the empty-list text lives in data-no-scripts-text. -->
+                <div id="saved_preset_scripts" data-no-scripts-text="No scripts found" data-i18n="[data-no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
             </div>
             <hr />
             <div id="scoped_scripts_block">
@@ -123,7 +125,8 @@
                 <small data-i18n="ext_regex_scoped_scripts_desc">
                     Only available for this character. Saved to the card data.
                 </small>
-                <div id="saved_scoped_scripts" no-scripts-text="No scripts found" data-i18n="[no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
+                <!-- SillyBunny: DOMPurify drops non-data attributes, so the empty-list text lives in data-no-scripts-text. -->
+                <div id="saved_scoped_scripts" data-no-scripts-text="No scripts found" data-i18n="[data-no-scripts-text]No scripts found" class="flex-container regex-script-container flexFlowColumn"></div>
             </div>
         </div>
     </div>

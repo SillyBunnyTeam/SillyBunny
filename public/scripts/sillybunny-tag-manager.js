@@ -3,7 +3,7 @@ import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
 import { reconcileRows, bindListKeyboard, bindSortable } from './sillybunny-editor/list-rows.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openPicker } from './sillybunny-editor/picker.js';
-import { openDialog } from './sillybunny-editor/dialog.js';
+import { openDialog, createIconButton } from './sillybunny-editor/dialog.js';
 import { reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
 import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
 import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
@@ -11,8 +11,11 @@ import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 const STYLESHEETS = [
     { href: 'css/sillybunny-editor-shell.css?v=20261116u', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261116v', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-tag-manager.css?v=20261112o', id: 'deferred-tag-manager-css' },
+    { href: 'css/sillybunny-tag-manager.css?v=20261116x', id: 'deferred-tag-manager-css' },
 ];
+const BATCH_SIZE = 50;
+/** @type {typeof import('./sillybunny-editor/list-show-more.js').createListShowMore|null} */
+let createListShowMore = null;
 let activeManager = null;
 let opening = null;
 let refreshQueued = false;
@@ -30,8 +33,8 @@ function icon(glyph) {
     return node;
 }
 
-function button(label, glyph, action, className = '') {
-    const node = element('button', `menu_button sb-tag-manager__button ${className}`);
+function rowButton(label, glyph, action, className = '') {
+    const node = element('button', `ds-entity-row__button ${className}`.trim());
     node.type = 'button';
     node.title = label;
     node.setAttribute('aria-label', label);
@@ -87,6 +90,11 @@ export function updateTagColors(tag, root = document) {
     }
 }
 
+/** The Show More row is only needed once the dialog opens, so its module stays out of the startup graph. */
+export async function loadTagManagerModules() {
+    ({ createListShowMore } = await import('./sillybunny-editor/list-show-more.js'));
+}
+
 /** Loads the dialog's nonblocking styles; failed attempts are removable/retryable like Persona. */
 export async function loadTagManagerStyles() {
     const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
@@ -122,7 +130,7 @@ export async function openTagManager(adapter) {
     }
     if (opening) return opening;
     opening = (async () => {
-        await loadTagManagerStyles();
+        await Promise.all([loadTagManagerStyles(), loadTagManagerModules()]);
         activeManager = createTagManager(adapter);
         activeManager.show();
         await activeManager.closed;
@@ -148,6 +156,11 @@ export function createTagManager(adapter) {
     let disposed = false;
     let dragging = false;
     let reconciling = false;
+    let batches = 1;
+    let lastQuery = '';
+    let revealId = null;
+    let lastView = null;
+    let addButton = null;
     let finish;
     const closed = new Promise(resolve => finish = resolve);
     /** @type {ReturnType<typeof openDialog>|null} */
@@ -157,9 +170,19 @@ export function createTagManager(adapter) {
         clear() { frame?.search?.clear(); },
         report(shown, total) { frame?.search?.report(shown, total); },
     };
-    const list = element('div', 'ds-pref-group ds-entity-list tag_view_list_tags');
+    const box = element('div', 'ds-entity-list sb-tag-manager__list');
+    // The upstream reprint paths look rows up under `.tag_view_list_tags`, so the rows container carries it.
+    const list = element('div', 'ds-entity-list__rows tag_view_list_tags');
     list.setAttribute('role', 'list');
     list.setAttribute('aria-label', t`Tag Management`);
+    const footer = element('div', 'ds-entity-list__footer');
+    footer.hidden = true;
+    const showMore = createListShowMore({ onShowMore: () => {
+        batches += 1;
+        refresh();
+    } });
+    footer.append(showMore.element);
+    box.append(list, footer);
     const empty = element('div', 'sb-tag-manager__empty');
     const restoreInput = element('input');
     restoreInput.type = 'file';
@@ -167,7 +190,7 @@ export function createTagManager(adapter) {
     restoreInput.accept = '.json';
     restoreInput.hidden = true;
     const content = document.createDocumentFragment();
-    content.append(list, empty, restoreInput);
+    content.append(box, empty, restoreInput);
 
     function setError(input, error, message = '') {
         error.textContent = message;
@@ -257,7 +280,10 @@ export function createTagManager(adapter) {
         const index = ordered.indexOf(tag);
         if (!ordered[index + direction]) return false;
         [ordered[index], ordered[index + direction]] = [ordered[index + direction], ordered[index]];
-        return mutate(() => ordered.forEach((entry, position) => entry.sort_order = position));
+        revealId = tag.id;
+        const moved = mutate(() => ordered.forEach((entry, position) => entry.sort_order = position));
+        revealId = null;
+        return moved;
     }
 
     function rowSections(tag, row) {
@@ -278,13 +304,10 @@ export function createTagManager(adapter) {
             item(t`Text Color`, 'font', () => showColor(tag, 'color2')),
         ] }, { items: [
             item(t`Hide on character card`, 'eye-slash', () => mutate(() => tag.is_hidden_on_character_card = !tag.is_hidden_on_character_card), { kind: 'check', checked: Boolean(tag.is_hidden_on_character_card) }),
-        ] }, { items: moves }, { items: [item(t`Delete`, 'trash-can', async () => {
-            await actions.delete(row);
-            refresh();
-        }, { danger: true })] }];
+        ] }, { items: moves }, { items: [item(t`Delete`, 'trash-can', () => actions.delete(row), { danger: true })] }];
     }
 
-    function renderTagMembers(tag, container) {
+    function renderTagMembers(tag, container, onAdd) {
         const state = getState();
         const keys = Object.entries(state.tagMap).filter(([, ids]) => Array.isArray(ids) && ids.includes(tag.id)).map(([key]) => key);
         const members = [
@@ -296,9 +319,9 @@ export function createTagManager(adapter) {
             })),
         ];
         const rows = members.map(member => {
-            const remove = button(t`Remove`, 'minus', () => {
+            const remove = rowButton(t`Remove`, 'minus', () => {
                 actions.removeMember(tag, member.key);
-                renderTagMembers(tag, container);
+                renderTagMembers(tag, container, onAdd);
                 commit();
             }, 'sb-tag-manager__member-remove');
             return createEntityRow({
@@ -310,15 +333,21 @@ export function createTagManager(adapter) {
                 compatClasses: { row: ['ds-entity-row--surface'] },
             }).row;
         });
-        if (!rows.length) rows.push(createStatusPage({ state: 'empty', icon: 'users', title: t`No Members`, compact: true }).element);
+        if (!rows.length) {
+            rows.push(createStatusPage({
+                state: 'empty', icon: 'users', title: t`No Members`, compact: true,
+                actions: [{ label: t`Add`, primary: true, onActivate: onAdd }],
+            }).element);
+        }
         container.replaceChildren(...rows);
     }
 
     function openMembers(tag) {
         if (!frame || !tag) return;
-        const list = element('div', 'ds-pref-group ds-entity-list sb-tag-manager__members');
+        const list = element('div', 'ds-entity-list sb-tag-manager__members');
         list.setAttribute('role', 'list');
-        const add = button(t`Add`, 'plus', () => {
+        const add = createIconButton(t`Add`, 'plus', 'sb-tag-manager__member-add');
+        const onAdd = () => {
             const state = getState();
             const assigned = new Set(Object.entries(state.tagMap).filter(([, ids]) => Array.isArray(ids) && ids.includes(tag.id)).map(([key]) => key));
             const items = [
@@ -337,16 +366,16 @@ export function createTagManager(adapter) {
                     if (assigned.has(key)) return;
                     actions.addMember(tag, key);
                     commit();
-                    renderTagMembers(tag, list);
+                    renderTagMembers(tag, list, onAdd);
                 },
             });
-        }, 'sb-tag-manager__member-add');
+        };
+        add.addEventListener('click', onAdd);
         const content = document.createDocumentFragment();
         content.append(list);
         const page = frame.push({ title: tag.name, content, initialFocus: () => add });
-        add.classList.add('sb-dialog__icon-button');
         page.header.querySelector('.sb-dialog__header-end').append(add);
-        renderTagMembers(tag, list);
+        renderTagMembers(tag, list, onAdd);
     }
 
     function showColor(tag, property) {
@@ -362,8 +391,8 @@ export function createTagManager(adapter) {
             picker.setAttribute('data-default-color', defaultColor);
             picker.setAttribute('aria-label', property === 'color' ? t`Background Color` : t`Text Color`);
             picker.addEventListener('change', event => actions.color(event, property));
-            const reset = button(t`Link to theme color`, 'link', () => picker.color = defaultColor);
-            const dismiss = button(t`Close`, 'xmark', () => entry.colors.hidden = true);
+            const reset = rowButton(t`Link to theme color`, 'link', () => picker.color = defaultColor);
+            const dismiss = rowButton(t`Close`, 'xmark', () => entry.colors.hidden = true);
             wrapper.append(picker, reset, dismiss);
             entry.colors.append(wrapper);
             entry.pickers[property] = picker;
@@ -378,6 +407,21 @@ export function createTagManager(adapter) {
         });
     }
 
+    /** The plural label reads wrong for one entry, so that count takes the placeholder until the copy is supplied. */
+    function setCount(entry, count) {
+        entry.countValue.textContent = String(count);
+        const label = entry.countLabel;
+        if (count === 1) {
+            label.textContent = t`TODO(copy)`;
+            label.dataset.sbCopyPlaceholder = 'true';
+            label.removeAttribute('data-i18n');
+        } else if (label.dataset.sbCopyPlaceholder) {
+            label.textContent = translate('entries', 'tag_entries');
+            delete label.dataset.sbCopyPlaceholder;
+            label.dataset.i18n = 'tag_entries';
+        }
+    }
+
     function makeRow(tag) {
         // Restore can replace an object while retaining its id; event handlers always resolve the live object.
         const currentTag = () => getState().tags.find(candidate => candidate.id === tag.id);
@@ -389,12 +433,12 @@ export function createTagManager(adapter) {
         error.id = `sb-tag-error-${tag.id}`;
         error.hidden = true;
         input.setAttribute('aria-describedby', error.id);
-        const name = element('div', 'sb-tag-manager__name-field');
+        const name = element('div', 'sb-tag-manager__field');
         name.append(input, error);
         const dot = element('span', 'sb-tag-manager__dot');
         dot.dataset.sbTagId = tag.id;
         dot.setAttribute('aria-hidden', 'true');
-        const more = button(t`Manage tags`, 'ellipsis-vertical', trigger => openMenu(trigger, rowSections(currentTag(), row)), 'sb-tag-manager__row-menu');
+        const more = rowButton(t`Manage tags`, 'ellipsis-vertical', trigger => openMenu(trigger, rowSections(currentTag(), row)), 'sb-tag-manager__row-menu');
         more.setAttribute('aria-haspopup', 'menu');
         const entity = createEntityRow({
             key: entityKey('tag', tag.id), label: tag.name, title: name, avatar: dot,
@@ -419,7 +463,7 @@ export function createTagManager(adapter) {
         colors.hidden = true;
         const pickers = {};
         row.append(colors);
-        controls.set(tag.id, { entity, input, error, colors, pickers, countValue });
+        controls.set(tag.id, { entity, input, error, colors, pickers, countValue, countLabel });
         input.addEventListener('blur', () => {
             // insertBefore temporarily blurs a focused input; a DOM move is not a user commit.
             if (!reconciling) commitName(currentTag(), input, error);
@@ -444,34 +488,60 @@ export function createTagManager(adapter) {
         return row;
     }
 
+    /** Fields whose change alters a mounted row, the rows shown or their order. */
+    function viewFingerprint(sorted, counts, query, pinned, sortMode) {
+        const parts = [query, batches, sortMode, [...pinned].join(',')];
+        for (const tag of sorted) parts.push(`${tag.id}\u0002${tag.name}\u0002${tag.color ?? ''}\u0002${tag.color2 ?? ''}\u0002${counts.get(tag.id) ?? 0}`);
+        return parts.join('\u0001');
+    }
+
     function refresh() {
         if (disposed || dragging || reconciling) return;
         const state = getState();
         const counts = countLiveTagEntities(state.tagMap, state.characters, state.groups);
         const sorted = adapter.sort(state.tags, counts);
         const query = search.query.trim().toLowerCase();
+        if (query !== lastQuery) {
+            lastQuery = query;
+            batches = 1;
+        }
+        const matches = query ? sorted.filter(tag => tag.name.toLowerCase().includes(query)) : sorted;
+        if (revealId !== null) {
+            const index = matches.findIndex(tag => tag.id === revealId);
+            if (index >= 0) batches = Math.max(batches, Math.ceil((index + 1) / BATCH_SIZE));
+            revealId = null;
+        }
+        const shownTags = matches.slice(0, batches * BATCH_SIZE);
+        const shownIds = new Set(shownTags.map(tag => tag.id));
+        // A row with a pending edit stays mounted, hidden, when a search or a batch limit would drop it.
+        const pinned = new Set();
+        for (const [id, entry] of controls) {
+            if (entry.input === document.activeElement || entry.input.getAttribute('aria-invalid') === 'true') pinned.add(id);
+        }
+        const fingerprint = viewFingerprint(sorted, counts, query, pinned, state.settings.tag_sort_mode);
+        if (fingerprint === lastView) return;
+        lastView = fingerprint;
         const scroller = frame?.body ?? null;
         const focused = list.contains(document.activeElement) ? document.activeElement : null;
         const pendingField = focused instanceof HTMLInputElement ? {
             value: focused.value, start: focused.selectionStart, end: focused.selectionEnd, direction: focused.selectionDirection,
         } : null;
         const scrollTop = scroller?.scrollTop ?? 0;
-        // Keep pending fields mounted even when an external update or search hides their row.
         reconciling = true;
         try {
-            reconcileRows({ container: list, cache, entries: sorted, key: tag => entityKey('tag', tag.id), signature: tag => tag.id,
+            const keys = reconcileRows({ container: list, cache, entries: sorted.filter(tag => shownIds.has(tag.id) || pinned.has(tag.id)),
+                key: tag => entityKey('tag', tag.id), signature: tag => tag.id,
                 create: makeRow, update: (row, tag) => {
                     const entry = controls.get(tag.id);
                     if (focused !== entry.input && entry.input.getAttribute('aria-invalid') !== 'true') entry.input.value = tag.name;
                     entry.entity.update({ label: tag.name });
-                    entry.countValue.textContent = String(counts.get(tag.id) ?? 0);
+                    setCount(entry, counts.get(tag.id) ?? 0);
                     entry.entity.slots.grip.hidden = Boolean(query);
-                    row.hidden = Boolean(query) && !tag.name.toLowerCase().includes(query);
+                    row.hidden = !shownIds.has(tag.id);
                     updateTagColors(tag, row);
                 },
             });
-            const liveIds = new Set(state.tags.map(tag => tag.id));
-            for (const id of controls.keys()) if (!liveIds.has(id)) controls.delete(id);
+            for (const id of controls.keys()) if (!keys.has(String(entityKey('tag', id)))) controls.delete(id);
             if (focused?.isConnected) {
                 if (pendingField) focused.value = pendingField.value;
                 if (document.activeElement !== focused) focused.focus({ preventScroll: true });
@@ -483,11 +553,18 @@ export function createTagManager(adapter) {
         } finally {
             reconciling = false;
         }
-        const shown = [...list.children].filter(row => !row.hidden).length;
-        list.hidden = !shown;
+        const shown = shownTags.length;
+        box.hidden = !shown;
         empty.hidden = Boolean(shown);
-        if (!shown) empty.replaceChildren(createStatusPage({ state: query ? 'no-results' : 'empty', icon: 'tags', title: query ? t`No results` : t`Create a new tag`, compact: true }).element);
-        search.report(shown, state.tags.length);
+        if (!shown) {
+            empty.replaceChildren(createStatusPage({
+                state: query ? 'no-results' : 'empty', icon: 'tags', title: query ? t`No results` : t`Create a new tag`, compact: true,
+                actions: query ? [] : [{ label: t`New`, primary: true, onActivate: () => openCreatePopover(addButton) }],
+            }).element);
+        }
+        showMore.update({ shown, total: matches.length });
+        footer.hidden = showMore.isComplete;
+        search.report(matches.length, state.tags.length);
         sortable?.setDisabled(Boolean(query));
     }
 
@@ -498,6 +575,7 @@ export function createTagManager(adapter) {
         const tag = create(parsed.name);
         search.clear();
         commit();
+        revealId = tag.id;
         refresh();
         popover.close();
         controls.get(tag.id)?.input.focus({ preventScroll: false });
@@ -539,9 +617,12 @@ export function createTagManager(adapter) {
     const sortable = bindSortable(list, {
         handle: '.drag-handle', items: '.tag_view_item', touch: () => layout.matches,
         start: () => { dragging = true; }, update: () => {
-            const ids = [...list.children].map(row => row.id);
             const state = getState();
-            state.tags.forEach(tag => tag.sort_order = ids.indexOf(tag.id));
+            // Rows beyond the loaded batches keep the order they had, after the rows that were dragged.
+            const previous = adapter.sort(state.tags, countLiveTagEntities(state.tagMap, state.characters, state.groups));
+            const loaded = new Set([...list.children].map(row => row.id));
+            const order = [...loaded, ...previous.map(tag => tag.id).filter(id => !loaded.has(id))];
+            state.tags.forEach(tag => tag.sort_order = order.indexOf(tag.id));
             state.settings.tag_sort_mode = 'manual';
             commit();
         }, stop: () => { dragging = false; refresh(); },
@@ -568,13 +649,15 @@ export function createTagManager(adapter) {
                 canClose: () => canClose(),
             });
             frame.surface.id = 'tag_view_list';
-            const add = button(t`Create a new tag`, 'plus', openCreatePopover, 'sb-tag-manager__add');
-            add.classList.add('sb-dialog__icon-button');
+            const add = createIconButton(t`Create a new tag`, 'plus', 'sb-tag-manager__add');
+            add.addEventListener('click', () => openCreatePopover(add));
             add.addEventListener('keydown', event => {
                 if (event.key === 'Enter') event.stopPropagation();
             });
+            addButton = add;
             frame.header.querySelector('.sb-dialog__header-end').prepend(add);
             frame.closed.then(dispose);
+            lastView = null;
             refresh();
         },
     };

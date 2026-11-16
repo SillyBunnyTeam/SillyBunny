@@ -98,7 +98,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             const manager = page.locator('.sb-dialog-host[open]:has(> .sb-folder-manager)');
             await expect(manager).toBeVisible();
             const createFolder = async name => {
-                const addFolder = manager.getByRole('button', { name: 'New Folder', exact: true });
+                const addFolder = manager.locator('.sb-dialog__header-end').getByRole('button', { name: 'New Folder', exact: true });
                 if (page.viewportSize().width > 450) {
                     await addFolder.focus();
                     await page.keyboard.press('Enter');
@@ -355,7 +355,7 @@ test('desktop Folder Manager New Folder trigger closes its open popover on repea
     await page.getByRole('menuitem', { name: 'Manage Folders', exact: true }).click();
     const manager = page.locator('.sb-dialog-host[open]:has(> .sb-folder-manager)');
     await expect(manager).toBeVisible();
-    const addFolder = manager.getByRole('button', { name: 'New Folder', exact: true });
+    const addFolder = manager.locator('.sb-dialog__header-end').getByRole('button', { name: 'New Folder', exact: true });
     await addFolder.click();
     const popover = page.locator('.sb-custom-popover:visible');
     await expect(popover).toBeVisible();
