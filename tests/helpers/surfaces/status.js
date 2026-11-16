@@ -1399,61 +1399,6 @@ const logsEmpty = status({
     sources: [`${SCRIPTS}/sillybunny-server-tools.js`],
 });
 
-const QUICK_ACTIONS = '[data-sb-panel="interface"] .sb-mobile-quick-actions-group';
-
-async function openQuickActions(page, target) {
-    await openSettingsTab(page, { shell: 'right', tab: 'interface' });
-    await page.locator(QUICK_ACTIONS).waitFor({ state: 'attached' });
-    return reveal(page, target);
-}
-
-const quickActionsHint = status({
-    id: 'interface.quick-actions-hint',
-    title: 'Interface: the Mobile Quick Actions search before a query',
-    component: 'shared',
-    root: `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]`,
-    async open(page) {
-        await openQuickActions(page, `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]`);
-        await settle(page);
-    },
-    viewports: MOBILE_LAYOUT_VIEWPORTS,
-    sources: [`${SCRIPTS}/sillybunny-tabs.js`],
-});
-
-const quickActionsNoMatches = status({
-    id: 'interface.quick-actions-no-matches',
-    title: 'Interface: the Mobile Quick Actions search finds nothing',
-    component: 'shared',
-    root: `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]`,
-    ready: `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]:has(.sb-status-page__description:has-text("No matches"))`,
-    async open(page) {
-        await openQuickActions(page, `${QUICK_ACTIONS} .sb-mobile-quick-action-search`);
-        await page.locator(`${QUICK_ACTIONS} .sb-mobile-quick-action-search`).fill(NO_MATCH);
-        await reveal(page, `${QUICK_ACTIONS} .sb-status-page[data-sb-region="results"]:has(.sb-status-page__description:has-text("No matches"))`);
-        await settle(page);
-    },
-    viewports: MOBILE_LAYOUT_VIEWPORTS,
-    sources: [`${SCRIPTS}/sillybunny-tabs.js`],
-});
-
-const quickActionsEmpty = status({
-    id: 'interface.quick-actions-empty',
-    title: 'Interface: no Mobile Quick Actions selected',
-    component: 'shared',
-    root: `${QUICK_ACTIONS} .sb-status-page[data-sb-region="list"]`,
-    async open(page) {
-        await openQuickActions(page, QUICK_ACTIONS);
-        // The list is the user's own choice, kept in the browser's storage, so removing every shortcut is the way to empty it.
-        for (let removed = 0; removed < 30 && await page.locator(`${QUICK_ACTIONS} .sb-mobile-quick-action-remove`).count(); removed++) {
-            await page.locator(`${QUICK_ACTIONS} .sb-mobile-quick-action-remove`).first().click();
-        }
-        await reveal(page, `${QUICK_ACTIONS} .sb-status-page[data-sb-region="list"]`);
-        await settle(page);
-    },
-    viewports: MOBILE_LAYOUT_VIEWPORTS,
-    sources: [`${SCRIPTS}/sillybunny-tabs.js`],
-});
-
 const BACKGROUNDS_HINT = '#bg_chat_hint';
 
 const backgroundsChatEmpty = status({
@@ -1760,9 +1705,6 @@ export const surfaces = [
     conversationAddDmNoMatches,
     conversationPersonasEmpty,
     logsEmpty,
-    quickActionsHint,
-    quickActionsNoMatches,
-    quickActionsEmpty,
     backgroundsChatEmpty,
     logprobsEmpty,
     pathfinderEmpty,

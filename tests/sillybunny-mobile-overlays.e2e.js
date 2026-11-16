@@ -3,7 +3,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
-import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 
@@ -277,14 +276,8 @@ for (const layout of layouts.filter(({ width }) => width <= 768)) {
             contextOptions: { reducedMotion: 'reduce' },
         });
 
-        test('bottom chat actions, chat tools and Quick Actions keep their input paths', async ({ page }) => {
+        test('bottom chat actions keep their input paths', async ({ page }) => {
             await protectMaintainerServer(page);
-            await page.addInitScript(() => {
-                localStorage.setItem('sb-mobile-quick-actions-v2', JSON.stringify([{
-                    type: 'custom', shellKey: 'right', tabId: 'data-security',
-                    label: 'Delayed server', displayText: 'Thumbnail Quality', dedupeKey: 'thumbnail-quality',
-                }]));
-            });
             await openQuietChatForSmoke(page);
 
             const chip = page.locator('#sb-bottom-chat-bar .sb-bottom-chat-chip');
@@ -297,27 +290,7 @@ for (const layout of layouts.filter(({ width }) => width <= 768)) {
             await expect(page.locator('.sb-dialog-host:has(.sb-bottom-chat-sheet)')).toHaveCount(0);
             await expect(chip).toBeFocused();
 
-            await page.evaluate(() => {
-                const nav = document.getElementById('sb-mobile-nav');
-                nav.hidden = false;
-                nav.inert = false;
-                nav.classList.add('sb-nav-open');
-                nav.setAttribute('aria-hidden', 'false');
-            });
-            const quickActions = page.locator('#sb-mobile-nav .sb-mobile-quick-actions-trigger');
-            await expect(quickActions).toBeVisible();
-            await quickActions.evaluate(button => button.click());
-            await expect(quickActions).toHaveAttribute('aria-expanded', 'true');
-            await expect(page.getByRole('menuitem').first()).toBeVisible();
-            if (layout.width <= 450 || layout.height <= 360) {
-                await expect(page.locator(OPEN_ACTION_SHEET)).toBeVisible();
-            } else {
-                await expect(page.locator('.sb-action-popover')).toBeVisible();
-            }
-            await page.keyboard.press('Escape');
-            await expect(page.locator('.sb-action-menu')).toBeHidden();
-            await expect(quickActions).toHaveAttribute('aria-expanded', 'false');
-            await expect(page.locator('#sb-mobile-nav')).toBeVisible();
+            await expect(page.locator('#sb-mobile-nav')).toHaveCount(0);
         });
     });
 }

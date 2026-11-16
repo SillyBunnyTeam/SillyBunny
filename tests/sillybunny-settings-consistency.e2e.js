@@ -1227,11 +1227,6 @@ test.describe('Settings entry regressions', () => {
                     await expect.poll(() => page.evaluate(ids => ids.filter(id => !document.getElementById(id)), ids)).toEqual([]);
                     await expect(outlet).toHaveClass(/ds-pref-group/);
                     await expect(firstGroup).toHaveClass(/ds-pref-group/);
-                    // The Quick Actions group is a page-level group of its own; only the phone layout shows it.
-                    const quickActions = interfacePanel.locator('.sb-mobile-quick-actions-group');
-                    await expect(quickActions).toHaveCount(1);
-                    await expect(outlet.locator('.sb-mobile-quick-actions-group')).toHaveCount(0);
-                    await expect(quickActions).toBeVisible({ visible: mobile });
                     await expect(outlet.locator(`#sb-${mode}-button-scale-input`)).toBeVisible();
                     for (const id of barIds) {
                         const input = bottomBar.locator(`#${id}`);
@@ -1439,47 +1434,28 @@ test.describe('Settings entry regressions', () => {
                 for (const pair of Object.values(displays)) expect(pair).toEqual(['none', 'none']);
             });
 
-            test('Interface has no Desktop Quick Actions and leaves the old saved list alone', async ({ page, baseURL }) => {
-                await page.addInitScript(() => {
-                    if (localStorage.getItem('sb-desktop-quick-actions-v2') === null) localStorage.setItem('sb-desktop-quick-actions-v2', 'orphan');
-                });
+            test('Interface has no Quick Actions group and leaves the old saved lists alone', async ({ page, baseURL }) => {
+                const savedKeys = ['sb-desktop-quick-actions-v2', 'sb-mobile-quick-actions-v2', 'sb-mobile-quick-actions'];
+                await page.addInitScript(keys => {
+                    for (const key of keys) if (localStorage.getItem(key) === null) localStorage.setItem(key, 'orphan');
+                }, savedKeys);
                 await loadSettings(page, baseURL);
                 await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
                 const interfacePanel = page.locator('[data-sb-panel="interface"]');
                 await expect(interfacePanel).toHaveAttribute('aria-hidden', 'false');
-                await expect(interfacePanel.locator('.sb-mobile-quick-actions-group')).toHaveCount(1);
+                await expect(interfacePanel.locator('#sb-interface-settings-body')).toHaveClass(/ds-pref-group/);
 
-                await expect(interfacePanel.locator('.sb-desktop-quick-actions-group')).toHaveCount(0);
-                await expect(interfacePanel.locator('[id^="sb-desktop-quick-action"]')).toHaveCount(0);
-                await expect(interfacePanel.getByText('Desktop Quick Actions')).toHaveCount(0);
+                for (const kind of ['mobile', 'desktop']) {
+                    await expect(interfacePanel.locator(`.sb-${kind}-quick-actions-group`)).toHaveCount(0);
+                    await expect(interfacePanel.locator(`[id^="sb-${kind}-quick-action"]`)).toHaveCount(0);
+                    await expect(interfacePanel.getByText(`${kind === 'mobile' ? 'Mobile' : 'Desktop'} Quick Actions`)).toHaveCount(0);
+                }
+                await expect(page.locator('#sb-mobile-nav')).toHaveCount(0);
                 await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'messages'));
                 await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
-                await expect(interfacePanel.locator('.sb-mobile-quick-actions-group')).toHaveCount(1);
-                expect(await page.evaluate(() => localStorage.getItem('sb-desktop-quick-actions-v2'))).toBe('orphan');
+                await expect(interfacePanel.locator('.sb-mobile-quick-actions-group')).toHaveCount(0);
+                expect(await page.evaluate(keys => keys.map(key => localStorage.getItem(key)), savedKeys)).toEqual(['orphan', 'orphan', 'orphan']);
             });
-
-            if (mobile) {
-                test('Mobile Quick Actions still render, remove, reset and save', async ({ page, baseURL }) => {
-                    await loadSettings(page, baseURL);
-                    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
-                    const group = page.locator('[data-sb-panel="interface"] .sb-mobile-quick-actions-group');
-                    await expect(group).toBeVisible();
-                    await expect(group.locator('.sb-settings-category-title')).toHaveText('Mobile Quick Actions');
-                    const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('sb-mobile-quick-actions-v2') ?? '[]').length);
-                    const rows = group.locator('.sb-mobile-quick-action-current');
-                    await expect(rows).not.toHaveCount(0);
-                    const initial = await rows.count();
-                    await expect.poll(saved).toBe(initial);
-
-                    await group.locator('.sb-mobile-quick-action-remove').first().click();
-                    await expect(rows).toHaveCount(initial - 1);
-                    await expect.poll(saved).toBe(initial - 1);
-
-                    await group.locator('#sb-mobile-quick-action-reset').click();
-                    await expect(rows).toHaveCount(initial);
-                    await expect.poll(saved).toBe(initial);
-                });
-            }
 
             test('native enlarged avatar stays hidden during settings and returns unchanged on close', async ({ page, baseURL }) => {
                 await loadSettings(page, baseURL);

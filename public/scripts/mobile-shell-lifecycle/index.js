@@ -1,12 +1,5 @@
-export const MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS = 450;
 export const MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX = 6;
 export const MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS = 350;
-
-export const MOBILE_SHELL_NAV_TOGGLE_ACTION = Object.freeze({
-    ACTIVATE_PAGE_TARGET: 'activate-page-target',
-    CLOSE_NAV: 'close-nav',
-    OPEN_NAV: 'open-nav',
-});
 
 export const MOBILE_SHELL_NAV_SCROLL_BEHAVIOR = Object.freeze({
     AUTO: 'auto',
@@ -14,7 +7,6 @@ export const MOBILE_SHELL_NAV_SCROLL_BEHAVIOR = Object.freeze({
 });
 
 export const MOBILE_SHELL_SURFACE = Object.freeze({
-    NAV: 'mobile-nav',
     LEFT_SHELL: 'left-shell',
     RIGHT_SHELL: 'right-shell',
     CHARACTER_PANEL: 'character-panel',
@@ -24,63 +16,37 @@ export const MOBILE_SHELL_CLOSE_ALL_SURFACES = Object.freeze([
     MOBILE_SHELL_SURFACE.LEFT_SHELL,
     MOBILE_SHELL_SURFACE.RIGHT_SHELL,
     MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-    MOBILE_SHELL_SURFACE.NAV,
 ]);
 
-export const MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT = 12;
-export const MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH = 36;
-export const MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK = 'fa-bolt';
-export const MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY = 'characters';
-
-const MOBILE_SHELL_RAIL_ICON_STYLE_CLASSES = Object.freeze(new Set(['fa-solid', 'fa-regular', 'fa-brands']));
-
 const MOBILE_SHELL_OVERLAY_EXCLUSION_TABLE = Object.freeze({
-    [MOBILE_SHELL_SURFACE.NAV]: Object.freeze({
-        mobile: Object.freeze([
-            MOBILE_SHELL_SURFACE.LEFT_SHELL,
-            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-        ]),
-        desktop: Object.freeze([
-            MOBILE_SHELL_SURFACE.LEFT_SHELL,
-            MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-            MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-        ]),
-    }),
     [MOBILE_SHELL_SURFACE.LEFT_SHELL]: Object.freeze({
         mobile: Object.freeze([
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.NAV,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.NAV,
         ]),
     }),
     [MOBILE_SHELL_SURFACE.RIGHT_SHELL]: Object.freeze({
         mobile: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.NAV,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.NAV,
         ]),
     }),
     [MOBILE_SHELL_SURFACE.CHARACTER_PANEL]: Object.freeze({
         mobile: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-            MOBILE_SHELL_SURFACE.NAV,
         ]),
         desktop: Object.freeze([
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-            MOBILE_SHELL_SURFACE.NAV,
         ]),
     }),
 });
@@ -105,16 +71,6 @@ export function clampMobileShellText(value, maxLength = 120) {
     }
 
     return `${normalizedValue.slice(0, safeMaxLength - 1).trimEnd()}…`;
-}
-
-export function normalizeMobileShellRailIcon(value, fallback = MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK) {
-    const fallbackIcon = clampMobileShellText(fallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK, 60);
-    const iconClass = String(value ?? '')
-        .trim()
-        .split(/\s+/)
-        .find(token => /^fa-[a-z0-9-]+$/i.test(token) && !MOBILE_SHELL_RAIL_ICON_STYLE_CLASSES.has(token.toLowerCase()));
-
-    return clampMobileShellText(iconClass?.toLowerCase() || fallbackIcon, 60);
 }
 
 function getTouchPoint(touch) {
@@ -291,39 +247,6 @@ export function resolveMobileShellNavScrollIndicators({
 }
 
 /**
- * Resolves hamburger behavior before runtime mutates drawers or overlay state.
- * @param {object} options Options.
- * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
- * @param {boolean} [options.isReplacementEnabled=false] Whether hamburger opens a configured page target.
- * @param {boolean} [options.isOpen=false] Whether nav overlay is currently open.
- * @returns {{action: string, shouldCloseCompetingPanels: boolean}}
- */
-export function resolveMobileNavToggleIntent({
-    isMobileViewport = false,
-    isReplacementEnabled = false,
-    isOpen = false,
-} = {}) {
-    if (isReplacementEnabled && isMobileViewport) {
-        return {
-            action: MOBILE_SHELL_NAV_TOGGLE_ACTION.ACTIVATE_PAGE_TARGET,
-            shouldCloseCompetingPanels: false,
-        };
-    }
-
-    if (isOpen) {
-        return {
-            action: MOBILE_SHELL_NAV_TOGGLE_ACTION.CLOSE_NAV,
-            shouldCloseCompetingPanels: false,
-        };
-    }
-
-    return {
-        action: MOBILE_SHELL_NAV_TOGGLE_ACTION.OPEN_NAV,
-        shouldCloseCompetingPanels: true,
-    };
-}
-
-/**
  * Resolves the surfaces that must close when one shell surface opens.
  * @param {object} options Options.
  * @param {string} [options.surface=''] Surface being opened.
@@ -343,109 +266,6 @@ export function resolveMobileShellExclusiveOpen({
         closeSurfaces: [...(isMobileViewport ? tableEntry.mobile : tableEntry.desktop)],
     };
 }
-
-/**
- * Resolves persisted quick-action route aliases before shell/tab validation.
- * @param {object} [action=null] Quick-action candidate.
- * @returns {{shellKey: string, tabId: string}}
- */
-export function resolveMobileShellQuickActionRoute(action = null) {
-    const legacyShellKey = normalizeMobileShellText(action?.shellKey || action?.shell);
-    const legacyTabId = normalizeMobileShellText(action?.tabId || action?.tab);
-    const isLegacyWorldInfoRoute = legacyShellKey === 'left' && legacyTabId === 'world-info';
-
-    return {
-        shellKey: isLegacyWorldInfoRoute ? MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY : legacyShellKey,
-        tabId: isLegacyWorldInfoRoute ? 'world-info' : legacyTabId,
-    };
-}
-
-/**
- * Normalizes a shell rail quick-action candidate without touching DOM state.
- * Runtime adapters provide shell/tab metadata from their current registry.
- * @param {object} options Options.
- * @param {object} [options.action=null] Quick-action candidate.
- * @param {object|null} [options.shellConfig=null] Shell metadata for non-character shells.
- * @param {object|null} [options.tabConfig=null] Tab metadata for tab actions.
- * @param {object} [options.limits={}] Limit overrides.
- * @returns {object|null}
- */
-export function normalizeMobileShellQuickAction({
-    action = null,
-    shellConfig = null,
-    tabConfig = null,
-    limits = {},
-} = {}) {
-    if (!action || typeof action !== 'object') {
-        return null;
-    }
-
-    const { shellKey, tabId } = resolveMobileShellQuickActionRoute(action);
-    const requestedType = normalizeMobileShellText(action.type);
-    const isShellAction = requestedType === 'shell';
-    const shellExists = shellKey === MOBILE_SHELL_RAIL_CHARACTER_SHELL_KEY || Boolean(shellConfig);
-
-    if ((isShellAction ? !shellKey : !tabId) || !shellExists) {
-        return null;
-    }
-
-    const dedupeKey = clampMobileShellText(action.dedupeKey, 160);
-    const type = dedupeKey ? 'custom' : isShellAction ? 'shell' : 'tab';
-    const displayText = clampMobileShellText(action.displayText, 80);
-    const sectionLabel = clampMobileShellText(action.sectionLabel, 80);
-    const labelMaxLength = normalizeNumber(limits.labelMaxLength, MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH);
-    const iconFallback = limits.iconFallback || MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK;
-    const fallbackLabel = type === 'custom'
-        ? displayText || sectionLabel
-        : type === 'shell'
-            ? shellConfig?.title || shellKey
-            : tabConfig?.label || tabId;
-    const label = clampMobileShellText(action.label || fallbackLabel, labelMaxLength);
-
-    if (!label) {
-        return null;
-    }
-
-    const fallbackIcon = type === 'custom'
-        ? iconFallback
-        : type === 'shell'
-            ? shellConfig?.proxyIcon || 'fa-bars'
-            : tabConfig?.icon || 'fa-bars';
-    const normalizedAction = {
-        type,
-        shellKey,
-        tabId,
-        icon: normalizeMobileShellRailIcon(action.icon, fallbackIcon),
-        label,
-    };
-
-    if (type === 'custom') {
-        normalizedAction.sectionLabel = sectionLabel;
-        normalizedAction.displayText = displayText || label;
-        normalizedAction.dedupeKey = dedupeKey;
-    }
-
-    return normalizedAction;
-}
-
-/**
- * Derives the stable storage/dedupe key for a normalized quick action.
- * @param {object|null} [action=null] Normalized quick action.
- * @returns {string}
- */
-export function getMobileShellQuickActionKey(action = null) {
-    if (!action || typeof action !== 'object') {
-        return '';
-    }
-
-    return [
-        action.type,
-        action.shellKey,
-        action.tabId,
-        action.dedupeKey,
-    ].filter(Boolean).join('::');
-}
-
 
 /**
  * Resolves which open inline drawer siblings should close when a drawer opens.
@@ -523,66 +343,6 @@ export function deriveInlineDrawerPersistenceKey({
 }
 
 /**
- * Resolves mobile navigation overlay state for DOM adapters.
- * @param {object} options Options.
- * @param {boolean} [options.requestedOpen=false] Requested open state.
- * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
- * @param {boolean} [options.wasOpen=false] Whether overlay was previously open.
- * @param {boolean} [options.focusedInside=false] Whether current focus is inside overlay.
- * @returns {{shouldOpen: boolean, overlayHidden: boolean, overlayAriaHidden: string, overlayInert: boolean, buttonExpanded: string, buttonIcon: string, shouldRecordOpenedAt: boolean, shouldRefreshQuickActions: boolean, shouldFocusTitle: boolean, shouldRestoreButtonFocus: boolean}}
- */
-export function resolveMobileNavOpenState({
-    requestedOpen = false,
-    isMobileViewport = false,
-    wasOpen = false,
-    focusedInside = false,
-} = {}) {
-    const shouldOpen = Boolean(requestedOpen) && Boolean(isMobileViewport);
-
-    return {
-        shouldOpen,
-        overlayHidden: !shouldOpen,
-        overlayAriaHidden: String(!shouldOpen),
-        overlayInert: !shouldOpen,
-        buttonExpanded: String(shouldOpen),
-        buttonIcon: shouldOpen ? 'close' : 'menu',
-        shouldRecordOpenedAt: shouldOpen,
-        shouldRefreshQuickActions: shouldOpen,
-        shouldFocusTitle: shouldOpen,
-        shouldRestoreButtonFocus: !shouldOpen && Boolean(wasOpen) && Boolean(focusedInside),
-    };
-}
-
-/**
- * Resolves outside-click auto-close policy for the mobile nav overlay.
- * @param {object} options Options.
- * @param {boolean} [options.isNavOpen=false] Whether nav overlay is open.
- * @param {boolean} [options.isTrusted=false] Whether click came from user input.
- * @param {number} [options.elapsedSinceOpenedMs=0] Milliseconds since nav opened.
- * @param {boolean} [options.isHamburgerTarget=false] Whether click is on hamburger.
- * @param {boolean} [options.isInsideNav=false] Whether click is inside nav overlay.
- * @param {boolean} [options.isAutoCloseArea=false] Whether click is in main content area.
- * @param {number} [options.openGraceMs=MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS] Grace period.
- * @returns {boolean}
- */
-export function shouldAutoCloseMobileNav({
-    isNavOpen = false,
-    isTrusted = false,
-    elapsedSinceOpenedMs = 0,
-    isHamburgerTarget = false,
-    isInsideNav = false,
-    isAutoCloseArea = false,
-    openGraceMs = MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS,
-} = {}) {
-    return Boolean(isNavOpen)
-        && Boolean(isTrusted)
-        && normalizeNumber(elapsedSinceOpenedMs) >= normalizeNumber(openGraceMs)
-        && !isHamburgerTarget
-        && !isInsideNav
-        && Boolean(isAutoCloseArea);
-}
-
-/**
  * Resolves page inert policy from active mobile modal roots.
  * Every mobile surface docks below the top bar rather than covering it, so the bar
  * stays interactive: its proxy buttons are how an open panel is closed again.
@@ -604,7 +364,6 @@ export function resolveMobileModalA11yState({
 
 export const MOBILE_SHELL_VIEWPORT_SYNC_STEP = Object.freeze({
     SYNC_SHELL_VIEWPORT_BOUNDS: 'sync-shell-viewport-bounds',
-    CLOSE_MOBILE_NAV: 'close-mobile-nav',
     APPLY_TOPBAR_OFFSET: 'apply-topbar-offset',
     SYNC_CHATBAR_VISIBILITY_STATE: 'sync-chatbar-visibility-state',
     UPDATE_TOP_BAR_BRAND: 'update-top-bar-brand',
@@ -630,7 +389,6 @@ const MOBILE_DOCUMENT_PAN_GUARD_SELECTOR = [
     '#leftSendForm',
     '#qr--bar',
     '#rightSendForm',
-    '#sb-mobile-nav',
     '#sb-bottom-chat-bar',
     '#sb-persona-picker',
     '#select2-sb-bottom-chat-select-container',
@@ -924,32 +682,19 @@ export function shouldBlockMobileDocumentPan(event, { touchStart = null } = {}) 
 
 /**
  * Resolves the ordered viewport sync work without touching shell DOM.
- * @param {object} options Options.
- * @param {boolean} [options.isMobileViewport=false] Whether mobile shell policy is active.
  * @returns {{steps: string[]}}
  */
-export function resolveMobileViewportSyncPlan({
-    isMobileViewport = false,
-} = {}) {
-    const steps = [
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_SHELL_VIEWPORT_BOUNDS,
-    ];
-
-    if (!isMobileViewport) {
-        steps.push(
-            MOBILE_SHELL_VIEWPORT_SYNC_STEP.CLOSE_MOBILE_NAV,
-        );
-    }
-
-    steps.push(
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.APPLY_TOPBAR_OFFSET,
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_CHATBAR_VISIBILITY_STATE,
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.UPDATE_TOP_BAR_BRAND,
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SCHEDULE_TOPBAR_CONTEXT_REFRESH,
-        MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_MODAL_STATE,
-    );
-
-    return { steps };
+export function resolveMobileViewportSyncPlan() {
+    return {
+        steps: [
+            MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_SHELL_VIEWPORT_BOUNDS,
+            MOBILE_SHELL_VIEWPORT_SYNC_STEP.APPLY_TOPBAR_OFFSET,
+            MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_CHATBAR_VISIBILITY_STATE,
+            MOBILE_SHELL_VIEWPORT_SYNC_STEP.UPDATE_TOP_BAR_BRAND,
+            MOBILE_SHELL_VIEWPORT_SYNC_STEP.SCHEDULE_TOPBAR_CONTEXT_REFRESH,
+            MOBILE_SHELL_VIEWPORT_SYNC_STEP.SYNC_MOBILE_MODAL_STATE,
+        ],
+    };
 }
 
 /**
@@ -960,7 +705,6 @@ export function resolveMobileViewportSyncPlan({
 export function createMobileShellLifecycle() {
     return {
         nav: {
-            action: MOBILE_SHELL_NAV_TOGGLE_ACTION,
             scrollBehavior: MOBILE_SHELL_NAV_SCROLL_BEHAVIOR,
             createDragState: createMobileShellNavDragState,
             resolveDragMove: resolveMobileShellNavDragMove,
@@ -968,9 +712,6 @@ export function createMobileShellLifecycle() {
             shouldSuppressClick: shouldSuppressMobileShellNavClick,
             resolvePageScroll: resolveMobileShellNavPageScroll,
             resolveScrollIndicators: resolveMobileShellNavScrollIndicators,
-            resolveToggleIntent: resolveMobileNavToggleIntent,
-            resolveOpenState: resolveMobileNavOpenState,
-            shouldAutoClose: shouldAutoCloseMobileNav,
         },
         modal: {
             resolveA11yState: resolveMobileModalA11yState,
@@ -979,16 +720,6 @@ export function createMobileShellLifecycle() {
             surface: MOBILE_SHELL_SURFACE,
             closeAllSurfaces: MOBILE_SHELL_CLOSE_ALL_SURFACES,
             resolveExclusiveOpen: resolveMobileShellExclusiveOpen,
-        },
-        railModel: {
-            limits: {
-                quickActionLimit: MOBILE_SHELL_RAIL_QUICK_ACTION_LIMIT,
-                labelMaxLength: MOBILE_SHELL_RAIL_QUICK_ACTION_LABEL_MAX_LENGTH,
-                iconFallback: MOBILE_SHELL_RAIL_QUICK_ACTION_ICON_FALLBACK,
-            },
-            resolveQuickActionRoute: resolveMobileShellQuickActionRoute,
-            normalizeQuickAction: normalizeMobileShellQuickAction,
-            getQuickActionKey: getMobileShellQuickActionKey,
         },
         inlineDrawers: {
             resolveAutoCloseSiblings: resolveInlineDrawerAutoCloseSiblings,
@@ -999,7 +730,6 @@ export function createMobileShellLifecycle() {
             resolveSyncPlan: resolveMobileViewportSyncPlan,
         },
         timings: {
-            navOpenGraceMs: MOBILE_SHELL_LIFECYCLE_NAV_OPEN_GRACE_MS,
             navDragThresholdPx: MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX,
             navClickSuppressionMs: MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS,
         },

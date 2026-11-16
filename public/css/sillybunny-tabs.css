@@ -2167,60 +2167,6 @@ body:not(.movingUI) .drawer-content.maximized {
     font-weight: 700;
 }
 
-.sb-mobile-quick-action-search {
-    width: 100%;
-    min-height: 34px;
-    margin: 0;
-    box-sizing: border-box;
-}
-
-.sb-mobile-quick-action-list {
-    display: grid;
-    gap: 8px;
-}
-
-.sb-mobile-quick-action-empty {
-    border-radius: var(--sb-radius-card);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
-    padding: 10px 12px;
-    font-size: var(--sb-type-caption);
-    line-height: 1.4;
-    opacity: 0.76;
-}
-
-.sb-mobile-quick-action-icon-picker,
-.sb-mobile-quick-action-icon-preview {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0;
-}
-
-.sb-mobile-quick-action-icon-picker {
-    min-width: var(--sb-mobile-touch-target, 44px);
-    width: var(--sb-mobile-touch-target, 44px);
-    min-height: var(--sb-mobile-touch-target, 44px);
-    height: var(--sb-mobile-touch-target, 44px);
-    touch-action: manipulation;
-}
-
-.sb-mobile-quick-action-icon-preview {
-    min-width: 30px;
-    width: 30px;
-    min-height: 30px;
-    height: 30px;
-    border-radius: var(--sb-radius-control);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 60%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);
-    opacity: 0.82;
-}
-
-.sb-mobile-quick-action-icon-picker:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
 /* Bottom chat management bar */
 #nonQRFormItems {
     display: grid !important;
@@ -3545,10 +3491,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 }
 
 @media screen and (max-width: 450px) {
-    .sb-mobile-section-list {
-        grid-template-columns: 1fr;
-    }
-
     #sb-home-toggle,
 #sb-left-shell-toggle,
 #sb-right-shell-toggle,
@@ -3587,38 +3529,9 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     .sb-shell-title {
         font-size: var(--sb-type-body);
     }
-
-    .sb-nav-item {
-        min-height: 52px;
-        padding: 0 14px;
-        grid-template-columns: 32px minmax(0, 1fr);
-        column-gap: 12px;
-    }
-
-    .sb-nav-item i {
-        width: 32px;
-        min-width: 32px;
-        font-size: calc(var(--mainFontSize) * 1.04);
-    }
-
 }
 
 @media screen and (max-width: 768px) {
-    .sb-mobile-panel-header {
-        grid-template-columns: minmax(0, 1fr) 32px;
-        align-items: center;
-    }
-
-    .sb-mobile-panel-close {
-        width: 32px;
-        min-width: 32px;
-        max-width: 32px;
-        height: 32px;
-        min-height: 32px;
-        max-height: 32px;
-        border-radius: var(--sb-radius-control);
-    }
-
     .sb-shell-root-left .sb-shell-description,
     .sb-shell-root-right .sb-shell-description,
     .sb-shell-tab-copy small {
@@ -3706,8 +3619,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     .sb-proxy-button,
 .sb-shell-header,
 .sb-shell-tab,
-.sb-search-result,
-.sb-nav-item {
+.sb-search-result {
         transition-duration: 0.01ms !important;
     }
 
@@ -8288,7 +8200,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
         min-height: 48px;
     }
 
-    :is(.sb-shell-nav-scroll, .sb-mobile-panel-close, .sb-settings-search-toggle-btn, .sb-settings-close-button, .sb-settings-back-button, .sb-subpage-back, .sb-connections-help) {
+    :is(.sb-shell-nav-scroll, .sb-settings-search-toggle-btn, .sb-settings-close-button, .sb-settings-back-button, .sb-subpage-back, .sb-connections-help) {
         width: 44px;
         min-width: 44px;
         max-width: none;
@@ -8309,10 +8221,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     .sb-search-show-all,
     .sb-shell-search,
     .sb-theme-slider-value,
-    .sb-mobile-quick-action-search,
-    .sb-mobile-quick-action-add,
-    .sb-mobile-quick-action-remove,
-    .sb-mobile-quick-action-reset,
     .sb-persona-option,
     .sb-persona-picker-manage,
     .sb-persona-picker-appendix-toggle,

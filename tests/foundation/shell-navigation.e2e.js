@@ -85,7 +85,7 @@ test('preserves Layer 2 controls, labels, settings tabs, and settings focus', as
         await expect(toggle).not.toHaveClass(/sb-settings-active/);
     }
 
-    await expect(page.locator('#sb-mobile-nav')).toBeHidden();
+    await expect(page.locator('#sb-mobile-nav')).toHaveCount(0);
 });
 
 test('desktop Characters settings page opens from its top-bar trigger', async ({ page, isMobile }) => {

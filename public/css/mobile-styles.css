@@ -174,29 +174,6 @@
         backdrop-filter: blur(2px);
     }
 
-    /* Reduce mobile nav spacing */
-    #sb-mobile-nav {
-        padding: 12px;
-    }
-
-    #sb-mobile-nav-content {
-        padding: var(--spacing-lg, 16px) var(--spacing-md, 12px);
-        gap: 12px;
-    }
-
-    .sb-mobile-section {
-        gap: 10px;
-    }
-
-    .sb-mobile-section-list {
-        gap: 10px;
-    }
-
-    .sb-nav-item {
-        padding: 14px 16px;
-        gap: 12px;
-    }
-
     /* Settings panel spacing */
     #right-nav-panel .drawer-content,
     #left-nav-panel .drawer-content {
@@ -1080,11 +1057,6 @@
 }
 
 @media screen and (max-width: 620px) {
-    /* Tighter mobile nav spacing for small phones */
-    #sb-mobile-nav {
-        padding: 10px;
-    }
-
     .checkbox_label {
         min-height: 32px;
     }
@@ -1092,16 +1064,6 @@
     .checkbox_label > input[type="checkbox"] {
         flex: 0 0 auto;
         margin: 0;
-    }
-
-    #sb-mobile-nav-content {
-        padding: 12px 10px var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px)));
-        gap: 10px;
-    }
-
-    .sb-nav-item {
-        padding: 12px 14px;
-        gap: 10px;
     }
 
     /* Input area optimization for small phones */

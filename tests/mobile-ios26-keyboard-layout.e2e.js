@@ -96,7 +96,7 @@ async function mountFixture(page, { platform = 'iPhone', userAgent = safariUA } 
             'getMobileFocusedInputScroller', 'syncMobileFocusedInputScroll', 'scheduleMobileFocusedInputScroll',
         ].map(name => extractFunction(tabs, name)),
         // Only unrelated navigation, branding, popup and app construction work is stubbed.
-        ...['closeMobileNav', 'syncDesktopShellSizing', 'applyTopbarOffset',
+        ...['syncDesktopShellSizing', 'applyTopbarOffset',
             'syncChatbarVisibilityState', 'updateTopBarBrand', 'scheduleTopbarContextRefresh', 'syncMobileModalState', 'scheduleMobilePopupKeyboardSync',
         ].map(name => `function ${name}() {}`),
         `const sbMobileShellLifecycle = {

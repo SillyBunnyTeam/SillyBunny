@@ -29,8 +29,7 @@ const REAPPLY_DELAY_MS = 150;
 const GROUP_BODY_SELECTOR = '.ds-pref-group, .sb-settings-category-body';
 // Lists of entities have their own filter, and a list that is a row of the page is not a boxed list of settings.
 const ENTITY_LIST_SELECTOR = '.ds-entity-list, .sb-wi-list-box, [role="list"]';
-const EXCLUDED_SELECTOR = '.sb-search-result, .sb-legacy-search-hidden, .sb-theme-card, .sb-mobile-quick-actions-group, [data-sb-copy-placeholder]';
-const UNSEARCHED_GROUP_SELECTOR = '.sb-mobile-quick-actions-group';
+const EXCLUDED_SELECTOR = '.sb-search-result, .sb-legacy-search-hidden, .sb-theme-card, [data-sb-copy-placeholder]';
 const NON_ROW_SELECTOR = 'script, style, template, [data-sb-copy-placeholder]';
 const HEADER_SELECTOR = ':scope > :is(.ds-pref-group-header, .sb-settings-category-header, .sb-settings-flat-header, .inline-drawer-toggle)';
 const HEADING_SELECTOR = '.ds-pref-group-heading, .sb-settings-category-title, h3, h4, b';
@@ -221,9 +220,7 @@ export function collectSearchGroups(root) {
     const groups = [];
     for (const body of root.querySelectorAll(GROUP_BODY_SELECTOR)) {
         if (!(body instanceof HTMLElement) || body.matches(ENTITY_LIST_SELECTOR)) continue;
-        const excluded = body.closest(EXCLUDED_SELECTOR);
-        // The Quick Actions group is not searched, so a filter hides it like any group with no match.
-        if (excluded && !excluded.matches(UNSEARCHED_GROUP_SELECTOR)) continue;
+        if (body.closest(EXCLUDED_SELECTOR)) continue;
         const outer = body.parentElement?.closest(GROUP_BODY_SELECTOR);
         if (outer && root.contains(outer)) continue;
 
@@ -248,11 +245,9 @@ export function collectSearchGroups(root) {
             container,
             title,
             text: normalizeSearchText([title, description, ...aliases].join(' ')),
-            rows: excluded
-                ? []
-                : Array.from(body.children)
-                    .filter(child => child instanceof HTMLElement && !child.matches(NON_ROW_SELECTOR))
-                    .map(element => ({ element, text: '', match: false, available: false })),
+            rows: Array.from(body.children)
+                .filter(child => child instanceof HTMLElement && !child.matches(NON_ROW_SELECTOR))
+                .map(element => ({ element, text: '', match: false, available: false })),
         });
     }
     return groups;

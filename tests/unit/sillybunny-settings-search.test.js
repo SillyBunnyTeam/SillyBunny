@@ -253,11 +253,11 @@ describe('row filter', () => {
         expect(swipes.getAttribute('aria-hidden')).toBe('true');
     });
 
-    test('the Quick Actions group is not searched, and a filter hides it with the other groups that miss', () => {
+    test('an excluded group is not searched and the filter leaves it alone', () => {
         const root = html(`
             <div id="root">
-                <section class="sb-settings-category sb-mobile-quick-actions-group" data-sb-category="quick">
-                    <div class="sb-settings-category-header"><h4 class="ds-pref-group-heading sb-settings-category-title">Mobile Quick Actions</h4></div>
+                <section class="sb-settings-category sb-theme-card" data-sb-category="theme">
+                    <div class="sb-settings-category-header"><h4 class="ds-pref-group-heading sb-settings-category-title">Theme</h4></div>
                     <div class="ds-pref-group sb-settings-category-body"><div class="ds-row">Fade shortcut</div></div>
                 </section>
                 <section class="sb-settings-category" data-sb-category="stream">
@@ -268,7 +268,7 @@ describe('row filter', () => {
         const analysis = analyze('fade', root);
         applyRowFilter(analysis.groups);
         expect(analysis.count).toBe(1);
-        expect(root.querySelector('[data-sb-category="quick"]').classList.contains(ROW_FILTERED_CLASS)).toBe(true);
+        expect(root.querySelector('[data-sb-category="theme"]').classList.contains(ROW_FILTERED_CLASS)).toBe(false);
         expect(root.querySelector('[data-sb-category="stream"]').classList.contains(ROW_FILTERED_CLASS)).toBe(false);
     });
 

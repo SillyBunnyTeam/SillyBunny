@@ -607,8 +607,7 @@ body::before {
     }
 }
 
-.popup,
-#sb-mobile-nav {
+.popup {
     position: relative;
     z-index: var(--sb-z-raised);
 }

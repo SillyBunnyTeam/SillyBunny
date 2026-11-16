@@ -462,13 +462,6 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
                 body: '#sb-paper-texture-settings',
             },
             {
-                id: 'mobile-quick-actions',
-                title: 'Mobile Quick Actions',
-                description: 'Choose the shortcuts shown in the mobile quick drawer. Defaults can be removed or restored.',
-                className: 'sb-mobile-setting sb-mobile-quick-actions-group',
-                body: '#sb-mobile-quick-actions-box',
-            },
-            {
                 id: 'typing',
                 title: 'Typing',
                 description: 'Text field selection, markdown shortcuts, and unsent input',

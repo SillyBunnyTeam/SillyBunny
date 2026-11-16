@@ -22,7 +22,6 @@ const VIEWPORT_SURFACE_SELECTOR = [
     '#sb-settings-page:not([hidden]):not(.sb-settings-page--content) #sb-settings-sidebar',
     '#sb-settings-page.sb-settings-page--content:not([hidden]) #sb-settings-content',
     '#sb-settings-page.sb-settings-page--content:not([hidden]) .sb-settings-active-root',
-    '#sb-mobile-nav.sb-nav-open',
     '#sb-universal-search.is-open .sb-universal-search-panel',
     '#sb-persona-picker',
     '.options-content',
@@ -118,17 +117,7 @@ function getOverlayStateSnapshot(page) {
                 && root?.classList.contains('sb-settings-active-root')
                 && root.getAttribute('aria-hidden') === 'false');
         };
-        const isOverlayOpen = (id, openClass) => {
-            const overlay = document.getElementById(id);
-
-            return Boolean(overlay
-                && !overlay.hidden
-                && overlay.classList.contains(openClass)
-                && overlay.getAttribute('aria-hidden') === 'false');
-        };
-
         return {
-            navOpen: isOverlayOpen('sb-mobile-nav', 'sb-nav-open'),
             leftShellOpen: isSettingsSectionOpen('left-nav-panel'),
             rightShellOpen: isSettingsSectionOpen('user-settings-block'),
             characterPanelOpen: isSettingsSectionOpen('right-nav-panel'),
@@ -386,7 +375,6 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await openLeftShell(page);
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
-            navOpen: false,
             leftShellOpen: true,
             rightShellOpen: false,
             characterPanelOpen: false,
@@ -397,7 +385,6 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await page.evaluate(() => window.SillyBunnyShell.openCharacters());
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
-            navOpen: false,
             leftShellOpen: false,
             rightShellOpen: false,
             characterPanelOpen: true,
@@ -407,7 +394,6 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await page.evaluate(() => window.SillyBunnyShell.openTab('right'));
 
         await expect.poll(() => getOverlayStateSnapshot(page)).toEqual({
-            navOpen: false,
             leftShellOpen: false,
             rightShellOpen: true,
             characterPanelOpen: false,

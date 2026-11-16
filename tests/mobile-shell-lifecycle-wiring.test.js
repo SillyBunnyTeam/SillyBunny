@@ -526,29 +526,9 @@ describe('mobile shell lifecycle wiring', () => {
         expect(syncMobileModalStateSource).toContain('activeRootIds: activeRoots.map(root => root.id)');
         expect(syncMobileModalStateSource).toContain('modalState.hasActiveMobileModal');
         expect(syncMobileModalStateSource).toContain('modalState.shouldInertShell');
-        expect(syncMobileModalStateSource).not.toContain('activeRoots.some(root => root.id !== \'sb-mobile-nav\')');
+        expect(syncMobileModalStateSource).not.toContain('activeRoots.some(');
         // Re-tapping a top bar proxy button has to close the panel it opened, so the bar is never inerted.
         expect(syncMobileModalStateSource).not.toContain('getElementById(\'top-bar\')');
-    });
-
-    test('routes mobile nav outside-click auto-close through the lifecycle seam', () => {
-        const buildMobileNavSource = getFunctionSource('buildMobileNav');
-
-        expect(buildMobileNavSource).toContain('sbMobileShellLifecycle.nav.shouldAutoClose({');
-        expect(buildMobileNavSource).toContain('elapsedSinceOpenedMs: performance.now() - sbState.mobileNav.lastOpenedAt');
-        expect(buildMobileNavSource).toContain('isInsideNav: Boolean(target.closest(\'#sb-mobile-nav\'))');
-        expect(buildMobileNavSource).not.toContain('SB_MOBILE_NAV_OPEN_GRACE_MS');
-    });
-
-    test('routes mobile nav open-state decisions through the lifecycle seam', () => {
-        const setMobileNavOpenStateSource = getFunctionSource('setMobileNavOpenState');
-
-        expect(setMobileNavOpenStateSource).toContain('sbMobileShellLifecycle.nav.resolveOpenState({');
-        expect(setMobileNavOpenStateSource).toContain('navState.shouldRecordOpenedAt');
-        expect(setMobileNavOpenStateSource).toContain('overlay.hidden = navState.overlayHidden;');
-        expect(setMobileNavOpenStateSource).toContain('overlay.setAttribute(\'aria-hidden\', navState.overlayAriaHidden);');
-        expect(setMobileNavOpenStateSource).toContain('button.setAttribute(\'aria-expanded\', navState.buttonExpanded);');
-        expect(setMobileNavOpenStateSource).toContain('navState.shouldRestoreButtonFocus');
     });
 
     test('requests a mobile viewport reset when search and mobile panels close', () => {
@@ -556,7 +536,6 @@ describe('mobile shell lifecycle wiring', () => {
         const closeSettingsPageSource = getFunctionSource('closeSettingsPage');
         const closeShellSource = getFunctionSource('closeShell');
         const closeCharacterPanelSource = getFunctionSource('closeCharacterPanel');
-        const setMobileNavOpenStateSource = getFunctionSource('setMobileNavOpenState');
 
         expect(tabsSource).toContain('function requestMobileViewportReset(');
         expect(tabsSource).toContain('detail: { restoreScroll: Boolean(restoreScroll) },');
@@ -565,7 +544,6 @@ describe('mobile shell lifecycle wiring', () => {
         expect(closeSettingsPageSource).toContain('requestMobileViewportReset();');
         expect(closeShellSource).toContain('closeSettingsPage();');
         expect(closeCharacterPanelSource).toContain('closeSettingsPage();');
-        expect(setMobileNavOpenStateSource).toContain('requestMobileViewportReset();');
     });
 
     test('character drawer Escape closes locally while deferring nested controls', () => {
@@ -696,7 +674,7 @@ describe('mobile shell lifecycle wiring', () => {
     test('routes mobile viewport sync planning through the lifecycle seam', () => {
         const syncMobileViewportStateSource = getFunctionSource('syncMobileViewportState');
 
-        expect(syncMobileViewportStateSource).toContain('sbMobileShellLifecycle.viewportSync.resolveSyncPlan({');
+        expect(syncMobileViewportStateSource).toContain('sbMobileShellLifecycle.viewportSync.resolveSyncPlan();');
         expect(syncMobileViewportStateSource).toContain('[viewportSyncStep.SCHEDULE_TOPBAR_CONTEXT_REFRESH]: () => scheduleTopbarContextRefresh(0),');
         expect(syncMobileViewportStateSource).not.toContain('SYNC_MOBILE_SHELL_DRAWER_BOUNDS');
         expect(syncMobileViewportStateSource).not.toContain('if (!isMobileViewport()) {');
@@ -765,7 +743,6 @@ describe('mobile shell lifecycle wiring', () => {
         const openSettingsPageSource = getFunctionSource('openSettingsPage');
         const closeAllDropdownsSource = getFunctionSource('closeAllDropdowns');
 
-        expect(applyExclusivitySource).toContain('[surface.NAV]: () => closeMobileNav(),');
         expect(applyExclusivitySource).toContain('[surface.LEFT_SHELL]: () => closeShell(\'left\'),');
         expect(applyExclusivitySource).toContain('[surface.RIGHT_SHELL]: () => closeShell(\'right\'),');
         expect(applyExclusivitySource).toContain('[surface.CHARACTER_PANEL]: () => closeCharacterPanel(),');
@@ -792,7 +769,7 @@ describe('mobile shell lifecycle wiring', () => {
         expect(closeAllDropdownsSource).not.toContain('const surfaceByException = {');
 
         expect(toggleCharacterPanelSource).not.toContain('closeShell(\'left\');\n    closeShell(\'right\');');
-        expect(openCharacterWorldInfoTabSource).not.toContain('closeMobileNav();\n    closeShell(\'left\');\n    closeShell(\'right\');');
+        expect(openCharacterWorldInfoTabSource).not.toContain('closeShell(\'left\');\n    closeShell(\'right\');');
     });
 
 });

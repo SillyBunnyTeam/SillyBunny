@@ -240,36 +240,3 @@ test('failed cleanup import can be retried by opening the tool again', async ({ 
     await expect(page.locator('dialog[open]')).toBeVisible();
     expect(attempts).toBe(2);
 });
-
-test('a delayed custom quick action preserves later navigation', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.addInitScript(() => {
-        localStorage.setItem('sb-mobile-quick-actions-v2', JSON.stringify([{
-            type: 'custom', shellKey: 'right', tabId: 'data-security',
-            label: 'Delayed server', displayText: 'Thumbnail Quality', dedupeKey: 'thumbnail-quality',
-        }]));
-    });
-    let releaseImport;
-    const importGate = new Promise(resolve => { releaseImport = resolve; });
-    await page.route(serverToolsScript, async route => {
-        await importGate;
-        await route.continue();
-    });
-    await openApp(page);
-    const importStarted = page.waitForRequest(serverToolsScript);
-    await page.evaluate(() => {
-        const nav = document.getElementById('sb-mobile-nav');
-        nav.hidden = false;
-        nav.inert = false;
-        nav.classList.add('sb-nav-open');
-        nav.setAttribute('aria-hidden', 'false');
-    });
-    await page.locator('#sb-mobile-nav .sb-mobile-quick-actions-trigger').evaluate(trigger => trigger.click());
-    await page.getByRole('menuitem', { name: 'Delayed server', exact: true }).click();
-    await importStarted;
-    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
-    releaseImport();
-    await expect(page.locator('[data-sb-panel="data-security"] .sb-server-column')).toHaveCount(1);
-    await expect(page.locator('[data-sb-panel="extensions"]')).toHaveAttribute('aria-hidden', 'false');
-    await expect(page.locator('[data-sb-panel="data-security"]')).toHaveAttribute('aria-hidden', 'true');
-});

@@ -8,32 +8,23 @@ import {
 } from '../public/scripts/mobile-shell-lifecycle/index.js';
 
 const EXPECTED_CLOSE_SURFACES = Object.freeze({
-    [MOBILE_SHELL_SURFACE.NAV]: [
-        MOBILE_SHELL_SURFACE.LEFT_SHELL,
-        MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-        MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-    ],
     [MOBILE_SHELL_SURFACE.LEFT_SHELL]: [
         MOBILE_SHELL_SURFACE.RIGHT_SHELL,
         MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-        MOBILE_SHELL_SURFACE.NAV,
     ],
     [MOBILE_SHELL_SURFACE.RIGHT_SHELL]: [
         MOBILE_SHELL_SURFACE.LEFT_SHELL,
         MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-        MOBILE_SHELL_SURFACE.NAV,
     ],
     [MOBILE_SHELL_SURFACE.CHARACTER_PANEL]: [
         MOBILE_SHELL_SURFACE.LEFT_SHELL,
         MOBILE_SHELL_SURFACE.RIGHT_SHELL,
-        MOBILE_SHELL_SURFACE.NAV,
     ],
 });
 
 describe('mobile shell overlay exclusion lifecycle', () => {
     test('keeps the shell surface constants explicit', () => {
         expect(MOBILE_SHELL_SURFACE).toEqual({
-            NAV: 'mobile-nav',
             LEFT_SHELL: 'left-shell',
             RIGHT_SHELL: 'right-shell',
             CHARACTER_PANEL: 'character-panel',
@@ -45,7 +36,6 @@ describe('mobile shell overlay exclusion lifecycle', () => {
             MOBILE_SHELL_SURFACE.LEFT_SHELL,
             MOBILE_SHELL_SURFACE.RIGHT_SHELL,
             MOBILE_SHELL_SURFACE.CHARACTER_PANEL,
-            MOBILE_SHELL_SURFACE.NAV,
         ]);
     });
 

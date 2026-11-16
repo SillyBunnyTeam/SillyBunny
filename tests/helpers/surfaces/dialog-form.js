@@ -260,25 +260,13 @@ export const surfaces = [
         async open(page) {
             await closeDialogs(page);
             await closeMenus(page);
-            await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
-            // The Quick Actions list, whose icon button opens the picker, is built for the phone layout only.
-            if (page.viewportSize().width <= 768) {
-                const group = page.locator('[data-sb-panel="interface"] .sb-mobile-quick-actions-group');
-                const picker = group.locator('.sb-mobile-quick-action-icon-picker');
-                if (!await picker.count()) {
-                    await group.locator('#sb-mobile-quick-action-search').fill('Interface');
-                    await group.locator('.sb-mobile-quick-action-add:not([disabled])').first().click();
-                }
-                await picker.first().click();
-            } else {
-                await page.evaluate(async () => {
-                    const { showFontAwesomePicker } = await import('/scripts/utils.js');
-                    void showFontAwesomePicker();
-                });
-            }
+            await page.evaluate(async () => {
+                const { showFontAwesomePicker } = await import('/scripts/utils.js');
+                void showFontAwesomePicker();
+            });
             await settleFrame(page, DIALOG_FRAME);
         },
-        sources: [`${SCRIPTS}/utils.js`, `${SCRIPTS}/sillybunny-tabs.js`, ...UTILITY_SOURCES],
+        sources: [`${SCRIPTS}/utils.js`, ...UTILITY_SOURCES],
     }),
     // Form dialogs of `misc-dialogs.js`.
     form({

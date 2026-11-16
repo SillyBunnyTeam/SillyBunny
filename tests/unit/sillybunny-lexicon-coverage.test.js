@@ -17,7 +17,7 @@ const entries = Object.values(JSON.parse(raw).entries);
 const INVENTORY_SIZE = 80;
 /** `world_info_position` before and after the character definitions, the only places that Conversation reads. */
 const ALLOWED_POSITIONS = [0, 1];
-const REMOVED_NAMES = ['Pura', 'Bunny Guide', 'Nahida', 'Launchpad', 'Platberlitz'];
+const REMOVED_NAMES = ['Pura', 'Bunny Guide', 'Nahida', 'Launchpad', 'Platberlitz', 'Mobile Quick Actions'];
 /**
  * Words that appear in almost every question about the app. A key that is one of them, or its plural, would put its
  * entry into most prompts.

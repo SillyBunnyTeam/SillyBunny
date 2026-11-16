@@ -509,37 +509,6 @@ for (const viewport of VIEWPORTS) {
     });
 }
 
-test('the Mobile Quick Actions search keeps its message until the first answer, and never shows a blank results region', async ({ page, baseURL }) => {
-    test.setTimeout(120000);
-    await loadApp(page, baseURL, { viewport: VIEWPORTS[1] });
-    await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
-    const box = page.locator('#sb-mobile-quick-actions-box');
-    await expect(box.locator('[data-sb-region="results"]')).toBeVisible();
-    await page.evaluate(() => {
-        const list = document.getElementById('sb-mobile-quick-actions-box');
-        const log = { frames: 0, blankFrames: 0, busyFrames: 0, firstAnswerFrame: -1 };
-        window.__sbQuickFrames = log;
-        const sample = () => {
-            log.frames += 1;
-            if (!list.querySelector(':scope > [data-sb-region="results"]')) log.blankFrames += 1;
-            if (list.getAttribute('aria-busy') === 'true') log.busyFrames += 1;
-            if (log.firstAnswerFrame < 0 && list.querySelector('.sb-mobile-quick-action-result')) log.firstAnswerFrame = log.frames;
-            if (log.firstAnswerFrame < 0 || log.frames < log.firstAnswerFrame + 3) requestAnimationFrame(sample);
-        };
-        requestAnimationFrame(sample);
-    });
-    await page.locator('#sb-mobile-quick-action-search').fill('Frequency');
-    await expect.poll(() => page.evaluate(() => window.__sbQuickFrames.firstAnswerFrame)).toBeGreaterThan(0);
-    const log = await page.evaluate(() => window.__sbQuickFrames);
-    console.log(`QUICK_ACTIONS_FRAMES ${JSON.stringify(log)}`);
-    expect(log.blankFrames).toBe(0);
-    await expect(box).not.toHaveAttribute('aria-busy', 'true');
-
-    await page.locator('#sb-mobile-quick-action-search').fill('x');
-    await expect(box.locator('[data-sb-region="results"]')).toContainText('Type at least 2 characters');
-    await expect(box).not.toHaveAttribute('aria-busy', 'true');
-});
-
 test('the character list filter keeps its own behaviour while a settings search is open', async ({ page, baseURL }) => {
     test.setTimeout(120000);
     await loadApp(page, baseURL, { viewport: VIEWPORTS[0] });

@@ -133,7 +133,7 @@ describe('Interface settings groups', () => {
     test('is built to the page contract, with the page-level groups in reading order', () => {
         expect(order.contract).toBe(true);
         expect(order.entries.map(entry => entry.id ?? 'section')).toEqual([
-            'interface', 'desktop', 'mobile', 'bottom-bar', 'paper-texture', 'mobile-quick-actions',
+            'interface', 'desktop', 'mobile', 'bottom-bar', 'paper-texture',
             'typing', 'section', 'stscript', 'moving-ui', 'miscellaneous',
         ]);
     });
@@ -145,13 +145,12 @@ describe('Interface settings groups', () => {
         expect(byId('bottom-bar').description).toBeUndefined();
     });
 
-    test('keeps the device of each group, and the class that the search index excludes Quick Actions by', () => {
+    test('keeps the device of each group', () => {
         expect(byId('interface').className).toBeUndefined();
         expect(byId('bottom-bar').className).toBeUndefined();
         expect(byId('desktop').className).toBe('sb-desktop-setting');
         expect(byId('mobile').className).toBe('sb-mobile-setting');
         expect(byId('paper-texture').className).toBe('sb-mobile-setting');
-        expect(byId('mobile-quick-actions').className).toBe('sb-mobile-setting sb-mobile-quick-actions-group');
     });
 
     test('the lists that the page builds at run time are named by their ids', () => {
@@ -161,7 +160,6 @@ describe('Interface settings groups', () => {
             '#sb-mobile-settings-outlet',
             '#sb-bottom-bar-settings',
             '#sb-paper-texture-settings',
-            '#sb-mobile-quick-actions-box',
         ]);
     });
 
