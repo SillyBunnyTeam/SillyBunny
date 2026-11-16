@@ -407,17 +407,15 @@ export function createTagManager(adapter) {
         });
     }
 
-    /** The plural label reads wrong for one entry, so that count takes the placeholder until the copy is supplied. */
+    /** Upstream's label is plural only ("1 entries"), so a count of one takes the singular, which has no upstream locale key. */
     function setCount(entry, count) {
         entry.countValue.textContent = String(count);
         const label = entry.countLabel;
         if (count === 1) {
-            label.textContent = t`TODO(copy)`;
-            label.dataset.sbCopyPlaceholder = 'true';
+            label.textContent = t`entry`;
             label.removeAttribute('data-i18n');
-        } else if (label.dataset.sbCopyPlaceholder) {
+        } else if (!label.dataset.i18n) {
             label.textContent = translate('entries', 'tag_entries');
-            delete label.dataset.sbCopyPlaceholder;
             label.dataset.i18n = 'tag_entries';
         }
     }

@@ -89,7 +89,7 @@ test('row buttons press to their own fill and a tag with one entry keeps its num
 
     const counted = row(page, fixtureTag);
     await expect(counted.locator('.tag_view_counter_value')).toHaveText('1');
-    await expect(counted.locator('[data-sb-copy-placeholder="true"]')).toHaveText('TODO(copy)');
+    await expect(counted.locator('.ds-entity-row__subtitle')).toHaveText(/^1\sentry$/);
     await expect(row(page, 'qa-tag-beta').locator('.tag_view_counter_value')).toHaveText('0');
     await expect(row(page, 'qa-tag-beta').locator('.ds-entity-row__subtitle')).toContainText('entries');
 });

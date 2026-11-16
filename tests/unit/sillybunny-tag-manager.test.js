@@ -510,18 +510,19 @@ describe('tag manager batches, counts and refresh cost', () => {
         expect(order.slice(50)).toEqual(Array.from({ length: 70 }, (_, index) => `t${index + 50}`));
     });
 
-    test('the entries label takes the placeholder for exactly one entry', () => {
+    test('the entries label is singular for exactly one entry', () => {
         state.tagMap = { 'Alice.png': ['alpha', 'beta'], group: ['beta'] };
         mount();
         const label = id => manager.root.querySelector(`[id="${id}"] .ds-entity-row__subtitle`);
-        expect(label('alpha').textContent).toBe('1\u00a0TODO(copy)');
-        expect(label('alpha').querySelector('[data-sb-copy-placeholder="true"]')).not.toBeNull();
+        expect(label('alpha').textContent).toBe('1\u00a0entry');
+        expect(label('alpha').querySelector('[data-i18n]')).toBeNull();
         expect(label('beta').textContent).toBe('2\u00a0entries');
-        expect(label('beta').querySelector('[data-sb-copy-placeholder]')).toBeNull();
+        expect(label('beta').querySelector('[data-i18n="tag_entries"]')).not.toBeNull();
         state.tagMap = { 'Alice.png': ['beta', 'alpha'], group: ['alpha'] };
         manager.refresh();
         expect(label('alpha').textContent).toBe('2\u00a0entries');
-        expect(label('beta').textContent).toBe('1\u00a0TODO(copy)');
+        expect(label('alpha').querySelector('[data-i18n="tag_entries"]')).not.toBeNull();
+        expect(label('beta').textContent).toBe('1\u00a0entry');
     });
 
     test('an unchanged state skips the reconcile pass and a changed one runs it', () => {
