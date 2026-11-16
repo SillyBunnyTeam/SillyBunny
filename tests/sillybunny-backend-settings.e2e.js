@@ -1003,6 +1003,24 @@ test('Text Completions template fields expand and write back to the draft, under
     await expect(suffix).toHaveValue(originalSuffix);
 });
 
+test('Text Completions template preview substitutes macros, as the prompt preview does', async ({ page, baseURL }) => {
+    test.setTimeout(120000);
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    const editor = await openPanel(page, 'editor');
+    await editor.locator('[data-prompt-id="tc-user"] .sb-prompt-row-name').click();
+    const detail = editor.locator('.sb-prompt-detail');
+    await detail.locator('#sb-prompt-tc-instruct_input_suffix').fill('{{user}} writes:');
+    const modes = detail.getByRole('group', { name: 'Edit / Preview', exact: true });
+    await modes.getByRole('radio', { name: 'Preview', exact: true }).check();
+    const userName = await page.evaluate(async () => (await import('/script.js')).name1);
+    expect(userName).toBeTruthy();
+    await expect(detail.locator('pre.sb-prompt-preview').nth(1)).toHaveText(`${userName} writes:`);
+    await modes.getByRole('radio', { name: 'Edit', exact: true }).check();
+    await expect(detail.locator('#sb-prompt-tc-instruct_input_suffix')).toHaveValue('{{user}} writes:');
+    await detail.locator('.sb-prompt-cancel').click();
+});
+
 test('Native sampler expanders reveal search results and preserve switch and counter interactions', async ({ page, baseURL }) => {
     await loadSettings(page, baseURL);
     await selectBackend(page, 'textgenerationwebui', 'ooba');

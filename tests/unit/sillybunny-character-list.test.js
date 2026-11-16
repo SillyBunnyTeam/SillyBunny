@@ -238,7 +238,7 @@ describe('shared Characters/Groups list', () => {
     test('mounts keyed character rows with upstream hooks and updates retained nodes', async () => {
         await mount();
         const row = rows()[0];
-        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261117h', { id: 'deferred-editor-shell-css' });
+        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261117l', { id: 'deferred-editor-shell-css' });
         expect(attachTagFilterMenu).toHaveBeenCalledWith(document.querySelector('.rm_tag_controls'));
         expect(row.id).toBe('CharID0');
         expect(row.getAttribute('data-chid')).toBe('0');
@@ -551,6 +551,32 @@ describe('shared Characters/Groups list', () => {
         input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         expect(input.value).toBe('');
         expect(upstream).toHaveBeenCalledTimes(2);
+    });
+
+    test('a view switch restores the search field through the control, and an empty field closes when the focus leaves it', async () => {
+        await mount();
+        const input = document.getElementById('character_search_bar');
+        const field = document.querySelector('.sb-character-list__search');
+        const state = () => [field.hidden, field.inert, field.getAttribute('aria-hidden'), field.dataset.state, button('search').getAttribute('aria-expanded')];
+        expect(state()).toEqual([true, true, 'true', 'closed', 'false']);
+        input.value = 'query';
+        model = { ...model, view: 'groups', entities: [{ type: 'group', id: 'g', item: groupLibrary[0] }] };
+        await mounted.render(model);
+        expect(state()).toEqual([false, false, 'false', 'open', 'true']);
+        expect(document.activeElement).not.toBe(input);
+        input.value = '';
+        model = { ...model, view: 'characters', entities: characters(3) };
+        await mounted.render(model);
+        expect(state()).toEqual([true, true, 'true', 'closed', 'false']);
+
+        button('search').click();
+        expect(state()).toEqual([false, false, 'false', 'open', 'true']);
+        input.value = 'x';
+        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: rows()[0] }));
+        expect(field.hidden).toBe(false);
+        input.value = '';
+        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: rows()[0] }));
+        expect(state()).toEqual([true, true, 'true', 'closed', 'false']);
     });
 
     test.each([0, 3])('first reveal waits for render, measured header and a row layout turn (%s rows)', async count => {

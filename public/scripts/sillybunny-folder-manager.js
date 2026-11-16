@@ -24,7 +24,7 @@ import {
 } from './sillybunny-folders.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261117h', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-folder-manager.css?v=20261117h', id: 'deferred-folder-manager-css' },
 ];
@@ -290,8 +290,6 @@ export function createFolderManager(scope, adapter) {
             activation: 'navigate',
         });
         entity.row.classList.add('sb-folder-manager__folder-row');
-        entity.row.setAttribute('role', 'button');
-        entity.row.tabIndex = 0;
         entity.row.setAttribute('aria-haspopup', 'dialog');
         entity.slots.grip?.classList.add('drag-handle');
         entity.row.dataset.folderId = folder.id;

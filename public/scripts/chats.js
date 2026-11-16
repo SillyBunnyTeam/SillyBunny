@@ -2356,9 +2356,11 @@ export function initChatUtilities() {
             });
         }
 
-        // SillyBunny: the maximized editor is an explicit Window with its source field's title.
+        // SillyBunny: the maximized editor is an explicit Window with its source field's title, which also names its text area. A field that sits in a group takes the group's heading.
         const title = document.querySelector(`label[for="${CSS.escape(broId)}"]`)?.textContent.trim()
-            || document.querySelector(`.editor_maximize[data-for="${CSS.escape(broId)}"]`)?.closest('h4, .ds-field-header')?.textContent.trim();
+            || document.querySelector(`.editor_maximize[data-for="${CSS.escape(broId)}"]`)?.closest('h4, .ds-field-header')?.textContent.trim()
+            || document.querySelector(`.editor_maximize[data-for="${CSS.escape(broId)}"]`)?.closest('.ds-pref-group-header')?.querySelector('.ds-pref-group-heading')?.textContent.trim();
+        if (title) textarea.setAttribute('aria-label', title);
         await callGenericPopup(wrapper, POPUP_TYPE.TEXT, '', { tier: 'window', ...(title ? { title } : {}), wide: true, large: true });
     });
 

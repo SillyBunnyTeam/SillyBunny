@@ -18,7 +18,7 @@
             "shadow-literal": 1,
             "important": 14,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 29
+            "spacing-off-scale": 27
         },
         "public/css/sillybunny-chat-styles.css": {
             "shadow-literal": 1,
@@ -101,7 +101,7 @@
         },
         "public/css/sillybunny-prompt-editor.css": {
             "important": 17,
-            "spacing-off-scale": 22
+            "spacing-off-scale": 21
         },
         "public/css/sillybunny-side-panel.css": {
             "shadow-literal": 1,
@@ -142,7 +142,7 @@
         },
         "public/css/sillybunny-world-info-editor.css": {
             "important": 14,
-            "spacing-off-scale": 25
+            "spacing-off-scale": 23
         },
         "public/css/spacing-system.css": {
             "breakpoint-off-set": 1,
@@ -159,7 +159,7 @@
             "duration-literal": 1,
             "important": 5,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 88
+            "spacing-off-scale": 86
         },
         "public/scripts/extensions/in-chat-agents/ui/agent-editor.css": {
             "important": 3,

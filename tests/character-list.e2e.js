@@ -619,6 +619,34 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
         await expect(page.locator('body')).not.toHaveClass(/charListGrid/);
     });
 
+    test(`an empty search closes when the focus leaves it, and a query or a view switch keeps the field in step at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const field = list(page).locator('.sb-character-list__search');
+        const input = page.locator('#character_search_bar');
+        await openHeaderMenu(page, 'search');
+        await expect(input).toBeFocused();
+        await listRows(page, 'characters').first().focus();
+        await expect(field).toBeHidden();
+
+        const characterQuery = await listRows(page, 'characters').first().locator('.ch_name').textContent();
+        await setSearch(page, characterQuery);
+        await listRows(page, 'characters').first().focus();
+        await expect(field).toBeVisible();
+
+        // The Groups view has no query, so its field is closed and inert; the Characters query brings its field back.
+        await showView(page, 'groups');
+        await expect(field).toBeHidden();
+        await expect(field).toHaveJSProperty('inert', true);
+        await showView(page, 'characters');
+        await expect(field).toBeVisible();
+        await expect(field).toHaveJSProperty('inert', false);
+        await expect(input).toHaveValue(characterQuery);
+        await expect(input).not.toBeFocused();
+        await input.fill('');
+        await listRows(page, 'characters').first().focus();
+        await expect(field).toBeHidden();
+    });
+
     test(`row favorite menus, visible extension slot and retired hotswap at ${viewport.width}px`, async ({ page }) => {
         await prepareList(page, viewport);
         for (const view of ['characters', 'groups']) {

@@ -393,6 +393,10 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await expectOneWindowScroller(popup, { textareaOwnsScroll: true });
         const textarea = popup.locator('.maximized_textarea');
         await expect(textarea).toHaveValue(contents);
+        // The text area is named with the field's title, which is also the Window's title.
+        const windowTitle = (await popup.locator('.sb-dialog__title').first().textContent()).trim();
+        expect(windowTitle).not.toBe('');
+        await expect(textarea).toHaveAccessibleName(windowTitle);
         expect(await textarea.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThan(200);
         expect(await textarea.evaluate(node => getComputedStyle(node).overflowY)).toMatch(/auto|scroll/);
         await textarea.evaluate(node => { node.scrollTop = node.scrollHeight; });

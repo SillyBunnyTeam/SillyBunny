@@ -360,6 +360,18 @@ const folderManager = {
         searchResults({ search: dialogSearch(FOLDER_MANAGER), query: 'Folder A', rows: FOLDER_ROWS, atMost: 1 }),
         rowMenu(`${FOLDER_MANAGER} .sb-folder-manager__row-menu`, FOLDER_ROWS),
         {
+            id: 'selection-mode',
+            ready: [FOLDER_ROWS, `${FOLDER_MANAGER} .sb-dialog__selection-cancel`, `${FOLDER_MANAGER} .sb-folder-manager__selection-bar [data-action-id="delete"]`],
+            async open(page) {
+                await chooseMenuItem(page, `${FOLDER_MANAGER} .sb-dialog__menu`, 'Select');
+                await shown(page, `${FOLDER_MANAGER} .sb-dialog__selection-cancel`);
+                await page.locator(`${FOLDER_ROWS} .sb-selection-check`).nth(0).click();
+                await page.locator(`${FOLDER_ROWS} .sb-selection-check`).nth(1).click();
+                await shown(page, `${FOLDER_MANAGER} .sb-folder-manager__selection-bar [data-action-id="delete"]`);
+                await settled(page, FOLDER_MANAGER);
+            },
+        },
+        {
             id: 'members-page',
             root: `${FOLDER_MANAGER} .sb-folder-manager__members`,
             ready: [`${FOLDER_MANAGER} .sb-folder-manager__member-row`, `${FOLDER_MANAGER} .sb-folder-manager__add-member`],

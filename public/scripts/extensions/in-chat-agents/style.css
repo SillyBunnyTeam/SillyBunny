@@ -1172,24 +1172,6 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     display: none;
 }
 
-/* The selection header takes the list header's height and inset, with the count centred between Cancel and Select All. */
-.ica-agents-selection-header {
-    flex: none;
-    min-height: 60px;
-    padding: 6px 8px;
-    box-sizing: border-box;
-}
-
-.ica-agents-selection-header .sb-selection-header {
-    min-height: 48px;
-    gap: 2px;
-}
-
-.ica-agents-selection-header .sb-selection-title {
-    text-align: center;
-    font-size: var(--mainFontSize);
-}
-
 .ica-agents-selection-actions {
     flex: none;
 }

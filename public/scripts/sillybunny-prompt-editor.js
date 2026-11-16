@@ -1357,7 +1357,8 @@ export function initializePromptEditor(column) {
                 if (typeof value === 'boolean') continue;
                 let fieldNode;
                 if (mode === 'preview') {
-                    const block = element('pre', 'sb-prompt-preview', String(value ?? '') || '—');
+                    // The same preview a prompt has, so a macro shows its value here as it does there.
+                    const block = element('pre', 'sb-prompt-preview', run(() => model.preview({ content: String(value ?? '') })) || '—');
                     block.tabIndex = 0;
                     fieldNode = contentField(null, block, label);
                 } else {
@@ -1559,7 +1560,7 @@ export function initializePromptEditor(column) {
     Promise.all([
         loadListEditorStyles(),
         window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261117h', { id: 'deferred-entity-list-css' }),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117i', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117l', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

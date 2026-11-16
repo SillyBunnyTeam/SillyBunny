@@ -301,44 +301,7 @@ export function mountAgentsPanel(column) {
     filterButton.append(filterIcon);
     filterButton.addEventListener('click', () => showMenu(filterButton, filterSections(), t`Filter Agents`));
     searchField.append(searchEntry.element, filterButton);
-    const search = createListSearch({ field: searchField, input, trigger: header.button('search'), scope: list, scroller: body, onChange: refreshSoon });
-    let searchPointerActive = false;
-    let pendingSearchBlur = null;
-    let searchBlurFrame = 0;
-    const finishSearchPointer = () => {
-        searchPointerActive = false;
-        cancelAnimationFrame(searchBlurFrame);
-        searchBlurFrame = 0;
-        const close = pendingSearchBlur;
-        pendingSearchBlur = null;
-        close?.(true);
-    };
-    const startSearchPointer = event => {
-        searchPointerActive = document.activeElement === input && !searchField.contains(event.target);
-    };
-    const releaseSearchPointer = () => {
-        searchPointerActive = false;
-        if (pendingSearchBlur) searchBlurFrame = requestAnimationFrame(finishSearchPointer);
-    };
-    const closeEmptySearchOnBlur = event => {
-        if (input.value || searchField.contains(event.relatedTarget) || event.relatedTarget === header.button('search')) return;
-        const nextFocus = event.relatedTarget;
-        const close = (restoreImmediately = false) => {
-            if (destroyed || input.value || searchField.hidden) return;
-            search.close();
-            if (!(nextFocus instanceof HTMLElement) || !nextFocus.isConnected) return;
-            if (restoreImmediately) nextFocus.focus({ preventScroll: true });
-            else queueMicrotask(() => nextFocus.focus({ preventScroll: true }));
-        };
-        // Keep pointer-down coordinates stable until the browser has resolved the click target.
-        if (searchPointerActive) pendingSearchBlur = close;
-        else close();
-    };
-    input.addEventListener('blur', closeEmptySearchOnBlur);
-    document.addEventListener('pointerdown', startSearchPointer, true);
-    document.addEventListener('click', finishSearchPointer, true);
-    document.addEventListener('pointerup', releaseSearchPointer, true);
-    document.addEventListener('pointercancel', finishSearchPointer, true);
+    const search = createListSearch({ field: searchField, input, trigger: header.button('search'), scope: list, scroller: body, onChange: refreshSoon, closeEmptyOnBlur: true });
 
     function openTemplates(companionTemplates) {
         preparePopup(null);
@@ -788,7 +751,7 @@ export function mountAgentsPanel(column) {
             let previous = null;
             for (const href of [
                 'css/sillybunny-persona-detail.css?v=20261117a',
-                'css/sillybunny-prompt-editor.css?v=20261117i',
+                'css/sillybunny-prompt-editor.css?v=20261117l',
                 'scripts/extensions/in-chat-agents/ui/agent-editor.css',
             ]) {
                 let link = document.querySelector(`link[href="${href}"]`);
@@ -813,16 +776,10 @@ export function mountAgentsPanel(column) {
         destroy() {
             destroyed = true;
             cancelAnimationFrame(frame);
-            cancelAnimationFrame(searchBlurFrame);
-            document.removeEventListener('pointerdown', startSearchPointer, true);
-            document.removeEventListener('click', finishSearchPointer, true);
-            document.removeEventListener('pointerup', releaseSearchPointer, true);
-            document.removeEventListener('pointercancel', finishSearchPointer, true);
-            pendingSearchBlur = null;
             if (isActionMenuOpen() && shell.root.contains(document.activeElement)) closeActionMenu({ animate: false });
             pageController?.destroy();
             groups.forEach(group => group.sortable?.destroy());
-            unregisterNavigation(); unbindRows(); selection.destroy(); input.removeEventListener('blur', closeEmptySearchOnBlur); search.destroy(); searchEntry.destroy(); header.destroy(); banner.destroy(); shell.destroy();
+            unregisterNavigation(); unbindRows(); selection.destroy(); search.destroy(); searchEntry.destroy(); header.destroy(); banner.destroy(); shell.destroy();
             controllers.delete(controller);
             mounts.delete(column);
         },

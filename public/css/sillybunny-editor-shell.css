@@ -1213,6 +1213,24 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     font-size: var(--mainFontSize);
 }
 
+/* createSelectionMode marks the standalone header it fills. Every list takes the list header's height and inset, with the count centred between Cancel and Select All. */
+.sb-selection-header-host {
+    flex: none;
+    min-height: 60px;
+    padding: 6px 9px;
+    box-sizing: border-box;
+}
+
+.sb-selection-header-host .sb-selection-header {
+    min-height: 48px;
+    gap: 3px;
+}
+
+.sb-selection-header-host .sb-selection-title {
+    text-align: center;
+    font-size: var(--mainFontSize);
+}
+
 /* Reuse the editors' full-label header actions, including disabled and suggested-action states. */
 .sb-selection-header .sb-editor-action {
     font-size: inherit;

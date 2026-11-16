@@ -288,6 +288,21 @@ describe('selection mode', () => {
         });
     });
 
+    test('the standalone header is marked as the shared selection header host, and a slotted header is not', () => {
+        const { header } = makeSelection();
+        expect(header.classList.contains('sb-selection-header-host')).toBe(true);
+        const root = document.createElement('div');
+        const slotHeader = document.createElement('header');
+        const [headerStart, headerEnd] = [document.createElement('div'), document.createElement('div')];
+        const titleNode = document.createElement('h2');
+        slotHeader.append(headerStart, titleNode, headerEnd);
+        createSelectionMode({
+            root, list: document.createElement('div'), actionBar: document.createElement('div'),
+            headerSlots: { header: slotHeader, headerStart, headerEnd, titleNode },
+        });
+        expect(slotHeader.classList.contains('sb-selection-header-host')).toBe(false);
+    });
+
     test('the standalone header uses Select All as the default label', () => {
         const { selection, header } = makeSelection();
 

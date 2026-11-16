@@ -58,23 +58,6 @@
     display: none !important;
 }
 
-.sb-wi-selection-header {
-    flex: none;
-    min-height: 60px;
-    padding: 6px 8px;
-    box-sizing: border-box;
-}
-
-.sb-wi-selection-header .sb-selection-header {
-    min-height: 48px;
-    gap: 2px;
-}
-
-.sb-wi-selection-header .sb-selection-title {
-    text-align: center;
-    font-size: var(--mainFontSize);
-}
-
 .sb-wi-editor .sb-wi-selection-bar {
     flex: none;
 }

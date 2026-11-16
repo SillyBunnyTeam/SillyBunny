@@ -24,7 +24,8 @@ import { t } from '../i18n.js';
  * @param {boolean} [options.closeEmptyOnBlur=false] Closes the open field when the input loses focus to something outside it
  *   while the query is empty (a field that also holds a filter button keeps the focus inside). A close that a pointer press
  *   caused waits for the click to finish, so the list does not move under the pointer.
- * @returns {{ toggle: (show?: boolean) => void, open: () => void, close: () => void, clear: () => void,
+ * @returns {{ toggle: (show?: boolean) => void, open: (options?: { focus?: boolean, animate?: boolean }) => void,
+ *   close: (options?: { focus?: boolean, animate?: boolean }) => void, clear: () => void,
  *   setQuery: (value: string, options?: { notify?: boolean }) => void, report: (shown: number, total: number) => void,
  *   readonly query: string, readonly isOpen: boolean, destroy: () => void }}
  */
@@ -86,15 +87,18 @@ export function createListSearch({
         trigger?.setAttribute('aria-expanded', String(!field.hidden));
     }
 
-    function open() {
-        if (!field.hidden) { input.focus({ preventScroll: true }); return; }
+    function open({ focus = true, animate = true } = {}) {
+        if (!field.hidden) {
+            if (focus) input.focus({ preventScroll: true });
+            return;
+        }
         stopMotion(field);
         field.hidden = false;
         field.inert = false;
         field.setAttribute('aria-hidden', 'false');
         field.dataset.state = 'opening';
         syncTrigger();
-        if (prefersReducedMotion()) {
+        if (!animate || prefersReducedMotion()) {
             field.dataset.state = 'open';
         } else {
             play(field, [{ height: '0px', marginBlock: '0px', opacity: 0 }, { height: revealedHeight(), marginBlock: '0px', opacity: 1 }], {
@@ -102,13 +106,13 @@ export function createListSearch({
                 onEnd: () => field.dataset.state = 'open',
             });
         }
-        input.focus({ preventScroll: true });
+        if (focus) input.focus({ preventScroll: true });
     }
 
-    function close() {
+    function close({ focus = true, animate = true } = {}) {
         if (field.hidden) return;
         stopMotion(field);
-        const height = revealedHeight();
+        const height = animate ? revealedHeight() : '0px';
         field.inert = true;
         field.setAttribute('aria-hidden', 'true');
         field.dataset.state = 'closing';
@@ -117,12 +121,12 @@ export function createListSearch({
             field.dataset.state = 'closed';
             syncTrigger();
         };
-        if (prefersReducedMotion()) finish();
+        if (!animate || prefersReducedMotion()) finish();
         else animateOut(field, [{ height, marginBlock: '0px', opacity: 1 }, { height: '0px', marginBlock: '0px', opacity: 0 }], finish, { duration: MOTION_SLOW });
         clearTimeout(timer);
         input.value = '';
         emit('');
-        trigger?.focus({ preventScroll: true });
+        if (focus) trigger?.focus({ preventScroll: true });
     }
 
     function toggle(show = field.hidden) {

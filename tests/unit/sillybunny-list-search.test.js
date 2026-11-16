@@ -492,6 +492,24 @@ describe('createListSearch', () => {
         });
     });
 
+    test('open and close can restore the field without moving the focus or playing motion', () => {
+        const { search, field, input, trigger } = makeSearch();
+        search.open({ focus: false, animate: false });
+        expect([field.hidden, field.inert, field.dataset.state, trigger.getAttribute('aria-expanded')]).toEqual([false, false, 'open', 'true']);
+        expect(document.activeElement).not.toBe(input);
+        expect(mockPlay).not.toHaveBeenCalled();
+        search.close({ focus: false, animate: false });
+        expect([field.hidden, field.inert, field.dataset.state, trigger.getAttribute('aria-expanded')]).toEqual([true, true, 'closed', 'false']);
+        expect(document.activeElement).not.toBe(trigger);
+        expect(mockAnimateOut).not.toHaveBeenCalled();
+        search.open();
+        expect(document.activeElement).toBe(input);
+        expect(mockPlay).toHaveBeenCalledTimes(1);
+        search.close();
+        expect(document.activeElement).toBe(trigger);
+        expect(mockAnimateOut).toHaveBeenCalledTimes(1);
+    });
+
     test('destroy cancels a pending debounced notification', () => {
         jest.useFakeTimers();
         const { search, input, onChange } = makeSearch({ debounce: 300 });

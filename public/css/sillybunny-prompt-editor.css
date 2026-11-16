@@ -140,13 +140,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     cursor: pointer;
 }
 
-.sb-prompt-selection-header {
-    flex: none;
-    box-sizing: border-box;
-    min-height: 60px;
-    padding: 6px 10px;
-}
-
 .sb-prompt-selection-actions {
     flex: none;
 }

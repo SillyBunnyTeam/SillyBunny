@@ -20,9 +20,9 @@ import { rememberOpenedEntity } from './sillybunny-auto-load.js';
 
 const CHARACTER_LIST_STYLESHEETS = Object.freeze([
     { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-editor-shell.css?v=20261117h', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-character-editor.css?v=20261116z', id: 'deferred-editor-chrome-css' },
-    { href: 'css/sillybunny-character-list.css?v=20261117h', id: 'deferred-character-list-css' },
+    { href: 'css/sillybunny-character-list.css?v=20261117l', id: 'deferred-character-list-css' },
 ]);
 const DEFAULT_BATCH_SIZE = 50;
 const mountedLists = new WeakMap();
@@ -1071,8 +1071,9 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         if (selection.isActive) selection.select(selection.selectedKeys.filter(key => idsByKey.has(key)));
         search.setQuery(searchInput.value, { notify: false });
         if (viewChanged || searchInput.value) {
-            searchField.hidden = !searchInput.value;
-            header.button('search').setAttribute('aria-expanded', String(!searchField.hidden));
+            // The control owns the field's state (inert, aria-hidden, aria-expanded); a restore neither moves focus nor animates.
+            if (searchInput.value) search.open({ focus: false, animate: false });
+            else search.close({ focus: false, animate: false });
         }
         section.dataset.view = state.view;
         header?.setTitle(state.view === 'groups' ? t`Groups` : t`Characters`);
@@ -1263,6 +1264,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             scope: section,
             status: searchStatus,
             debounce: 0,
+            closeEmptyOnBlur: true,
             onChange: () => {
                 typingUntil = Date.now() + 400;
                 if (!handlingSearchInput) searchInput.dispatchEvent(new Event('input', { bubbles: true }));

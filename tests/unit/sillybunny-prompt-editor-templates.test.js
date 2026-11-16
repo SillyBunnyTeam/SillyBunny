@@ -43,6 +43,8 @@ const fakeModel = {
     readTextCompletionEntry: identifier => structuredClone(entries.find(candidate => candidate.id === identifier)),
     saveTextCompletion: jest.fn(),
     permissions: () => ({}),
+    // The real model substitutes the macros of a prompt draft; this stand-in knows one of them.
+    preview: draft => String(draft.content ?? '').replaceAll('{{user}}', 'Bunny'),
 };
 await jest.unstable_mockModule('../../public/scripts/sillybunny-prompt-editor-model.js', () => ({
     createPromptEditorModel: () => fakeModel,
@@ -300,5 +302,16 @@ describe('Text Completion template detail', () => {
         expect(fields.map(field => field.querySelector('.sb-prompt-field-label').textContent)).toEqual(['User Message Prefix', 'User Message Suffix']);
         expect(fields.map(field => field.querySelector('pre').textContent)).toEqual(['### Instruction:', '—']);
         expect(column.querySelector('.editor_maximize')).toBeNull();
+    });
+
+    test('preview substitutes macros through the model preview, as a prompt does, and edit shows the raw text', async () => {
+        entries.find(candidate => candidate.id === 'tc-user').values.instruct_input_suffix = '{{user}} says:';
+        const column = await mountEditor();
+        const detail = await openTemplate(column, 'tc-user');
+        expect(detail.querySelector('#sb-prompt-tc-instruct_input_suffix').value).toBe('{{user}} says:');
+        detail.querySelector('.sb-prompt-mode-toggle').click();
+        await flush();
+        const fields = [...column.querySelectorAll('.sb-prompt-content--fields > .sb-prompt-content-field')];
+        expect(fields.map(field => field.querySelector('pre').textContent)).toEqual(['### Instruction:', 'Bunny says:']);
     });
 });

@@ -99,7 +99,10 @@ export function createSelectionMode({
     let headerState = null;
     let parts = null;
     root.dataset.selectionMode = 'false';
-    if (standaloneHeader) standaloneHeader.hidden = true;
+    if (standaloneHeader) {
+        standaloneHeader.classList.add('sb-selection-header-host');
+        standaloneHeader.hidden = true;
+    }
     actionBar.hidden = true;
     actionBar.classList.add('sb-selection-action-bar');
     actionBar.classList.toggle('sb-selection-action-bar--icon-only-narrow', iconOnlyAtNarrow);

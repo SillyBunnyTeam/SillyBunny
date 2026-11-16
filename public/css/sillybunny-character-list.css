@@ -390,23 +390,6 @@
     display: none !important;
 }
 
-.sb-character-list__selection-header {
-    flex: none;
-    min-height: 60px;
-    padding: 6px 8px;
-    box-sizing: border-box;
-}
-
-.sb-character-list__selection-header .sb-selection-header {
-    min-height: 48px;
-    gap: 2px;
-}
-
-.sb-character-list__selection-header .sb-selection-title {
-    text-align: center;
-    font-size: var(--mainFontSize);
-}
-
 .sb-character-list .sb-character-list__selection-bar {
     flex: none;
 }

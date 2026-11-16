@@ -156,23 +156,6 @@
     display: none;
 }
 
-.sb-persona-selection-header {
-    flex: none;
-    min-height: 60px;
-    padding: 6px 9px;
-    box-sizing: border-box;
-}
-
-.sb-persona-selection-header .sb-selection-header {
-    min-height: 48px;
-    gap: 3px;
-}
-
-.sb-persona-selection-header .sb-selection-title {
-    text-align: center;
-    font-size: var(--mainFontSize);
-}
-
 .sb-persona-editor .sb-persona-selection-bar {
     flex: none;
 }
