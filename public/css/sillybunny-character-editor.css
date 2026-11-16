@@ -1205,38 +1205,105 @@ body.reduced-motion :is(
 /* Tag chips — libadwaita pill style
    ========================================================================= */
 
-/* The .tags container (tagList) and upstream .tag pills need libadwaita
-   treatment inside the editors. Scope tightly to avoid changing global tag
-   appearance on other panels. Entity-row chips (.ds-tag-chips) mirror these
-   values in sillybunny-entity-list.css. */
+/* The applied tags sit in an expander row (adoptAppliedTags in rows.js) titled with their count, its subtitle naming them; open,
+   it shows every chip. A chip is a neutral pill with a dot in the tag's colour (.ds-tag-chips in sillybunny-entity-list.css), as
+   the list rows draw tags. Scoped to the editors so that tags elsewhere keep their look. */
+/* The suggestions of the add-tag field are a popover: its tone, radius and shadow, kept inside the window. style.css draws every
+   jQuery UI menu with the blur tint; its border stays. */
+body .ui-autocomplete.sb-tag-autocomplete {
+    max-width: min(28rem, calc(100vw - 16px));
+    max-height: min(18rem, 50vh);
+    max-height: min(18rem, 50dvh);
+    padding: 6px;
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-popover);
+    color: var(--SmartThemeBodyColor);
+    box-shadow: var(--sb-shadow-popover);
+    text-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-sizing: border-box;
+    overscroll-behavior: contain;
+}
+
+/* style.css dims every item to half until it is hovered, under the text contrast. The item is the row, as in every menu. */
+body .ui-autocomplete.sb-tag-autocomplete li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: var(--sb-radius-control);
+    opacity: 1;
+    box-sizing: border-box;
+}
+
+body .ui-autocomplete.sb-tag-autocomplete li:has(> .ui-state-active) {
+    background: var(--sb-flat-hover-bg);
+}
+
+body .ui-autocomplete.sb-tag-autocomplete .ui-menu-item-wrapper {
+    overflow: hidden;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (pointer: coarse) {
+    body .ui-autocomplete.sb-tag-autocomplete li {
+        min-height: 44px;
+    }
+}
+
+.sb-applied-tags > .ds-row-expander__header {
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+.sb-applied-tags .ds-row-expander__toggle .ds-row-subtitle {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
 #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    padding: 6px var(--sb-density-row-padding-inline) 10px;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags:empty {
-    display: none;
+    padding: 2px var(--sb-density-row-padding-inline) 12px;
 }
 
 #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     max-width: 100%;
-    padding: 3px 10px;
+    height: 28px;
+    padding: 0 4px 0 10px;
+    border: 0;
     border-radius: var(--sb-radius-pill);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
-    font-size: var(--sb-type-meta, 13px);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    font-size: var(--sb-type-caption);
     font-weight: 500;
     color: var(--SmartThemeBodyColor);
     /* tags.css dims the chips of #tagList to 60%, which leaves the name under the 4.5:1 contrast on the light tone. */
     opacity: 1;
-    line-height: 1.3;
+    line-height: 1;
     cursor: default;
-    transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), color var(--sb-transition-fast);
+    box-sizing: border-box;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove {
@@ -1244,42 +1311,50 @@ body.reduced-motion :is(
     align-items: center;
     justify-content: center;
     position: relative;
-    width: 16px;
-    height: 16px;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
-    color: var(--SmartThemeBodyColor);
+    background: transparent;
+    color: inherit;
     font-size: 10px;
-    cursor: pointer;
     line-height: 1;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-    flex-shrink: 0;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast);
 }
 
-/* The target is 44px on a coarse pointer. Padding and a negative margin give it the reach without the height, and the fill
-   stays the 16px disc because it paints in the content box only. */
+/* On a coarse pointer the target reaches 44px through a box of its own, so the chip keeps its size; the chips stand further apart
+   so that the targets of neighbouring rows do not meet. */
 @media (pointer: coarse) {
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove {
-        box-sizing: border-box;
-        width: 44px;
-        height: 44px;
-        margin: -14px;
-        padding: 14px;
-        background-clip: content-box;
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags {
+        gap: 8px;
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag {
+        height: 32px;
+    }
+
+    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove::after {
+        position: absolute;
+        inset: -12px;
+        content: '';
     }
 }
 
 @media (hover: hover) {
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-        border-color: var(--sb-shell-border);
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
     }
 
     #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove:hover {
-        background: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor, var(--SmartThemeQuoteColor)) 30%, transparent);
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
     }
+}
+
+#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove:active {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
 }
 
 /* Group editor — group-specific sheet rules (Step 4)

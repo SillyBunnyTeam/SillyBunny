@@ -43,7 +43,7 @@ import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } 
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
 import { holdEditorsUntilStyled } from './sillybunny-editor/list-shell.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
-import { adoptExpanderRow, adoptEditorFields, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
+import { adoptAppliedTags, adoptExpanderRow, adoptEditorFields, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { reconcileRows } from './sillybunny-editor/list-rows.js';
 import { getFolderId, getFolders, setFolder, subscribe as subscribeFolders } from './sillybunny-folders.js';
@@ -112,6 +112,7 @@ let draftGrpKeys = [];
 export function initCharacterEditor() {
     holdEditorsUntilStyled();
     adoptEditorFields(document.getElementById('form_create'), { t, entryTextAreas: ['creator_textarea', 'character_version_textarea'] });
+    adoptAppliedTags(document.getElementById('tagList'), { t, field: 'applied-tags', input: /** @type {HTMLInputElement|null} */ (document.getElementById('tagInput')), jquery: $ });
     _mountChrome();
     _bindToolbarButtons();
     _bindExportMenu();

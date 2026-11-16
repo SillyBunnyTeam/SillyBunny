@@ -482,8 +482,14 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
             expect(count).toBeGreaterThan(0);
             const remove = tags.first().getByRole('button', { name: 'Remove', exact: true });
             await expect(remove).toBeVisible();
-            const size = await remove.boundingBox();
-            const minimum = { 1440: 16, 768: 44, 375: 44 }[viewport.width];
+            // On a coarse pointer the target reaches past the 20px button through its ::after box, so the chip keeps its size.
+            const size = await remove.evaluate(node => {
+                const rect = node.getBoundingClientRect();
+                const after = getComputedStyle(node, '::after');
+                const reach = after.content === 'none' ? 0 : -parseFloat(after.left);
+                return { width: rect.width + 2 * reach, height: rect.height + 2 * reach };
+            });
+            const minimum = { 1440: 20, 768: 44, 375: 44 }[viewport.width];
             expect(size.width).toBeGreaterThanOrEqual(minimum);
             expect(size.height).toBeGreaterThanOrEqual(minimum);
             await remove.focus();

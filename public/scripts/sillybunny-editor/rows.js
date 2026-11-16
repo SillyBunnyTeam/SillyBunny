@@ -941,6 +941,78 @@ export function createExpanderRow({ label, subtitle, field, id, open = false, ch
 }
 
 /**
+ * Puts an editor's applied tags (the chips upstream's `printTagList` draws into `list`) in an expander row titled with their count,
+ * its subtitle naming them, closed while there are more than `openUpTo`. Every chip prints: the `tags-expanded` class lifts
+ * upstream's limit of 50 and its expander chip. A tag added to the entity shows first in the subtitle, so it is in view while the
+ * row is closed. The list keeps its id and stays upstream's to print; the row follows it.
+ * @param {HTMLElement|null} list
+ * @param {object} options
+ * @param {(strings: TemplateStringsArray, ...values: unknown[]) => string} options.t  The translator; rows.js takes no i18n import.
+ * @param {string} options.field
+ * @param {number} [options.openUpTo=8]
+ * @param {HTMLInputElement|null} [options.input]  The field that adds tags; its jQuery UI suggestions take the popover's look and
+ *     stay inside the window.
+ * @param {Function} [options.jquery]  jQuery, to reach the field's autocomplete; rows.js takes no jQuery either.
+ * @returns {{ row: HTMLElement, update: () => void, destroy: () => void }|null}
+ */
+export function adoptAppliedTags(list, { t, field, openUpTo = 8, input = null, jquery = null }) {
+    if (!(list instanceof HTMLElement) || list.closest('.ds-row-expander')) return null;
+    if (input && jquery) {
+        // Upstream opens the suggestions from the field's own focus handler, so this runs first, on the way down to the field.
+        const dress = () => {
+            const field = jquery(input);
+            if (!field.data('ui-autocomplete')) return;
+            field.autocomplete('widget').addClass('sb-tag-autocomplete');
+            field.autocomplete('option', 'position', { my: 'left top+4', at: 'left bottom', collision: 'flipfit' });
+        };
+        input.parentElement?.addEventListener('focus', dress, true);
+    }
+    list.classList.add('tags-expanded');
+    const expander = createExpanderRow({ label: ' ', subtitle: ' ', field });
+    expander.row.classList.add('sb-applied-tags');
+    const title = expander.toggle.querySelector('.ds-row-label');
+    const subtitle = expander.toggle.querySelector('.ds-row-subtitle');
+    list.before(expander.row);
+    expander.content.append(list);
+    let shown = [];
+    let added = [];
+    let chosen = false;
+    expander.toggle.addEventListener('click', () => { chosen = true; });
+    const update = () => {
+        const chips = [...list.querySelectorAll(':scope > .tag:not(.placeholder-expander)')];
+        const ids = chips.map(chip => chip.id);
+        const keepsShown = shown.every(id => ids.includes(id));
+        const withinShown = ids.every(id => shown.includes(id));
+        // One tag more or less on the same set is an edit, and a reprint of the same set is nothing; any other change is another
+        // entity, which starts afresh, closed or open by its count.
+        if (shown.length && keepsShown && ids.length === shown.length + 1) {
+            added = [ids.find(id => !shown.includes(id)), ...added];
+        } else if (!(withinShown && ids.length === shown.length - 1) && !(keepsShown && withinShown)) {
+            added = [];
+            chosen = false;
+        }
+        added = added.filter(id => ids.includes(id));
+        shown = ids;
+        const name = chip => chip.querySelector('.tag_name')?.textContent.trim() ?? '';
+        const order = [...added.map(id => chips.find(chip => chip.id === id)), ...chips.filter(chip => !added.includes(chip.id))];
+        title.textContent = chips.length === 1 ? t`1 tag` : t`${chips.length} tags`;
+        subtitle.textContent = order.map(name).filter(Boolean).join(', ');
+        expander.row.hidden = chips.length === 0;
+        if (!chosen) expander.setOpen(chips.length <= openUpTo, { animate: false });
+    };
+    const observer = new MutationObserver(update);
+    observer.observe(list, { childList: true });
+    update();
+    return {
+        row: expander.row,
+        update,
+        destroy() {
+            observer.disconnect();
+        },
+    };
+}
+
+/**
  * Binds markup that is already in the page: `.ds-row-expander` holding a `.ds-row-expander__header`
  * with a `.ds-row-expander__toggle` button, and a `.ds-row-expander-content`. Use it where the
  * expander is authored in HTML; {@link createExpanderRow} builds the same structure.

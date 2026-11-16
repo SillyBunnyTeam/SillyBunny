@@ -30,7 +30,7 @@ import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } fr
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { MOTION_FAST, prefersReducedMotion } from './sillybunny-motion.js';
 import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
-import { adoptEditorFields } from './sillybunny-editor/rows.js';
+import { adoptAppliedTags, adoptEditorFields } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { getFolders, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import { LIST_EDITOR_STYLESHEET, EDITOR_CHROME_STYLESHEET } from './sillybunny-editor/list-shell.js';
@@ -127,6 +127,7 @@ let callbacks = null;
 export function initGroupEditor(config) {
     callbacks = config;
     adoptEditorFields(document.getElementById('rm_group_chats_block'), { t });
+    adoptAppliedTags(document.getElementById('groupTagList'), { t, field: 'applied-tags', input: /** @type {HTMLInputElement|null} */ (document.getElementById('groupTagInput')), jquery: $ });
     _mountChrome();
     _mountFolderField();
     _mountMemberSortable();
