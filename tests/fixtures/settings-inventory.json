@@ -3886,8 +3886,8 @@
         {"identity":"#context_story_string_role","kind":"select","where":"hidden"},
         {"identity":"#context_example_separator","kind":"textarea","where":"hidden"},
         {"identity":"#context_chat_start","kind":"textarea","where":"hidden"},
-        {"identity":"label:button:add prompt","identityKind":"label","kind":"button","name":"Add prompt","group":"Prompts","where":"visible"},
-        {"identity":"label:button:prompt list actions","identityKind":"label","kind":"button","name":"Prompt list actions","group":"Prompts","where":"visible"},
+        {"identity":"data:data-action-id=add","identityKind":"data","kind":"button","name":"Add prompt","group":"Prompts","where":"visible"},
+        {"identity":"data:data-action-id=more","identityKind":"data","kind":"button","name":"Prompt list actions","group":"Prompts","where":"visible"},
         {"identity":"label:text:search prompts","identityKind":"label","kind":"text","name":"Search prompts","where":"expander","lands":"none"},
         {"identity":"label:button:clear entry","kind":"button","where":"hidden"}
       ]
