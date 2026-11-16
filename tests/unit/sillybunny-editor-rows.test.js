@@ -18,7 +18,6 @@ import {
     createButtonRow,
     createPrefGroup,
     moveCaption,
-    adoptAppliedTags,
     adoptEditorFields,
 } from '../../public/scripts/sillybunny-editor/rows.js';
 
@@ -2012,89 +2011,5 @@ describe('adoptEditorFields', () => {
         adoptEditorFields(root, { t });
         expect(root.innerHTML).toBe(html);
         expect(() => adoptEditorFields(null, { t })).not.toThrow();
-    });
-});
-
-describe('adoptAppliedTags', () => {
-    const t = (strings, ...values) => strings.reduce((text, part, index) => text + part + (index < values.length ? values[index] : ''), '');
-
-    function chip(id, name) {
-        const node = document.createElement('span');
-        node.className = 'tag';
-        node.id = id;
-        node.innerHTML = `<span class="tag_name">${name}</span><button type="button" class="tag_remove">x</button>`;
-        return node;
-    }
-
-    function print(list, count, prefix = 'tag') {
-        list.replaceChildren(...Array.from({ length: count }, (_, index) => chip(`${prefix}-${index}`, `${prefix} ${index}`)));
-    }
-
-    function mount() {
-        document.body.innerHTML = '<div id="tags_div" class="ds-field"><div id="tagList" class="tags"></div></div>';
-        const list = document.getElementById('tagList');
-        const view = adoptAppliedTags(list, { t, field: 'applied-tags' });
-        const toggle = view.row.querySelector('.ds-row-expander__toggle');
-        const title = () => toggle.querySelector('.ds-row-label').textContent;
-        const subtitle = () => toggle.querySelector('.ds-row-subtitle').textContent;
-        const open = () => toggle.getAttribute('aria-expanded') === 'true';
-        const settle = () => new Promise(resolve => setTimeout(resolve, 0));
-        return { list, view, toggle, title, subtitle, open, settle };
-    }
-
-    test('moves the list into an expander row that lifts the 50-chip limit and hides with no tags', () => {
-        const { list, view } = mount();
-        expect(list.classList.contains('tags-expanded')).toBe(true);
-        expect(view.row.contains(list)).toBe(true);
-        expect(view.row.nextElementSibling).toBeNull();
-        expect(document.getElementById('tags_div').contains(view.row)).toBe(true);
-        expect(view.row.hidden).toBe(true);
-    });
-
-    test('titles the row with the count, names the tags in its subtitle and closes it above eight', async () => {
-        const { list, view, title, subtitle, open, settle } = mount();
-        print(list, 4);
-        await settle();
-        expect(view.row.hidden).toBe(false);
-        expect(title()).toBe('4 tags');
-        expect(subtitle()).toBe('tag 0, tag 1, tag 2, tag 3');
-        expect(open()).toBe(true);
-        print(list, 120, 'other');
-        await settle();
-        expect(title()).toBe('120 tags');
-        expect(open()).toBe(false);
-        print(list, 1, 'one');
-        await settle();
-        expect(title()).toBe('1 tag');
-    });
-
-    test('a tag added shows first in the subtitle, and adding or removing one keeps the row as the user left it', async () => {
-        const { list, toggle, subtitle, open, settle } = mount();
-        print(list, 20);
-        await settle();
-        expect(open()).toBe(false);
-        toggle.click();
-        expect(open()).toBe(true);
-        list.append(chip('new', 'Vampire'));
-        await settle();
-        expect(subtitle().startsWith('Vampire, tag 0')).toBe(true);
-        expect(open()).toBe(true);
-        list.querySelector('#tag-3').remove();
-        await settle();
-        expect(open()).toBe(true);
-        expect(subtitle().startsWith('Vampire, ')).toBe(true);
-        // Another entity's tags start afresh: closed by count, nothing first.
-        print(list, 30, 'next');
-        await settle();
-        expect(open()).toBe(false);
-        expect(subtitle().startsWith('next 0, ')).toBe(true);
-    });
-
-    test('adopting twice, or no list, changes nothing', () => {
-        const { list } = mount();
-        const html = document.body.innerHTML;
-        expect(adoptAppliedTags(list, { t, field: 'applied-tags' })).toBeNull();
-        expect(document.body.innerHTML).toBe(html);
-        expect(adoptAppliedTags(null, { t, field: 'applied-tags' })).toBeNull();
     });
 });

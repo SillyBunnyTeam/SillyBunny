@@ -156,9 +156,12 @@ function rememberPosition(nodes) {
  * @param {Element|null} [options.bounds=null]
  * @param {(value: string|string[]) => void} [options.onChange]  Called on every change event of the select.
  * @param {(value: string|string[]) => void} [options.onPick]  Called before write-back, only for a choice made in the picker.
+ * @param {{ label: string, icon?: string|Element, onSelect: () => void }[]} [options.footer=[]]  Actions under the picker's list.
+ * @param {{ onCreate: (text: string) => void, label?: (text: string) => string }|null} [options.create=null]  Offers to create
+ *     what the picker's search names when no option has that label (see openPicker).
  * @returns {object}
  */
-export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, emptyText, noneLabel = '', suffix, ordered = false, mapItem, bounds = null, onChange, onPick }) {
+export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, emptyText, noneLabel = '', suffix, ordered = false, mapItem, bounds = null, onChange, onPick, footer = [], create = null }) {
     if (!(select instanceof HTMLSelectElement)) throw new TypeError('Expected a select element.');
     const container = select.nextElementSibling?.matches('.select2-container') ? select.nextElementSibling : null;
     const previous = { tabIndex: select.getAttribute('tabindex'), ariaHidden: select.getAttribute('aria-hidden') };
@@ -261,6 +264,8 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
             bounds,
             matchTriggerWidth: true,
             owner: row,
+            footer,
+            create,
         });
     };
 

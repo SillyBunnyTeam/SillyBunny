@@ -115,6 +115,9 @@ function isLinkTarget(event, option) {
 }
 
 /** A disabled item stays out of reach unless it is a selected item of a multiple picker, which can still be removed. */
+/** The value of the item that creates what the search names. */
+const CREATE_ITEM = Symbol('create');
+
 function isItemDisabled(state, item, itemState = null) {
     return Boolean(item.disabled) && !(state.multiple && itemState === 'selected');
 }
@@ -125,6 +128,7 @@ function createOption(item, selected, id, onClick, { multiple = false, state = n
     option.className = 'sb-picker__option';
     option.setAttribute('role', 'option');
     option.setAttribute('aria-selected', String(selected));
+    if (item.ariaLabel) option.setAttribute('aria-label', item.ariaLabel);
     option.tabIndex = -1;
     if (disabled) {
         option.setAttribute('aria-disabled', 'true');
@@ -274,6 +278,11 @@ function renderOptions(state) {
     });
     const grouped = state.items.some(item => item.group);
     const buckets = grouped ? groupBuckets(matches) : [[null, matches]];
+    // A query that names no item exactly can become one: the item leads the list, under its own words.
+    const typed = state.input.value.trim();
+    if (state.create && typed && !state.items.some(item => item.label.toLocaleLowerCase() === typed.toLocaleLowerCase())) {
+        buckets.unshift([null, [{ value: CREATE_ITEM, label: typed, icon: 'fa-solid fa-plus', ariaLabel: state.create.label?.(typed) }]]);
+    }
     // Keyboard order follows the grouped visual order.
     state.filtered = buckets.flatMap(([, items]) => items);
     state.activeIndex = state.filtered.length
@@ -319,6 +328,19 @@ function renderOptions(state) {
 
 function selectPickerItem(state, value) {
     if (activePicker !== state) {
+        return;
+    }
+    if (value === CREATE_ITEM) {
+        const typed = state.input.value.trim();
+        state.input.value = '';
+        try {
+            state.create.onCreate(typed);
+        } finally {
+            if (activePicker === state) {
+                if (state.multiple) applyPickerSearch(state);
+                else closePicker({ restoreFocus: true });
+            }
+        }
         return;
     }
     const item = state.items.find(entry => Object.is(entry.value, value));
@@ -507,6 +529,9 @@ function finishClose() {
  * @param {() => void|null} [options.onClose=null]
  * @param {HTMLElement|null} [options.owner=null] Element around the trigger (such as its row) whose presses
  *     do not dismiss the popover, so the owner can toggle it closed itself.
+ * @param {{ onCreate: (text: string) => void, label?: (text: string) => string }|null} [options.create=null] A search that names no
+ *     item exactly offers an item, the typed words with a plus, that calls `onCreate` with them; `label` names it for assistive
+ *     technology. The search clears after it.
  * @returns {{ close: () => void, refresh: (items?: object[]) => void, readonly isOpen: boolean }}
  */
 export function openPicker({
@@ -525,6 +550,7 @@ export function openPicker({
     renderAsPopover = false,
     onClose = null,
     owner = null,
+    create = null,
 }) {
     if (!(trigger instanceof HTMLElement) || !Array.isArray(items) || !Array.isArray(footer) || typeof onSelect !== 'function') {
         throw new TypeError('openPicker requires a trigger, items, footer actions, and an onSelect callback');
@@ -550,6 +576,7 @@ export function openPicker({
         bounds,
         matchTriggerWidth,
         onClose,
+        create,
         restoreFocus: true,
         input: null,
         list: null,

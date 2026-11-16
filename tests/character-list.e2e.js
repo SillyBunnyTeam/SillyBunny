@@ -477,23 +477,22 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
             await avatar.press('Enter');
             const chooser = await chooserEvent;
             await chooser.setFiles([]);
+            // The tags are one row that opens the shared picker; unticking a tag removes it.
             const tags = page.locator('#tagList > .tag');
             const count = await tags.count();
             expect(count).toBeGreaterThan(0);
-            const remove = tags.first().getByRole('button', { name: 'Remove', exact: true });
-            await expect(remove).toBeVisible();
-            // On a coarse pointer the target reaches past the 20px button through its ::after box, so the chip keeps its size.
-            const size = await remove.evaluate(node => {
-                const rect = node.getBoundingClientRect();
-                const after = getComputedStyle(node, '::after');
-                const reach = after.content === 'none' ? 0 : -parseFloat(after.left);
-                return { width: rect.width + 2 * reach, height: rect.height + 2 * reach };
-            });
-            const minimum = { 1440: 20, 768: 44, 375: 44 }[viewport.width];
-            expect(size.width).toBeGreaterThanOrEqual(minimum);
-            expect(size.height).toBeGreaterThanOrEqual(minimum);
-            await remove.focus();
+            const name = (await tags.first().locator('.tag_name').textContent()).trim();
+            const trigger = page.locator('#tags_div .sb-tag-field .ds-select-row__trigger');
+            await expect(trigger).toBeVisible();
+            // The row is the target: a press on it opens the picker as the trigger does.
+            const size = await page.locator('#tags_div .sb-tag-field').boundingBox();
+            expect(size.height).toBeGreaterThanOrEqual(44);
+            await trigger.focus();
             await page.keyboard.press('Enter');
+            const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
+            const option = picker.getByRole('option', { name, exact: true });
+            await expect(option).toHaveAttribute('aria-selected', 'true');
+            await option.click();
             await expect(tags).toHaveCount(count - 1);
         });
     });

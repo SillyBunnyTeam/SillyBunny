@@ -1,5 +1,6 @@
 import { t } from '../i18n.js';
 import { openPicker } from './picker.js';
+import { createSelectRow } from './select-row.js';
 
 const attachments = new WeakMap();
 const TAG_SELECTOR = '.rm_tag_filter .tag:not(.actionable)';
@@ -137,4 +138,105 @@ export function attachTagFilterMenu(controls, { title = t`Show Tag List` } = {})
     attachments.set(controls, handle);
     refresh();
     return handle;
+}
+
+/**
+ * Draws an editor's tags as one row that opens the shared picker, as its Folder row does: `createSelectRow` over a select of every
+ * tag. The row names the applied tags, the picker ticks them and lists them first, and a search that names no tag offers to
+ * create it. Upstream stays in charge of the tags: they are added through the add field's own autocomplete handler and removed
+ * through the chips' Remove buttons, and upstream keeps printing the chips into `list`, which is the source of truth (a character
+ * that is still being created has no tag map entry). The add field's row and the chips stay in the page, hidden.
+ * @param {object} options
+ * @param {HTMLInputElement|null} options.input  Upstream's add field, with its jQuery UI autocomplete.
+ * @param {HTMLElement|null} options.list  The chips upstream prints for the entity.
+ * @param {HTMLElement|null} [options.manage]  Upstream's button that opens the Tag Manager.
+ * @param {string} options.field
+ * @param {Function} options.jquery  jQuery, to reach the add field's autocomplete.
+ * @returns {{ row: HTMLElement, destroy: () => void }|null}
+ */
+export function adoptTagField({ input, list, manage = null, field, jquery }) {
+    if (!(input instanceof HTMLInputElement) || !(list instanceof HTMLElement) || list.dataset.sbTagField) return null;
+    list.dataset.sbTagField = 'true';
+    // Upstream prints 50 chips and an expander chip unless the list has this class; the row reads every chip.
+    list.classList.add('tags-expanded');
+    // The context getter reads bindings that the app initialises late, so it throws while the editors mount at start-up.
+    const allTags = () => {
+        try {
+            return globalThis.SillyTavern?.getContext?.().tags ?? [];
+        } catch {
+            return [];
+        }
+    };
+    let byId = new Map();
+    const applied = () => [...list.querySelectorAll(':scope > .tag:not(.placeholder-expander, [data-sb-removing="true"])')].map(chip => chip.id);
+    const select = document.createElement('select');
+    select.multiple = true;
+    select.id = `${input.id}_choices`;
+    select.setAttribute('aria-label', t`Tags`);
+
+    // The applied tags lead, in the chips' order; the order is kept while the picker is open, so a ticked tag does not jump.
+    const fill = ({ reorder = false } = {}) => {
+        const ids = applied();
+        const tags = allTags();
+        byId = new Map(tags.map(tag => [tag.id, tag]));
+        if (reorder || select.options.length !== tags.length) {
+            const rest = tags.filter(tag => !ids.includes(tag.id)).sort((a, b) => a.name.localeCompare(b.name));
+            select.replaceChildren(...[...ids.map(id => byId.get(id)).filter(Boolean), ...rest].map(tag => new Option(tag.name, tag.id)));
+        }
+        for (const option of select.options) option.selected = ids.includes(option.value);
+    };
+
+    const add = name => {
+        const handler = jquery(input).autocomplete('option', 'select');
+        if (typeof handler !== 'function') return;
+        handler({ target: input }, { item: { value: name } });
+        // Upstream clears the field and searches again, which would open its own menu at the hidden field.
+        jquery(input).autocomplete('close');
+    };
+    const remove = id => [...list.children].find(chip => chip.id === id)?.querySelector('.tag_remove')?.click();
+    const colorOf = id => byId.get(id)?.color || '';
+
+    fill({ reorder: true });
+    const row = createSelectRow({
+        select,
+        label: t`Tags`,
+        field,
+        searchLabel: t`Search`,
+        emptyText: t`No results`,
+        noneLabel: t`None`,
+        mapItem: item => {
+            const dot = document.createElement('span');
+            dot.className = 'sb-tag-dot';
+            const color = colorOf(item.value);
+            if (color) dot.style.setProperty('--sb-tag-color', color);
+            return { ...item, icon: dot };
+        },
+        onPick: next => {
+            const ids = applied();
+            for (const id of next.filter(id => !ids.includes(id))) {
+                const name = byId.get(id)?.name;
+                if (name) add(name);
+            }
+            for (const id of ids.filter(id => !next.includes(id))) remove(id);
+        },
+        create: { onCreate: add, label: text => t`Create tag ${text}` },
+        footer: manage ? [{ label: t`Manage tags`, icon: 'fa-solid fa-tags', onSelect: () => manage.click() }] : [],
+    });
+    row.row.classList.add('sb-tag-field');
+    // Reorder before the row's own handlers open the picker.
+    row.row.addEventListener('click', () => fill({ reorder: true }), true);
+    const observer = new MutationObserver(() => fill());
+    observer.observe(list, { childList: true, attributes: true, attributeFilter: ['data-sb-removing'], subtree: true });
+
+    const entry = input.closest('.ds-row') ?? input.parentElement;
+    list.before(row.row);
+    entry.hidden = true;
+    list.hidden = true;
+    return {
+        row: row.row,
+        destroy() {
+            observer.disconnect();
+            row.destroy();
+        },
+    };
 }

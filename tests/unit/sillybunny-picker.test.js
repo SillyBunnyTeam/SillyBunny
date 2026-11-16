@@ -211,6 +211,31 @@ describe('searchable picker', () => {
         expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
     });
 
+    test('a search that names no item offers to create it, first, and creating clears the search', () => {
+        const onCreate = jest.fn();
+        const { input, list, onSelect } = makePicker({ multiple: true, create: { onCreate, label: text => `Create tag ${text}` } });
+        filter(input, 'alpha');
+        expect([...list.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual(['AlphaFirst book']);
+        filter(input, 'Delta');
+        const options = [...list.querySelectorAll('[role="option"]')];
+        expect(options).toHaveLength(1);
+        expect(options[0].textContent).toBe('Delta');
+        expect(options[0].getAttribute('aria-label')).toBe('Create tag Delta');
+        expect(options[0].querySelector('.fa-plus')).not.toBeNull();
+        keydown(input, 'Enter');
+        expect(onCreate).toHaveBeenCalledWith('Delta');
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(input.value).toBe('');
+        expect(list.querySelectorAll('[role="option"]')).toHaveLength(3);
+    });
+
+    test('without create, a search that names no item shows the empty page', () => {
+        const { input, list } = makePicker({ multiple: true });
+        filter(input, 'Delta');
+        expect(list.querySelectorAll('[role="option"]')).toHaveLength(0);
+        expect(list.querySelector('.sb-picker__empty')).not.toBeNull();
+    });
+
     test('Enter selects the active filtered value and closes', () => {
         const { picker, input, onSelect } = makePicker();
         filter(input, 'book');

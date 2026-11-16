@@ -56,6 +56,9 @@ export function sectionOf(surface, { sillybunnyElement = false } = {}) {
 const UUID = /[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i;
 const LONG_HEX = /(?:^|[-_])(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{10,}(?:$|[-_])/i;
 
+/** A selector writes a leading digit as a hex escape (`\35 4a…` for `54a…`), which would hide a generated token. */
+const unescapeCss = value => value.replace(/\\([0-9a-f]{1,6})\s?/gi, (match, hex) => String.fromCodePoint(parseInt(hex, 16)));
+
 /** The part of an id or attribute value that stays the same: a counter, a timestamp or a generated token becomes `*`. */
 function stabiliseToken(token) {
     if (UUID.test(token) || LONG_HEX.test(token)) {
@@ -81,7 +84,8 @@ export function normaliseTarget(target) {
         .replace(/#((?:\\.|[^\s>+~.[#:,])+)/g, (match, id) => `#${stabiliseToken(id)}`)
         .replace(/\[([\w-]+)([~|^$*]?=)(?:"([^"]*)"|'([^']*)'|([^\]\s]+))(\s+[is])?\]/g, (match, name, operator, double, single, bare, flag = '') => {
             const value = double ?? single ?? bare ?? '';
-            if (/^\d+$/.test(value) || UUID.test(value) || LONG_HEX.test(value)) {
+            const plain = unescapeCss(value);
+            if (/^\d+$/.test(plain) || UUID.test(plain) || LONG_HEX.test(plain)) {
                 return `[${name}]`;
             }
             const stable = stabiliseToken(value);

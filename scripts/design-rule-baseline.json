@@ -6,7 +6,7 @@
             "important": 12,
             "breakpoint-off-set": 2,
             "breakpoint-1000": 1,
-            "spacing-off-scale": 39
+            "spacing-off-scale": 35
         },
         "public/css/sillybunny-character-import.css": {
             "important": 2,

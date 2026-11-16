@@ -68,15 +68,28 @@ async function openView(page, view) {
     await expect(page.locator('.sb-character-list[data-mounted="true"]')).toHaveAttribute('data-view', view);
 }
 
-async function addTag(page, inputSelector, listSelector, name) {
-    const input = page.locator(inputSelector);
-    await input.fill(name);
-    const suggestion = page.locator('.ui-autocomplete:visible .ui-menu-item').filter({ hasText: name }).first();
-    await expect(suggestion).toBeVisible();
-    await suggestion.click();
+/** The Tags row opens the shared picker; a search that names no tag offers to create it, as the first option. */
+async function addTag(page, boxSelector, listSelector, name) {
+    await page.locator(`${boxSelector} .sb-tag-field .ds-select-row__trigger`).click();
+    const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
+    await picker.locator('.sb-picker__search').fill(name);
+    const create = picker.getByRole('option', { name: `Create tag ${name}`, exact: true });
+    await expect(create).toBeVisible();
+    await create.click();
     const chips = page.locator(`${listSelector} > .tag`);
     await expect(chips).toHaveCount(1);
+    await expect(picker.getByRole('option', { name, exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.locator(`${boxSelector} .sb-tag-field .ds-select-row__value`)).toHaveText(name);
     return chips.first();
+}
+
+/** Unticking the tag in the picker removes it, through the chip's own Remove button. */
+async function removeTag(page, boxSelector, name) {
+    await page.locator(`${boxSelector} .sb-tag-field .ds-select-row__trigger`).click();
+    const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
+    await picker.getByRole('option', { name, exact: true }).click();
+    await page.keyboard.press('Escape');
 }
 
 async function addCharacterToGroup(page) {
@@ -171,9 +184,9 @@ test('removing a create-mode character tag survives the redraw and the saved tag
     await openView(page, 'characters');
     await page.locator('.sb-character-list [data-action-id="new"]').click();
     await page.locator('#character_name_pole').fill('QA Created Character');
-    const chip = await addTag(page, '#tagInput', '#tagList', 'QA removable character tag');
+    const chip = await addTag(page, '#tags_div', '#tagList', 'QA removable character tag');
     const tagId = await chip.getAttribute('id');
-    await chip.getByRole('button', { name: 'Remove', exact: true }).click();
+    await removeTag(page, '#tags_div', 'QA removable character tag');
     await page.waitForTimeout(500);
     await expect(page.locator('#tagList > .tag')).toHaveCount(0);
     await page.locator('#sb_character_editor_save').click();
@@ -188,9 +201,9 @@ test('removing a create-mode group tag survives the redraw and the saved tag map
     await page.locator('.sb-character-list [data-action-id="new"]').click();
     await page.locator('#rm_group_chat_name').fill('QA Created Group');
     await addCharacterToGroup(page);
-    const chip = await addTag(page, '#groupTagInput', '#groupTagList', 'QA removable group tag');
+    const chip = await addTag(page, '#group_tags_div', '#groupTagList', 'QA removable group tag');
     const tagId = await chip.getAttribute('id');
-    await chip.getByRole('button', { name: 'Remove', exact: true }).click();
+    await removeTag(page, '#group_tags_div', 'QA removable group tag');
     await page.waitForTimeout(500);
     await expect(page.locator('#groupTagList > .tag')).toHaveCount(0);
     await page.locator('#sb_group_editor_save').click();

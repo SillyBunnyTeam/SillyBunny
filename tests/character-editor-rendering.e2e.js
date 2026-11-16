@@ -425,7 +425,7 @@ test('desktop fields share one height and Created by aligns with its section', a
             .filter(node => node.offsetParent)
             .map(node => Math.round(node.getBoundingClientRect().height));
         const x = selector => Math.round(form.querySelector(selector).getBoundingClientRect().x);
-        const flat = [...form.querySelectorAll('.sb-greetings-editor__add, #tags_div .tags_view, #sb_creator_notes_maximize')]
+        const flat = [...form.querySelectorAll('.sb-greetings-editor__add, #sb_creator_notes_maximize')]
             .map(node => getComputedStyle(node).borderTopWidth);
         return {
             heights,

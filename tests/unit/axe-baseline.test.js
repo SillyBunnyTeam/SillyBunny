@@ -55,6 +55,8 @@ describe('normaliseTarget', () => {
 
     test('reduces an attribute with a numeric or generated value to its name, and a counter in a value to a star', () => {
         expect(normaliseTarget('.mes[mesid="12"] > [data-uid="a1b2c3d4-1111-2222-3333-444455556666"] > #a1b2c3d4e5f6a7b8')).toBe('.mes[mesid] > [data-uid] > #*');
+        // A value that starts with a digit is escaped in the selector; the token under the escape is still generated.
+        expect(normaliseTarget('dialog.popup[data-id="\\35 4a423e8-3e36-498f-b7dd-0123456789ab"] > textarea')).toBe('dialog.popup[data-id] > textarea');
         expect(normaliseTarget('div[name="field3"]')).toBe('div[name="field*"]');
     });
 

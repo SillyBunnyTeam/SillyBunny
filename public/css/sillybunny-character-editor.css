@@ -600,7 +600,6 @@
     margin-inline-end: auto;
 }
 
-#tags_div .tags_view,
 #sb_creator_notes_maximize {
     margin: 0;
     padding: 4px 10px;
@@ -716,8 +715,7 @@
 .ds-row-button:focus-visible,
 #right-nav-panel .sb-editor-sheet .editor_maximize:focus-visible,
 #sb-settings-page #right-nav-panel .ds-pref-group > .ds-row-button:focus-visible,
-#right-nav-panel [data-sb-avatar-input]:focus-visible,
-#right-nav-panel :is(#tagList, #groupTagList) .tag_remove:focus-visible {
+#right-nav-panel [data-sb-avatar-input]:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
@@ -947,7 +945,7 @@
 /* Unify action-button chrome across the editor so Tags View, Add, and Maximize
    all follow the flat toolbar style instead of bordered chips. The group
    greetings button is injected by the bundled SB-GroupUtilities extension. */
-#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
 #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button {
     border: 0;
     background: transparent;
@@ -955,18 +953,18 @@
 }
 
 @media (hover: hover) {
-    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):hover,
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):hover,
     #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):active,
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):active,
 #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:active {
     background: var(--sb-flat-active-bg);
 }
 
-#right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):focus-visible,
+#right-nav-panel #form_create :is(.sb-greetings-editor__add, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button):focus-visible,
 #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
@@ -1107,7 +1105,7 @@
     #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button),
     .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div),
     .ds-row-button,
-    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
     #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button,
     .sb-greeting-row__btn,
     .sb-editor-tokens {
@@ -1119,7 +1117,7 @@ body.reduced-motion :is(
     #right-nav-panel :is(#sb_character_editor_toolbar, #sb_group_editor_toolbar) > :is(.menu_button, .chat_lorebook_button),
     .sb-character-essentials__avatar :is(#avatar_div_div, #group_avatar_div),
     .ds-row-button,
-    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #tags_div .tags_view, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
+    #right-nav-panel #form_create :is(.sb-greetings-editor__add, #sb_character_add_group_greeting, #sb_creator_notes_maximize, #Extension-GroupGreetings-button > .menu_button),
     #right-nav-panel #rm_group_chats_block .sb-editor-sheet__content .menu_button,
     .sb-greeting-row__btn,
     .sb-editor-tokens
@@ -1148,7 +1146,6 @@ body.reduced-motion :is(
 /* Touch targets are 44px on coarse pointers; the toolbar and
    header are the primary hit areas in this editor. */
 @media (pointer: coarse) {
-    #tags_div .tags_view,
     #sb_creator_notes_maximize {
         min-height: 44px;
     }
@@ -1202,159 +1199,23 @@ body.reduced-motion :is(
     }
 }
 
-/* Tag chips — libadwaita pill style
+/* Tags
    ========================================================================= */
 
-/* The applied tags sit in an expander row (adoptAppliedTags in rows.js) titled with their count, its subtitle naming them; open,
-   it shows every chip. A chip is a neutral pill with a dot in the tag's colour (.ds-tag-chips in sillybunny-entity-list.css), as
-   the list rows draw tags. Scoped to the editors so that tags elsewhere keep their look. */
-/* The suggestions of the add-tag field are a popover: its tone, radius and shadow, kept inside the window. style.css draws every
-   jQuery UI menu with the blur tint; its border stays. */
-body .ui-autocomplete.sb-tag-autocomplete {
-    max-width: min(28rem, calc(100vw - 16px));
-    max-height: min(18rem, 50vh);
-    max-height: min(18rem, 50dvh);
-    padding: 6px;
-    border-radius: var(--sb-radius-overlay);
-    background: var(--sb-layer-popover);
-    color: var(--SmartThemeBodyColor);
-    box-shadow: var(--sb-shadow-popover);
-    text-shadow: none;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    box-sizing: border-box;
-    overscroll-behavior: contain;
+/* The editors' tags are one row that opens the shared picker (adoptTagField in tag-filter-menu.js); upstream's add field and
+   chips stay in the page as its transport, hidden. */
+:is(#tags_div, #group_tags_div) > [hidden] {
+    display: none;
 }
 
-/* style.css dims every item to half until it is hovered, under the text contrast. The item is the row, as in every menu. */
-body .ui-autocomplete.sb-tag-autocomplete li {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 32px;
-    padding: 0 12px;
-    border-radius: var(--sb-radius-control);
-    opacity: 1;
-    box-sizing: border-box;
-}
-
-body .ui-autocomplete.sb-tag-autocomplete li:has(> .ui-state-active) {
-    background: var(--sb-flat-hover-bg);
-}
-
-body .ui-autocomplete.sb-tag-autocomplete .ui-menu-item-wrapper {
-    overflow: hidden;
-    flex: 1 1 auto;
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: inherit;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-@media (pointer: coarse) {
-    body .ui-autocomplete.sb-tag-autocomplete li {
-        min-height: 44px;
-    }
-}
-
-.sb-applied-tags > .ds-row-expander__header {
-    border-top: 1px solid var(--sb-shell-border);
-}
-
-.sb-applied-tags .ds-row-expander__toggle .ds-row-subtitle {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 2px var(--sb-density-row-padding-inline) 12px;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    max-width: 100%;
-    height: 28px;
-    padding: 0 4px 0 10px;
-    border: 0;
-    border-radius: var(--sb-radius-pill);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    font-size: var(--sb-type-caption);
-    font-weight: 500;
-    color: var(--SmartThemeBodyColor);
-    /* tags.css dims the chips of #tagList to 60%, which leaves the name under the 4.5:1 contrast on the light tone. */
-    opacity: 1;
-    line-height: 1;
-    cursor: default;
-    box-sizing: border-box;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    flex-shrink: 0;
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    border: 0;
+/* The dot in the tag's colour that leads each tag in the picker, as the list rows and the filter bar draw tags. */
+.sb-tag-dot {
+    display: inline-block;
+    flex: 0 0 8px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: transparent;
-    color: inherit;
-    font-size: 10px;
-    line-height: 1;
-    cursor: pointer;
-    transition: background-color var(--sb-transition-fast);
-}
-
-/* On a coarse pointer the target reaches 44px through a box of its own, so the chip keeps its size; the chips stand further apart
-   so that the targets of neighbouring rows do not meet. */
-@media (pointer: coarse) {
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList).tags {
-        gap: 8px;
-    }
-
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag {
-        height: 32px;
-    }
-
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove::after {
-        position: absolute;
-        inset: -12px;
-        content: '';
-    }
-}
-
-@media (hover: hover) {
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 14%, transparent);
-    }
-
-    #right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
-    }
-}
-
-#right-nav-panel:is([data-menu-type="character_edit"], [data-menu-type="create"], [data-menu-type="group_edit"], [data-menu-type="group_create"]) :is(#tagList, #groupTagList) .tag .tag_remove:active {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 22%, transparent);
+    background: var(--sb-tag-color, var(--sb-muted-fg));
 }
 
 /* Group editor — group-specific sheet rules (Step 4)

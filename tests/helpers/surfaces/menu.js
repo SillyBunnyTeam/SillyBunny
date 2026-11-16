@@ -756,23 +756,29 @@ export const surfaces = [
         }],
     }),
     menu({
-        id: 'autocomplete.tag-input',
-        title: 'jQuery UI autocomplete (character tag input)',
-        owner: 'B',
-        root: AUTOCOMPLETE,
-        ready: `${AUTOCOMPLETE} .ui-menu-item`,
+        id: 'picker.character-tags',
+        title: 'Tags picker (character editor)',
+        root: PICKER_ROOT,
         needs: ['character', 'tags'],
-        sources: [`${SCRIPTS}/tags.js`],
+        sources: [`${SCRIPTS}/sillybunny-editor/tag-filter-menu.js`, `${SCRIPTS}/sillybunny-editor/select-row.js`, PICKER],
         async open(page) {
             await openAuditCharacterEditor(page);
-            await page.locator('#tagInput').scrollIntoViewIfNeeded();
-            await page.locator('#tagInput').click();
-            await settleOverlay(page, AUTOCOMPLETE);
+            await page.locator('#tags_div .sb-tag-field').scrollIntoViewIfNeeded();
+            await openFrom(page, '#tags_div .sb-tag-field .ds-select-row__trigger', PICKER_ROOT);
         },
+        // The trigger toggles the picker, so a state opens it again only after it closed.
         async close(page) {
-            await page.locator('#tagInput').press('Escape');
-            await page.locator(AUTOCOMPLETE).first().waitFor({ state: 'hidden' });
+            await page.keyboard.press('Escape');
+            await page.locator(PICKER_ROOT).first().waitFor({ state: 'hidden' });
         },
+        states: [{
+            id: 'create',
+            ready: '.sb-picker__option:has(.fa-plus)',
+            async open(page) {
+                await page.locator('.sb-picker__search').fill('A tag that is not there yet');
+                await settleOverlay(page, PICKER_ROOT);
+            },
+        }],
     }),
     menu({
         id: 'picker.connection-model',

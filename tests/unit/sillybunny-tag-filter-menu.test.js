@@ -6,9 +6,11 @@ import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globa
 let options;
 const picker = { close: jest.fn(), refresh: jest.fn() };
 const openPicker = jest.fn(config => { options = config; return picker; });
-await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({ openPicker }));
-await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: strings => strings.join('') }));
-const { attachTagFilterMenu } = await import('../../public/scripts/sillybunny-editor/tag-filter-menu.js');
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({ openPicker, closePicker: jest.fn(), isPickerOpen: () => false }));
+await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (index < values.length ? values[index] : ''), ''),
+}));
+const { adoptTagField, attachTagFilterMenu } = await import('../../public/scripts/sillybunny-editor/tag-filter-menu.js');
 let controls;
 let menu;
 const settle = async () => { for (let index = 0; index < 15; index++) await Promise.resolve(); };
@@ -146,5 +148,96 @@ describe('tag filter menu', () => {
         release();
         await settle();
         expect(openPicker).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('editor tag field', () => {
+    const allTags = [
+        { id: 't-red', name: 'Red', color: 'rgb(200, 0, 0)' },
+        { id: 't-blue', name: 'Blue', color: '' },
+        { id: 't-green', name: 'Green', color: 'rgb(0, 160, 0)' },
+    ];
+    let field;
+    let added;
+    let input;
+    let list;
+
+    function chip(tagItem) {
+        return `<span class="tag" id="${tagItem.id}"><span class="tag_name">${tagItem.name}</span><button type="button" class="tag_remove">x</button></span>`;
+    }
+
+    function mount(applied = ['t-red']) {
+        document.body.innerHTML = `<div id="tags_div"><div class="ds-row"><input id="tagInput"><button type="button" class="tags_view"></button></div>
+            <div id="tagList" class="tags">${applied.map(id => chip(allTags.find(tagItem => tagItem.id === id))).join('')}</div></div>`;
+        input = document.getElementById('tagInput');
+        list = document.getElementById('tagList');
+        added = [];
+        // Upstream's add path: its autocomplete select handler prints the chip; its Remove handler takes it out.
+        const selectHandler = (_event, ui) => {
+            let tagItem = allTags.find(item => item.name === ui.item.value);
+            if (!tagItem) {
+                tagItem = { id: `t-${ui.item.value.toLowerCase()}`, name: ui.item.value, color: '' };
+                allTags.push(tagItem);
+            }
+            added.push(tagItem.name);
+            list.insertAdjacentHTML('beforeend', chip(tagItem));
+        };
+        list.addEventListener('click', event => event.target.closest('.tag_remove')?.closest('.tag').remove());
+        const jquery = () => ({ autocomplete: (method, name) => (method === 'option' && name === 'select' ? selectHandler : undefined) });
+        globalThis.SillyTavern = { getContext: () => ({ tags: allTags }) };
+        field = adoptTagField({ input, list, manage: document.querySelector('.tags_view'), field: 'tags', jquery });
+        return field;
+    }
+
+    afterEach(() => {
+        field?.destroy();
+        field = null;
+        delete globalThis.SillyTavern;
+    });
+
+    test('one row replaces the add field and the chips, which stay in the page as the transport', () => {
+        mount();
+        expect(field.row.matches('.ds-select-row.sb-tag-field')).toBe(true);
+        expect(field.row.querySelector('.ds-row-label').textContent).toBe('Tags');
+        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('Red');
+        expect(input.closest('.ds-row').hidden).toBe(true);
+        expect(list.hidden).toBe(true);
+        expect(list.classList.contains('tags-expanded')).toBe(true);
+        expect(field.row.nextElementSibling).toBe(list);
+    });
+
+    test('the picker lists the applied tags first, ticked, with a dot in their colour, and Manage tags at the foot', () => {
+        mount(['t-green']);
+        field.row.querySelector('.ds-select-row__trigger').click();
+        expect(options.multiple).toBe(true);
+        expect(options.items.map(item => item.label)).toEqual(['Green', 'Blue', 'Red']);
+        expect(options.getItemState('t-green')).toBe('selected');
+        expect(options.getItemState('t-red')).toBeNull();
+        expect(options.items[0].icon.style.getPropertyValue('--sb-tag-color')).toBe('rgb(0, 160, 0)');
+        expect(options.footer.map(item => item.label)).toEqual(['Manage tags']);
+    });
+
+    test('ticking adds through upstream, unticking removes the chip, and the row follows', async () => {
+        mount(['t-red']);
+        field.row.querySelector('.ds-select-row__trigger').click();
+        options.onSelect('t-blue');
+        expect(added).toEqual(['Blue']);
+        await settle();
+        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('Red, Blue');
+        options.onSelect('t-red');
+        await settle();
+        expect(list.querySelector('#t-red')).toBeNull();
+        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('Blue');
+    });
+
+    test('a search that names no tag creates it through upstream and applies it', async () => {
+        mount([]);
+        field.row.querySelector('.ds-select-row__trigger').click();
+        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('None');
+        expect(options.create.label('Vampire')).toBe('Create tag Vampire');
+        options.create.onCreate('Vampire');
+        await settle();
+        expect(added).toEqual(['Vampire']);
+        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('Vampire');
     });
 });
