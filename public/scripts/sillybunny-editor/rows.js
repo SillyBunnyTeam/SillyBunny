@@ -490,8 +490,15 @@ function assertEntryType(input, type) {
 }
 
 function prepareFloatingInput(input, id, type) {
+    // A value that may hold line breaks keeps its textarea, which the row shows at one line and lets grow with its text.
+    if (input?.tagName === 'TEXTAREA') {
+        if (type !== undefined) throw new TypeError(`Expected an entry input of type ${type}.`);
+        input.rows = 1;
+        ensureId(input, id);
+        return input;
+    }
     if (input && (input.tagName !== 'INPUT' || !ENTRY_TYPES.has(input.type))) {
-        throw new TypeError('Expected a single-line text input.');
+        throw new TypeError('Expected a single-line text input or a textarea.');
     }
     assertEntryType(input, type);
     const control = input ?? document.createElement('input');
@@ -1085,13 +1092,15 @@ function tokenCounterOf(wrapper, control) {
  * entry row and a multi-line field a text-area field, each keeping its control, id, name, classes and listeners. The label,
  * its help link, the field's token count, the Edit/Preview placeholder and Expand move into the field's label row.
  * @param {HTMLElement|null} root
- * @param {{ t: (strings: TemplateStringsArray) => string }} options  The translator, for the names of the controls the rows add.
+ * @param {{ t: (strings: TemplateStringsArray) => string, entryTextAreas?: string[] }} options  The translator, for the names of
+ *     the controls the rows add; the ids of textareas that hold a short value (a name, a version) and take an entry row.
  */
-export function adoptEditorFields(root, { t }) {
+export function adoptEditorFields(root, { t, entryTextAreas = [] }) {
     if (!root) return;
     for (const { wrapper, label, control, header } of labelledFields(root)) {
         if (control.closest('.ds-row-entry, .ds-row-textarea')) continue;
-        if (control instanceof HTMLTextAreaElement) {
+        const entry = control.matches(ENTRY_INPUT) || (control instanceof HTMLTextAreaElement && entryTextAreas.includes(control.id));
+        if (control instanceof HTMLTextAreaElement && !entry) {
             const counter = tokenCounterOf(wrapper, control);
             const expand = header?.querySelector('.editor_maximize');
             const caption = wrapper.querySelector(':scope > :is(.ds-field-subtitle, .ds-field-hint)');
@@ -1116,7 +1125,7 @@ export function adoptEditorFields(root, { t }) {
             header?.remove();
             wrapper.querySelector(':scope > .extension_token_counter')?.remove();
             wrapper.prepend(view.row);
-        } else if (control.matches(ENTRY_INPUT)) {
+        } else if (entry) {
             const controls = control.closest('.tag_controls');
             const counter = tokenCounterOf(wrapper, control);
             const suffix = [

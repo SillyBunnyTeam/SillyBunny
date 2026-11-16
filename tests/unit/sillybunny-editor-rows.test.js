@@ -838,7 +838,21 @@ describe('createEntryRow', () => {
         input.dispatchEvent(new Event('input', { bubbles: true }));
         expect(onInput).toHaveBeenCalledTimes(1);
         expect(entry.getValue()).toBe('New name');
-        expect(() => createEntryRow({ label: 'Name', field: 'name', floating: true, input })).toThrow(TypeError);
+        entry.destroy();
+    });
+
+    test('a floating row keeps a textarea, at one line, so a value with line breaks keeps them', () => {
+        const input = document.createElement('textarea');
+        input.id = 'creator_textarea';
+        input.rows = 2;
+        input.value = 'Maker\nContact';
+        const entry = createEntryRow({ label: 'Created by', field: 'creator', floating: true, input });
+        expect(entry.control).toBe(input);
+        expect(input.rows).toBe(1);
+        expect(input.value).toBe('Maker\nContact');
+        expect(entry.row.querySelector('.ds-row-entry__field > textarea')).toBe(input);
+        expect(entry.row.querySelector('.ds-row-entry__title').htmlFor).toBe('creator_textarea');
+        expect(() => createEntryRow({ label: 'Created by', field: 'creator', floating: true, input: document.createElement('textarea'), type: 'text' })).toThrow(TypeError);
         entry.destroy();
     });
     test('places the entry below its label, with separate input and change notifications', () => {
@@ -1972,6 +1986,22 @@ describe('adoptEditorFields', () => {
         expect(area.nextElementSibling.matches('.sb-preview-pane')).toBe(true);
         expect(wrapper.querySelector(':scope > .ds-field-header, :scope > .extension_token_counter')).toBeNull();
         expect(wrapper.closest('form').querySelectorAll('.editor_maximize')).toHaveLength(1);
+    });
+
+    test('a text area named in entryTextAreas becomes an entry row; the others stay text-area fields', () => {
+        const root = sheet();
+        root.insertAdjacentHTML('beforeend', `<div id="creator_div" class="ds-field">
+            <label class="ds-field-label" for="creator_textarea">Created by</label>
+            <textarea id="creator_textarea" name="creator" data-sb-editor-field="creator" rows="2" placeholder="(Botmaker's name)"></textarea>
+        </div>`);
+        const creator = document.getElementById('creator_textarea');
+        adoptEditorFields(root, { t, entryTextAreas: ['creator_textarea'] });
+        const row = document.getElementById('creator_div').querySelector(':scope > .ds-row-entry--floating');
+        expect(row.contains(creator)).toBe(true);
+        expect(creator.rows).toBe(1);
+        expect(creator.name).toBe('creator');
+        expect(row.querySelector('.ds-row-entry__title').textContent).toBe('Created by');
+        expect(document.getElementById('descriptionWrapper').querySelector(':scope > .ds-row-textarea')).not.toBeNull();
     });
 
     test('adopting twice, or a sheet with no fields, changes nothing', () => {

@@ -111,7 +111,7 @@ let draftGrpKeys = [];
 
 export function initCharacterEditor() {
     holdEditorsUntilStyled();
-    adoptEditorFields(document.getElementById('form_create'), { t });
+    adoptEditorFields(document.getElementById('form_create'), { t, entryTextAreas: ['creator_textarea', 'character_version_textarea'] });
     _mountChrome();
     _bindToolbarButtons();
     _bindExportMenu();

@@ -44,6 +44,10 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () =
     animateHeightFrom: jest.fn(), animateIn: jest.fn(), play: jest.fn(), stopMotion: jest.fn(), animateListChange: (_node, render) => render(),
     MOTION_EASE_OUT_QUAD: '', MOTION_FAST: 0, MOTION_SLOW: 0, SPRING_NAVIGATION: {}, prefersReducedMotion: () => true,
 }));
+// The Folder field's select row brings the picker and its sheet, which this test does not reach.
+await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/select-row.js', () => ({
+    createSelectRow: ({ select }) => ({ row: document.createElement('div'), control: select, getValue: () => select.value, setValue: value => { select.value = value; } }),
+}));
 const { createObjectNavigation } = await import('../../public/scripts/sillybunny-editor/object-navigation.js');
 const navigation = createObjectNavigation({ confirmLeave: async () => true });
 const navigate = jest.fn(navigation.navigate);

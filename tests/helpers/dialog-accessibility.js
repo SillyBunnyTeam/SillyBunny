@@ -115,7 +115,7 @@ export async function installProbes(page) {
                 // number and an entry row's text draw no ring of their own, their row does.
                 const segment = element.matches('.sb-boolean-radio-option > input') ? element.nextElementSibling
                     : element.matches('.ds-row--spin > .ds-row-suffix > input.ds-spin') ? element.closest('.ds-row--spin')
-                        : element.matches('.ds-row-entry--floating .ds-row-entry__field > input') ? element.closest('.ds-row-entry--floating') : null;
+                        : element.matches('.ds-row-entry--floating .ds-row-entry__field > :is(input, textarea)') ? element.closest('.ds-row-entry--floating') : null;
                 const style = getComputedStyle(segment ?? element);
                 return {
                     kind: 'element',

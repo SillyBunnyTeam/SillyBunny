@@ -440,6 +440,40 @@ test('desktop fields share one height and Created by aligns with its section', a
     expect(layout.flat.every(width => width === '0px')).toBe(true);
 });
 
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`Metadata fields take the size of their content at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await openEditor(page);
+        const quickEdit = page.locator('#sb_character_editor_quick_edit');
+        if (await quickEdit.isVisible() && await quickEdit.getAttribute('aria-pressed') === 'true') await quickEdit.click();
+        const creator = page.locator('#creator_textarea');
+        const version = page.locator('#character_version_textarea');
+        const notes = page.locator('#creator_notes_textarea');
+        await creator.scrollIntoViewIfNeeded();
+        const height = locator => locator.evaluate(node => Math.round(node.getBoundingClientRect().height));
+        const rowHeight = locator => locator.evaluate(node => Math.round(node.closest('.ds-row').getBoundingClientRect().height));
+        // Created by and Character Version hold short values: entry rows as tall as the Nickname row, one under the other.
+        await expect(page.locator('.ds-row-entry--floating .ds-row-entry__field > #creator_textarea')).toHaveCount(1);
+        await expect(page.locator('.ds-row-entry--floating .ds-row-entry__field > #character_version_textarea')).toHaveCount(1);
+        const nicknameRow = await rowHeight(page.locator('#character_nickname_pole'));
+        expect(await rowHeight(creator)).toBe(nicknameRow);
+        expect(await rowHeight(version)).toBe(nicknameRow);
+        const [creatorBox, versionBox] = await Promise.all([creator.boundingBox(), version.boundingBox()]);
+        expect(versionBox.y).toBeGreaterThan(creatorBox.y + creatorBox.height - 1);
+        // A value with a line break keeps it, and the row grows to show it.
+        const oneLine = await height(creator);
+        await creator.fill('Maker\nContact');
+        await expect(creator).toHaveValue('Maker\nContact');
+        await expect.poll(() => height(creator)).toBeGreaterThan(oneLine);
+        // The notes start at two field heights and grow with their text.
+        const fieldHeight = await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById('creator_notes_textarea')).getPropertyValue('--sb-field-min-height')) || 46);
+        await notes.fill('');
+        expect(await height(notes)).toBeLessThanOrEqual(Math.ceil(fieldHeight * 2) + 1);
+        await notes.fill(Array.from({ length: 8 }, (_, line) => `Line ${line + 1}`).join('\n'));
+        await expect.poll(() => height(notes)).toBeGreaterThan(fieldHeight * 2 + 40);
+    });
+}
+
 test('dirty draft recovers after page reload', async ({ page }) => {
     await openEditor(page);
     const name = page.locator('#character_name_pole');

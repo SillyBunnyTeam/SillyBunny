@@ -741,37 +741,18 @@
     }
 }
 
-/* Field pair layout for creator/version */
-.ds-field-pair {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0;
+/* style.css gives every textarea of the form a fifth of the screen below 1000px; an entry row's textarea is one line. */
+#form_create .ds-row-entry--floating .ds-row-entry__field > textarea {
+    flex-grow: 1;
+    min-height: var(--sb-entry-field-height);
 }
 
-/* sillybunny-tabs.css pads every non-row .ds-pref-group child by 10px 16px when
-   the panel is mounted in the settings page. The pair is only a grid wrapper;
-   its fields already carry that padding, so the wrapper must not add more. */
-#right-nav-panel #form_create .sb-editor-section__body > .ds-field-pair {
-    padding: 0;
-}
-
-.ds-field-pair > .ds-field {
-    padding: 10px var(--sb-density-row-padding-inline);
-    border-bottom: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
-}
-
-.ds-field-pair > .ds-field:nth-child(odd) {
-    border-right: 1px solid var(--sb-shell-border, color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent));
-}
-
-@media screen and (max-width: 620px) {
-    .ds-field-pair {
-        grid-template-columns: 1fr;
-    }
-
-    .ds-field-pair > .ds-field:nth-child(odd) {
-        border-right: 0;
-    }
+/* The notes and the embedded tags of Metadata are usually short: their boxes start at two lines and grow with the text. */
+#form_create [data-sb-section="metadata"] .ds-row-textarea > .ds-row-textarea__input {
+    min-height: calc(var(--sb-field-min-height) * 2);
+    max-height: 50vh;
+    max-height: 50dvh;
+    field-sizing: content;
 }
 
 /* Essentials section — avatar and name side by side

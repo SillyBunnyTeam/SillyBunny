@@ -48,10 +48,12 @@ describe('libadwaita surface and layer foundations', () => {
         expect(tabsCss).not.toContain('max(48px, 3.4em)');
         expect(tabsCss).toMatch(/\.ds-row-entry--floating \.ds-row-entry__field \{[^}]*min-height: var\(--sb-entry-field-height\);/);
         expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating \{[^}]*--sb-entry-field-height: calc\(var\(--sb-density-row-min-height\) - 2 \* var\(--sb-density-row-padding-block\)\);/);
-        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating \.ds-row-entry__field > input,[^{]*\{[^}]*min-height: var\(--sb-entry-field-height\);[^}]*border: 0;[^}]*background: none;[^}]*box-shadow: none;/);
-        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:has\(\.ds-row-entry__field > input:focus\) \{[^}]*box-shadow: var\(--sb-focus-ring-inset\);/);
-        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:hover:not\(:has\(\.ds-row-entry__field > input:focus,/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating \.ds-row-entry__field > :is\(input, textarea\),[^{]*\{[^}]*min-height: var\(--sb-entry-field-height\);[^}]*border: 0;[^}]*background: none;[^}]*box-shadow: none;/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:has\(\.ds-row-entry__field > :is\(input, textarea\):focus\) \{[^}]*box-shadow: var\(--sb-focus-ring-inset\);/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:hover:not\(:has\(\.ds-row-entry__field > :is\(input, textarea\):focus,/);
         expect(tabsCss).not.toContain('.sb-connections-provider .ds-row-entry__field > input');
+        // A textarea in an entry row (a value that may hold line breaks) shows one line and grows with its text.
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating \.ds-row-entry__field > textarea \{[^}]*resize: none;[^}]*field-sizing: content;/);
     });
 
     test('the floating entry row dims its title, floats it at Caption size and hides the pencil while the text has focus', () => {
@@ -63,9 +65,9 @@ describe('libadwaita surface and layer foundations', () => {
     });
 
     test('floating entry rows draw an error in Destructive Red and fade when disabled', () => {
-        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:has\(\.ds-row-entry__field > input\[aria-invalid='true'\]\) \{[^}]*outline: 2px solid var\(--sb-color-danger\);/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:has\(\.ds-row-entry__field > :is\(input, textarea\)\[aria-invalid='true'\]\) \{[^}]*outline: 2px solid var\(--sb-color-danger\);/);
         expect(tabsCss).toMatch(/\.ds-row-entry__error \{[^}]*color: var\(--sb-color-danger\);/);
-        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > input:disabled\)\) \{[^}]*opacity: 0\.5;[^}]*cursor: not-allowed;/);
-        expect(tabsCss).toMatch(/\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > input:disabled\)\) \.ds-row-entry__edit \{[^}]*opacity: 0\.6;/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > :is\(input, textarea\):disabled\)\) \{[^}]*opacity: 0\.5;[^}]*cursor: not-allowed;/);
+        expect(tabsCss).toMatch(/\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > :is\(input, textarea\):disabled\)\) \.ds-row-entry__edit \{[^}]*opacity: 0\.6;/);
     });
 });

@@ -4909,7 +4909,7 @@ body.reduced-motion .sb-search-entry {
 }
 
 /* :is() drops the autofill spelling an engine lacks instead of invalidating the list. */
-.ds-row-entry--floating .ds-row-entry__field:is(:focus-within, :has(> input:is(:not(:placeholder-shown), :autofill, :-webkit-autofill))) > .ds-row-entry__title {
+.ds-row-entry--floating .ds-row-entry__field:is(:focus-within, :has(> :is(input, textarea):is(:not(:placeholder-shown), :autofill, :-webkit-autofill))) > .ds-row-entry__title {
     top: 0;
     font-size: var(--sb-type-caption);
     line-height: 1.2;
@@ -4917,12 +4917,12 @@ body.reduced-motion .sb-search-entry {
 }
 
 /* Each state is named so that the shell's generic text-field rules (fill, border, ring) lose to this one. */
-.ds-row.ds-row-entry--floating .ds-row-entry__field > input,
-.ds-row.ds-row-entry--floating .ds-row-entry__field > input:focus,
-.ds-row.ds-row-entry--floating .ds-row-entry__field > input:focus-visible,
-.ds-row.ds-row-entry--floating .ds-row-entry__field > input:focus:not([disabled]):not([readonly]),
-.ds-row.ds-row-entry--floating .ds-row-entry__field > input[aria-invalid='true'],
-.ds-row.ds-row-entry--floating .ds-row-entry__field > input[aria-invalid='true']:focus:not([disabled]):not([readonly]) {
+.ds-row.ds-row-entry--floating .ds-row-entry__field > :is(input, textarea),
+.ds-row.ds-row-entry--floating .ds-row-entry__field > :is(input, textarea):focus,
+.ds-row.ds-row-entry--floating .ds-row-entry__field > :is(input, textarea):focus-visible,
+.ds-row.ds-row-entry--floating .ds-row-entry__field > :is(input, textarea):focus:not([disabled]):not([readonly]),
+.ds-row.ds-row-entry--floating .ds-row-entry__field > :is(input, textarea)[aria-invalid='true'],
+.ds-row.ds-row-entry--floating .ds-row-entry__field > :is(input, textarea)[aria-invalid='true']:focus:not([disabled]):not([readonly]) {
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
@@ -4949,10 +4949,20 @@ body.reduced-motion .sb-search-entry {
 }
 
 /* The title is the placeholder; !important matches the theme's placeholder rule. */
-.ds-row-entry--floating .ds-row-entry__field > input::placeholder {
+.ds-row-entry--floating .ds-row-entry__field > :is(input, textarea)::placeholder {
     color: transparent !important;
     opacity: 1;
     text-shadow: none !important;
+}
+
+/* A value that may hold line breaks keeps its textarea: it shows one line and grows with its text, to about five lines. */
+.ds-row.ds-row-entry--floating .ds-row-entry__field > textarea {
+    max-height: calc(1.2 * var(--sb-type-caption) + 6em);
+    overflow-y: auto;
+    resize: none;
+    field-sizing: content;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 /* The pencil marks the row as editable while it is not being edited. */
@@ -4976,18 +4986,18 @@ body.reduced-motion .sb-search-entry {
 
 /* Hover fills the row until the text has focus. */
 @media (hover: hover) {
-    .ds-row.ds-row-entry--floating:hover:not(:has(.ds-row-entry__field > input:focus, .ds-row-entry__field > input:disabled), .is-insensitive) {
+    .ds-row.ds-row-entry--floating:hover:not(:has(.ds-row-entry__field > :is(input, textarea):focus, .ds-row-entry__field > :is(input, textarea):disabled), .is-insensitive) {
         background: var(--sb-flat-hover-bg);
     }
 }
 
 /* The ring goes round the whole row, suffixes and caption included. */
-.ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input:focus) {
+.ds-row.ds-row-entry--floating:has(.ds-row-entry__field > :is(input, textarea):focus) {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
 /* An error draws the ring in the Destructive colour, at rest as well as in focus. */
-.ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input[aria-invalid='true']) {
+.ds-row.ds-row-entry--floating:has(.ds-row-entry__field > :is(input, textarea)[aria-invalid='true']) {
     outline: 2px solid var(--sb-color-danger);
     outline-offset: -2px;
     box-shadow: none;
@@ -4998,25 +5008,25 @@ body.reduced-motion .sb-search-entry {
 }
 
 /* The row fades, the pencil again to 30%. */
-.ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) {
+.ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > :is(input, textarea):disabled)) {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) .ds-row-entry__edit {
+.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > :is(input, textarea):disabled)) .ds-row-entry__edit {
     opacity: 0.6;
 }
 
-.ds-row-entry--floating .ds-row-entry__field > input:disabled {
+.ds-row-entry--floating .ds-row-entry__field > :is(input, textarea):disabled {
     cursor: not-allowed;
 }
 
 @media (prefers-contrast: more) {
-    .ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) {
+    .ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > :is(input, textarea):disabled)) {
         opacity: 0.4;
     }
 
-    .ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > input:disabled)) .ds-row-entry__edit {
+    .ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > :is(input, textarea):disabled)) .ds-row-entry__edit {
         opacity: 0.75;
     }
 }
@@ -5325,7 +5335,7 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
         outline-offset: -1px;
     }
 
-    .ds-row.ds-row-entry--floating:has(.ds-row-entry__field > input:focus) {
+    .ds-row.ds-row-entry--floating:has(.ds-row-entry__field > :is(input, textarea):focus) {
         outline: 2px solid Highlight;
         outline-offset: -2px;
     }

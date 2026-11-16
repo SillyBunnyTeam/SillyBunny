@@ -468,25 +468,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
    Mobile fixes for the new character editor (PR #153)
    ========================================================================= */
 @media screen and (max-width: 768px) {
-    /* Metadata tab - single-line creator/version, taller notes/tags */
-    #right-nav-panel #creator_textarea,
-    #right-nav-panel #character_version_textarea {
-        min-height: 44px !important;
-        height: 44px !important;
-        max-height: 44px !important;
-        line-height: 1.25 !important;
-        padding-block: 6px !important;
-        resize: none !important;
-        overflow: hidden !important;
-        white-space: nowrap !important;
-    }
-
-    #right-nav-panel :is(#creator_notes_textarea, #tags_textarea) {
-        min-height: 9rem !important;
-        max-height: 16rem !important;
-        resize: vertical !important;
-    }
-
     /* Alternate Greetings - icon-only Delete button */
     #right-nav-panel .delete_alternate_greeting > span,
     #right-nav-panel .delete_alternate_greeting [data-i18n="Delete"] {
