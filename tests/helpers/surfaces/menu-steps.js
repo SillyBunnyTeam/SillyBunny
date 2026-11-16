@@ -455,6 +455,10 @@ export async function openAuditCharacterEditor(page) {
         window.sbMenuApp.setCharacterId(index);
         window.sbMenuApp.select_selected_character(index);
     }, { avatar: FIXTURES.character.avatar });
+    // On a phone the Characters page may open on its sidebar, with the editor in the pane off screen and inert; naming the
+    // Editor page shows it, as a tap on its tab does.
+    await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'editor'));
     await page.locator('#sb_character_editor_header').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => !document.getElementById('sb-settings-content')?.inert);
     await settle(page);
 }

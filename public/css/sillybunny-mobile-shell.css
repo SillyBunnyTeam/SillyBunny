@@ -1101,7 +1101,8 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         pointer-events: auto !important;
     }
 
-    #right-nav-panel.openDrawer :is(button, input, select, textarea, label, a, .menu_button, .right_menu_button, .character_select, .group_select, .bogus_folder_select, .inline-drawer-toggle) {
+    /* An entry row's floating title lets taps through to its field. */
+    #right-nav-panel.openDrawer :is(button, input, select, textarea, label:not(.ds-row-entry__title), a, .menu_button, .right_menu_button, .character_select, .group_select, .bogus_folder_select, .inline-drawer-toggle) {
         pointer-events: auto;
     }
 

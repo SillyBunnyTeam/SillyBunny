@@ -398,6 +398,9 @@ for (const viewport of [{ width: 375, height: 812 }, { width: 1440, height: 900 
         const header = page.locator('#sb_character_editor_header');
         const toolbar = page.locator('#sb_character_editor_toolbar');
         const boxes = async () => ({ content: await content.boundingBox(), header: await header.boundingBox(), toolbar: await toolbar.boundingBox() });
+        // The page opens with a scale; measure once it has settled.
+        await expect.poll(() => page.evaluate(() => document.getAnimations()
+            .filter(animation => animation.playState === 'running' && animation.effect?.getComputedTiming().endTime !== Infinity).length)).toBe(0);
         const before = await boxes();
         await content.hover();
         await page.mouse.wheel(0, 400);
