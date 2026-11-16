@@ -2,11 +2,11 @@
     "version": 1,
     "temporary": {
         "settings": 20,
-        "list": 208,
-        "editor": 62,
+        "list": 200,
+        "editor": 54,
         "dialog": 3,
         "menu": 565,
-        "header": 161,
+        "header": 146,
         "panel": 5,
         "status": 70,
         "home": 1

@@ -92,6 +92,114 @@ describe('SillyBunny folder store', () => {
         expect(folders.getFolderId('characters', 'new.png')).toBeNull();
     });
 
+    describe('persona scope', () => {
+        function personaEvents() {
+            const eventSource = {
+                listeners: new Map(),
+                on(event, listener) { this.listeners.set(event, listener); },
+                removeListener(event) { this.listeners.delete(event); },
+            };
+            const eventTypes = { PERSONA_CREATED: 'persona_created', PERSONA_DELETED: 'persona_deleted' };
+            folders.configureFolderStore({ powerUser: settings, saveSettingsDebounced: save, idFactory: nextId, eventSource, eventTypes });
+            return eventSource;
+        }
+
+        test('loads settings saved without the scope unchanged and reads it as empty', () => {
+            const saved = { version: 1, migratedFromTags: true, characters: { folders: [], members: {} }, groups: { folders: [], members: {} } };
+            const normalized = folders.normalizeFoldersData(structuredClone(saved));
+            expect(normalized).toEqual(saved);
+            expect(Object.hasOwn(normalized, 'personas')).toBe(false);
+            expect(JSON.stringify(normalized)).toBe(JSON.stringify(saved));
+            setup(normalized);
+            expect(folders.getFolders('personas')).toEqual([]);
+            expect(folders.getFolderId('personas', 'a.png')).toBeNull();
+            expect(folders.getFolderMembers('personas', 'missing')).toEqual([]);
+            expect(folders.setFolder('personas', ['a.png'], null)).toBe(false);
+            expect(folders.deleteFolder('personas', 'missing')).toBe(false);
+            expect(folders.removeEntityKey('personas', 'a.png')).toBe(false);
+            expect(Object.hasOwn(settings.sb_folders, 'personas')).toBe(false);
+            expect(save).not.toHaveBeenCalled();
+        });
+
+        test('normalizes a saved persona scope and drops dangling members', () => {
+            const normalized = folders.normalizeFoldersData({
+                personas: {
+                    folders: [{ id: 'p1', name: ' Cast ', color: 'teal', expanded: false }, { name: '' }],
+                    members: { 'one.png': 'p1', 'two.png': 'gone' },
+                },
+            });
+            expect(normalized.personas).toEqual({
+                folders: [{ id: 'p1', name: 'Cast', color: 'teal', expanded: false }],
+                members: { 'one.png': 'p1' },
+            });
+            expect(folders.normalizeFoldersData(normalized)).toEqual(normalized);
+        });
+
+        test('creates the scope on the first write and keeps the stored shape', () => {
+            const folder = folders.createFolder('personas', 'Cast');
+            folders.setFolder('personas', ['one.png', 'two.png'], folder.id);
+            expect(settings.sb_folders.personas).toEqual({
+                folders: [{ id: folder.id, name: 'Cast', color: '', expanded: true }],
+                members: { 'one.png': folder.id, 'two.png': folder.id },
+            });
+            expect(Object.keys(settings.sb_folders)).toEqual(['version', 'migratedFromTags', 'characters', 'groups', 'personas']);
+            expect(folders.normalizeFoldersData(settings.sb_folders)).toEqual(settings.sb_folders);
+            expect(settings.sb_folders.characters.members).toEqual({});
+            expect(save).toHaveBeenCalledTimes(2);
+            expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'personas', reason: 'set-members' }));
+        });
+
+        test('moves a persona between folders and unfiles it', () => {
+            const first = folders.createFolder('personas', 'First');
+            const second = folders.createFolder('personas', 'Second');
+            folders.setFolder('personas', 'one.png', first.id);
+            folders.setFolder('personas', 'one.png', second.id);
+            expect(folders.getFolderId('personas', 'one.png')).toBe(second.id);
+            expect(folders.getFolderMembers('personas', first.id)).toEqual([]);
+            expect(folders.setFolder('personas', 'one.png', null)).toBe(true);
+            expect(folders.getFolderId('personas', 'one.png')).toBeNull();
+        });
+
+        test('a duplicated persona keeps its folder and a deleted persona loses its membership', () => {
+            const eventSource = personaEvents();
+            const folder = folders.createFolder('personas', 'Cast');
+            folders.setFolder('personas', ['one.png'], folder.id);
+            eventSource.listeners.get('persona_created')({ avatarId: 'copy.png', name: 'One', duplicatedFromAvatarId: 'one.png' });
+            expect(folders.getFolderId('personas', 'copy.png')).toBe(folder.id);
+            eventSource.listeners.get('persona_created')({ avatarId: 'fresh.png', name: 'Fresh' });
+            expect(folders.getFolderId('personas', 'fresh.png')).toBeNull();
+            eventSource.listeners.get('persona_created')({ avatarId: 'plain-copy.png', duplicatedFromAvatarId: 'unfiled.png' });
+            expect(folders.getFolderId('personas', 'plain-copy.png')).toBeNull();
+            eventSource.listeners.get('persona_deleted')({ avatarId: 'one.png', name: 'One' });
+            expect(folders.getFolderId('personas', 'one.png')).toBeNull();
+            expect(folders.getFolderId('personas', 'copy.png')).toBe(folder.id);
+            expect(folders.getFolders('personas')).toHaveLength(1);
+            eventSource.listeners.get('persona_deleted')({ avatarId: 'never-filed.png' });
+        });
+
+        test('deleting a folder leaves its personas unfiled and other scopes alone', () => {
+            const persona = folders.createFolder('personas', 'Cast');
+            const character = folders.createFolder('characters', 'Cast');
+            folders.setFolder('personas', ['one.png'], persona.id);
+            folders.setFolder('characters', ['one.png'], character.id);
+            expect(folders.deleteFolder('personas', persona.id)).toBe(true);
+            expect(folders.getFolderId('personas', 'one.png')).toBeNull();
+            expect(folders.getFolderId('characters', 'one.png')).toBe(character.id);
+        });
+
+        test('keeps the persona listeners tolerant of stores without persona events', () => {
+            const eventSource = { listeners: new Map(), on(event, listener) { this.listeners.set(event, listener); }, removeListener() {} };
+            folders.configureFolderStore({
+                powerUser: settings,
+                saveSettingsDebounced: save,
+                idFactory: nextId,
+                eventSource,
+                eventTypes: { CHARACTER_RENAMED: 'renamed', CHARACTER_DUPLICATED: 'duplicated', CHARACTER_DELETED: 'deleted' },
+            });
+            expect([...eventSource.listeners.keys()].sort()).toEqual(['deleted', 'duplicated', 'renamed']);
+        });
+    });
+
     test('does not convert when bogus folders are disabled or missing', () => {
         for (const enabled of [false, undefined]) {
             setup();

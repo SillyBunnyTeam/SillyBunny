@@ -58,8 +58,12 @@ async function openNotes(page) {
     return { ...persona, entry, notes: entry.getByRole('group', { name: 'Scenario Notes', exact: true }) };
 }
 
-async function showPreview(entry, mobile) {
-    if (mobile) await entry.getByRole('button', { name: 'Preview', exact: true }).click();
+async function showPreview(entry, width) {
+    if (width < 376) {
+        // Below 330px of editor the header has no room for the Preview button, so the menu carries it.
+        await entry.getByRole('button', { name: 'Persona Actions', exact: true }).click();
+        await entry.page().getByRole('menuitem', { name: 'Preview', exact: true }).click();
+    } else if (width < 768) await entry.getByRole('button', { name: 'Preview', exact: true }).click();
     else await entry.getByRole('radio', { name: 'Preview', exact: true }).check();
     return entry.locator('.sb-persona-entry-preview');
 }
@@ -90,7 +94,7 @@ for (const width of [320, 390, 1280]) {
             await expect(secondToggle).toHaveAttribute('aria-expanded', 'false');
             await expect(entry.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
             await expect.poll(() => sessions.get(page).at(-1)?.power_user.persona_descriptions[avatarId]?.activeAppendices[scope]).toEqual(['e2e-note-two']);
-            const preview = await showPreview(entry, width < 768);
+            const preview = await showPreview(entry, width);
             await expect(preview).toHaveText('Base persona\n\n(Second note)\nSecond scenario note.');
             await firstToggle.press('Space');
             await expect(firstToggle).toHaveAttribute('aria-expanded', 'false');
@@ -128,7 +132,7 @@ for (const width of [320, 390, 1280]) {
             await note.getByRole('switch', { name: 'Enabled', exact: true }).click();
             await expect(note.getByRole('switch', { name: 'Enabled', exact: true })).toBeChecked();
             await expect.poll(() => sessions.get(page).at(-1)?.power_user.persona_descriptions[avatarId]?.activeAppendices[scope]).toEqual([noteId]);
-            const preview = await showPreview(entry, width < 768);
+            const preview = await showPreview(entry, width);
             await expect(preview).toHaveText('Base persona\n\n(Saved e2e note)\nSaved e2e scenario text.');
             await expect(entry.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
             await page.evaluate(async ({ avatarId, noteId }) => {

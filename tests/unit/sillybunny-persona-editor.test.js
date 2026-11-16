@@ -100,6 +100,7 @@ const { mountPersonaEditor, openPersonaEditor, preservePersonaOrder, loadPersona
 const { mountPersonaSettings } = await import('../../public/scripts/sillybunny-persona-settings.js');
 const { eventSource, event_types } = await import('../../public/scripts/events.js');
 const { createStatusPage } = await import('../../public/scripts/sillybunny-editor/status-page.js');
+const folderStore = await import('../../public/scripts/sillybunny-folders.js');
 const { loadStylesheetAsync } = await import('../../public/scripts/dynamic-styles.js');
 const performanceLoaderSource = readFileSync(new URL('../../public/scripts/performance-loader.js', import.meta.url), 'utf8');
 const tabsSource = readFileSync(new URL('../../public/scripts/sillybunny-tabs.js', import.meta.url), 'utf8');
@@ -109,9 +110,9 @@ const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanel
 const personaStylesheets = [
     { href: 'css/sillybunny-editor-shell.css?v=20261116u', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-character-editor.css?v=20261116t', id: 'deferred-editor-chrome-css' },
-    { href: 'css/sillybunny-entity-list.css?v=20261116j', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261116u', id: 'deferred-persona-editor-css' },
-    { href: 'css/sillybunny-persona-detail.css?v=20261114t', id: 'deferred-persona-detail-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261116v', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261116v', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-persona-detail.css?v=20261116v', id: 'deferred-persona-detail-css' },
 ];
 let container;
 let mounted;
@@ -212,6 +213,9 @@ beforeEach(() => {
     actionMenu = null;
     mounted = null;
     power_user.persona_sort_order = 'asc';
+    power_user.sb_folders = folderStore.normalizeFoldersData(null);
+    let folderId = 0;
+    folderStore.configureFolderStore({ powerUser: power_user, saveSettingsDebounced, idFactory: () => `folder-${++folderId}` });
     isPickerOpen.mockReturnValue(false);
     listAvatars.mockImplementation(async () => [...avatarIds]);
     duplicate.mockReset();
@@ -446,7 +450,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a failed adopted preload is removed and a fresh stylesheet can load on retry', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261116j&retry-test=adopted', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261116v&retry-test=adopted', id: 'deferred-entity-list-css' };
         const existing = document.createElement('link');
         existing.rel = 'preload';
         existing.setAttribute('as', 'style');
@@ -471,7 +475,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a deferred stylesheet that failed before Persona subscribed is replaced and loaded', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261116j&retry-test=failed-before-subscribe', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261116v&retry-test=failed-before-subscribe', id: 'deferred-entity-list-css' };
         const { link, activate } = await activateDeferredStylesheet(stylesheet);
         expect(link.dataset.sbStyleState).toBe('loading');
         link.dispatchEvent(new Event('error'));
@@ -492,7 +496,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a failed-before-subscribe stylesheet gets only one replacement and a second failure rejects', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261116j&retry-test=failed-twice', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261116v&retry-test=failed-twice', id: 'deferred-entity-list-css' };
         const { link } = await activateDeferredStylesheet(stylesheet);
         link.dispatchEvent(new Event('error'));
         globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
@@ -508,7 +512,7 @@ describe('Persona editor shell', () => {
     });
 
     test('a deferred stylesheet loaded before Persona subscribed resolves without another load event', async () => {
-        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261116j&retry-test=loaded-before-subscribe', id: 'deferred-entity-list-css' };
+        const stylesheet = { href: 'css/sillybunny-entity-list.css?v=20261116v&retry-test=loaded-before-subscribe', id: 'deferred-entity-list-css' };
         const { link, activate } = await activateDeferredStylesheet(stylesheet);
         link.dispatchEvent(new Event('load'));
         expect(link.dataset.sbStyleState).toBe('loaded');
@@ -617,7 +621,9 @@ describe('Persona editor shell', () => {
         await adapter.refresh('states');
         const row = container.querySelector('.sb-persona-row');
         expect(container.querySelector('.sb-persona-list-heading').textContent).toBe('Your Persona');
-        expect(row.parentNode.matches('.ds-pref-group[role="list"]')).toBe(true);
+        expect(row.parentNode.matches('.ds-entity-list__rows[role="list"]')).toBe(true);
+        expect(row.parentNode.parentNode.matches('.ds-pref-group.ds-entity-list')).toBe(true);
+        expect(row.querySelector('.sb-persona-row-menu').classList.contains('sb-list-editor__row-menu')).toBe(true);
         expect(row.matches('.ds-entity-row.ds-entity-row--activatable')).toBe(true);
         expect(row.dataset.sbListKey).toBe(`persona:${avatarIds[0]}`);
         expect(row.getAttribute('role')).toBe('listitem');
@@ -843,44 +849,195 @@ describe('Persona editor shell', () => {
         expect(thumbnail).toHaveBeenCalledWith('persona', avatarIds[0], true);
     });
 
-    test('pagination is guarded, persists page size, and deliberate pages clear held order', async () => {
-        await mount(15);
-        await open();
-        dirty = true;
-        container.querySelector('.sb-list-pagination__next').click();
-        await settle();
-        expect(container.querySelector('.sb-list-pagination__status').textContent).toBe('Page 1 of 3');
-        dirty = false;
-        const size = container.querySelector('.sb-list-pagination__size');
-        expect([...size.options].map(option => Number(option.value))).toEqual([5, 10, 25, 50, 100, 250, 500, 1000]);
-        size.value = '10';
-        size.dispatchEvent(new Event('change', { bubbles: true }));
-        await settle();
-        expect(accountStorage.setItem).toHaveBeenCalledWith('Personas_PerPage', '10');
-        expect(rowIds()).toHaveLength(10);
+    describe('Show More', () => {
+        const showMore = () => container.querySelector('.sb-list-show-more');
+        const press = async () => {
+            container.querySelector('.sb-list-show-more__button').click();
+            await settle();
+        };
+
+        test('loads the list in batches of the saved size without asking about an unsaved detail, and has no pager', async () => {
+            await mount(15);
+            await open();
+            dirty = true;
+            expect(container.querySelector('.sb-list-pagination')).toBeNull();
+            expect(rowIds()).toHaveLength(5);
+            expect(showMore().parentElement.matches('.ds-entity-list__footer')).toBe(true);
+            expect(showMore().hidden).toBe(false);
+            await press();
+            expect(rowIds()).toHaveLength(10);
+            expect(popupShow).not.toHaveBeenCalled();
+            await press();
+            expect(rowIds()).toHaveLength(15);
+            expect(showMore().hidden).toBe(true);
+            expect(container.querySelector('.ds-entity-list__footer').hidden).toBe(true);
+        });
+
+        test('keeps focus in the list when the press loads the last batch', async () => {
+            await mount(8);
+            const button = container.querySelector('.sb-list-show-more__button');
+            button.focus();
+            await press();
+            expect(rowIds()).toHaveLength(8);
+            expect(document.activeElement).toBe(container.querySelectorAll('.sb-persona-row')[5]);
+        });
+
+        test.each([['10', 10], ['not a number', 50], ['0', 50], [null, 50]])('a saved size of %p makes batches of %i', async (saved, size) => {
+            accountStorage.getItem.mockReturnValue(saved);
+            await mount(60);
+            expect(rowIds()).toHaveLength(size);
+        });
+
+        test('a search starts again from the first batch, and a sort does too', async () => {
+            await mount(15);
+            await press();
+            expect(rowIds()).toHaveLength(10);
+            const input = container.querySelector('.sb-persona-search');
+            input.value = 'persona';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            jest.advanceTimersByTime(300);
+            await settle();
+            expect(rowIds()).toHaveLength(5);
+            await press();
+            expect(rowIds()).toHaveLength(10);
+            await menuAction('Z-A', '.sb-persona-sort-button');
+            expect(rowIds()).toHaveLength(5);
+        });
+
+        test('revealing a persona loads the batch that holds it and never shrinks what is shown', async () => {
+            await mount(15);
+            await press();
+            expect(await mounted.selectPersona('avatar-2.png')).toBe(true);
+            expect(rowIds()).toHaveLength(10);
+            expect(await mounted.selectPersona('avatar-12.png')).toBe(true);
+            expect(rowIds()).toHaveLength(15);
+            expect(rowIds()).toContain('avatar-12.png');
+            expect(container.querySelector('.sb-persona-row.is-selected').dataset.avatarId).toBe('avatar-12.png');
+        });
     });
 
-    test('the size control stays after a size that fits every persona on one page, and hides within the smallest size', async () => {
-        await mount(7);
-        const nav = container.querySelector('.sb-list-pagination');
-        const size = container.querySelector('.sb-list-pagination__size');
-        expect(nav.hidden).toBe(false);
+    describe('folders', () => {
+        const headers = () => [...container.querySelectorAll('.sb-folder-row')];
+        const order = () => [...container.querySelectorAll('.sb-persona-list-rows > *')]
+            .map(row => row.classList.contains('sb-folder-row') ? `folder:${row.dataset.folderId}` : row.dataset.avatarId);
 
-        size.value = '10';
-        size.dispatchEvent(new Event('change', { bubbles: true }));
-        await settle();
-        expect(rowIds()).toHaveLength(7);
-        expect(nav.hidden).toBe(false);
+        test('lists a folder header with its members, then the unfiled personas, and counts them with the persona strings', async () => {
+            const folder = folderStore.createFolder('personas', 'Cast');
+            folderStore.setFolder('personas', ['avatar-2.png', 'avatar-1.png'], folder.id);
+            await mount(4);
+            expect(order()).toEqual([`folder:${folder.id}`, 'avatar-1.png', 'avatar-2.png', 'avatar-0.png', 'avatar-3.png']);
+            expect(headers()[0].getAttribute('aria-label')).toBe('Cast, 2 personas');
+            expect(headers()[0].getAttribute('aria-expanded')).toBe('true');
+            const classes = [...container.querySelectorAll('.sb-persona-list-rows > *')].map(row => [
+                row.classList.contains('is-folder-section-start'), row.classList.contains('is-folder-member'), row.classList.contains('is-folder-section-end'),
+            ]);
+            expect(classes).toEqual([[true, false, false], [false, true, false], [false, true, true], [false, false, false], [false, false, false]]);
+            expect(container.querySelector('.sb-persona-list-subtitle').textContent).toBe('4 personas');
+        });
 
-        size.value = '5';
-        size.dispatchEvent(new Event('change', { bubbles: true }));
-        await settle();
-        expect(rowIds()).toHaveLength(5);
-    });
+        test('counts one persona with the singular string and shows an empty folder', async () => {
+            const one = folderStore.createFolder('personas', 'One');
+            folderStore.createFolder('personas', 'Empty');
+            folderStore.setFolder('personas', ['avatar-0.png'], one.id);
+            await mount(2);
+            expect(headers().map(header => header.getAttribute('aria-label'))).toEqual(['One, 1 persona', 'Empty, 0 personas']);
+        });
 
-    test('the size control is hidden while the personas fit the smallest page size', async () => {
-        await mount(5);
-        expect(container.querySelector('.sb-list-pagination').hidden).toBe(true);
+        test('a header toggles its folder from a click and from Enter, and the choice is stored', async () => {
+            const folder = folderStore.createFolder('personas', 'Cast');
+            folderStore.setFolder('personas', ['avatar-1.png'], folder.id);
+            await mount(3);
+            headers()[0].click();
+            await settle();
+            expect(folderStore.getFolders('personas')[0].expanded).toBe(false);
+            expect(order()).toEqual([`folder:${folder.id}`, 'avatar-0.png', 'avatar-2.png']);
+            expect(headers()[0].getAttribute('aria-expanded')).toBe('false');
+            headers()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            await settle();
+            expect(folderStore.getFolders('personas')[0].expanded).toBe(true);
+            expect(order()).toContain('avatar-1.png');
+            expect(mountDetail).not.toHaveBeenCalled();
+        });
+
+        test('a search opens the folders that hold a match, hides the others and leaves the stored state alone', async () => {
+            const cast = folderStore.createFolder('personas', 'Cast', { expanded: false });
+            const other = folderStore.createFolder('personas', 'Other');
+            folderStore.setFolder('personas', ['avatar-1.png'], cast.id);
+            folderStore.setFolder('personas', ['avatar-2.png'], other.id);
+            await mount(3);
+            expect(order()).not.toContain('avatar-1.png');
+            const input = container.querySelector('.sb-persona-search');
+            input.value = 'persona 01';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            jest.advanceTimersByTime(300);
+            await settle();
+            expect(order()).toEqual([`folder:${cast.id}`, 'avatar-1.png']);
+            expect(headers()[0].classList.contains('is-folder-temporarily-expanded')).toBe(true);
+            expect(folderStore.getFolders('personas').map(folder => folder.expanded)).toEqual([false, true]);
+            headers()[0].click();
+            await settle();
+            expect(folderStore.getFolders('personas')[0].expanded).toBe(false);
+            input.value = '';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            jest.advanceTimersByTime(300);
+            await settle();
+            expect(order()).toEqual([`folder:${cast.id}`, `folder:${other.id}`, 'avatar-2.png', 'avatar-0.png']);
+        });
+
+        test('opening a persona inside a collapsed folder expands it first', async () => {
+            const cast = folderStore.createFolder('personas', 'Cast', { expanded: false });
+            folderStore.setFolder('personas', ['avatar-1.png'], cast.id);
+            await mount(3);
+            expect(await mounted.selectPersona('avatar-1.png')).toBe(true);
+            expect(folderStore.getFolders('personas')[0].expanded).toBe(true);
+            expect(container.querySelector('.sb-persona-row.is-selected').dataset.avatarId).toBe('avatar-1.png');
+        });
+
+        test('a folder change from the Folder Manager or the detail redraws the list and tells the open detail', async () => {
+            await mount(3);
+            const detail = await open(1);
+            detail.refresh.mockClear();
+            const folder = folderStore.createFolder('personas', 'Cast');
+            await settle();
+            expect(headers()).toHaveLength(1);
+            expect(detail.refresh).toHaveBeenCalledWith('folders');
+            folderStore.setFolder('personas', ['avatar-1.png'], folder.id);
+            await settle();
+            expect(order()).toEqual([`folder:${folder.id}`, 'avatar-1.png', 'avatar-0.png', 'avatar-2.png']);
+            folderStore.deleteFolder('personas', folder.id);
+            await settle();
+            expect(headers()).toHaveLength(0);
+            expect(rowIds()).toEqual(['avatar-0.png', 'avatar-1.png', 'avatar-2.png']);
+            expect(container.querySelector('.sb-persona-row.is-selected').dataset.avatarId).toBe('avatar-1.png');
+        });
+
+        test('a change to another folder scope leaves the list and the detail alone', async () => {
+            await mount(2);
+            const detail = await open(0);
+            detail.refresh.mockClear();
+            const before = [...container.querySelectorAll('.sb-persona-row')];
+            folderStore.createFolder('characters', 'Elsewhere');
+            await settle();
+            expect(detail.refresh).not.toHaveBeenCalled();
+            expect([...container.querySelectorAll('.sb-persona-row')]).toEqual(before);
+        });
+
+        test('Manage Folders sits in the list menu and opens the Persona scope', async () => {
+            const open = jest.fn();
+            globalThis.SillyBunnyFolderManager = { open };
+            try {
+                await mount();
+                container.querySelector('.sb-persona-list-menu').click();
+                await settle();
+                expect(actionMenu.sections.flatMap(section => section.items).map(item => item.label)).toEqual([
+                    'Global Settings', 'Manage Folders', 'Backup', 'Restore', 'Usage Stats',
+                ]);
+                await menuAction('Manage Folders');
+                expect(open).toHaveBeenCalledWith('personas');
+            } finally {
+                delete globalThis.SillyBunnyFolderManager;
+            }
+        });
     });
 
     test('settings is first in the list menu and toggles back to its trigger', async () => {
@@ -1047,24 +1204,24 @@ describe('Persona editor shell', () => {
         expect(popupShow).not.toHaveBeenCalled();
     });
 
-    test('openPersonaEditor routes Characters → Persona, selects a later page, and scrolls to notes', async () => {
+    test('openPersonaEditor routes Characters → Persona, loads the batch of a later persona, and scrolls to notes', async () => {
         await mount(15);
         expect(await openPersonaEditor({ avatarId: 'avatar-12.png', section: 'notes' })).toBe(true);
         expect(globalThis.SillyBunnyShell.openTab).toHaveBeenCalledWith('characters', 'persona');
         expect(mountDetail).toHaveBeenLastCalledWith(expect.objectContaining({ avatarId: 'avatar-12.png' }));
-        expect(container.querySelector('.sb-list-pagination__status').textContent).toBe('Page 3 of 3');
+        expect(rowIds()).toContain('avatar-12.png');
         expect(details.at(-1).scrollToSection).toHaveBeenCalledWith('notes');
         expect(await openPersonaEditor({ avatarId: 'missing.png' })).toBe(false);
     });
 
-    test('openPersonaEditor respects a cancelled dirty guard and never moves the page', async () => {
+    test('openPersonaEditor respects a cancelled dirty guard and never loads more rows', async () => {
         await mount(15);
         await open();
         dirty = true;
         expect(await openPersonaEditor({ avatarId: 'avatar-12.png' })).toBe(false);
         expect(mountDetail).toHaveBeenCalledTimes(1);
         expect(details[0].discard).not.toHaveBeenCalled();
-        expect(container.querySelector('.sb-list-pagination__status').textContent).toBe('Page 1 of 3');
+        expect(rowIds()).toHaveLength(5);
     });
 
     test('Persona Back uses origin navigation with a normal list-close fallback', async () => {
@@ -1102,7 +1259,7 @@ describe('Persona editor shell', () => {
         expect(mountDetail).not.toHaveBeenCalled();
     });
 
-    test('a selection superseded during its dirty guard never replaces detail or changes page', async () => {
+    test('a selection superseded during its dirty guard never replaces detail or loads more rows', async () => {
         await mount(15);
         await open();
         dirty = true;
@@ -1115,7 +1272,7 @@ describe('Persona editor shell', () => {
         approve(2);
         expect(await selecting).toBe(false);
         expect(mountDetail).toHaveBeenCalledTimes(1);
-        expect(container.querySelector('.sb-list-pagination__status').textContent).toBe('Page 1 of 3');
+        expect(rowIds()).toHaveLength(5);
         expect(details[0].scrollToSection).not.toHaveBeenCalled();
     });
 

@@ -23,12 +23,38 @@ import {
 
 const STYLESHEETS = [
     { href: 'css/sillybunny-editor-shell.css?v=20261116u', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-entity-list.css?v=20261116j', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-folder-manager.css?v=20261112o', id: 'deferred-folder-manager-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261116v', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-folder-manager.css?v=20261116v', id: 'deferred-folder-manager-css' },
 ];
+
+const MEMBER_KINDS = Object.freeze({ characters: 'character', groups: 'group', personas: 'persona' });
+const PLACEHOLDER_COPY = 'TODO(copy)';
 
 let activeManager = null;
 let opening = null;
+
+/** Persona wording is not written yet, so it shows the placeholder and says so in markup. */
+function scopeCopy(scope) {
+    if (scope === 'groups') {
+        return {
+            empty: t`Create a folder to sort groups in the list.`,
+            noMembers: t`Add groups to this folder to list them under it.`,
+            deleteBody: t`The groups in this folder stay in your library. They are no longer in a folder.`,
+        };
+    }
+    if (scope === 'personas') return { empty: PLACEHOLDER_COPY, noMembers: PLACEHOLDER_COPY, deleteBody: PLACEHOLDER_COPY };
+    return {
+        empty: t`Create a folder to sort characters in the list.`,
+        noMembers: t`Add characters to this folder to list them under it.`,
+        deleteBody: t`The characters in this folder stay in your library. They are no longer in a folder.`,
+    };
+}
+
+function markCopyPlaceholder(page) {
+    const description = page.querySelector('.sb-status-page__description');
+    if (description?.textContent === PLACEHOLDER_COPY) description.setAttribute('data-sb-copy-placeholder', 'true');
+    return page;
+}
 
 function element(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -74,6 +100,20 @@ async function loadDefaultAdapter(scope) {
             getKey: group => String(group.id),
             getName: group => String(group.name ?? group.id ?? ''),
             getAvatar: group => groups.getGroupAvatarElement?.(group) ?? null,
+        };
+    }
+    if (scope === 'personas') {
+        const [script, powerUser] = await Promise.all([import('../script.js'), import('./power-user.js')]);
+        return {
+            getItems: () => Object.keys(powerUser.power_user.personas ?? {}),
+            getKey: avatarId => String(avatarId),
+            getName: avatarId => String(powerUser.power_user.personas?.[avatarId] ?? avatarId),
+            getAvatar: avatarId => {
+                const image = document.createElement('img');
+                image.src = script.getThumbnailUrlForViewport?.('persona', avatarId) ?? avatarId;
+                image.alt = '';
+                return image;
+            },
         };
     }
     const script = await import('../script.js');
@@ -144,7 +184,7 @@ function colorPicker(entry, folder, refresh) {
  * folder UI can be exercised with an in-memory entity source as well as the app.
  */
 export function createFolderManager(scope, adapter) {
-    if (!['characters', 'groups'].includes(scope)) throw new TypeError(`Invalid folder manager scope: ${scope}`);
+    if (!['characters', 'groups', 'personas'].includes(scope)) throw new TypeError(`Invalid folder manager scope: ${scope}`);
     const layout = window.matchMedia?.(LAYOUT_MOBILE_QUERY) ?? { matches: false };
     const cache = new Map();
     const entries = new Map();
@@ -182,7 +222,7 @@ export function createFolderManager(scope, adapter) {
             refresh();
         }, 'sb-folder-manager__remove');
         const entity = createEntityRow({
-            key: entityKey(scope === 'groups' ? 'group' : 'character', key),
+            key: entityKey(MEMBER_KINDS[scope], key),
             label: name,
             title: name,
             avatar,
@@ -331,13 +371,13 @@ export function createFolderManager(scope, adapter) {
         list.hidden = !shown;
         if (!shown) {
             status.hidden = false;
-            status.replaceChildren(createStatusPage({
+            status.replaceChildren(markCopyPlaceholder(createStatusPage({
                 state: query ? 'no-results' : 'empty',
                 icon: 'folder-open',
                 title: query ? t`No results` : t`No Folders`,
-                description: query ? '' : scope === 'groups' ? t`Create a folder to sort groups in the list.` : t`Create a folder to sort characters in the list.`,
+                description: query ? '' : scopeCopy(scope).empty,
                 compact: true,
-            }).element);
+            }).element));
         } else status.hidden = true;
         frame?.search?.report(shown, folders.length);
     }
@@ -345,13 +385,13 @@ export function createFolderManager(scope, adapter) {
     function renderMemberList(folder) {
         const itemMap = new Map(currentItems().map(item => [String(adapter.getKey(item)), item]));
         const rows = getFolderMembers(scope, folder.id).map(key => itemMap.get(key)).filter(Boolean).map(itemRow);
-        if (!rows.length) rows.push(createStatusPage({
+        if (!rows.length) rows.push(markCopyPlaceholder(createStatusPage({
             state: 'empty',
             icon: 'users',
             title: t`No Members`,
-            description: scope === 'groups' ? t`Add groups to this folder to list them under it.` : t`Add characters to this folder to list them under it.`,
+            description: scopeCopy(scope).noMembers,
             compact: true,
-        }).element);
+        }).element));
         members.list.replaceChildren(...rows);
     }
 
@@ -394,12 +434,9 @@ export function createFolderManager(scope, adapter) {
     }
 
     async function confirmDelete(folder) {
-        const body = scope === 'groups'
-            ? t`The groups in this folder stay in your library. They are no longer in a folder.`
-            : t`The characters in this folder stay in your library. They are no longer in a folder.`;
         const response = await openAlert({
             heading: t`Delete Folder?`,
-            body,
+            body: scopeCopy(scope).deleteBody,
             responses: [{ id: 'cancel', label: t`Cancel` }, { id: 'delete', label: t`Delete`, appearance: 'destructive' }],
             closeResponse: 'cancel',
         });

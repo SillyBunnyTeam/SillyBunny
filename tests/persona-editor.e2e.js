@@ -157,23 +157,55 @@ test.describe('Persona editor', () => {
         });
     }
 
-    test('the page size stays reachable after a size that fits every persona on one page', async ({ page }) => {
+    test('the list loads in batches behind a Show More row and has no pager', async ({ page }) => {
         const extra = Array.from({ length: 8 }, (_, index) => `sb-page-size-${index}.png`);
         for (const avatar of extra) sessions.get(page).createdAvatars.add(avatar);
         await page.reload();
         await waitForApp(page);
+        await page.evaluate(async () => (await import('./scripts/util/AccountStorage.js')).accountStorage.setItem('Personas_PerPage', '5'));
         const editor = await openList(page);
-        const size = editor.getByLabel('Items per page');
-        await expect(size).toBeVisible();
         const total = await page.evaluate(async () => (await (await fetch('/api/avatars/get', { method: 'POST', headers: (await import('./script.js')).getRequestHeaders() })).json()).length);
-
-        await size.selectOption('1000');
-        await expect(editor.getByRole('listitem')).toHaveCount(total);
-        await expect(size).toBeVisible();
-        await expect(editor.locator('.sb-list-pagination__next')).toBeHidden();
-
-        await size.selectOption('5');
+        expect(total).toBeGreaterThan(5);
         await expect(editor.getByRole('listitem')).toHaveCount(5);
+        await expect(editor.locator('.sb-list-pagination')).toHaveCount(0);
+
+        const showMore = editor.locator('.sb-list-show-more__button');
+        await expect(showMore).toBeVisible();
+        while (await showMore.isVisible()) await showMore.click();
+        await expect(editor.getByRole('listitem')).toHaveCount(total);
+        await expect(editor.locator('.sb-list-show-more')).toBeHidden();
+        await page.evaluate(async () => (await import('./scripts/util/AccountStorage.js')).accountStorage.removeItem('Personas_PerPage'));
+    });
+
+    test('a persona is found by its title as well as its name', async ({ page }) => {
+        const persona = await currentPersona(page);
+        const title = 'Zxqv Cartographer';
+        await page.evaluate(async ({ avatarId, title }) => {
+            const { power_user } = await import('./scripts/power-user.js');
+            power_user.persona_descriptions[avatarId].title = title;
+        }, { avatarId: persona.avatarId, title });
+        const editor = await openList(page);
+        await editor.getByRole('button', { name: 'Search', exact: true }).click();
+        const search = editor.locator('.sb-persona-search');
+        await search.fill('Cartographer');
+        await expect(editor.getByRole('listitem', { name: persona.name, exact: true })).toBeVisible();
+        await search.fill('Zxqv');
+        await expect(editor.getByRole('listitem', { name: persona.name, exact: true })).toBeVisible();
+        await search.fill('Quokkaless');
+        await expect(editor.getByRole('listitem')).toHaveCount(0);
+        await page.evaluate(async ({ avatarId, title }) => {
+            const { power_user } = await import('./scripts/power-user.js');
+            power_user.persona_descriptions[avatarId].title = title;
+        }, { avatarId: persona.avatarId, title: persona.descriptor.title ?? '' });
+    });
+
+    test('a desktop editor shows the property bar and keeps the summary for the collapsed layout', async ({ page }) => {
+        const persona = await currentPersona(page);
+        const editor = await openList(page);
+        await editor.getByRole('listitem', { name: persona.name, exact: true }).click();
+        await expect(entryFor(page).locator('.sb-persona-properties')).toBeVisible();
+        await expect(entryFor(page).locator('.sb-persona-property-summary')).toBeHidden();
+        await expect(editor.locator('.sb-persona-row-menu').first()).toBeHidden();
     });
 
     test('Cancel reverts detached edits and Save preserves unknown descriptor keys in the settings payload', async ({ page }) => {
@@ -396,6 +428,49 @@ test.describe('Persona editor on mobile', () => {
         await expect.poll(() => savedSettings(page).findLast(payload => payload.power_user.persona_descriptions[persona.avatarId]?.depth === 23)?.power_user.persona_descriptions[persona.avatarId]).toMatchObject({ position: 4, depth: 23, role: 1 });
         await entry.getByRole('button', { name: 'Back', exact: true }).click();
         await expect(editor.getByRole('listitem', { name: persona.name, exact: true })).toBeInViewport();
+    });
+
+    test('the properties sheet keeps a gutter and none of its controls is clipped', async ({ page }) => {
+        const persona = await currentPersona(page);
+        const editor = await openList(page);
+        await editor.getByRole('listitem', { name: persona.name, exact: true }).click();
+        await entryFor(page).locator('.sb-persona-property-summary').click();
+        const sheet = page.getByRole('dialog', { name: 'Persona', exact: true });
+        await sheet.locator('[data-sb-editor-field="position"] > button').click();
+        await page.getByRole('option', { name: 'In-chat @ Depth', exact: true }).click();
+        await expect(sheet.locator('[data-sb-editor-field="role"]')).toBeVisible();
+        const edges = await sheet.evaluate(dialog => {
+            const box = dialog.getBoundingClientRect();
+            return [...dialog.querySelectorAll('.sb-persona-property')].filter(row => row.getClientRects().length).flatMap(row => [...row.children].map(child => {
+                const rect = child.getBoundingClientRect();
+                return { start: rect.left - box.left, end: box.right - rect.right };
+            }));
+        });
+        expect(edges.length).toBeGreaterThanOrEqual(6);
+        for (const { start, end } of edges) {
+            expect(start).toBeGreaterThanOrEqual(8);
+            expect(end).toBeGreaterThanOrEqual(8);
+        }
+    });
+
+    test('the editor header holds Save and the menu at 320px, with Preview in the menu', async ({ page }) => {
+        await page.setViewportSize({ width: 320, height: 568 });
+        const persona = await currentPersona(page);
+        const editor = await openList(page);
+        await editor.getByRole('listitem', { name: persona.name, exact: true }).click();
+        const header = entryFor(page).locator('.sb-persona-entry-header');
+        // The detail slides in over the list; measure once it has settled.
+        await expect.poll(async () => (await header.boundingBox()).x).toBeLessThan(40);
+        const box = await header.boundingBox();
+        for (const label of ['Back', 'Persona Actions', 'Cancel', 'Save']) {
+            const button = await header.getByRole('button', { name: label, exact: true }).boundingBox();
+            expect(button.x).toBeGreaterThanOrEqual(box.x - 0.5);
+            expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width + 0.5);
+        }
+        expect(await header.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+        await expect(header.locator('.sb-persona-entry-mode-toggle')).toBeHidden();
+        await header.getByRole('button', { name: 'Persona Actions', exact: true }).click();
+        await expect(page.getByRole('menuitem', { name: 'Preview', exact: true })).toBeVisible();
     });
 
     test('text action buttons keep the 44px touch target', async ({ page }) => {

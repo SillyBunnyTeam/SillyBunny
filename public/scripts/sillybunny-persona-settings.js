@@ -45,7 +45,7 @@ export function mountPersonaSettings({ host, onClose }) {
 
     const root = element('section', 'sb-persona-settings');
     const header = element('header', 'sb-persona-detail-header sb-persona-settings-header');
-    const back = element('button', 'menu_button menu_button_icon sb-persona-detail-back');
+    const back = element('button', 'menu_button menu_button_icon sb-persona-detail-back sb-editor-icon-button sb-header-icon-button');
     back.type = 'button';
     back.title = t`Back`;
     back.setAttribute('aria-label', t`Back`);

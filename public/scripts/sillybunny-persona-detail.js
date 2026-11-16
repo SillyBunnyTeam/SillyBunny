@@ -12,7 +12,9 @@ import {
     changePersonaImage, convertPersonaToCharacter,
 } from './personas.js';
 import * as model from './sillybunny-persona-model.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { createRow, createSwitchRow, createEntryRow, createTextAreaField, createPropertyRow, createExpanderRow, createButtonRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
+import { getFolderId, getFolders, setFolder } from './sillybunny-folders.js';
 import { openPicker } from './sillybunny-editor/picker.js';
 import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
@@ -53,6 +55,10 @@ function iconButton(label, glyph, className = '') {
     node.setAttribute('aria-label', label);
     node.append(icon(glyph));
     return node;
+}
+
+function folderOptions() {
+    return [{ value: '', label: t`No folder` }, ...getFolders('personas').map(folder => ({ value: folder.id, label: folder.name }))];
 }
 
 function copyDraft(draft) {
@@ -112,7 +118,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
 
     const root = element('section', 'sb-persona-entry');
     root.tabIndex = -1;
-    const header = element('header', 'sb-persona-detail-header sb-persona-entry-header');
+    const header = element('header', 'sb-editor-header sb-persona-detail-header sb-persona-entry-header');
     const back = iconButton(t`Back`, 'chevron-left', 'sb-persona-detail-back sb-editor-icon-button sb-header-icon-button');
     const name = element('input', 'sb-persona-entry-name');
     name.type = 'text';
@@ -126,7 +132,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     readout.classList.add('sb-persona-entry-tokens');
     const modes = createSegmentedControl(t`Edit / Preview`, [[false, t`Edit`], [true, t`Preview`]], false, setPreview, { compact: true, detachFromForm: true });
     modes.classList.add('sb-persona-entry-modes');
-    const modeToggle = iconButton(t`Preview`, 'eye', 'sb-persona-entry-mode-toggle');
+    const modeToggle = iconButton(t`Preview`, 'eye', 'sb-persona-entry-mode-toggle sb-editor-icon-button sb-header-icon-button');
     modeToggle.addEventListener('click', () => setPreview(!showingPreview));
     const more = iconButton(t`Persona Actions`, 'ellipsis-vertical', 'sb-persona-entry-more sb-editor-icon-button sb-header-icon-button');
     more.setAttribute('aria-haspopup', 'menu');
@@ -192,13 +198,29 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     changeImage.append(avatar);
     changeImage.addEventListener('click', () => changePersonaImage(currentId));
     const identityAvatar = createRow({ label: t`Change Persona Image`, field: 'image', prefix: changeImage });
-    const title = createEntryRow({ label: t`Persona Title (optional, display only)`, field: 'title', value: draft.title, onInput: value => writeField('title', value) });
+    // HUMAN: replace — caption of the Persona Title row (P5): the title is the summary shown in the list.
+    const title = createEntryRow({ label: t`Persona Title (optional, display only)`, subtitle: t`TODO(copy)`, field: 'title', value: draft.title, onInput: value => writeField('title', value) });
+    title.row.querySelector('.ds-row-subtitle')?.setAttribute('data-sb-copy-placeholder', 'true');
+    const folderSelect = element('select');
+    folderSelect.setAttribute('aria-label', t`Folder`);
+    // A folder is organisation, not persona content: like the lorebook link it applies at once and stays out of the draft.
+    const folder = createSelectRow({
+        select: folderSelect, label: t`Folder`, field: 'folder', searchLabel: t`Search`, emptyText: t`No results`, bounds: root,
+        onChange: value => {
+            if (destroyed || !currentId || missing || !getPersonaRecord(currentId)) return;
+            try {
+                setFolder('personas', [currentId], value || null);
+            } catch {
+                refreshStates();
+            }
+        },
+    });
     const inUse = createPropertyRow({ label: t`Current Persona`, field: 'inUse', value: draft.name });
     // HUMAN: replace — Use this persona (also used by the detail action menu).
     const useLabel = t`Use this persona`;
     const use = createButtonRow({ label: useLabel, field: 'use', icon: 'circle-check', onActivate: () => { void runImmediate(() => usePersona(currentId)); } });
     const defaultPersona = createSwitchRow({ label: t`Default Persona`, field: 'default', onChange: enabled => { void runImmediate(() => setPersonaDefault(currentId, enabled)); } });
-    const identitySection = createPrefGroup({ title: t`Identity`, field: 'section-identity', rows: [identityAvatar, title, inUse, use, defaultPersona] });
+    const identitySection = createPrefGroup({ title: t`Identity`, field: 'section-identity', rows: [identityAvatar, title, folder, inUse, use, defaultPersona] });
     identitySection.section.dataset.sbSection = 'identity';
     body.append(identitySection.section);
 
@@ -490,6 +512,24 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         for (const button of connectionList.querySelectorAll('button')) button.disabled = disabled;
     }
 
+    function refreshFolderRow(record) {
+        const options = folderOptions();
+        const signature = JSON.stringify(options);
+        // Rebuilding the options while the select is open would close it, so only a changed set is written.
+        if (folderSelect.dataset.options !== signature) {
+            folderSelect.dataset.options = signature;
+            folderSelect.replaceChildren(...options.map(({ value, label }) => {
+                const option = element('option', '', label);
+                option.value = value;
+                return option;
+            }));
+        }
+        folder.setValue(record ? getFolderId('personas', currentId) ?? '' : '');
+        folderSelect.disabled = !record;
+        folder.setDisabled(!record);
+        folder.sync();
+    }
+
     function refreshStates() {
         if (destroyed) return;
         const record = currentId && !missing ? getPersonaRecord(currentId) : null;
@@ -508,6 +548,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         use.setDisabled(disabled);
         defaultPersona.setValue(states.default);
         defaultPersona.setDisabled(disabled);
+        refreshFolderRow(record);
         chatLock.setValue(states.locked.chat);
         chatLock.setDisabled(disabled || !states.inUse);
         chatLock.row.querySelector('.ds-row-subtitle').hidden = states.inUse;
@@ -575,7 +616,11 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
 
     function actionSections() {
         const states = getPersonaEditorStates(currentId);
-        return [{ items: [
+        // The header drops both Edit / Preview controls when it is too narrow for them; the menu then carries the switch.
+        const modeHidden = [modes, modeToggle].every(control => getComputedStyle(control).display === 'none');
+        return [...modeHidden ? [{ items: [
+            { label: showingPreview ? t`Edit` : t`Preview`, icon: `fa-solid fa-${showingPreview ? 'pen' : 'eye'}`, onSelect: () => setPreview(!showingPreview) },
+        ] }] : [], { items: [
             { label: useLabel, icon: 'fa-solid fa-circle-check', disabled: states.inUse, onSelect: () => { void runImmediate(() => usePersona(currentId)); } },
             { label: t`Change Persona Image`, icon: 'fa-solid fa-image', onSelect: () => changePersonaImage(currentId) },
             { label: t`Create Character Card from Persona`, icon: 'fa-solid fa-address-card', onSelect: () => { void runImmediate(() => convertPersonaToCharacter(currentId)); } },
@@ -914,7 +959,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
 
     function refresh(reason, id) {
         if (destroyed || id && id !== currentId) return;
-        if (reason === 'states' || !currentId) {
+        if (reason === 'states' || reason === 'folders' || !currentId) {
             refreshStates();
             return;
         }
@@ -1014,6 +1059,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             tokenRequest++;
             chrome.dispose();
             unbindConnections();
+            folder.destroy();
             picker?.close();
             closeDropdown();
             propertyDialog?.forceClose();

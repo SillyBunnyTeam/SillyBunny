@@ -35,7 +35,7 @@
     width: 100%;
     min-width: 0;
     min-height: 52px;
-    padding: 6px 8px;
+    padding: 6px 12px;
     border: 0;
     /* Same hairline as the Prompt Editor and World Info rows. */
     border-bottom: 1px solid var(--SmartThemeBorderColor);

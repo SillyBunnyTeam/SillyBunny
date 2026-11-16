@@ -51,7 +51,7 @@
         "public/css/sillybunny-entity-list.css": {
             "radius-literal": 12,
             "important": 33,
-            "spacing-off-scale": 27,
+            "spacing-off-scale": 26,
             "spacing-off-scale-fallback": 1
         },
         "public/css/sillybunny-extensions-manager.css": {
@@ -60,7 +60,7 @@
         "public/css/sillybunny-folder-manager.css": {
             "radius-literal": 2,
             "important": 1,
-            "spacing-off-scale": 4
+            "spacing-off-scale": 3
         },
         "public/css/sillybunny-home.css": {
             "radius-literal": 1,
@@ -98,7 +98,7 @@
         "public/css/sillybunny-persona-editor.css": {
             "important": 11,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 17
+            "spacing-off-scale": 16
         },
         "public/css/sillybunny-prompt-editor.css": {
             "important": 19,

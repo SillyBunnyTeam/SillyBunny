@@ -75,16 +75,14 @@
     height: 60px;
     min-height: 60px;
     max-height: 60px;
-    gap: 4px;
-    padding: 6px 8px;
+    gap: 6px;
+    padding: 6px;
     min-width: 0;
     background: transparent;
 }
 
 .sb-persona-list-header {
     overflow: hidden;
-    gap: 2px;
-    padding-inline: 10px;
 }
 
 .sb-persona-settings-header {
@@ -168,17 +166,73 @@
     font-weight: 700;
 }
 
-#sb-settings-page #PersonaManagement .sb-persona-list-box {
-    display: block;
-    gap: normal;
-    overflow: hidden;
-    border: 1px solid var(--sb-shell-border);
-    border-radius: var(--sb-radius-card);
-    background: color-mix(in srgb, var(--sb-shell-text) 8%, transparent);
+.sb-persona-list-rows {
+    flex: 0 0 auto;
 }
 
-:root[data-sb-surface-tone='light'] #sb-settings-page #PersonaManagement .sb-persona-list-box {
-    background: var(--sb-layer-view);
+/* A folder header and its members read as one inset boxed group; unfiled rows stay edge to edge. */
+.sb-persona-list-box .sb-folder-row {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+}
+
+.sb-persona-list-box .sb-folder-row .ds-entity-row__avatar {
+    display: grid;
+    flex-basis: 18px;
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    place-items: center;
+    background: transparent;
+}
+
+.sb-persona-list-box .sb-folder-row__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-folder-color, var(--sb-muted-fg));
+}
+
+.sb-persona-list-box .sb-folder-row .ds-entity-row__chevron {
+    margin-inline-start: 4px;
+}
+
+.sb-persona-list-rows > :is(.sb-folder-row, .is-folder-member) {
+    --sb-folder-section-edge: color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
+    width: auto;
+    margin-inline: 8px;
+    border-inline: 1px solid var(--sb-folder-section-edge);
+}
+
+.sb-persona-list-rows > .sb-folder-row {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+}
+
+.sb-persona-list-rows > .is-folder-section-start {
+    margin-block-start: 8px;
+    border-block-start: 1px solid var(--sb-folder-section-edge);
+    border-start-start-radius: var(--sb-radius-card);
+    border-start-end-radius: var(--sb-radius-card);
+}
+
+.sb-persona-list-rows > .is-folder-section-end {
+    margin-block-end: 8px;
+    border-block-end: 1px solid var(--sb-folder-section-edge);
+    border-end-start-radius: var(--sb-radius-card);
+    border-end-end-radius: var(--sb-radius-card);
+}
+
+.sb-persona-list-rows > .is-folder-section-end + :not(.sb-folder-row) {
+    border-block-start: 1px solid var(--SmartThemeBorderColor);
+}
+
+@media (forced-colors: active) {
+    .sb-persona-list-box .sb-folder-row__dot {
+        outline: 1px solid CanvasText;
+    }
+
+    .sb-persona-list-rows > :is(.sb-folder-row, .is-folder-member) {
+        --sb-folder-section-edge: CanvasText;
+    }
 }
 
 .sb-persona-row-badges {
@@ -195,12 +249,6 @@
     color: var(--sb-accent);
 }
 
-.sb-persona-editor .sb-list-pagination {
-    flex: none;
-    padding: 0 12px max(10px, env(safe-area-inset-bottom));
-    font-size: calc(var(--sb-type-body) * 0.75);
-}
-
 .sb-persona-editor[data-open='true'][data-collapsed='false'] .sb-persona-row .ds-entity-row__subtitle {
     display: none !important;
 }
@@ -215,6 +263,11 @@
     #PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button):where(:not(.sb-status-page__action)):not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
+}
+
+/* A press shows its own fill, after the hover rule so that it wins at the same specificity. */
+#PersonaManagement .sb-persona-editor .menu_button:not(.sb-header-icon-button):where(:not(.sb-status-page__action)):not(:disabled):active {
+    background: var(--sb-flat-active-bg);
 }
 
 #PersonaManagement .sb-persona-editor button:not(.sb-header-icon-button):focus-visible {
@@ -300,10 +353,6 @@ body.reduced-motion #PersonaManagement .sb-persona-editor .menu_button:not(.sb-h
 }
 
 @media (max-width: 768px) {
-    .sb-persona-settings > .sb-persona-settings-header {
-        padding-inline: 4px;
-    }
-
     .sb-persona-settings-body {
         padding-inline: 8px;
     }

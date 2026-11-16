@@ -1389,7 +1389,7 @@ for (const width of [1440, 390]) {
                 return {
                     group: read('.ds-pref-group', ['background-color', 'border-top-color', 'border-top-width', 'border-radius']),
                     row: read('.ds-pref-group .ds-row', ['padding-top', 'padding-right', 'padding-bottom', 'padding-left']),
-                    header: read('.sb-persona-entry-header', ['height', 'padding', 'gap']),
+                    header: read('.sb-persona-entry-header', ['height']),
                     back: read('.sb-persona-detail-back', ['background-color', 'border-radius']),
                     save: read('.sb-persona-entry-save', ['background-color', 'border-radius']),
                     secondary: read('.sb-persona-entry-cancel', ['background-color', 'border-radius']),

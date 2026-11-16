@@ -25,6 +25,12 @@
     background: transparent;
 }
 
+/* The Persona editor's header takes the shared editor header's gap and padding at every width; the agent editor keeps its own. */
+.sb-persona-editor .sb-persona-entry-header {
+    gap: 6px;
+    padding: 6px;
+}
+
 #sb-settings-page .sb-persona-entry .sb-persona-entry-name {
     flex: 1 1 112px;
     width: 0;
@@ -81,6 +87,9 @@
 
 #sb-settings-page .sb-persona-entry .menu_button:is(:active, [aria-expanded='true']) {
     transform: none;
+}
+
+#sb-settings-page .sb-persona-entry .menu_button[aria-expanded='true'] {
     background: var(--sb-flat-selected-bg);
 }
 
@@ -147,7 +156,9 @@
     font-family: inherit;
 }
 
-#sb-settings-page .sb-persona-entry .sb-persona-property-summary {
+/* The summary stands in for the property bar only while the editor is collapsed. The :not() on the editor lifts this rule above
+   the shared button rule of sillybunny-persona-editor.css (1,2,0), whichever of the two sheets loads last. */
+#sb-settings-page .sb-persona-editor:not([data-collapsed='true']) .sb-persona-property-summary {
     display: none;
 }
 
@@ -181,7 +192,7 @@
 .sb-dialog.sb-persona-properties-dialog .sb-persona-properties {
     flex-direction: column;
     align-items: stretch;
-    padding: 0;
+    padding: 0 12px;
     border: 0;
 }
 
@@ -270,9 +281,11 @@
 }
 
 #sb-settings-page .sb-persona-entry [data-sb-editor-field='section-description'] > .ds-pref-group {
+    overflow: visible;
     border: 0;
-    border-radius: 0;
+    border-radius: var(--sb-radius-card);
     background: transparent;
+    box-shadow: none;
 }
 
 #sb-settings-page .sb-persona-entry .ds-pref-group > [data-sb-editor-field='description-content'] {
@@ -404,17 +417,32 @@
     }
 }
 
+/* A press shows its own fill, after the hover rules so that it wins at the same specificity. */
+#sb-settings-page .sb-persona-entry .menu_button:not(:disabled):active,
+:is(.sb-persona-property-sheet, .sb-dialog.sb-persona-properties-dialog) .menu_button:not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
 @container sb-list-editor-detail (width < 560px) {
     #sb-settings-page .sb-persona-editor .sb-persona-entry-modes {
         display: none !important;
     }
 
+    #sb-settings-page .sb-persona-entry .sb-persona-entry-name {
+        min-width: 96px;
+    }
+}
+
+/* Below 330px the header cannot hold Back, a name, Preview, the menu, Cancel and Save: Preview moves into the menu. */
+@container sb-list-editor-detail (width >= 330px) and (width < 560px) {
     #sb-settings-page .sb-persona-editor .sb-persona-entry-mode-toggle {
         display: inline-flex !important;
     }
+}
 
-    #sb-settings-page .sb-persona-entry .sb-persona-entry-name {
-        min-width: 96px;
+@container sb-list-editor-detail (width < 300px) {
+    #sb-settings-page .sb-persona-entry .sb-persona-entry-header > .sb-persona-entry-name {
+        min-width: 40px;
     }
 }
 

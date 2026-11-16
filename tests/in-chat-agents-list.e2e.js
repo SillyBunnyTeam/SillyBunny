@@ -16,7 +16,7 @@ const READS = new Set([
     '/api/presets/list', '/api/in-chat-agents/groups/list', '/api/chats/search',
 ]);
 const selectionLayout = {
-    1440: { titleX: 88, descriptionRight: 1142, truncated: false },
+    1440: { titleX: 92, descriptionRight: 1138, truncated: false },
     390: { titleX: 76, descriptionRight: 318, truncated: true },
 };
 

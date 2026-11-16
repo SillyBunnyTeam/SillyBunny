@@ -14,21 +14,57 @@ import { createListEditor, LIST_EDITOR_STYLESHEET, EDITOR_CHROME_STYLESHEET } fr
 import { reconcileRows, rowEntry, bindListKeyboard } from './sillybunny-editor/list-rows.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
-import { createListPagination } from './sillybunny-editor/list-pagination.js';
+import { createListShowMore } from './sillybunny-editor/list-show-more.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createEntityRow, entityKey } from './sillybunny-editor/entity-row.js';
+import { createFolderRow, folderCountLabel } from './sillybunny-editor/folder-row.js';
+import { getFolderId, getFolders, setFolderExpanded, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import { characterTabGuardSelector, registerEditorNavigation } from './sillybunny-editor/navigation.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { mountPersonaSettings } from './sillybunny-persona-settings.js';
 import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-entity-list.css?v=20261116j', id: 'deferred-entity-list-css' },
-    { href: 'css/sillybunny-persona-editor.css?v=20261116u', id: 'deferred-persona-editor-css' },
-    { href: 'css/sillybunny-persona-detail.css?v=20261114t', id: 'deferred-persona-detail-css' },
+    { href: 'css/sillybunny-entity-list.css?v=20261116v', id: 'deferred-entity-list-css' },
+    { href: 'css/sillybunny-persona-editor.css?v=20261116v', id: 'deferred-persona-editor-css' },
+    { href: 'css/sillybunny-persona-detail.css?v=20261116v', id: 'deferred-persona-detail-css' },
 ];
+const DEFAULT_BATCH_SIZE = 50;
 const mountedEditors = new WeakMap();
 const itemKey = item => item.kind === 'persona' ? entityKey('persona', item.avatarId) : item.kind;
+
+/** The saved per-page size is the batch size; a missing or invalid value falls back to the default. */
+function batchSize() {
+    const saved = Number(accountStorage.getItem('Personas_PerPage'));
+    return Number.isInteger(saved) && saved > 0 ? saved : DEFAULT_BATCH_SIZE;
+}
+
+function openFolderManager() {
+    return globalThis.SillyBunnyFolderManager?.open?.('personas')
+        ?? import('./sillybunny-folder-manager.js').then(module => module.openFolderManager('personas'));
+}
+
+/**
+ * Marks the rows of each folder section so CSS can frame a folder header and its members as one group.
+ * @param {HTMLElement} container Rows container in display order.
+ */
+function decorateFolderSections(container) {
+    const rows = [...container.children];
+    const sectionOf = row => {
+        const entry = rowEntry(row);
+        return entry?.kind === 'folder' ? entry.folder?.id ?? null : entry?.folderId ?? null;
+    };
+    rows.forEach((row, index) => {
+        const section = sectionOf(row);
+        const isHeader = rowEntry(row)?.kind === 'folder';
+        const next = rows[index + 1];
+        const nextSection = next ? sectionOf(next) : null;
+        const previousSection = index > 0 ? sectionOf(rows[index - 1]) : null;
+        row.classList.toggle('is-folder-member', Boolean(section) && !isHeader);
+        row.classList.toggle('is-folder-section-start', Boolean(section) && (isHeader || previousSection !== section));
+        row.classList.toggle('is-folder-section-end', Boolean(section) && (nextSection !== section || rowEntry(next)?.kind === 'folder'));
+    });
+}
 
 function element(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -99,15 +135,16 @@ export function mountPersonaEditor(container) {
 
     const rows = new Map();
     const entityRows = new WeakMap();
+    const folderRows = new WeakMap();
     let allIds = [];
     let entries = [];
+    let batches = 1;
     let heldOrder = null;
     let activeController = null;
     let controllerKind = null;
     let shell = null;
     let menuTrigger = null;
     let destroyed = false;
-    let internalPaging = false;
     let listRevision = 0;
     let avatarRevision = 0;
     let initialized = false;
@@ -144,7 +181,11 @@ export function mountPersonaEditor(container) {
     const heading = element('h3', 'sb-persona-list-heading', t`Your Persona`);
     heading.tabIndex = -1;
     const listBox = element('div', 'sb-persona-list-box ds-pref-group ds-entity-list');
-    listBox.setAttribute('role', 'list');
+    const rowsContainer = element('div', 'sb-persona-list-rows ds-entity-list__rows');
+    rowsContainer.setAttribute('role', 'list');
+    const listFooter = element('div', 'ds-entity-list__footer');
+    listFooter.hidden = true;
+    listBox.append(rowsContainer, listFooter);
     const listStatus = element('div', 'sb-persona-list-status');
     listBody.append(heading, listBox, listStatus);
     const listContent = element('div', 'sb-persona-list-content');
@@ -155,24 +196,13 @@ export function mountPersonaEditor(container) {
         status: searchStatus, scroller: listBody, debounce: 300,
         onChange: () => {
             heldOrder = null;
+            batches = 1;
             updateDisplayEntries();
-            run(() => goToPage(1));
             renderList();
         },
     });
-    const pagination = createListPagination({
-        pageSizes: [5, 10, 25, 50, 100, 250, 500, 1000],
-        readPageSize: () => accountStorage.getItem('Personas_PerPage'),
-        writePageSize: size => accountStorage.setItem('Personas_PerPage', String(size)),
-        guard: () => internalPaging || shell.guardLeave(),
-        onChange: () => {
-            if (!internalPaging) {
-                heldOrder = null;
-                updateDisplayEntries();
-            }
-            renderList();
-        },
-    });
+    const showMore = createListShowMore({ onShowMore: showMoreRows });
+    listFooter.append(showMore.element);
 
     function detailController() {
         return controllerKind === 'persona' || controllerKind === 'create' ? activeController : null;
@@ -210,6 +240,7 @@ export function mountPersonaEditor(container) {
     function openListMenu(trigger) {
         menu(trigger, t`Persona Management`, [
             [menuItem(t`Global Settings`, 'gear', () => shell.selectedKey === 'settings' ? shell.deselectItem() : shell.selectItem({ kind: 'settings' }))],
+            [menuItem(t`Manage Folders`, 'folder', openFolderManager)],
             [menuItem(t`Backup`, 'file-export', () => clickTransport('#personas_backup')), menuItem(t`Restore`, 'file-import', () => clickTransport('#personas_restore'))],
             [menuItem(t`Usage Stats`, 'chart-simple', () => clickTransport('.user_stats_button'))],
         ]);
@@ -223,6 +254,7 @@ export function mountPersonaEditor(container) {
                     power_user.persona_sort_order = order;
                     saveSettingsDebounced();
                     heldOrder = null;
+                    batches = 1;
                     updateDisplayEntries();
                     renderList();
                 }),
@@ -283,7 +315,7 @@ export function mountPersonaEditor(container) {
 
     function makePersonaRow(avatarId) {
         const { name, descriptor } = getPersonaRecord(avatarId);
-        const more = button(t`Actions for ${name}`, 'ellipsis-vertical', trigger => openPersonaMenu(trigger, avatarId), 'sb-persona-row-menu ds-entity-row__button');
+        const more = button(t`Actions for ${name}`, 'ellipsis-vertical', trigger => openPersonaMenu(trigger, avatarId), 'sb-persona-row-menu sb-list-editor__row-menu ds-entity-row__button');
         more.setAttribute('aria-haspopup', 'menu');
         more.setAttribute('aria-expanded', 'false');
         const entity = createEntityRow({
@@ -302,7 +334,45 @@ export function mountPersonaEditor(container) {
         const displayIds = getPersonaDisplayAvatars(allIds, searchControl.query).filter(id => getPersonaRecord(id));
         entries = heldOrder ? preservePersonaOrder(heldOrder, displayIds, allIds).filter(id => getPersonaRecord(id)) : displayIds;
         if (heldOrder) heldOrder = [...entries];
-        pagination.setTotal(entries.length);
+    }
+
+    /** Folder headers followed by their members, then the unfiled personas, in the order of `entries`. */
+    function buildRows() {
+        const filtered = Boolean(searchControl.query.trim());
+        const folders = getFolders('personas');
+        const membersByFolder = new Map(folders.map(folder => [folder.id, []]));
+        const unfiled = [];
+        for (const avatarId of entries) {
+            const members = membersByFolder.get(getFolderId('personas', avatarId));
+            if (members) members.push(avatarId);
+            else unfiled.push(avatarId);
+        }
+        const rowsList = [];
+        const personaRow = (avatarId, folderId) => ({ kind: 'persona', key: entityKey('persona', avatarId), avatarId, folderId });
+        for (const folder of folders) {
+            const members = membersByFolder.get(folder.id);
+            if (filtered && !members.length) continue;
+            const expanded = filtered || folder.expanded;
+            rowsList.push({
+                kind: 'folder',
+                key: `folder:personas:${folder.id}`,
+                folder: { ...folder, scope: 'personas' },
+                scope: 'personas',
+                count: members.length,
+                countLabel: folderCountLabel(members.length, 'personas'),
+                expanded,
+                temporaryExpansion: filtered,
+            });
+            if (expanded) for (const avatarId of members) rowsList.push(personaRow(avatarId, folder.id));
+        }
+        for (const avatarId of unfiled) rowsList.push(personaRow(avatarId, null));
+        return rowsList;
+    }
+
+    function makeFolderRow(entry) {
+        const factory = createFolderRow(entry);
+        folderRows.set(factory.row, factory);
+        return factory.row;
     }
 
     function renderList() {
@@ -324,11 +394,22 @@ export function mountPersonaEditor(container) {
                 actions: allIds.length ? [] : [{ label: t`New`, primary: true, onActivate: () => run(() => shell.selectItem({ kind: 'create' })) }],
             }).element);
         }
+        const allRows = buildRows();
+        const size = batchSize();
+        batches = Math.min(batches, Math.max(1, Math.ceil(allRows.length / size)));
+        const shownRows = allRows.slice(0, batches * size);
+        showMore.update({ shown: shownRows.length, total: allRows.length });
+        listFooter.hidden = showMore.isComplete;
         reconcileRows({
-            container: listBox, cache: rows, entries: pagination.slice(entries), key: avatarId => entityKey('persona', avatarId),
-            signature: avatarId => avatarId,
-            create: makePersonaRow,
-            update: (row, avatarId) => {
+            container: rowsContainer, cache: rows, entries: shownRows, key: entry => entry.key,
+            signature: entry => entry.kind === 'folder' ? 'folder' : entry.avatarId,
+            create: entry => entry.kind === 'folder' ? makeFolderRow(entry) : makePersonaRow(entry.avatarId),
+            update: (row, entry) => {
+                if (entry.kind === 'folder') {
+                    folderRows.get(row).update(entry);
+                    return;
+                }
+                const { avatarId } = entry;
                 const { name, descriptor } = getPersonaRecord(avatarId);
                 const entity = entityRows.get(row);
                 const changes = {
@@ -346,21 +427,37 @@ export function mountPersonaEditor(container) {
                 more.title = t`Actions for ${name}`;
             },
         });
+        decorateFolderSections(rowsContainer);
         searchControl.report(entries.length, allIds.length);
     }
 
-    async function goToPage(page, isCurrent = () => true) {
-        internalPaging = true;
-        try { await pagination.goTo(page, { isCurrent }); } finally { internalPaging = false; }
+    function showMoreRows() {
+        const shownBefore = rowsContainer.children.length;
+        batches++;
+        renderList();
+        // A button that hides itself would drop the keyboard focus: continue at the first row that was added.
+        if (showMore.isComplete && (document.activeElement === showMore.button || !listContent.contains(document.activeElement))) {
+            rowsContainer.children[shownBefore]?.focus({ preventScroll: true });
+        }
+    }
+
+    /** Shows the row of a persona: opens its folder and loads the batch that holds it. */
+    function revealPersona(avatarId) {
+        if (!entries.includes(avatarId)) return;
+        const folderId = getFolderId('personas', avatarId);
+        const folder = folderId ? getFolders('personas').find(candidate => candidate.id === folderId) : null;
+        if (folder && !folder.expanded && !searchControl.query.trim()) setFolderExpanded('personas', folder.id, true);
+        const index = buildRows().findIndex(entry => entry.kind === 'persona' && entry.avatarId === avatarId);
+        // The list only grows: revealing a row never hides the batches that were already shown.
+        if (index >= 0) batches = Math.max(batches, Math.floor(index / batchSize()) + 1);
+        renderList();
     }
 
     async function selectPersona(avatarId, section, isCurrent = () => true) {
         if (destroyed || !isCurrent() || !getPersonaRecord(avatarId)) return false;
         if (!(await shell.selectItem({ kind: 'persona', avatarId }, { isCurrent })) || destroyed) return false;
         if (destroyed || !isCurrent()) return false;
-        const index = entries.indexOf(avatarId);
-        if (index >= 0) await goToPage(pagination.pageOf(index), isCurrent);
-        if (destroyed || !isCurrent()) return false;
+        revealPersona(avatarId);
         if (section && selectedAvatarId() === avatarId) detailController()?.scrollToSection(section);
         return true;
     }
@@ -402,11 +499,22 @@ export function mountPersonaEditor(container) {
         focusTarget: () => activeController?.focusTarget() ?? null,
     });
     shell.root.hidden = true;
-    listContent.append(listHeader, searchField, listBody, pagination.element);
+    listContent.append(listHeader, searchField, listBody);
     shell.sidebar.append(listContent, searchStatus);
     const unbindRows = bindListKeyboard(listBody, {
-        rowSelector: '.sb-persona-row',
-        onOpen: row => run(() => shell.selectItem({ kind: 'persona', avatarId: rowEntry(row) })),
+        rowSelector: '.sb-persona-row, .sb-folder-row:not([aria-disabled="true"])',
+        onOpen: row => {
+            const entry = rowEntry(row);
+            if (entry?.kind === 'folder') {
+                if (!entry.temporaryExpansion) {
+                    setFolderExpanded('personas', entry.folder.id, !entry.expanded);
+                    row.focus({ preventScroll: true });
+                }
+                return true;
+            }
+            if (entry?.avatarId) run(() => shell.selectItem({ kind: 'persona', avatarId: entry.avatarId }));
+            return true;
+        },
     });
     const onEscape = event => {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
@@ -450,7 +558,6 @@ export function mountPersonaEditor(container) {
             if (reason === 'avatar') avatarRevision++;
             allIds = allIds.filter(id => getPersonaRecord(id));
             entries = entries.filter(id => getPersonaRecord(id));
-            pagination.setTotal(entries.length);
         }
         activeController?.refresh(reason === 'list' ? 'avatar' : reason, avatarId);
         shell.refresh();
@@ -521,6 +628,11 @@ export function mountPersonaEditor(container) {
         return refresh('persona', avatarId);
     });
     subscribe(event_types.SETTINGS_UPDATED, () => refresh('persona'));
+    subscriptions.push(subscribeFolders(({ scope }) => {
+        if (scope && scope !== 'personas') return;
+        renderList();
+        activeController?.refresh('folders');
+    }));
 
     const controller = {
         ready: null,
@@ -540,7 +652,7 @@ export function mountPersonaEditor(container) {
             shell.root.removeEventListener('keydown', onEscape);
             unbindRows();
             searchControl.destroy();
-            pagination.destroy();
+            showMore.destroy();
             rows.clear();
             shell.destroy();
             container.classList.remove('sb-persona-editor-mounted');

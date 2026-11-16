@@ -100,6 +100,7 @@ objectNavigation.register('character-editor', { open: openCharacter });
 objectNavigation.register('group-editor', { open: openGroup });
 objectNavigation.register('persona-editor', { open: async () => true });
 const model = await import('../../public/scripts/sillybunny-persona-model.js');
+const folderStore = await import('../../public/scripts/sillybunny-folders.js');
 const mounted = [];
 let recoveryActions;
 
@@ -226,6 +227,10 @@ beforeEach(() => {
     deps = { state, isActive: id => activeId === id, project: jest.fn(), setUserName: jest.fn(),
         save: jest.fn(async () => true), emit: jest.fn(async () => {}), events: { PERSONA_UPDATED: 'updated', PERSONA_RENAMED: 'renamed' } };
     recoveryActions = new Map();
+    let folderId = 0;
+    folderStore.configureFolderStore({
+        powerUser: { sb_folders: folderStore.normalizeFoldersData(null) }, saveSettingsDebounced: jest.fn(), idFactory: () => `folder-${++folderId}`,
+    });
     global.structuredClone ??= value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     window.matchMedia = jest.fn(() => ({ matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() }));
     const jqueryHandlers = new WeakMap();
@@ -266,10 +271,11 @@ describe('Persona detail structure and explicit content edits', () => {
     test('mirrors the header, action classes, section order and unique macro-aware expand target', () => {
         const { host, controller } = mount();
         const header = host.querySelector('.sb-persona-entry-header');
+        expect(header.classList.contains('sb-editor-header')).toBe(true);
         expect([...header.children].map(node => node.className)).toEqual([
             'menu_button menu_button_icon sb-persona-detail-back sb-editor-icon-button sb-header-icon-button', 'sb-persona-entry-name',
             'sb-editor-dirty sb-persona-entry-dirty', 'sb-editor-tokens sb-persona-entry-tokens',
-            expect.stringContaining('sb-persona-entry-modes'), 'menu_button menu_button_icon sb-persona-entry-mode-toggle',
+            expect.stringContaining('sb-persona-entry-modes'), 'menu_button menu_button_icon sb-persona-entry-mode-toggle sb-editor-icon-button sb-header-icon-button',
             'sb-persona-entry-actions', 'sb-editor-action sb-editor-action--secondary sb-persona-entry-cancel',
             'sb-editor-action sb-editor-action--primary sb-persona-entry-save',
         ]);
@@ -558,6 +564,81 @@ describe('Scenario notes and immediate state', () => {
         });
     });
 
+    describe('Folder field', () => {
+        const row = host => host.querySelector('[data-sb-editor-field="folder"]');
+        const trigger = host => row(host).querySelector('.ds-select-row__trigger');
+
+        test('is a select row in Identity that lists No folder and the folders, and shows the stored one', () => {
+            const cast = folderStore.createFolder('personas', 'Cast');
+            folderStore.createFolder('personas', 'Crew');
+            folderStore.setFolder('personas', ['first.png'], cast.id);
+            const { host } = mount();
+            expect(row(host).closest('[data-sb-section="identity"]')).not.toBeNull();
+            expect(row(host).classList.contains('ds-select-row')).toBe(true);
+            expect(row(host).querySelector('.ds-select-row__native')).not.toBeNull();
+            expect(row(host).querySelector('.ds-row-label').textContent).toBe('Folder');
+            expect(trigger(host).textContent).toBe('Cast');
+            trigger(host).click();
+            const options = openPicker.mock.calls.at(-1)[0];
+            expect(options.items.map(item => [item.value, item.label])).toEqual([['', 'No folder'], [cast.id, 'Cast'], ['folder-2', 'Crew']]);
+            expect(options.searchLabel).toBe('Search');
+            expect(options.emptyText).toBe('No results');
+        });
+
+        test('choosing a folder in the picker files the persona at once and leaves the draft clean', () => {
+            const cast = folderStore.createFolder('personas', 'Cast');
+            const { host, controller } = mount();
+            trigger(host).click();
+            openPicker.mock.calls.at(-1)[0].onSelect(cast.id);
+            expect(folderStore.getFolderId('personas', 'first.png')).toBe(cast.id);
+            expect(trigger(host).textContent).toBe('Cast');
+            expect(controller.isDirty()).toBe(false);
+            expect(state.persona_descriptions['first.png']).not.toHaveProperty('folder');
+            trigger(host).click();
+            openPicker.mock.calls.at(-1)[0].onSelect('');
+            expect(folderStore.getFolderId('personas', 'first.png')).toBeNull();
+            expect(trigger(host).textContent).toBe('No folder');
+        });
+
+        test('follows a folder that is created, renamed or filed from elsewhere', () => {
+            const { host, controller } = mount();
+            const cast = folderStore.createFolder('personas', 'Cast');
+            controller.refresh('folders');
+            folderStore.setFolder('personas', ['first.png'], cast.id);
+            controller.refresh('folders');
+            expect(trigger(host).textContent).toBe('Cast');
+            folderStore.renameFolder('personas', cast.id, 'Crew');
+            controller.refresh('folders');
+            expect(trigger(host).textContent).toBe('Crew');
+            folderStore.deleteFolder('personas', cast.id);
+            controller.refresh('folders');
+            expect(trigger(host).textContent).toBe('No folder');
+        });
+
+        test('is disabled while a new persona has no record to file', () => {
+            const { host } = mount({ avatarId: null, mode: 'create' });
+            expect(trigger(host).disabled).toBe(true);
+        });
+
+        test('a folder deleted behind the open picker resyncs instead of throwing', () => {
+            const cast = folderStore.createFolder('personas', 'Cast');
+            const { host } = mount();
+            trigger(host).click();
+            const options = openPicker.mock.calls.at(-1)[0];
+            folderStore.deleteFolder('personas', cast.id);
+            expect(() => options.onSelect(cast.id)).not.toThrow();
+            expect(folderStore.getFolderId('personas', 'first.png')).toBeNull();
+            expect(trigger(host).textContent).toBe('No folder');
+        });
+    });
+
+    test('the Persona Title row carries a caption placeholder that the list shows as its summary', () => {
+        const { host } = mount();
+        const caption = host.querySelector('[data-sb-editor-field="title"] .ds-row-subtitle');
+        expect(caption.textContent).toBe('TODO(copy)');
+        expect(caption.getAttribute('data-sb-copy-placeholder')).toBe('true');
+    });
+
     test.each([
         ['Cancel', 0, false], ['Discard', 2, true], ['Save', 1, true],
     ])('opening a lorebook runs the shared dirty guard: %s', async (_choice, result, leaves) => {
@@ -653,6 +734,24 @@ describe('Scenario notes and immediate state', () => {
         expect(deletePersonaRecord).toHaveBeenCalledWith('first.png');
         expect(controller.isDirty()).toBe(false);
         expect(requestClose).toHaveBeenCalledTimes(1);
+    });
+
+    test('the menu carries Edit and Preview only while the header has hidden both of its controls', () => {
+        const { host } = mount();
+        const more = host.querySelector('.sb-persona-entry-more');
+        more.click();
+        expect(openActionMenu.mock.calls.at(-1)[0].sections).toHaveLength(1);
+        host.querySelector('.sb-persona-entry-modes').style.display = 'none';
+        host.querySelector('.sb-persona-entry-mode-toggle').style.display = 'none';
+        more.setAttribute('aria-expanded', 'false');
+        more.click();
+        const sections = openActionMenu.mock.calls.at(-1)[0].sections;
+        expect(sections[0].items.map(item => item.label)).toEqual(['Preview']);
+        sections[0].items[0].onSelect();
+        expect(host.querySelector('.sb-persona-entry-preview').hidden).toBe(false);
+        more.setAttribute('aria-expanded', 'false');
+        more.click();
+        expect(openActionMenu.mock.calls.at(-1)[0].sections[0].items.map(item => item.label)).toEqual(['Edit']);
     });
 });
 

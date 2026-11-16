@@ -217,11 +217,6 @@
     font-weight: 700;
 }
 
-/* The shared row pads 8px; list parity wants 12px inline, and the shared rule belongs to the list-editor sheets (the Characters list restates it the same way). */
-.sb-wi-editor .sb-wi-row {
-    padding-inline: 12px;
-}
-
 .sb-wi-row > .sb-wi-row-icon {
     display: flex;
     align-items: center;

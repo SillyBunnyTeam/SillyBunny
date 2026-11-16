@@ -1,9 +1,12 @@
-const SCOPES = new Set(['characters', 'groups']);
+const SCOPES = new Set(['characters', 'groups', 'personas']);
+// Settings saved before persona folders existed have no `personas` scope; it is created on the first write so they load unchanged.
+const LAZY_SCOPES = new Set(['personas']);
 const FOLDER_TYPES = new Set(['OPEN', 'CLOSED']);
 const listeners = new Set();
 const EMPTY_STORE = Object.freeze({
     characters: Object.freeze({ folders: Object.freeze([]), members: Object.freeze({}) }),
     groups: Object.freeze({ folders: Object.freeze([]), members: Object.freeze({}) }),
+    personas: Object.freeze({ folders: Object.freeze([]), members: Object.freeze({}) }),
 });
 let powerUser;
 let saveSettings = () => {};
@@ -29,6 +32,12 @@ function currentFolders() {
 
 function readFolderScope(scope) {
     return powerUser?.sb_folders?.[requireScope(scope)] ?? EMPTY_STORE[scope];
+}
+
+function writableScope(scope) {
+    const store = currentFolders();
+    store[scope] ??= { folders: [], members: {} };
+    return store[scope];
 }
 
 function notifyChange(scope, reason) {
@@ -104,13 +113,13 @@ function normalizeMembers(value, folders) {
  * Parses persisted folder settings into the supported one-level schema.
  * @param {unknown} value
  * @param {() => string} [idFactory]
- * @returns {{ version: 1, migratedFromTags: boolean, characters: object, groups: object }}
+ * @returns {{ version: 1, migratedFromTags: boolean, characters: object, groups: object, personas?: object }}
  */
 export function normalizeFoldersData(value, idFactory = fallbackId) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const characters = normalizeFolderCollection(source.characters?.folders, idFactory);
     const groups = normalizeFolderCollection(source.groups?.folders, idFactory);
-    return {
+    const normalized = {
         version: 1,
         migratedFromTags: source.migratedFromTags === true,
         characters: {
@@ -122,20 +131,35 @@ export function normalizeFoldersData(value, idFactory = fallbackId) {
             members: normalizeMembers(source.groups?.members, groups),
         },
     };
+    for (const scope of LAZY_SCOPES) {
+        const saved = source[scope];
+        if (!saved || typeof saved !== 'object' || Array.isArray(saved)) continue;
+        const scopeFolders = normalizeFolderCollection(saved.folders, idFactory);
+        normalized[scope] = { folders: scopeFolders, members: normalizeMembers(saved.members, scopeFolders) };
+    }
+    return normalized;
 }
+
+const IDENTITY_LISTENERS = Object.freeze([
+    ['CHARACTER_RENAMED', onCharacterRenamed],
+    ['CHARACTER_DUPLICATED', onCharacterDuplicated],
+    ['CHARACTER_DELETED', onCharacterDeleted],
+    ['PERSONA_CREATED', onPersonaCreated],
+    ['PERSONA_DELETED', onPersonaDeleted],
+]);
 
 function attachIdentityListeners(eventSource, eventTypes) {
     if (!eventSource?.on || !eventTypes || installedEventSource === eventSource) return;
     if (installedEventSource && installedEventTypes) {
-        installedEventSource.removeListener(installedEventTypes.CHARACTER_RENAMED, onCharacterRenamed);
-        installedEventSource.removeListener(installedEventTypes.CHARACTER_DUPLICATED, onCharacterDuplicated);
-        installedEventSource.removeListener(installedEventTypes.CHARACTER_DELETED, onCharacterDeleted);
+        for (const [name, listener] of IDENTITY_LISTENERS) {
+            if (installedEventTypes[name]) installedEventSource.removeListener(installedEventTypes[name], listener);
+        }
     }
     installedEventSource = eventSource;
     installedEventTypes = eventTypes;
-    eventSource.on(eventTypes.CHARACTER_RENAMED, onCharacterRenamed);
-    eventSource.on(eventTypes.CHARACTER_DUPLICATED, onCharacterDuplicated);
-    eventSource.on(eventTypes.CHARACTER_DELETED, onCharacterDeleted);
+    for (const [name, listener] of IDENTITY_LISTENERS) {
+        if (eventTypes[name]) eventSource.on(eventTypes[name], listener);
+    }
 }
 
 function onCharacterRenamed(oldAvatar, newAvatar) {
@@ -159,6 +183,18 @@ function onCharacterDeleted({ character } = {}) {
     if (typeof avatar !== 'string' || !Object.hasOwn(currentFolders().characters.members, avatar)) return;
     delete currentFolders().characters.members[avatar];
     persistChange('characters', 'delete-member');
+}
+
+// A persona keeps its avatar id across renames, so only duplicate and delete touch membership.
+function onPersonaCreated({ avatarId, duplicatedFromAvatarId } = {}) {
+    const folderId = getFolderId('personas', duplicatedFromAvatarId);
+    if (!folderId || typeof avatarId !== 'string' || !avatarId) return;
+    writableScope('personas').members[avatarId] = folderId;
+    persistChange('personas', 'duplicate-member');
+}
+
+function onPersonaDeleted({ avatarId } = {}) {
+    removeEntityKey('personas', avatarId);
 }
 
 /**
@@ -199,12 +235,14 @@ export function getFolderMembers(scope, folderId) {
 export function setFolder(scope, keys, folderIdOrNull) {
     requireScope(scope);
     const normalizedKeys = parseKeys(keys);
-    const members = currentFolders()[scope].members;
     let folderId = null;
     if (folderIdOrNull !== null && folderIdOrNull !== undefined) {
         folderId = String(folderIdOrNull);
         if (!folderById(scope, folderId)) throw new RangeError(`Unknown folder id: ${folderId}`);
+    } else if (!currentFolders()[scope]) {
+        return false;
     }
+    const members = writableScope(scope).members;
     let changed = false;
     for (const key of normalizedKeys) {
         if (folderId === null) {
@@ -224,14 +262,15 @@ export function setFolder(scope, keys, folderIdOrNull) {
 /** Creates a folder and returns its persisted record. */
 export function createFolder(scope, name, { color = '', expanded = true } = {}) {
     requireScope(scope);
-    const existingIds = new Set(currentFolders()[scope].folders.map(entry => entry.id));
+    const store = writableScope(scope);
+    const existingIds = new Set(store.folders.map(entry => entry.id));
     const folder = {
         id: generateUniqueId(existingIds, createId),
         name: parseFolderName(name),
         color: typeof color === 'string' ? color.trim() : '',
         expanded: Boolean(expanded),
     };
-    currentFolders()[scope].folders.push(folder);
+    store.folders.push(folder);
     persistChange(scope, 'create-folder');
     return { ...folder };
 }
@@ -251,7 +290,8 @@ export function renameFolder(scope, folderId, name) {
 /** Deletes a folder and leaves its members unfiled. */
 export function deleteFolder(scope, folderId) {
     requireScope(scope);
-    const store = currentFolders()[scope];
+    currentFolders();
+    const store = readFolderScope(scope);
     const id = String(folderId);
     const index = store.folders.findIndex(folder => folder.id === id);
     if (index < 0) return false;
@@ -267,7 +307,8 @@ export function deleteFolder(scope, folderId) {
 export function moveFolder(scope, folderId, delta) {
     requireScope(scope);
     if (!Number.isInteger(delta)) throw new TypeError('Folder order delta must be an integer.');
-    const folders = currentFolders()[scope].folders;
+    currentFolders();
+    const folders = readFolderScope(scope).folders;
     const index = folders.findIndex(folder => folder.id === String(folderId));
     const target = index + delta;
     if (index < 0 || target < 0 || target >= folders.length || delta === 0) return false;
@@ -315,7 +356,8 @@ export function normalizeFolders() {
 export function removeEntityKey(scope, key) {
     requireScope(scope);
     if (typeof key !== 'string' || !key) return false;
-    const members = currentFolders()[scope].members;
+    currentFolders();
+    const members = readFolderScope(scope).members;
     if (!Object.hasOwn(members, key)) return false;
     delete members[key];
     persistChange(scope, 'delete-member');

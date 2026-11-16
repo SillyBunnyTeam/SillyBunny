@@ -17,7 +17,6 @@
 }
 
 .sb-folder-manager__folder-row { margin: 0; flex-wrap: wrap; content-visibility: visible; }
-.sb-folder-manager__folder-row { padding-inline: 8px; }
 @media (hover: hover) {
     .sb-folder-manager .ds-entity-row--activatable:hover { background: var(--sb-flat-hover-bg); }
 }
