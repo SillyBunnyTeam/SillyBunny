@@ -1,8 +1,8 @@
 // SillyBunny: shared header and toolbar chrome for the scrolling-sheet editors.
 // Owns the header order, header button wiring and tooltips, Save/Cancel/dirty
 // presentation, the token readout and its phone placement, inline title
-// rename, toolbar overflow into the More menu, mobile scroll-hide, and the
-// draft-recovery toast. Menu contents, token counts, and any entity logic
+// rename, toolbar overflow into the More menu, and the draft-recovery
+// toast. Menu contents, token counts, and any entity logic
 // stay with each editor.
 
 /* global moment */
@@ -148,7 +148,6 @@ export function attachToLabelRow(section, control) {
  * @param {string} [config.itemMenuLabel]  Tooltip and accessible name of the item menu button, named by what it holds
  *     ("Character Actions").
  * @param {() => boolean} [config.isActive]  Skips layout work while the editor is off screen.
- * @param {boolean} [config.scrollHide=true]  Hide the chrome on mobile while scrolling down.
  * @returns {{ render: (state: ChromeState) => void, setTokens: (count: TokenCount|null) => void, scheduleOverflow: () => void, reset: () => void, dispose: () => void }}
  *     Call `dispose()` before discarding chrome whose header is rebuilt (e.g. per-entry detail panes).
  */
@@ -169,12 +168,10 @@ export function mountEditorChrome(config) {
         actionMenuTitle = '',
         itemMenuLabel = '',
         isActive = () => true,
-        scrollHide = true,
     } = config;
 
     const abort = new AbortController();
     const { signal } = abort;
-    const chromeParts = [header, toolbar].filter(Boolean);
 
     // Tooltip extensions move title elsewhere; action names must survive that move.
     for (const control of root.querySelectorAll('.sb-editor-icon-button, .editor_maximize, .sb-editor-tokens__warning')) {
@@ -464,57 +461,10 @@ export function mountEditorChrome(config) {
         controls.more.setAttribute('aria-expanded', 'true');
     }
 
-    // ------------------------------------------------------------------
-    // Mobile scroll-hide
-    // ------------------------------------------------------------------
-
-    const mobile = window.matchMedia('(pointer: coarse), (max-width: 620px)');
-    let lastScrollY = content.scrollTop;
-    let distance = 0;
-    let ticking = false;
-    let settleUntil = 0;
-
-    const setChromeHidden = (hidden) => {
-        const changed = header.classList.contains('sb-editor-chrome-hidden') !== hidden;
-        for (const part of chromeParts) part.classList.toggle('sb-editor-chrome-hidden', hidden);
-        // Collapsing at the bottom can clamp scrollTop on every frame of the
-        // 200ms transition; don't read that as a user scroll the other way.
-        if (changed) settleUntil = performance.now() + 250;
-        lastScrollY = content.scrollTop;
-        distance = 0;
-    };
-    const showChrome = () => setChromeHidden(false);
-
-    mobile.addEventListener('change', showChrome);
-    for (const part of chromeParts) part.addEventListener('focusin', showChrome, { signal });
-
-    if (scrollHide) content.addEventListener('scroll', () => {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(() => {
-            ticking = false;
-            const currentY = Math.max(0, content.scrollTop);
-            const delta = currentY - lastScrollY;
-            lastScrollY = currentY;
-
-            if (currentY > content.scrollHeight - content.clientHeight) return;
-            if (!mobile.matches || currentY <= 60) {
-                setChromeHidden(false);
-                return;
-            }
-            if (!delta || performance.now() < settleUntil) return;
-            distance = Math.sign(delta) === Math.sign(distance) ? distance + delta : delta;
-            if (Math.abs(distance) < 8) return;
-            if (isActionMenuOpen() || chromeParts.some(part => part.querySelector(':focus-visible'))) return;
-            setChromeHidden(distance > 0);
-        });
-    }, { passive: true, signal });
-
     function dispose() {
         // The More menu is body-mounted; its actions would outlive this header.
         if (controls.more && isActionMenuOpen(controls.more)) closeActionMenu({ animate: false, restoreFocus: false });
         abort.abort();
-        mobile.removeEventListener('change', showChrome);
         resizeObserver?.disconnect();
         resizeObserver = null;
         rowReadout?.remove();
@@ -525,12 +475,11 @@ export function mountEditorChrome(config) {
         setTokens,
         scheduleOverflow,
         /**
-         * Reveal the header and toolbar; call when a session opens.
+         * Call when a session opens.
          * @param {{ scrollToTop?: boolean }} [options] Start a different entity at the top of the shared sheet.
          */
         reset({ scrollToTop = false } = {}) {
             if (scrollToTop) content.scrollTop = 0;
-            showChrome();
         },
         dispose,
     };

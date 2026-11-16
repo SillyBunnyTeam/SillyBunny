@@ -47,12 +47,4 @@ describe('shared breakpoints', () => {
             .filter(relative => /matchMedia\(\s*['"`]\((?:max|min)-width: ?\d+px/.test(read(relative)));
         expect(offenders).toEqual([]);
     });
-
-    // The editor chrome hides at a narrower width than the shell layout; that width is settled with the editor anatomy,
-    // so for now the script and the stylesheet only have to agree.
-    test('the editor scroll-hide query matches the stylesheet that hides the chrome', () => {
-        const query = '(pointer: coarse), (max-width: 620px)';
-        expect(read('public/scripts/sillybunny-editor/chrome.js')).toContain(`window.matchMedia('${query}')`);
-        expect(read('public/css/sillybunny-character-editor.css')).toContain(`@media ${query} {`);
-    });
 });

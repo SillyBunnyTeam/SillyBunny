@@ -793,7 +793,6 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         onBack: () => requestClose(), onCancel: discard, onSave: () => { void save(); },
         getActionSections: () => actions?.sections(more) ?? [],
         actionMenuTitle: () => model.entryTitle(draft, t`Untitled entry`),
-        scrollHide: false,
     });
     session = createEditorSession({ captureSnapshot, restoreSnapshot, persist, drafts, offerDraft: showDraftRecoveryToast, onStateChange: renderState });
     refreshVisibility();

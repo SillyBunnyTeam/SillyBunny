@@ -758,20 +758,20 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
         { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261116f', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261116k', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261115u', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
         { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261116f', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261116k', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-world-info-editor.css?v=20261114t', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
         { href: 'css/sillybunny-editor-shell.css?v=20261115d', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261116f', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261116k', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261116j', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261113t', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261114t', id: 'deferred-persona-detail-css' },
@@ -779,13 +779,13 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
         { href: 'css/sillybunny-entity-list.css?v=20261116j', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261116f', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261116k', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-character-list.css?v=20261116j', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
         // SillyBunny: Characters and Groups use the same deferred selection UI — see docs/ui-migration.md.
         { href: 'css/sillybunny-entity-list.css?v=20261116j', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-editor.css?v=20261116f', id: 'deferred-editor-chrome-css' },
+        { href: 'css/sillybunny-character-editor.css?v=20261116k', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-character-list.css?v=20261116j', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
@@ -6406,7 +6406,7 @@ function setCharacterEditorEmptyState(visible) {
 
     if (emptyState instanceof HTMLElement) {
         if (!emptyState.classList.contains('sb-status-page')) {
-            // The page in the markup is replaced by the shared one, which keeps its id and its two buttons' ids.
+            // The page in the markup is replaced by the shared one, which keeps its id and the id of its one button. The list's New action creates.
             const page = createStatusPage({
                 state: 'empty',
                 icon: 'address-card',
@@ -6416,7 +6416,6 @@ function setCharacterEditorEmptyState(visible) {
                 compact: true,
                 actions: [
                     { id: 'sb_character_empty_browse', label: t`Browse Characters`, primary: true, onActivate: () => { void showCharacterListView(); } },
-                    { id: 'sb_character_empty_create', label: t`Create New Character`, onActivate: createCharacterFromEmptyEditor },
                 ],
             });
             page.element.id = emptyState.id;
@@ -6427,16 +6426,6 @@ function setCharacterEditorEmptyState(visible) {
     }
 
     syncCharacterTitlebarVisibility();
-}
-
-function createCharacterFromEmptyEditor() {
-    globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.('characters');
-    setCharacterEditorEmptyState(false);
-    setCharacterPersonaPanelVisible(false);
-    setCharacterImportPanelVisible(false);
-    setCharacterWorldInfoPanelVisible(false);
-    document.getElementById('rm_button_create')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    syncCharacterShellTabs('editor');
 }
 
 function syncCharacterTitlebarVisibility() {
@@ -14084,13 +14073,13 @@ function initAll() {
         openTab(shellKey, tabId) {
             if (shellKey === 'characters') {
                 openCharacterPanelTab(tabId);
+                // A named page is the page to show: on a phone the pane that is off screen is inert.
+                if (tabId && isMobileViewport()) setSettingsMobileContentView(true);
                 // SillyBunny: bridges await the atomic reveal, not just module mounting — see docs/ui-migration.md
                 if (['persona', 'world-info', 'import'].includes(tabId)) {
-                    if (isMobileViewport()) setSettingsMobileContentView(true);
                     return characterPanelRevealPromise;
                 }
                 if (tabId === 'characters' || tabId === 'groups') {
-                    if (isMobileViewport()) setSettingsMobileContentView(true);
                     return characterListViewPromise;
                 }
                 return;

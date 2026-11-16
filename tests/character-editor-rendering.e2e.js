@@ -389,37 +389,29 @@ test('leaving Quick Edit is instant with reduced motion', async ({ page }) => {
     expect(await countQuickEditRevealFades(page)).toBe(0);
 });
 
-test('mobile scroll-hide reclaims header and toolbar space and restores it on scroll-up', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
-    await openEditor(page);
-    // Both editors share .sb-editor-sheet__content, so scope to the character form.
-    const content = page.locator('#form_create .sb-editor-sheet__content');
-    const header = page.locator('#sb_character_editor_header');
-    const toolbar = page.locator('#sb_character_editor_toolbar');
-    const height = (await content.boundingBox()).height;
-    const chromeHeight = (await header.boundingBox()).height + (await toolbar.boundingBox()).height;
-    await content.hover();
-    await page.mouse.wheel(0, 400);
-    await expect.poll(async () => (await content.boundingBox()).height).toBeGreaterThan(height + chromeHeight - 2);
-    await page.mouse.wheel(0, -100);
-    await expect.poll(async () => (await content.boundingBox()).height).toBeLessThan(height + 2);
-    await expect(header).toBeVisible();
-    await expect(toolbar).toBeVisible();
-    // The chrome suppresses layout-induced scroll for 250ms after revealing;
-    // a single synthetic jump inside that window is intentionally ignored.
-    await page.waitForTimeout(250);
-    await content.evaluate(node => { node.scrollTop = node.scrollHeight; });
-    await expect(header).toBeHidden();
-    await page.evaluate(async () => {
-        for (let frame = 0; frame < 20; frame++) await new Promise(requestAnimationFrame);
+for (const viewport of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) {
+    test(`the header and toolbar stay in view while the sheet scrolls at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await openEditor(page);
+        // Both editors share .sb-editor-sheet__content, so scope to the character form.
+        const content = page.locator('#form_create .sb-editor-sheet__content');
+        const header = page.locator('#sb_character_editor_header');
+        const toolbar = page.locator('#sb_character_editor_toolbar');
+        const boxes = async () => ({ content: await content.boundingBox(), header: await header.boundingBox(), toolbar: await toolbar.boundingBox() });
+        const before = await boxes();
+        await content.hover();
+        await page.mouse.wheel(0, 400);
+        await expect.poll(() => content.evaluate(node => node.scrollTop)).toBeGreaterThan(100);
+        await content.evaluate(node => { node.scrollTop = node.scrollHeight; });
+        await page.evaluate(async () => {
+            for (let frame = 0; frame < 20; frame++) await new Promise(requestAnimationFrame);
+        });
+        await expect(header).toBeInViewport({ ratio: 1 });
+        await expect(toolbar).toBeInViewport({ ratio: 1 });
+        expect(await boxes()).toEqual(before);
+        await expect(page.locator('.sb-editor-chrome-hidden')).toHaveCount(0);
     });
-    await expect(header).toBeHidden();
-    await page.mouse.wheel(0, -100);
-    await expect(header).toBeVisible();
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await expect(header).toBeVisible();
-    await expect(toolbar).toBeVisible();
-});
+}
 
 test('desktop fields share one height and Created by aligns with its section', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });

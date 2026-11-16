@@ -77,7 +77,7 @@
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261112o">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261112q">
     <!-- SillyBunny: the editor chrome sheet is deferred, so it stays out of the blocking-CSS budget. The editors, the lists and the windows that use it load it through loadListEditorStyles() and wait for it before they show; the character and group editors are held hidden until it applies (holdEditorsUntilStyled() in sillybunny-editor/list-shell.js). Keep this version aligned with the runtime loader URLs. -->
-    <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261116f" data-sb-deferred-style data-sb-media="all">
+    <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261116k" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css?v=20261112k" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -6817,13 +6817,10 @@
                             <p data-i18n="Please pick a character card from the character menu, or create a new character.">Please pick a character card from the character menu, or create a new character.</p>
                         </div>
                         <div class="sb-character-editor-empty-actions">
+                            <!-- SillyBunny: a status page has one action; the New action of the Characters list header creates a character. -->
                             <button id="sb_character_empty_browse" class="menu_button menu_button_icon" type="button">
                                 <i class="fa-solid fa-address-book" aria-hidden="true"></i>
                                 <span data-i18n="Browse Characters">Browse Characters</span>
-                            </button>
-                            <button id="sb_character_empty_create" class="menu_button menu_button_icon" type="button">
-                                <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
-                                <span data-i18n="Create New Character">Create New Character</span>
                             </button>
                         </div>
                     </div>

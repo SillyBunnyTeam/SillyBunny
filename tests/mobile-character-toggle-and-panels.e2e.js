@@ -267,13 +267,28 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             expect(geometry.buttons.every(button => button.x >= status.x && button.right <= status.x + status.width + 1)).toBe(true);
 
             const browse = empty.locator('#sb_character_empty_browse');
-            const create = empty.locator('#sb_character_empty_create');
             await expect(browse).toHaveClass(/is-suggested/);
             await expect(browse).toHaveCSS('border-radius', '999px');
             await expect(browse).toHaveCSS('min-height', viewport.width === 390 ? '44px' : '38px');
-            await expect(create).not.toHaveClass(/is-suggested/);
-            await expect(create).toHaveCSS('border-radius', '9px');
-            await expect(create).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+            // A status page has one action; creating a character is the New action of the Characters list header.
+            await expect(empty.locator('.sb-status-page__actions button')).toHaveCount(1);
+            await expect(empty.locator('#sb_character_empty_create')).toHaveCount(0);
+        });
+
+        test('creating a character is the New action of the Characters list header', async ({ page }) => {
+            await boot(page, viewport);
+            await page.evaluate(async () => {
+                const app = await import('/script.js');
+                app.setCharacterId(undefined);
+            });
+            await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'editor'));
+            await waitForCharacterPanelAnimations(page);
+            await page.locator('#sb_character_empty_browse').click();
+            const create = page.locator('.sb-character-list[data-mounted="true"] .sb-character-list__header [data-action-id="new"]');
+            await expect(create).toBeVisible();
+            await expect(create).toHaveAccessibleName('New');
+            await create.click();
+            await expect(page.locator('#right-nav-panel')).toHaveAttribute('data-menu-type', 'create');
         });
     });
 }

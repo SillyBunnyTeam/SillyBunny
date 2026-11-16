@@ -755,8 +755,10 @@ This is the largest class by a wide margin.
   - A 44px touch target on a tag chip's remove button is the button's own box with a negative margin and `background-clip: content-box`; a taller button stacks the chips and pushes Essentials past the screen.
   - `tags.css` dims `#tagList .tag` to 0.6, which fails the contrast rule on the light tone; the editor's chip rule sets `opacity: 1`.
   - A member row opens its character on press (`activation: 'activate'`, no chevron); the same route is the "View character card" item of its menu, so the action keeps a visible form.
-  - The quick-edit capture step waits for the tag chips, scrolls to the end, then up by 24px: a scroll down hides the chrome on a phone, and whether the chips had rendered decided how far the sheet scrolled.
-- **Open:** the editor-family parity part `entry` and the list-family row padding (16px, where `DESIGN.md` says 12px) and row-title selector (`[class*="name"]` reads a tag chip's name as a title) are parity rules that disagree with `DESIGN.md` or with the markup of the shared components; their allow-list entries stay until the rules are decided.
+  - The quick-edit capture step waits for the tag chips, then scrolls to the end: whether the chips had rendered decided how far the sheet scrolled.
+  - The header and toolbar stay in view while the sheet scrolls, on a phone too, as libadwaita's do; the scroll-hide of `mountEditorChrome` and its `sb-editor-chrome-hidden` rules are gone (`character-editor-rendering.e2e.js`, "the header and toolbar stay in view while the sheet scrolls").
+  - The "No character selected" page has one action, Browse Characters; the New action of the Characters list header creates a character (`mobile-character-toggle-and-panels.e2e.js`).
+- **Parity rules:** the editor-family part `entry` does not measure a floating entry row's input, because the row is the field (`tests/helpers/parity/editor.js`); the list-family row rule holds `DESIGN.md`'s 12px inline padding, and its title selector skips tag chips (`tests/helpers/parity/list.js`).
 - **Tests:** `tests/unit/sillybunny-editor-rows.test.js` (`adoptEditorFields`), `tests/unit/sillybunny-group-list-adapters.test.js`, `tests/group-editor-member-lists.e2e.js`, `tests/character-editor-rendering.e2e.js`, `tests/character-list.e2e.js` (tag removal size), the audit specs for `editor.character`, `editor.group`, `list.group-members`, `status.group.members-empty`.
 
 ### Audit specs, the surface registry and ratchets

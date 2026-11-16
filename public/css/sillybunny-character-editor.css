@@ -1301,47 +1301,6 @@ body.reduced-motion :is(
     }
 }
 
-/* Scroll-hide — header and toolbar collapse when scrolling down on mobile
-   ========================================================================= */
-
-@media (pointer: coarse), (max-width: 620px) {
-    /* max-height cannot interpolate from `none`, so the visible state needs a
-       concrete ceiling above the ~57px single-row bars. Visibility flips at once
-       on reveal and only after the fade on hide, which also takes the collapsed
-       bars out of the tab order. */
-    #sb_character_editor_header,
-    #sb_character_editor_toolbar,
-    #sb_group_editor_header,
-    #sb_group_editor_toolbar {
-        max-height: 6rem;
-        overflow: hidden;
-        transition: max-height var(--sb-transition-fast), min-height var(--sb-transition-fast), padding var(--sb-transition-fast),
-            border-width var(--sb-transition-fast), opacity var(--sb-transition-fast), visibility 0s linear 0s;
-    }
-
-    :is(#sb_character_editor_header, #sb_character_editor_toolbar, #sb_group_editor_header, #sb_group_editor_toolbar).sb-editor-chrome-hidden {
-        max-height: 0;
-        min-height: 0;
-        padding-top: 0;
-        padding-bottom: 0;
-        border-width: 0;
-        visibility: hidden;
-        opacity: 0;
-        transition: max-height var(--sb-transition-fast), min-height var(--sb-transition-fast), padding var(--sb-transition-fast),
-            border-width var(--sb-transition-fast), opacity var(--sb-transition-fast), visibility 0s linear var(--sb-duration-fast);
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        #sb_character_editor_header,
-        #sb_character_editor_toolbar,
-        #sb_group_editor_header,
-        #sb_group_editor_toolbar,
-        :is(#sb_character_editor_header, #sb_character_editor_toolbar, #sb_group_editor_header, #sb_group_editor_toolbar).sb-editor-chrome-hidden {
-            transition: none;
-        }
-    }
-}
-
 /* Group editor — group-specific sheet rules (Step 4)
    ========================================================================= */
 

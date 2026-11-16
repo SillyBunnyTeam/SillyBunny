@@ -97,17 +97,13 @@ describe('mountEditorChrome header-only mode', () => {
         expect(observe).not.toHaveBeenCalled();
     });
 
-    test('reset reveals hidden chrome and scrolls to the top only on request', () => {
+    test('reset scrolls to the top only on request', () => {
         makeMedia();
-        const { chrome, header, content } = makeChrome();
-        header.classList.add('sb-editor-chrome-hidden');
+        const { chrome, content } = makeChrome();
         content.scrollTop = 240;
         chrome.reset();
-        expect(header.classList.contains('sb-editor-chrome-hidden')).toBe(false);
         expect(content.scrollTop).toBe(240);
-        header.classList.add('sb-editor-chrome-hidden');
         chrome.reset({ scrollToTop: true });
-        expect(header.classList.contains('sb-editor-chrome-hidden')).toBe(false);
         expect(content.scrollTop).toBe(0);
     });
 
@@ -378,17 +374,15 @@ test('entity-scoped draft dismissal leaves another editor recovery toast untouch
 });
 
 describe('mountEditorChrome dispose', () => {
-    test('removes control listeners and the media-query listener', () => {
-        const media = makeMedia();
+    test('removes control listeners', () => {
+        makeMedia();
         const { chrome, controls, handlers } = makeChrome();
-        const handler = media.addEventListener.mock.calls[0][1];
         chrome.dispose();
         controls.back.click();
         controls.save.disabled = false;
         controls.save.click();
         expect(handlers.onBack).not.toHaveBeenCalled();
         expect(handlers.onSave).not.toHaveBeenCalled();
-        expect(media.removeEventListener).toHaveBeenCalledWith('change', handler);
     });
 
     test('disconnects the toolbar resize observer', () => {
@@ -425,14 +419,16 @@ describe('mountEditorChrome dispose', () => {
         expect(actionMenu.closeActionMenu).not.toHaveBeenCalled();
     });
 
-    test('scrollHide: false never hides the header', () => {
+    test('the header and toolbar stay in view while the sheet scrolls down, on a phone too', () => {
         const media = makeMedia();
         media.matches = true;
-        const { header, content } = makeChrome({ scrollHide: false });
+        const { header, content } = makeChrome();
         Object.defineProperty(content, 'scrollHeight', { value: 2000 });
         Object.defineProperty(content, 'clientHeight', { value: 400 });
-        content.scrollTop = 500;
-        content.dispatchEvent(new Event('scroll'));
+        for (const top of [100, 500, 900]) {
+            content.scrollTop = top;
+            content.dispatchEvent(new Event('scroll'));
+        }
         expect(header.classList.contains('sb-editor-chrome-hidden')).toBe(false);
     });
 });

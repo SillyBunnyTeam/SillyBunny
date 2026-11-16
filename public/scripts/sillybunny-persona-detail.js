@@ -975,7 +975,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         tokens: { element: readout, row: { host: summaryRow } },
         itemMenuLabel: t`Persona Actions`,
         onBack: () => requestClose(), onCancel: discard, onSave: () => { void save(); },
-        getActionSections: actionSections, actionMenuTitle: () => draft.name, scrollHide: false,
+        getActionSections: actionSections, actionMenuTitle: () => draft.name,
     });
     session = createEditorSession({
         captureSnapshot, restoreSnapshot, persist, drafts, onStateChange: renderState,

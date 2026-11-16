@@ -165,8 +165,7 @@ export async function showPreview(page, { modes, toggle }) {
 }
 
 /**
- * Scrolls the body of an editor back to the top, which opening the same item again does not do, and waits until the header
- * that scrolling down hides on a phone is shown again.
+ * Scrolls the body of an editor back to the top, which opening the same item again does not do.
  */
 export async function scrollToTop(page, scroller) {
     await page.evaluate(selector => {
@@ -175,7 +174,6 @@ export async function scrollToTop(page, scroller) {
             body.scrollTop = 0;
         }
     }, scroller);
-    await page.waitForFunction(() => !document.querySelector('.sb-editor-chrome-hidden'));
     await settle(page);
 }
 

@@ -92,7 +92,6 @@ describe('Characters menu contrast and token contracts', () => {
 
     test('editor chrome uses shared motion and prefixed sticky geometry', () => {
         expect(rule(editor, '.sb-editor-header')).toMatch(/position: -webkit-sticky;\s*position: sticky;/);
-        expect(editor).toContain('visibility 0s linear var(--sb-duration-fast)');
         expect(editor).not.toContain('max-height 200ms ease');
         expect(theme).toContain('--sb-transition-fast: var(--sb-duration-fast)');
         expect(theme).not.toContain('transition: transform 100ms var(--sb-ease-out)');

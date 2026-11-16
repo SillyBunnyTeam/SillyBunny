@@ -756,7 +756,6 @@ export function mountAgentDetail({
         root,
         header,
         content: body,
-        scrollHide: false,
         controls: {
             back,
             title,

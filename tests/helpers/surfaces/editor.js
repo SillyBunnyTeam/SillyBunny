@@ -160,7 +160,7 @@ const characterSection = (id, section = id) => sectionState({
     ready: `#form_create [data-sb-section="${section}"] .ds-pref-group-heading`,
 });
 
-// The nickname is in the first section, so that editing it does not scroll the header out of view on a phone.
+// The nickname is in the first section, so that editing it does not scroll the sheet.
 const makeCharacterDirty = page => appendToField(page, '#character_nickname_pole');
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -266,7 +266,6 @@ async function openPersonaDetail(page) {
     await scrollToTop(page, PERSONA.body);
 }
 
-// The name is in the header, which a phone keeps in view; a field of the body may scroll it away.
 const makePersonaDirty = page => appendToField(page, PERSONA.name);
 
 const WORLD_INFO = {
@@ -491,12 +490,9 @@ export const surfaces = [
                     await page.locator('#sb_character_editor_quick_edit').click();
                     await page.waitForFunction(() => document.getElementById('sb_character_editor_quick_edit').getAttribute('aria-pressed') === 'true');
                     // On a phone the first screen of the sheet is Essentials either way: the end of the sheet is where the
-                    // hidden sections would start. The tags decide how tall Essentials is, so the step gives them a moment; a
-                    // scroll down hides the header and toolbar on a phone, and a short scroll up brings them back.
+                    // hidden sections would start. The tags decide how tall Essentials is, so the step gives them a moment.
                     await page.locator('#tagList .tag').first().waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
                     await page.locator(CHARACTER.scroller).evaluate(body => { body.scrollTop = body.scrollHeight; });
-                    await page.waitForTimeout(400);
-                    await page.locator(CHARACTER.scroller).evaluate(body => { body.scrollTop = Math.max(0, body.scrollTop - 24); });
                     await settle(page);
                 },
             },
@@ -539,7 +535,7 @@ export const surfaces = [
                     : ['#sb_character_editor_tokens.is-over-budget', '#sb_character_editor_token_warning']),
                 async open(page) {
                     await page.locator('#description_textarea').fill(OVER_BUDGET);
-                    // Filling scrolls the field into view, which hides the header on a phone; the readout is in that header.
+                    // Filling scrolls the field into view; the step returns to the top, where the readout is.
                     await page.locator('#sb_character_editor_tokens.is-over-budget').waitFor({ state: 'attached', timeout: 30_000 });
                     await scrollToTop(page, CHARACTER.scroller);
                     await shown(page, isPhoneReadout({ viewport: `${page.viewportSize().width}x${page.viewportSize().height}` })

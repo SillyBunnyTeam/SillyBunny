@@ -1314,7 +1314,6 @@ export function initializePromptEditor(column) {
             onSave: () => { save(); },
             getActionSections: actionSections,
             actionMenuTitle: () => draft.name,
-            scrollHide: false,
         });
         // The editor's menus are part of its edit surface for the preset autosave (see sillybunny-preset-autosave.js).
         more.addEventListener('click', () => {

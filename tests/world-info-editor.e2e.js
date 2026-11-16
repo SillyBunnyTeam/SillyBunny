@@ -408,7 +408,6 @@ test.describe('World Info editor on mobile', () => {
         await expect(entry.locator('.sb-wi-entry-textarea')).toBeHidden();
         await toggle.click();
         await entry.locator('.sb-wi-entry-body > *').last().scrollIntoViewIfNeeded();
-        await expect(entry.locator('.sb-wi-entry-header')).not.toHaveClass(/sb-editor-chrome-hidden/);
         await expect(entry.locator('.sb-wi-detail-back')).toBeInViewport();
         await expect(toggle).toBeInViewport();
         await entry.locator('.sb-wi-detail-back').click();
