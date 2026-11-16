@@ -4650,8 +4650,7 @@ body.reduced-motion .sb-search-entry {
 }
 
 /* In a row laid out as a column, the title's minimum width as a basis would become its height. */
-.ds-row.ds-row--stacked > .ds-row-text,
-#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) > .ds-row-text {
+.ds-row.ds-row--stacked > .ds-row-text {
     flex-basis: auto;
 }
 
@@ -5757,51 +5756,10 @@ body.reduced-motion .ds-row-expander__toggle::after {
     width: 100%;
 }
 
-#sb-settings-page .sb-editor-panel #InstructSequencesColumn {
-    padding: 0;
-}
-
 /* Bundled presets: Update stays focusable for its tooltip, but reads and acts as unavailable. */
 .menu_button.sb-preset-update-read-only {
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) {
-    flex-direction: column;
-    flex-wrap: nowrap;
-    align-items: stretch;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row:has(> .ds-row-suffix textarea) > :is(.ds-row-text, .ds-row-suffix) {
-    flex: 0 0 auto;
-    width: 100%;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .sb-editor-panel .ds-row-suffix > :is(textarea, div:has(textarea)) {
-    width: 100%;
-}
-
-#sb-settings-page .sb-editor-panel .ds-row {
-    border-color: var(--sb-shell-border);
-}
-
-#sb-settings-page .sb-editor-panel textarea:not(#completion_prompt_manager textarea) {
-    width: 100%;
-    min-height: 8lh;
-    max-height: 55vh;
-    max-height: 55dvh;
-    overflow-y: auto;
-    resize: vertical;
-}
-
-#sb-settings-page .sb-editor-panel #context_story_string,
-#sb-settings-page .sb-editor-panel #sysprompt_content {
-    min-height: 14lh;
-}
-
-#sb-settings-page .sb-editor-panel .disabled {
-    opacity: 0.6;
 }
 
 #sb-settings-page .sb-prompting-panel :is(.sb-prompting-group, .sb-prompting-group-body) {

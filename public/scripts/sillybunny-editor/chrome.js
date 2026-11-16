@@ -29,7 +29,8 @@ import { animateIn, animateOut, MOTION_EASE_OUT_QUAD, MOTION_FAST, prefersReduce
  * @typedef {object} TokenCount
  * @property {string|number} total
  * @property {string|number} [permanent]  The part of the total that is always sent; shown in the header form only.
- * @property {boolean} [overBudget]  Shows the context warning on the readout.
+ * @property {boolean} [overBudget]  Shows the context warning on the readout. Left out, the total is compared with half
+ *   the context size.
  */
 
 /**
@@ -52,28 +53,41 @@ export function createDirtyMark(className = '') {
 }
 
 /**
- * The header's token readout for an editor that has none in its markup: the value and, when `warning` is given, the
- * context-warning link the character editor carries.
- * @param {{ warning?: { href: string, title: string }|null }} [options]
+ * The half of the context that one item's tokens may take before the readout warns: the rule the character editor has
+ * always used (`RA_CountCharTokens`). The limit is read from the context-size controls, the upstream source of both values.
+ * @returns {number}
+ */
+function contextTokenLimit() {
+    const chatCompletion = document.getElementById('main_api')?.value === 'openai';
+    const size = Number(document.getElementById(chatCompletion ? 'openai_max_context_counter' : 'max_context_counter')?.value);
+    return Math.max((Number.isFinite(size) ? size : 0) / 2, 1024);
+}
+
+/**
+ * The header's token readout for an editor that has none in its markup: the value and the context-warning link the
+ * character editor carries, which shows while the count is over budget.
+ * @param {{ warning?: { href: string, title: string }|null }} [options]  `null` leaves the link out.
  * @returns {HTMLSpanElement}
  */
-export function createTokenReadout({ warning = null } = {}) {
+export function createTokenReadout({ warning } = {}) {
     const readout = document.createElement('span');
     readout.className = 'sb-editor-tokens';
     readout.title = t`Token counts may be inaccurate and provided just for reference.`;
     readout.hidden = true;
-    if (warning) {
-        const link = document.createElement('a');
-        link.className = 'sb-editor-tokens__warning';
-        link.href = warning.href;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.title = warning.title;
+    const link = warning === null ? null : warning ?? { href: 'https://docs.sillytavern.app/usage/core-concepts/characterdesign/#character-tokens', title: t`About Token 'Limits'` };
+    if (link) {
+        const anchor = document.createElement('a');
+        anchor.className = 'sb-editor-tokens__warning';
+        anchor.href = link.href;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        anchor.title = link.title;
+        anchor.setAttribute('aria-label', link.title);
         const glyph = document.createElement('i');
         glyph.className = 'fa-solid fa-triangle-exclamation';
         glyph.setAttribute('aria-hidden', 'true');
-        link.append(glyph);
-        readout.append(link);
+        anchor.append(glyph);
+        readout.append(anchor);
     }
     const value = document.createElement('span');
     value.className = 'sb-editor-tokens__value';
@@ -317,7 +331,8 @@ export function mountEditorChrome(config) {
             const permanent = String(count.permanent ?? '').trim();
             const brief = `${total} ${t`Tokens`}`;
             const full = permanent ? `${brief} (${permanent} ${t`Permanent`})` : brief;
-            const overBudget = Boolean(count.overBudget);
+            const numeric = Number(total);
+            const overBudget = count.overBudget ?? (Number.isFinite(numeric) && numeric > contextTokenLimit());
             if (readoutValue) readoutValue.textContent = full;
             if (rowValue) rowValue.textContent = brief;
             rowReadout?.setAttribute('aria-label', full);

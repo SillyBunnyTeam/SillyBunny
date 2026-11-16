@@ -717,7 +717,7 @@ export const surfaces = [
             propertiesState({
                 summary: '.sb-prompt-detail .sb-prompt-property-summary',
                 trigger: '.sb-prompt-detail .sb-prompt-properties .sb-prompt-dropdown',
-                popover: '.sb-prompt-popover',
+                popover: '.sb-action-popover, .sb-action-sheet:not([hidden])',
                 sheet: '.sb-prompt-properties-dialog',
             }),
             previewState({

@@ -8,8 +8,8 @@
 import { FORMS, TARGET_SIZE } from './dialog.js';
 import { IF_FLEX, ROW_SUBTITLE, ROW_TITLE } from './settings.js';
 
-const OWN_ROW = ':is(.sb-prompt-row, .attachmentListItem, .regex-script-label, .qr--set-item, .openai_logit_bias_form, .tag_view_item, .sb-wi-row, .ds-row)';
-const OWN_TITLE = ':is(.ds-row-label, .sb-prompt-row-name, .attachmentListItemName, .regex_script_name, [class*="name" i]:not(input, .tag, .tag *))';
+const OWN_ROW = ':is(.attachmentListItem, .regex-script-label, .qr--set-item, .openai_logit_bias_form, .tag_view_item, .sb-wi-row, .ds-row)';
+const OWN_TITLE = ':is(.ds-row-label, .attachmentListItemName, .regex_script_name, [class*="name" i]:not(input, .tag, .tag *))';
 const READY_ROWS = '^list\\.(backgrounds|chat-history|sampler-order-|swipe-picker)';
 
 export const rules = {
@@ -57,7 +57,7 @@ export const rules = {
             filter: 'icon-only',
             selectors: [
                 { id: 'entity-row', selector: '.ds-entity-row__button' },
-                { id: 'own', selector: ':is(button.menu_button, .menu_button.interactable):not(.sb-prompt-grip)' },
+                { id: 'own', selector: ':is(button.menu_button, .menu_button.interactable)' },
             ],
             properties: [
                 { property: 'offsetWidth', value: { coarse: TARGET_SIZE.coarse }, floor: true, alts: ['entity-row'], source: 'DESIGN.md' },

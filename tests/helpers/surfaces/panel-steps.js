@@ -145,7 +145,10 @@ export async function openPromptEditorEntry(page) {
     await selectBackend(page, 'chat-completion');
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'editor'));
     await page.locator('button[data-sb-settings-tab="editor"]').evaluate(button => button.click());
-    await page.locator('.sb-prompt-row[data-prompt-id="main"] .sb-prompt-row-name').click();
+    // On a phone the open detail replaces the list, so a second call finds the rows inert.
+    if (!await page.locator('.sb-prompt-detail').first().isVisible()) {
+        await page.locator('.sb-prompt-row[data-prompt-id="main"] .sb-prompt-row-name').click();
+    }
     await page.locator('.sb-prompt-detail').waitFor({ state: 'visible' });
     await settle(page);
 }

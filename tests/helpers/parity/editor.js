@@ -17,7 +17,7 @@ export const rules = {
             id: 'header',
             selectors: [
                 { id: 'editor-header', selector: '.sb-editor-header' },
-                { id: 'detail-header', selector: '.sb-wi-detail-header, .sb-persona-detail-header, .sb-prompt-detail-header' },
+                { id: 'detail-header', selector: '.sb-wi-detail-header, .sb-persona-detail-header' },
                 { id: 'dialog-header', selector: '.sb-dialog__header' },
             ],
             properties: BAR,

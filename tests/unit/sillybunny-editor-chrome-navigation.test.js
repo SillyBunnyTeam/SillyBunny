@@ -279,6 +279,43 @@ describe('mountEditorChrome shared header', () => {
         expect(phone.hidden).toBe(true);
     });
 
+    test('a readout without a given budget compares the total with half the context size and carries the warning link', () => {
+        makeMedia();
+        document.body.insertAdjacentHTML('beforeend', '<select id="main_api"><option value="openai" selected>openai</option><option value="koboldhorde">horde</option></select><input id="openai_max_context_counter" value="8192"><input id="max_context_counter" value="32768">');
+        const row = document.createElement('div');
+        const readout = createTokenReadout();
+        const link = readout.querySelector('.sb-editor-tokens__warning');
+        expect(link.getAttribute('href')).toContain('characterdesign');
+        expect(link.getAttribute('aria-label')).toBe(link.title);
+        expect(createTokenReadout({ warning: null }).querySelector('.sb-editor-tokens__warning')).toBeNull();
+        const { chrome } = slotted({ tokens: { element: readout, row: { host: row } } });
+
+        chrome.setTokens({ total: 4096 });
+        expect(readout.classList.contains('is-over-budget')).toBe(false);
+        chrome.setTokens({ total: 4097 });
+        expect(readout.classList.contains('is-over-budget')).toBe(true);
+        expect(link.style.display).toBe('');
+        expect(row.querySelector('.sb-editor-tokens--row').classList.contains('is-over-budget')).toBe(true);
+        // A caller that knows better wins, and a count that is not a number never warns.
+        chrome.setTokens({ total: 4097, overBudget: false });
+        expect(readout.classList.contains('is-over-budget')).toBe(false);
+        chrome.setTokens({ total: '?' });
+        expect(readout.classList.contains('is-over-budget')).toBe(false);
+
+        // A small context keeps the 1024-token floor, and a text-completion backend reads its own size.
+        document.getElementById('openai_max_context_counter').value = '1000';
+        chrome.setTokens({ total: 1024 });
+        expect(readout.classList.contains('is-over-budget')).toBe(false);
+        chrome.setTokens({ total: 1025 });
+        expect(readout.classList.contains('is-over-budget')).toBe(true);
+        document.getElementById('main_api').value = 'koboldhorde';
+        chrome.setTokens({ total: 16384 });
+        expect(readout.classList.contains('is-over-budget')).toBe(false);
+        chrome.setTokens({ total: 16385 });
+        expect(readout.classList.contains('is-over-budget')).toBe(true);
+        document.body.querySelectorAll('#main_api, #openai_max_context_counter, #max_context_counter').forEach(node => node.remove());
+    });
+
     test('an editor that gives no readout has none, and a header-built readout is placed after the dirty mark', () => {
         makeMedia();
         const { chrome, header } = slotted();

@@ -299,7 +299,7 @@ function promptEditorDriver(page) {
             if (fields.name !== undefined) await page.locator(`${FORM}_name`).fill(fields.name);
             if (fields.role !== undefined) {
                 await editor.getByRole('button', { name: 'Role', exact: true }).click();
-                await page.getByRole('option', { name: fields.role[0].toUpperCase() + fields.role.slice(1), exact: true }).click();
+                await page.getByRole('menuitemradio', { name: fields.role[0].toUpperCase() + fields.role.slice(1), exact: true }).click();
             }
             if (fields.position !== undefined) await editor.getByRole('group', { name: 'Position', exact: true }).locator('label').filter({ hasText: fields.position === 1 ? 'In-chat' : 'Relative' }).click();
             if (fields.depth !== undefined) await editor.getByRole('spinbutton', { name: 'Depth', exact: true }).fill(String(fields.depth));
@@ -312,7 +312,9 @@ function promptEditorDriver(page) {
                 for (const value of ['normal', 'continue', 'impersonate', 'swipe', 'regenerate', 'quiet']) {
                     await popover.getByRole('checkbox', { name: value[0].toUpperCase() + value.slice(1), exact: true }).setChecked(fields.triggers.includes(value));
                 }
-                await popover.getByRole('button', { name: 'Done', exact: true }).click();
+                await expect(popover.getByRole('button', { name: 'Done', exact: true })).toHaveCount(0);
+                await page.keyboard.press('Escape');
+                await expect(popover).toBeHidden();
             }
         },
 
@@ -1042,7 +1044,7 @@ test.describe('Prompt Manager characterization', () => {
             const geometry = await page.locator('.sb-prompt-order').evaluate(node => {
                 const measure = id => {
                     const row = node.querySelector(`[data-prompt-id="${id}"]`);
-                    const icon = row.querySelector(':scope > i').getBoundingClientRect();
+                    const icon = row.querySelector(':scope > .ds-entity-row__avatar > i').getBoundingClientRect();
                     const name = row.querySelector('.sb-prompt-row-name').getBoundingClientRect();
                     const token = row.querySelector('.sb-prompt-token').getBoundingClientRect();
                     const rect = row.getBoundingClientRect();
@@ -1056,6 +1058,84 @@ test.describe('Prompt Manager characterization', () => {
             expect(Math.abs(geometry.agents.iconCenter - geometry.agents.rowCenter)).toBeLessThanOrEqual(1);
             await expect(ui.row('sillybunnyRuntimeAgents').locator('button, input, [role="button"]')).toHaveCount(0);
         }
+    });
+
+    test('a search that matches nothing shows the No Results status page; one match leaves no empty group heading', async ({ page }) => {
+        await setup(page);
+        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
+        const search = page.getByRole('searchbox', { name: 'Search prompts', exact: true });
+        const body = page.locator('.sb-prompt-list-body');
+        await search.fill('Fixture Relative');
+        await expect(body.locator('.sb-prompt-row')).toHaveCount(1);
+        await expect(body.locator('.sb-prompt-section:not([hidden]) > h3')).toHaveText(['Prompt order']);
+        await expect(page.locator('.sb-prompt-list-header .sb-list-header__subtitle')).toHaveText(/^1 of \d+ results$/);
+        await search.fill('zz-no-such-prompt');
+        await expect(body.locator('.sb-prompt-section:not([hidden])')).toHaveCount(0);
+        const status = body.locator(':scope > .sb-status-page');
+        await expect(status).toBeVisible();
+        await expect(status.locator('.sb-status-page__title')).toHaveText('No Results');
+        await expect(page.locator('.sb-prompt-list-header .sb-list-header__subtitle')).toHaveText('No results');
+        await search.fill('');
+        await expect(status).toHaveCount(0);
+        await expect(body.locator('.sb-prompt-section:not([hidden]) > h3').first()).toHaveText('Prompt order');
+    });
+
+    test('selection mode turns prompts off and on and removes them from the list', async ({ page }) => {
+        const { store, ui } = await setup(page);
+        await ui.row('sbFixtureRelative').locator('.sb-prompt-switch-target input').check();
+        await page.getByRole('button', { name: 'Prompt list actions', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
+        const editor = page.locator('.sb-prompt-editor');
+        await expect(editor).toHaveAttribute('data-selection-mode', 'true');
+        await expect(page.locator('.sb-prompt-list-header')).toBeHidden();
+        // The Agents row and the utility prompts take no bulk action.
+        await expect(ui.row('sillybunnyRuntimeAgents').locator('.sb-selection-check')).toHaveCount(0);
+        await expect(page.locator('.sb-prompt-row[data-prompt-bulk="false"] .sb-selection-check')).toHaveCount(0);
+        await ui.row('sbFixtureRelative').click();
+        await expect(page.locator('.sb-selection-title')).toHaveText('1 selected');
+        await page.getByRole('button', { name: 'Turn Off', exact: true }).click();
+        await expect.poll(() => ui.row('sbFixtureRelative').locator('input.sb-switch').isChecked()).toBe(false);
+        await page.getByRole('button', { name: 'Turn On', exact: true }).click();
+        await expect.poll(() => ui.row('sbFixtureRelative').locator('input.sb-switch').isChecked()).toBe(true);
+        await page.getByRole('button', { name: 'Remove from list', exact: true }).click();
+        await waitForSavedOai(store, oai => !orderFor(oai, GLOBAL_ORDER_ID).some(entry => entry.identifier === 'sbFixtureRelative'));
+        await expect(ui.row('sbFixtureRelative')).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await expect(editor).toHaveAttribute('data-selection-mode', 'false');
+        await expect(page.locator('.sb-prompt-list-header')).toBeVisible();
+    });
+
+    test('Role is a menu of radio items and Triggers a popover with check rows and no Done button', async ({ page }) => {
+        const { ui } = await setup(page);
+        await ui.openEditor('sbFixtureRelative');
+        const editor = page.locator('.sb-prompt-detail');
+        await editor.getByRole('button', { name: 'Role', exact: true }).click();
+        const menu = page.getByRole('menu', { name: 'Role', exact: true });
+        await expect(menu.getByRole('menuitemradio')).toHaveText(['System', 'User', 'Assistant']);
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
+        await editor.getByRole('button', { name: 'Triggers', exact: true }).click();
+        const popover = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
+        await expect(popover.getByRole('checkbox')).toHaveCount(6);
+        await expect(popover.getByRole('button')).toHaveCount(0);
+        await popover.getByRole('checkbox', { name: 'Swipe', exact: true }).check();
+        await expect(editor.getByRole('button', { name: 'Triggers', exact: true })).toContainText('Swipe');
+        await page.keyboard.press('Escape');
+        await expect(popover).toBeHidden();
+    });
+
+    test('Edit and Preview are as tall as the other header controls, and the header is the shared one', async ({ page }) => {
+        const { ui } = await setup(page);
+        await ui.openEditor('sbFixtureRelative');
+        const header = page.locator('.sb-prompt-detail > .sb-editor-header');
+        await expect(header).toHaveCount(1);
+        const heights = await header.evaluate(node => {
+            const height = selector => Math.round(node.querySelector(selector).getBoundingClientRect().height);
+            return { modes: height('.sb-prompt-modes'), back: height('.sb-prompt-back'), more: height('.sb-prompt-more'), save: height('.sb-prompt-save') };
+        });
+        expect(heights.modes).toBe(heights.back);
+        expect(heights.more).toBe(heights.back);
+        expect(heights.save).toBe(heights.back);
     });
 
     test('saving introduces no oai_settings, settings or preset keys', async ({ page }) => {
@@ -1095,7 +1175,7 @@ test.describe('Prompt editor mobile interaction', () => {
         await editor.getByRole('button', { name: 'Prompt properties: User · In-chat @ 2 · Swipe, Quiet ›', exact: true }).click();
         const sheet = page.getByRole('dialog', { name: 'Prompt properties', exact: true });
         await sheet.getByRole('button', { name: 'Role', exact: true }).click();
-        await page.getByRole('option', { name: 'Assistant', exact: true }).click();
+        await page.getByRole('menuitemradio', { name: 'Assistant', exact: true }).click();
         await sheet.getByRole('spinbutton', { name: 'Depth', exact: true }).fill('6');
         await sheet.getByRole('button', { name: 'Close prompt properties', exact: true }).click();
         await expect(sheet).toBeHidden();
@@ -1111,6 +1191,48 @@ test.describe('Prompt editor mobile interaction', () => {
         const body = page.locator('.sb-prompt-list-body');
         await body.evaluate(node => node.scrollTo({ top: node.scrollHeight, behavior: 'instant' }));
         expect(await body.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    });
+
+    test('row titles wrap instead of being cut, and the property sheet keeps its controls inside the gutter at full size', async ({ page }) => {
+        await installFixture(page);
+        const ui = promptEditorDriver(page);
+        await ui.open();
+        const names = await page.locator(`${ROW_SELECTOR} .sb-prompt-row-name`).evaluateAll(nodes => nodes.map(node => ({
+            text: node.textContent, wraps: getComputedStyle(node).whiteSpace === 'normal', cut: node.scrollWidth > node.clientWidth + 1,
+        })));
+        expect(names.length).toBeGreaterThan(5);
+        for (const name of names) expect(name, name.text).toMatchObject({ wraps: true, cut: false });
+
+        await ui.openEditor('main');
+        await page.locator('.sb-prompt-detail').getByRole('button', { name: /^Prompt properties:/ }).click();
+        const sheet = page.getByRole('dialog', { name: 'Prompt properties', exact: true });
+        await expect(sheet.getByRole('switch', { name: 'Forbid overrides', exact: true })).toBeVisible();
+        const geometry = await sheet.evaluate(node => {
+            const frame = node.getBoundingClientRect();
+            const read = element => {
+                const box = element.getBoundingClientRect();
+                return { left: box.left - frame.left, right: frame.right - box.right, width: box.width, height: box.height };
+            };
+            return {
+                rows: [...node.querySelectorAll('.sb-prompt-property')].map(read),
+                switchBox: read(node.querySelector('input.sb-switch')),
+            };
+        });
+        for (const row of geometry.rows) {
+            expect(row.left).toBeGreaterThanOrEqual(8);
+            expect(row.right).toBeGreaterThanOrEqual(8);
+        }
+        expect(geometry.switchBox.width).toBeGreaterThan(geometry.switchBox.height);
+        await sheet.getByRole('button', { name: 'Role', exact: true }).click();
+        const menu = page.getByRole('menu', { name: 'Role', exact: true });
+        await expect(menu).toBeVisible();
+        await expect(page.locator('.sb-action-sheet:not([hidden])')).toHaveCount(1);
+        for (const item of await menu.getByRole('menuitemradio').all()) expect((await item.boundingBox()).height).toBeGreaterThanOrEqual(44);
+        await page.keyboard.press('Escape');
+        await sheet.getByRole('button', { name: 'Triggers', exact: true }).click();
+        const triggers = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
+        await expect(triggers).toBeVisible();
+        for (const row of await triggers.locator('label').all()) expect((await row.boundingBox()).height).toBeGreaterThanOrEqual(44);
     });
 
     for (const mode of ['edit', 'preview']) {

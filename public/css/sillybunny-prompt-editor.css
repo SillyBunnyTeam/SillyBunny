@@ -95,12 +95,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     padding: 0;
 }
 
-#sb-settings-page .sb-prompt-editor .menu_button_primary {
-    background: var(--sb-accent);
-    color: var(--sb-on-solid-accent);
-    font-weight: 600;
-}
-
 #sb-settings-page .sb-prompt-editor .menu_button:disabled {
     opacity: 0.6;
     background: var(--sb-raised-bg);
@@ -108,54 +102,85 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     cursor: not-allowed;
 }
 
-:is(.sb-prompt-list-header, .sb-prompt-detail-header) {
+/* The list header takes the entity-list header anatomy: title and subtitle at the start, icon buttons at the end. */
+.sb-prompt-list-header {
     display: flex;
     align-items: center;
     flex: none;
     flex-wrap: nowrap;
+    box-sizing: border-box;
     height: 60px;
     min-height: 60px;
     max-height: 60px;
-    box-sizing: border-box;
-    gap: 4px;
-    padding: 6px 8px;
+    gap: 2px;
+    min-width: 0;
+    padding: 6px 10px;
+    overflow: hidden;
     background: transparent;
 }
 
-.sb-prompt-list-header {
-    overflow: hidden;
-    gap: 2px;
-    padding-inline: 10px;
-}
-
-.sb-prompt-detail-header {
-    border-bottom: var(--sb-headerbar-shade);
-    /* A size container, so the shared Cancel icon form (sillybunny-character-editor.css) answers to this header's width. */
-    container: sb-editor-header / inline-size;
-}
-
-.sb-prompt-list-titles {
-    flex: 1;
+.sb-prompt-list-header .sb-list-header__titles {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
+    padding-inline: 6px;
+    line-height: 1.2;
 }
 
-.sb-prompt-list-titles h2 {
-    margin: 0;
-    font-size: var(--sb-type-title);
-    font-weight: 700;
-    line-height: 1.25;
-}
-
-.sb-prompt-list-titles :is(h2, span) {
-    display: block;
+.sb-prompt-list-header :is(.sb-list-header__title, .sb-list-header__subtitle) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.sb-prompt-list-subtitle {
+.sb-prompt-list-header .sb-list-header__title {
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.sb-prompt-list-header .sb-list-header__subtitle {
     color: var(--sb-muted-fg);
     font-size: calc(var(--mainFontSize) * 0.75);
+}
+
+.sb-prompt-list-header .sb-list-header__spacer {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.sb-prompt-list-header .sb-list-header__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    box-sizing: border-box;
+    width: var(--sb-control-icon-physical-size);
+    min-width: var(--sb-control-icon-physical-size);
+    height: var(--sb-control-icon-physical-size);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-icon-control-radius);
+    font-size: var(--sb-type-control);
+    line-height: 1;
+    cursor: pointer;
+}
+
+.sb-prompt-selection-header {
+    flex: none;
+    box-sizing: border-box;
+    min-height: 60px;
+    padding: 6px 10px;
+}
+
+.sb-prompt-selection-actions {
+    flex: none;
+}
+
+.sb-prompt-search-field {
+    flex: none;
+    margin: 0 8px 8px;
 }
 
 .sb-prompt-list-body {
@@ -163,117 +188,116 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 8px 0 8px 8px;
+    padding: 0 12px 16px;
     scrollbar-gutter: stable;
     background: transparent;
 }
 
 .sb-prompt-section {
-    margin-bottom: 18px;
+    margin-bottom: 16px;
 }
 
 .sb-prompt-section h3 {
-    margin: 6px 6px 8px;
-    font-size: var(--mainFontSize);
+    margin: 12px 4px 8px;
+    font-size: var(--sb-type-body);
     font-weight: 700;
+    line-height: 1.3;
 }
 
-.sb-prompt-box {
-    overflow: hidden;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-card);
-    /* libadwaita --card-bg-color: a translucent lift in dark, View white in light. */
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
-}
-
-:root[data-sb-surface-tone='light'] .sb-prompt-box {
-    background: var(--sb-layer-view);
-}
-
-.sb-prompt-box:empty {
+/* A section with no rows, and the other backend's sections, leave the list altogether. */
+.sb-prompt-section[hidden] {
     display: none;
 }
 
+/* The list holds a few dozen rows, and a row that is not rendered counts as its 52px estimate, which makes the list's
+   height, and so a restored scroll position, differ from what was there. */
 .sb-prompt-row {
+    min-height: max(var(--sb-density-floor), calc(52px - 6px * var(--sb-density-t)));
+    content-visibility: visible;
+}
+
+.sb-prompt-row > .ds-entity-row__avatar {
     display: flex;
     align-items: center;
-    min-height: max(var(--sb-density-floor), calc(52px - 6px * var(--sb-density-t)));
-    padding: 6px 8px;
-    gap: 10px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
-    cursor: pointer;
-    transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
+    justify-content: center;
+    color: var(--sb-muted-fg);
 }
 
-.sb-prompt-row:last-child {
-    border-bottom: 0;
-}
-
-.sb-prompt-row > i {
+/* Glyphs differ in width; each sits in the same 18px box so every row's icon lines up. */
+.sb-prompt-row > .ds-entity-row__avatar > i {
     flex: none;
     width: 18px;
     text-align: center;
-    color: var(--sb-muted-fg);
 }
 
-.sb-prompt-row-text {
-    min-width: 0;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+.sb-prompt-row.is-selected > .ds-entity-row__avatar {
+    color: var(--sb-accent);
 }
 
-:is(.sb-prompt-row-name, .sb-prompt-row-subtitle) {
-    display: block;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+/* A title wraps at any character before a control beside it takes its room. */
+.sb-prompt-row .sb-prompt-row-name {
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
-.sb-prompt-row-name {
-    font-weight: 600;
-    font-size: calc(var(--mainFontSize) * 0.9);
-}
-
-.sb-prompt-row.is-disabled .sb-prompt-row-text {
+/* A prompt that is off reads dimmer through its colours, not through opacity, which would take its text under 4.5:1. */
+.sb-prompt-row.is-disabled > .ds-entity-row__avatar {
     opacity: 0.6;
 }
 
-:is(.sb-prompt-row-subtitle, .sb-prompt-token) {
+.sb-prompt-row.is-disabled .sb-prompt-row-name {
     color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.75);
+}
+
+/* The shared badge slot draws a pill; the token count is plain text here. */
+.sb-prompt-row > .ds-entity-row__badge {
+    display: flex;
+    align-items: center;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
 }
 
 .sb-prompt-token {
     flex: none;
     min-width: 14px;
-    text-align: end;
+    color: var(--sb-muted-fg);
+    font-size: calc(var(--mainFontSize) * 0.75);
     font-variant-numeric: tabular-nums;
+    text-align: end;
 }
 
-#sb-settings-page .sb-prompt-editor .sb-prompt-grip {
-    width: 24px;
-    min-width: 24px;
+/* On the hover fill the dimmed texts take the body colour, as they do on the selected fill (sillybunny-entity-list.css). */
+@media (hover: hover) {
+    .sb-prompt-row:hover :is(.ds-entity-row__subtitle, .sb-prompt-token) {
+        color: var(--SmartThemeBodyColor);
+    }
+}
+
+.sb-prompt-grip {
     cursor: grab;
-    color: var(--sb-muted-fg);
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
 }
 
 .sb-prompt-grip[aria-disabled='true'] {
-    opacity: 0.45;
     cursor: not-allowed;
+    opacity: 0.45;
 }
 
-.sb-prompt-row.is-selected {
-    background: var(--sb-flat-selected-bg);
+.sb-prompt-grip:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-prompt-row.is-selected > i {
-    color: var(--sb-accent);
-}
-
-.sb-prompt-row .sb-switch {
+.sb-prompt-switch-target {
+    display: inline-flex;
     flex: none;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    cursor: pointer;
 }
 
 #sb-settings-page .sb-prompt-editor input.sb-switch,
@@ -290,24 +314,20 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     transition-timing-function: var(--sb-ease);
 }
 
-:is(.sb-prompt-handle-slot, .sb-prompt-switch-slot, .sb-prompt-menu-slot) {
+/* The assembled Agents row has no switch or menu; spacers keep its count in the column of the other rows. */
+:is(.sb-prompt-switch-slot, .sb-prompt-menu-slot) {
     display: block;
     flex: none;
     height: 40px;
     pointer-events: none;
 }
 
-:is(.sb-prompt-handle-slot, .sb-prompt-menu-slot) {
-    /* Shared icon controls impose this logical minimum even when their physical width is smaller. */
-    width: var(--sb-control-icon-physical-size);
+.sb-prompt-menu-slot {
+    width: 40px;
 }
 
 .sb-prompt-switch-slot {
     width: var(--sb-prompt-switch-width);
-}
-
-:root[data-sb-compact-mode='true'] .sb-prompt-list-header {
-    min-height: 52px;
 }
 
 @container sb-list-editor-sidebar (width < 440px) {
@@ -318,7 +338,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 @container sb-list-editor-sidebar (width < 300px) {
-    .sb-prompt-row > i {
+    .sb-prompt-row > .ds-entity-row__avatar {
         display: none;
     }
 }
@@ -329,6 +349,19 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-editor[data-open='true'][data-collapsed='false'] .sb-prompt-row-subtitle {
     display: none;
+}
+
+.sb-prompt-editor[data-selection-mode='true'] .sb-prompt-row > :is(.ds-entity-row__grip, .ds-entity-row__suffix) {
+    display: none;
+}
+
+.sb-prompt-detail-header {
+    height: 60px;
+    min-height: 60px;
+    max-height: 60px;
+    box-sizing: border-box;
+    border-bottom: var(--sb-headerbar-shade);
+    background: transparent;
 }
 
 .sb-prompt-detail-header > :not(.sb-prompt-title) {
@@ -700,7 +733,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     pointer-events: none;
 }
 
-:is(.sb-prompt-option, .sb-prompt-trigger-row) {
+.sb-prompt-option {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -721,16 +754,11 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     color: var(--sb-accent);
 }
 
-.sb-prompt-option.is-active,
-.sb-prompt-trigger-row:has(input:checked) {
+.sb-prompt-option.is-active {
     background: var(--sb-flat-selected-bg);
 }
 
-.sb-prompt-trigger-row input {
-    accent-color: var(--sb-accent);
-}
-
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) :is(button, .sb-prompt-row):focus-visible {
+:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) button:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
@@ -766,19 +794,17 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 @media (hover: hover) {
     #sb-settings-page .sb-prompt-editor .menu_button:not(:disabled):hover,
     :is(.sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) .menu_button:hover,
-    .sb-prompt-row:hover,
-    .sb-prompt-option:hover,
-    .sb-prompt-trigger-row:hover {
+    .sb-prompt-option:hover {
         background: var(--sb-flat-hover-bg);
     }
+}
 
-    #sb-settings-page .sb-prompt-editor .menu_button_primary:not(:disabled):hover {
-        background: color-mix(in srgb, var(--sb-accent) 90%, var(--SmartThemeBodyColor));
-    }
-
-    .sb-prompt-row.is-selected:hover {
-        background: var(--sb-flat-selected-hover-bg);
-    }
+/* A press shows its own fill. These come after the hover rules and match the resting rules above, which a shared
+   :active rule would not outrank. */
+#sb-settings-page .sb-prompt-editor .menu_button:not(:disabled):active,
+:is(.sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) .menu_button:active,
+.sb-prompt-option:active {
+    background: var(--sb-flat-active-bg);
 }
 
 @media (max-width: 768px) {
@@ -795,11 +821,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
         flex: 1 1 100%;
     }
 
-    .sb-prompt-detail-header {
-        gap: 2px;
-        padding-inline: 4px;
-    }
-
     #sb-settings-page .sb-prompt-editor .sb-prompt-title {
         flex: 1 1 0;
         min-width: 56px;
@@ -812,15 +833,18 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 @media (pointer: coarse) {
-    .sb-prompt-trigger-row,
     .sb-prompt-option,
     #sb-settings-page .sb-prompt-editor .menu_button,
     :is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button,
     #sb-settings-page .sb-prompt-editor .sb-prompt-title,
     #sb-settings-page .sb-prompt-editor .sb-prompt-tc-properties select,
-    #sb-settings-page .sb-prompt-editor .sb-prompt-property input,
-    :is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-property input,
     .sb-prompt-tc-toggle {
+        min-height: 44px;
+    }
+
+    /* The base rule for a number field is as specific as these, so these come after it. A switch keeps its own shape. */
+    #sb-settings-page .sb-prompt-editor .sb-prompt-property input[type='number'],
+    :is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-property input[type='number'] {
         min-height: 44px;
     }
 

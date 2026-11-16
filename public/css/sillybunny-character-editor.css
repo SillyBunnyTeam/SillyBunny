@@ -133,6 +133,25 @@
     container: sb-editor-header / inline-size;
 }
 
+/* The Edit/Preview toggle group is as tall as the header's other controls: the tray (3px round the toggles) takes the
+   icon-button size and the toggles fill what is inside it. On a touch pointer the toggles keep the 44px target, so the
+   tray gives up its padding. */
+:is(.sb-editor-header, .sb-wi-entry-header, .sb-persona-entry-header) .sb-segmented-control--compact.sb-boolean-radio-group {
+    height: var(--sb-control-icon-physical-size, 36px);
+    box-sizing: border-box;
+}
+
+:is(.sb-editor-header, .sb-wi-entry-header, .sb-persona-entry-header) .sb-segmented-control--compact :is(.sb-boolean-radio-option, .sb-boolean-radio-option > span) {
+    min-height: 0;
+    height: 100%;
+}
+
+@media (pointer: coarse) {
+    :is(.sb-editor-header, .sb-wi-entry-header, .sb-persona-entry-header) .sb-segmented-control--compact.sb-boolean-radio-group {
+        padding-block: 0;
+    }
+}
+
 /* Header icon geometry stays local because editor controls are smaller than shell controls. */
 .sb-editor-icon-button {
     flex: 0 0 auto;

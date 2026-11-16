@@ -428,7 +428,8 @@ for (const width of [1440, 390]) {
             const card = host.querySelector('.sb-list-editor').getBoundingClientRect();
             const scroller = host.querySelector('.sb-shell-panel-scroller').getBoundingClientRect();
             return {
-                box: pick(selectors.box, ['background-color', 'border-top-color', 'border-top-width', 'border-radius']),
+                // The Agents box keeps its 1px border until the Agents list takes the shared boxed list, which has none (checked below).
+                box: pick(selectors.box, ['background-color', 'border-radius']),
                 // The count is hidden below a 400px list (by design), so phones compare everything else.
                 token: selectors.token ? pick(selectors.token, ['background-color', 'color', 'font-size']) : null,
                 menu: pick(selectors.menu, ['background-color', 'border-top-width']),
@@ -444,6 +445,7 @@ for (const width of [1440, 390]) {
         await expect(page.locator('[data-sb-panel="editor"] .sb-prompt-row').first()).toBeVisible();
         const prompt = await read('editor', { box: '.sb-prompt-box', token: withToken && '.sb-prompt-token', menu: '.sb-prompt-row-menu' });
         expect(agents).toEqual(prompt);
+        await expect(page.locator('[data-sb-panel="editor"] .sb-prompt-box').first()).toHaveCSS('border-top-width', '0px');
     });
 }
 

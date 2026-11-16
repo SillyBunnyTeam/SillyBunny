@@ -326,6 +326,10 @@ export async function openAuditGroupEditor(page) {
 
 /** Opens Backend > Editor on the Chat Completion backend, where the prompt list is. */
 export async function openPromptEditor(page) {
+    // A menu left open (a capture that is taken again) covers the trigger of the next open, and the tab switch below does not close it.
+    if (await page.locator(MENU_ROOT).first().isVisible()) {
+        await closeAndWait(page);
+    }
     await selectBackend(page, 'chat-completion');
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'editor'));
     await page.locator('[data-sb-panel="editor"]').waitFor({ state: 'visible' });
@@ -355,12 +359,6 @@ export async function openPromptProperties(page) {
         await page.locator('.sb-prompt-properties-dialog').first().waitFor({ state: 'visible' });
         await settleOverlay(page, '.sb-prompt-properties-dialog');
     }
-}
-
-/** Closes a prompt editor popover with Escape, as its own keydown handler does, and waits until it has left. */
-export async function closePromptPopover(page) {
-    await page.keyboard.press('Escape');
-    await page.locator('.sb-prompt-popover:not([inert])').first().waitFor({ state: 'hidden' });
 }
 
 /** Opens the Extensions manager Window from Customize > Extensions. */

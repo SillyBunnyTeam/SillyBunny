@@ -2,13 +2,13 @@
     "version": 1,
     "temporary": {
         "settings": 22,
-        "list": 243,
-        "editor": 82,
+        "list": 229,
+        "editor": 70,
         "dialog": 3,
-        "menu": 568,
-        "header": 180,
+        "menu": 565,
+        "header": 176,
         "panel": 5,
-        "status": 76,
+        "status": 70,
         "home": 1
     }
 }

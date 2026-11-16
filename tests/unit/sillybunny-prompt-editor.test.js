@@ -14,8 +14,9 @@ await jest.unstable_mockModule('../../public/scripts/user.js', () => ({ getCurre
 const countTokens = jest.fn(async () => 12);
 await jest.unstable_mockModule('../../public/scripts/tokenizers.js', () => ({ getTokenCountAsync: countTokens, getTokenizerModel: () => 'test-tokenizer' }));
 const openActionMenu = jest.fn();
+const openPopover = jest.fn();
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
-    openActionMenu, closeActionMenu: jest.fn(), isActionMenuOpen: () => false,
+    openActionMenu, openPopover, closeActionMenu: jest.fn(), isActionMenuOpen: () => false,
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-sheet.js', () => ({ blockUpstreamDrawerClose: jest.fn() }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/dialog.js', () => ({ openDialog: jest.fn() }));
@@ -290,11 +291,14 @@ describe('Prompt editor item menu', () => {
     test('the menu is marked as part of the editor for the preset autosave', async () => {
         const column = await mountEditor();
         const detail = await openPrompt(column, 'first');
-        const menu = document.createElement('div');
-        menu.className = 'sb-action-menu';
-        document.body.append(menu);
+        const nodes = ['sb-action-menu', 'sb-action-sheet', 'sb-action-popover'].map(className => {
+            const node = document.createElement('div');
+            node.className = className;
+            document.body.append(node);
+            return node;
+        });
         detail.querySelector('.sb-prompt-more').click();
-        expect(menu.dataset.sbPromptMenu).toBe('true');
+        expect(nodes.map(node => node.dataset.sbPromptMenu)).toEqual(['true', 'true', 'true']);
     });
 });
 
@@ -355,6 +359,104 @@ describe('Prompt editor token count and Expand', () => {
         await flush();
         expect(column.querySelector('.sb-prompt-label-row')).not.toBeNull();
         expect(column.querySelector('.editor_maximize')).toBeNull();
+    });
+});
+
+function search(column, query) {
+    if (column.querySelector('.sb-prompt-search-field').hidden) column.querySelector('button[aria-label="Search prompts"]').click();
+    const input = column.querySelector('.sb-prompt-search');
+    input.value = query;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+describe('Prompt list', () => {
+    test('is the shared list header and boxed list of entity rows, with the compat classes kept', async () => {
+        const column = await mountEditor();
+        const header = column.querySelector('.sb-prompt-list-header');
+        expect(header.classList.contains('sb-list-header')).toBe(true);
+        expect(header.querySelector('.sb-list-header__title').textContent).toBe('Prompts');
+        expect([...header.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Search prompts', 'Add prompt', 'Prompt list actions']);
+        const box = column.querySelector('.sb-prompt-order .sb-prompt-box');
+        expect(box.classList.contains('ds-entity-list')).toBe(true);
+        const row = box.querySelector('[data-prompt-id="first"]');
+        expect(row.classList.contains('ds-entity-row')).toBe(true);
+        expect(row.classList.contains('sb-prompt-row')).toBe(true);
+        expect(row.querySelector('.ds-entity-row__title.sb-prompt-row-name').textContent).toBe('First');
+        expect(row.querySelector('.ds-entity-row__subtitle.sb-prompt-row-subtitle').textContent).toBe('System · Relative');
+        expect(row.querySelector('.sb-prompt-grip').getAttribute('aria-label')).toBe('Drag to reorder First');
+        expect(row.querySelector('.sb-prompt-switch-target input[role="switch"]').getAttribute('aria-label')).toBe('Enable First');
+        const more = row.querySelector('.ds-entity-row__button.sb-prompt-row-menu');
+        expect(more.getAttribute('aria-label')).toBe('Actions for First');
+        expect(more.classList.contains('menu_button')).toBe(false);
+    });
+
+    test('a search with matches hides the groups with no rows and counts the results in the subtitle', async () => {
+        const column = await mountEditor();
+        search(column, 'First');
+        const sections = [...column.querySelectorAll('.sb-prompt-section')];
+        expect(sections.filter(section => !section.hidden).map(section => section.querySelector('h3').textContent)).toEqual(['Prompt order']);
+        expect(column.querySelector('.sb-list-header__subtitle').textContent).toBe('1 of 4 results');
+        expect(column.querySelector('.sb-prompt-list-body > .sb-status-page')).toBeNull();
+        search(column, '');
+        expect(sections.every(section => !section.hidden || section.querySelectorAll('.sb-prompt-row').length === 0)).toBe(true);
+        expect(column.querySelector('.sb-list-header__subtitle').textContent).toMatch(/active/);
+    });
+
+    test('a search with no match shows the shared No Results status page and no group heading', async () => {
+        const column = await mountEditor();
+        search(column, 'zz-no-such-prompt');
+        const page = column.querySelector('.sb-prompt-list-body > .sb-status-page');
+        expect(page).not.toBeNull();
+        expect(page.querySelector('.sb-status-page__title').textContent).toBe('No Results');
+        expect([...column.querySelectorAll('.sb-prompt-section')].every(section => section.hidden)).toBe(true);
+        expect(column.querySelector('.sb-list-header__subtitle').textContent).toBe('No results');
+        search(column, 'First');
+        expect(column.querySelector('.sb-prompt-list-body > .sb-status-page')).toBeNull();
+    });
+
+    test('the Role menu is a menu of radio items and the Triggers popover has check rows and no Done button', async () => {
+        const column = await mountEditor();
+        const detail = await openPrompt(column, 'first');
+        const role = detail.querySelector('.sb-prompt-properties button[aria-label="Role"]');
+        role.click();
+        const roleMenu = openActionMenu.mock.calls.at(-1)[0];
+        expect(roleMenu.trigger).toBe(role);
+        expect(roleMenu.title).toBe('Role');
+        expect(roleMenu.sections[0].items.map(item => [item.label, item.kind, item.checked])).toEqual([['System', 'radio', true], ['User', 'radio', false], ['Assistant', 'radio', false]]);
+        roleMenu.sections[0].items[2].onSelect();
+        expect(role.textContent).toBe('Assistant');
+        expect(column.querySelector('.sb-prompt-dirty').hidden).toBe(false);
+
+        const triggers = detail.querySelector('.sb-prompt-properties button[aria-label="Triggers"]');
+        triggers.click();
+        const popover = openPopover.mock.calls.at(-1)[0];
+        expect(popover.trigger).toBe(triggers);
+        expect(popover.title).toBe('Generation triggers');
+        expect([...popover.content.querySelectorAll('input[type="checkbox"]')].map(box => box.checked)).toEqual([false, false, false, false, false, false]);
+        expect(popover.content.querySelector('button')).toBeNull();
+        const second = popover.content.querySelectorAll('input[type="checkbox"]')[1];
+        second.checked = true;
+        second.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(triggers.textContent).toBe('Continue');
+    });
+
+    test('Select in the list menu starts selection mode; Turn Off switches the chosen prompts off', async () => {
+        fakeModel.toggle = jest.fn();
+        const column = await mountEditor();
+        column.querySelector('button[aria-label="Prompt list actions"]').click();
+        const menu = openActionMenu.mock.calls.at(-1)[0];
+        const select = menu.sections.flatMap(section => section.items).find(item => item.label === 'Select');
+        expect(select).toBeDefined();
+        select.onSelect();
+        expect(column.querySelector('.sb-prompt-editor').dataset.selectionMode).toBe('true');
+        expect(column.querySelector('.sb-prompt-list-header').hidden).toBe(true);
+        expect(column.querySelector('[data-prompt-id="runtimeAgents"] .sb-selection-check')).toBeNull();
+        column.querySelector('[data-prompt-id="first"]').click();
+        await flush();
+        expect(column.querySelector('.sb-selection-title').textContent).toBe('1 selected');
+        column.querySelector('.sb-selection-action[data-action-id="off"]').click();
+        await flush();
+        expect(fakeModel.toggle).toHaveBeenCalledWith('first', scope);
     });
 });
 

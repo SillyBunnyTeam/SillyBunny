@@ -447,7 +447,7 @@ test('round2 open sidebar rows match Prompt row height and centred single-line g
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'editor'));
     await page.locator('[data-sb-settings-tab="editor"]').evaluate(node => node.click());
     await page.locator('.sb-prompt-row[data-prompt-id="main"] .sb-prompt-row-name').click();
-    const prompt = await sample(page.locator('.sb-prompt-row[data-prompt-id="main"]'), [':scope > i', '.sb-prompt-row-name', '.sb-prompt-token', '.sb-switch']);
+    const prompt = await sample(page.locator('.sb-prompt-row[data-prompt-id="main"]'), [':scope > .ds-entity-row__avatar', '.sb-prompt-row-name', '.sb-prompt-token', '.sb-switch']);
     await round2Screenshot(page, 'prompt-open-1440');
     await testInfo.attach('Open sidebar row geometry', { body: JSON.stringify({ agents, prompt }), contentType: 'application/json' });
     expect(agents.height).toBe(prompt.height);
@@ -797,7 +797,8 @@ for (const width of [1440, 768, 390, 360]) {
 }
 
 for (const width of [1440, 390]) {
-    test(`${width}px open Category listbox matches Prompt Role popover styles, placement and ARIA`, async ({ page, baseURL }, testInfo) => {
+    // The Prompt editor's Role is an action menu now (F-199), so the Category listbox is checked on its own until the agent editor takes the same menu.
+    test(`${width}px open Category listbox keeps its placement, ARIA and keyboard`, async ({ page, baseURL }, testInfo) => {
         const editor = await setup(page, baseURL, width);
         const parityScreens = testInfo.outputPath('parity');
         await editor.open('pre');
@@ -809,39 +810,15 @@ for (const width of [1440, 390]) {
         const agentStyles = await samplePropertyPopover(categoryPopover, category);
         await page.screenshot({ path: `${parityScreens}/open-category-${width}.png` });
         const agentKeyboard = await sampleListboxKeyboard(category, categoryPopover);
-        await closeAgentProperties(page);
-        await editor.back();
-        await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'editor'));
-        await page.locator('[data-sb-settings-tab="editor"]').evaluate(node => node.click());
-        await page.locator('.sb-prompt-row[data-prompt-id="main"] .sb-prompt-row-name').click();
-        const prompt = page.locator('.sb-prompt-detail');
-        const promptSheet = {
-            1440: async () => {},
-            390: async () => {
-                const summary = prompt.locator('.sb-prompt-property-summary');
-                await expect(summary).toHaveAccessibleName(`Prompt properties: ${await summary.textContent()}`);
-                await summary.click();
-            },
-        };
-        await promptSheet[width]();
-        const role = page.getByRole('button', { name: 'Role', exact: true });
-        await role.click();
-        const rolePopover = page.getByRole('listbox', { name: 'Role', exact: true });
-        await expect(rolePopover).toBeVisible();
-        const promptStyles = await samplePropertyPopover(rolePopover, role);
-        await page.screenshot({ path: `${parityScreens}/open-role-${width}.png` });
-        const promptKeyboard = await sampleListboxKeyboard(role, rolePopover);
-        await testInfo.attach('Category vs Role open popover', {
-            body: JSON.stringify({ width, agents: agentStyles, prompt: promptStyles, agentKeyboard, promptKeyboard }, null, 2),
+        await testInfo.attach('Category open popover', {
+            body: JSON.stringify({ width, agents: agentStyles, agentKeyboard }, null, 2),
             contentType: 'application/json',
         });
-        expect(agentStyles).toEqual(promptStyles);
         expect(agentStyles.aria).toEqual({
             haspopup: 'listbox', expanded: 'true', role: 'listbox', tabIndex: 0,
             focused: true, activeSelected: true, selectedCount: 1, allOptions: true,
         });
         expect(agentStyles.placement).toEqual({ width: 208, leftDelta: 0, topDelta: 0 });
-        expect(agentKeyboard).toEqual(promptKeyboard);
         expect(agentKeyboard.movement.map(step => step.active)).toEqual(['first', 'last', 'first', 'last', 'middle']);
     });
 

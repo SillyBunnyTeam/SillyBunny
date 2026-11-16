@@ -308,7 +308,7 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 await expectSwitchGeometry(prompting);
                 const editor = await openPanel(page, 'editor');
                 await expect(editor.locator('[data-sb-editor-mode]')).toHaveText(`Backend: ${label}`);
-                await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveText(api === 'openai' ? 'Prompts' : 'Prompt templates');
+                await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveText(api === 'openai' ? 'Prompts' : 'Prompt templates');
                 // The Editor line is the same unboxed line as the other Backend pages, and its button is the shared one.
                 const editorHeader = editor.locator('.sb-prompt-owned > .sb-backend-section-header');
                 const presetsButton = editorHeader.locator(':scope > .sb-backend-title-row > [data-sb-editor-presets]');
@@ -320,11 +320,12 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 expect(editorHeaderMetrics.boxed).toBe(false);
                 // The title of the list is a heading in the Title role, and the editor sits one group gap under the line.
                 const groupHeading = await prompting.locator('.ds-pref-group-heading').first().evaluate(heading => ({ size: getComputedStyle(heading).fontSize, weight: getComputedStyle(heading).fontWeight }));
-                await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveCSS('font-size', groupHeading.size);
-                await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveCSS('font-weight', groupHeading.weight);
+                await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveCSS('font-size', groupHeading.size);
+                await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveCSS('font-weight', groupHeading.weight);
                 expect(await editor.evaluate(panel => panel.querySelector('.sb-prompt-editor').getBoundingClientRect().top - panel.querySelector('.sb-backend-section-header').getBoundingClientRect().bottom)).toBeCloseTo(24, 0);
+                // A group with no rows has no heading, and no prompt is available here.
                 await expect(editor.locator('.sb-prompt-section:visible h3')).toHaveText(api === 'openai'
-                    ? ['Prompt order', 'Available', 'Utility prompts'] : ['System prompt', 'Context', 'Instruct']);
+                    ? ['Prompt order', 'Utility prompts'] : ['System prompt', 'Context', 'Instruct']);
                 await expect(editor.locator('#completion_prompt_manager, #context_story_string')).toHaveCount(2);
                 await expect(editor.locator('#completion_prompt_manager')).toBeHidden();
                 await expect(editor.locator('#context_story_string')).toBeHidden();
@@ -918,7 +919,7 @@ test('Text Completions templates use the shared editor and guard backend and pre
     await expect(page.locator('#instruct_input_sequence')).toHaveValue(originalPrefix);
     await expect(editor.locator('.sb-prompt-detail')).toBeHidden();
     await dispatchChange('#main_api', 'textgenerationwebui');
-    await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveText('Prompt templates');
+    await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveText('Prompt templates');
 
     await editor.locator('[data-prompt-id="tc-user"] .sb-prompt-row-name').click();
     await fields.first().fill('Saved before preset switch');
@@ -964,7 +965,7 @@ test('Text Completions templates use the shared editor and guard backend and pre
     await expect(page.locator('#main_api')).toHaveValue('openai');
     await expect(page.locator('#instruct_input_sequence')).toHaveValue('Saved before backend switch');
     await dispatchChange('#main_api', 'textgenerationwebui');
-    await expect(editor.locator('.sb-prompt-list-titles h2')).toHaveText('Prompt templates');
+    await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveText('Prompt templates');
     await editor.locator('[data-prompt-id="context_story_string"] .sb-prompt-row-name').click();
     await expect(detail.locator('.sb-prompt-tc-properties select')).toHaveCount(2);
     await expect(detail.locator('.sb-prompt-tc-properties input[type="number"]')).toHaveCount(1);

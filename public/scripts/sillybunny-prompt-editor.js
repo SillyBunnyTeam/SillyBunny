@@ -1,10 +1,10 @@
 import { eventSource, event_types, getRequestHeaders, main_api } from '../script.js';
 import { createPromptEditorModel, PROMPT_EDITOR_UTILITY_FIELDS as UTILITY_FIELDS } from './sillybunny-prompt-editor-model.js';
 import { promptManager } from './openai.js';
-import { openActionMenu, closeActionMenu } from './sillybunny-action-menu.js';
-import { blockUpstreamDrawerClose } from './sillybunny-sheet.js';
-import { play, stopMotion, MOTION_FAST, MOTION_SURFACE, MOTION_POPOVER_CLOSE, MOTION_EASE_OUT_CUBIC } from './sillybunny-motion.js';
+import { openActionMenu, openPopover, closeActionMenu } from './sillybunny-action-menu.js';
+import { play, MOTION_FAST, MOTION_SURFACE } from './sillybunny-motion.js';
 import { Popup, POPUP_RESULT } from './popup.js';
+import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
 import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
 import { t, translate } from './i18n.js';
 import { createSegmentedControl } from './sillybunny-segmented-control.js';
@@ -19,12 +19,17 @@ import { reconcileRows, rowEntry, bindListKeyboard, bindSortable } from './silly
 import { createListSearch } from './sillybunny-editor/list-search.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { announceReorder, reorderMenuItems } from './sillybunny-editor/reorder-menu.js';
-import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
+import { createEntityRow } from './sillybunny-editor/entity-row.js';
+import { createListHeader } from './sillybunny-editor/list-header.js';
+import { createStatusPage } from './sillybunny-editor/status-page.js';
+import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
+import { createCheckRow, releaseRowIds } from './sillybunny-editor/rows.js';
 
 const mountedEditors = new WeakSet();
 let countingEditorContent = false;
 let tokenizerPrefilterInstalled = false;
 const TRIGGERS = ['normal', 'continue', 'impersonate', 'swipe', 'regenerate', 'quiet'];
+const SELECTABLE_ROW = '.sb-prompt-row:not([data-prompt-bulk="false"])';
 
 function element(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -95,6 +100,20 @@ function button(label, glyph, action, className = '') {
     return node;
 }
 
+// A row button is the shared entity-row icon button; it takes its states from sillybunny-entity-list.css.
+function rowButton(label, glyph, action, className = '') {
+    const node = element('button', `ds-entity-row__button ${className}`.trim());
+    node.type = 'button';
+    node.setAttribute('aria-label', label);
+    node.title = label;
+    node.append(icon(glyph));
+    node.addEventListener('click', event => {
+        event.stopPropagation();
+        void action(node, event);
+    });
+    return node;
+}
+
 function switchControl(label, checked, action, disabled = false) {
     const node = element('input', 'sb-switch');
     node.type = 'checkbox';
@@ -116,10 +135,18 @@ export function initializePromptEditor(column) {
     if (mountedEditors.has(column)) return;
     mountedEditors.add(column);
     let model = null;
-    const listHeader = element('header', 'sb-prompt-list-header');
-    const titles = element('div', 'sb-prompt-list-titles');
-    const subtitle = element('span', 'sb-prompt-list-subtitle');
-    titles.append(element('h2', '', t`Prompts`), subtitle);
+    const listHeader = createListHeader({
+        title: t`Prompts`,
+        className: 'sb-prompt-list-header',
+        actions: [
+            { id: 'search', label: t`Search prompts`, icon: 'magnifying-glass', toggle: true, onActivate: () => searchControl.toggle() },
+            { id: 'add', label: t`Add prompt`, icon: 'plus', menu: true, onActivate: trigger => openAddMenu(trigger) },
+            { id: 'more', label: t`Prompt list actions`, icon: 'ellipsis-vertical', menu: true, onActivate: trigger => openListMenu(trigger) },
+        ],
+    });
+    const searchButton = listHeader.button('search');
+    const addPromptButton = listHeader.button('add');
+    const listActionsButton = listHeader.button('more');
     const searchEntry = createSearchEntry({
         clearLabel: t`Clear Entry`,
         variant: 'bar', className: 'sb-prompt-search-field', inputClassName: 'sb-prompt-search',
@@ -145,7 +172,6 @@ export function initializePromptEditor(column) {
     let renderedListKey = '';
     let headerMeasuredWidth = 0;
     let headerMeasuredText = '';
-    let overlay = null;
     let dragScope = '';
     let propertyDialog = null;
     let tokenTimer = null;
@@ -234,7 +260,9 @@ export function initializePromptEditor(column) {
     const editor = shell.detail;
     const status = shell.status;
     const allowLeave = () => shell.allowLeave();
-    list.append(listHeader, searchField, listBody);
+    const selectionHeader = element('div', 'sb-prompt-selection-header');
+    const selectionActions = element('div', 'sb-prompt-selection-actions');
+    list.append(listHeader.element, selectionHeader, searchField, listBody, selectionActions);
     root.hidden = true;
 
     if (!tokenizerPrefilterInstalled) {
@@ -293,9 +321,8 @@ export function initializePromptEditor(column) {
     }
 
     function menu(trigger, title, sections) {
-        closePopover(false);
         openActionMenu({ trigger, title, sections: sections.map(items => ({ items: items.filter(Boolean) })) });
-        document.querySelectorAll('.sb-action-menu, .sb-action-sheet').forEach(node => node.dataset.sbPromptMenu = 'true');
+        markPromptMenus();
     }
 
     function menuItem(label, glyph, action, danger = false) {
@@ -442,62 +469,73 @@ export function initializePromptEditor(column) {
         const textCompletion = textCompletionView();
         const id = textCompletion ? prompt.id : prompt.identifier;
         const nameText = translate(prompt.name);
-        const row = element('div', 'sb-prompt-row');
-        row.dataset.promptId = id;
-        row.tabIndex = 0;
-        row.setAttribute('role', 'listitem');
-        row.setAttribute('aria-label', nameText);
-        row.classList.toggle('is-selected', selectedId() === id);
-        const disabledDrag = Boolean(filter);
-        if (orderEntry) {
-            const grip = element('div', 'sb-prompt-grip menu_button menu_button_icon ui-sortable-handle');
-            grip.append(icon('grip-vertical'));
-            grip.setAttribute('role', 'button');
-            grip.setAttribute('aria-label', t`Drag to reorder ${nameText}`);
-            grip.setAttribute('aria-disabled', String(disabledDrag));
-            grip.title = grip.getAttribute('aria-label');
-            row.append(grip);
-        } else if (prompt.runtime) {
-            const slot = element('span', 'sb-prompt-handle-slot');
-            slot.setAttribute('aria-hidden', 'true');
-            row.append(slot);
-        }
-        row.append(icon(textCompletion ? 'align-left' : utility ? 'file-lines' : prompt.runtime ? 'robot' : prompt.marker ? 'thumbtack' : Number(prompt.injection_position) === 1 ? 'syringe' : prompt.role === 'system' ? 'gear' : 'comment'));
-        const text = element('div', 'sb-prompt-row-text');
-        const name = element('span', 'sb-prompt-row-name', nameText);
         const preview = textCompletion
             ? Object.values(prompt.values).find(value => typeof value === 'string' && value.trim()) ?? ''
             : utility ? model.readUtility(id) : describe(prompt);
-        text.append(name, element('span', 'sb-prompt-row-subtitle', textCompletion || utility ? preview.replace(/\s+/g, ' ').slice(0, 100) || '—' : preview));
-        row.append(text);
+        const glyph = icon(textCompletion ? 'align-left' : utility ? 'file-lines' : prompt.runtime ? 'robot' : prompt.marker ? 'thumbtack' : Number(prompt.injection_position) === 1 ? 'syringe' : prompt.role === 'system' ? 'gear' : 'comment');
+        const badges = [];
         if (textCompletion) {
-            if (textCompletionContent(prompt)) row.append(element('span', 'sb-prompt-token', String(knownTextCompletionCount(prompt))));
-        } else if (!utility) row.append(element('span', 'sb-prompt-token', String(knownCount(prompt))));
-        if (orderEntry) row.append(switchControl(t`Enable ${prompt.name}`, orderEntry.enabled, () => {
-            run(() => model.toggle(id, state.scope));
-            synchronize();
-        }, !model.permissions(prompt).toggle));
-        if (available) row.append(button(t`Add ${prompt.name}`, 'plus', () => {
+            if (textCompletionContent(prompt)) badges.push(element('span', 'sb-prompt-token', String(knownTextCompletionCount(prompt))));
+        } else if (!utility) badges.push(element('span', 'sb-prompt-token', String(knownCount(prompt))));
+        const suffix = [];
+        if (orderEntry) {
+            const control = switchControl(t`Enable ${prompt.name}`, orderEntry.enabled, () => {
+                run(() => model.toggle(id, state.scope));
+                synchronize();
+            }, !model.permissions(prompt).toggle);
+            const target = element('label', 'sb-prompt-switch-target');
+            target.addEventListener('click', event => event.stopPropagation());
+            target.append(control);
+            suffix.push(target);
+        }
+        if (available) suffix.push(rowButton(t`Add ${prompt.name}`, 'plus', () => {
             run(() => model.insert(id, state.scope));
             synchronize();
         }));
         if (!prompt.runtime) {
-            const more = button(t`Actions for ${nameText}`, 'ellipsis-vertical', trigger => textCompletion
+            const more = rowButton(t`Actions for ${nameText}`, 'ellipsis-vertical', trigger => textCompletion
                 ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openTextCompletion(prompt))]])
                 : utility
                     ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openUtility(prompt)), model.canRestoreUtility(id) && menuItem(t`Restore default`, 'rotate-left', () => restoreUtility(id))]])
                     : promptMenu(trigger, prompt, available), 'sb-prompt-row-menu');
             more.setAttribute('aria-haspopup', 'menu');
             more.setAttribute('aria-expanded', 'false');
-            row.append(more);
+            suffix.push(more);
         } else {
+            // The assembled Agents row has no switch or menu; spacers keep its count in the column of the other rows.
             for (const className of ['sb-prompt-switch-slot', 'sb-prompt-row-menu sb-prompt-menu-slot']) {
                 const slot = element('span', className);
                 slot.setAttribute('aria-hidden', 'true');
-                row.append(slot);
+                suffix.push(slot);
             }
         }
-        if (!utility && !textCompletion && !prompt.marker) name.addEventListener('dblclick', event => {
+        const entity = createEntityRow({
+            key: String(id),
+            label: nameText,
+            avatar: glyph,
+            grip: Boolean(orderEntry || prompt.runtime),
+            subtitle: textCompletion || utility ? preview.replace(/\s+/g, ' ').slice(0, 100) || '—' : preview,
+            badges,
+            suffix,
+            activation: 'activate',
+            compatClasses: { row: ['sb-prompt-row'], title: ['sb-prompt-row-name'], subtitle: ['sb-prompt-row-subtitle'], text: ['sb-prompt-row-text'] },
+            attributes: { 'data-prompt-id': String(id), 'data-prompt-bulk': utility || prompt.runtime || textCompletion ? 'false' : null },
+        });
+        const row = entity.row;
+        row.classList.toggle('is-selected', selectedId() === id);
+        const grip = entity.slots.grip;
+        if (orderEntry) {
+            grip.classList.add('sb-prompt-grip', 'ui-sortable-handle');
+            grip.removeAttribute('aria-hidden');
+            grip.setAttribute('role', 'button');
+            grip.setAttribute('aria-label', t`Drag to reorder ${nameText}`);
+            grip.setAttribute('aria-disabled', String(Boolean(filter)));
+            grip.title = grip.getAttribute('aria-label');
+        } else if (grip) {
+            grip.classList.add('sb-prompt-handle-slot');
+            grip.replaceChildren();
+        }
+        if (!utility && !textCompletion && !prompt.marker) entity.slots.title.addEventListener('dblclick', event => {
             event.stopPropagation();
             void rename(prompt);
         });
@@ -509,17 +547,27 @@ export function initializePromptEditor(column) {
         const section = element('section', `sb-prompt-section ${className}`);
         const heading = element('h3', '', title);
         heading.tabIndex = -1;
-        const box = element('div', 'sb-prompt-box');
+        const box = element('div', 'sb-prompt-box ds-entity-list');
         box.setAttribute('role', 'list');
         section.append(heading, box);
         listBody.append(section);
-        const result = { section, box, rows: new Map() };
+        const result = { section, box, rows: new Map(), count: 0 };
         listGroups.set(className, result);
         return result;
     }
 
+    // A group with no rows shows neither its heading nor its box, so a search never leaves a heading over nothing.
+    function syncSectionVisibility(textCompletion) {
+        for (const [className, group] of listGroups) {
+            const otherBackend = textCompletion ? !className.startsWith('sb-prompt-tc-') : className.startsWith('sb-prompt-tc-');
+            const hidden = otherBackend || group.count === 0;
+            if (group.section.hidden !== hidden) group.section.hidden = hidden;
+        }
+    }
+
     function renderRows(group, entries) {
         const textCompletion = textCompletionView();
+        group.count = entries.length;
         reconcileRows({
             container: group.box,
             cache: group.rows,
@@ -583,16 +631,8 @@ export function initializePromptEditor(column) {
         for (const control of [addPromptButton, listActionsButton]) {
             if (control.hidden !== textCompletion) control.hidden = textCompletion;
         }
-        const title = titles.querySelector('h2');
-        const titleText = textCompletion ? t`Prompt templates` : t`Prompts`;
-        if (title.textContent !== titleText) title.textContent = titleText;
-        const sectionClasses = ['sb-prompt-order', 'sb-prompt-available', '', 'sb-prompt-tc-system', 'sb-prompt-tc-context', 'sb-prompt-tc-instruct'];
-        for (const className of sectionClasses) {
-            const section = listGroups.get(className)?.section;
-            if (!section) continue;
-            const hidden = textCompletion ? !className.startsWith('sb-prompt-tc-') : className.startsWith('sb-prompt-tc-');
-            if (section.hidden !== hidden) section.hidden = hidden;
-        }
+        listHeader.setTitle(textCompletion ? t`Prompt templates` : t`Prompts`);
+        syncSectionVisibility(textCompletion);
         if (textCompletion) {
             clearTimeout(listTokenTimer);
             const nextKey = JSON.stringify([state.scope, state.textCompletionEntries, filter, selectedId(), kind]);
@@ -609,8 +649,8 @@ export function initializePromptEditor(column) {
                 shown += entries.length;
                 renderRows(group(translate(section), className), entries.map(prompt => ({ prompt })));
             }
-            searchControl.report(shown, state.textCompletionEntries.length);
-            updateListSubtitle();
+            syncSectionVisibility(true);
+            finishList(shown, state.textCompletionEntries.length);
             return true;
         }
         const utilities = UTILITY_FIELDS.map(([identifier, name]) => ({ identifier, name: translate(name), content: model.readUtility(identifier) }));
@@ -639,8 +679,8 @@ export function initializePromptEditor(column) {
         renderRows(group(t`Available`, 'sb-prompt-available'), availableRows);
         renderRows(group(t`Utility prompts`), utilityRows);
         const ordered = state.order.filter(entry => promptFor(entry.identifier)).length;
-        searchControl.report(rows.length + availableRows.length + utilityRows.length, ordered + 1 + available.length + utilities.length);
-        updateListSubtitle();
+        syncSectionVisibility(false);
+        finishList(rows.length + availableRows.length + utilityRows.length, ordered + 1 + available.length + utilities.length);
         bindSortable(box, {
             handle: '.sb-prompt-grip',
             items: '> .sb-prompt-row:has(.sb-prompt-grip)',
@@ -660,17 +700,40 @@ export function initializePromptEditor(column) {
         return true;
     }
 
+    // While a search is on, the subtitle is the result count: the one place a sighted user reads it.
+    let resultCount = null;
+
     function updateListSubtitle() {
+        if (filter && resultCount) {
+            listHeader.setSubtitle(resultCount.shown === 0 ? t`No results` : t`${resultCount.shown} of ${resultCount.total} results`);
+            return;
+        }
         if (textCompletionView()) {
-            const value = t`Text completion · Grouped by role`;
-            if (subtitle.textContent !== value) subtitle.textContent = value;
+            listHeader.setSubtitle(t`Text completion · Grouped by role`);
             return;
         }
         const enabled = state.order.filter(entry => entry.enabled && promptFor(entry.identifier));
         const counts = enabled.map(entry => promptFor(entry.identifier)).filter(Boolean).map(knownCount).filter(count => typeof count === 'number');
-        subtitle.textContent = state.strategy === 'character' && state.character?.name
+        listHeader.setSubtitle(state.strategy === 'character' && state.character?.name
             ? t`Order for ${state.character.name}`
-            : t`${enabled.length} active · ${counts.length ? counts.reduce((sum, count) => sum + count, 0) : '-'} tokens`;
+            : t`${enabled.length} active · ${counts.length ? counts.reduce((sum, count) => sum + count, 0) : '-'} tokens`);
+    }
+
+    // Reports the result count to the live region and the header, and shows the empty search as a status page.
+    function finishList(shown, total) {
+        resultCount = { shown, total };
+        searchControl.report(shown, total);
+        updateListSubtitle();
+        selection.decorate();
+        syncSelectionActions();
+        const empty = listBody.querySelector(':scope > .sb-status-page');
+        const noResults = Boolean(filter) && shown === 0;
+        if (!noResults) {
+            empty?.remove();
+            return;
+        }
+        if (empty) return;
+        listBody.append(createStatusPage({ state: 'no-results', icon: 'magnifying-glass', title: t`No Results`, compact: true }).element);
     }
 
     function scheduleListTokens() {
@@ -708,9 +771,7 @@ export function initializePromptEditor(column) {
         }, 300);
     }
 
-    const searchButton = button(t`Search prompts`, 'magnifying-glass', () => searchControl.toggle());
-    listHeader.append(titles, searchButton);
-    const addPromptButton = button(t`Add prompt`, 'plus', trigger => {
+    function openAddMenu(trigger) {
         const count = state.prompts.filter(prompt => !state.order.some(entry => entry.identifier === prompt.identifier)).length;
         menu(trigger, t`Add prompt`, [[
             menuItem(t`New prompt`, 'plus', async () => {
@@ -725,16 +786,15 @@ export function initializePromptEditor(column) {
                 section.querySelector('h3').focus({ preventScroll: true });
             }), disabled: count === 0 },
         ]]);
-    });
-    const listActionsButton = button(t`Prompt list actions`, 'ellipsis-vertical', trigger => menu(trigger, t`Prompt list`, [
-        [menuItem(t`Import prompt list`, 'file-import', async () => { if (await allowLeave()) model.importList(); }), menuItem(t`Export prompt list`, 'file-export', () => model.exportList()), state.strategy === 'character' && state.character && menuItem(t`Export character prompts`, 'file-export', () => model.exportCharacter())],
-        [menuItem(t`Reset order`, 'rotate-left', async () => { if (await allowLeave()) model.resetOrder(); })],
-    ]));
-    listHeader.append(addPromptButton, listActionsButton);
-    for (const trigger of listHeader.querySelectorAll('button:not(:first-of-type)')) {
-        trigger.setAttribute('aria-haspopup', 'menu');
-        trigger.setAttribute('aria-expanded', 'false');
     }
+
+    function openListMenu(trigger) {
+        menu(trigger, t`Prompt list`, [
+            [menuItem(t`Import prompt list`, 'file-import', async () => { if (await allowLeave()) model.importList(); }), menuItem(t`Export prompt list`, 'file-export', () => model.exportList()), state.strategy === 'character' && state.character && menuItem(t`Export character prompts`, 'file-export', () => model.exportCharacter())],
+            [menuItem(t`Select`, 'list-check', () => selection.enter(null, trigger)), menuItem(t`Reset order`, 'rotate-left', async () => { if (await allowLeave()) model.resetOrder(); })],
+        ]);
+    }
+
     const searchControl = createListSearch({
         field: searchField,
         input: search,
@@ -747,6 +807,59 @@ export function initializePromptEditor(column) {
             filter = query;
             renderList();
         },
+    });
+
+    // Selection mode: the prompts of the order and the available ones; utility prompts and the Agents row take no bulk action.
+    let bulkBusy = false;
+    const selectionKeys = () => [...listBody.querySelectorAll(SELECTABLE_ROW)].map(row => row.dataset.promptId);
+
+    function syncSelectionActions() {
+        if (!selection.isActive) return;
+        listHeader.element.hidden = true;
+        for (const button of selectionActions.querySelectorAll('button')) button.disabled = bulkBusy || selection.count === 0;
+    }
+
+    async function bulkAction(action) {
+        if (bulkBusy || !selection.count) return;
+        const expectedScope = state.scope;
+        const targets = selection.selectedKeys.map(id => ({ id, prompt: promptFor(id), entry: state.order.find(item => item.identifier === id) })).filter(item => item.prompt);
+        bulkBusy = true;
+        syncSelectionActions();
+        try {
+            if (action === 'on' || action === 'off') {
+                for (const { id, prompt, entry } of targets) {
+                    if (entry && model.permissions(prompt).toggle && Boolean(entry.enabled) !== (action === 'on')) run(() => model.toggle(id, expectedScope));
+                }
+            } else if (action === 'remove') {
+                const removed = targets.filter(({ prompt, entry }) => entry && model.permissions(prompt).remove)
+                    .map(({ id }) => run(() => model.remove(id, expectedScope))).filter(Boolean);
+                if (removed.length) toast(removed.length === 1 ? t`Removed ${promptFor(removed[0].entry.identifier)?.name ?? ''}` : t`TODO(copy)`, () => [...removed].reverse().forEach(record => model.undoRemove(record)));
+            } else if (action === 'delete') {
+                const deletable = targets.filter(({ prompt }) => model.permissions(prompt).delete);
+                if (!deletable.length || !await confirmDestructiveAction({ text: t`TODO(copy)`, confirmLabel: t`Delete`, copyPlaceholder: true })) return;
+                for (const { id } of deletable) run(() => model.delete(id, expectedScope));
+            }
+        } finally {
+            bulkBusy = false;
+            synchronize();
+            selection.decorate({ prune: true });
+            syncSelectionActions();
+        }
+    }
+
+    const selection = createSelectionMode({
+        root, list: listBody, rowSelector: SELECTABLE_ROW, keySourceSelector: '.sb-prompt-grip',
+        getKey: row => row.dataset.promptId, getAllKeys: selectionKeys,
+        header: selectionHeader, actionBar: selectionActions, title: count => t`${count} selected`, selectAllLabel: t`Select All`,
+        canEnter: () => !bulkBusy && !shell.isOpen && !textCompletionView(),
+        actions: [
+            { id: 'on', label: t`Turn On`, icon: 'fa-solid fa-toggle-on', onActivate: () => void bulkAction('on') },
+            { id: 'off', label: t`Turn Off`, icon: 'fa-solid fa-toggle-off', onActivate: () => void bulkAction('off') },
+            { id: 'remove', label: t`Remove from list`, icon: 'fa-solid fa-minus', onActivate: () => void bulkAction('remove') },
+            { id: 'delete', label: t`Delete`, icon: 'fa-solid fa-trash', danger: true, onActivate: () => void bulkAction('delete') },
+        ],
+        onChange: syncSelectionActions,
+        onExit: () => { listHeader.element.hidden = false; },
     });
 
     function discardDraft() {
@@ -871,88 +984,37 @@ export function initializePromptEditor(column) {
         return createSegmentedControl(label, choices, value, change);
     }
 
-    function closePopover(animate = true, restoreFocus = false) {
-        if (!overlay) return;
-        const current = overlay;
-        overlay = null;
-        current.trigger.setAttribute('aria-expanded', 'false');
-        current.trigger.removeAttribute('aria-controls');
-        current.node.inert = true;
-        if (restoreFocus) current.trigger.focus({ preventScroll: true });
-        if (!animate) { stopMotion(current.node); current.node.remove(); return; }
-        play(current.node, [{ opacity: 1 }, { opacity: 0 }], { duration: MOTION_POPOVER_CLOSE, onFinish: () => current.node.remove() });
-    }
-
-    function showPopover(trigger, node, focusTarget = node) {
-        closePopover(false);
-        document.querySelectorAll('.sb-prompt-popover[inert]').forEach(previous => { stopMotion(previous); previous.remove(); });
-        closeActionMenu({ animate: false, restoreFocus: false });
-        overlay = { trigger, node };
-        trigger.setAttribute('aria-expanded', 'true');
-        hostOverlayLayer(node);
-        blockUpstreamDrawerClose(node);
-        const rect = trigger.getBoundingClientRect();
-        const width = Math.min(Math.max(208, rect.width), innerWidth - 16);
-        node.style.width = `${width}px`;
-        node.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
-        node.style.top = `${innerHeight - rect.bottom > node.offsetHeight + 14 ? rect.bottom + 6 : Math.max(8, rect.top - node.offsetHeight - 6)}px`;
-        play(node, [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: MOTION_FAST, easing: MOTION_EASE_OUT_CUBIC });
-        focusTarget.focus({ preventScroll: true });
-        node.addEventListener('keydown', event => {
-            if (event.key !== 'Escape') return;
-            event.preventDefault();
-            event.stopPropagation();
-            closePopover(true, true);
-        });
+    // Menus and popovers of the editor belong to its edit surface for the preset autosave (see sillybunny-preset-autosave.js).
+    function markPromptMenus() {
+        document.querySelectorAll('.sb-action-menu, .sb-action-sheet, .sb-action-popover').forEach(node => node.dataset.sbPromptMenu = 'true');
     }
 
     function roleControl() {
         const choices = [['system', t`System`], ['user', t`User`], ['assistant', t`Assistant`]];
-        const label = element('span', '', choices.find(([value]) => value === (draft.role ?? 'system'))[1]);
+        const current = () => draft.role ?? 'system';
+        const label = element('span', '', choices.find(([value]) => value === current())[1]);
         const trigger = button(t`Role`, null, () => {
-            if (overlay?.trigger === trigger) { closePopover(true, true); return; }
-            const node = element('div', 'sb-prompt-popover sb-prompt-role-list');
-            node.setAttribute('role', 'listbox');
-            node.setAttribute('aria-label', t`Role`);
-            node.tabIndex = 0;
-            let activeIndex = Math.max(0, choices.findIndex(([value]) => value === (draft.role ?? 'system')));
-            const options = choices.map(([value, text], index) => {
-                const option = element('div', 'sb-prompt-option');
-                option.id = `sb-prompt-role-${index}`;
-                option.setAttribute('role', 'option');
-                option.setAttribute('aria-selected', String(value === (draft.role ?? 'system')));
-                option.append(icon('check'), element('span', '', text));
-                option.addEventListener('pointermove', () => { activeIndex = index; update(); });
-                option.addEventListener('click', () => choose(index));
-                return option;
+            openActionMenu({
+                trigger,
+                title: t`Role`,
+                sections: [{
+                    items: choices.map(([value, text]) => ({
+                        label: text,
+                        kind: 'radio',
+                        checked: value === current(),
+                        onSelect: () => {
+                            draft.role = value;
+                            label.textContent = text;
+                            markDirty();
+                            refreshSummary();
+                        },
+                    })),
+                }],
             });
-            const update = () => {
-                options.forEach((option, index) => option.classList.toggle('is-active', index === activeIndex));
-                node.setAttribute('aria-activedescendant', options[activeIndex].id);
-            };
-            const choose = index => {
-                draft.role = choices[index][0];
-                label.textContent = choices[index][1];
-                markDirty();
-                refreshSummary();
-                closePopover(true, true);
-            };
-            node.append(...options);
-            node.addEventListener('keydown', event => {
-                if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(event.key)) event.preventDefault();
-                if (event.key === 'ArrowDown') activeIndex = (activeIndex + 1) % choices.length;
-                if (event.key === 'ArrowUp') activeIndex = (activeIndex + choices.length - 1) % choices.length;
-                if (event.key === 'Home') activeIndex = 0;
-                if (event.key === 'End') activeIndex = choices.length - 1;
-                if (event.key === 'Enter' || event.key === ' ') choose(activeIndex);
-                if (event.key === 'Tab') closePopover(true, true);
-                update();
-            });
-            update();
-            showPopover(trigger, node);
+            markPromptMenus();
         }, 'sb-prompt-dropdown');
         trigger.replaceChildren(label, icon('chevron-down'));
-        trigger.setAttribute('aria-haspopup', 'listbox');
+        trigger.setAttribute('aria-haspopup', 'menu');
         trigger.setAttribute('aria-expanded', 'false');
         trigger.addEventListener('keydown', event => {
             if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
@@ -969,30 +1031,31 @@ export function initializePromptEditor(column) {
     function triggersControl() {
         const label = element('span', '', triggerSummary());
         const trigger = button(t`Triggers`, null, () => {
-            if (overlay?.trigger === trigger) { closePopover(true, true); return; }
-            const node = element('div', 'sb-prompt-popover');
-            node.setAttribute('role', 'dialog');
-            node.setAttribute('aria-label', t`Generation triggers`);
-            node.tabIndex = -1;
-            for (const value of TRIGGERS) {
-                const row = element('label', 'sb-prompt-trigger-row');
-                const input = element('input');
-                input.type = 'checkbox';
-                input.checked = draft.injection_trigger?.includes(value) ?? false;
-                input.addEventListener('change', () => {
+            const content = element('div', 'sb-prompt-triggers');
+            content.setAttribute('role', 'group');
+            content.setAttribute('aria-label', t`Generation triggers`);
+            content.append(...TRIGGERS.map(value => createCheckRow({
+                label: translate(capitalized(value)),
+                field: `trigger-${value}`,
+                checked: draft.injection_trigger?.includes(value) ?? false,
+                onChange: checked => {
                     const values = new Set(draft.injection_trigger ?? []);
-                    if (input.checked) values.add(value);
+                    if (checked) values.add(value);
                     else values.delete(value);
                     draft.injection_trigger = TRIGGERS.filter(item => values.has(item));
                     label.textContent = triggerSummary();
                     markDirty();
                     refreshSummary();
-                });
-                row.append(input, element('span', '', translate(capitalized(value))));
-                node.append(row);
-            }
-            node.append(button(t`Done`, null, () => closePopover(true, true)));
-            showPopover(trigger, node, node.querySelector('input'));
+                },
+            }).row));
+            openPopover({
+                trigger,
+                title: t`Generation triggers`,
+                content,
+                initialFocus: () => content.querySelector('input'),
+                onClose: () => releaseRowIds(content),
+            });
+            markPromptMenus();
         }, 'sb-prompt-dropdown');
         trigger.replaceChildren(label, icon('chevron-down'));
         trigger.setAttribute('aria-haspopup', 'dialog');
@@ -1085,7 +1148,6 @@ export function initializePromptEditor(column) {
     }
 
     function refreshProperties() {
-        closePopover(false);
         editor.querySelector('.sb-prompt-properties')?.replaceWith(properties());
         propertyDialog?.body.querySelector('.sb-prompt-properties')?.replaceWith(properties());
         refreshSummary();
@@ -1115,14 +1177,12 @@ export function initializePromptEditor(column) {
         dialog.closed.then(() => {
             if (propertyDialog !== dialog) return;
             propertyDialog = null;
-            closePopover(false);
             if (draft) refreshProperties();
         });
     }
 
     function closeOverlays() {
         closeActionMenu({ animate: false, restoreFocus: false });
-        closePopover(false);
         propertyDialog?.forceClose();
         propertyDialog = null;
     }
@@ -1183,13 +1243,12 @@ export function initializePromptEditor(column) {
 
     function renderEditor() {
         if (!draft) return;
-        closePopover(false);
         chrome?.dispose();
         editor.hidden = false;
         editor.inert = false;
         editor.dataset.disabled = String(kind === 'text-completion' && draft.disabled);
         editor.replaceChildren();
-        const header = element('header', 'sb-prompt-detail-header');
+        const header = element('header', 'sb-editor-header sb-prompt-detail-header');
         const back = headerIconButton(t`Back to prompt list`, 'chevron-left', 'sb-prompt-back');
         const title = element('input', 'sb-prompt-title');
         title.id = 'sb-prompt-form_name';
@@ -1316,9 +1375,7 @@ export function initializePromptEditor(column) {
             actionMenuTitle: () => draft.name,
         });
         // The editor's menus are part of its edit surface for the preset autosave (see sillybunny-preset-autosave.js).
-        more.addEventListener('click', () => {
-            document.querySelectorAll('.sb-action-menu, .sb-action-sheet').forEach(node => node.dataset.sbPromptMenu = 'true');
-        });
+        more.addEventListener('click', markPromptMenus);
         renderState();
         chrome.setTokens(knownTokens());
         scheduleLayout();
@@ -1428,9 +1485,6 @@ export function initializePromptEditor(column) {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void closeEditor(); }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); save(); }
     });
-    document.addEventListener('pointerdown', event => {
-        if (overlay && !overlay.node.contains(event.target) && !overlay.trigger.contains(event.target)) closePopover();
-    });
     document.addEventListener('change', async event => {
         if (replayingChange || !dirty() || !(event.target instanceof HTMLSelectElement)) return;
         const select = event.target;
@@ -1471,7 +1525,8 @@ export function initializePromptEditor(column) {
     window.addEventListener('pagehide', () => session.flushDraft());
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261115u', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261116j', { id: 'deferred-entity-list-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261116t', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

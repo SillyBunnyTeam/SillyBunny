@@ -940,18 +940,18 @@ const pickerEmpty = status({
 
 const promptsNoResults = status({
     id: 'prompts.no-results',
-    title: 'Prompt editor: no results for a search (the list shows no status page)',
-    component: 'none',
-    root: '.sb-prompt-editor .sb-prompt-list-body',
-    ready: '.sb-prompt-editor .sb-prompt-list-body:not(:has(.sb-prompt-row))',
+    title: 'Prompt editor: no results for a search',
+    component: 'shared',
+    root: '.sb-prompt-editor .sb-prompt-list-body > .sb-status-page',
+    ready: '.sb-prompt-editor .sb-prompt-list-body > .sb-status-page',
     async open(page) {
         await openSettingsTab(page, { shell: 'left', tab: 'editor' });
         await page.locator('.sb-prompt-editor').waitFor({ state: 'visible' });
         await typeInto(page, '.sb-prompt-editor button[aria-label="Search prompts"]', '.sb-prompt-editor input[aria-label="Search prompts"]', NO_MATCH);
-        await page.locator('.sb-prompt-editor .sb-prompt-list-body').waitFor({ state: 'visible' });
+        await page.locator('.sb-prompt-editor .sb-prompt-list-body > .sb-status-page').waitFor({ state: 'visible' });
         await settle(page);
     },
-    sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`],
+    sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, STATUS_PAGE_SOURCE],
 });
 
 const groupMembersEmpty = status({

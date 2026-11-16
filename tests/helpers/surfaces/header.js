@@ -802,7 +802,7 @@ export const surfaces = [
         id: 'prompt',
         title: 'Prompt list header',
         root: '.sb-prompt-editor .sb-prompt-list-header',
-        ready: '.sb-prompt-editor .sb-prompt-list-header .sb-prompt-list-titles h2',
+        ready: '.sb-prompt-editor .sb-prompt-list-header .sb-list-header__title',
         open: openPromptList,
         needs: [],
         sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, `${CSS}/sillybunny-prompt-editor.css`],

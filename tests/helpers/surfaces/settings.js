@@ -242,7 +242,7 @@ export const surfaces = [
         title: 'Backend: Editor (page chrome)',
         shell: 'left',
         tab: 'editor',
-        ready: ['[data-sb-panel="editor"] [data-sb-editor-mode]', '[data-sb-panel="editor"] .sb-prompt-list-titles h2'],
+        ready: ['[data-sb-panel="editor"] [data-sb-editor-mode]', '[data-sb-panel="editor"] .sb-prompt-list-header .sb-list-header__title'],
         sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`],
     }),
     shellPage({

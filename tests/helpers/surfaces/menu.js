@@ -7,7 +7,7 @@
  */
 
 import {
-    ARCHIVE_MENU_BUTTON, chooseItem, closeComposerSheets, openAuditLorebook, openAuditPersona, closeAndWait, closePromptPopover, MENU_ROOT, openAgentEditor, openAgentList, openArchiveList, openArchiveSelection, openAuditCharacterEditor, openAuditChat,
+    ARCHIVE_MENU_BUTTON, chooseItem, closeComposerSheets, openAuditLorebook, openAuditPersona, closeAndWait, MENU_ROOT, openAgentEditor, openAgentList, openArchiveList, openArchiveSelection, openAuditCharacterEditor, openAuditChat,
     openAuditConversation, openAuditGroupEditor, openCharacterList, openChatHistory, openDataBank, openExtensionsManager, openFrom, openManagerFromList,
     openLegacyToggle, openPromptDetail, openPromptEditor, openPromptProperties, PICKER_ROOT, POPOVER_ROOT, settleFade, settleOverlay, showConversationPage,
 } from './menu-steps.js';
@@ -16,8 +16,6 @@ import { openCharactersTab, openSettingsTab, selectBackend, settle } from './ste
 
 const SCRIPTS = 'public/scripts';
 const ARCHIVE = `${SCRIPTS}/extensions/sillybunny-chats-archive/src/ui`;
-/** The prompt editor's own popovers (Role, Triggers). */
-const PROMPT_POPOVER = '.sb-prompt-popover:not([inert])';
 /** The matrix sizes with a touch pointer, and the ones with a mouse. */
 const COARSE_VIEWPORTS = ['768x1024', '844x390', '820x360', '390x844', '360x640', '360x294', '320x568'];
 /** The matrix sizes up to 450px wide, where every extension row folds its actions into a menu. */
@@ -495,29 +493,24 @@ export const surfaces = [
     }),
     menu({
         id: 'prompt-editor.role',
-        title: 'Prompt role list popover',
-        root: PROMPT_POPOVER,
-        ready: `${PROMPT_POPOVER} [role="option"]`,
+        title: 'Prompt role menu',
         needs: [],
-        sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`],
+        sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, ACTION_MENU],
         async open(page) {
             await openPromptProperties(page);
-            await openFrom(page, '.sb-prompt-properties button[aria-label="Role"]', PROMPT_POPOVER);
+            await openFrom(page, '.sb-prompt-properties button[aria-label="Role"]');
         },
-        close: closePromptPopover,
     }),
     menu({
         id: 'prompt-editor.triggers',
         title: 'Prompt generation triggers popover',
-        root: PROMPT_POPOVER,
-        ready: `${PROMPT_POPOVER} input[type="checkbox"]`,
+        ready: `${MENU_ROOT} input[type="checkbox"]`,
         needs: [],
-        sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`],
+        sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, ACTION_MENU],
         async open(page) {
             await openPromptProperties(page);
-            await openFrom(page, '.sb-prompt-properties button[aria-label="Triggers"]', PROMPT_POPOVER);
+            await openFrom(page, '.sb-prompt-properties button[aria-label="Triggers"]');
         },
-        close: closePromptPopover,
     }),
     menu({
         id: 'extensions.row-actions',
