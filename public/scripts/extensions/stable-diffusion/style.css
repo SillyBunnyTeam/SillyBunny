@@ -1,7 +1,57 @@
 #sd_dropdown {
     z-index: 30000;
-    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
-    backdrop-filter: var(--SmartThemeBackdropFilter);
+    /* SillyBunny: a menu popover is opaque and has the popover radius, shadow and padding, and flat rows. */
+    background: var(--sb-layer-popover);
+    border-radius: var(--sb-radius-overlay);
+    box-shadow: var(--sb-shadow-popover);
+    padding: 6px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+#sd_dropdown .list-group {
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+    margin: 0;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+#sd_dropdown .list-group :is(span, .list-group-item) {
+    min-height: 34px;
+    padding: 0 12px;
+    align-items: center;
+    border-radius: var(--sb-radius-control);
+    opacity: 1;
+}
+
+#sd_dropdown .list-group span {
+    color: var(--sb-muted-fg);
+    cursor: default;
+}
+
+@media (hover: hover) {
+    #sd_dropdown .list-group-item:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+#sd_dropdown .list-group-item:active {
+    background: var(--sb-flat-active-bg);
+}
+
+#sd_dropdown .list-group-item:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+@media (pointer: coarse) {
+    #sd_dropdown .list-group :is(span, .list-group-item) {
+        min-height: 44px;
+    }
 }
 
 #sd_comfy_open_workflow_editor {

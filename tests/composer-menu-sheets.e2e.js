@@ -251,3 +251,198 @@ test.describe('on a desktop', () => {
         });
     }
 });
+
+/*
+ * What the menus hold and how they look. The rows follow the menu rules of DESIGN.md: the Options menu ends with its
+ * destructive item in a section of its own, a row that its code hides stays hidden, every wand row has the same height,
+ * inset and full-strength label, and the image-generation drop-down is an opaque popover beside the wand menu (a sheet
+ * above it on a phone).
+ */
+
+const LANDSCAPE = { width: 844, height: 390 };
+
+/** The rows of a menu as the user sees them, with the geometry that has to agree between rows. */
+function readRows(page, selector) {
+    return page.evaluate(sel => {
+        const node = document.querySelector(sel);
+        const rowSelector = node.id === 'options'
+            ? ':scope > .options-content > a'
+            : ':scope > .extension_container > div, :scope > :not(.extension_container, .sb-dialog__handle)';
+        const rows = [...node.querySelectorAll(rowSelector)].filter(row => row.getClientRects().length > 0);
+        return rows.map(row => {
+            const box = row.getBoundingClientRect();
+            const icon = row.querySelector('i, .extensionsMenuExtensionButton');
+            const iconBox = icon?.getBoundingClientRect();
+            return {
+                id: row.id,
+                text: row.textContent.trim().replace(/\s+/g, ' '),
+                height: Math.round(box.height),
+                iconInset: iconBox ? Math.round(iconBox.left - box.left) : null,
+                iconGlyph: icon ? getComputedStyle(icon, '::before').content : null,
+                opacity: getComputedStyle(row).opacity,
+                labelOpacity: getComputedStyle(row.querySelector('span') ?? row).opacity,
+                color: getComputedStyle(row).color,
+            };
+        });
+    }, selector);
+}
+
+function readDropdown(page) {
+    return page.evaluate(() => {
+        const read = element => {
+            const box = element.getBoundingClientRect();
+            return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+        };
+        const dropdown = document.getElementById('sd_dropdown');
+        const wand = document.getElementById('extensionsMenu');
+        const style = getComputedStyle(dropdown);
+        return {
+            dropdown: read(dropdown),
+            wand: read(wand),
+            background: style.backgroundColor,
+            backdrop: style.backdropFilter,
+            sheet: dropdown.hasAttribute('data-sb-menu-sheet'),
+            rowOpacity: getComputedStyle(dropdown.querySelector('.list-group-item')).opacity,
+            rowHeight: dropdown.querySelector('.list-group-item').getBoundingClientRect().height,
+            viewport: { width: innerWidth, height: innerHeight },
+        };
+    });
+}
+
+function intersects(a, b) {
+    return a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+}
+
+async function openDropdownFromWand(page) {
+    await openMenu(page, MENUS[1]);
+    await waitForFocusIn(page, MENUS[1]);
+    await page.locator('#sd_gen').click();
+    await expect(page.locator('#sd_dropdown')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.getElementById('sd_dropdown')).opacity)).toBe('1');
+}
+
+async function expectDropdownClosesFirst(page) {
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#sd_dropdown')).toBeHidden();
+    await expect(page.locator('#extensionsMenu')).toBeVisible();
+    await expect(page.locator('#sd_gen')).toBeFocused();
+    await closeMenuWithEscape(page, MENUS[1]);
+}
+
+test.describe('the Options menu and the wand menu hold what they should', () => {
+    test.use({ viewport: DESKTOP });
+
+    test('the Options menu ends with Delete messages in a section of its own, in Destructive Red, and hides the rows that do not apply', async ({ page, baseURL }) => {
+        await boot(page, baseURL, DESKTOP);
+        await openMenu(page, MENUS[0]);
+        const rows = await readRows(page, '#options');
+        const ids = rows.map(row => row.id);
+        expect(ids.at(-1)).toBe('option_delete_mes');
+        expect(ids.slice(0, -1)).not.toContain('option_delete_mes');
+        // Hidden by their own code in a chat that is not a checkpoint, and by the legacy toggle: they stay hidden.
+        expect(ids).not.toContain('option_back_to_main');
+        expect(ids).not.toContain('option_settings');
+        expect(rows.every(row => row.opacity === '1' && row.height === 34)).toBe(true);
+        const separators = await page.evaluate(() => [...document.querySelectorAll('#options .options-content > *')]
+            .map((node, index, all) => (node.tagName === 'HR' ? all[index + 1]?.id || null : undefined))
+            .filter(value => value !== undefined));
+        // The last separator sits directly above the destructive item.
+        expect(separators.at(-1)).toBe('option_delete_mes');
+        const danger = await page.evaluate(() => {
+            const probe = document.createElement('span');
+            probe.style.color = 'var(--sb-color-danger)';
+            document.body.append(probe);
+            const expected = getComputedStyle(probe).color;
+            probe.remove();
+            return { expected, actual: getComputedStyle(document.getElementById('option_delete_mes')).color };
+        });
+        expect(danger.actual).toBe(danger.expected);
+        expect(rows.filter(row => row.color === danger.expected).map(row => row.id)).toEqual(['option_delete_mes']);
+    });
+
+    test('every wand row has the same height, inset and full-strength label, and an icon of its own', async ({ page, baseURL }) => {
+        await boot(page, baseURL, DESKTOP);
+        await openMenu(page, MENUS[1]);
+        await waitForFocusIn(page, MENUS[1]);
+        const rows = await readRows(page, '#extensionsMenu');
+        expect(rows.length).toBeGreaterThan(8);
+        expect(new Set(rows.map(row => row.height))).toEqual(new Set([34]));
+        expect(new Set(rows.map(row => row.iconInset)).size).toBe(1);
+        expect(rows.filter(row => row.opacity !== '1' || row.labelOpacity !== '1').map(row => row.id)).toEqual([]);
+        // The rows the shell and an extension add straight to the menu are among them.
+        for (const id of ['wand_message_screenshot', 'ica_companions_wand_item', 'ica_tracker_panel_wand_item']) {
+            expect(rows.map(row => row.id)).toContain(id);
+        }
+        // An icon that is not a glyph (none, or the digit the token counter used to show) is a defect.
+        expect(rows.filter(row => !row.iconGlyph || row.iconGlyph === 'none' || row.iconGlyph === 'normal' || row.iconGlyph === '"1"').map(row => row.id)).toEqual([]);
+        // TTS is off: its playback row is hidden by the extension, and no rule of the shell shows it again.
+        expect(rows.map(row => row.id)).not.toContain('ttsExtensionMenuItem');
+        await closeMenuWithEscape(page, MENUS[1]);
+    });
+
+    test('the composer\'s icon controls have a button role and keep their names', async ({ page, baseURL }) => {
+        await boot(page, baseURL, DESKTOP);
+        const roles = await page.evaluate(ids => ids.map(id => [id, document.getElementById(id)?.getAttribute('role') ?? null]), [
+            'options_button', 'extensionsMenuButton', 'send_but', 'mes_impersonate', 'mes_continue', 'mes_stop', 'sb_prose_polisher_but',
+            'stscript_continue', 'stscript_pause', 'stscript_stop',
+        ]);
+        expect(roles.filter(([, role]) => role !== 'button').map(([id]) => id)).toEqual([]);
+        await expect(page.getByRole('button', { name: 'Extensions', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Chat Actions', exact: true })).toBeVisible();
+    });
+
+    test('the image-generation drop-down opens beside the wand menu on an opaque surface, and Escape closes it before the menu', async ({ page, baseURL }) => {
+        await boot(page, baseURL, DESKTOP);
+        await openDropdownFromWand(page);
+        const placement = await readDropdown(page);
+        expect(placement.sheet).toBe(false);
+        expect(intersects(placement.dropdown, placement.wand)).toBe(false);
+        expect(placement.dropdown.top).toBeGreaterThanOrEqual(0);
+        expect(placement.dropdown.bottom).toBeLessThanOrEqual(placement.viewport.height);
+        expect(placement.dropdown.right).toBeLessThanOrEqual(placement.viewport.width);
+        expect(placement.background).not.toMatch(/rgba\(.*,\s*0(\.\d+)?\)|transparent/);
+        expect(placement.background).not.toMatch(/\/\s*0?\.\d/);
+        expect(placement.backdrop).toBe('none');
+        expect(placement.rowOpacity).toBe('1');
+        await expectDropdownClosesFirst(page);
+    });
+});
+
+test.describe('the image-generation drop-down in a short landscape window', () => {
+    test.use({ viewport: LANDSCAPE, isMobile: true, hasTouch: true });
+
+    test('it stays inside the window and does not cover the wand menu', async ({ page, baseURL }) => {
+        await boot(page, baseURL, LANDSCAPE);
+        await openDropdownFromWand(page);
+        const placement = await readDropdown(page);
+        expect(placement.sheet).toBe(false);
+        expect(intersects(placement.dropdown, placement.wand)).toBe(false);
+        expect(placement.dropdown.top).toBeGreaterThanOrEqual(0);
+        expect(placement.dropdown.bottom).toBeLessThanOrEqual(placement.viewport.height);
+        expect(placement.rowHeight).toBeGreaterThanOrEqual(44);
+        await expectDropdownClosesFirst(page);
+    });
+});
+
+test.describe('the image-generation drop-down on a phone', () => {
+    test.use({ viewport: PHONE, isMobile: true, hasTouch: true });
+
+    test('it is a sheet above the wand sheet, opaque, with rows of 44px, and Escape closes it first', async ({ page, baseURL }) => {
+        await boot(page, baseURL, PHONE);
+        await openDropdownFromWand(page);
+        const placement = await readDropdown(page);
+        expect(placement.sheet).toBe(true);
+        expect(placement.dropdown.left).toBeCloseTo(0, 0);
+        expect(placement.dropdown.right).toBeCloseTo(PHONE.width, 0);
+        expect(placement.dropdown.bottom).toBeCloseTo(PHONE.height, 0);
+        expect(placement.background).not.toMatch(/rgba\(.*,\s*0(\.\d+)?\)|transparent/);
+        expect(placement.rowOpacity).toBe('1');
+        expect(placement.rowHeight).toBeGreaterThanOrEqual(44);
+        const stacking = await page.evaluate(() => ({
+            sd: Number(getComputedStyle(document.getElementById('sd_dropdown')).zIndex),
+            wand: Number(getComputedStyle(document.getElementById('extensionsMenu')).zIndex),
+        }));
+        expect(stacking.sd).toBeGreaterThan(stacking.wand);
+        await expectDropdownClosesFirst(page);
+    });
+});

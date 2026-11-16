@@ -128,11 +128,11 @@
         "public/css/sillybunny-theme.css": {
             "radius-literal": 1,
             "shadow-literal": 25,
-            "important": 185,
+            "important": 183,
             "hover-ungated": 6,
             "breakpoint-off-set": 4,
             "focus-outline": 1,
-            "spacing-off-scale": 179,
+            "spacing-off-scale": 178,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-windows.css": {

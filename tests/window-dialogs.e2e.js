@@ -225,11 +225,25 @@ for (const viewport of WINDOW_VIEWPORTS) {
         for (const [section, source] of [['characterAttachmentsBlock', 'character'], ['chatAttachmentsBlock', 'chat']]) {
             await manager.locator(`.${section} .openActionModalButton`).click();
             await expect(manager.locator('.actionButtonsModal')).toHaveAttribute('data-attachment-manager-target', source);
+            /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- a sheet and a popover are different surfaces */
+            if (viewport.presentation === 'sheet') {
+                await expect(manager.locator('.actionButtonsModal')).toHaveAttribute('data-sb-menu-sheet', '');
+                await expect(manager.locator('.actionButtonsModal > .sb-dialog__handle')).toBeVisible();
+                expect(await manager.locator('.actionButtonsModal .actionButton').first().evaluate(row => row.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+            }
+            /* eslint-enable playwright/no-conditional-in-test, playwright/no-conditional-expect */
             // On a phone the menu is a bottom sheet with a scrim over the heading, so the press that dismisses it lands on the scrim.
             // eslint-disable-next-line playwright/no-conditional-in-test -- a sheet and a popover are dismissed from different places
             await (viewport.presentation === 'sheet' ? page.locator('.sb-menu-sheet-scrim') : manager.locator('.globalAttachmentsTitle')).click();
             await expect(manager.locator('.actionButtonsModal')).toBeHidden();
         }
+        // At every width Escape closes the menu alone and the focus returns to the Add button that opened it.
+        await manager.locator('.chatAttachmentsBlock .openActionModalButton').click();
+        await expect(manager.locator('.actionButtonsModal')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(manager.locator('.actionButtonsModal')).toBeHidden();
+        await expect(manager.locator('.chatAttachmentsBlock .openActionModalButton')).toBeFocused();
+        await expect(manager.locator('.attachmentListItem').first()).toBeVisible();
         const body = manager.locator('.popup-content');
         expect(await body.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
         await rows.last().scrollIntoViewIfNeeded();

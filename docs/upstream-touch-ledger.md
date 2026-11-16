@@ -1999,6 +1999,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-16, UI polish sweep (tasks 7.1 and 7.2). |
 | Owner | `TODO(copy)` |
 
+### `public/index.html`, `public/style.css`, `public/scripts/a11y.js` and the Stable Diffusion and Token Counter extensions - composer menus
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` (`#option_delete_mes` in the Options menu); `public/style.css` (the composer menu row rules); `public/scripts/a11y.js` (`composerControlSelectors`); `public/scripts/extensions/stable-diffusion/index.js` and `style.css` (`#sd_dropdown`); `public/scripts/extensions/token-counter/index.js` (its wand row icon). |
+| Area | The composer's Options (☰) and wand menus, the image-generation drop-down, and the composer's icon controls. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The menu row rules in `public/css/sillybunny-theme.css` (one row rule, the danger row, `--sb-menu-row-height`); `presentMenuAsSheet()` in `public/scripts/sillybunny-action-menu.js`. |
+| Adapter shape | Since 2026-11-16 (UI polish sweep, task 7.4): Delete messages is the Options menu's last row, after its own separator, in Destructive Red (F-228). The row rule no longer sets `display` with `!important`, which had beaten jQuery's `hide()` and `.displayNone`, so rows the app hides stay hidden (F-228, F-229). `style.css` drops the rows' `opacity: .5` and hover selectors, which the theme now owns. The image-generation drop-down opens beside its menu row (Popper `right-start` with flip and `preventOverflow`) on an opaque popover surface (F-069). The composer's `div.interactable` icon controls get `role="button"` with their `title` as the accessible name (F-290). The Token Counter row's icon is `fa-hashtag`. Item labels and their `data-i18n` keys are unchanged. Each change carries a `SillyBunny:` marker. |
+| Protecting tests | `tests/composer-menu-sheets.e2e.js`; `tests/window-dialogs.e2e.js`; `tests/unit/composer-control-roles.test.js`. |
+| Validation | 2026-11-16: root and tests lint, the full unit run, the related e2e specs, the audit of `menu.composer.*` and `menu.data-bank.add-dropdown`, and the capture comparison against `p6-end`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-16, UI polish sweep (task 7.4). |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

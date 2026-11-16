@@ -1627,12 +1627,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         opacity: 1;
     }
 
-    /* Rows that extensions add straight to the wand menu get the padding and full opacity of the rows in its containers. */
-    #extensionsMenu[data-sb-menu-sheet] > :not(.extension_container, .sb-dialog__handle) {
-        padding-inline: 12px;
-        opacity: 1;
-    }
-
     .sb-menu-sheet-scrim {
         position: fixed;
         inset: 0;

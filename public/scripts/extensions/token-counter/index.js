@@ -106,7 +106,7 @@ async function doCount() {
 export function init() {
     const buttonHtml = `
         <div id="token_counter" class="list-group-item flex-container flexGap5">
-            <div class="fa-solid fa-1 extensionsMenuExtensionButton" /></div>` +
+            <div class="fa-solid fa-hashtag extensionsMenuExtensionButton" /></div>` + // SillyBunny: the hash sign names a count; a bare digit reads as a placeholder icon.
             t`Token Counter` +
         '</div>';
     $('#token_counter_wand_container').append(buttonHtml);

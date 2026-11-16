@@ -4961,50 +4961,54 @@ body.reduced-motion *::after {
     padding: 0;
 }
 
-#options .options-content a,
-#extensionsMenu > .extension_container > div {
-    height: 34px;
+/* `display` has no `!important`: hide() and `.displayNone` must still hide a row that does not apply. */
+:is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle)) {
+    height: var(--sb-menu-row-height, 34px);
     padding: 0 12px;
     border-radius: var(--sb-radius-control) !important;
     opacity: 1;
     color: var(--SmartThemeBodyColor);
     background: transparent !important;
     border: none !important;
-    display: flex !important;
+    display: flex;
+    flex: none;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
 }
 
-#options .options-content a i,
-#options .options-content a .fa-fw,
+#options a i,
+#options a .fa-fw,
 #extensionsMenu i,
 #extensionsMenu .fa-fw {
     opacity: 0.7;
 }
 
 @media (hover: hover) {
-    #options .options-content a:hover,
-    #extensionsMenu > .extension_container > div:hover {
+    :is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle)):hover {
         background: var(--sb-flat-hover-bg) !important;
     }
 }
 
-#options .options-content a:active,
-#extensionsMenu > .extension_container > div:active {
+:is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle)):active {
     background: var(--sb-flat-active-bg) !important;
 }
 
 /* A transparent outline is repainted by forced colours, so these rows keep a focus indicator there. */
-#options .options-content a:focus-visible,
-#extensionsMenu > .extension_container > div:focus-visible {
+:is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle)):focus-visible {
     outline: 2px solid transparent !important;
     box-shadow: var(--sb-focus-ring-inset) !important;
 }
 
+#options a#option_delete_mes {
+    color: var(--sb-color-danger);
+}
+
 @media (pointer: coarse) {
-    #options .options-content a,
-    #extensionsMenu > .extension_container > div {
-        height: 44px !important;
+    #options,
+    #extensionsMenu {
+        --sb-menu-row-height: 44px;
     }
 }
 
@@ -7076,13 +7080,11 @@ a.note-link-span {
 
     .sb-theme-preset-button,
     .sb-dialog__search-entry,
-    :is(#options .options-content a, #extensionsMenu > .extension_container > div),
     :is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option,
     .sb-world-info-select2-dropdown .select2-results__option {
         min-height: 44px;
     }
 
-    :is(#options .options-content a, #extensionsMenu > .extension_container > div),
     .sb-dialog__search-entry {
         height: 44px;
     }

@@ -20,6 +20,19 @@ const buttonSelectors = [
     '#show_newer_messages',
 ].join(', ');
 
+// SillyBunny: the composer's icon controls are bare divs. Without a role their tooltip names nothing for assistive technology, and a
+// glyph drawn by `::before` is read as their content, which keeps the tooltip from becoming the name, so the tooltip is also the label.
+const composerControlSelectors = [
+    '#extensionsMenuButton',
+    '#send_but',
+    '#mes_impersonate',
+    '#mes_continue',
+    '#mes_stop',
+    '#sb_prose_polisher_but',
+    '#leftSendForm > .interactable',
+    '#rightSendForm > :is(.interactable, .stscript_btn)',
+].join(', ');
+
 const listSelectors = [
     '.options-content',
     '.list-group',
@@ -69,6 +82,11 @@ const a11yRules = {
             return;
         }
         element.setAttribute('role', 'button');
+    },
+    [composerControlSelectors]: (element) => {
+        element.setAttribute('role', 'button');
+        const tooltip = element.getAttribute('title')?.trim();
+        if (tooltip && !element.hasAttribute('aria-label')) element.setAttribute('aria-label', tooltip);
     },
     [listSelectors]: (element) => {
         element.setAttribute('role', 'list');

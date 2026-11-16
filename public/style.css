@@ -1345,9 +1345,6 @@ body .panelControlBar {
     padding: 1px;
 }
 
-.options-content a,
-#extensionsMenu>.extension_container>div,
-#extensionsMenu>*:not(.extension_container),
 .list-group>div,
 .list-group .list-group-item,
 #sd_dropdown .list-group span {
@@ -1360,16 +1357,11 @@ body .panelControlBar {
     align-items: baseline;
 }
 
-#extensionsMenu>.extension_container>div,
-#extensionsMenu>*:not(.extension_container),
-.options-content a,
+/* SillyBunny: the rows of the Options and wand menus are full strength (sillybunny-theme.css). */
 .list-group-item {
     opacity: 0.5;
 }
 
-#extensionsMenu>.extension_container>div:hover,
-#extensionsMenu>*:not(.extension_container):hover,
-.options-content a:hover,
 .list-group-item:hover {
     opacity: 1;
 }

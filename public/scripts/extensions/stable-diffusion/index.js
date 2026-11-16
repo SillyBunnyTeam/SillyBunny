@@ -5082,8 +5082,14 @@ async function addSDGenButtons() {
     const dropdown = $('#sd_dropdown');
     dropdown.hide();
 
+    // SillyBunny: the drop-down opens beside the wand menu row that opens it, so it never covers the menu's rows.
     let popper = Popper.createPopper(button.get(0), dropdown.get(0), {
-        placement: 'top',
+        placement: 'right-start',
+        modifiers: [
+            { name: 'offset', options: { offset: [-6, 10] } },
+            { name: 'flip', options: { fallbackPlacements: ['left-start', 'right-end', 'left-end'] } },
+            { name: 'preventOverflow', options: { altAxis: true, padding: 8 } },
+        ],
     });
 
     $(document).on('click', '.sd_message_gen', (e) => sdMessageButton($(e.currentTarget), { animate: false }));
