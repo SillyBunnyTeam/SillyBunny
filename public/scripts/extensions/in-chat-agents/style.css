@@ -539,129 +539,24 @@ dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
     line-height: var(--sb-line-body);
 }
 
-/* ── Slide-out Tracker Panel ────────────────────────── */
+/* ── Companion Panel ────────────────────────────────── */
 
+/* The panel is the content of a side panel, which owns its position, surface, scrolling and sheet form (sillybunny-side-panel.css). */
 .ica--tpanel {
-    --ica--tpanel-viewport-height: var(--sb-shell-viewport-height, 100dvh);
-    --ica--tpanel-viewport-top: var(--sb-shell-viewport-top, 0px);
-    --ica--tpanel-sheet-height: min(70dvh, 560px, var(--ica--tpanel-viewport-height));
-    position: fixed;
-    /* Above the mobile shell's modal layer (--sb-z-modal-content: 3100), below toasts. */
-    z-index: var(--sb-z-popout, 4000);
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-    padding: 0;
-    background: var(--sb-layer-drawer);
     color: var(--SmartThemeBodyColor);
     font-family: var(--mainFontFamily);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    transition: -webkit-clip-path var(--sb-transition), clip-path var(--sb-transition);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    contain: layout style;
-    border: 0 solid var(--sb-shell-border);
-}
-
-.ica--tpanel.is-open {
-    box-shadow: var(--sb-shadow-dialog);
-}
-
-.ica--tpanel[data-edge="right"],
-.ica--tpanel[data-edge="left"] {
-    top: var(--ica--tpanel-viewport-top);
-    bottom: auto;
-    width: min(420px, 94vw);
-    height: var(--ica--tpanel-viewport-height);
-}
-
-.ica--tpanel[data-edge="right"] {
-    right: 0;
-    left: auto;
-    border-left-width: 1px;
-    padding-right: env(safe-area-inset-right, 0px);
-    -webkit-clip-path: inset(0 0 0 100%);
-    clip-path: inset(0 0 0 100%);
-}
-
-.ica--tpanel[data-edge="left"] {
-    left: 0;
-    right: auto;
-    border-right-width: 1px;
-    padding-left: env(safe-area-inset-left, 0px);
-    -webkit-clip-path: inset(0 100% 0 0);
-    clip-path: inset(0 100% 0 0);
-}
-
-.ica--tpanel[data-edge="top"],
-.ica--tpanel[data-edge="bottom"] {
-    left: 0;
-    right: 0;
-    width: 100%;
-    height: var(--ica--tpanel-sheet-height);
-}
-
-.ica--tpanel[data-edge="top"] {
-    top: var(--ica--tpanel-viewport-top);
-    bottom: auto;
-    border-bottom-width: 1px;
-    border-radius: 0 0 var(--sb-radius-overlay) var(--sb-radius-overlay);
-    padding-top: env(safe-area-inset-top, 0px);
-    -webkit-clip-path: inset(0 0 100% 0);
-    clip-path: inset(0 0 100% 0);
-}
-
-.ica--tpanel[data-edge="bottom"] {
-    /* The transformed zero-height <html> is the fixed-position containing block,
-       so bottom: 0 would place this sheet above the viewport. Use measured shell
-       coordinates for both normal and keyboard-shifted visual viewports. */
-    top: calc(var(--ica--tpanel-viewport-top) + var(--ica--tpanel-viewport-height) - var(--ica--tpanel-sheet-height));
-    bottom: auto;
-    border-top-width: 1px;
-    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    -webkit-clip-path: inset(100% 0 0 0);
-    clip-path: inset(100% 0 0 0);
-}
-
-.ica--tpanel:not(.is-open) {
-    visibility: hidden;
-    pointer-events: none;
-    transition: -webkit-clip-path var(--sb-transition), clip-path var(--sb-transition), visibility 0s linear var(--sb-duration-normal);
-}
-
-.ica--tpanel[data-edge="right"].is-open,
-.ica--tpanel[data-edge="left"].is-open,
-.ica--tpanel[data-edge="top"].is-open,
-.ica--tpanel[data-edge="bottom"].is-open {
-    -webkit-clip-path: inset(0);
-    clip-path: inset(0);
 }
 
 .ica--tpanel-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     flex: none;
     gap: 4px;
-    min-height: 60px;
-    padding: 6px 12px;
-    border-bottom: var(--sb-headerbar-shade);
-    background: var(--sb-layer-headerbar);
-}
-
-.ica--tpanel-title {
-    display: inline-flex;
-    align-items: center;
-    flex: 1;
-    min-width: 0;
-    margin: 0;
-    padding-inline: 4px;
-    font-weight: 700;
-    font-size: var(--sb-type-title);
-    line-height: 1.25;
-    overflow-wrap: anywhere;
+    padding: 6px 12px 0;
 }
 
 .ica--tpanel-body {
@@ -1685,9 +1580,7 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     .ica--tpanel .ica--cdash-action,
     .ica--companion-action,
     #chat .ica--companion-actions .ica--companion-action,
-    .ica--tpanel-handle,
-    .ica--tpanel,
-    .ica--tpanel:not(.is-open) {
+    .ica--tpanel-handle {
         transition: none !important;
     }
 

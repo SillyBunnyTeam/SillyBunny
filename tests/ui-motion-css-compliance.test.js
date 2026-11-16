@@ -89,9 +89,8 @@ describe('audited UI motion CSS', () => {
         const inChatAgentsSource = stylesheets.find(stylesheet => stylesheet.name === 'in-chat agents').source;
         const mobileShellSource = stylesheets.find(stylesheet => stylesheet.name === 'mobile shell').source;
 
-        expect(inChatAgentsSource).toContain('transition: -webkit-clip-path var(--sb-transition), clip-path var(--sb-transition);');
-        expect(inChatAgentsSource).toContain('-webkit-clip-path: inset(0 0 0 100%);');
-        expect(inChatAgentsSource).toContain('clip-path: inset(0 0 0 100%);');
+        // The companion panel is the content of a side panel, which owns its motion, so it no longer slides by a clip.
+        expect(inChatAgentsSource).not.toContain('clip-path');
         // Mobile shell layers are opaque, so they must not blur what sits behind them.
         expect(mobileShellSource).not.toMatch(/backdrop-filter:\s*blur\(/);
     });

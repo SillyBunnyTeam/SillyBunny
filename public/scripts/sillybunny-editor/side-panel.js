@@ -1,4 +1,5 @@
 import { t } from '../i18n.js';
+import { closeActionMenu, isActionMenuOpen, openActionMenu } from '../sillybunny-action-menu.js';
 import { HOME_STATE_CHANGED_EVENT } from '../sillybunny-home-state.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
 import { bindHeaderLayout } from './dialog.js';
@@ -6,7 +7,7 @@ import { returnFocusTo } from './page-chain.js';
 import { bindSheetGestures, createSheetHandle } from './sheet-gestures.js';
 
 export const SIDE_PANEL_STYLESHEET = {
-    href: 'css/sillybunny-side-panel.css?v=20261114l',
+    href: 'css/sillybunny-side-panel.css?v=20261117k',
     id: 'deferred-side-panel-css',
 };
 
@@ -32,6 +33,8 @@ let setMovingUIState = () => {};
 let activatedControl = null;
 let previouslyActivatedControl = null;
 let activationHistoryBound = false;
+let shortcutBound = false;
+let panelsHiddenByShortcut = [];
 
 // Menus that close when an item is chosen. #options is the composer Options menu, which has no ARIA role.
 const MENU_SELECTOR = '[role="menu"], .sb-action-menu, #options';
@@ -264,15 +267,6 @@ function createPanelShell({ id, element, title }) {
     menuButton.setAttribute('aria-haspopup', 'menu');
     menuButton.setAttribute('aria-expanded', 'false');
 
-    const moveSideLabel = t`Move to Other Side`;
-    const menu = createElement('div', 'sb-side-panel__menu');
-    menu.setAttribute('role', 'menu');
-    menu.hidden = true;
-    const moveSideButton = createElement('button', 'sb-side-panel__menu-item', moveSideLabel);
-    moveSideButton.type = 'button';
-    moveSideButton.setAttribute('role', 'menuitem');
-    menu.append(moveSideButton);
-
     const closeButton = createIconButton({
         className: 'sb-dialog__icon-button sb-dialog__close sb-side-panel__icon-button sb-side-panel__close',
         iconName: 'xmark',
@@ -280,7 +274,7 @@ function createPanelShell({ id, element, title }) {
     });
 
     controls.append(menuButton, closeButton);
-    header.append(start, titles, controls, menu);
+    header.append(start, titles, controls);
 
     const grabHandle = createSheetHandle();
     const body = createElement('div', 'sb-dialog__body sb-side-panel__body');
@@ -289,7 +283,7 @@ function createPanelShell({ id, element, title }) {
     body.append(content);
     panel.append(grabHandle, header, body);
 
-    return { panel, header, unbindHeaderLayout: bindHeaderLayout(header), menuButton, menu, moveSideButton, closeButton, body, content };
+    return { panel, header, unbindHeaderLayout: bindHeaderLayout(header), menuButton, closeButton, body, content };
 }
 
 function getPanelRoot() {
@@ -344,8 +338,7 @@ function closeEntry(entry, { restoreFocus = false, notify = true } = {}) {
     stopMotion(entry.panel);
     entry.panel.style.removeProperty('transform');
     entry.shell.panel.hidden = true;
-    entry.shell.menu.hidden = true;
-    entry.shell.menuButton.setAttribute('aria-expanded', 'false');
+    if (isActionMenuOpen(entry.shell.menuButton)) closeActionMenu({ animate: false });
 
     if (notify && !entry.isClosing) {
         entry.isClosing = true;
@@ -624,11 +617,22 @@ function focusPanel(entry) {
     target.focus({ preventScroll: true });
 }
 
-function setMenuOpen(entry, isOpen, { focusItem = false } = {}) {
-    entry.shell.menu.hidden = !isOpen;
-    entry.shell.menuButton.setAttribute('aria-expanded', String(isOpen));
-    if (isOpen && focusItem) entry.shell.moveSideButton.focus({ preventScroll: true });
-    if (!isOpen) entry.shell.menuButton.focus({ preventScroll: true });
+// The shared action menu is an anchored popover on a wide window and a bottom sheet under the overlay breakpoint.
+function openPanelMenu(entry, { keyboard = false } = {}) {
+    openActionMenu({
+        trigger: entry.shell.menuButton,
+        title: entry.title,
+        keyboard,
+        bounds: entry.panel,
+        alignment: 'end',
+        sections: [{
+            items: [{
+                label: t`Move to Other Side`,
+                icon: 'fa-solid fa-right-left',
+                onSelect: () => movePanelToOtherSide(entry),
+            }],
+        }],
+    });
 }
 
 function movePanelToOtherSide(entry) {
@@ -643,15 +647,7 @@ function movePanelToOtherSide(entry) {
 }
 
 function bindPanelControls(entry) {
-    entry.shell.menuButton.addEventListener('click', () => {
-        setMenuOpen(entry, entry.shell.menu.hidden, { focusItem: entry.shell.menu.hidden });
-    });
-    entry.shell.moveSideButton.addEventListener('click', () => {
-        entry.shell.menu.hidden = true;
-        entry.shell.menuButton.setAttribute('aria-expanded', 'false');
-        entry.shell.menuButton.focus({ preventScroll: true });
-        movePanelToOtherSide(entry);
-    });
+    entry.shell.menuButton.addEventListener('click', event => openPanelMenu(entry, { keyboard: event.detail === 0 }));
     entry.shell.closeButton.addEventListener('click', () => closeSidePanel(entry.id));
     entry.unbindSheetGestures = bindSheetGestures({
         surface: entry.panel,
@@ -660,13 +656,6 @@ function bindPanelControls(entry) {
         isActive: () => entry.panel.classList.contains('sb-side-panel--sheet'),
         requestClose: () => slideSheetOut(entry),
     });
-    entry.outsidePointerListener = event => {
-        if (!entry.shell.menu.hidden && !entry.panel.contains(event.target)) {
-            entry.shell.menu.hidden = true;
-            entry.shell.menuButton.setAttribute('aria-expanded', 'false');
-        }
-    };
-    document.addEventListener('pointerdown', entry.outsidePointerListener, true);
 }
 
 function isVisibleSurface(element) {
@@ -676,7 +665,7 @@ function isVisibleSurface(element) {
     return element.getClientRects().length > 0 && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
 }
 
-function hasHigherPriorityEscapeSurface(event, entry) {
+function hasHigherPriorityEscapeSurface(event) {
     if (event.defaultPrevented || event.isComposing || document.querySelector('dialog[open]')) {
         return true;
     }
@@ -690,7 +679,7 @@ function hasHigherPriorityEscapeSurface(event, entry) {
     }
 
     const openOverlay = [...document.querySelectorAll('[role="menu"], [role="listbox"], .sb-picker, .sb-picker-sheet, .sb-action-popover, .sb-action-sheet, .sb-model-id-picker-menu')]
-        .find(element => element !== entry.shell.menu && isVisibleSurface(element));
+        .find(isVisibleSurface);
     return Boolean(openOverlay);
 }
 
@@ -698,16 +687,45 @@ export function closeTopmostSidePanelOnEscape(event) {
     if (event.key !== 'Escape') return false;
 
     const activeEntry = openEntries().at(-1);
-    if (!activeEntry || hasHigherPriorityEscapeSurface(event, activeEntry)) return false;
+    if (!activeEntry || hasHigherPriorityEscapeSurface(event)) return false;
 
     event.preventDefault();
-    if (!activeEntry.shell.menu.hidden) {
-        setMenuOpen(activeEntry, false);
-        return true;
-    }
-
     closeSidePanel(activeEntry.id);
     return true;
+}
+
+function hasModalSurface() {
+    return Boolean(document.querySelector('dialog[open]')) || [...document.querySelectorAll('[aria-modal="true"]')].some(isVisibleSurface);
+}
+
+// F9 hides the open panels and brings the same ones back, in the order they were opened. With nothing open and nothing
+// hidden by it, the key does nothing: no panel is the one to open first.
+function handleShortcut(event) {
+    if (event.key !== 'F9' || event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+    if (hasModalSurface()) return;
+
+    const open = openEntries();
+    if (open.length > 0) {
+        event.preventDefault();
+        panelsHiddenByShortcut = open.map(entry => entry.id);
+        open.forEach((entry, index) => closeSidePanel(entry.id, { restoreFocus: index === open.length - 1 }));
+        return;
+    }
+
+    const hidden = panelsHiddenByShortcut.filter(id => sidePanels.has(id));
+    panelsHiddenByShortcut = [];
+    if (hidden.length === 0) return;
+    event.preventDefault();
+    const opener = document.activeElement;
+    void (async () => {
+        for (const id of hidden) await openSidePanel(id, { opener });
+    })().catch(error => console.error('Could not reopen the side panels', error));
+}
+
+function bindShortcut() {
+    if (shortcutBound) return;
+    shortcutBound = true;
+    document.addEventListener('keydown', handleShortcut);
 }
 
 export function configureMovingUIState({ getState, setState }) {
@@ -718,12 +736,14 @@ export function configureMovingUIState({ getState, setState }) {
     setMovingUIState = setState;
 }
 
-export function registerSidePanel({ id, element, title, defaultSide, onClose }) {
+export function registerSidePanel({ id, element, title, defaultSide, onClose, onOpen }) {
     bindActivationHistory();
+    bindShortcut();
     if (typeof id !== 'string' || id.trim() === '') throw new TypeError('Side panel id must be a non-empty string');
     if (!(element instanceof HTMLElement)) throw new TypeError('Side panel element must be an HTMLElement');
     if (typeof title !== 'string' || title.trim() === '') throw new TypeError('Side panel title must be a non-empty string');
     if (typeof onClose !== 'undefined' && typeof onClose !== 'function') throw new TypeError('onClose must be a function when provided');
+    if (typeof onOpen !== 'undefined' && typeof onOpen !== 'function') throw new TypeError('onOpen must be a function when provided');
     const normalizedDefaultSide = normalizeSide(defaultSide);
     if (sidePanels.has(id)) throw new Error(`Side panel is already registered: ${id}`);
     if (!element.parentElement) throw new Error(`Side panel element must be attached before registration: ${id}`);
@@ -743,6 +763,7 @@ export function registerSidePanel({ id, element, title, defaultSide, onClose }) 
         defaultSide: normalizedDefaultSide,
         side: resolvePersistedSide(getMovingUIState()?.[id], normalizedDefaultSide),
         onClose,
+        onOpen,
         originalParent,
         originalNextSibling,
         originalPlaceholder,
@@ -803,7 +824,10 @@ export async function openSidePanel(id, { opener = document.activeElement } = {}
     updateLayout();
     await layoutSettled;
     await new Promise(resolve => requestAnimationFrame(resolve));
-    if (entry.isOpen) focusPanel(entry);
+    if (entry.isOpen) {
+        entry.onOpen?.();
+        focusPanel(entry);
+    }
     return entry.panel;
 }
 
@@ -819,7 +843,6 @@ export function unregisterSidePanel(id) {
     const entry = sidePanels.get(id);
     if (!entry) return false;
     closeEntry(entry, { restoreFocus: false, notify: false });
-    document.removeEventListener('pointerdown', entry.outsidePointerListener, true);
     entry.unbindSheetGestures();
     entry.shell.unbindHeaderLayout();
     entry.element.classList.toggle('sb-side-panel__source', entry.originalClass);

@@ -686,10 +686,8 @@ export const surfaces = [
     menu({
         id: 'side-panel.header',
         title: 'Side panel header menu',
-        root: '.sb-side-panel__menu:not([hidden])',
-        ready: '.sb-side-panel__menu:not([hidden]) .sb-side-panel__menu-item',
         needs: ['chat'],
-        sources: [`${SCRIPTS}/sillybunny-editor/side-panel.js`],
+        sources: [`${SCRIPTS}/sillybunny-editor/side-panel.js`, ACTION_MENU],
         async open(page) {
             await openAuditChat(page);
             if (!await page.locator('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"]').isVisible()) {
@@ -697,12 +695,7 @@ export const surfaces = [
             }
             await page.locator('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"]').waitFor({ state: 'visible' });
             await settle(page);
-            await page.locator('.sb-side-panel[data-sb-side-panel-id="floatingPrompt"] .sb-side-panel__menu-trigger').click();
-            await settleOverlay(page, '.sb-side-panel__menu:not([hidden])');
-        },
-        async close(page) {
-            await page.locator('.sb-side-panel__menu-trigger[aria-expanded="true"]').first().click();
-            await page.locator('.sb-side-panel__menu:not([hidden])').first().waitFor({ state: 'hidden' });
+            await openFrom(page, '.sb-side-panel[data-sb-side-panel-id="floatingPrompt"] .sb-side-panel__menu-trigger');
         },
     }),
     menu({

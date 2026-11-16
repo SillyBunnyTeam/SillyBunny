@@ -488,7 +488,7 @@ export function closeCfgPanel(options) {
     return controllers.get('cfgConfig')?.close(options) ?? false;
 }
 
-export function registerTokenProbabilitiesPanel(element = document.getElementById('logprobsViewer')) {
+export function registerTokenProbabilitiesPanel(element = document.getElementById('logprobsViewer'), { onOpen } = {}) {
     if (!(element instanceof HTMLElement)) throw new TypeError('The Token Probabilities side panel element is required.');
     if (controllers.has('logprobsViewer')) return controllers.get('logprobsViewer');
     const content = requireElement(element, '.logprobs_panel_content', 'Token Probabilities');
@@ -498,7 +498,7 @@ export function registerTokenProbabilitiesPanel(element = document.getElementByI
     element.append(group.section);
     element.classList.remove('inline-drawer', 'flexGap5');
     element.dataset.sbSidePanelAdapter = 'token-probabilities';
-    const controller = registerSidePanel({ id: 'logprobsViewer', element, title: t`Token Probabilities`, defaultSide: 'right' });
+    const controller = registerSidePanel({ id: 'logprobsViewer', element, title: t`Token Probabilities`, defaultSide: 'right', onOpen });
     controllers.set('logprobsViewer', controller);
     return controller;
 }

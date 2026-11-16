@@ -8,7 +8,7 @@
  *   (World Info entry, persona, prompt, agent). A property sheet exists only where the editor has collapsed its property
  *   bar to a summary button, so those entries list the viewports where it does.
  * - Moving UI (owner class B): the zoomed avatar, the gallery with its image viewer, and the expression holder.
- * - The in-chat-agents companion panel (owner class C).
+ * - The in-chat-agents companion panel (owner class C), which `registerSidePanel` serves as well.
  *
  * The bottom-sheet form of menus and pickers belongs to the menu family, and so does the side panel header menu.
  */
@@ -35,6 +35,8 @@ import { settle } from './steps.js';
 const SCRIPTS = 'public/scripts';
 const SIDE_PANELS_SOURCES = [`${SCRIPTS}/sillybunny-editor/side-panel.js`, `${SCRIPTS}/sillybunny-editor/adapters/side-panels.js`];
 const sidePanelRoot = id => `.sb-side-panel[data-sb-side-panel-id="${id}"]`;
+const COMPANION_PANEL_ID = 'ica-companion-panel';
+const COMPANION_SHELL = sidePanelRoot(COMPANION_PANEL_ID);
 
 /**
  * The viewports where a side panel docks: a panel is 280px at least and the chat keeps 360px (`MIN_CHAT_WIDTH` in
@@ -103,11 +105,14 @@ const logprobTokens = ['The', ' room', ' is', ' quiet', ',', ' and', ' the', ' l
 /**
  * Has the panel render its view, which it does on a debounce after an edit or a chat change and only while it is shown, so
  * that a chat change that comes before the panel is shown leaves the view blank. The message for a chat without
- * probabilities is what a render gives here.
+ * probabilities is what a render gives here. An earlier visit of the same page may have left probabilities on the last message
+ * (the `token-selected` state does), so they are emptied first.
  */
 async function renderTokenProbabilities(page) {
     await page.evaluate(async () => {
+        const { saveLogprobsForActiveMessage } = await import('/scripts/logprobs.js');
         const { eventSource, event_types } = await import('/script.js');
+        saveLogprobsForActiveMessage([], null);
         await eventSource.emit(event_types.MESSAGE_EDITED, 0);
     });
     await page.locator('#logprobs_generation_output .logprobs_empty_state').waitFor({ state: 'visible' });
@@ -587,32 +592,31 @@ export const surfaces = [
         id: 'panel.companion.panel',
         family: 'panel',
         owner: 'C',
-        title: 'In-chat agents: companion panel',
-        root: '#ica--tracker-panel',
-        ready: '#ica--tracker-panel .ica--tpanel-agent',
+        title: 'In-chat agents: companion panel (a side panel)',
+        root: COMPANION_SHELL,
+        ready: ['#ica--tracker-panel .ica--tpanel-agent'],
         async open(page) {
             await openAuditChat(page);
             if (!await page.locator('#ica--tracker-panel.is-open').count()) {
                 await seedCompanionPanel(page);
                 await page.locator('#ica_tracker_panel_wand_item').evaluate(item => item.click());
             }
-            await page.locator('#ica--tracker-panel.is-open').waitFor({ state: 'visible' });
-            await settle(page, { root: '#ica--tracker-panel' });
+            await waitForPanelToSettle(page, COMPANION_PANEL_ID);
         },
         async close(page) {
-            await page.locator('#ica--tracker-panel [data-action="panel-close"]').click();
-            await page.locator('#ica--tracker-panel').waitFor({ state: 'hidden' });
+            await page.locator(`${COMPANION_SHELL} .sb-side-panel__close`).click();
+            await page.locator(COMPANION_SHELL).waitFor({ state: 'hidden' });
         },
         states: [{
             id: 'handle',
             root: '#ica--tracker-panel-handle',
             async open(page) {
-                await page.locator('#ica--tracker-panel [data-action="panel-close"]').click();
+                await page.locator(`${COMPANION_SHELL} .sb-side-panel__close`).click();
                 await page.locator('#ica--tracker-panel-handle').waitFor({ state: 'visible' });
                 await settle(page);
             },
         }],
         needs: ['character', 'chat'],
-        sources: [`${SCRIPTS}/extensions/in-chat-agents/companion/companion-panel.js`, `${SCRIPTS}/extensions/in-chat-agents/style.css`],
+        sources: [...SIDE_PANELS_SOURCES, `${SCRIPTS}/extensions/in-chat-agents/companion/companion-panel.js`, `${SCRIPTS}/extensions/in-chat-agents/style.css`],
     },
 ];

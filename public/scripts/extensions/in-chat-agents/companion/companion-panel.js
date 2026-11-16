@@ -3,6 +3,7 @@ import { hideChatMessageRange } from '../../../chats.js';
 import { captureVisibleMessageAnchor, restoreVisibleMessageAnchor } from '../../../chat-render-lifecycle/anchor.js';
 import { eventSource, event_types } from '../../../events.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
+import { registerSidePanel } from '../../../sillybunny-editor/side-panel.js';
 import { createStatusPage } from '../../../sillybunny-editor/status-page.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
 import { escapeHtml } from '../../../utils.js';
@@ -50,6 +51,8 @@ import {
 } from './companion-shared.js';
 
 const PANEL_HISTORY_LIMIT = 5;
+const SIDE_PANEL_ID = 'ica-companion-panel';
+const SIDE_PANEL_SELECTOR = `.sb-side-panel[data-sb-side-panel-id="${SIDE_PANEL_ID}"]`;
 // v2: v1 could persist scroll-corrupted positions on iOS (drag hijacked into a page scroll),
 // pinning the handle to a screen edge with no way to drag it back. The old key is abandoned.
 // The value is either a bare number (legacy: fraction along the right edge) or a JSON
@@ -72,17 +75,28 @@ export const captureCompanionPanelOrigin = () => panelOrigin;
 // SillyBunny: restore the originating companion and scroll position after detail closes.
 export function restoreCompanionPanelOrigin(restore, isCurrent) {
     if (!isCurrent() || isConversationModeActive()) return false;
-    openCompanionPanel();
-    const body = document.querySelector('#ica--tracker-panel .ica--tpanel-body');
-    if (body) {
-        body.scrollTop = restore?.scrollTop ?? 0;
+    const shown = openCompanionPanel();
+    // The panel stays hidden until its layout is ready, and a hidden element drops a scroll position.
+    void Promise.resolve(shown).then(() => {
+        if (!isCurrent()) return;
+        const body = document.querySelector('#ica--tracker-panel .ica--tpanel-body');
+        if (!body) return;
+        const scroller = getPanelScroller();
+        if (scroller) scroller.scrollTop = restore?.scrollTop ?? 0;
         const row = [...body.querySelectorAll('[data-agent-id]')].find(node => node.dataset.agentId === restore?.agentId);
         row?.querySelector('[data-action="panel-edit"]')?.focus({ preventScroll: true });
-    }
+    });
     return true;
+}
+
+/** The side panel's body scrolls; the source element inside it does not. */
+function getPanelScroller() {
+    const panel = document.querySelector('#ica--tracker-panel');
+    return panel?.closest('.sb-side-panel__body') ?? panel;
 }
 let panelLocked = getStoredPanelLocked();
 let panelOpenedAt = 0;
+let panelController = null;
 let suppressHandleClickUntil = 0;
 let handleNode = null;
 let conversationModeObserver = null;
@@ -753,13 +767,12 @@ export function buildPanelHtml() {
         ? states.map(buildPanelAgentSection).join('')
         : '<div class="ica--cdash-empty">No companion agents are enabled and no tracked state is stored in this chat yet. Convert a tracker to companion execution or enable a companion to see its state here.</div>';
 
+    // The side panel's header carries the title, the menu and Close; the panel's own actions sit in this row.
     return `
         <div class="ica--tpanel-header">
-            <h2 class="ica--tpanel-title">Companions</h2>
             <span class="ica--tpanel-agent-actions">
                 <button type="button" class="ica--cdash-action${panelLocked ? ' is-active' : ''}" data-action="panel-lock" title="${panelLocked ? 'Unlock Panel Auto-Close' : 'Keep Panel Open Until Unlocked'}" aria-label="${panelLocked ? 'Unlock Panel' : 'Lock Panel'}" aria-pressed="${panelLocked}"><i class="fa-solid ${panelLocked ? 'fa-lock' : 'fa-lock-open'}"></i></button>
                 <button type="button" class="ica--cdash-action" data-action="panel-regenerate-all" title="Regenerate Every Companion on the Last Reply" aria-label="Regenerate All Companions"><i class="fa-solid fa-rotate-right"></i></button>
-                <button type="button" class="ica--cdash-action" data-action="panel-close" title="Close Panel" aria-label="Close Panel"><i class="fa-solid fa-xmark"></i></button>
             </span>
         </div>
         <div class="ica--tpanel-body">${body}</div>
@@ -779,7 +792,9 @@ function mountPanelStatusPage(panel) {
 function renderPanel() {
     const panelElement = $('#ica--tracker-panel');
     const panel = panelElement[0];
-    const anchor = captureVisibleMessageAnchor(panel, PANEL_ANCHOR_OPTIONS);
+    // The scroller is the side panel's body when the panel is docked in one, and the panel itself otherwise.
+    const scroller = panel?.closest?.('.sb-side-panel__body') ?? panel;
+    const anchor = captureVisibleMessageAnchor(scroller, PANEL_ANCHOR_OPTIONS);
     const previousHeights = new Map(Array.from(panel?.querySelectorAll(PANEL_ANCHOR_OPTIONS.messageSelector) ?? [], section => [
         section.getAttribute(PANEL_ANCHOR_OPTIONS.keyAttribute),
         section.getBoundingClientRect().height,
@@ -795,7 +810,7 @@ function renderPanel() {
         }
     }
 
-    restoreVisibleMessageAnchor(panel, anchor, PANEL_ANCHOR_OPTIONS);
+    restoreVisibleMessageAnchor(scroller, anchor, PANEL_ANCHOR_OPTIONS);
     setupPanelSortable();
 }
 
@@ -852,7 +867,8 @@ export function refreshCompanionPanel() {
 export function updateCompanionPanelHandleVisibility() {
     const conversationModeActive = isConversationModeActive();
     const shouldShow = shouldShowCompanionPanelHandle();
-    $('#ica--tracker-panel-handle').toggle(shouldShow);
+    // The handle sits on a viewport edge, where an open panel docks, so it hides while the panel shows.
+    $('#ica--tracker-panel-handle').toggle?.(shouldShow && !panelOpen);
     // Conversation Mode hides both companion wand entries (panel + dashboard).
     $('#ica_tracker_panel_wand_item').toggle?.(!conversationModeActive);
     $('#ica_companions_wand_item').toggle?.(!conversationModeActive);
@@ -872,18 +888,34 @@ export function openCompanionPanel() {
     panelOpen = true;
     panelOpenedAt = Date.now();
     renderPanel();
-    const { edge } = getStoredHandlePosition() ?? { edge: 'right' };
-    $('#ica--tracker-panel').attr('data-edge', edge).addClass('is-open').attr('aria-hidden', 'false');
+    $('#ica--tracker-panel').addClass('is-open').attr('aria-hidden', 'false');
+    updateCompanionPanelHandleVisibility();
+    if (!panelController) return undefined;
+
+    // The side panel shows once its stylesheet and layout are ready; a close that comes first wins.
+    return panelController.open({ opener: document.activeElement }).then(() => {
+        if (!panelOpen) panelController.close({ restoreFocus: false, notify: false });
+    }, error => {
+        console.error('Could not open the companion panel', error);
+        markPanelClosed();
+    });
 }
 
-export function closeCompanionPanel() {
+function markPanelClosed() {
     if (panelOpen) panelOrigin = {
-        scrollTop: document.querySelector('#ica--tracker-panel .ica--tpanel-body')?.scrollTop ?? 0,
+        scrollTop: getPanelScroller()?.scrollTop ?? 0,
         agentId: document.activeElement?.closest('[data-agent-id]')?.dataset.agentId,
         settingsOpen: document.documentElement?.dataset.sbSettingsOpen === 'true',
     };
     panelOpen = false;
     $('#ica--tracker-panel').removeClass('is-open').attr('aria-hidden', 'true');
+    updateCompanionPanelHandleVisibility();
+}
+
+/** Focus goes back to the opener only when the user closes the panel itself (Close, Escape): a click elsewhere has moved it on. */
+export function closeCompanionPanel({ restoreFocus = false } = {}) {
+    markPanelClosed();
+    if (panelController?.isOpen) panelController.close({ restoreFocus, notify: false });
 }
 
 export function isCompanionPanelLocked() {
@@ -913,11 +945,6 @@ async function handlePanelAction(event) {
 
     const button = $(event.currentTarget);
     const action = button.attr('data-action');
-
-    if (action === 'panel-close') {
-        closeCompanionPanel();
-        return;
-    }
 
     if (action === 'panel-lock') {
         setCompanionPanelLocked(!panelLocked);
@@ -1212,6 +1239,18 @@ export function initCompanionPanel() {
         </button>
     `);
 
+    const panelNode = $('#ica--tracker-panel')[0];
+    if (typeof globalThis.HTMLElement === 'function' && panelNode instanceof globalThis.HTMLElement) {
+        // A panel the user moved to a side keeps it; before that, the side follows the edge the handle was left on.
+        panelController = registerSidePanel({
+            id: SIDE_PANEL_ID,
+            element: panelNode,
+            title: 'Companions',
+            defaultSide: getStoredHandlePosition()?.edge === 'left' ? 'left' : 'right',
+            onClose: markPanelClosed,
+        });
+    }
+
     $('#ica--tracker-panel').on('click', '[data-action]', handlePanelAction);
     $('#ica--tracker-panel').on('keydown', '.ica--tpanel-drag-handle', async function (event) {
         if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
@@ -1279,7 +1318,8 @@ export function initCompanionPanel() {
         if (!panelOpen || panelLocked || Date.now() - panelOpenedAt < 250) {
             return;
         }
-        if (event.target?.closest?.('#ica--tracker-panel, #ica--tracker-panel-handle')) {
+        // The panel's own header, and the menu it opens above the panel, belong to the panel.
+        if (event.target?.closest?.(`#ica--tracker-panel, #ica--tracker-panel-handle, ${SIDE_PANEL_SELECTOR}, .sb-action-popover, .sb-action-sheet, .sb-action-sheet-backdrop`)) {
             return;
         }
         closeCompanionPanel();

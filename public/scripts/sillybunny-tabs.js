@@ -5235,7 +5235,7 @@ function buildChatSidebar() {
         id: 'sb-chat-sidebar',
         element: root,
         title: t`Recent Chats`,
-        defaultSide: 'right',
+        defaultSide: 'left',
         onClose: () => { getChatbarState().sidebarOpen = false; },
     });
     getChatbarState().sidebar = { root, title, list, controller };

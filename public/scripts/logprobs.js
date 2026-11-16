@@ -337,10 +337,8 @@ function addGeneration(prompt) {
  * the logprobs view, such as clicking the Token Probabilities menu item or the
  * close button.
  */
-// SillyBunny: the dock controller owns visibility, while the upstream token rendering path remains unchanged.
+// SillyBunny: the dock controller owns visibility and renders the view once the panel is shown; the render skips a hidden view, so it cannot run before.
 function onToggleLogprobsPanel() {
-    const panel = document.querySelector('.sb-side-panel[data-sb-side-panel-id="logprobsViewer"]');
-    if (panel?.hidden) renderAlternativeTokensView();
     return toggleTokenProbabilitiesPanel(this);
 }
 
@@ -585,7 +583,7 @@ function convertTokenIdLogprobsToText(input) {
 
 export function initLogprobs() {
     // SillyBunny: register the original token view so menu toggles and Escape use docked visibility.
-    registerTokenProbabilitiesPanel();
+    registerTokenProbabilitiesPanel(undefined, { onOpen: renderAlternativeTokensView });
     REROLL_BUTTON.hide();
     const debouncedRender = debounce(renderAlternativeTokensView);
     // SillyBunny: keep the upstream Escape target connected to the controller-owned panel state.

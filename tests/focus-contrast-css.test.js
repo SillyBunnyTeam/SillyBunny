@@ -77,7 +77,6 @@ describe('focus outlines', () => {
 
     test.each([
         ['sillybunny-message-actions.css', '#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):focus-visible', 'opacity: 1; ' + ring],
-        ['sillybunny-side-panel.css', '.sb-side-panel__menu-item:focus-visible', ring],
         ['sillybunny-tabs.css', '.sb-mode-menu-item:focus-visible', ring],
         ['sillybunny-tabs.css', '.sb-persona-option:focus-visible', ring],
         ['sillybunny-tabs.css', '.sb-subpage-back:focus-visible', ring],

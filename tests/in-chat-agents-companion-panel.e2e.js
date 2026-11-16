@@ -1,8 +1,11 @@
+/* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- the window width selects the docked or the sheet geometry. */
 import { expect, test } from '@playwright/test';
 import { openEditorAgents } from './helpers/in-chat-agents-editor.js';
 import { seedCompanionPanel } from './helpers/in-chat-agents-companion-panel.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
+
+const SHELL = '.sb-side-panel[data-sb-side-panel-id="ica-companion-panel"]';
 
 const appearance = node => {
     const style = getComputedStyle(node);
@@ -25,7 +28,11 @@ for (const width of [1440, 390]) {
             await page.locator('#sb-settings-close').click();
             await page.locator('#ica_tracker_panel_wand_item').evaluate(node => node.click());
             const panel = page.locator('#ica--tracker-panel');
+            const shell = page.locator(SHELL);
             await expect(panel).toHaveClass(/is-open/);
+            await expect(shell).toBeVisible();
+            // Opening a panel puts focus in it, and this checks the resting state of its buttons.
+            await page.evaluate(() => document.activeElement?.blur());
             await page.mouse.move(1, 1);
             const buttons = panel.locator('.ica--cdash-action');
             for (const button of await buttons.all()) {
@@ -40,7 +47,8 @@ for (const width of [1440, 390]) {
                 expect.soft(style.width).toBe(style.height);
                 expect.soft(style.width).toBeGreaterThanOrEqual(width === 390 ? 44 : 40);
             }
-            expect(await panel.locator('[data-action="panel-close"]').evaluate(node => node.offsetWidth)).toBe(width === 390 ? 44 : 40);
+            const closeButton = shell.locator('.sb-side-panel__close');
+            expect(await closeButton.evaluate(node => node.offsetWidth)).toBe(width === 390 ? 44 : 40);
             for (const card of await panel.locator('.ica--tpanel-agent').all()) expect(await card.evaluate(appearance)).toEqual(reference);
             expect(await page.locator('.ica--companion-card').evaluate(appearance)).toEqual(reference);
             const surface = await panel.evaluate(node => ({ blur: getComputedStyle(node).backdropFilter, overflow: node.scrollWidth - node.clientWidth }));
@@ -72,16 +80,65 @@ for (const width of [1440, 390]) {
             await expect(lock).toHaveAttribute('aria-pressed', 'true');
             expect(await lock.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
             await page.emulateMedia({ forcedColors: 'active' });
-            await panel.locator('[data-action="panel-close"]').focus();
+            await closeButton.focus();
             await page.keyboard.press('Tab');
             await page.keyboard.press('Shift+Tab');
-            expect(await panel.locator('[data-action="panel-close"]').evaluate(node => getComputedStyle(node).outlineStyle)).not.toBe('none');
-            await panel.locator('[data-action="panel-close"]').click();
+            expect(await closeButton.evaluate(node => getComputedStyle(node).outlineStyle)).not.toBe('none');
+            await closeButton.click();
             await expect(panel).not.toHaveClass(/is-open/);
+            await expect(shell).toBeHidden();
             await expect(page.locator('#ica--tracker-panel-handle')).toBeVisible();
             expect(driver.errors).toEqual([]);
             expect(driver.saves()).toHaveLength(0);
             expect(driver.writes.filter(write => /\/generate(?:[-/]|$)|\/(?:chat\/)?completions?$/.test(write.path))).toEqual([]);
+        });
+
+        test('docks beside the chat on a wide window and is a sheet above the composer on a phone', async ({ page, baseURL }) => {
+            const driver = await openEditorAgents(page, baseURL, width);
+            await seedCompanionPanel(page);
+            await page.locator('#sb-settings-close').click();
+            await page.locator('#ica_tracker_panel_wand_item').evaluate(node => node.click());
+            const shell = page.locator(SHELL);
+            await expect(shell).toBeVisible();
+            await expect.poll(() => shell.evaluate(node => node.getAnimations().length)).toBe(0);
+            // The handle sits on a viewport edge, where the panel docks, so it makes way while the panel shows.
+            await expect(page.locator('#ica--tracker-panel-handle')).toBeHidden();
+
+            const geometry = await page.evaluate(selector => {
+                const rect = node => node.getBoundingClientRect().toJSON();
+                const panel = document.querySelector(selector);
+                return {
+                    sheet: panel.classList.contains('sb-side-panel--sheet'),
+                    side: panel.dataset.sbSidePanelSide,
+                    panel: rect(panel),
+                    chat: rect(document.getElementById('sheld')),
+                    composer: rect(document.getElementById('form_sheld')),
+                    topBar: rect(document.getElementById('top-bar')),
+                    viewport: { width: innerWidth, height: innerHeight },
+                };
+            }, SHELL);
+            const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+            expect(overlaps(geometry.panel, geometry.topBar), 'the top bar stays free').toBe(false);
+            expect(overlaps(geometry.panel, geometry.composer), 'the composer stays free').toBe(false);
+            if (width === 390) {
+                expect(geometry.sheet).toBe(true);
+                await expect(shell.locator(':scope > .sb-dialog__handle')).toBeVisible();
+                expect(geometry.panel.height).toBeLessThanOrEqual(geometry.viewport.height / 2 + 1);
+                expect(geometry.panel.bottom).toBeLessThanOrEqual(geometry.composer.top + 1);
+            } else {
+                expect(geometry.sheet).toBe(false);
+                expect(geometry.side).toBe('right');
+                expect(overlaps(geometry.panel, geometry.chat), 'the chat column stays free').toBe(false);
+                expect(geometry.panel.width).toBeGreaterThanOrEqual(280);
+                expect(geometry.panel.width).toBeLessThanOrEqual(420);
+            }
+
+            await page.evaluate(() => document.activeElement?.blur());
+            await page.keyboard.press('Escape');
+            await expect(shell).toBeHidden();
+            await expect(page.locator('#ica--tracker-panel')).not.toHaveClass(/is-open/);
+            await expect(page.locator('#ica--tracker-panel-handle')).toBeVisible();
+            expect(driver.errors).toEqual([]);
         });
 
         test('destructive companion actions default to Cancel and ignore Return', async ({ page, baseURL }) => {

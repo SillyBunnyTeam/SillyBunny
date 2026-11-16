@@ -105,8 +105,8 @@
         },
         "public/css/sillybunny-side-panel.css": {
             "shadow-literal": 1,
-            "important": 60,
-            "spacing-off-scale": 4
+            "important": 59,
+            "spacing-off-scale": 3
         },
         "public/css/sillybunny-tabs.css": {
             "radius-literal": 9,
@@ -159,7 +159,7 @@
             "duration-literal": 1,
             "important": 5,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 89
+            "spacing-off-scale": 88
         },
         "public/scripts/extensions/in-chat-agents/ui/agent-editor.css": {
             "important": 3,

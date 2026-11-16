@@ -13,6 +13,7 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
     closeActionMenu: jest.fn(),
+    isActionMenuOpen: jest.fn(() => false),
     openActionMenu: jest.fn(),
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({

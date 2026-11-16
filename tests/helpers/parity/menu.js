@@ -2,7 +2,7 @@
  * Menus, pickers and popovers (DESIGN.md Menus and Popovers): an opaque popover surface at the overlay radius, with a ring in
  * its shadow for an edge and no border, `6px` of padding for a menu list and `8px` for any other popover, and rows of at least
  * 32px (44px on a coarse pointer and in sheets) with `0 12px` padding and the control radius. The first alternative of the item
- * is the action menu row; pickers, the prompt editor popovers, the side panel menu, upstream menus and the two menus that still
+ * is the action menu row; pickers, the prompt editor popovers, upstream menus and the two menus that still
  * use `div` items have their own. The press-label tooltip has its own rule (Tooltips) and is not a menu surface here.
  */
 
@@ -17,7 +17,7 @@ export const rules = {
             id: 'surface',
             only: '^menu\\.(?!tooltip\\.)',
             selectors: [
-                { id: 'popover', selector: '.sb-action-popover, .sb-action-sheet, .sb-picker, .sb-picker-sheet, .sb-custom-popover, .sb-side-panel__menu' },
+                { id: 'popover', selector: '.sb-action-popover, .sb-action-sheet, .sb-picker, .sb-picker-sheet, .sb-custom-popover' },
                 { id: 'own', selector: '#options, #extensionsMenu, .actionButtonsModal, .ctx-menu, .autoComplete-wrap, .ui-autocomplete' },
             ],
             properties: [
@@ -31,7 +31,6 @@ export const rules = {
             selectors: [
                 { id: 'action-menu', selector: '.sb-action-menu-item' },
                 { id: 'picker', selector: '.sb-picker__option' },
-                { id: 'side-panel', selector: '.sb-side-panel__menu-item' },
                 { id: 'legacy-list', selector: '.list-group-item, .actionButton' },
                 // A plain button is an item only inside a menu or a listbox: the close button of a sheet, the response buttons and the rows of a popover are not items.
                 { id: 'own', selector: ':is(a, li, [role^="menuitem"], [role="option"], :is([role="menu"], [role="listbox"]) button):not(.sb-picker__search)' },

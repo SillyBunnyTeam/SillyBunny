@@ -2714,7 +2714,7 @@
             ],
             "keysecondary": [],
             "comment": "A57 Companions",
-            "content": "A companion is an agent with Companion execution: after the reply it makes a separate model call and stores a note, and does not replace the main reply. Bundled companion templates include Expressions Agent, Continuity Companion, Director's Commentary, Lorebook Scout, Memory Shard, Plot Compass, Chatroom, Chat Only and Message Inbox (the last three are Roleplay-side feeds, unrelated to Conversation mode). Notes appear in the slide-out Companion Panel (handle titled \"Open the Companion Panel\"), as note cards on messages and on the Companions Overview page (Agents Menu). Companions are Roleplay only: in Conversation the Overview shows \"Companions Unavailable\" and the panel is hidden.",
+            "content": "A companion is an agent with Companion execution: after the reply it makes a separate model call and stores a note, and does not replace the main reply. Bundled companion templates include Expressions Agent, Continuity Companion, Director's Commentary, Lorebook Scout, Memory Shard, Plot Compass, Chatroom, Chat Only and Message Inbox (the last three are Roleplay-side feeds, unrelated to Conversation mode). Notes appear in the Companion Panel (handle titled \"Open the Companion Panel\"), a side panel that docks beside the chat and becomes a sheet above the composer on a narrow window, as note cards on messages and on the Companions Overview page (Agents Menu). Companions are Roleplay only: in Conversation the Overview shows \"Companions Unavailable\" and the panel is hidden.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,

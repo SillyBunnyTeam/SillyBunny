@@ -30,7 +30,7 @@ const PANELS = [
     { id: 'floatingPrompt', trigger: '#option_toggle_AN', side: 'left', lastControl: '#extension_default_interval' },
     { id: 'cfgConfig', trigger: '#option_toggle_CFG', side: 'left', lastControl: '#cfg_prompt_insertion_depth' },
     { id: 'logprobsViewer', trigger: '#option_toggle_logprobs', side: 'right', lastControl: '#logprobs_selected_top_logprobs' },
-    { id: 'sb-chat-sidebar', trigger: null, side: 'right', lastControl: '.sb-chat-sidebar-body' },
+    { id: 'sb-chat-sidebar', trigger: null, side: 'left', lastControl: '.sb-chat-sidebar-body' },
 ];
 
 test.describe.configure({ timeout: 120_000 });
@@ -147,6 +147,53 @@ test('side panels share dialog headers, boxed groups, and theme-derived surfaces
     expect(settingsCoversPanel).toBe(true);
     await page.locator('#sb-settings-close').click();
 });
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`Author's Note fields have Expand in their label row and it edits the same field at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+        await boot(page, viewport);
+        const panel = await openPanel(page, PANELS[0]);
+        for (const id of ['extension_floating_prompt', 'extension_floating_chara', 'extension_floating_default']) {
+            const labelRow = panel.locator(`.ds-row-textarea:has(#${id}) > .ds-row-textarea__label-row`);
+            const expand = labelRow.locator('> .editor_maximize');
+            await expect(expand).toHaveAccessibleName('Expand the editor');
+            await expect(expand).toHaveAttribute('data-for', id);
+            expect(await labelRow.evaluate(row => row.lastElementChild.classList.contains('editor_maximize'))).toBe(true);
+        }
+
+        await panel.locator('.editor_maximize[data-for="extension_floating_prompt"]').click();
+        const expanded = page.locator('.maximized_textarea');
+        await expect(expanded).toBeVisible();
+        await expanded.fill('Expanded Author\'s Note text');
+        await expect(page.locator('#extension_floating_prompt')).toHaveValue('Expanded Author\'s Note text');
+        await page.keyboard.press('Escape');
+        await expect(expanded).toBeHidden();
+        await expect(panel).toBeVisible();
+    });
+}
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`Token Probabilities shows its notice when it opens, and the notice breaks between words at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+        await boot(page, viewport);
+        const panel = await openPanel(page, PANELS[2]);
+        const notice = panel.locator('.logprobs_empty_state');
+        await expect(notice).toBeVisible();
+        expect(await notice.evaluate(node => getComputedStyle(node).wordBreak)).toBe('normal');
+        const brokenWords = await notice.evaluate(node => {
+            const broken = [];
+            const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+            for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+                for (const match of text.data.matchAll(/\S+/g)) {
+                    const range = document.createRange();
+                    range.setStart(text, match.index);
+                    range.setEnd(text, match.index + match[0].length);
+                    if (range.getClientRects().length > 1) broken.push(match[0]);
+                }
+            }
+            return broken;
+        });
+        expect(brokenWords).toEqual([]);
+    });
+}
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 740 }]) {
     test(`Author's Note sheet fits inside ${viewport.width}×${viewport.height}`, async ({ page }) => {

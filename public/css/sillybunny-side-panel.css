@@ -47,57 +47,6 @@
     right: auto;
 }
 
-.sb-side-panel__header {
-    position: relative;
-}
-
-.sb-side-panel__menu-item:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sb-side-panel__menu {
-    position: absolute;
-    z-index: var(--sb-z-dropdown, 100);
-    top: calc(100% - 2px);
-    right: 48px;
-    min-width: 190px;
-    padding: 4px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-overlay);
-    color: inherit;
-    background: var(--sb-layer-drawer, var(--SmartThemeBlurTintColor));
-    box-shadow: var(--sb-shadow-popover);
-}
-
-.sb-side-panel__menu[hidden] {
-    display: none !important;
-}
-
-.sb-side-panel__menu-item {
-    display: flex;
-    width: 100%;
-    min-height: 44px;
-    align-items: center;
-    padding: 0 12px;
-    border: 0;
-    border-radius: var(--sb-radius-control);
-    color: inherit;
-    text-align: start;
-    background: transparent;
-    cursor: pointer;
-}
-
-@media (hover: hover) {
-    .sb-side-panel__menu-item:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-    }
-}
-
-.sb-side-panel__menu-item:active {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-}
-
 .sb-side-panel__body {
     display: flex;
     flex-direction: column;
@@ -241,6 +190,14 @@
 .sb-side-panel[data-sb-side-panel-id='logprobsViewer'] #logprobs_generation_output {
     flex: 1 1 auto;
     min-height: 0;
+}
+
+/* The token view breaks anywhere because its tokens are runs of characters; its notice is prose and breaks between words. */
+.sb-side-panel[data-sb-side-panel-id='logprobsViewer'] .logprobs_empty_state {
+    word-break: normal;
+    overflow-wrap: break-word;
+    opacity: 1;
+    color: var(--sb-muted-fg);
 }
 
 .sb-side-panel__content > #logprobsViewer {

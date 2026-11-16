@@ -174,9 +174,12 @@ for (const viewport of VIEWPORTS) {
         }
 
         await panel.locator('.sb-side-panel__menu-trigger').click();
-        await expect(panel.locator('.sb-side-panel__menu-item')).toBeVisible();
-        await expect(panel.getByRole('menuitem', { name: 'Move to Other Side', exact: true })).toBeVisible();
-        await panel.locator('.sb-side-panel__menu-item').click();
+        // The menu is the shared action menu: a popover beside the trigger on a wide window, a bottom sheet under the overlay breakpoint.
+        const menuForm = viewport.width <= 450 || viewport.height <= 360 ? '.sb-action-sheet' : '.sb-action-popover';
+        await expect(page.locator(menuForm)).toBeVisible();
+        const moveItem = page.getByRole('menuitem', { name: 'Move to Other Side', exact: true });
+        await expect(moveItem).toBeVisible();
+        await moveItem.click();
         const sideState = await page.evaluate(async () => {
             const module = await import('/scripts/power-user.js');
             return module.power_user.movingUIState['qa-side-panel'];
@@ -277,10 +280,11 @@ test('Escape follows dialog, menu, text-input and panel priority with multiple p
     await expect(rightPanel).toBeVisible();
 
     await rightPanel.locator('.sb-side-panel__menu-trigger').click();
-    await expect(rightPanel.locator('.sb-side-panel__menu')).toBeVisible();
+    await expect(page.locator('.sb-action-popover')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(rightPanel.locator('.sb-side-panel__menu')).toBeHidden();
+    await expect(page.locator('.sb-action-popover')).toHaveCount(0);
     await expect(rightPanel).toBeVisible();
+    await expect(rightPanel.locator('.sb-side-panel__menu-trigger')).toBeFocused();
 
     await page.evaluate(() => {
         const dialog = document.createElement('dialog');
@@ -319,6 +323,53 @@ async function registerQaPanel(page, id, label) {
         });
     }, { panelId: id, panelLabel: label });
 }
+
+test('F9 hides the open panels and brings the same ones back, and leaves an open dialog alone', async ({ page }) => {
+    await boot(page, { width: 1440, height: 900 });
+    await registerQaPanel(page, 'qa-f9-first', 'F9 first');
+    await registerQaPanel(page, 'qa-f9-second', 'F9 second');
+    const first = page.locator('.sb-side-panel[data-sb-side-panel-id="qa-f9-first"]');
+    const second = page.locator('.sb-side-panel[data-sb-side-panel-id="qa-f9-second"]');
+
+    // Nothing is open and nothing was hidden by the key, so there is no panel to bring back.
+    await page.keyboard.press('F9');
+    await expect(first).toBeHidden();
+    await expect(second).toBeHidden();
+
+    await page.evaluate(async () => {
+        await window.SillyBunnySidePanels.openSidePanel('qa-f9-first');
+        await window.SillyBunnySidePanels.openSidePanel('qa-f9-second');
+    });
+    await expect(first).toBeVisible();
+    await expect(second).toBeVisible();
+
+    await page.evaluate(() => {
+        const dialog = document.createElement('dialog');
+        dialog.id = 'qa-f9-dialog';
+        dialog.textContent = 'Dialog over panels';
+        document.body.append(dialog);
+        dialog.showModal();
+    });
+    await page.keyboard.press('F9');
+    await expect(first).toBeVisible();
+    await expect(second).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#qa-f9-dialog')).toHaveJSProperty('open', false);
+
+    await page.keyboard.press('F9');
+    await expect(first).toBeHidden();
+    await expect(second).toBeHidden();
+    await expect(page.locator('body')).not.toHaveClass(/sb-has-docked-panel/);
+
+    await page.keyboard.press('F9');
+    await expect(first).toBeVisible();
+    await expect(second).toBeVisible();
+    // The panel that was opened last is still the one that Escape closes first.
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('Escape');
+    await expect(second).toBeHidden();
+    await expect(first).toBeVisible();
+});
 
 test('a pointer drag on a docked panel header does not move the panel or cancel pointerdown', async ({ page }) => {
     await boot(page, { width: 1440, height: 900 });
