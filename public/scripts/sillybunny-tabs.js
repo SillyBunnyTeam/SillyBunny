@@ -760,7 +760,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-editor-shell.css?v=20261117h', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261116z', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261117a', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261117i', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },

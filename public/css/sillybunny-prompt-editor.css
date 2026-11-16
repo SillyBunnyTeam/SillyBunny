@@ -301,8 +301,10 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     width: var(--sb-prompt-switch-width);
 }
 
+/* A prompt row holds a grip, a switch and a menu, so a narrow sidebar tightens it; a template row has none of them and keeps the
+   shared padding and gap. */
 @container sb-list-editor-sidebar (width < 440px) {
-    .sb-prompt-row {
+    .sb-prompt-row:not(.sb-prompt-row--template) {
         gap: 6px;
         padding-inline: 4px;
     }
@@ -356,16 +358,21 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     text-overflow: ellipsis;
 }
 
-#sb-settings-page .sb-prompt-editor .sb-prompt-title:read-only {
-    border: 0;
-    background: transparent;
-    outline: none;
-    box-shadow: none;
+/* The name of a template or a marker is the page's title: the shared title, which takes the room the field would, and a ring only
+   when the keyboard has put the focus on it. */
+#sb-settings-page .sb-prompt-editor .sb-prompt-title:not(input) {
+    display: block;
+    height: auto;
+    min-height: 0;
+    padding-block: 0;
+    overflow: hidden;
+    line-height: 1.3;
     cursor: default;
 }
 
-#sb-settings-page .sb-prompt-editor .sb-prompt-title:read-only:focus-visible {
-    color: var(--sb-accent);
+#sb-settings-page .sb-prompt-editor .sb-prompt-title:not(input):focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-mode-toggle {
@@ -393,17 +400,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-property > span {
     color: var(--sb-muted-fg);
-}
-
-#sb-settings-page .sb-prompt-editor .sb-prompt-tc-properties select {
-    min-width: 100px;
-    min-height: 36px;
-    margin: 0;
-    padding: 4px 8px;
-    border: 1px solid transparent;
-    border-radius: var(--sb-radius-control);
-    background: var(--sb-raised-bg);
-    color: inherit;
 }
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-dropdown,
@@ -469,17 +465,24 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     font-size: calc(var(--mainFontSize) * 0.8);
 }
 
+/* A template has several fields. They share the height equally, none smaller than its label row and three lines; when they
+   do not fit, the body scrolls. */
+.sb-prompt-content--fields {
+    gap: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.sb-prompt-content--fields > .sb-prompt-tc-field {
+    min-height: auto;
+}
+
 #sb-settings-page .sb-prompt-editor .sb-prompt-textarea.sb-prompt-tc-textarea {
     min-height: 3lh !important;
 }
 
 .sb-prompt-content-field.is-disabled .sb-prompt-tc-textarea {
     color: var(--sb-muted-fg);
-}
-
-.sb-prompt-tc-toggle {
-    flex: none;
-    min-height: 36px;
 }
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-textarea {
@@ -617,7 +620,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-:is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) :is(input:not([type='checkbox']):not([type='radio']):not(.sb-prompt-title:read-only):not(.sb-prompt-search), textarea):is(:focus, :focus-visible) {
+:is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) :is(input:not([type='checkbox']):not([type='radio']):not(.sb-prompt-search), textarea):is(:focus, :focus-visible) {
     outline: none;
     border-color: var(--sb-composer-focus-border) !important;
     box-shadow: var(--sb-composer-focus-ring) !important;
@@ -696,9 +699,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 @media (pointer: coarse) {
     #sb-settings-page .sb-prompt-editor .menu_button,
-    #sb-settings-page .sb-prompt-editor .sb-prompt-title,
-    #sb-settings-page .sb-prompt-editor .sb-prompt-tc-properties select,
-    .sb-prompt-tc-toggle {
+    #sb-settings-page .sb-prompt-editor .sb-prompt-title {
         min-height: 44px;
     }
 

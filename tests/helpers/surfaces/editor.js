@@ -325,6 +325,7 @@ async function openPromptDetail(page) {
 const TEMPLATES = {
     row: '.sb-prompt-row[data-prompt-id="tc-user"]',
     story: '.sb-prompt-row[data-prompt-id="context_story_string"]',
+    system: '.sb-prompt-row[data-prompt-id="tc-system"]',
     textarea: '.sb-prompt-detail .sb-prompt-tc-textarea',
 };
 
@@ -762,6 +763,12 @@ export const surfaces = [
                 ready: '.sb-prompt-detail :is(.sb-prompt-tc-properties, .sb-prompt-property-summary):visible',
                 open: page => openTemplateDetail(page, TEMPLATES.story),
             },
+            {
+                // The one template with a yes-or-no setting, which sits in the property bar.
+                id: 'system-template',
+                ready: '.sb-prompt-detail :is(.sb-prompt-tc-properties .sb-switch, .sb-prompt-property-summary):visible',
+                open: page => openTemplateDetail(page, TEMPLATES.system),
+            },
             dirtyState({ make: page => appendToField(page, TEMPLATES.textarea), dirty: PROMPT.dirty }),
             leaveState({
                 make: page => appendToField(page, TEMPLATES.textarea),
@@ -769,6 +776,7 @@ export const surfaces = [
                 leave: page => leaveDirtyDetail(page, { back: PROMPT.back, otherRow: '.sb-prompt-row:not([data-prompt-id="tc-user"])' }),
             }),
         ],
+        masks: ['.sb-prompt-detail .sb-prompt-tokens', '.sb-prompt-detail .sb-editor-tokens--row'],
         backends: ['text-completion'],
         needs: [],
         sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, `${CSS}/sillybunny-prompt-editor.css`],

@@ -225,7 +225,12 @@ describe('Prompt editor header', () => {
         const column = await mountEditor();
         const detail = await openPrompt(column, 'marker');
         expect(detail.querySelector('.sb-prompt-save').disabled).toBe(true);
-        expect(detail.querySelector('.sb-prompt-title').readOnly).toBe(true);
+        // A name that cannot change is the page's title, not a locked field.
+        const title = detail.querySelector('.sb-prompt-title');
+        expect(title.tagName).toBe('SPAN');
+        expect(title.classList.contains('sb-editor-title')).toBe(true);
+        expect(title.textContent).toBe('Chat History');
+        expect(title.id).toBe('sb-prompt-form_name');
     });
 
     test('a new prompt can be saved before its first edit', async () => {

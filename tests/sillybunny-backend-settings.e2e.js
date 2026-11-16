@@ -967,8 +967,40 @@ test('Text Completions templates use the shared editor and guard backend and pre
     await dispatchChange('#main_api', 'textgenerationwebui');
     await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveText('Prompt templates');
     await editor.locator('[data-prompt-id="context_story_string"] .sb-prompt-row-name').click();
-    await expect(detail.locator('.sb-prompt-tc-properties select')).toHaveCount(2);
+    await expect(detail.locator('.sb-prompt-tc-properties .sb-prompt-dropdown')).toHaveCount(2);
     await expect(detail.locator('.sb-prompt-tc-properties input[type="number"]')).toHaveCount(1);
+});
+
+test('Text Completions template fields expand and write back to the draft, under the shared title, label rows and count', async ({ page, baseURL }) => {
+    test.setTimeout(120000);
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'textgenerationwebui', 'ooba');
+    const editor = await openPanel(page, 'editor');
+    await editor.locator('[data-prompt-id="tc-user"] .sb-prompt-row-name').click();
+    const detail = editor.locator('.sb-prompt-detail');
+
+    // The name is the page's title, the fields have the shared label row with Expand, and there is no footer or switch row.
+    await expect(detail.locator('.sb-prompt-title')).toHaveText('User');
+    await expect(detail.locator('.sb-prompt-content-field .sb-editor-label-row .editor_maximize')).toHaveCount(4);
+    await expect(detail.locator('.sb-prompt-footer')).toHaveCount(0);
+    await expect(detail.getByRole('button', { name: 'Expand the editor' }).first()).toHaveAccessibleDescription('User Message Prefix');
+    await expect(detail.locator('.sb-prompt-detail-header .sb-prompt-tokens')).toBeVisible();
+
+    const suffix = detail.locator('#sb-prompt-tc-instruct_input_suffix');
+    const originalSuffix = await page.locator('#instruct_input_suffix').inputValue();
+    await suffix.locator('xpath=ancestor::*[contains(@class, "sb-prompt-content-field")][1]').locator('.editor_maximize').click();
+    const dialog = page.locator('dialog.popup[open]');
+    await expect(dialog.locator('.maximized_textarea')).toBeVisible();
+    await expect(dialog.getByText('User Message Suffix', { exact: true })).toBeVisible();
+    await dialog.locator('.maximized_textarea').fill('Written in the expanded editor');
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(suffix).toHaveValue('Written in the expanded editor');
+    await expect(detail.locator('.sb-prompt-dirty')).toBeVisible();
+    await expect(page.locator('#instruct_input_suffix')).toHaveValue(originalSuffix);
+
+    await detail.locator('.sb-prompt-cancel').click();
+    await expect(suffix).toHaveValue(originalSuffix);
 });
 
 test('Native sampler expanders reveal search results and preserve switch and counter interactions', async ({ page, baseURL }) => {

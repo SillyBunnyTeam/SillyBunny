@@ -306,7 +306,7 @@ export function initializePromptEditor(column) {
 
     function knownTextCompletionCount(entry) {
         const content = textCompletionContent(entry);
-        return content ? contentCounts.get(content) ?? '-' : '';
+        return content ? contentCounts.get(content) ?? '-' : '-';
     }
 
     function run(action) {
@@ -465,6 +465,13 @@ export function initializePromptEditor(column) {
         return `${capitalized(prompt.role ?? 'system')} · ${position}${prompt.injection_trigger?.length ? ` · ${prompt.injection_trigger.map(capitalized).join(', ')}` : ''}`;
     }
 
+    // A template has no switch, so a template that is not in use (its instruct or system prompt mode is off) says so in words,
+    // as a marker names its source.
+    function templateSubtitle(prompt, preview, textCompletion) {
+        const text = preview.replace(/\s+/g, ' ').slice(0, 100) || '—';
+        return textCompletion && prompt.disabled ? `${t`Disabled`} · ${text}` : text;
+    }
+
     function makeRow(prompt, orderEntry = null, available = false, utility = false) {
         const textCompletion = textCompletionView();
         const id = textCompletion ? prompt.id : prompt.identifier;
@@ -474,9 +481,8 @@ export function initializePromptEditor(column) {
             : utility ? model.readUtility(id) : describe(prompt);
         const glyph = icon(textCompletion ? 'align-left' : utility ? 'file-lines' : prompt.runtime ? 'robot' : prompt.marker ? 'thumbtack' : Number(prompt.injection_position) === 1 ? 'syringe' : prompt.role === 'system' ? 'gear' : 'comment');
         const badges = [];
-        if (textCompletion) {
-            if (textCompletionContent(prompt)) badges.push(element('span', 'sb-prompt-token', String(knownTextCompletionCount(prompt))));
-        } else if (!utility) badges.push(element('span', 'sb-prompt-token', String(knownCount(prompt))));
+        if (textCompletion) badges.push(element('span', 'sb-prompt-token', String(knownTextCompletionCount(prompt))));
+        else if (!utility) badges.push(element('span', 'sb-prompt-token', String(knownCount(prompt))));
         const suffix = [];
         if (orderEntry) {
             const control = switchControl(t`Enable ${prompt.name}`, orderEntry.enabled, () => {
@@ -494,7 +500,7 @@ export function initializePromptEditor(column) {
         }));
         if (!prompt.runtime) {
             const more = rowButton(t`Actions for ${nameText}`, 'ellipsis-vertical', trigger => textCompletion
-                ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openTextCompletion(prompt))]])
+                ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openTextCompletion(prompt)), menuItem(t`Preview`, 'eye', () => openTextCompletion(prompt, 'preview'))]])
                 : utility
                     ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openUtility(prompt)), model.canRestoreUtility(id) && menuItem(t`Restore default`, 'rotate-left', () => restoreUtility(id))]])
                     : promptMenu(trigger, prompt, available), 'sb-prompt-row-menu');
@@ -514,11 +520,11 @@ export function initializePromptEditor(column) {
             label: nameText,
             avatar: glyph,
             grip: Boolean(orderEntry || prompt.runtime),
-            subtitle: textCompletion || utility ? preview.replace(/\s+/g, ' ').slice(0, 100) || '—' : preview,
+            subtitle: textCompletion || utility ? templateSubtitle(prompt, preview, textCompletion) : preview,
             badges,
             suffix,
             activation: 'activate',
-            compatClasses: { row: ['sb-prompt-row'], title: ['sb-prompt-row-name'], subtitle: ['sb-prompt-row-subtitle'], text: ['sb-prompt-row-text'] },
+            compatClasses: { row: textCompletion ? ['sb-prompt-row', 'sb-prompt-row--template'] : ['sb-prompt-row'], title: ['sb-prompt-row-name'], subtitle: ['sb-prompt-row-subtitle'], text: ['sb-prompt-row-text'] },
             attributes: { 'data-prompt-id': String(id), 'data-prompt-bulk': utility || prompt.runtime || textCompletion ? 'false' : null },
         });
         const row = entity.row;
@@ -901,7 +907,7 @@ export function initializePromptEditor(column) {
 
     function markDirty() {
         session.changed({ immediate: true });
-        if (kind !== 'text-completion') scheduleTokens();
+        scheduleTokens();
     }
 
     // Presents the dirty state in the header; the session calls it after every change of the baseline or the draft.
@@ -923,10 +929,10 @@ export function initializePromptEditor(column) {
         await openDraft({ ...prompt, content: model.readUtility(prompt.identifier) }, 'utility', 'edit');
     }
 
-    async function openTextCompletion(entry) {
-        if (draft?.identifier === entry.identifier && kind === 'text-completion') return closeEditor();
+    async function openTextCompletion(entry, requestedMode = null) {
+        if (draft?.identifier === entry.identifier && kind === 'text-completion' && requestedMode === null) return closeEditor();
         if (!(await allowLeave())) return;
-        await openDraft(model.readTextCompletionEntry(entry.identifier), 'text-completion', 'edit');
+        await openDraft(model.readTextCompletionEntry(entry.identifier), 'text-completion', requestedMode ?? 'edit');
     }
 
     async function restoreUtility(identifier) {
@@ -990,22 +996,26 @@ export function initializePromptEditor(column) {
         document.querySelectorAll('.sb-action-menu, .sb-action-sheet, .sb-action-popover').forEach(node => node.dataset.sbPromptMenu = 'true');
     }
 
-    function roleControl() {
-        const choices = [['system', t`System`], ['user', t`User`], ['assistant', t`Assistant`]];
-        const current = () => draft.role ?? 'system';
-        const label = element('span', '', choices.find(([value]) => value === current())[1]);
-        const trigger = button(t`Role`, null, () => {
+    // A property that is one choice of a few: a button that shows the choice and opens a menu of radio items. With `nameWithChoice`
+    // the button's accessible name holds the text it shows ("Position: Default"), as WCAG 2.5.3 asks.
+    function choiceControl(name, choices, current, choose, { nameWithChoice = false } = {}) {
+        const label = element('span', '', choices.find(([value]) => value === current())?.[1] ?? '');
+        const showChoice = text => {
+            label.textContent = text;
+            if (nameWithChoice) trigger.setAttribute('aria-label', `${name}: ${text}`);
+        };
+        const trigger = button(name, null, () => {
             openActionMenu({
                 trigger,
-                title: t`Role`,
+                title: name,
                 sections: [{
                     items: choices.map(([value, text]) => ({
                         label: text,
                         kind: 'radio',
                         checked: value === current(),
                         onSelect: () => {
-                            draft.role = value;
-                            label.textContent = text;
+                            showChoice(text);
+                            choose(value);
                             markDirty();
                             refreshSummary();
                         },
@@ -1015,6 +1025,7 @@ export function initializePromptEditor(column) {
             markPromptMenus();
         }, 'sb-prompt-dropdown');
         trigger.replaceChildren(label, icon('chevron-down'));
+        if (nameWithChoice) showChoice(label.textContent);
         trigger.setAttribute('aria-haspopup', 'menu');
         trigger.setAttribute('aria-expanded', 'false');
         trigger.addEventListener('keydown', event => {
@@ -1023,6 +1034,10 @@ export function initializePromptEditor(column) {
             trigger.click();
         });
         return trigger;
+    }
+
+    function roleControl() {
+        return choiceControl(t`Role`, [['system', t`System`], ['user', t`User`], ['assistant', t`Assistant`]], () => draft.role ?? 'system', value => { draft.role = value; });
     }
 
     function triggerSummary() {
@@ -1095,34 +1110,35 @@ export function initializePromptEditor(column) {
         return props;
     }
 
+    // The yes-or-no settings of a template (System same as User) sit in the property bar, as Forbid overrides does for a prompt.
+    const textCompletionSwitches = () => (draft.fields ?? []).filter(field => typeof draft.values[field.id] === 'boolean');
+
+    // A template that follows the user template shows the fields it copies as read-only.
+    function syncFollowedFields(follows) {
+        for (const relatedId of ['instruct_system_sequence', 'instruct_system_suffix']) {
+            const related = editor.querySelector(`[data-tc-field="${relatedId}"]`);
+            if (!related) continue;
+            related.readOnly = follows;
+            related.closest('.sb-prompt-content-field')?.classList.toggle('is-disabled', follows);
+        }
+    }
+
+    function textCompletionChoices(descriptor) {
+        const source = document.getElementById(descriptor.id);
+        return source instanceof HTMLSelectElement ? [...source.options].map(option => [option.value, option.textContent]) : [];
+    }
+
     function textCompletionProperties() {
         const props = element('div', 'sb-prompt-properties sb-prompt-tc-properties');
-        if (!draft.properties?.length) return props;
-        for (const descriptor of draft.properties) {
+        for (const descriptor of draft.properties ?? []) {
             const label = translate(descriptor.name);
-            const value = draft.propertyValues[descriptor.id];
             let control;
             if (descriptor.id === 'context_story_string_position' || descriptor.id === 'context_story_string_role') {
-                const source = document.getElementById(descriptor.id);
-                control = element('select');
-                if (source instanceof HTMLSelectElement) {
-                    for (const option of source.options) {
-                        const copy = element('option', '', option.textContent);
-                        copy.value = option.value;
-                        copy.selected = option.value === String(value);
-                        control.append(copy);
-                    }
-                }
-                control.setAttribute('aria-label', label);
-                control.addEventListener('change', () => {
-                    draft.propertyValues[descriptor.id] = control.value;
-                    markDirty();
-                    refreshSummary();
-                });
+                control = choiceControl(label, textCompletionChoices(descriptor), () => String(draft.propertyValues[descriptor.id]), value => { draft.propertyValues[descriptor.id] = value; }, { nameWithChoice: true });
             } else {
                 control = element('input');
                 control.type = 'number';
-                control.value = value ?? '';
+                control.value = draft.propertyValues[descriptor.id] ?? '';
                 control.setAttribute('aria-label', label);
                 control.addEventListener('input', () => {
                     if (!Number.isFinite(control.valueAsNumber)) return;
@@ -1133,16 +1149,34 @@ export function initializePromptEditor(column) {
             }
             props.append(property(label, control));
         }
+        for (const field of textCompletionSwitches()) {
+            const label = translate(field.name);
+            props.append(property(label, switchControl(label, draft.values[field.id], checked => {
+                draft.values[field.id] = checked;
+                syncFollowedFields(checked);
+                markDirty();
+                refreshSummary();
+            })));
+        }
         return props;
+    }
+
+    function textCompletionSummary() {
+        const parts = [];
+        for (const descriptor of draft.properties ?? []) {
+            const value = draft.propertyValues[descriptor.id];
+            const choice = textCompletionChoices(descriptor).find(([optionValue]) => optionValue === String(value));
+            parts.push(`${translate(descriptor.name)}: ${choice?.[1] ?? value}`);
+        }
+        for (const field of textCompletionSwitches()) parts.push(`${translate(field.name)}: ${draft.values[field.id] ? t`On` : t`Off`}`);
+        return parts.join(' · ');
     }
 
     function refreshSummary() {
         const summary = editor.querySelector('.sb-prompt-property-summary');
         if (!summary) return;
         if (kind === 'text-completion') {
-            const position = draft.propertyValues.context_story_string_position;
-            const depth = draft.propertyValues.context_story_string_depth;
-            setSummaryText(summary, t`Prompt properties`, `${t`Story string`} · ${t`Position`} ${position} · ${t`Depth`} ${depth} ›`);
+            setSummaryText(summary, t`Prompt properties`, `${textCompletionSummary()} ›`);
             return;
         }
         setSummaryText(summary, t`Prompt properties`, `${capitalized(draft.role ?? 'system')} · ${Number(draft.injection_position) === 1 ? `${t`In-chat`} @ ${draft.injection_depth ?? 4}` : t`Relative`} · ${triggerSummary()} ›`);
@@ -1221,22 +1255,25 @@ export function initializePromptEditor(column) {
     }
 
     function knownTokens() {
-        if (kind === 'text-completion') return null;
-        const total = tokenCount ?? state.counts?.[draft.identifier];
+        const total = tokenCount ?? (kind === 'text-completion' ? contentCounts.get(textCompletionContent(draft)) : state.counts?.[draft.identifier]);
         return total === undefined || total === null ? null : { total };
     }
 
-    // The label row of the content field: its name, with Expand at the inline end while the field can be edited.
-    function contentField(textarea, body) {
+    // The label row of a text field: its name, with Expand at the inline end while the field can be edited. A prompt has one
+    // such field, its content; a template has one for each of its sequences.
+    function contentField(textarea, body, name = t`Prompt content`) {
         const field = element('div', 'sb-prompt-content-field');
         const labelRow = element('div', 'sb-prompt-label-row ds-row-textarea__label-row sb-editor-label-row');
-        const label = element(textarea ? 'label' : 'span', 'sb-prompt-field-label ds-row-textarea__label', t`Prompt content`);
+        const label = element(textarea ? 'label' : 'span', 'sb-prompt-field-label ds-row-textarea__label', name);
         if (textarea) label.htmlFor = textarea.id;
         labelRow.append(label);
         field.append(labelRow, body);
         if (textarea) {
             const expand = headerIconButton(t`Expand the editor`, 'maximize', 'editor_maximize ds-row-textarea__expand sb-prompt-expand');
             expand.dataset.for = textarea.id;
+            // A template has several Expand buttons; the field's name tells them apart.
+            label.id = `${textarea.id}-label`;
+            expand.setAttribute('aria-describedby', label.id);
             attachToLabelRow(field, expand);
         }
         return field;
@@ -1251,12 +1288,18 @@ export function initializePromptEditor(column) {
         editor.replaceChildren();
         const header = element('header', 'sb-editor-header sb-prompt-detail-header');
         const back = headerIconButton(t`Back to prompt list`, 'chevron-left', 'sb-prompt-back');
-        const title = element('input', 'sb-prompt-title');
+        let title;
+        if (kind === 'prompt' && model.permissions(draft).rename) {
+            title = element('input', 'sb-prompt-title');
+            title.value = draft.name;
+            title.setAttribute('aria-label', t`Prompt name`);
+            title.addEventListener('input', () => { draft.name = title.value; markDirty(); });
+        } else {
+            // A name that cannot change is the title of the page, not a locked field. It takes the focus when the page opens.
+            title = element('span', 'sb-prompt-title sb-editor-title', draft.name);
+            title.tabIndex = -1;
+        }
         title.id = 'sb-prompt-form_name';
-        title.value = draft.name;
-        title.readOnly = kind !== 'prompt' || !model.permissions(draft).rename;
-        title.setAttribute('aria-label', t`Prompt name`);
-        title.addEventListener('input', () => { draft.name = title.value; markDirty(); });
         const dirtyMark = createDirtyMark('sb-prompt-dirty');
         // A header rebuilt over unsaved edits shows its mark at once instead of animating it in again.
         dirtyMark.hidden = !dirty();
@@ -1278,7 +1321,8 @@ export function initializePromptEditor(column) {
         header.append(back, title, dirtyMark, modes, modeToggle, cancel, saveButton);
         editor.append(header);
         const permission = kind === 'prompt' ? model.permissions(draft) : {};
-        const hasProperties = (kind === 'prompt' && permission.edit || kind === 'text-completion' && draft.properties?.length) && mode !== 'inspect';
+        const templateProperties = kind === 'text-completion' && (draft.properties?.length || textCompletionSwitches().length);
+        const hasProperties = (kind === 'prompt' && permission.edit || templateProperties) && mode !== 'inspect';
         // The phone count sits in the row of the property summary; an item without properties keeps the row for it alone.
         let summaryRow = null;
         if (hasProperties) {
@@ -1286,11 +1330,11 @@ export function initializePromptEditor(column) {
             summaryRow = createSummaryRow(summary);
             editor.append(summaryRow, properties());
             refreshSummary();
-        } else if (kind !== 'text-completion') {
+        } else {
             summaryRow = createSummaryRow();
             editor.append(summaryRow);
         }
-        const content = element('div', 'sb-prompt-content');
+        const content = element('div', kind === 'text-completion' ? 'sb-prompt-content sb-prompt-content--fields' : 'sb-prompt-content');
         if (mode === 'inspect') {
             const messages = model.inspect(draft.identifier);
             const block = element('div', 'sb-prompt-preview');
@@ -1310,41 +1354,31 @@ export function initializePromptEditor(column) {
             for (const field of draft.fields) {
                 const label = translate(field.name);
                 const value = draft.values[field.id];
-                if (typeof value === 'boolean') {
-                    const row = property(label, switchControl(label, value, checked => {
-                        draft.values[field.id] = checked;
-                        markDirty();
-                        for (const relatedId of ['instruct_system_sequence', 'instruct_system_suffix']) {
-                            const related = content.querySelector(`[data-tc-field="${relatedId}"]`);
-                            if (related) {
-                                related.readOnly = checked;
-                                related.closest('.sb-prompt-content-field')?.classList.toggle('is-disabled', checked);
-                            }
-                        }
-                    }));
-                    row.classList.add('sb-prompt-tc-toggle');
-                    content.append(row);
-                    continue;
-                }
-                const fieldNode = element('label', 'sb-prompt-content-field sb-prompt-tc-field');
-                fieldNode.append(element('span', 'sb-prompt-field-label', label));
+                if (typeof value === 'boolean') continue;
+                let fieldNode;
                 if (mode === 'preview') {
-                    fieldNode.append(element('pre', 'sb-prompt-preview', String(value ?? '') || '—'));
+                    const block = element('pre', 'sb-prompt-preview', String(value ?? '') || '—');
+                    block.tabIndex = 0;
+                    fieldNode = contentField(null, block, label);
                 } else {
                     const textarea = element('textarea', 'sb-prompt-textarea sb-prompt-tc-textarea');
+                    // The expanded editor finds the field by this id; the legacy fields of the same names keep theirs.
+                    textarea.id = `sb-prompt-tc-${field.id}`;
                     textarea.value = value ?? '';
                     textarea.dataset.tcField = field.id;
                     textarea.setAttribute('aria-label', label);
                     textarea.spellcheck = false;
                     const followsUser = ['instruct_system_sequence', 'instruct_system_suffix'].includes(field.id) && Boolean(draft.values.instruct_system_same_as_user);
                     textarea.readOnly = followsUser;
-                    fieldNode.classList.toggle('is-disabled', followsUser);
-                    textarea.addEventListener('input', () => {
+                    // The expanded editor writes back with jQuery .trigger('input'), which native listeners do not hear.
+                    $(textarea).on('input', () => {
                         draft.values[field.id] = textarea.value;
                         markDirty();
                     });
-                    fieldNode.append(textarea);
+                    fieldNode = contentField(textarea, textarea, label);
+                    fieldNode.classList.toggle('is-disabled', followsUser);
                 }
+                fieldNode.classList.add('sb-prompt-tc-field');
                 content.append(fieldNode);
             }
         } else {
@@ -1361,13 +1395,12 @@ export function initializePromptEditor(column) {
         }
         editor.append(content);
         const footer = element('footer', 'sb-prompt-footer');
-        if (kind === 'text-completion' && draft.disabled) footer.append(element('span', '', t`Disabled`));
         if (state.sources?.[draft.identifier]) footer.append(element('span', '', `${t`Source`}: ${state.sources[draft.identifier]}`));
         if (footer.childElementCount) editor.append(footer);
         chrome = mountEditorChrome({
             root: editor, header, content,
             controls: { back, title, dirty: dirtyMark, more, modes: [modes, modeToggle], cancel, save: saveButton },
-            tokens: summaryRow && kind !== 'text-completion' ? { element: readout, row: { host: summaryRow } } : null,
+            tokens: summaryRow ? { element: readout, row: { host: summaryRow } } : null,
             itemMenuLabel: t`Prompt Actions`,
             onBack: () => { void closeEditor(); },
             onCancel: cancelEdits,
@@ -1385,13 +1418,12 @@ export function initializePromptEditor(column) {
 
     function scheduleTokens() {
         clearTimeout(tokenTimer);
-        if (kind === 'text-completion') return;
         const request = ++tokenRequest;
         tokenTimer = setTimeout(async () => {
             if (!draft || draft.marker) return;
             if (shell.isNavigating) { scheduleTokens(); return; }
             try {
-                const count = await countContent(draft.content || '');
+                const count = await countContent(kind === 'text-completion' ? textCompletionContent(draft) : draft.content || '');
                 if (request !== tokenRequest || !draft) return;
                 tokenCount = count;
             } catch {
@@ -1527,7 +1559,7 @@ export function initializePromptEditor(column) {
     Promise.all([
         loadListEditorStyles(),
         window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261117h', { id: 'deferred-entity-list-css' }),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117a', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117i', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));
