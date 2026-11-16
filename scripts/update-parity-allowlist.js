@@ -2,7 +2,7 @@
 
 // Turns the measurements of a parity run into the census files and, with --write, into the allow-list and its ratchet.
 //
-//   SB_PARITY_RECORD=1 SB_CENSUS_DIR=<dir> ~/bin/e2e -w 3 -c playwright.audit.config.js audit/surface-parity.e2e.js
+//   SB_PARITY_RECORD=1 SB_CENSUS_DIR=<dir> SURFACE_CHECKS=parity ~/bin/e2e -w 3 -c playwright.audit.config.js audit/surface-audit.e2e.js
 //   node scripts/update-parity-allowlist.js --census <dir> [--write] [--partial] [--allow-increase]
 //   node scripts/update-parity-allowlist.js --lower [--allow-increase]
 //

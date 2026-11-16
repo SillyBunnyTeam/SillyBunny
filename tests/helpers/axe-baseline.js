@@ -1,5 +1,5 @@
 /**
- * The baseline of the accessibility scan (`audit/surface-axe.e2e.js`): how a violation becomes a record, how the violations of a run
+ * The baseline of the accessibility scan (`audit/surface-audit.e2e.js`): how a violation becomes a record, how the violations of a run
  * are compared with the fixture `fixtures/axe-baseline.json`, and how the fixture is updated. Nothing here imports Playwright, so the
  * unit tests load it.
  *
@@ -28,7 +28,7 @@ export const DIMENSIONS = Object.freeze(['theme', 'viewport', 'backend']);
 export const UPDATE_VARIABLE = 'SURFACE_AXE_UPDATE';
 export const ALLOW_VARIABLE = 'SURFACE_AXE_ALLOW_SILLYBUNNY';
 export const FIXTURE_VARIABLE = 'SURFACE_AXE_FIXTURE';
-export const UPDATE_COMMAND = `${UPDATE_VARIABLE}=1 SILLYBUNNY_TEST_SERVERS=3 npx playwright test -c playwright.audit.config.js audit/surface-axe.e2e.js (run from tests/)`;
+export const UPDATE_COMMAND = `${UPDATE_VARIABLE}=1 SILLYBUNNY_TEST_SERVERS=3 npx playwright test -c playwright.audit.config.js audit/surface-audit.e2e.js (run from tests/)`;
 export const ALLOW_HINT = `Records may be added to the sillybunny section only with ${ALLOW_VARIABLE}=1 next to ${UPDATE_VARIABLE}=1.`;
 
 /** An id or class that starts with one of these was written for SillyBunny; anything else on the page is upstream's. */
