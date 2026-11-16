@@ -210,7 +210,6 @@ export function mountAgentsPanel(column) {
     // Agents owns three popup implementations; dismiss competitors before opening, not on later focusout.
     const preparePopup = trigger => {
         closePicker({ animate: false, restoreFocus: false });
-        pageController?.closePopover?.(trigger);
         if (!isActionMenuOpen(trigger)) closeActionMenu({ animate: false, restoreFocus: false });
     };
     const showMenu = (trigger, sections, title) => {
@@ -372,7 +371,7 @@ export function mountAgentsPanel(column) {
         }
         let more = actionBar.querySelector('.ica-agents-selection-more');
         if (!more) {
-            more = element('button', 'menu_button ica-agents-selection-more');
+            more = element('button', 'menu_button sb-selection-action ica-agents-selection-more');
             more.type = 'button';
             more.title = t`Selection Menu`;
             more.setAttribute('aria-label', t`Selection Menu`);
@@ -699,7 +698,7 @@ export function mountAgentsPanel(column) {
         root: shell.root, list: body, rowSelector: '.ica-agent-row', keySourceSelector: '.ica-agent-grip',
         getKey: row => getAgentSelectionKey(row.dataset.sbListKey), getAllKeys: () => getAgentSelectionKeys(model),
         header: selectionHeader, actionBar, title: count => t`${count} selected`, selectAllLabel: t`Select All`,
-        canEnter: () => !bulkBusy && !shell.isOpen,
+        canEnter: () => !bulkBusy && !shell.isOpen, iconOnlyAtNarrow: true,
         actions: [
             { id: 'on', label: t`Turn On`, icon: 'fa-solid fa-toggle-on', onActivate: () => run(() => bulkAction('on')) },
             { id: 'off', label: t`Turn Off`, icon: 'fa-solid fa-toggle-off', onActivate: () => run(() => bulkAction('off')) },
@@ -788,8 +787,8 @@ export function mountAgentsPanel(column) {
             // surface already loaded earlier is moved after its predecessor.
             let previous = null;
             for (const href of [
-                'css/sillybunny-persona-detail.css?v=20261116z',
-                'css/sillybunny-prompt-editor.css?v=20261116z',
+                'css/sillybunny-persona-detail.css?v=20261117a',
+                'css/sillybunny-prompt-editor.css?v=20261117a',
                 'scripts/extensions/in-chat-agents/ui/agent-editor.css',
             ]) {
                 let link = document.querySelector(`link[href="${href}"]`);

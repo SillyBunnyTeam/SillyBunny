@@ -18,7 +18,7 @@
 
 import { FIXTURES } from './fixture-data.js';
 import {
-    MENU_ROOT, appendToField, clearOverlays, closePopups, closeSheets, discardEdits, gone, leaveDetail, leaveDirtyDetail, renameInHeader,
+    MENU_ROOT, appendToField, clearOverlays, closePopups, discardEdits, gone, leaveDetail, leaveDirtyDetail, renameInHeader,
     scrollSectionIntoView, scrollToTop, settleOverlay, settled, shown, showPreview,
 } from './editor-steps.js';
 import { expandAll, openCharactersTab, openSettingsTab, selectBackend, settle } from './steps.js';
@@ -380,19 +380,20 @@ async function activateAgentAction(page, label) {
     await page.locator('.sb-action-menu').last().getByRole('menuitem', { name: label, exact: true }).click();
 }
 
-/** Picks a category in the agent's property bar: its drop-down where the bar is shown, and the same drop-down in the summary sheet on a phone. */
+/** Picks a category in the agent's property bar: its drop-down where the bar is shown, and the same drop-down in the properties dialog on a phone. */
 async function chooseAgentCategory(page, label) {
-    const sheet = '.ica-agent-property-sheet';
+    const sheet = '.sb-dialog.ica-agent-properties-dialog';
     const inSheet = await page.locator(`${AGENT.root} .ica-agent-property-summary`).first().isVisible();
     if (inSheet) {
         await page.locator(`${AGENT.root} .ica-agent-property-summary`).first().click();
         await settleOverlay(page, sheet);
     }
     await page.locator(`${inSheet ? sheet : AGENT.root} button[aria-label="Category"]`).click();
-    await page.getByRole('option', { name: label, exact: true }).click();
-    await gone(page, '.sb-prompt-role-list');
+    const menu = page.getByRole('menu', { name: 'Category', exact: true });
+    await menu.getByRole('menuitemradio', { name: label, exact: true }).click();
+    await menu.waitFor({ state: 'hidden' });
     if (inSheet) {
-        await closeSheets(page);
+        await closePopups(page);
     }
 }
 
@@ -796,9 +797,9 @@ export const surfaces = [
             },
             propertiesState({
                 summary: `${AGENT.root} .ica-agent-property-summary`,
-                trigger: `${AGENT.root} .ica-agent-properties button[aria-haspopup="listbox"]`,
-                popover: '.sb-prompt-popover',
-                sheet: '.ica-agent-property-sheet',
+                trigger: `${AGENT.root} .ica-agent-properties .sb-prompt-dropdown`,
+                popover: '.sb-action-popover, .sb-action-sheet:not([hidden])',
+                sheet: '.sb-dialog.ica-agent-properties-dialog',
             }),
             previewState({
                 modes: `${AGENT.root} .sb-persona-entry-modes`,

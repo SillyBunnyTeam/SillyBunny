@@ -55,24 +55,9 @@ export async function closePopups(page) {
     await page.locator('dialog[open]').first().waitFor({ state: 'detached' });
 }
 
-/**
- * Closes a bottom sheet of the prompt and agent property bars. It is a plain element with a scrim, not a `<dialog>`, so
- * `closePopups` does not see it, and its scrim covers the editor's header until it is closed.
- */
-export async function closeSheets(page) {
-    const sheet = page.locator('.sb-prompt-sheet:not([hidden])').first();
-    if (await sheet.count() === 0) {
-        return;
-    }
-    await sheet.locator('.sb-prompt-sheet-header button').first().click();
-    await sheet.waitFor({ state: 'hidden' });
-    await page.locator('.sb-prompt-sheet-backdrop:not([hidden])').first().waitFor({ state: 'hidden' });
-}
-
 /** Puts away everything an earlier state can leave on top of an editor. */
 export async function clearOverlays(page) {
     await closeOverlays(page);
-    await closeSheets(page);
     await closePopups(page);
 }
 

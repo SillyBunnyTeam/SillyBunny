@@ -208,7 +208,7 @@ const SURFACES = [
         async open(page) {
             await page.evaluate(async () => {
                 const { createAgentEditorProperties } = await import('/scripts/extensions/in-chat-agents/ui/agent-editor-properties.js');
-                await window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261116z', { id: 'deferred-prompt-editor-css' });
+                await window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117a', { id: 'deferred-prompt-editor-css' });
                 window.qaSheet = { changes: [] };
                 const properties = createAgentEditorProperties({
                     categories: [['general', 'General']],
@@ -218,12 +218,14 @@ const SURFACES = [
                 properties.render({ category: 'general', phase: 'before', execution: 'sequential', favorite: false }, { fields: {}, disabled: {} });
                 const summary = properties.element.querySelector('.ica-agent-property-summary');
                 summary.id = 'qa-sheet-trigger';
+                // A pointer click focuses the button, and the dialog returns focus to what had it when it opened.
+                summary.focus();
                 summary.click();
             });
             return {
-                sheet: page.locator('.ica-agent-property-sheet'),
-                title: page.locator('.ica-agent-property-sheet .sb-prompt-sheet-header h2'),
-                closeButton: page.locator('.ica-agent-property-sheet .sb-prompt-sheet-header button'),
+                sheet: page.locator('.sb-dialog.ica-agent-properties-dialog'),
+                title: page.locator('.sb-dialog.ica-agent-properties-dialog .sb-dialog__title'),
+                closeButton: page.locator('.sb-dialog.ica-agent-properties-dialog .sb-dialog__close'),
                 unchanged: () => page.evaluate(() => window.qaSheet.changes.length === 0),
             };
         },

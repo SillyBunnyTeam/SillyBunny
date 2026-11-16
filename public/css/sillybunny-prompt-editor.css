@@ -58,18 +58,17 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     --sb-prompt-switch-width: var(--sb-switch-width);
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-sheet-backdrop)[hidden],
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) [hidden] {
+.sb-prompt-editor[hidden],
+.sb-prompt-editor [hidden] {
     display: none !important;
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover) :is(button, input, textarea) {
+.sb-prompt-editor :is(button, input, textarea) {
     font-family: inherit;
     box-sizing: border-box;
 }
 
-#sb-settings-page .sb-prompt-editor .menu_button,
-:is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button {
+#sb-settings-page .sb-prompt-editor .menu_button {
     flex: none;
     width: auto;
     min-height: 38px;
@@ -84,8 +83,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     transition: transform var(--sb-duration-fast) var(--sb-ease-out), background-color var(--sb-transition-fast), color var(--sb-transition-fast), opacity var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-#sb-settings-page .sb-prompt-editor .menu_button_icon,
-:is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button_icon {
+#sb-settings-page .sb-prompt-editor .menu_button_icon {
     display: inline-flex;
     justify-content: center;
     align-items: center;
@@ -276,14 +274,12 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 #sb-settings-page .sb-prompt-editor input.sb-switch,
-.sb-prompt-sheet input.sb-switch,
 .sb-dialog.sb-prompt-properties-dialog input.sb-switch {
     transition: background-color var(--sb-transition-fast), border-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
     transition-timing-function: var(--sb-ease);
 }
 
 #sb-settings-page .sb-prompt-editor input.sb-switch::after,
-.sb-prompt-sheet input.sb-switch::after,
 .sb-dialog.sb-prompt-properties-dialog input.sb-switch::after {
     transition: inset-inline-start var(--sb-transition-fast), background-color var(--sb-transition-fast), opacity var(--sb-transition-fast);
     transition-timing-function: var(--sb-ease);
@@ -411,7 +407,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-dropdown,
-:is(.sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-dropdown {
+.sb-dialog.sb-prompt-properties-dialog .sb-prompt-dropdown {
     display: inline-flex;
     align-items: center;
     justify-content: space-between;
@@ -433,7 +429,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-property input[type='number'],
-:is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-property input[type='number'] {
+.sb-dialog.sb-prompt-properties-dialog .sb-prompt-property input[type='number'] {
     width: 66px;
     min-height: 36px;
     margin: 0;
@@ -603,74 +599,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     box-shadow: var(--sb-shadow-toast);
 }
 
-.sb-prompt-sheet-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: calc(var(--sb-z-modal) - 10);
-    border: 0;
-    background: var(--sb-dialog-backdrop);
-}
-
-.sb-prompt-sheet {
-    position: fixed;
-    inset: auto 0 0;
-    z-index: var(--sb-z-modal);
-    max-height: 80dvh;
-    overflow: auto;
-    display: flex;
-    flex-direction: column;
-    padding: 20px 12px calc(12px + env(safe-area-inset-bottom, 0px));
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
-    background: var(--sb-layer-dialog);
-    color: var(--SmartThemeBodyColor);
-    font-family: var(--mainFontFamily);
-    box-shadow: var(--sb-shadow-dialog);
-}
-
-.sb-prompt-sheet > .sb-dialog__handle {
-    display: block;
-    position: absolute;
-    z-index: 2;
-    inset: 0 50% auto auto;
-    width: 80px;
-    height: 20px;
-    translate: 50% 0;
-    touch-action: none;
-}
-
-.sb-prompt-sheet > .sb-dialog__handle::before {
-    content: '';
-    position: absolute;
-    inset: 8px 19px auto;
-    height: 4px;
-    border-radius: var(--sb-radius-pill);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
-}
-
-.sb-prompt-sheet-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    /* The header starts the swipe-down close, so the browser must not scroll or select under the finger. */
-    -webkit-user-select: none;
-    user-select: none;
-    touch-action: none;
-}
-
-.sb-prompt-sheet-header h2 {
-    margin: 0;
-    font-size: var(--sb-type-title);
-}
-
-.sb-prompt-sheet .sb-prompt-properties {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 0;
-    border: 0;
-    background: transparent;
-}
-
 .sb-dialog.sb-prompt-properties-dialog .sb-prompt-properties {
     flex-direction: column;
     align-items: stretch;
@@ -684,67 +612,18 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     justify-content: space-between;
 }
 
-.sb-prompt-sheet .sb-prompt-property {
-    min-height: 44px;
-    justify-content: space-between;
-}
-
-.sb-prompt-popover {
-    position: fixed;
-    z-index: calc(var(--sb-z-modal) + 1);
-    max-height: min(320px, calc(100dvh - 16px));
-    overflow: auto;
-    padding: 4px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-overlay);
-    background: var(--sb-layer-popover);
-    color: var(--SmartThemeBodyColor);
-    font-family: var(--mainFontFamily);
-    box-shadow: var(--sb-shadow-popover);
-    transform-origin: top left;
-}
-
-.sb-prompt-popover[inert] {
-    pointer-events: none;
-}
-
-.sb-prompt-option {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 40px;
-    padding: 6px 10px;
-    border-radius: var(--sb-radius-control);
-    cursor: pointer;
-    transition: background-color var(--sb-transition-fast);
-}
-
-.sb-prompt-option > i {
-    width: 16px;
-    visibility: hidden;
-}
-
-.sb-prompt-option[aria-selected='true'] > i {
-    visibility: visible;
-    color: var(--sb-accent);
-}
-
-.sb-prompt-option.is-active {
-    background: var(--sb-flat-selected-bg);
-}
-
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) button:focus-visible {
+:is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) button:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) :is(input:not([type='checkbox']):not([type='radio']):not(.sb-prompt-title:read-only):not(.sb-prompt-search), textarea):is(:focus, :focus-visible) {
+:is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) :is(input:not([type='checkbox']):not([type='radio']):not(.sb-prompt-title:read-only):not(.sb-prompt-search), textarea):is(:focus, :focus-visible) {
     outline: none;
     border-color: var(--sb-composer-focus-border) !important;
     box-shadow: var(--sb-composer-focus-ring) !important;
 }
 
-:is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) button:active {
+:is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) button:active {
     transform: scale(0.97);
 }
 
@@ -778,8 +657,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 @media (hover: hover) {
     #sb-settings-page .sb-prompt-editor .menu_button:not(:disabled):hover,
-    :is(.sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) .menu_button:hover,
-    .sb-prompt-option:hover {
+    .sb-dialog.sb-prompt-properties-dialog .menu_button:hover {
         background: var(--sb-flat-hover-bg);
     }
 }
@@ -787,8 +665,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 /* A press shows its own fill. These come after the hover rules and match the resting rules above, which a shared
    :active rule would not outrank. */
 #sb-settings-page .sb-prompt-editor .menu_button:not(:disabled):active,
-:is(.sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) .menu_button:active,
-.sb-prompt-option:active {
+.sb-dialog.sb-prompt-properties-dialog .menu_button:active {
     background: var(--sb-flat-active-bg);
 }
 
@@ -818,9 +695,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 @media (pointer: coarse) {
-    .sb-prompt-option,
     #sb-settings-page .sb-prompt-editor .menu_button,
-    :is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button,
     #sb-settings-page .sb-prompt-editor .sb-prompt-title,
     #sb-settings-page .sb-prompt-editor .sb-prompt-tc-properties select,
     .sb-prompt-tc-toggle {
@@ -829,12 +704,11 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
     /* The base rule for a number field is as specific as these, so these come after it. A switch keeps its own shape. */
     #sb-settings-page .sb-prompt-editor .sb-prompt-property input[type='number'],
-    :is(.sb-prompt-sheet, .sb-dialog.sb-prompt-properties-dialog) .sb-prompt-property input[type='number'] {
+    .sb-dialog.sb-prompt-properties-dialog .sb-prompt-property input[type='number'] {
         min-height: 44px;
     }
 
-    #sb-settings-page .sb-prompt-editor .menu_button_icon,
-    :is(.sb-prompt-sheet, .sb-prompt-popover) .menu_button_icon {
+    #sb-settings-page .sb-prompt-editor .menu_button_icon {
         width: 44px;
         min-width: 44px;
         height: 44px;
@@ -845,17 +719,17 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     }
 }
 
-body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *,
-body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::before,
-body.reduced-motion :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::after {
+body.reduced-motion :is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) *,
+body.reduced-motion :is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) *::before,
+body.reduced-motion :is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) *::after {
     transition: none !important;
     animation: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *,
-    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::before,
-    :is(.sb-prompt-editor, .sb-prompt-sheet, .sb-prompt-popover, .sb-dialog.sb-prompt-properties-dialog) *::after {
+    :is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) *,
+    :is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) *::before,
+    :is(.sb-prompt-editor, .sb-dialog.sb-prompt-properties-dialog) *::after {
         transition: none !important;
         animation: none !important;
     }

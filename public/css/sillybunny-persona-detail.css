@@ -18,17 +18,9 @@
     height: 60px;
     min-height: 60px;
     max-height: 60px;
-    gap: 4px;
-    padding: 6px 8px;
     min-width: 0;
     border-bottom: var(--sb-headerbar-shade);
     background: transparent;
-}
-
-/* The Persona editor's header takes the shared editor header's gap and padding at every width; the agent editor keeps its own. */
-.sb-persona-editor .sb-persona-entry-header {
-    gap: 6px;
-    padding: 6px;
 }
 
 #sb-settings-page .sb-persona-entry .sb-persona-entry-name {
@@ -447,19 +439,7 @@
     }
 }
 
-@container sb-list-editor-detail (width < 440px) {
-    .sb-persona-entry-header {
-        padding-inline: 4px;
-        gap: 2px;
-    }
-}
-
 @media (max-width: 768px) {
-    .sb-persona-entry-header {
-        gap: 2px;
-        padding-inline: 4px;
-    }
-
     #sb-settings-page .sb-persona-entry .sb-persona-entry-name {
         flex: 1 1 0;
         min-width: 56px;

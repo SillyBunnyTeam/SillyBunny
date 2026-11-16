@@ -17,8 +17,6 @@ import {
     seedEditorAgents,
     samplePropertyGeometry,
     sampleDropdownTrigger,
-    samplePropertyPopover,
-    sampleListboxKeyboard,
     waitForEditorApp,
 } from './helpers/in-chat-agents-editor.js';
 
@@ -27,7 +25,6 @@ test.use({
     contextOptions: { reducedMotion: 'reduce' },
 });
 const mounted = new WeakMap();
-const modeRoles = { 1440: 'radio', 390: 'button' };
 
 async function setup(page, baseURL, width) {
     const editor = await openEditorAgents(page, baseURL, width);
@@ -39,13 +36,6 @@ async function screenshot(page, name) {
     await expect(page.locator('.toast-error')).toHaveCount(0);
     await page.mouse.move(1, 1);
     await page.screenshot({ path: test.info().outputPath(`stage3-${name}.png`) });
-}
-
-async function expectActiveOption(listbox, label) {
-    const option = listbox.getByRole('option', { name: label, exact: true });
-    await expect(listbox).toHaveAttribute('aria-activedescendant', await option.getAttribute('id'));
-    await expect(option).toHaveClass('sb-prompt-option is-active');
-    await expect(listbox).toBeFocused();
 }
 
 test('q56 dropdown sweep toggles each trigger closed on its second pointer click', async ({ page, baseURL }, testInfo) => {
@@ -85,7 +75,7 @@ test('q56 dropdown sweep toggles each trigger closed on its second pointer click
             await check(trigger, `${label} row`, row.locator('.ds-row-label'));
         }
         if (id === 'pre') {
-            for (const label of ['Agent Actions', 'Sections', 'Connection Profile', 'Category']) {
+            for (const label of ['Agent Actions', 'Connection Profile', 'Category']) {
                 const trigger = editor.detail.getByRole('button', { name: label, exact: true });
                 await check(trigger, label);
             }
@@ -464,14 +454,18 @@ test('round2 every ordered header popup pair replaces the previous surface', asy
     await editor.root.getByRole('searchbox', { name: 'Search Agents', exact: true }).fill('Editor');
     const activate = locator => locator.evaluate(node => {
         node.click();
-        return document.querySelectorAll('.sb-action-popover:not([hidden]), .sb-prompt-popover:not([inert])').length;
+        return document.querySelectorAll('.sb-action-popover:not([hidden])').length;
     });
     const open = {
         add: () => activate(editor.root.getByRole('button', { name: 'Add Agent', exact: true })),
         listMore: () => activate(editor.root.getByRole('button', { name: 'Agents Menu', exact: true })),
         filter: () => activate(editor.root.getByRole('button', { name: 'Filter Agents', exact: true })),
         more: () => activate(editor.detail.getByRole('button', { name: 'Agent Actions', exact: true })),
-        sections: () => activate(editor.detail.getByRole('button', { name: 'Sections', exact: true })),
+        sections: async () => {
+            const item = page.getByRole('menuitem', { name: 'Sections', exact: true });
+            if (!await item.isVisible()) await editor.detail.getByRole('button', { name: 'Agent Actions', exact: true }).evaluate(node => node.click());
+            return activate(item);
+        },
         category: () => activate(editor.detail.getByRole('button', { name: 'Category', exact: true })),
         picker: async () => {
             if (!await page.getByRole('menuitem', { name: 'New Agent from Template…', exact: true }).isVisible()) await open.add();
@@ -479,7 +473,7 @@ test('round2 every ordered header popup pair replaces the previous surface', asy
             return page.locator('.sb-action-popover:visible').count();
         },
     };
-    const surfaces = page.locator('.sb-action-popover:visible, .sb-picker-popover:visible, .sb-prompt-popover:not([inert]):visible');
+    const surfaces = page.locator('.sb-action-popover:visible, .sb-picker-popover:visible');
     const trace = [];
     for (const first of Object.keys(open)) {
         for (const second of Object.keys(open).filter(name => name !== first)) {
@@ -487,14 +481,14 @@ test('round2 every ordered header popup pair replaces the previous surface', asy
                 (await import('/scripts/sillybunny-action-menu.js')).closeActionMenu({ animate: false });
                 (await import('/scripts/sillybunny-editor/picker.js')).closePicker({ animate: false });
             });
-            const category = editor.detail.getByRole('button', { name: 'Category', exact: true });
-            if (await category.getAttribute('aria-expanded') === 'true') await category.evaluate(node => node.click());
             await open[first]();
             expect.soft(await surfaces.count(), `${first} initial surface`).toBe(1);
             const immediateCount = await open[second]();
             const count = await surfaces.count();
-            // Q56: the template picker and Add menu share their trigger; pressing it again closes both.
-            const expectedCount = Number(first !== 'picker' || second !== 'add');
+            // Q56: the template picker and Add menu share their trigger; pressing it again closes both. The Sections menu
+            // opens from Agent Actions, so pressing Agent Actions while Sections is open closes it the same way.
+            const sharedTrigger = (first === 'picker' && second === 'add') || (first === 'sections' && second === 'more');
+            const expectedCount = Number(!sharedTrigger);
             trace.push({ first, second, immediateCount, count, expectedCount });
             expect.soft(immediateCount, `${first} → ${second} before focus/animation`).toBe(expectedCount);
             expect.soft(count, `${first} → ${second}`).toBe(expectedCount);
@@ -533,8 +527,10 @@ test('round2 More survives saved, switched, preview, helper, template and create
         await acceptPopup(page.locator('dialog[open]'));
         await check(`${width} after helper`);
         const preview = editor.detail.getByRole('radio', { name: 'Preview', exact: true });
+        const previewButton = editor.detail.getByRole('button', { name: 'Preview', exact: true });
         if (await preview.isVisible()) await preview.check();
-        else await editor.detail.getByRole('button', { name: 'Preview', exact: true }).click();
+        else if (await previewButton.isVisible()) await previewButton.click();
+        else await activateAgentEditorAction(page, editor.detail, 'Preview');
         await check(`${width} preview`);
         await editor.name.fill(`Editor pre ${width}`);
         await editor.save.click();
@@ -599,7 +595,7 @@ test('390px phone property sheet matches Prompt pills, controls, title and summa
     await expect(summary).toHaveText('Custom · Before · Inline ›');
     const agentSummary = await summary.textContent();
     await summary.click();
-    const agents = page.locator('.ica-agent-property-sheet');
+    const agents = page.locator('.sb-dialog.ica-agent-properties-dialog');
     const pin = agents.getByRole('switch', { name: 'Pin', exact: true });
     await pin.uncheck();
     const agent = await sample(agents, 'Stage');
@@ -797,32 +793,35 @@ for (const width of [1440, 768, 390, 360]) {
 }
 
 for (const width of [1440, 390]) {
-    // The Prompt editor's Role is an action menu now (F-199), so the Category listbox is checked on its own until the agent editor takes the same menu.
-    test(`${width}px open Category listbox keeps its placement, ARIA and keyboard`, async ({ page, baseURL }, testInfo) => {
+    test(`${width}px open Category menu is the shared action menu with a radio per category and a keyboard path`, async ({ page, baseURL }) => {
         const editor = await setup(page, baseURL, width);
-        const parityScreens = testInfo.outputPath('parity');
         await editor.open('pre');
         await openAgentProperties(editor.detail);
         const category = page.locator('.ica-agent-properties:visible').getByRole('button', { name: 'Category', exact: true });
         await category.click();
-        const categoryPopover = page.getByRole('listbox', { name: 'Category', exact: true });
-        await expect(categoryPopover).toBeVisible();
-        const agentStyles = await samplePropertyPopover(categoryPopover, category);
-        await page.screenshot({ path: `${parityScreens}/open-category-${width}.png` });
-        const agentKeyboard = await sampleListboxKeyboard(category, categoryPopover);
-        await testInfo.attach('Category open popover', {
-            body: JSON.stringify({ width, agents: agentStyles, agentKeyboard }, null, 2),
-            contentType: 'application/json',
-        });
-        expect(agentStyles.aria).toEqual({
-            haspopup: 'listbox', expanded: 'true', role: 'listbox', tabIndex: 0,
-            focused: true, activeSelected: true, selectedCount: 1, allOptions: true,
-        });
-        expect(agentStyles.placement).toEqual({ width: 208, leftDelta: 0, topDelta: 0 });
-        expect(agentKeyboard.movement.map(step => step.active)).toEqual(['first', 'last', 'first', 'last', 'middle']);
+        const menu = page.getByRole('menu', { name: 'Category', exact: true });
+        await expect(menu).toBeVisible();
+        await expect(category).toHaveAttribute('aria-haspopup', 'menu');
+        await expect(category).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.locator('.sb-prompt-popover, .sb-prompt-option, [role="listbox"][aria-label="Category"]')).toHaveCount(0);
+        await expect(menu.getByRole('menuitemradio', { checked: true })).toHaveCount(1);
+        await expect(menu.getByRole('menuitemradio', { name: 'Custom', exact: true })).toHaveAttribute('aria-checked', 'true');
+        await expect(menu.getByRole('menuitemradio', { name: 'Tool', exact: true })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await expect(menu).toBeHidden();
+        await expect(category).toHaveAttribute('aria-expanded', 'false');
+        await expect(category).toBeFocused();
+        // ArrowDown opens it with the first row focused; Enter picks the focused one.
+        await category.press('ArrowDown');
+        await expect(menu).toBeVisible();
+        await expect(menu.getByRole('menuitemradio').first()).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(menu).toBeHidden();
+        await expect(category).toHaveText('Tracker');
+        expect(editor.saves()).toHaveLength(0);
     });
 
-    test(`${width}px Category button matches Role and its listbox preserves keyboard and editor rules`, async ({ page, baseURL }, testInfo) => {
+    test(`${width}px Category button matches Role and its menu keeps editor rules`, async ({ page, baseURL }, testInfo) => {
         const editor = await setup(page, baseURL, width);
         await editor.open('pre');
         const parityScreens = testInfo.outputPath('parity');
@@ -832,65 +831,26 @@ for (const width of [1440, 390]) {
         const bar = page.locator('.ica-agent-properties:visible');
         const category = bar.getByRole('button', { name: 'Category', exact: true });
         await expect(bar.locator('select')).toHaveCount(0);
-        await expect(category).toHaveAttribute('aria-haspopup', 'listbox');
+        await expect(category).toHaveAttribute('aria-haspopup', 'menu');
         await expect(category).toHaveAttribute('aria-expanded', 'false');
         await expect(category.locator(':scope > span')).toHaveText('Custom');
         await expect(category.locator(':scope > i')).toHaveClass('fa-solid fa-chevron-down');
         await expect(category.locator(':scope > i')).toHaveAttribute('aria-hidden', 'true');
         const agentStyles = await sampleDropdownTrigger(category);
-        const captureSheet = {
-            1440: async () => {},
-            390: () => page.screenshot({ path: `${parityScreens}/after-agents-sheet-390.png` }),
-        };
-        await captureSheet[width]();
-        await category.press('ArrowDown');
-        const listbox = page.getByRole('listbox', { name: 'Category', exact: true });
-        await expect(listbox).toBeVisible();
-        await expect(category).toHaveAttribute('aria-expanded', 'true');
-        await expect(category).not.toHaveAttribute('aria-controls');
-        await expect(listbox.getByRole('option', { selected: true })).toHaveCount(1);
-        await expect(listbox.getByRole('option', { name: 'Custom', exact: true })).toHaveAttribute('aria-selected', 'true');
-        await expectActiveOption(listbox, 'Custom');
-        await expect(listbox.getByRole('option', { name: 'Tool', exact: true })).toHaveCount(0);
-        await page.keyboard.press('ArrowDown');
-        await expectActiveOption(listbox, 'Tracker');
-        await page.keyboard.press('ArrowUp');
-        await expectActiveOption(listbox, 'Custom');
-        await page.keyboard.press('Home');
-        await expectActiveOption(listbox, 'Tracker');
-        await page.keyboard.press('ArrowDown');
-        await expectActiveOption(listbox, 'Randomizer');
-        await expect(listbox.getByRole('option', { name: 'Custom', exact: true })).toHaveAttribute('aria-selected', 'true');
-        await page.keyboard.press('End');
-        await expectActiveOption(listbox, 'Custom');
-        await page.keyboard.press('ArrowUp');
-        await expectActiveOption(listbox, 'Companion');
-        await page.keyboard.press('Enter');
-        await expect(listbox).toBeHidden();
-        await expect(category).toHaveAttribute('aria-expanded', 'false');
-        await expect(category).not.toHaveAttribute('aria-controls');
-        await expect(category).toBeFocused();
+        const menu = page.getByRole('menu', { name: 'Category', exact: true });
+        await category.click();
+        await expect(menu.getByRole('menuitemradio', { name: 'Companion', exact: true })).toBeVisible();
+        await menu.getByRole('menuitemradio', { name: 'Companion', exact: true }).click();
+        await expect(menu).toBeHidden();
         await expect(category).toHaveText('Companion');
         await expect(bar.locator('[data-sb-editor-field="phase"]')).toBeHidden();
         const execution = bar.getByRole('group', { name: 'Execution', exact: true });
         await expect(execution.getByRole('radio', { name: 'Companion', exact: true })).toBeChecked();
         await expect(execution.getByRole('radio', { name: 'Inline', exact: true })).toBeDisabled();
-        await category.press('ArrowUp');
-        await expect(listbox.getByRole('option', { name: 'Companion', exact: true })).toHaveAttribute('aria-selected', 'true');
-        await expectActiveOption(listbox, 'Companion');
+        await category.click();
+        await expect(menu.getByRole('menuitemradio', { name: 'Companion', exact: true })).toHaveAttribute('aria-checked', 'true');
         await page.keyboard.press('Escape');
-        await expect(category).toBeFocused();
-        await expect(bar).toBeVisible();
-        await category.press('Enter');
-        await expectActiveOption(listbox, 'Companion');
-        await page.keyboard.press('Tab');
-        await expect(listbox).toBeHidden();
-        await expect(category).toHaveAttribute('aria-expanded', 'false');
-        await expect(bar).toBeVisible();
-        await category.click();
-        await category.click();
-        await expect(listbox).toBeHidden();
-        await expect(category).toBeFocused();
+        await expect(menu).toBeHidden();
         expect(editor.saves()).toHaveLength(0);
         await closeAgentProperties(page);
         await editor.save.click();
@@ -898,12 +858,8 @@ for (const width of [1440, 390]) {
         expect(editor.saves()).toHaveLength(1);
         expect(editor.saves()[0]).toMatchObject({ category: 'companion', execution: 'companion', phase: 'pre' });
         await openAgentProperties(editor.detail);
-        await category.press('Space');
-        await expectActiveOption(listbox, 'Companion');
-        await page.keyboard.press('End');
-        await page.keyboard.press('Space');
+        await chooseAgentCategory(page, bar, 'Custom');
         await expect(category).toHaveText('Custom');
-        await expect(category).toBeFocused();
         await execution.getByRole('radio', { name: 'Inline', exact: true }).check();
         await expect(bar.getByRole('radio', { name: 'Before', exact: true })).toBeChecked();
         await closeAgentProperties(page);
@@ -1389,7 +1345,7 @@ for (const width of [1440, 390]) {
                 return {
                     group: read('.ds-pref-group', ['background-color', 'border-top-color', 'border-top-width', 'border-radius']),
                     row: read('.ds-pref-group .ds-row', ['padding-top', 'padding-right', 'padding-bottom', 'padding-left']),
-                    header: read('.sb-persona-entry-header', ['height']),
+                    header: read('.sb-persona-entry-header', ['height', 'padding', 'gap']),
                     back: read('.sb-persona-detail-back', ['background-color', 'border-radius']),
                     save: read('.sb-persona-entry-save', ['background-color', 'border-radius']),
                     secondary: read('.sb-persona-entry-cancel', ['background-color', 'border-radius']),
@@ -1429,7 +1385,7 @@ for (const width of [1440, 390]) {
                         kind: 'button',
                         label: button.matches('.sb-persona-entry-more') ? 'item menu' : (button.getAttribute('aria-label') || button.textContent.trim()).replaceAll('...', '…'),
                     }));
-                }).filter(control => !['Sections', 'Preview Prompt in Context', 'Refine…'].includes(control.label));
+                });
             });
             await expect(editor.name).toBeFocused();
             await expect(editor.detail.locator('.sb-persona-entry-header input[data-sb-editor-field="name"]')).toHaveCount(1);
@@ -1473,12 +1429,16 @@ for (const width of [1440, 390]) {
             await editor.discard.click();
             await expect(editor.name).toHaveValue(longName);
             await expect(editor.name).toBeFocused();
-            const mode = label => editor.detail.getByRole(modeRoles[width], { name: label, exact: true });
-            await mode('Preview').click();
+            // At 1440 the segmented tray is shown; at 390 both controls are hidden and the item menu carries the switch.
+            const mode = async label => {
+                if (width === 1440) return editor.detail.getByRole('radio', { name: label, exact: true }).click();
+                await activateAgentEditorAction(page, editor.detail, label);
+            };
+            await mode('Preview');
             await expectAgentHeaderIcons(editor.detail);
             await expect(editor.detail.locator('.ica-agent-prompt-preview')).toHaveText('Preserve {{char}} and whitespace');
             await expect(editor.prompt).toBeHidden();
-            await mode('Edit').click();
+            await mode('Edit');
             await expectAgentHeaderIcons(editor.detail);
             await expect(editor.prompt).toBeVisible();
             const agentLayout = await headerLayout(editor.detail);
@@ -1512,17 +1472,19 @@ for (const width of [1440, 390]) {
             const editor = await setup(page, baseURL, width);
             await editor.open('pre');
             const agentGeometry = await samplePropertyGeometry(editor.detail, 'Category', 'Stage', 'Pin', 'Execution');
-            const tasks = ['Sections', 'Preview Prompt in Context', 'Refine…'];
+            // The header holds only the item menu; Sections, Preview Prompt in Context and Refine live in it.
             const headerTasks = editor.detail.locator('.sb-persona-entry-actions > button:visible');
-            const desktopLabels = [...tasks, 'Agent Actions'];
-            const labelsByWidth = { 1440: desktopLabels, 390: ['Agent Actions'] };
             await expect.poll(() => headerTasks.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))))
-                .toEqual(labelsByWidth[width]);
-            const previewIcon = editor.detail.locator('[aria-label="Preview Prompt in Context"] > i');
-            await expect(previewIcon).toHaveClass('fa-solid fa-file-lines');
-            expect(await editor.detail.locator('[aria-label="Preview Prompt in Context"]').evaluate(node =>
-                node.getAttribute('title') ?? node.getAttribute('data-sttt--title'),
-            )).toBe('Preview Prompt in Context');
+                .toEqual(['Agent Actions']);
+            await editor.detail.getByRole('button', { name: 'Agent Actions', exact: true }).click();
+            const itemMenu = page.getByRole('menu', { name: 'Editor pre', exact: true });
+            await expect(itemMenu.getByRole('menuitem').first()).toBeVisible();
+            // On a phone the chrome puts the Edit/Preview switch first; the three agent tasks follow in this order.
+            const items = itemMenu.getByRole('menuitem').filter({ hasText: /^(Sections|Preview Prompt in Context|Refine…)$/ });
+            await expect(items).toHaveText(['Sections', 'Preview Prompt in Context', 'Refine…']);
+            await expect(items.nth(1).locator(':scope > i')).toHaveClass('fa-solid fa-file-lines');
+            await expect(itemMenu.getByRole('menuitem', { name: 'Preview', exact: true })).toHaveCount(width === 390 ? 1 : 0);
+            await page.keyboard.press('Escape');
             await expectAgentHeaderIcons(editor.detail);
             await editor.back();
             for (const [id, category, companion] of [
@@ -1546,7 +1508,7 @@ for (const width of [1440, 390]) {
                 await expect(bar.getByRole('switch', { name: 'Pin', exact: true })).not.toBeChecked();
                 await expect(editor.detail.locator('.sb-persona-entry-body [data-sb-editor-field="category"]')).toHaveCount(0);
                 await closeAgentProperties(page);
-                await expect(page.locator('.ica-agent-property-sheet')).toBeHidden();
+                await expect(page.locator('.sb-dialog.ica-agent-properties-dialog')).toBeHidden();
                 expect(await editor.detail.evaluate(node => {
                     const summary = node.querySelector('.ica-agent-property-summary');
                     return !summary.getClientRects().length || document.activeElement === summary;

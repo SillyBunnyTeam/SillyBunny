@@ -34,7 +34,7 @@ export const rules = {
         {
             id: 'frame-sheet',
             only: '^panel\\.sheet\\.',
-            selectors: [{ id: 'dialog', selector: '.sb-dialog' }, { id: 'own', selector: '.sb-prompt-sheet' }],
+            selectors: [{ id: 'dialog', selector: '.sb-dialog' }],
             properties: [
                 { property: 'borderTopLeftRadius', token: '--sb-radius-overlay', source: 'DESIGN.md' },
                 { property: 'borderTopWidth', value: 1, source: 'DESIGN.md' },
@@ -44,7 +44,7 @@ export const rules = {
             id: 'header',
             selectors: [
                 { id: 'dialog-header', selector: '.sb-dialog__header' },
-                { id: 'own', selector: '.sb-prompt-sheet-header, .sb-conversation-settings-header' },
+                { id: 'own', selector: '.sb-conversation-settings-header' },
             ],
             properties: DIALOG_HEADER,
         },
@@ -52,7 +52,7 @@ export const rules = {
             id: 'title',
             selectors: [
                 { id: 'dialog', selector: '.sb-dialog__title' },
-                { id: 'own', selector: ':is(.sb-prompt-sheet-header, .sb-conversation-settings-header) :is(h1, h2, h3)' },
+                { id: 'own', selector: '.sb-conversation-settings-header :is(h1, h2, h3)' },
             ],
             properties: TITLE_TYPE,
         },
@@ -61,7 +61,7 @@ export const rules = {
             filter: 'icon-only',
             selectors: [
                 { id: 'dialog', selector: '.sb-dialog__icon-button' },
-                { id: 'own', selector: ':is(.sb-prompt-sheet-header, .sb-conversation-settings-header) button' },
+                { id: 'own', selector: '.sb-conversation-settings-header button' },
             ],
             properties: [
                 { property: 'offsetWidth', value: TARGET_SIZE, floor: true, alts: ['dialog'], source: 'DESIGN.md' },

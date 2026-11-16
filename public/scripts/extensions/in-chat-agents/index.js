@@ -24,6 +24,8 @@ import {
     MAX_AGENT_MAX_TOKENS,
     getGlobalSettings,
     initializeScopedAgentEnableState,
+    captureScopedEnableState,
+    restoreScopedEnableState,
     isAgentEnabledForCurrentScope,
     LEGACY_AGENT_MAX_TOKENS,
     getAgentChatScopeLabel,
@@ -790,6 +792,7 @@ async function registerAgentListUi(settingsStore, settingsFields) {
                 const { confirmActiveEditorLeave } = await import('../../sillybunny-editor/navigation.js');
                 openActionMenu({
                     trigger,
+                    title: t`Connection Profile`,
                     sections: [
                         {
                             items: [
@@ -3742,12 +3745,20 @@ async function resetBundledAgentsFromSettings() {
         persistExtensionState();
         renderAgentList();
     });
+    // Switching on seeds the per-chat-type lists from the agents' own flags; switching back off puts the saved lists back as
+    // they were, unless the user changed them in between.
+    let scopedStateBeforeSeparation = null;
     $('#ica--separateRecentChats').on('change', function () {
         const separated = $(this).prop('checked');
         setGlobalSettings({ separateRecentChats: separated });
         if (separated) {
+            const before = captureScopedEnableState();
             initializeScopedAgentEnableState();
             reconcileScopedEnabledAgentIdsFromLegacyFlags();
+            scopedStateBeforeSeparation = { before, seeded: captureScopedEnableState() };
+        } else if (scopedStateBeforeSeparation) {
+            restoreScopedEnableState(scopedStateBeforeSeparation.before, scopedStateBeforeSeparation.seeded);
+            scopedStateBeforeSeparation = null;
         }
         persistExtensionState();
         renderAgentList();

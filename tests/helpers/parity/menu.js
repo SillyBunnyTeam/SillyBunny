@@ -17,7 +17,7 @@ export const rules = {
             id: 'surface',
             only: '^menu\\.(?!tooltip\\.)',
             selectors: [
-                { id: 'popover', selector: '.sb-action-popover, .sb-action-sheet, .sb-picker, .sb-picker-sheet, .sb-custom-popover, .sb-prompt-popover, .sb-side-panel__menu' },
+                { id: 'popover', selector: '.sb-action-popover, .sb-action-sheet, .sb-picker, .sb-picker-sheet, .sb-custom-popover, .sb-side-panel__menu' },
                 { id: 'own', selector: '#options, #extensionsMenu, .actionButtonsModal, .ctx-menu, .autoComplete-wrap, .ui-autocomplete' },
             ],
             properties: [
@@ -31,7 +31,6 @@ export const rules = {
             selectors: [
                 { id: 'action-menu', selector: '.sb-action-menu-item' },
                 { id: 'picker', selector: '.sb-picker__option' },
-                { id: 'prompt-popover', selector: '.sb-prompt-option' },
                 { id: 'side-panel', selector: '.sb-side-panel__menu-item' },
                 { id: 'legacy-list', selector: '.list-group-item, .actionButton' },
                 { id: 'own', selector: ':is(a, li, button, [role="menuitem"], [role="option"]):not(.sb-picker__search)' },

@@ -68,7 +68,7 @@ export function mountAgentDetail({
     initial.settings = adapter.editor.templateSettings(initial);
     const root = element('section', 'sb-persona-entry ica-agent-detail');
     root.tabIndex = -1;
-    const header = element('header', 'sb-persona-detail-header sb-persona-entry-header');
+    const header = element('header', 'sb-editor-header sb-persona-detail-header sb-persona-entry-header');
     const back = button(t`Back`, 'chevron-left', 'sb-persona-detail-back sb-editor-icon-button sb-header-icon-button');
     const title = element('input', 'sb-persona-entry-name');
     title.type = 'text';
@@ -88,13 +88,12 @@ export function mountAgentDetail({
         { compact: true, detachFromForm: true },
     );
     modes.classList.add('sb-persona-entry-modes');
-    const modeToggle = button(t`Preview`, 'eye', 'sb-persona-entry-mode-toggle');
+    const modeToggle = button(t`Preview`, 'eye', 'sb-persona-entry-mode-toggle sb-editor-icon-button sb-header-icon-button');
     modeToggle.addEventListener('click', () => setPreview(!showingPreview));
-    const jump = button(t`Sections`, 'list');
     const more = button(t`Agent Actions`, 'ellipsis-vertical', 'sb-persona-entry-more sb-editor-icon-button sb-header-icon-button');
     more.addEventListener('click', () => preparePopup(more), { capture: true });
     const actions = element('div', 'sb-persona-entry-actions');
-    actions.append(jump, more);
+    actions.append(more);
     const cancel = element('button', 'sb-editor-action sb-editor-action--secondary sb-persona-entry-cancel');
     cancel.type = 'button';
     cancel.setAttribute('aria-label', t`Cancel`);
@@ -324,41 +323,11 @@ export function mountAgentDetail({
     text(prompt, 'modelOverride', t`Model Override`);
     const promptView = area(prompt, 'prompt', t`Prompt`, true);
     // Full-context generation preview stays distinct from the header's local text preview.
-    const previewPrompt = button(t`Preview Prompt in Context`, 'file-lines');
-    previewPrompt.addEventListener('click', () => {
-        void run(() => helpers.preview(fields()));
+    const previewPromptInContext = () => run(() => helpers.preview(fields()));
+    const refinePrompt = () => run(async () => {
+        const value = await helpers.refine(fields());
+        if (value != null && !destroyed) update('prompt', value);
     });
-    const refine = button(t`Refine…`, 'wand-magic-sparkles');
-    refine.addEventListener('click', () => {
-        void run(async () => {
-            const value = await helpers.refine(fields());
-            if (value != null && !destroyed) update('prompt', value);
-        });
-    });
-    actions.replaceChildren(jump, previewPrompt, refine, more);
-    const headerTasks = [jump, previewPrompt, refine];
-    let headerFrame = 0;
-    const scheduleHeaderActions = () => {
-        if (headerFrame) return;
-        headerFrame = requestAnimationFrame(() => {
-            headerFrame = 0;
-            if (destroyed) return;
-            const fixed = [...header.children].filter(node => node !== title && node !== actions && node.getClientRects().length);
-            const style = getComputedStyle(header);
-            const available = header.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
-                - fixed.reduce((sum, node) => sum + node.getBoundingClientRect().width, 0)
-                - parseFloat(getComputedStyle(title).minWidth) - more.getBoundingClientRect().width
-                - (fixed.length + 2) * (parseFloat(style.gap) || 0);
-            let count = matchMedia(LAYOUT_MOBILE_QUERY).matches ? 0 : headerTasks.length;
-            while (count > 0 && count * 42 > available) count--;
-            for (const [index, control] of headerTasks.entries()) {
-                if (index >= count && document.activeElement === control) title.focus({ preventScroll: true });
-                control.hidden = index >= count;
-            }
-        });
-    };
-    const headerResize = new ResizeObserver(scheduleHeaderActions);
-    headerResize.observe(header);
     promptView.row.classList.add('ica-agent-prompt-content');
     promptView.row.querySelector('.ds-row-text').remove();
     prompt.section.append(promptView.row);
@@ -608,6 +577,7 @@ export function mountAgentDetail({
                 'click',
                 () => openActionMenu({
                     trigger: menu,
+                    title: script.scriptName || t`Regex Script`,
                     sections: [
                         {
                             items: [
@@ -730,7 +700,6 @@ export function mountAgentDetail({
         cancel.disabled ||= state.saving;
         root.setAttribute('aria-busy', String(state.saving));
         scheduleTokens(state.fields.prompt);
-        scheduleHeaderActions();
         onStateChange(state);
     }
     const savedAction = actionName => controller.requestLeave({
@@ -767,6 +736,7 @@ export function mountAgentDetail({
         },
         tokens: { element: readout, row: { host: summaryRow } },
         itemMenuLabel: t`Agent Actions`,
+        actionMenuTitle: () => fields().name || t`New Agent`,
         onBack: () => {
             void requestClose();
         },
@@ -782,13 +752,30 @@ export function mountAgentDetail({
         getActionSections: () => [
             {
                 items: [
-                    // Create mode has no saved-entry actions; keep More useful even without overflow.
-                    ...headerTasks.filter(control => control.hidden || controller.getState().mode === 'create').map(control => ({
-                        label: control.getAttribute('aria-label'),
-                        icon: control.querySelector('i').className,
-                        onSelect: () => control.click(),
-                    })),
-                    ...(controller.getState().mode === 'edit' ? [
+                    {
+                        label: t`Sections`,
+                        icon: 'fa-solid fa-list',
+                        onSelect: openSections,
+                    },
+                    {
+                        label: t`Preview Prompt in Context`,
+                        icon: 'fa-solid fa-file-lines',
+                        onSelect: () => {
+                            void previewPromptInContext();
+                        },
+                    },
+                    {
+                        label: t`Refine…`,
+                        icon: 'fa-solid fa-wand-magic-sparkles',
+                        onSelect: () => {
+                            void refinePrompt();
+                        },
+                    },
+                ],
+            },
+            ...(controller.getState().mode === 'edit' ? [
+                {
+                    items: [
                         {
                             label: t`Duplicate`,
                             icon: 'fa-solid fa-clone',
@@ -803,10 +790,8 @@ export function mountAgentDetail({
                                 void run(() => savedAction('export'));
                             },
                         },
-                    ] : []),
-                ],
-            },
-            ...(controller.getState().mode === 'edit' ? [
+                    ],
+                },
                 {
                     items: [
                         ...(entry?.template ? [
@@ -832,31 +817,28 @@ export function mountAgentDetail({
             ] : []),
         ],
     });
-    jump.addEventListener(
-        'click',
-        () => {
-            preparePopup(jump.hidden ? more : jump);
-            openActionMenu({
-                trigger: jump.hidden ? more : jump,
-                title: t`Sections`,
-                sections: [
-                    {
-                        items: [...sections.values()].filter(section => !section.section.hidden).map(section => ({
-                            label: section.section.querySelector('.ds-pref-group-heading').textContent,
-                            icon: section.icon,
-                            onSelect: () => {
-                                // scrollIntoView also scrolls the shell host, displacing the entire editor card.
-                                body.scrollTop += section.section.getBoundingClientRect().top - body.getBoundingClientRect().top
-                                    - parseFloat(getComputedStyle(body).paddingTop);
-                                section.section.tabIndex = -1;
-                                section.section.focus({ preventScroll: true });
-                            },
-                        })),
-                    },
-                ],
-            });
-        },
-    );
+    function openSections() {
+        preparePopup(more);
+        openActionMenu({
+            trigger: more,
+            title: t`Sections`,
+            sections: [
+                {
+                    items: [...sections.values()].filter(section => !section.section.hidden).map(section => ({
+                        label: section.section.querySelector('.ds-pref-group-heading').textContent,
+                        icon: section.icon,
+                        onSelect: () => {
+                            // scrollIntoView also scrolls the shell host, displacing the entire editor card.
+                            body.scrollTop += section.section.getBoundingClientRect().top - body.getBoundingClientRect().top
+                                - parseFloat(getComputedStyle(body).paddingTop);
+                            section.section.tabIndex = -1;
+                            section.section.focus({ preventScroll: true });
+                        },
+                    })),
+                },
+            ],
+        });
+    }
     controller = createAgentEditorController({
         agent: initial,
         mode: draft ? 'create' : 'edit',
@@ -884,7 +866,6 @@ export function mountAgentDetail({
     return {
         ...controller,
         root,
-        closePopover: properties.closePopover,
         save: saveChanges,
         focus: () => title.focus({ preventScroll: true }),
         maker: () => run(async () => apply(await helpers.maker(fields()))),
@@ -892,8 +873,6 @@ export function mountAgentDetail({
             destroyed = true;
             clearTimeout(tokenTimer);
             tokenRequest++;
-            headerResize.disconnect();
-            cancelAnimationFrame(headerFrame);
             cancelAnimationFrame(textareaViewportFrame);
             textareaViewportResize.disconnect();
             body.removeEventListener('focusin', keepFocusedTextareaVisible);

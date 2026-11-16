@@ -300,6 +300,27 @@ for (const width of [1440, 390]) {
             await expectClean(page, driver);
         });
 
+        test('switching Separate Agents Between Individual and Group Chats on and back off leaves the saved lists as they were (F-113)', async ({ page, baseURL }) => {
+            const driver = await openEditorAgents(page, baseURL, width);
+            const settings = await destination(page, driver, 'Settings', 'settings');
+            const read = () => page.evaluate(async () => {
+                const { getGlobalSettings } = await import('/scripts/extensions/in-chat-agents/agent-store.js');
+                const { separateRecentChats, scopedEnabledAgentIdsInitialized, enabledAgentIdsByChatType } = getGlobalSettings();
+                return structuredClone({ separateRecentChats, scopedEnabledAgentIdsInitialized, enabledAgentIdsByChatType });
+            });
+            const before = await read();
+            expect(before.separateRecentChats).toBe(false);
+            expect(before.enabledAgentIdsByChatType.individual).toEqual([]);
+            const toggle = settings.locator('#ica--separateRecentChats');
+            await toggle.click();
+            const seeded = await read();
+            expect(seeded).toMatchObject({ separateRecentChats: true, scopedEnabledAgentIdsInitialized: true });
+            expect(seeded.enabledAgentIdsByChatType.individual.length).toBeGreaterThan(0);
+            await toggle.click();
+            expect(await read()).toEqual(before);
+            await expectClean(page, driver);
+        });
+
         test('Run All empty-state notifications and Panel route never make a model request', async ({ page, baseURL }) => {
             const driver = await openEditorAgents(page, baseURL, width);
             await page.evaluate(async () => {

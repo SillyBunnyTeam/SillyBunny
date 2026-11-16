@@ -39,11 +39,14 @@
     background: transparent;
 }
 
+/* Under 560px the segmented tray gives way to the icon toggle, and under 440px (a phone) to the item menu (mountEditorChrome). */
 @container sb-list-editor-detail (width < 560px) {
     #sb-settings-page .ica-agent-detail .sb-persona-entry-modes {
         display: none !important;
     }
+}
 
+@container sb-list-editor-detail (width >= 440px) and (width < 560px) {
     #sb-settings-page .ica-agent-detail .sb-persona-entry-mode-toggle {
         display: inline-flex !important;
     }
@@ -61,18 +64,7 @@
     margin-top: 12px;
 }
 
-@media (pointer: coarse) {
-    .ica-agent-property-sheet .sb-prompt-dropdown {
-        min-height: 44px;
-    }
-}
-
 @media (max-width: 768px) {
-    .ica-agent-property-sheet .sb-prompt-dropdown {
-        padding: 6px 16px;
-        font-family: var(--mainFontFamily), sans-serif;
-    }
-
     /* Persona's phone touch-target rule also overrides auxiliary textarea minimums. */
     #sb-settings-page .ica-agent-detail textarea.text_pole,
     .ica-agent-editor-dialog textarea {

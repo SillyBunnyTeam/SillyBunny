@@ -343,7 +343,7 @@ export const surfaces = [
         name: 'agent-properties',
         title: 'Agent editor: properties sheet',
         editor: 'agent',
-        ready: '.ica-agent-property-sheet h2',
+        ready: '.ica-agent-properties-dialog .sb-prompt-property',
         needs: ['agents'],
         sources: [`${SCRIPTS}/extensions/in-chat-agents/ui/agent-editor-properties.js`],
     }),

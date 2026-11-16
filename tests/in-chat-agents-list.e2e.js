@@ -17,7 +17,7 @@ const READS = new Set([
 ]);
 const selectionLayout = {
     1440: { titleX: 92, descriptionRight: 1138, truncated: false },
-    390: { titleX: 76, descriptionRight: 318, truncated: true },
+    390: { titleX: 92, descriptionRight: 310, truncated: true },
 };
 
 async function openAgents(page, baseURL, width = 1440, { withChat = false } = {}) {

@@ -295,13 +295,13 @@ export async function openAgentProperties(detail) {
 }
 
 export async function closeAgentProperties(page) {
-    const sheet = page.locator('.ica-agent-property-sheet');
+    const sheet = page.locator('.sb-dialog.ica-agent-properties-dialog');
     if (await sheet.isVisible()) await page.keyboard.press('Escape');
 }
 
 export async function chooseAgentCategory(page, bar, label) {
     await bar.getByRole('button', { name: 'Category', exact: true }).click();
-    await page.getByRole('listbox', { name: 'Category', exact: true }).getByRole('option', { name: label, exact: true }).click();
+    await page.getByRole('menu', { name: 'Category', exact: true }).getByRole('menuitemradio', { name: label, exact: true }).click();
 }
 
 export async function sampleDropdownTrigger(trigger) {
@@ -323,84 +323,6 @@ export async function sampleDropdownTrigger(trigger) {
             chevron: read(node.querySelector(':scope > i'), ['color', 'font-size', 'width', 'height']),
         };
     });
-}
-
-export async function samplePropertyPopover(popover, trigger) {
-    await popover.page().mouse.move(1, 1);
-    return popover.evaluate((node, trigger) => {
-        const read = (target, properties) => {
-            const style = getComputedStyle(target);
-            return Object.fromEntries(properties.map(property => [property, style.getPropertyValue(property)]));
-        };
-        const selected = node.querySelector('[aria-selected="true"]');
-        const unselected = node.querySelector('[aria-selected="false"]');
-        const properties = [
-            'display', 'align-items', 'gap', 'min-height', 'padding', 'border-radius', 'background-color',
-            'color', 'font-family', 'font-size', 'font-weight', 'line-height', 'cursor',
-        ];
-        const rect = trigger.getBoundingClientRect();
-        const bounds = node.getBoundingClientRect();
-        const width = Math.min(Math.max(208, rect.width), innerWidth - 16);
-        const left = Math.max(8, Math.min(rect.left, innerWidth - width - 8));
-        const top = innerHeight - rect.bottom > node.offsetHeight + 14
-            ? rect.bottom + 6 : Math.max(8, rect.top - node.offsetHeight - 6);
-        return {
-            popover: read(node, [
-                'position', 'z-index', 'width', 'max-height', 'overflow', 'padding', 'border', 'border-radius',
-                'background-color', 'color', 'font-family', 'box-shadow', 'transform-origin', 'outline',
-            ]),
-            selected: read(selected, properties),
-            unselected: read(unselected, properties),
-            selectedIcon: read(selected.querySelector('i'), ['color', 'width', 'visibility', 'font-family', 'font-size']),
-            unselectedIcon: read(unselected.querySelector('i'), ['color', 'width', 'visibility', 'font-family', 'font-size']),
-            placement: { width: bounds.width, leftDelta: bounds.left - left, topDelta: bounds.top - top },
-            aria: {
-                haspopup: trigger.getAttribute('aria-haspopup'),
-                expanded: trigger.getAttribute('aria-expanded'),
-                role: node.getAttribute('role'),
-                tabIndex: node.tabIndex,
-                focused: document.activeElement === node,
-                activeSelected: document.getElementById(node.getAttribute('aria-activedescendant')) === selected,
-                selectedCount: node.querySelectorAll('[role="option"][aria-selected="true"]').length,
-                allOptions: [...node.children].every(option => option.getAttribute('role') === 'option'),
-            },
-        };
-    }, await trigger.elementHandle());
-}
-
-export async function sampleListboxKeyboard(trigger, listbox) {
-    const selectedText = await listbox.getByRole('option', { selected: true }).textContent();
-    const movement = [];
-    for (const key of ['Home', 'ArrowUp', 'ArrowDown', 'End', 'ArrowUp']) {
-        await listbox.press(key);
-        movement.push(await listbox.evaluate(node => {
-            const options = [...node.querySelectorAll('[role="option"]')];
-            const active = document.getElementById(node.getAttribute('aria-activedescendant'));
-            const index = options.indexOf(active);
-            return {
-                active: index === 0 ? 'first' : index === options.length - 1 ? 'last' : 'middle',
-                focused: document.activeElement === node,
-            };
-        }));
-        await expect(listbox.getByRole('option', { selected: true })).toHaveText(selectedText);
-    }
-    await listbox.press('Escape');
-    await expect(listbox).toBeHidden();
-    await expect(trigger).toBeFocused();
-    await trigger.press('ArrowUp');
-    await expect(listbox).toBeFocused();
-    await listbox.press('Tab');
-    await expect(listbox).toBeHidden();
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    const tabRestoredTrigger = await trigger.evaluate(node => document.activeElement === node);
-    for (const key of ['Enter', 'Space']) {
-        await trigger.press(key);
-        await expect(listbox).toBeFocused();
-        await listbox.press(key);
-        await expect(listbox).toBeHidden();
-        await expect(trigger).toBeFocused();
-    }
-    return { movement, tabRestoredTrigger };
 }
 
 export async function expectAgentHeaderIcons(detail) {

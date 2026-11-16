@@ -199,7 +199,7 @@ export const PROPERTY_SHEETS = {
         openEditor: openPromptEditorEntry,
     },
     agent: {
-        root: '.ica-agent-property-sheet',
+        root: '.sb-dialog.ica-agent-properties-dialog',
         summary: '.ica-agents-editor .ica-agent-property-summary',
         viewports: COLLAPSED_EDITOR_VIEWPORTS,
         openEditor: openAgentEditorEntry,

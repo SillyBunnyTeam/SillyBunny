@@ -2,12 +2,12 @@
     "version": 1,
     "temporary": {
         "settings": 20,
-        "list": 157,
-        "editor": 54,
+        "list": 155,
+        "editor": 48,
         "dialog": 3,
         "menu": 565,
-        "header": 146,
-        "panel": 5,
+        "header": 133,
+        "panel": 0,
         "status": 70,
         "home": 1
     }
