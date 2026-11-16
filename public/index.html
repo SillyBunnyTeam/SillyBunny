@@ -59,12 +59,12 @@
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
     <link rel="stylesheet" type="text/css" href="style.css?v=20261117e">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
-    <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css?v=20261116i">
+    <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css?v=20261117d">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20260609a">
     <!-- SillyBunny: this cache key tracks fork edits to the mobile stylesheet. -->
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261117e" media="(max-width: 768px)">
     <!-- SillyBunny: shell stylesheet cache keys track fork CSS changes without changing upstream asset URLs. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261117e">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261117m">
     <!-- SillyBunny: the mobile surface stylesheet cache key tracks its fork-owned responsive rules. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261112t" media="(max-width: 768px)">
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
@@ -75,7 +75,7 @@
     <link rel="preload" as="style" href="css/sillybunny-character-list.css?v=20261117h" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261117e" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261117e">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261112q">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261117d">
     <!-- SillyBunny: the editor chrome sheet is deferred, so it stays out of the blocking-CSS budget. The editors, the lists and the windows that use it load it through loadListEditorStyles() and wait for it before they show; the character and group editors are held hidden until it applies (holdEditorsUntilStyled() in sillybunny-editor/list-shell.js). Keep this version aligned with the runtime loader URLs. -->
     <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261116z" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
@@ -9245,8 +9245,10 @@
                 </button>
             </div>
             <div id="dialogue_del_mes">
-                <div id="dialogue_del_mes_ok" data-i18n="Delete" class="menu_button">Delete</div>
+                <!-- SillyBunny: Cancel first, then the live count, then Delete (DESIGN.md, Selection Mode). -->
                 <div id="dialogue_del_mes_cancel" data-i18n="Cancel" class="menu_button">Cancel</div>
+                <div id="dialogue_del_mes_count" role="status"></div>
+                <div id="dialogue_del_mes_ok" data-i18n="Delete" class="menu_button">Delete</div>
             </div>
             <div id="send_form" class="no-connection">
                 <form id="file_form" class="wide100p displayNone">

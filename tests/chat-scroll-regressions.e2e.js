@@ -54,7 +54,8 @@ test.describe('issue 167 chat scroll regressions', () => {
         expect(snapshot.lastMessageClassCount).toBe(1);
         expect(snapshot.fadeClassCount).toBe(0);
         expect(snapshot.stylePinsCount).toBe(0);
-        expect(snapshot.firstEditUpDisabled).toBe(true);
+        // The edges are those of the chat, not of the rendered window: message 23 exists above the first rendered one.
+        expect(snapshot.firstEditUpDisabled).toBe(false);
         expect(snapshot.firstEditDownDisabled).toBe(false);
     });
 

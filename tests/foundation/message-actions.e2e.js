@@ -286,3 +286,259 @@ test('echo user messages anchor actions to their start edge', async ({ page }) =
     expect(sides.buttons).toBeLessThan(sides.name);
     expect(sides.hint).toBeLessThan(sides.edit);
 });
+
+/* ---------- Message rows: the dimmed rest state, the edit row, the Document toolbar, the delete bar, the swipe controls ---------- */
+
+async function seedWithSwipes(page) {
+    await seedChat(page);
+    await page.evaluate(async () => {
+        const context = window.SillyTavern.getContext();
+        const last = context.chat.at(-1);
+        last.is_user = false;
+        last.swipes = [last.mes, 'Another take on the quiet glade.', 'A third.'];
+        last.swipe_id = 1;
+        await context.printMessages();
+    });
+    await expect(page.locator('#chat .last_mes .swipes-counter')).toBeVisible();
+}
+
+async function setStyle(page, value, bodyClass) {
+    await page.evaluate(v => window.$('#chat_display').val(String(v)).trigger('change'), value);
+    await expect(page.locator('body')).toHaveClass(new RegExp(bodyClass));
+    await page.waitForFunction(() => {
+        const link = document.getElementById('sillybunny-native-chat-styles');
+        return !link || link.sheet !== null;
+    });
+}
+
+test('a resting action is dimmed by colour at full opacity, and Delete keeps full opacity', async ({ page }) => {
+    await seedChat(page);
+    await page.locator(target).hover();
+    const rest = await page.evaluate(selector => {
+        const probe = document.createElement('i');
+        probe.style.color = 'var(--sb-muted-fg)';
+        document.body.append(probe);
+        const muted = getComputedStyle(probe).color;
+        probe.remove();
+        const read = element => ({ opacity: getComputedStyle(element).opacity, color: getComputedStyle(element).color });
+        const mes = document.querySelector(selector);
+        return { muted, edit: read(mes.querySelector('.mes_buttons .mes_edit')), hint: read(mes.querySelector('.extraMesButtonsHint')), del: read(mes.querySelector('.mes_buttons .mes_delete')) };
+    }, target);
+    // Hovering the message must not be the thing that lifts the controls to a readable contrast.
+    await page.mouse.move(2, 2);
+    expect(rest.edit.opacity).toBe('1');
+    expect(rest.hint.opacity).toBe('1');
+    expect(rest.del.opacity).toBe('1');
+    expect(rest.edit.color).toBe(rest.muted);
+});
+
+test('the action row follows the pointer, never the width', async ({ page, isMobile }) => {
+    await seedChat(page);
+    const expected = isMobile ? ['mes_edit', 'extraMesButtonsHint'] : ['mes_copy', 'mes_edit', 'extraMesButtonsHint'];
+    expect(await visibleRowButtons(page, target)).toEqual(expected);
+    // A narrow window with a fine pointer shows the fine set; a wide one with a coarse pointer shows the coarse set.
+    const { width, height } = page.viewportSize();
+    await page.setViewportSize({ width: isMobile ? 1100 : 390, height });
+    expect(await visibleRowButtons(page, target)).toEqual(expected);
+    await page.setViewportSize({ width, height });
+});
+
+test('Cancel in the edit row is neutral, and Move up and Move down stay visible, disabled at the chat edges', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'The inline edit row is desktop-only.');
+    await seedChat(page);
+
+    const bodyColor = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--SmartThemeBodyColor').trim());
+    await page.locator('#chat .mes[mesid="0"] .mes_buttons .mes_edit').click();
+    const first = page.locator('#chat .mes[mesid="0"]');
+    await expect(first.locator('.edit_textarea')).toBeVisible();
+    await expect(first.locator('.mes_edit_up')).toBeVisible();
+    await expect(first.locator('.mes_edit_up')).toHaveClass(/disabled/);
+    await expect(first.locator('.mes_edit_down')).not.toHaveClass(/disabled/);
+    const cancel = await first.locator('.mes_edit_cancel').evaluate(element => getComputedStyle(element).color);
+    const probe = await page.evaluate(color => {
+        const element = document.createElement('i');
+        element.style.color = color;
+        document.body.append(element);
+        const resolved = getComputedStyle(element).color;
+        element.remove();
+        return resolved;
+    }, bodyColor);
+    expect(cancel).toBe(probe);
+    await first.locator('.mes_edit_cancel').click();
+
+    await page.locator('#chat .mes[mesid="5"] .mes_buttons .mes_edit').click();
+    const last = page.locator('#chat .mes[mesid="5"]');
+    await expect(last.locator('.mes_edit_down')).toBeVisible();
+    await expect(last.locator('.mes_edit_down')).toHaveClass(/disabled/);
+    await last.locator('.mes_edit_cancel').click();
+});
+
+test('Move up works on the first rendered message of a chat longer than the render window', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'The inline edit row is desktop-only.');
+    await seedChat(page);
+    await page.evaluate(async () => {
+        const context = window.SillyTavern.getContext();
+        context.powerUserSettings.chat_truncation = 10;
+        context.chat.length = 0;
+        for (let index = 0; index < 40; index++) {
+            const isUser = index % 2 === 1;
+            context.chat.push({ name: isUser ? 'Tester' : 'Seraphina', is_user: isUser, is_system: false, send_date: new Date(Date.UTC(2026, 8, 30, 12, index)).toISOString(), mes: `Long ${index}` });
+        }
+        await context.printMessages();
+    });
+    const rendered = await page.locator('#chat > .mes').count();
+    expect(rendered).toBeLessThan(40);
+    const firstId = Number(await page.locator('#chat > .mes').first().getAttribute('mesid'));
+    expect(firstId).toBeGreaterThan(0);
+
+    await page.locator(`#chat .mes[mesid="${firstId}"] .mes_buttons .mes_edit`).click();
+    const row = page.locator(`#chat .mes[mesid="${firstId}"]`);
+    await expect(row.locator('.edit_textarea')).toBeVisible();
+    await expect(row.locator('.mes_edit_up')).not.toHaveClass(/disabled/);
+    await row.locator('.mes_edit_up').click();
+    await expect.poll(() => page.evaluate(() => window.SillyTavern.getContext().chat[29].mes)).toBe('Long 30');
+    // The moved message is still the one being edited.
+    await expect(page.locator(`#chat .mes[mesid="${firstId - 1}"] .edit_textarea`)).toHaveValue('Long 30');
+});
+
+test('only the media toggle that matches the message shows', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'The inline toggles are desktop-only.');
+    await seedChat(page);
+    const count = (value) => page.evaluate(({ selector, value }) => {
+        const mes = document.querySelector(selector);
+        mes.setAttribute('data-sb-actions-expanded', '');
+        mes.setAttribute('data-media-display', value);
+        const shown = element => element.getClientRects().length > 0;
+        return { gallery: [...mes.querySelectorAll('.mes_media_gallery')].filter(shown).length, list: [...mes.querySelectorAll('.mes_media_list')].filter(shown).length };
+    }, { selector: target, value });
+    expect(await count('gallery')).toEqual({ gallery: 1, list: 0 });
+    expect(await count('list')).toEqual({ gallery: 0, list: 1 });
+});
+
+test('the edit row of a mirrored user message keeps its order', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'The inline edit row is desktop-only.');
+    await seedChat(page);
+    await setStyle(page, 3, 'echostyle');
+    const user = page.locator('#chat .mes[mesid="5"]');
+    await user.scrollIntoViewIfNeeded();
+    await user.locator('.mes_buttons .mes_edit').click();
+    const order = await user.locator('.mes_edit_buttons .menu_button').evaluateAll(items => items
+        .filter(item => item.getClientRects().length > 0)
+        .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)
+        .map(item => item.classList[0]));
+    expect(order.slice(0, 3)).toEqual(['mes_edit_cancel', 'mes_edit_done', 'mes_edit_copy']);
+    await user.locator('.mes_edit_cancel').click();
+});
+
+test('Document: a coarse pointer gets the action row of an older message in the flow', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'The in-flow row is for a coarse pointer.');
+    await seedChat(page);
+    await setStyle(page, 2, 'documentstyle');
+    const older = page.locator('#chat .mes[mesid="2"]');
+    await older.scrollIntoViewIfNeeded();
+    await expect(older.locator('.ch_name > .mes_buttons')).toBeVisible();
+    expect(await visibleRowButtons(page, '#chat .mes[mesid="2"]')).toEqual(['mes_edit', 'extraMesButtonsHint']);
+    const box = await older.locator('.mes_buttons .mes_edit').boundingBox();
+    expect(box.height).toBeGreaterThanOrEqual(44);
+});
+
+test('Document: a fine pointer gets an overlaid toolbar on hover or focus', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'The overlaid toolbar is for a fine pointer.');
+    await seedChat(page);
+    await setStyle(page, 2, 'documentstyle');
+    const older = page.locator('#chat .mes[mesid="2"]');
+    await older.scrollIntoViewIfNeeded();
+    const buttons = older.locator('.ch_name > .mes_buttons');
+    await page.mouse.move(2, 2);
+    await expect(buttons).toHaveCSS('opacity', '0');
+    await older.locator('.mes_text').hover();
+    await expect(buttons).toHaveCSS('opacity', '1');
+    const placed = await buttons.evaluate(element => {
+        const row = element.closest('.mes').getBoundingClientRect();
+        const box = element.getBoundingClientRect();
+        return { position: getComputedStyle(element).position, inside: box.top >= row.top && box.right <= row.right, width: box.width, fill: getComputedStyle(element).backgroundColor };
+    });
+    expect(placed.position).toBe('absolute');
+    expect(placed.inside).toBe(true);
+    // It is as wide as its three buttons, so it never covers the message it floats over.
+    expect(placed.width).toBeLessThan(160);
+    // The OSD fill: black at 70%.
+    expect(placed.fill).toMatch(/^(rgba\(0, 0, 0, 0\.7\)|color\(srgb 0 0 0 \/ 0\.7\))$/);
+    // A narrow window with a fine pointer keeps it that small.
+    await page.setViewportSize({ width: 390, height: page.viewportSize().height });
+    await older.scrollIntoViewIfNeeded();
+    await older.locator('.mes_text').hover();
+    expect((await buttons.boundingBox()).width).toBeLessThan(160);
+    await page.setViewportSize({ width: 1440, height: page.viewportSize().height });
+    // Keyboard focus reveals it too.
+    await page.mouse.move(2, 2);
+    await older.locator('.mes_buttons .mes_edit').focus();
+    await expect(buttons).toHaveCSS('opacity', '1');
+});
+
+test('delete mode puts Cancel first, a live count in the middle and Delete last, with round checks', async ({ page }) => {
+    await seedChat(page);
+    await page.evaluate(() => window.$('#option_delete_mes').trigger('click'));
+    const bar = page.locator('#dialogue_del_mes');
+    await expect(bar).toBeVisible();
+
+    const order = await bar.locator('> *').evaluateAll(items => items.map(item => item.id));
+    expect(order).toEqual(['dialogue_del_mes_cancel', 'dialogue_del_mes_count', 'dialogue_del_mes_ok']);
+    await expect(bar.locator('#dialogue_del_mes_count')).toHaveAttribute('role', 'status');
+    await expect(bar.locator('#dialogue_del_mes_count')).toHaveText('0 selected');
+
+    const check = await page.locator('#chat .mes[mesid="4"] .del_checkbox').evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return { width: Math.round(box.width), height: Math.round(box.height), radius: style.borderRadius, border: style.borderTopWidth };
+    });
+    expect({ width: check.width, height: check.height, border: check.border }).toEqual({ width: 28, height: 28, border: '2px' });
+    expect(parseFloat(check.radius)).toBeGreaterThanOrEqual(14);
+
+    // Choosing a message selects it and every message after it.
+    await page.locator('#chat .mes[mesid="3"] .mes_text').click();
+    await expect(bar.locator('#dialogue_del_mes_count')).toHaveText('3 selected');
+    await bar.locator('#dialogue_del_mes_cancel').click();
+    await expect(bar).toBeHidden();
+});
+
+test('the swipe arrows are at the pointer floor, the previous one at the start edge in a Moonlit style', async ({ page, isMobile }) => {
+    await seedWithSwipes(page);
+    await setStyle(page, 3, 'echostyle');
+    const floor = isMobile ? 44 : 32;
+    const last = page.locator('#chat .last_mes');
+    await last.scrollIntoViewIfNeeded();
+    const boxes = await last.evaluate(element => {
+        const rect = selector => {
+            const box = element.querySelector(selector).getBoundingClientRect();
+            return { left: box.left, right: box.right, width: box.width, height: box.height };
+        };
+        const row = element.getBoundingClientRect();
+        return { row: { left: row.left, right: row.right }, prev: rect('.swipe_left'), next: rect('.swipe_right'), counter: rect('.swipes-counter') };
+    });
+    expect(boxes.prev.width).toBeGreaterThanOrEqual(floor);
+    expect(boxes.prev.height).toBeGreaterThanOrEqual(floor);
+    expect(boxes.next.width).toBeGreaterThanOrEqual(floor);
+    const middle = boxes.row.left + (boxes.row.right - boxes.row.left) / 2;
+    expect(boxes.prev.right).toBeLessThan(middle);
+    expect(boxes.next.left).toBeGreaterThan(middle);
+    expect(boxes.counter.left).toBeGreaterThan(middle);
+
+    // The counter is small, but the area that opens the swipe picker reaches the floor.
+    const hit = await last.locator('.swipes-counter').evaluate(element => parseFloat(getComputedStyle(element, '::after').height));
+    expect(hit).toBeGreaterThanOrEqual(floor);
+});
+
+test('a reasoning header reaches the pointer floor', async ({ page, isMobile }) => {
+    await seedChat(page);
+    await page.evaluate(async () => {
+        const context = window.SillyTavern.getContext();
+        const message = context.chat[2];
+        message.extra = { reasoning: 'Thinking it over.', reasoning_duration: 1500 };
+        await context.printMessages();
+    });
+    const header = page.locator('#chat .mes[mesid="2"] .mes_reasoning_header').first();
+    await expect(header).toBeVisible();
+    const box = await header.boundingBox();
+    expect(box.height).toBeGreaterThanOrEqual(isMobile ? 44 : 32);
+});

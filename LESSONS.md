@@ -968,6 +968,23 @@ This is the largest class by a wide margin.
   - `auditPromptingLayout` measures the control of a `.ds-row-check` row (radio or check) at the 12px inset, and the text of every other row.
 - **Tests:** `tests/sillybunny-backend-settings.e2e.js`, `tests/sillybunny-settings-consistency.e2e.js`, `tests/sillybunny-preset-autosave.e2e.js`; the inventory and parity specs under `tests/audit/`.
 
+### Message rows (action row, swipe controls, delete mode)
+
+- **Breaks:**
+  - The set of actions in a row followed `max-width: 768px`, so a fine pointer at 390px got the phone set and a coarse pointer at 844px the desktop set. It follows `(pointer: coarse)` now: `public/css/sillybunny-message-actions.css`, `COARSE_POINTER_QUERY` in `public/scripts/sillybunny-message-actions.js`, and the `--sb-message-icon-size` and `--sb-message-glyph-size` overrides in `sillybunny-theme.css`. A rule of the row that is keyed on a width moves the action set again.
+  - Upstream dims every row control with `opacity: 0.3` (`public/style.css`: `.mes_button`, `.swipe_left`, `.swipe_right`, `.swipes-counter`), about 2.6:1 on the dark tone (Delete 1.8:1). The rest state is `color: var(--sb-muted-fg)` at opacity 1 in both tones, except on `.mes.last_swipe`, which keeps upstream's highlight. An opacity rule or an `!important` opacity on a counter brings the contrast back down.
+  - `updateEditArrowClasses()` (`public/script.js`) compared the edited message with the first and last rendered ones, so in a chat longer than `chat_truncation` the first rendered message had Move Up disabled. It compares with `0` and `chat.length - 1`, and the Move Up handler calls `showMoreMessages()` first when the message above is not rendered, because `messageEditMove()` needs both messages in the DOM.
+  - The theme's `display: inline-flex` on `.mes_button` outranks the base rules that hide the inactive media toggle, so both Gallery and List showed (`.mes[data-media-display]`) and the expanded row wrapped. `#chat .mes:not([data-media-display='gallery']) .mes_media_gallery` and its List twin hide it.
+  - `.mes_text { overflow-wrap: anywhere }` shrinks a table's min-content to one letter, so Echo and Ripple broke the words in table headers at 390px; `th` and `td` take `break-word`.
+  - The Moonlit styles grouped the previous swipe arrow with the counter at 768px and narrower, and a later `right: auto !important` made desktop accidentally split it; the previous arrow is at the start edge at every width, and the size is `--sb-message-hit-size`.
+  - Whisper and Hush drew a 3px `::after` stripe per role. The row tint alone tells the role now.
+- **Guards:**
+  - The first test of the popover `tests/action-menu-viewport.e2e.js` (`the message menu stays inside the window`) failed 10 of 10 alone at the base and passed in a grouped run: a chat load focuses `#send_textarea` after `debounce_timeout.short` (`public/script.js`, `CHAT_LOADED`), and the popover closes when focus leaves it. `seedChat` waits for the composer to take focus.
+  - The Delete bar's markup is Cancel, `#dialogue_del_mes_count` (`role="status"`), Delete, and `initializeDeleteCount()` writes `${count} selected` from the `selected` class that upstream sets. A click on a message selects it and every message after it, which is upstream's behaviour.
+  - On Whisper the controls sit on a banner picture, so they take the OSD fill and ink (`--sb-osd-bg`, `--sb-osd-ink` in `sillybunny-theme.css`) with the edit actions' role colours given up, because the light tone's role colours are dark and measured 1.0 to 1.6:1 on the fill. A Document message that is not the last has its row as an overlaid toolbar on a fine pointer, in the flow on a coarse one; its rule must set `inline-size: max-content`, since a narrow-width rule stretches `.mes_buttons` over the whole message and then it intercepted clicks on the reasoning header.
+  - `sillybunny-chat-styles.css` is injected for every chat style (`ensureNativeChatStyleStylesheet()` in `power-user.js`), so it is outside the blocking budget: the Document, Whisper, delete-mode and counter hit-area rules are there.
+- **Tests:** `tests/foundation/message-actions.e2e.js`; `tests/message-actions-contrast.test.js`; `tests/chat-scroll-regressions.e2e.js` (`redisplay keeps render follow-up hooks applied after batched render` expects Move Up enabled on the first rendered message of a longer chat); the audit spec for `chat.roleplay.*` and `menu.message.roleplay`.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

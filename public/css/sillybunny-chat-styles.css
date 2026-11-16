@@ -38,7 +38,7 @@
     --moonlit-sb-ripple-avatar-mobile-width: var(--customRippleAvatarMobileWidth, 100px);
     --moonlit-sb-ripple-avatar-desktop-width: min(var(--customRippleAvatarWidth, 180px), 35%);
     --moonlit-sb-ripple-left-bottom-gap: 10px;
-    --moonlit-sb-swipe-control-size: 24px;
+    --moonlit-sb-swipe-control-size: var(--sb-message-hit-size, 24px);
     --moonlit-sb-swipe-counter-width: 38px;
     --moonlit-sb-swipe-edge-offset: 8px;
     --moonlit-sb-swipe-gap: 4px;
@@ -356,7 +356,6 @@ body.echostyle #chat {
             text-align: center;
             white-space: nowrap;
             text-overflow: ellipsis;
-            opacity: 0.9 !important;
             letter-spacing: 0;
         }
     }
@@ -412,44 +411,21 @@ body.whisperstyle #chat {
         &.last_mes::before {
             filter: none;
         }
-        &::after {
-            content: "";
-            position: absolute;
-            top: 70px;
-            right: 0;
-            width: 3px;
-            height: 30px;
-            border-radius: var(--sb-radius-pill) 0 0 var(--sb-radius-pill);
-            opacity: 0.9;
-            z-index: 3;
-        }
         @media screen and (max-width: 768px) {
             &::before {
                 top: 0;
                 width: 55%;
                 min-height: 125px !important;
             }
-            &::after {
-                top: 95px;
-            }
-
         }
 
         /* Whisper: User Message 低語：使用者訊息 */
         &[is_user="true"] {
             background-color: var(--moonlit-sb-user-message-bg) !important;
-
-            &::after {
-                background: var(--customThemeColor, var(--sb-accent));
-            }
         }
         /* Whisper: Character Message 低語：角色訊息 */
         &[is_user="false"] {
             background-color: var(--moonlit-sb-bot-message-bg) !important;
-
-            &::after {
-                background: var(--sb-muted-fg, var(--SmartThemeBodyColor));
-            }
         }
 
         .lastInContext {
@@ -553,7 +529,6 @@ body.whisperstyle #chat {
             text-align: center;
             white-space: nowrap;
             text-overflow: ellipsis;
-            opacity: 0.9 !important;
             letter-spacing: 0;
         }
     }
@@ -587,33 +562,14 @@ body.hushstyle #chat {
         &.last_mes::before {
             filter: none;
         }
-        &::after {
-            content: "";
-            position: absolute;
-            top: 40px;
-            right: 0;
-            width: 3px;
-            height: 30px;
-            border-radius: var(--sb-radius-pill) 0 0 var(--sb-radius-pill);
-            opacity: 0.9;
-            z-index: 3;
-        }
 
         /* Soft: User Message 輕聲：使用者訊息 */
         &[is_user="true"] {
             background-color: var(--moonlit-sb-user-message-bg) !important;
-
-            &::after {
-                background: var(--customThemeColor, var(--sb-accent));
-            }
         }
         /* Soft: Character Message 輕聲：角色訊息 */
         &[is_user="false"] {
             background-color: var(--moonlit-sb-bot-message-bg) !important;
-
-            &::after {
-                background: var(--sb-muted-fg, var(--SmartThemeBodyColor));
-            }
         }
 
         .lastInContext {
@@ -714,7 +670,6 @@ body.hushstyle #chat {
             text-align: center;
             white-space: nowrap;
             text-overflow: ellipsis;
-            opacity: 0.9 !important;
             letter-spacing: 0;
         }
     }
@@ -1084,7 +1039,6 @@ body.tidestyle #chat {
             text-align: center;
             white-space: nowrap;
             text-overflow: ellipsis;
-            opacity: 0.9 !important;
             letter-spacing: 0;
         }
     }
@@ -1126,7 +1080,6 @@ body.tidestyle #chat .mes_text p {
 
 /* 滑動訊息編號 */
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle).swipeAllMessages #chat .mes:not(.last_mes) .swipes-counter {
-    opacity: 0.8 !important;
     margin-bottom: 20px !important;
     margin-right: var(--customMesPadding) !important;
 }
@@ -1326,11 +1279,12 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     right: var(--moonlit-sb-swipe-inline-offset) !important;
 }
 
+/* The previous arrow sits at the start edge and the next arrow with the counter at the end edge, as in the other styles, at every width. */
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipe_left {
     bottom: var(--moonlit-sb-swipe-edge-offset) !important;
-    left: auto !important;
+    left: var(--moonlit-sb-swipe-inline-offset) !important;
     position: absolute !important;
-    right: calc(var(--moonlit-sb-swipe-inline-offset) + var(--moonlit-sb-swipe-control-size) + var(--moonlit-sb-swipe-counter-width) + (var(--moonlit-sb-swipe-gap) * 2)) !important;
+    right: auto !important;
 }
 
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes :is(.swipe_left, .swipe_right) {
@@ -1466,52 +1420,6 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
         display: block;
     }
 
-    body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipeRightBlock {
-        align-items: center;
-        bottom: var(--moonlit-sb-swipe-edge-offset) !important;
-        display: flex;
-        flex-direction: row-reverse !important;
-        gap: var(--moonlit-sb-swipe-gap);
-        inline-size: calc(var(--moonlit-sb-swipe-control-size) + var(--moonlit-sb-swipe-counter-width) + var(--moonlit-sb-swipe-gap)) !important;
-        justify-content: flex-end;
-        left: auto !important;
-        max-inline-size: calc(100% - (var(--moonlit-sb-swipe-inline-offset) * 2));
-        min-inline-size: calc(var(--moonlit-sb-swipe-control-size) + var(--moonlit-sb-swipe-counter-width) + var(--moonlit-sb-swipe-gap));
-        pointer-events: none;
-        position: absolute !important;
-        right: var(--moonlit-sb-swipe-inline-offset) !important;
-    }
-
-    body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipe_left {
-        bottom: var(--moonlit-sb-swipe-edge-offset) !important;
-        left: auto !important;
-        position: absolute !important;
-        right: calc(var(--moonlit-sb-swipe-inline-offset) + var(--moonlit-sb-swipe-control-size) + var(--moonlit-sb-swipe-counter-width) + (var(--moonlit-sb-swipe-gap) * 2)) !important;
-    }
-
-    body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes :is(.swipe_left, .swipe_right) {
-        align-items: center;
-        display: inline-flex;
-        height: var(--moonlit-sb-swipe-control-size);
-        justify-content: center;
-        line-height: 1;
-        min-width: var(--moonlit-sb-swipe-control-size);
-        pointer-events: auto;
-        width: var(--moonlit-sb-swipe-control-size);
-        transform: none !important;
-    }
-
-    body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .last_mes .swipes-counter {
-        letter-spacing: 0;
-        margin: 0;
-        max-width: var(--moonlit-sb-swipe-counter-width);
-        min-width: var(--moonlit-sb-swipe-counter-width);
-        overflow: hidden;
-        pointer-events: auto;
-        text-overflow: ellipsis;
-        width: var(--moonlit-sb-swipe-counter-width) !important;
-    }
-
     body.ripplestyle #chat .mes:not(.smallSysMes) {
         align-items: start;
         display: grid !important;
@@ -1591,5 +1499,125 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     body.ripplestyle #chat .mes:not(.smallSysMes) .mes_text {
         margin-top: 0 !important;
         padding-top: 0 !important;
+    }
+}
+
+/* Whisper's banner picture sits behind its name row, so the actions on it are overlaid controls: the OSD fill and ink (DESIGN.md, Overlaid Controls). */
+body.whisperstyle #chat .mes:not(.smallSysMes) .mes_block > .ch_name > :is(.mes_buttons, .mes_edit_buttons) {
+    padding: 3px;
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-osd-bg);
+}
+
+body.whisperstyle #chat .mes:not(.smallSysMes) .mes_buttons .mes_button {
+    color: var(--sb-osd-ink);
+}
+
+body.whisperstyle #chat .mes:not(.smallSysMes) .mes_edit_buttons .menu_button {
+    --sb-edit-action-color: var(--sb-osd-ink);
+}
+
+/* ---------- Message row parts that are not needed at first paint ---------- */
+
+/* Upstream shows only the last row (toggle-dependent.css). A coarse pointer gets the row of every message in the flow; a fine
+   pointer gets an overlaid toolbar at the corner on hover or focus. */
+@media (hover: hover) and (pointer: fine) {
+    body.documentstyle #chat .mes:not(.last_mes) .ch_name > .mes_buttons {
+        position: absolute;
+        inset-block-start: 3px;
+        inset-inline-end: 3px;
+        z-index: 3;
+        inline-size: max-content;
+        max-inline-size: calc(100% - 6px);
+        flex: none;
+        padding: 3px;
+        border-radius: var(--sb-radius-control);
+        background: var(--sb-osd-bg);
+    }
+
+    body.documentstyle #chat .mes:not(.last_mes) .ch_name > .mes_buttons .mes_button {
+        color: var(--sb-osd-ink);
+    }
+
+    body.documentstyle #chat .mes:not(.last_mes):not(.sb-message-actions-open, [data-sb-actions-expanded]):not(:hover, :focus-within) .ch_name > .mes_buttons {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+/* ---------- Delete mode ---------- */
+
+/* Cancel, the count, then Delete; the markup has the same order. */
+#dialogue_del_mes[style*='block'] {
+    padding-inline: 12px;
+    box-sizing: border-box;
+}
+
+#dialogue_del_mes > :is(.menu_button, [role='status']) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    margin: 0 6px;
+}
+
+#dialogue_del_mes_cancel {
+    border-color: transparent;
+    background: var(--sb-raised-bg);
+}
+
+#dialogue_del_mes_ok {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--sb-color-danger) 18%, transparent);
+    color: var(--sb-color-danger);
+}
+
+@media (hover: hover) {
+    #dialogue_del_mes_cancel:hover {
+        background: var(--sb-raised-hover-bg);
+    }
+
+    #dialogue_del_mes_ok:hover {
+        background: color-mix(in srgb, var(--sb-color-danger) 26%, transparent);
+    }
+}
+
+#dialogue_del_mes_count {
+    min-inline-size: 9ch;
+    color: var(--sb-muted-fg);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* libadwaita's selection check: a 28px circle with a 2px outline. */
+#chat .mes .del_checkbox {
+    --sb-checkbox-size: 28px;
+    border-radius: var(--sb-radius-pill);
+    border-color: var(--sb-selection-check-outline);
+    opacity: 1;
+}
+
+#chat .mes .del_checkbox:checked {
+    border-color: var(--sb-accent);
+}
+
+@media (hover: hover) {
+    #chat .mes .del_checkbox:not(:checked):not(:disabled):hover {
+        border-color: var(--sb-selection-check-outline-hover);
+    }
+}
+
+/* Grows the 18px counter to the pointer's floor without moving it: up beside the arrow (which keeps its taps by z-index),
+   sideways into the gutter, never below, where the bottom bar sits. */
+#chat .mes .swipes-counter::after {
+    content: '';
+    position: absolute;
+    inset: calc(18px - var(--sb-density-floor)) -6px 0 -6px;
+    border-radius: inherit;
+}
+
+@media (pointer: coarse) {
+    #chat .mes .swipes-counter::after {
+        inset-inline-start: -16px;
     }
 }

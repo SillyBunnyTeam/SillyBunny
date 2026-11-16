@@ -16263,8 +16263,9 @@ export function updateEditArrowClasses() {
     const upButton = message.find('.mes_edit_up');
     const copyButton = message.find('.mes_edit_copy');
     const deleteButton = message.find('.mes_edit_delete');
-    const lastId = Number(chatElement.find('.mes').last().attr('mesid'));
-    const firstId = Number(chatElement.find('.mes').first().attr('mesid'));
+    // SillyBunny: the ends of the chat, not of the rendered messages; a chat longer than the render window shows only its tail.
+    const lastId = chat.length - 1;
+    const firstId = 0;
 
     copyButton.removeClass('disabled');
     deleteButton.removeClass('disabled');
@@ -19012,6 +19013,10 @@ jQuery(async function () {
             return;
         }
         const targetId = Number(this_edit_mes_id) - 1;
+        // SillyBunny: the message above can be older than the rendered window; render the older page before the swap.
+        if (!chatElement.find(`.mes[mesid="${targetId}"]`).length) {
+            await showMoreMessages();
+        }
         await messageEditMove(this_edit_mes_id, targetId);
     });
 

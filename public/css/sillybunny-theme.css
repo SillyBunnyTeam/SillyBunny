@@ -183,6 +183,9 @@
     /* libadwaita's .dimmed strength; the light tone keeps 74%, because 55% gives 3.2:1 on white. */
     --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent);
     --sb-muted-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 7%, transparent);
+    /* OSD colours of overlaid controls: black 70%, white 90%. */
+    --sb-osd-bg: color-mix(in srgb, black 70%, transparent);
+    --sb-osd-ink: color-mix(in srgb, white 90%, transparent);
     --sb-state-favorite: color-mix(in srgb, var(--color-warning, var(--sb-color-warning)) 82%, var(--SmartThemeBodyColor) 18%);
     --sb-state-favorite-bg: color-mix(in srgb, var(--sb-state-favorite) 14%, var(--sb-button-bg));
     --sb-state-favorite-border: color-mix(in srgb, var(--sb-state-favorite) 40%, var(--sb-shell-border));
@@ -552,25 +555,9 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     }
 }
 
-/* Base message actions use low-opacity white glyphs with a black shadow for dark themes. */
 :root[data-sb-surface-tone='light'] #chat .mes .mes_button,
 :root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div {
-    opacity: 0.8;
     filter: none;
-}
-
-@media (hover: hover) {
-    :root[data-sb-surface-tone='light'] #chat .mes .mes_button:hover,
-    :root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div:hover {
-        opacity: 1;
-    }
-}
-
-:root[data-sb-surface-tone='light'] #chat .mes .mes_button:active,
-:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div:active,
-:root[data-sb-surface-tone='light'] #chat .mes .mes_button:focus-visible,
-:root[data-sb-surface-tone='light'] #chat .mes .extraMesButtons > div:focus-visible {
-    opacity: 1;
 }
 
 body {
@@ -2204,7 +2191,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 }
 
 #chat :is(.mes_edit_cancel, .mes_reasoning_edit_cancel).menu_button {
-    --sb-edit-action-color: var(--sb-color-warning);
+    --sb-edit-action-color: var(--SmartThemeBodyColor);
 }
 
 #chat :is(.mes_edit_delete, .mes_reasoning_delete).menu_button {
@@ -2255,10 +2242,6 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     border-color: transparent;
     background: transparent;
     box-shadow: none;
-}
-
-#chat .mes_edit_buttons :is(.mes_edit_up, .mes_edit_down).menu_button:is(.disabled, .is-disabled, [disabled]) {
-    display: none;
 }
 
 /* Guided Generations and input-history composer buttons: libadwaita flat toolbar buttons at the Control radius. */
@@ -2332,19 +2315,6 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     line-height: 1;
     box-sizing: border-box;
     border-radius: var(--sb-radius-inner);
-}
-
-/* The counter is what opens the swipe picker on a press and hold, but it is only 18px tall.
-   This grows the touch target to the 44px contract without moving anything on screen. It
-   reaches up alongside the arrow, which keeps its own taps through its higher z-index, and
-   sideways into the message gutter, but never below: the bottom bar sits directly under it. */
-@media (pointer: coarse) {
-    #chat .mes .swipes-counter::after {
-        content: '';
-        position: absolute;
-        inset: -26px -6px 0 -16px;
-        border-radius: inherit;
-    }
 }
 
 /* libadwaita swipe picker: borderless rows, flat hover, neutral selection like the shell tabs. */
@@ -2655,6 +2625,9 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 
 /* libadwaita expander row: neutral raised fill, button radius, no border. */
 #chat .mes_reasoning_header {
+    box-sizing: border-box;
+    min-block-size: var(--sb-density-floor);
+    align-items: center;
     border: 0;
     border-radius: var(--sb-radius-button);
     background: var(--sb-raised-bg);
@@ -2673,6 +2646,11 @@ body.bubblechat .mes[is_user='true'] .mes_block {
 
 #chat .mes_reasoning_summary:focus-visible .mes_reasoning_header {
     box-shadow: var(--sb-focus-ring-inset);
+}
+
+/* `anywhere` shrinks a table's min-content to one letter and breaks words; `break-word` keeps them whole. */
+#chat :is(.mes_text, .mes_reasoning) :is(th, td) {
+    overflow-wrap: break-word;
 }
 
 /* A bare <pre> keeps the UA `white-space: pre`, so a message wrapped in one
@@ -2699,9 +2677,9 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     }
 }
 
-@media screen and (max-width: 768px) {
+/* Message action sizes follow the pointer, not the width. */
+@media (pointer: coarse) {
     :root {
-        --sb-icon-control-size: max(var(--sb-density-floor), calc(2.5rem - 0.65rem * var(--sb-density-t)));
         --sb-message-icon-size: clamp(28px, calc(var(--bottomFormBlockSize, 44px) * 0.62), 34px);
         --sb-message-glyph-size: 18px;
     }
@@ -2709,6 +2687,12 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     :root[data-sb-compact-mode='true'] {
         --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.62), 30px);
         --sb-message-glyph-size: 17px;
+    }
+}
+
+@media screen and (max-width: 768px) {
+    :root {
+        --sb-icon-control-size: max(var(--sb-density-floor), calc(2.5rem - 0.65rem * var(--sb-density-t)));
     }
 
     #form_sheld {

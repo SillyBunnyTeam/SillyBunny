@@ -70,6 +70,8 @@ async function seedChat(page) {
         }
         await context.printMessages();
     });
+    // The app focuses the composer a moment after a chat loads, and a popover closes when focus moves away from it.
+    await expect(page.locator('#send_textarea')).toBeFocused({ timeout: UI_TIMEOUT });
 }
 
 /** The popover sits inside the window and, when given, inside its bounds. */

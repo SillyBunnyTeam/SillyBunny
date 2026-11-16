@@ -1,19 +1,20 @@
 /*
  * SillyBunny message actions.
- * Row: mobile shows Edit + menu button; desktop shows Copy + Edit + menu button. The menu button
+ * Row: a coarse pointer shows Edit + menu button; a fine pointer shows Copy + Edit + menu button. The menu button
  * (upstream's .extraMesButtonsHint) opens a labelled menu built from the message's own buttons,
  * which stay in the DOM so upstream and extension handlers keep working; menu rows forward to them.
- * Desktop: Shift over a message, or the Expand Message Actions setting, shows every action inline.
+ * Fine pointer: Shift over a message, or the Expand Message Actions setting, shows every action inline.
  * Touch and pen: press and hold any message action to see its label.
  */
 
 import { eventSource, event_types } from './events.js';
-import { translate } from './i18n.js';
-import { LAYOUT_MOBILE_QUERY } from './sillybunny-editor/breakpoints.js';
+import { t, translate } from './i18n.js';
 import { closeActionMenu, getActionMenuTrigger, isActionMenuOpen, openActionMenu } from './sillybunny-action-menu.js';
 import { initializeConversationMessageMenu } from './sillybunny-conversation/message-menu.js';
 import { animateIn, MOTION_FAST, MOTION_EASE_OUT_QUAD, stopMotion } from './sillybunny-motion.js';
 
+/** The set of actions in a row follows the pointer, never the width (DESIGN.md, Chat Transcript). */
+const COARSE_POINTER_QUERY = '(pointer: coarse)';
 const HINT_SELECTOR = '#chat .mes .mes_buttons > .extraMesButtonsHint';
 const EDIT_MORE_SELECTOR = '#chat .mes .mes_edit_buttons > .sb-mes-edit-more';
 const PRESSABLE_SELECTOR = '#chat .mes :is(.mes_buttons .mes_button, .mes_edit_buttons .menu_button)';
@@ -51,7 +52,7 @@ const DANGER_CLASSES = new Set(['mes_delete', 'mes_edit_delete']);
 const POINTERUP_CLASSES = ['mes_copy', 'mes_prompt'];
 
 let initialized = false;
-let mobileQuery = null;
+let coarseQuery = null;
 let press = null;
 let suppressClick = false;
 let suppressClickTimer = 0;
@@ -66,8 +67,8 @@ let reveal = null;
 let layoutFrame = 0;
 const pendingLayout = new Set();
 
-function isMobileLayout() {
-    return mobileQuery?.matches === true;
+function isCoarsePointer() {
+    return coarseQuery?.matches === true;
 }
 
 function isSettingExpanded() {
@@ -236,7 +237,7 @@ function getMenuTrigger(mes) {
 /* ---------- Expanded row (desktop) ---------- */
 
 function isRowExpanded(mes) {
-    return !isMobileLayout() && (isSettingExpanded() || mes.hasAttribute(EXPANDED_ATTRIBUTE));
+    return !isCoarsePointer() && (isSettingExpanded() || mes.hasAttribute(EXPANDED_ATTRIBUTE));
 }
 
 function createDivider() {
@@ -312,7 +313,7 @@ function scheduleLayout(mes) {
 }
 
 function scheduleLayoutForAll() {
-    if (isMobileLayout()) {
+    if (isCoarsePointer()) {
         return;
     }
     const chat = document.getElementById('chat');
@@ -324,7 +325,7 @@ function scheduleLayoutForAll() {
 }
 
 function scheduleLayoutForMessage(messageId) {
-    if (isMobileLayout()) {
+    if (isCoarsePointer()) {
         return;
     }
     const mes = document.querySelector(`#chat > .mes[mesid="${messageId}"]`);
@@ -404,7 +405,7 @@ function revealHost(host, source) {
     if (!(host instanceof HTMLElement) || isEditingHost(host) || reveal?.host === host) {
         return;
     }
-    if (isMobileLayout() || isSettingExpanded() || isActionMenuOpen()) {
+    if (isCoarsePointer() || isSettingExpanded() || isActionMenuOpen()) {
         return;
     }
     if (isTypingTarget(document.activeElement) || document.querySelector('dialog[open]')) {
@@ -452,7 +453,7 @@ function handleFocusOut() {
 
 function syncHintTitle(hint) {
     const label = translate('Message Actions');
-    const title = isMobileLayout() || isSettingExpanded() ? label : `${label}\n${translate('Hold shift to expand.')}`;
+    const title = isCoarsePointer() || isSettingExpanded() ? label : `${label}\n${translate('Hold shift to expand.')}`;
     const attribute = hint.hasAttribute('data-sttt--title') ? 'data-sttt--title' : 'title';
     if (hint.getAttribute(attribute) !== title) {
         hint.setAttribute(attribute, title);
@@ -630,11 +631,11 @@ function handleContextMenu(event) {
     if (!target) {
         return;
     }
-    if (target.closest(PRESSABLE_SELECTOR) && (isMobileLayout() || press)) {
+    if (target.closest(PRESSABLE_SELECTOR) && (isCoarsePointer() || press)) {
         event.preventDefault();
         return;
     }
-    if (isMobileLayout() || event.shiftKey) {
+    if (isCoarsePointer() || event.shiftKey) {
         return;
     }
     const mes = target.closest('#chat > .mes');
@@ -677,7 +678,7 @@ function observeChat(chat) {
         if (reveal && !reveal.host.isConnected) {
             reveal = null;
         }
-        if (!isSettingExpanded() || isMobileLayout()) {
+        if (!isSettingExpanded() || isCoarsePointer()) {
             return;
         }
         for (const record of records) {
@@ -695,6 +696,25 @@ function observeChat(chat) {
     }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 }
 
+/* ---------- Delete mode: live count ---------- */
+
+/** Writes how many messages the deletion covers (the chosen one and every one after it) into the delete bar. */
+function initializeDeleteCount(chat) {
+    const bar = document.getElementById('dialogue_del_mes');
+    const count = document.getElementById('dialogue_del_mes_count');
+    if (!bar || !count) {
+        return;
+    }
+    const update = () => {
+        if (bar.style.display === 'block') {
+            count.textContent = t`${chat.querySelectorAll(':scope > .mes.selected').length} selected`;
+        }
+    };
+    // Upstream marks the rows with a class when one is chosen, and opens the bar by writing its style.
+    new MutationObserver(update).observe(chat, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    new MutationObserver(update).observe(bar, { attributes: true, attributeFilter: ['style'] });
+}
+
 export function initializeMessageActions() {
     if (initialized) {
         return;
@@ -704,9 +724,9 @@ export function initializeMessageActions() {
         return;
     }
     initialized = true;
-    // Row layout follows the 768px layout breakpoint; the menu surface follows the overlay rule in sillybunny-action-menu.js.
-    mobileQuery = window.matchMedia(LAYOUT_MOBILE_QUERY);
-    mobileQuery.addEventListener('change', handleLayoutChange);
+    // The row's actions follow the pointer; the menu surface follows the overlay rule in sillybunny-action-menu.js.
+    coarseQuery = window.matchMedia(COARSE_POINTER_QUERY);
+    coarseQuery.addEventListener('change', handleLayoutChange);
 
     window.addEventListener('pointerdown', handlePointerDownCapture, true);
     window.addEventListener('pointermove', handlePointerMove, { capture: true, passive: true });
@@ -722,6 +742,7 @@ export function initializeMessageActions() {
     document.addEventListener('contextmenu', handleContextMenu);
     window.addEventListener('resize', () => scheduleLayoutForAll(), { passive: true });
     observeChat(chat);
+    initializeDeleteCount(chat);
     initializeConversationMessageMenu();
 
     const closeImmediately = () => closeActionMenu({ animate: false });

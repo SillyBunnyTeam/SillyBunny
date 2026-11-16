@@ -17,6 +17,12 @@
     display: none !important;
 }
 
+/* Only the toggle that matches the display style shows. */
+#chat .mes:not([data-media-display='gallery']) .mes_media_gallery,
+#chat .mes:not([data-media-display='list']) .mes_media_list {
+    display: none;
+}
+
 /* Name row: the name truncates first, then the actions drop below it. */
 #chat .mes .mes_block > .ch_name {
     flex-wrap: wrap;
@@ -66,15 +72,15 @@
     display: none;
 }
 
-/* Rows that are not expanded: mobile always, desktop unless Shift or the setting expands them. */
-@media screen and (max-width: 768px) {
+/* Actions follow the pointer, not the width. */
+@media (pointer: coarse) {
     #chat .mes:not([data-sb-actions-probe]) .mes_buttons > .extraMesButtons:not(#sb-specificity),
     #chat .mes:not([data-sb-actions-probe]) .mes_buttons > :not(.extraMesButtons, .mes_edit, .extraMesButtonsHint) {
         display: none !important;
     }
 }
 
-@media screen and (min-width: 769px) {
+@media not all and (pointer: coarse) {
     body:not(.expandMessageActions) #chat .mes:not([data-sb-actions-probe], [data-sb-actions-expanded]) .mes_buttons > .extraMesButtons:not(#sb-specificity),
     body:not(.expandMessageActions) #chat .mes:not([data-sb-actions-probe], [data-sb-actions-expanded]) .mes_buttons > :not(.extraMesButtons, .mes_copy, .mes_edit, .extraMesButtonsHint) {
         display: none !important;
@@ -101,9 +107,9 @@
     }
 }
 
-/* ---------- Mobile row: Edit, then the menu button ---------- */
+/* ---------- Coarse row: Edit, then the menu button ---------- */
 
-@media screen and (max-width: 768px) {
+@media (pointer: coarse) {
     #chat .mes .mes_block > .ch_name {
         flex-wrap: nowrap;
         row-gap: 0;
@@ -150,7 +156,7 @@
     display: none !important;
 }
 
-@media screen and (min-width: 769px) {
+@media not all and (pointer: coarse) {
     /* The wrapper's ::before is a flex item of the row: the divider between Confirm and Copy. */
     #chat .mes .mes_edit_buttons > .sb-mes-edit-extra::before {
         content: '';
@@ -162,7 +168,7 @@
     }
 }
 
-@media screen and (max-width: 768px) {
+@media (pointer: coarse) {
     #chat .mes .mes_edit_buttons > .sb-mes-edit-more {
         display: inline-flex !important;
     }
@@ -180,8 +186,8 @@
     }
 }
 
-/* Mirrored user rows (echo, tide) sit at the start edge, so the menu button stays on the outer edge. */
-:is(body.echostyle, body.tidestyle) #chat .mes[is_user='true'] .mes_block > .ch_name > :is(.mes_buttons, .mes_edit_buttons) {
+/* Mirrored user rows (echo, tide): menu button on the outer edge. */
+:is(body.echostyle, body.tidestyle) #chat .mes[is_user='true'] .mes_block > .ch_name > .mes_buttons {
     flex-direction: row-reverse;
     justify-content: flex-end;
 }
@@ -201,9 +207,29 @@
         box-shadow var(--sb-transition-fast);
 }
 
+/* Dimmed by colour: upstream's 30% opacity gives 2.6:1, under 3:1. */
+#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div, .mes_reasoning_actions .mes_button):not(.mes_delete, .script-running, .script-ran) {
+    opacity: 1;
+    color: var(--sb-muted-fg);
+}
+
+#chat .mes .mes_buttons .mes_delete {
+    opacity: 1;
+}
+
+body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right, .swipes-counter) {
+    opacity: 1;
+    color: var(--sb-muted-fg);
+}
+
 @media (hover: hover) {
     #chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):not(.mes_delete):hover {
         background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+        color: var(--SmartThemeBodyColor);
+    }
+
+    body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right):hover {
+        color: var(--SmartThemeBodyColor);
     }
 }
 

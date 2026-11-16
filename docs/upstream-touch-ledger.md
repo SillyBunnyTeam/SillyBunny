@@ -1985,6 +1985,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-16, UI polish sweep (task 7.3). |
 | Owner | `TODO(copy)` |
 
+### `public/script.js`, `public/index.html` and `public/css/toggle-dependent.css` - message edit row and delete bar
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` (`updateEditArrowClasses` and the `.mes_edit_up` handler); `public/index.html` (`#dialogue_del_mes`); `public/css/toggle-dependent.css` (the Document style's rule that hid older rows' actions). |
+| Area | The message edit row's Move Up and Move Down, the delete-mode bar, and the Document chat style's action rows. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-message-actions.js` (`initializeDeleteCount`) and `public/css/sillybunny-message-actions.css`, `public/css/sillybunny-chat-styles.css`. |
+| Adapter shape | Since 2026-11-16 (UI polish sweep, tasks 7.1 and 7.2) Move Up and Move Down are disabled at the ends of the chat (`0` and `chat.length - 1`), not of the rendered messages, and Move Up renders the older page first (`showMoreMessages()`) when the message above is not rendered (F-114). The delete bar reads Cancel, a live count `#dialogue_del_mes_count` (`role="status"`), then Delete, with its IDs unchanged (F-231). The Document style no longer hides older rows' actions in `toggle-dependent.css`; SillyBunny's sheets show them on hover or focus with a fine pointer and in the row with a coarse one (F-225). Each change carries a `SillyBunny:` marker. |
+| Protecting tests | `tests/foundation/message-actions.e2e.js`; `tests/chat-scroll-regressions.e2e.js`; `tests/message-actions-contrast.test.js`. |
+| Validation | 2026-11-16: root and tests lint, the full unit run, the foundation message-actions spec (Chromium), the related e2e specs, the audit of the `chat.roleplay.*` surfaces and `menu.message.roleplay`, and the capture comparison against `p6-end`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-16, UI polish sweep (tasks 7.1 and 7.2). |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

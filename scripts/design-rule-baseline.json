@@ -23,7 +23,7 @@
         "public/css/sillybunny-chat-styles.css": {
             "shadow-literal": 1,
             "letter-spacing": 1,
-            "important": 225,
+            "important": 208,
             "spacing-off-scale": 72
         },
         "public/css/sillybunny-color-picker.css": {
