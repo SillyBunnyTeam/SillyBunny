@@ -73,6 +73,20 @@ const RECORD = process.env.SB_PARITY_RECORD === '1';
 const CENSUS_DIR = process.env.SB_CENSUS_DIR;
 const INJECT_CSS = process.env.SB_PARITY_INJECT_CSS;
 const DUMP_DIR = process.env.SB_PARITY_DUMP;
+// SURFACE_AUDIT_VANISH=<surface id>:<ms> removes the root of that surface's plain opens <ms> after their first open, to show that the smoke
+// check judges the first open of a unit and not the reopen that the axe scan retries with. It is for that proof only.
+const VANISH = (() => {
+    const [id, ms] = String(process.env.SURFACE_AUDIT_VANISH ?? '').split(':');
+    return id ? { id, ms: Number(ms) || 0 } : null;
+})();
+// A surface's cells (a viewport and a theme, each in a browser context of its own) run up to 4 at a time, so a run of a few heavy surfaces is
+// not as long as its longest surface's four boots in a row. A run holds one browser per worker already, so the contexts that one run may hold at
+// once are capped at CONTEXT_BUDGET (about 0.9 GB each, so about 22 GB a run, and several runs fit beside each other in the e2e memory cap):
+// the cells at once are CONTEXT_BUDGET divided by the surfaces of the run, which is 1 from 13 surfaces up, so a run of the whole registry boots
+// one cell at a time. The surfaces are counted after SURFACE_ID or SURFACE_FAMILY; a --grep run counts the whole registry. SURFACE_AUDIT_CELLS=<n>
+// lowers the 4; it cannot exceed the budget.
+const CONTEXT_BUDGET = 24;
+const MAX_CELLS_AT_ONCE = Math.max(1, Number(process.env.SURFACE_AUDIT_CELLS) || 4);
 const CELL = {
     ...(process.env.SURFACE_DENSITY && { density: process.env.SURFACE_DENSITY }),
     ...(process.env.SURFACE_TEXT_SCALE && { textScale: Number(process.env.SURFACE_TEXT_SCALE) }),
@@ -313,6 +327,19 @@ async function measureParity(page, plan, root, viewport) {
     }
 }
 
+/** Runs `work` on each item, at most `limit` at a time, and returns the results in the order of the items. */
+async function mapLimit(items, limit, work) {
+    const results = new Array(items.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (next < items.length) {
+            const index = next++;
+            results[index] = await work(items[index]);
+        }
+    }));
+    return results;
+}
+
 /** The units that one boot opens: each backend of the surface, then each state at the first backend. */
 function unitsAt(surface, viewport) {
     const backends = backendsOf(surface);
@@ -415,13 +442,16 @@ for (const { candidate: plan } of heaviestFirst) {
                     // app clicks the message box from a timer a moment after a chat loads, and that scripted click dismisses an open menu while
                     // it is scanned: scripted clicks are stopped from the end of the open until the scan is done. The clicks that the
                     // registry's open steps make have finished by then.
-                    const attempt = () => capped(surface, axeLabel, async () => {
+                    const attempt = isFirst => capped(surface, axeLabel, async () => {
                         const out = { smoke: [], parity: null, scan: null, axeError: null, opened: false };
                         let root;
                         step(`open ${axeLabel}`);
                         try {
                             root = await openSurface(page, surface, options);
                             out.opened = true;
+                            if (isFirst && VANISH?.id === surface.id && unit.state === undefined) {
+                                await page.locator(root).first().evaluate((element, ms) => { setTimeout(() => element.remove(), ms); }, VANISH.ms);
+                            }
                         } catch (error) {
                             if (checks.smoke) {
                                 out.smoke.push(labelled(smokeLabel, briefOf(error)));
@@ -466,14 +496,16 @@ for (const { candidate: plan } of heaviestFirst) {
                         }
                         return out;
                     });
-                    let out = await attempt();
+                    const firstOpen = await attempt(true);
+                    let out = firstOpen;
                     // A surface that closes itself a moment after it opens is opened once more.
                     if (checks.axe && out.axeError) {
                         cell.retried.push(axeLabel);
-                        out = await attempt();
+                        out = await attempt(false);
                     }
                     opened = out.opened;
-                    cell.smoke.push(...out.smoke);
+                    // Smoke judges the first open of the unit, as it did when it booted on its own: the reopen that the scan needs does not clear it.
+                    cell.smoke.push(...firstOpen.smoke);
                     if (out.parity) {
                         cell.parity = out.parity;
                     }
@@ -592,30 +624,40 @@ for (const { candidate: plan } of heaviestFirst) {
             }
         }
 
-        for (const viewport of plan.viewports) {
-            for (const theme of THEMES) {
-                // After a stall nothing is scanned any more, and the passes that only scan are left out.
-                const pass = passesFor(plan, viewport, { axe: !axeStalled }).find(candidate => candidate.theme === theme);
-                if (!pass) {
-                    continue;
+        /** Runs the cell of one viewport and theme: its boot, the boot again when the cell failed, and the boot that finishes smoke and parity after a stall. */
+        async function runCell({ viewport, theme }) {
+            // After a stall nothing is scanned any more, and the passes that only scan are left out.
+            const pass = passesFor(plan, viewport, { axe: !axeStalled }).find(candidate => candidate.theme === theme);
+            if (!pass) {
+                return null;
+            }
+            let cell = await scanBoot(viewport, pass);
+            // A cell whose open step failed (a panel that was not built in time under load) is run once more from a fresh boot.
+            if (cell.errors.length && !cell.stalled) {
+                const first = cell.errors[0];
+                cell = await scanBoot(viewport, pass);
+                cell.retried.unshift(`${pass.theme.id} ${viewport}: whole cell (${first.slice(0, 120)})`);
+            }
+            let rerun = null;
+            if (cell.stalled) {
+                axeStalled = true;
+                // The stall leaves the cell's other checks unfinished: they run again in a boot that does not scan.
+                if (pass.checks.smoke || pass.checks.parity) {
+                    rerun = await scanBoot(viewport, passesFor(plan, viewport, { axe: false })[0]);
                 }
-                let cell = await scanBoot(viewport, pass);
-                // A cell whose open step failed (a panel that was not built in time under load) is run once more from a fresh boot.
-                if (cell.errors.length && !cell.stalled) {
-                    const first = cell.errors[0];
-                    cell = await scanBoot(viewport, pass);
-                    cell.retried.unshift(`${pass.theme.id} ${viewport}: whole cell (${first.slice(0, 120)})`);
-                }
-                keep(cell);
-                if (cell.stalled) {
-                    axeStalled = true;
-                    // The stall leaves the cell's other checks unfinished: they run again in a boot that does not scan.
-                    if (pass.checks.smoke || pass.checks.parity) {
-                        const rerun = await scanBoot(viewport, passesFor(plan, viewport, { axe: false })[0]);
-                        judgedCells.set(viewport, rerun);
-                        pageErrors.push(...rerun.pageErrors);
-                    }
-                }
+            }
+            return { cell, rerun };
+        }
+
+        const cellsInParallel = Math.max(1, Math.min(MAX_CELLS_AT_ONCE, Math.floor(CONTEXT_BUDGET / heaviestFirst.length)));
+        test.info().annotations.push({ type: 'cells at once', description: String(cellsInParallel) });
+        const finished = await mapLimit(plan.viewports.flatMap(viewport => THEMES.map(theme => ({ viewport, theme }))), cellsInParallel, runCell);
+        // The cells are kept in the order of the viewports and themes, whatever order they finished in.
+        for (const result of finished.filter(Boolean)) {
+            keep(result.cell);
+            if (result.rerun) {
+                judgedCells.set(result.cell.viewport, result.rerun);
+                pageErrors.push(...result.rerun.pageErrors);
             }
         }
 
