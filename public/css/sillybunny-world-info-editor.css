@@ -99,13 +99,9 @@
     background: transparent;
 }
 
-/* The title button takes the free space, so the spacer and its two gaps do not cost the name 12px. */
+/* The title button takes the free space (its end margin, in the rule below), so the spacer and its two gaps do not cost the name 12px. */
 .sb-wi-list-header .sb-list-header__spacer {
     display: none;
-}
-
-.sb-wi-list-header .sb-wi-book-switcher {
-    margin-inline-end: auto;
 }
 
 /* The entry keeps its own margin, which is also the gap to the sort button; the padding lines the button up with the header's buttons. */
@@ -193,7 +189,8 @@
     gap: 6px;
     min-width: 0;
     min-height: var(--sb-control-icon-physical-size);
-    margin: 0;
+    margin-block: 0;
+    margin-inline: 0 auto;
     padding: 0 6px 0 0;
     border: 0;
     border-radius: var(--sb-radius-control);
