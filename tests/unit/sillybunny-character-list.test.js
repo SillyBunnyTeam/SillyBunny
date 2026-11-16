@@ -413,7 +413,8 @@ describe('shared Characters/Groups list', () => {
         const first = rows()[0];
         const showMore = () => document.querySelector('.sb-list-show-more__button');
         expect(rows()).toHaveLength(10);
-        expect(showMore().getAttribute('data-sb-copy-placeholder')).toBe('true');
+        expect(showMore().textContent).toBe('Show More');
+        expect(showMore().hasAttribute('data-sb-copy-placeholder')).toBe(false);
         showMore().focus();
         showMore().click();
         await settle();

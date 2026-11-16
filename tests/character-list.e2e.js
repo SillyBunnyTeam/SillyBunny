@@ -810,11 +810,12 @@ test.describe('folder headers in list and grid view', () => {
 });
 
 test.describe('Show More', () => {
-    test('loads one batch per press, keeps the placeholder label and focuses the first new row at the end', async ({ page }) => {
+    test('loads one batch per press under its label and focuses the first new row at the end', async ({ page }) => {
         await prepareList(page, { width: 1440, height: 900 });
         const button = showMore(page);
         await expect(button).toBeVisible();
-        await expect(button).toHaveAttribute('data-sb-copy-placeholder', 'true');
+        await expect(button).toHaveText('Show More');
+        await expect(button).not.toHaveAttribute('data-sb-copy-placeholder');
         await expect(listRows(page, 'characters')).toHaveCount(10);
         await button.click();
         await expect(listRows(page, 'characters')).toHaveCount(20);

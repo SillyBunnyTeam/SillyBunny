@@ -16,9 +16,7 @@ export function createListShowMore({ onShowMore }) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'sb-list-show-more__button';
-    // HUMAN: replace — the label of the button that loads the next batch of rows (DESIGN.md names it "Show More"), in header capitalisation.
-    button.textContent = t`TODO(copy)`;
-    button.setAttribute('data-sb-copy-placeholder', 'true');
+    button.textContent = t`Show More`;
     element.append(button);
 
     let busy = false;
