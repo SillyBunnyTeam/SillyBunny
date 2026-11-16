@@ -63,8 +63,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
             await testSetup.awaitST({ page });
             await page.evaluate(theme => $('#themes').val(theme).trigger('change'), theme);
             const reference = await page.locator('#description_textarea').evaluate(fieldAppearance);
+            // openTab shows the page it names, on a phone too.
             await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'editor'));
-            await page.locator('button[data-sb-settings-tab="editor"]').click();
             const row = page.locator('.sb-prompt-row[data-prompt-id="main"]');
             await expect(row).toBeVisible();
             await row.locator('.sb-prompt-row-name').click();
