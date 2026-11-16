@@ -30,7 +30,8 @@ import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } fr
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { MOTION_FAST, prefersReducedMotion } from './sillybunny-motion.js';
 import { attachTagFilterMenu } from './sillybunny-editor/tag-filter-menu.js';
-import { adoptEditorFields, createComboRow } from './sillybunny-editor/rows.js';
+import { adoptEditorFields } from './sillybunny-editor/rows.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { getFolders, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import { LIST_EDITOR_STYLESHEET, EDITOR_CHROME_STYLESHEET } from './sillybunny-editor/list-shell.js';
 import { loadStylesheetAsync } from './dynamic-styles.js';
@@ -296,31 +297,36 @@ function _mountFolderField() {
     const select = document.createElement('select');
     select.id = 'group_folder';
     select.setAttribute('aria-label', t`Folder`);
-    folderSelectRow = createComboRow({
+    fillFolderSelect(select, folderOptions());
+    select.value = callbacks.getFolderValue?.() ?? '';
+    folderSelectRow = createSelectRow({
+        select,
         label: t`Folder`,
         field: 'folder',
-        wide: true,
-        options: folderOptions(),
-        value: callbacks.getFolderValue?.() ?? '',
+        searchLabel: t`Search`,
+        emptyText: t`No results`,
         onChange: value => {
             callbacks.setFolderValue?.(value || null);
             callbacks.onFolderChanged?.();
         },
-        select,
     });
     host.replaceChildren(folderSelectRow.row);
     subscribeFolders(({ scope }) => {
         if (scope && scope !== 'groups') return;
         const value = folderSelectRow.getValue();
         const options = folderOptions();
-        folderSelectRow.control.replaceChildren(...options.map(option => {
-            const element = document.createElement('option');
-            element.value = option.value;
-            element.textContent = option.label;
-            return element;
-        }));
+        fillFolderSelect(folderSelectRow.control, options);
         folderSelectRow.setValue(options.some(option => option.value === value) ? value : '', { silent: true });
     });
+}
+
+function fillFolderSelect(select, options) {
+    select.replaceChildren(...options.map(option => {
+        const element = document.createElement('option');
+        element.value = option.value;
+        element.textContent = option.label;
+        return element;
+    }));
 }
 
 export function setGroupEditorFolderValue(value) {

@@ -43,7 +43,8 @@ import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } 
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
 import { holdEditorsUntilStyled } from './sillybunny-editor/list-shell.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
-import { adoptExpanderRow, adoptEditorFields, createComboRow, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
+import { adoptExpanderRow, adoptEditorFields, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
+import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { reconcileRows } from './sillybunny-editor/list-rows.js';
 import { getFolderId, getFolders, setFolder, subscribe as subscribeFolders } from './sillybunny-folders.js';
 import './sillybunny-characters-navigation.js';
@@ -241,14 +242,15 @@ function _mountFolderField() {
     const select = document.createElement('select');
     select.id = 'character_folder';
     select.setAttribute('aria-label', t`Folder`);
-    folderSelectRow = createComboRow({
+    fillFolderSelect(select, folderOptions());
+    select.value = '';
+    folderSelectRow = createSelectRow({
+        select,
         label: t`Folder`,
         field: 'folder',
-        wide: true,
-        options: folderOptions(),
-        value: '',
+        searchLabel: t`Search`,
+        emptyText: t`No results`,
         onChange: () => session.changed({ immediate: true }),
-        select,
     });
     host.replaceChildren(folderSelectRow.row);
     subscribeFolders(({ scope }) => {
@@ -257,14 +259,18 @@ function _mountFolderField() {
     });
 }
 
-function _refreshFolderOptions(keep) {
-    const options = folderOptions();
-    folderSelectRow.control.replaceChildren(...options.map(option => {
+function fillFolderSelect(select, options) {
+    select.replaceChildren(...options.map(option => {
         const element = document.createElement('option');
         element.value = option.value;
         element.textContent = option.label;
         return element;
     }));
+}
+
+function _refreshFolderOptions(keep) {
+    const options = folderOptions();
+    fillFolderSelect(folderSelectRow.control, options);
     folderSelectRow.setValue(options.some(option => option.value === keep) ? keep : '', { silent: true });
 }
 

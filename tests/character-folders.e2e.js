@@ -178,8 +178,13 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
 
             let firstRow = list.locator('[data-sb-list-key="character:folder-qa-0.png"]');
             await firstRow.getByRole('button', { name: 'Edit', exact: true }).click();
-            await expect(page.locator('#character_folder')).toBeVisible();
-            await page.locator('#character_folder').selectOption(folderId);
+            // The Folder field is a select row: its trigger opens the shared picker.
+            const folderTrigger = page.locator('#character_folder_row .ds-select-row__trigger');
+            await expect(folderTrigger).toBeVisible();
+            await expect(folderTrigger).toHaveAccessibleName('Folder No folder');
+            await folderTrigger.click();
+            await page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last().getByRole('option', { name: 'QA Folder', exact: true }).click();
+            await expect(folderTrigger).toHaveAccessibleName('Folder QA Folder');
             await expect(page.locator('#sb_character_editor_save')).toBeEnabled();
             await page.locator('#sb_character_editor_save').click();
             await expect.poll(() => page.evaluate(async () => {

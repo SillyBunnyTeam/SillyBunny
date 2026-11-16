@@ -145,7 +145,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await page.locator('.sb-character-list [data-action-id="new"]').click();
         await expect(page.locator('#sb_group_editor_header')).toBeVisible();
         await page.locator('#rm_group_chat_name').fill('QA Created Group');
-        await page.locator('#group_folder').selectOption(folderId);
+        await page.locator('#group_folder_row .ds-select-row__trigger').click();
+        await page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last().getByRole('option', { name: 'QA Group Folder', exact: true }).click();
+        await expect(page.locator('#group_folder')).toHaveValue(folderId);
         await addCharacterToGroup(page);
         const save = page.locator('#sb_group_editor_save');
         await expect(save).toBeEnabled();
