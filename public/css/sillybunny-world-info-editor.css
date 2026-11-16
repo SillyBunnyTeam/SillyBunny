@@ -812,12 +812,15 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
         display: none;
     }
 
-    #sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-entry-mode-toggle {
-        display: inline-flex;
-    }
-
     #sb-settings-page .sb-wi-entry .sb-wi-entry-title {
         min-width: 96px;
+    }
+}
+
+/* On a phone (a column under 440px) Edit/Preview moves into the item menu (mountEditorChrome), so the title keeps room. */
+@container sb-list-editor-detail (width >= 440px) and (width < 560px) {
+    #sb-settings-page #WorldInfo .sb-wi-editor .sb-wi-entry-mode-toggle {
+        display: inline-flex;
     }
 }
 

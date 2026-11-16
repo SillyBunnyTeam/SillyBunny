@@ -454,19 +454,23 @@ test.describe('World Info editor on mobile', () => {
         await expect(row(editor, 'Beta')).toBeVisible();
     });
 
-    test('keeps Back and the compact preview toggle visible while scrolling the entry', async ({ page }) => {
+    test('keeps Back and the item menu, which carries Edit/Preview on a phone, visible while scrolling the entry', async ({ page }) => {
         const editor = await openBook(page);
         await row(editor, 'Alpha').click();
         const entry = editor.locator('.sb-wi-entry');
-        const toggle = entry.locator('.sb-wi-entry-mode-toggle');
+        const menu = entry.getByRole('button', { name: 'Entry Actions', exact: true });
         await expect(entry.locator('.sb-wi-entry-modes')).toBeHidden();
-        await toggle.click();
+        await expect(entry.locator('.sb-wi-entry-mode-toggle')).toBeHidden();
+        await menu.click();
+        await page.getByRole('menuitem', { name: 'Preview', exact: true }).click();
         await expect(entry.locator('.sb-wi-entry-preview')).toHaveText('Alpha content');
         await expect(entry.locator('.sb-wi-entry-textarea')).toBeHidden();
-        await toggle.click();
+        await menu.click();
+        await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+        await expect(entry.locator('.sb-wi-entry-textarea')).toBeVisible();
         await entry.locator('.sb-wi-entry-body > *').last().scrollIntoViewIfNeeded();
         await expect(entry.locator('.sb-wi-detail-back')).toBeInViewport();
-        await expect(toggle).toBeInViewport();
+        await expect(menu).toBeInViewport();
         await entry.locator('.sb-wi-detail-back').click();
         await expect(row(editor, 'Alpha')).toBeVisible();
     });

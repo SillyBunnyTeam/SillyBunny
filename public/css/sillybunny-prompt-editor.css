@@ -373,7 +373,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-mode-toggle {
-    display: none !important;
+    display: none;
 }
 
 .sb-prompt-properties {
@@ -757,12 +757,22 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
         display: none !important;
     }
 
-    #sb-settings-page .sb-prompt-editor .sb-prompt-mode-toggle {
-        display: inline-flex !important;
-    }
-
     #sb-settings-page .sb-prompt-editor .sb-prompt-title {
         min-width: 96px;
+    }
+}
+
+/* On a phone (a column under 440px) Edit/Preview moves into the item menu (mountEditorChrome), so the title keeps room; an item
+   with no menu (a Text Completion template) keeps its toggle. */
+@container sb-list-editor-detail (width >= 440px) and (width < 560px) {
+    #sb-settings-page .sb-prompt-editor .sb-prompt-mode-toggle {
+        display: inline-flex;
+    }
+}
+
+@container sb-list-editor-detail (width < 440px) {
+    #sb-settings-page .sb-prompt-editor .sb-prompt-detail-header:has(.sb-prompt-more[hidden]) > .sb-prompt-mode-toggle {
+        display: inline-flex;
     }
 }
 

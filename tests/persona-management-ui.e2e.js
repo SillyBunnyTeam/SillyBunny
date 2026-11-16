@@ -59,8 +59,8 @@ async function openNotes(page) {
 }
 
 async function showPreview(entry, width) {
-    if (width < 376) {
-        // Below 330px of editor the header has no room for the Preview button, so the menu carries it.
+    if (width < 480) {
+        // On a phone (an editor column under 440px) the header has no room for the Preview button, so the menu carries it.
         await entry.getByRole('button', { name: 'Persona Actions', exact: true }).click();
         await entry.page().getByRole('menuitem', { name: 'Preview', exact: true }).click();
     } else if (width < 768) await entry.getByRole('button', { name: 'Preview', exact: true }).click();

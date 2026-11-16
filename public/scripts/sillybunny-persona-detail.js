@@ -616,11 +616,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
 
     function actionSections() {
         const states = getPersonaEditorStates(currentId);
-        // The header drops both Edit / Preview controls when it is too narrow for them; the menu then carries the switch.
-        const modeHidden = [modes, modeToggle].every(control => getComputedStyle(control).display === 'none');
-        return [...modeHidden ? [{ items: [
-            { label: showingPreview ? t`Edit` : t`Preview`, icon: `fa-solid fa-${showingPreview ? 'pen' : 'eye'}`, onSelect: () => setPreview(!showingPreview) },
-        ] }] : [], { items: [
+        return [{ items: [
             { label: useLabel, icon: 'fa-solid fa-circle-check', disabled: states.inUse, onSelect: () => { void runImmediate(() => usePersona(currentId)); } },
             { label: t`Change Persona Image`, icon: 'fa-solid fa-image', onSelect: () => changePersonaImage(currentId) },
             { label: t`Create Character Card from Persona`, icon: 'fa-solid fa-address-card', onSelect: () => { void runImmediate(() => convertPersonaToCharacter(currentId)); } },

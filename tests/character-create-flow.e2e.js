@@ -80,7 +80,8 @@ async function addTag(page, boxSelector, listSelector, name) {
     await expect(chips).toHaveCount(1);
     await expect(picker.getByRole('option', { name, exact: true })).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('Escape');
-    await expect(page.locator(`${boxSelector} .sb-tag-field .ds-select-row__value`)).toHaveText(name);
+    await expect(page.locator(`${boxSelector} .sb-tag-field .ds-row-subtitle`)).toHaveText(name);
+    await expect(page.locator(`${boxSelector} .sb-tag-field .ds-select-row__value`)).toHaveText('1');
     return chips.first();
 }
 

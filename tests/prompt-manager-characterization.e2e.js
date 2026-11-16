@@ -331,8 +331,15 @@ function promptEditorDriver(page) {
             const content = editor.locator(mode === 'preview' ? '.sb-prompt-preview' : '.sb-prompt-textarea');
             if (await content.count()) return;
             const segment = editor.locator('.sb-prompt-modes label').filter({ hasText: mode === 'preview' ? 'Preview' : 'Edit' });
+            const label = mode === 'preview' ? 'Preview' : 'Edit';
+            const toggle = editor.getByRole('button', { name: label, exact: true });
             if (await segment.isVisible()) await segment.click();
-            else await editor.getByRole('button', { name: mode === 'preview' ? 'Preview' : 'Edit', exact: true }).click();
+            else if (await toggle.isVisible()) await toggle.click();
+            else {
+                // On a phone the header has no Edit/Preview; the item menu carries it.
+                await editor.getByRole('button', { name: 'Prompt Actions', exact: true }).click();
+                await page.getByRole('menuitem', { name: label, exact: true }).click();
+            }
         },
 
         async resetToDefault() {

@@ -433,8 +433,9 @@
     }
 }
 
-/* Below 330px the header cannot hold Back, a name, Preview, the menu, Cancel and Save: Preview moves into the menu. */
-@container sb-list-editor-detail (width >= 330px) and (width < 560px) {
+/* On a phone (a column under 440px) the header cannot hold Back, a name, Preview, the menu, Cancel and Save with room for the name:
+   Preview moves into the menu (mountEditorChrome). */
+@container sb-list-editor-detail (width >= 440px) and (width < 560px) {
     #sb-settings-page .sb-persona-editor .sb-persona-entry-mode-toggle {
         display: inline-flex !important;
     }

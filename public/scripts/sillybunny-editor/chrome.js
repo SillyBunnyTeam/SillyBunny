@@ -457,6 +457,16 @@ export function mountEditorChrome(config) {
         window.addEventListener('resize', scheduleOverflow, { signal });
     }
 
+    /** On a phone the header has no room for Edit/Preview; then the item menu carries the switch, under the toggle's own name. */
+    function modeItems() {
+        const modes = controls.modes ?? [];
+        if (!modes.length || modes.some(control => getComputedStyle(control).display !== 'none')) return [];
+        const toggle = modes.find(control => control instanceof HTMLButtonElement && control.getAttribute('aria-label'));
+        if (!toggle) return [];
+        const glyph = toggle.querySelector('i');
+        return [{ label: toggle.getAttribute('aria-label'), icon: glyph?.className, onSelect: () => toggle.click() }];
+    }
+
     function openMoreMenu() {
         if (!controls.more) return;
         const overflow = collapsed.map(({ label, icon, element }) => ({
@@ -464,7 +474,7 @@ export function mountEditorChrome(config) {
             icon,
             onSelect: () => element.click(),
         }));
-        const sections = [{ items: overflow }, ...getActionSections()]
+        const sections = [{ items: modeItems() }, { items: overflow }, ...getActionSections()]
             .filter(section => section.items.length > 0);
 
         openActionMenu({

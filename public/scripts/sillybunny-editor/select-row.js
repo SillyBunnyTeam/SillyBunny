@@ -159,9 +159,11 @@ function rememberPosition(nodes) {
  * @param {{ label: string, icon?: string|Element, onSelect: () => void }[]} [options.footer=[]]  Actions under the picker's list.
  * @param {{ onCreate: (text: string) => void, label?: (text: string) => string }|null} [options.create=null]  Offers to create
  *     what the picker's search names when no option has that label (see openPicker).
+ * @param {((items: object[]) => string)|null} [options.summarize=null]  The trigger's text for the chosen items, in place of their
+ *     labels (a count, for a multiple select whose labels the row shows elsewhere).
  * @returns {object}
  */
-export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, emptyText, noneLabel = '', suffix, ordered = false, mapItem, bounds = null, onChange, onPick, footer = [], create = null }) {
+export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, emptyText, noneLabel = '', suffix, ordered = false, mapItem, bounds = null, onChange, onPick, footer = [], create = null, summarize = null }) {
     if (!(select instanceof HTMLSelectElement)) throw new TypeError('Expected a select element.');
     const container = select.nextElementSibling?.matches('.select2-container') ? select.nextElementSibling : null;
     const previous = { tabIndex: select.getAttribute('tabindex'), ariaHidden: select.getAttribute('aria-hidden') };
@@ -197,6 +199,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
         .map(option => mapOption(mapItem, { value: option.value, label: optionLabel(option), disabled: option.disabled }, option));
     const itemLabel = item => (typeof item.label === 'string' ? item.label.trim() : '');
     const summary = items => {
+        if (summarize) return summarize(items) || noneLabel;
         const labels = items.map(itemLabel).filter(Boolean);
         return (select.multiple ? labels.join(', ') : labels[0]) || noneLabel;
     };

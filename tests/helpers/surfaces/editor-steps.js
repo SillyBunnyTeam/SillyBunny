@@ -157,10 +157,16 @@ export async function leaveDirtyDetail(page, { back, otherRow, exceptText }) {
  */
 export async function showPreview(page, { modes, toggle }) {
     const segment = page.locator(`${modes} label`).filter({ hasText: 'Preview' }).first();
+    const button = page.locator(toggle).first();
     if (await segment.isVisible()) {
         await segment.click();
+    } else if (await button.isVisible()) {
+        await button.click();
     } else {
-        await page.locator(toggle).first().click();
+        // On a phone the header has no Edit/Preview; the item menu (named "… Actions") carries it.
+        const header = button.locator('xpath=..');
+        await header.getByRole('button', { name: /Actions$/ }).click();
+        await page.getByRole('menuitem', { name: 'Preview', exact: true }).click();
     }
 }
 

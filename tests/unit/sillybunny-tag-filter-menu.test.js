@@ -199,7 +199,7 @@ describe('editor tag field', () => {
         mount();
         expect(field.row.matches('.ds-select-row.sb-tag-field')).toBe(true);
         expect(field.row.querySelector('.ds-row-label').textContent).toBe('Tags');
-        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('Red');
+        expect(field.row.querySelector('.ds-row-subtitle').textContent).toBe('Red');
         expect(input.closest('.ds-row').hidden).toBe(true);
         expect(list.hidden).toBe(true);
         expect(list.classList.contains('tags-expanded')).toBe(true);
@@ -223,21 +223,25 @@ describe('editor tag field', () => {
         options.onSelect('t-blue');
         expect(added).toEqual(['Blue']);
         await settle();
-        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('Red, Blue');
+        expect(field.row.querySelector('.ds-row-subtitle').textContent).toBe('Red, Blue');
+        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('2');
         options.onSelect('t-red');
         await settle();
         expect(list.querySelector('#t-red')).toBeNull();
-        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('Blue');
+        expect(field.row.querySelector('.ds-row-subtitle').textContent).toBe('Blue');
+        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('1');
     });
 
     test('a search that names no tag creates it through upstream and applies it', async () => {
         mount([]);
         field.row.querySelector('.ds-select-row__trigger').click();
         expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('None');
+        expect(field.row.querySelector('.ds-row-subtitle').hidden).toBe(true);
         expect(options.create.label('Vampire')).toBe('Create tag Vampire');
         options.create.onCreate('Vampire');
         await settle();
         expect(added).toEqual(['Vampire']);
-        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('Vampire');
+        expect(field.row.querySelector('.ds-row-subtitle').textContent).toBe('Vampire');
+        expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('1');
     });
 });

@@ -109,10 +109,10 @@ const personaMountSource = tabsSource.split('let personaEditorMountPromise = nul
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
     { href: 'css/sillybunny-editor-shell.css?v=20261116u', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-editor.css?v=20261116t', id: 'deferred-editor-chrome-css' },
+    { href: 'css/sillybunny-character-editor.css?v=20261116z', id: 'deferred-editor-chrome-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261116v', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261116v', id: 'deferred-persona-editor-css' },
-    { href: 'css/sillybunny-persona-detail.css?v=20261116v', id: 'deferred-persona-detail-css' },
+    { href: 'css/sillybunny-persona-detail.css?v=20261116z', id: 'deferred-persona-detail-css' },
 ];
 let container;
 let mounted;

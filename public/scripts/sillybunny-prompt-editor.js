@@ -833,10 +833,11 @@ export function initializePromptEditor(column) {
             } else if (action === 'remove') {
                 const removed = targets.filter(({ prompt, entry }) => entry && model.permissions(prompt).remove)
                     .map(({ id }) => run(() => model.remove(id, expectedScope))).filter(Boolean);
-                if (removed.length) toast(removed.length === 1 ? t`Removed ${promptFor(removed[0].entry.identifier)?.name ?? ''}` : t`TODO(copy)`, () => [...removed].reverse().forEach(record => model.undoRemove(record)));
+                if (removed.length) toast(removed.length === 1 ? t`Removed ${promptFor(removed[0].entry.identifier)?.name ?? ''}` : t`Removed ${removed.length} prompts`, () => [...removed].reverse().forEach(record => model.undoRemove(record)));
             } else if (action === 'delete') {
                 const deletable = targets.filter(({ prompt }) => model.permissions(prompt).delete);
-                if (!deletable.length || !await confirmDestructiveAction({ text: t`TODO(copy)`, confirmLabel: t`Delete`, copyPlaceholder: true })) return;
+                const text = deletable.length === 1 ? t`Delete this prompt? This cannot be undone.` : t`Delete ${deletable.length} prompts? This cannot be undone.`;
+                if (!deletable.length || !await confirmDestructiveAction({ text, confirmLabel: t`Delete` })) return;
                 for (const { id } of deletable) run(() => model.delete(id, expectedScope));
             }
         } finally {
@@ -1526,7 +1527,7 @@ export function initializePromptEditor(column) {
     Promise.all([
         loadListEditorStyles(),
         window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261116v', { id: 'deferred-entity-list-css' }),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261116u', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261116z', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

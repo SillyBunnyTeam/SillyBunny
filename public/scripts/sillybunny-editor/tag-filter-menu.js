@@ -196,10 +196,12 @@ export function adoptTagField({ input, list, manage = null, field, jquery }) {
     const remove = id => [...list.children].find(chip => chip.id === id)?.querySelector('.tag_remove')?.click();
     const colorOf = id => byId.get(id)?.color || '';
 
-    fill({ reorder: true });
     const row = createSelectRow({
         select,
         label: t`Tags`,
+        // The names of the applied tags are the row's subtitle, dimmed under its title, and the trigger holds their count.
+        subtitle: ' ',
+        summarize: items => (items.length ? String(items.length) : ''),
         field,
         searchLabel: t`Search`,
         emptyText: t`No results`,
@@ -223,9 +225,20 @@ export function adoptTagField({ input, list, manage = null, field, jquery }) {
         footer: manage ? [{ label: t`Manage tags`, icon: 'fa-solid fa-tags', onSelect: () => manage.click() }] : [],
     });
     row.row.classList.add('sb-tag-field');
+    const names = row.row.querySelector('.ds-row-subtitle');
+    const showNames = () => {
+        const text = applied().map(id => byId.get(id)?.name).filter(Boolean).join(', ');
+        names.textContent = text;
+        names.hidden = !text;
+    };
+    fill({ reorder: true });
+    showNames();
     // Reorder before the row's own handlers open the picker.
     row.row.addEventListener('click', () => fill({ reorder: true }), true);
-    const observer = new MutationObserver(() => fill());
+    const observer = new MutationObserver(() => {
+        fill();
+        showNames();
+    });
     observer.observe(list, { childList: true, attributes: true, attributeFilter: ['data-sb-removing'], subtree: true });
 
     const entry = input.closest('.ds-row') ?? input.parentElement;
