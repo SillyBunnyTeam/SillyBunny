@@ -16,7 +16,7 @@ import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { createRow, createSwitchRow, createEntryRow, createTextAreaField, createPropertyRow, createExpanderRow, createButtonRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
 import { getFolderId, getFolders, setFolder } from './sillybunny-folders.js';
 import { openPicker } from './sillybunny-editor/picker.js';
-import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, nameByValue, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
 import { createEntityRow } from './sillybunny-editor/entity-row.js';
@@ -559,6 +559,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         refreshConnections(record, disabled);
         const bookName = record?.descriptor?.lorebook || '';
         lorebookTrigger.replaceChildren(element('span', '', bookName || t`None`), icon('chevron-down'));
+        nameByValue(lorebookTrigger, t`Link to Persona Lorebook`, bookName || t`None`);
         lorebookTrigger.disabled = disabled;
         openBook.setVisible(Boolean(bookName));
         openBook.setDisabled(disabled);
@@ -718,7 +719,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         return { control: trigger, setValue(value) {
             const option = field.options.find(option => Number(option.value) === value);
             caption.textContent = option ? translate(option.label, option.i18n) : value;
-            trigger.setAttribute('aria-label', `${field.label}: ${caption.textContent}`);
+            nameByValue(trigger, field.label, caption.textContent);
         } };
     }
 
@@ -760,7 +761,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         }
         const position = model.POSITION_OPTIONS.find(option => Number(option.value) === draft.position);
         const role = model.ROLE_OPTIONS.find(option => Number(option.value) === draft.role);
-        setSummaryText(summary, t`Persona`, `${translate(position.label, position.i18n)}${draft.position === model.PERSONA_POSITION.AT_DEPTH ? ` · ${t`Depth`} ${draft.depth} · ${translate(role.label, role.i18n)}` : ''} ›`);
+        setSummaryText(summary, t`Persona`, `${translate(position.label, position.i18n)}${draft.position === model.PERSONA_POSITION.AT_DEPTH ? ` · ${t`Depth`} ${draft.depth} · ${translate(role.label, role.i18n)}` : ''}`);
     }
 
     function openProperties() {

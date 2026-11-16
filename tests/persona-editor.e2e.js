@@ -432,7 +432,7 @@ test.describe('Persona editor on mobile', () => {
         for (const label of ['Back', 'Cancel', 'Save']) await expect(header.getByRole('button', { name: label, exact: true })).toBeInViewport();
         const summary = entry.locator('.sb-persona-property-summary');
         await expect(summary).toBeVisible();
-        await expect(summary).toHaveAccessibleName(`Persona: ${await summary.textContent()}`);
+        await expect(summary).toHaveAccessibleName(`Persona: ${(await summary.textContent()).replace(/\s*›\s*$/, '')}`);
         await expect(entry.locator(':scope > .sb-persona-properties')).toBeHidden();
         await summary.click();
         const sheet = page.getByRole('dialog', { name: 'Persona', exact: true });

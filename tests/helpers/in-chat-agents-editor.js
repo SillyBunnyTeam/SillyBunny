@@ -300,7 +300,7 @@ export async function closeAgentProperties(page) {
 }
 
 export async function chooseAgentCategory(page, bar, label) {
-    await bar.getByRole('button', { name: 'Category', exact: true }).click();
+    await bar.getByRole('button', { name: /^Category:/ }).click();
     await page.getByRole('menu', { name: 'Category', exact: true }).getByRole('menuitemradio', { name: label, exact: true }).click();
 }
 

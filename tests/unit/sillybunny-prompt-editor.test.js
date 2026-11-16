@@ -422,7 +422,7 @@ describe('Prompt list', () => {
     test('the Role menu is a menu of radio items and the Triggers popover has check rows and no Done button', async () => {
         const column = await mountEditor();
         const detail = await openPrompt(column, 'first');
-        const role = detail.querySelector('.sb-prompt-properties button[aria-label="Role"]');
+        const role = detail.querySelector('.sb-prompt-properties button[aria-label^="Role:"]');
         role.click();
         const roleMenu = openActionMenu.mock.calls.at(-1)[0];
         expect(roleMenu.trigger).toBe(role);
@@ -432,7 +432,7 @@ describe('Prompt list', () => {
         expect(role.textContent).toBe('Assistant');
         expect(column.querySelector('.sb-prompt-dirty').hidden).toBe(false);
 
-        const triggers = detail.querySelector('.sb-prompt-properties button[aria-label="Triggers"]');
+        const triggers = detail.querySelector('.sb-prompt-properties button[aria-label^="Triggers:"]');
         triggers.click();
         const popover = openPopover.mock.calls.at(-1)[0];
         expect(popover.trigger).toBe(triggers);

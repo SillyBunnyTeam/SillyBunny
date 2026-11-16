@@ -298,7 +298,7 @@ function promptEditorDriver(page) {
         async fill(fields) {
             if (fields.name !== undefined) await page.locator(`${FORM}_name`).fill(fields.name);
             if (fields.role !== undefined) {
-                await editor.getByRole('button', { name: 'Role', exact: true }).click();
+                await editor.getByRole('button', { name: /^Role:/ }).click();
                 await page.getByRole('menuitemradio', { name: fields.role[0].toUpperCase() + fields.role.slice(1), exact: true }).click();
             }
             if (fields.position !== undefined) await editor.getByRole('group', { name: 'Position', exact: true }).locator('label').filter({ hasText: fields.position === 1 ? 'In-chat' : 'Relative' }).click();
@@ -307,7 +307,7 @@ function promptEditorDriver(page) {
             if (fields.content !== undefined) await page.locator(`${FORM}_prompt`).fill(fields.content);
             if (fields.forbidOverrides !== undefined) await editor.getByRole('switch', { name: 'Forbid overrides', exact: true }).setChecked(fields.forbidOverrides);
             if (fields.triggers !== undefined) {
-                await editor.getByRole('button', { name: 'Triggers', exact: true }).click();
+                await editor.getByRole('button', { name: /^Triggers:/ }).click();
                 const popover = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
                 for (const value of ['normal', 'continue', 'impersonate', 'swipe', 'regenerate', 'quiet']) {
                     await popover.getByRole('checkbox', { name: value[0].toUpperCase() + value.slice(1), exact: true }).setChecked(fields.triggers.includes(value));
@@ -499,7 +499,7 @@ test.describe('Prompt Manager characterization', () => {
         await ui.close();
         await ui.openEditor('sbFixtureRelative');
         await expect(page.locator(`${FORM}_prompt`)).toHaveValue('Edited relative content');
-        await expect(page.getByRole('button', { name: 'Role', exact: true })).toHaveText('User');
+        await expect(page.getByRole('button', { name: /^Role:/ })).toHaveText('User');
     });
 
     test('saving the main prompt syncs its quick-edit alias and forbid_overrides', async ({ page }) => {
@@ -990,7 +990,7 @@ test.describe('Prompt Manager characterization', () => {
         await ui.fill({ position: 1 });
         await expect(page.getByRole('spinbutton', { name: 'Depth', exact: true })).toBeVisible();
         await expect(page.getByRole('spinbutton', { name: 'Order', exact: true })).toBeVisible();
-        await page.getByRole('button', { name: 'Triggers', exact: true }).click();
+        await page.getByRole('button', { name: /^Triggers:/ }).click();
         await expect(page.getByRole('dialog', { name: 'Generation triggers', exact: true }).getByRole('checkbox')).toHaveCount(6);
     });
 
@@ -1116,17 +1116,17 @@ test.describe('Prompt Manager characterization', () => {
         const { ui } = await setup(page);
         await ui.openEditor('sbFixtureRelative');
         const editor = page.locator('.sb-prompt-detail');
-        await editor.getByRole('button', { name: 'Role', exact: true }).click();
+        await editor.getByRole('button', { name: /^Role:/ }).click();
         const menu = page.getByRole('menu', { name: 'Role', exact: true });
         await expect(menu.getByRole('menuitemradio')).toHaveText(['System', 'User', 'Assistant']);
         await page.keyboard.press('Escape');
         await expect(menu).toHaveCount(0);
-        await editor.getByRole('button', { name: 'Triggers', exact: true }).click();
+        await editor.getByRole('button', { name: /^Triggers:/ }).click();
         const popover = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
         await expect(popover.getByRole('checkbox')).toHaveCount(6);
         await expect(popover.getByRole('button')).toHaveCount(0);
         await popover.getByRole('checkbox', { name: 'Swipe', exact: true }).check();
-        await expect(editor.getByRole('button', { name: 'Triggers', exact: true })).toContainText('Swipe');
+        await expect(editor.getByRole('button', { name: /^Triggers:/ })).toContainText('Swipe');
         await page.keyboard.press('Escape');
         await expect(popover).toBeHidden();
     });
@@ -1179,9 +1179,9 @@ test.describe('Prompt editor mobile interaction', () => {
         await ui.openEditor('sbFixtureInChat');
         const editor = page.locator('.sb-prompt-detail');
         await expect(page.locator('.sb-prompt-owned > .sb-backend-section-header')).toBeHidden();
-        await editor.getByRole('button', { name: 'Prompt properties: User · In-chat @ 2 · Swipe, Quiet ›', exact: true }).click();
+        await editor.getByRole('button', { name: 'Prompt properties: User · In-chat @ 2 · Swipe, Quiet', exact: true }).click();
         const sheet = page.getByRole('dialog', { name: 'Prompt properties', exact: true });
-        await sheet.getByRole('button', { name: 'Role', exact: true }).click();
+        await sheet.getByRole('button', { name: /^Role:/ }).click();
         await page.getByRole('menuitemradio', { name: 'Assistant', exact: true }).click();
         await sheet.getByRole('spinbutton', { name: 'Depth', exact: true }).fill('6');
         await sheet.getByRole('button', { name: 'Close prompt properties', exact: true }).click();
@@ -1230,13 +1230,13 @@ test.describe('Prompt editor mobile interaction', () => {
             expect(row.right).toBeGreaterThanOrEqual(8);
         }
         expect(geometry.switchBox.width).toBeGreaterThan(geometry.switchBox.height);
-        await sheet.getByRole('button', { name: 'Role', exact: true }).click();
+        await sheet.getByRole('button', { name: /^Role:/ }).click();
         const menu = page.getByRole('menu', { name: 'Role', exact: true });
         await expect(menu).toBeVisible();
         await expect(page.locator('.sb-action-sheet:not([hidden])')).toHaveCount(1);
         for (const item of await menu.getByRole('menuitemradio').all()) expect((await item.boundingBox()).height).toBeGreaterThanOrEqual(44);
         await page.keyboard.press('Escape');
-        await sheet.getByRole('button', { name: 'Triggers', exact: true }).click();
+        await sheet.getByRole('button', { name: /^Triggers:/ }).click();
         const triggers = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
         await expect(triggers).toBeVisible();
         for (const row of await triggers.locator('label').all()) expect((await row.boundingBox()).height).toBeGreaterThanOrEqual(44);

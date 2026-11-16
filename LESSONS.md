@@ -996,6 +996,20 @@ This is the largest class by a wide margin.
   - `sillybunny-chat-styles.css` is injected for every chat style (`ensureNativeChatStyleStylesheet()` in `power-user.js`), so it is outside the blocking budget: the Document, Whisper, delete-mode and counter hit-area rules are there.
 - **Tests:** `tests/foundation/message-actions.e2e.js`; `tests/message-actions-contrast.test.js`; `tests/chat-scroll-regressions.e2e.js` (`redisplay keeps render follow-up hooks applied after batched render` expects Move Up enabled on the first rendered message of a longer chat); the audit spec for `chat.roleplay.*` and `menu.message.roleplay`.
 
+### Target size, accessible names and roles (cross-cutting)
+
+- **Breaks:**
+  - A range input was 4px tall (`input[type='range']` in `sillybunny-theme.css`), so no slider reached the target floor and a press beside the trough missed it. The input is `var(--sb-density-floor)` tall and draws the 4px trough as a centred gradient (`--sb-range-trough`), so the track pseudo-elements need no rule and the thumb sits in the middle in Blink, Gecko and WebKit. Upstream's `.neo-range-slider { margin: 7px 0 0 !important }` offset a thin element; on the taller one it grew every slider row by 7px, so the `!important` rule sets `margin: 0`. The double-ended slider (`.doubleRangeInputContainer`) stays 4px, because its fill is placed against that height.
+  - A control that shows its value (Role, Category, Position) was named by its label alone, so axe `label-content-name-mismatch` (Label in Name, WCAG 2.5.3) fired on it. `nameByValue(control, label, value)` in `sillybunny-editor/chrome.js` names it `<label>: <value>`; call it again whenever the value changes. `setSummaryText()` takes the text without the chevron and appends an `aria-hidden` `.sb-editor-summary__chevron`, so `textContent` still ends in `›` and the accessible name does not: a test that builds the expected name from `textContent` strips the chevron.
+  - A property that is a switch is one `<label>` (`label.sb-prompt-property`, floor tall), so a press on its text toggles it.
+  - The shared `a.note-link-span` floor missed the help links, because the markup is `a.notes-link > span.note-link-span` and the span is the 28px box; the floor selects `.notes-link:has(> .note-link-span)` and the other help-link forms.
+  - The top bar's `.drawer-icon` and the extension controls that `#sb-topbar-extension-slot` adopts are bare divs. `a11y.js` gives the ones in `topBarControlSelectors` a button role and their tooltip as the label, as it does for the composer.
+  - `$('body').toggleClass('tts', extension_settings.tts.enabled)` in `extensions/tts/index.js` flips the class when the setting is `undefined` (never switched), so Narrate All Chat showed with TTS off. It passes `Boolean(...)`.
+- **Guards:**
+  - The design-rule audit counts `margin: -1px 0` as an off-scale literal and does not look inside `calc()`.
+  - `public/style.css` pins the height, margin and background of `.neo-range-slider` with `!important`, so the theme's `input[type='range'].neo-range-slider` rule repeats them with `!important`; the `.doubleRangeInputContainer` rule and the plain `input[type='range']` rule need none.
+- **Tests:** `tests/touch-target-floors-css.test.js`; `tests/unit/top-bar-control-roles.test.js`; `tests/tts-body-class.test.js`; `tests/unit/sillybunny-editor-chrome-navigation.test.js` (`nameByValue`, the chevron).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

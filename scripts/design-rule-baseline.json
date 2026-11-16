@@ -6,7 +6,7 @@
             "important": 12,
             "breakpoint-off-set": 2,
             "breakpoint-1000": 1,
-            "spacing-off-scale": 35
+            "spacing-off-scale": 34
         },
         "public/css/sillybunny-character-import.css": {
             "important": 2,
@@ -112,7 +112,7 @@
             "radius-literal": 9,
             "shadow-literal": 7,
             "duration-literal": 1,
-            "important": 273,
+            "important": 272,
             "breakpoint-off-set": 12,
             "breakpoint-1000": 2,
             "focus-outline": 1,
@@ -129,7 +129,7 @@
             "radius-literal": 1,
             "shadow-literal": 25,
             "important": 183,
-            "hover-ungated": 6,
+            "hover-ungated": 5,
             "breakpoint-off-set": 4,
             "focus-outline": 1,
             "spacing-off-scale": 178,

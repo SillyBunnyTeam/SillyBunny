@@ -155,7 +155,7 @@ for (const layout of layouts) {
                 return;
             }
 
-            await expect(summary).toHaveAccessibleName(`Prompt properties: ${await summary.textContent()}`);
+            await expect(summary).toHaveAccessibleName(`Prompt properties: ${(await summary.textContent()).replace(/\s*›\s*$/, '')}`);
             await summary.click();
             const surface = await expectDialogPresentation(page, 'sb-prompt-properties-dialog', layout.width, layout.height);
             await expect(surface.locator('.sb-prompt-properties')).toBeVisible();
@@ -183,7 +183,7 @@ for (const layout of layouts) {
             await summary.click();
             const surface = await expectDialogPresentation(page, 'sb-world-info-properties-dialog', layout.width, layout.height);
             const position = surface.locator('.sb-wi-property').filter({ hasText: 'Position' });
-            await expect(position.getByRole('button', { name: 'Position', exact: true })).toBeVisible();
+            await expect(position.getByRole('button', { name: /^Position:/ })).toBeVisible();
             await position.scrollIntoViewIfNeeded();
             const geometry = await position.evaluate(row => {
                 const label = row.querySelector(':scope > span').getBoundingClientRect();

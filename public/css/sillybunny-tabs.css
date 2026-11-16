@@ -2148,7 +2148,6 @@ body:not(.movingUI) .drawer-content.maximized {
 
 .sb-theme-slider-input {
     width: 100%;
-    margin: 0;
 }
 
 .sb-theme-slider-caption {
@@ -3847,11 +3846,13 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 /* The specificity outranks the focus rules that every text input takes from upstream and the shell roots. */
 .sb-search-entry > input.sb-search-entry__input[type='search'] {
     flex: 1 1 auto;
+    /* Fills the field's height, over its border. */
+    align-self: stretch;
     width: auto;
     min-width: 0;
     height: auto;
     min-height: 0;
-    margin: 0;
+    margin: calc(-1px) 0;
     padding: 0;
     border: 0;
     outline: none;
@@ -5220,7 +5221,6 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
     flex: 1 1 4em;
     width: 100%;
     min-width: 0;
-    margin: 0;
 }
 
 .ds-row-slider > .ds-row-suffix > input[type='number'] {
@@ -5474,14 +5474,9 @@ body.reduced-motion .ds-row-expander__toggle::after {
     display: none;
 }
 
-/* The thin trough stays while the interactive area grows beyond the legacy 4px height. */
 @media (pointer: fine) {
     #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel :is(button, select, input:not([type='checkbox'], [type='radio'], [type='hidden'], [type='file']), .menu_button) {
         min-height: 32px;
-    }
-
-    #sb-settings-page .sb-sampling-panel input[type='range'] {
-        background: linear-gradient(color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent) 0 0) center / 100% 4px no-repeat !important;
     }
 }
 
@@ -6060,12 +6055,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 #sb-settings-page .sb-settings-mounted-shell .sb-settings-category-title-row > .notes-link {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     flex: 0 0 auto;
-    width: 32px;
-    height: 32px;
     color: var(--sb-shell-text-secondary);
 }
 
@@ -7668,13 +7658,9 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     color: var(--sb-shell-text);
 }
 
+/* The icon keeps the shared box, which is at least the floor; the negative margin keeps the row at its own height. */
 #sb-settings-page .sb-connections-panel .sb-connections-expander .inline-drawer-icon {
-    flex: 0 0 16px;
-    width: 16px;
-    height: auto;
-    min-width: 0;
-    min-height: 0;
-    margin: 0;
+    margin: calc(-1 * var(--sb-density-row-padding-block)) 0;
     padding: 0;
     border: 0;
     border-radius: 0;
@@ -8209,7 +8195,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
         max-height: none;
     }
 
-    #sb-settings-page .sb-settings-mounted-shell .sb-settings-category-title-row > .notes-link,
     #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-help-toggle {
         width: 44px;
         min-width: 44px;

@@ -33,6 +33,13 @@ const composerControlSelectors = [
     '#rightSendForm > :is(.interactable, .stscript_btn)',
 ].join(', ');
 
+// SillyBunny: the top bar's icon controls are bare divs as well: upstream's drawer icons, and the extension controls that the bar
+// adopts into its slot. They take the same role and the same tooltip label as the composer's.
+const topBarControlSelectors = [
+    '#top-settings-holder .drawer-icon',
+    '#sb-topbar-extension-slot :is(.drawer-icon, .menu_button, .right_menu_button, .interactable):not(:is(button, a, input, select, textarea))',
+].join(', ');
+
 const listSelectors = [
     '.options-content',
     '.list-group',
@@ -83,7 +90,7 @@ const a11yRules = {
         }
         element.setAttribute('role', 'button');
     },
-    [composerControlSelectors]: (element) => {
+    [`${composerControlSelectors}, ${topBarControlSelectors}`]: (element) => {
         element.setAttribute('role', 'button');
         const tooltip = element.getAttribute('title')?.trim();
         if (tooltip && !element.hasAttribute('aria-label')) element.setAttribute('aria-label', tooltip);

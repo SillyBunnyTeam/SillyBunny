@@ -508,7 +508,7 @@ export const surfaces = [
         sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, ACTION_MENU],
         async open(page) {
             await openPromptProperties(page);
-            await openFrom(page, '.sb-prompt-properties button[aria-label="Role"]');
+            await openFrom(page, '.sb-prompt-properties button[aria-label^="Role:"]');
         },
     }),
     menu({
@@ -519,7 +519,7 @@ export const surfaces = [
         sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, ACTION_MENU],
         async open(page) {
             await openPromptProperties(page);
-            await openFrom(page, '.sb-prompt-properties button[aria-label="Triggers"]');
+            await openFrom(page, '.sb-prompt-properties button[aria-label^="Triggers:"]');
         },
     }),
     menu({

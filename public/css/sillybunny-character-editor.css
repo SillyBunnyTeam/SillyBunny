@@ -293,10 +293,15 @@
     color: var(--sb-muted-fg);
 }
 
+/* The glyph is 12px; the link is the pointer's floor wide and tall, and its margin hands the extra size back to the readout. */
 .sb-editor-tokens__warning {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    min-inline-size: var(--sb-density-floor);
+    min-block-size: var(--sb-density-floor);
+    margin-inline: calc((1em - var(--sb-density-floor)) / 2);
     color: inherit;
     text-decoration: none;
 }
@@ -1179,27 +1184,6 @@ body.reduced-motion :is(
 
     #right-nav-panel #form_create :is(#creator_textarea, #character_version_textarea) {
         min-height: 44px;
-    }
-
-    #right-nav-panel #talkativeness_slider {
-        height: 44px;
-        background: transparent;
-    }
-
-    #right-nav-panel #talkativeness_slider::-webkit-slider-runnable-track {
-        height: 4px;
-        border-radius: var(--sb-radius-pill);
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
-    }
-
-    #right-nav-panel #talkativeness_slider::-webkit-slider-thumb {
-        margin-top: -7px;
-    }
-
-    #right-nav-panel #talkativeness_slider::-moz-range-track {
-        height: 4px;
-        border-radius: var(--sb-radius-pill);
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
     }
 
     .sb-editor-icon-button {

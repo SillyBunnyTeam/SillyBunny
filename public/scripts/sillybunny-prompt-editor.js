@@ -9,7 +9,7 @@ import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
 import { t, translate } from './i18n.js';
 import { createSegmentedControl } from './sillybunny-segmented-control.js';
 import { createListEditor, loadListEditorStyles } from './sillybunny-editor/list-shell.js';
-import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, nameByValue, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { getCurrentUserHandle } from './user.js';
@@ -981,8 +981,9 @@ export function initializePromptEditor(column) {
         shell.deselectNow();
     }
 
+    // A switch property is one label: a press on its text or beside the switch toggles it, so the property is the target.
     function property(label, control) {
-        const node = element('div', 'sb-prompt-property');
+        const node = element(control.matches?.('input.sb-switch') ? 'label' : 'div', 'sb-prompt-property');
         node.append(element('span', '', label), control);
         return node;
     }
@@ -996,13 +997,13 @@ export function initializePromptEditor(column) {
         document.querySelectorAll('.sb-action-menu, .sb-action-sheet, .sb-action-popover').forEach(node => node.dataset.sbPromptMenu = 'true');
     }
 
-    // A property that is one choice of a few: a button that shows the choice and opens a menu of radio items. With `nameWithChoice`
-    // the button's accessible name holds the text it shows ("Position: Default"), as WCAG 2.5.3 asks.
-    function choiceControl(name, choices, current, choose, { nameWithChoice = false } = {}) {
+    // A property that is one choice of a few: a button that shows the choice and opens a menu of radio items. The button's
+    // accessible name holds the text it shows ("Position: Default"), as WCAG 2.5.3 asks.
+    function choiceControl(name, choices, current, choose) {
         const label = element('span', '', choices.find(([value]) => value === current())?.[1] ?? '');
         const showChoice = text => {
             label.textContent = text;
-            if (nameWithChoice) trigger.setAttribute('aria-label', `${name}: ${text}`);
+            nameByValue(trigger, name, text);
         };
         const trigger = button(name, null, () => {
             openActionMenu({
@@ -1025,7 +1026,7 @@ export function initializePromptEditor(column) {
             markPromptMenus();
         }, 'sb-prompt-dropdown');
         trigger.replaceChildren(label, icon('chevron-down'));
-        if (nameWithChoice) showChoice(label.textContent);
+        showChoice(label.textContent);
         trigger.setAttribute('aria-haspopup', 'menu');
         trigger.setAttribute('aria-expanded', 'false');
         trigger.addEventListener('keydown', event => {
@@ -1060,6 +1061,7 @@ export function initializePromptEditor(column) {
                     else values.delete(value);
                     draft.injection_trigger = TRIGGERS.filter(item => values.has(item));
                     label.textContent = triggerSummary();
+                    nameByValue(trigger, t`Triggers`, label.textContent);
                     markDirty();
                     refreshSummary();
                 },
@@ -1074,6 +1076,7 @@ export function initializePromptEditor(column) {
             markPromptMenus();
         }, 'sb-prompt-dropdown');
         trigger.replaceChildren(label, icon('chevron-down'));
+        nameByValue(trigger, t`Triggers`, label.textContent);
         trigger.setAttribute('aria-haspopup', 'dialog');
         trigger.setAttribute('aria-expanded', 'false');
         return trigger;
@@ -1134,7 +1137,7 @@ export function initializePromptEditor(column) {
             const label = translate(descriptor.name);
             let control;
             if (descriptor.id === 'context_story_string_position' || descriptor.id === 'context_story_string_role') {
-                control = choiceControl(label, textCompletionChoices(descriptor), () => String(draft.propertyValues[descriptor.id]), value => { draft.propertyValues[descriptor.id] = value; }, { nameWithChoice: true });
+                control = choiceControl(label, textCompletionChoices(descriptor), () => String(draft.propertyValues[descriptor.id]), value => { draft.propertyValues[descriptor.id] = value; });
             } else {
                 control = element('input');
                 control.type = 'number';
@@ -1176,10 +1179,10 @@ export function initializePromptEditor(column) {
         const summary = editor.querySelector('.sb-prompt-property-summary');
         if (!summary) return;
         if (kind === 'text-completion') {
-            setSummaryText(summary, t`Prompt properties`, `${textCompletionSummary()} ›`);
+            setSummaryText(summary, t`Prompt properties`, textCompletionSummary());
             return;
         }
-        setSummaryText(summary, t`Prompt properties`, `${capitalized(draft.role ?? 'system')} · ${Number(draft.injection_position) === 1 ? `${t`In-chat`} @ ${draft.injection_depth ?? 4}` : t`Relative`} · ${triggerSummary()} ›`);
+        setSummaryText(summary, t`Prompt properties`, `${capitalized(draft.role ?? 'system')} · ${Number(draft.injection_position) === 1 ? `${t`In-chat`} @ ${draft.injection_depth ?? 4}` : t`Relative`} · ${triggerSummary()}`);
     }
 
     function refreshProperties() {
@@ -1560,7 +1563,7 @@ export function initializePromptEditor(column) {
     Promise.all([
         loadListEditorStyles(),
         window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261117h', { id: 'deferred-entity-list-css' }),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117l', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117r', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

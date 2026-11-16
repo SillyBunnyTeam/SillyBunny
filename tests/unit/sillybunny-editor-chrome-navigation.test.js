@@ -33,7 +33,7 @@ await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
 }));
 
 const {
-    mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow,
+    mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, nameByValue, attachToLabelRow,
     showDraftRecoveryToast, dismissDraftRecoveryToast,
 } = await import('../../public/scripts/sillybunny-editor/chrome.js');
 const { registerEditorNavigation, characterTabGuardSelector, CHARACTER_TAB_GUARD_SELECTOR } = await import('../../public/scripts/sillybunny-editor/navigation.js');
@@ -367,9 +367,22 @@ describe('mountEditorChrome shared header', () => {
         expect(host.firstElementChild).toBe(row);
         expect(row.firstElementChild).toBe(summary);
         expect(summary.classList.contains('sb-editor-summary')).toBe(true);
-        setSummaryText(summary, 'Persona', 'In-chat @ Depth · Depth 7 ›');
+        setSummaryText(summary, 'Persona', 'In-chat @ Depth · Depth 7');
         expect(summary.textContent).toBe('In-chat @ Depth · Depth 7 ›');
-        expect(summary.getAttribute('aria-label')).toBe('Persona: In-chat @ Depth · Depth 7 ›');
+        expect(summary.getAttribute('aria-label')).toBe('Persona: In-chat @ Depth · Depth 7');
+        const chevron = summary.querySelector('.sb-editor-summary__chevron');
+        expect(chevron.textContent).toBe('›');
+        expect(chevron.getAttribute('aria-hidden')).toBe('true');
+
+        setSummaryText(summary, 'Persona', 'Always');
+        expect(summary.querySelectorAll('.sb-editor-summary__chevron')).toHaveLength(1);
+        expect(summary.getAttribute('aria-label')).toBe('Persona: Always');
+
+        const dropdown = document.createElement('button');
+        nameByValue(dropdown, 'Role', 'System');
+        expect(dropdown.getAttribute('aria-label')).toBe('Role: System');
+        nameByValue(dropdown, 'Role', 'User');
+        expect(dropdown.getAttribute('aria-label')).toBe('Role: User');
 
         const section = document.createElement('section');
         const labelRow = Object.assign(document.createElement('div'), { className: 'ds-pref-group-header' });

@@ -2013,6 +2013,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-16, UI polish sweep (task 7.4). |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/extensions/tts/index.js` - the `tts` body class on load
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/tts/index.js` |
+| Area | `loadSettings()`: the `tts` class on `<body>`, which shows the TTS controls (Narrate All Chat in the wand menu, the message narrate buttons). |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `$('body').toggleClass('tts', Boolean(extension_settings.tts.enabled))`. |
+| Adapter shape | Since 2026-11-16 (UI polish sweep, task 7.7) the setting is coerced to a boolean: a setting that was never switched is `undefined`, and `toggleClass(name, undefined)` flips the class instead of removing it, so Narrate All Chat showed with TTS off. Marked `SillyBunny:`. |
+| Protecting tests | `tests/tts-body-class.test.js`. |
+| Validation | 2026-11-16: root and tests lint, the full unit run, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-16, UI polish sweep (task 7.7). |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

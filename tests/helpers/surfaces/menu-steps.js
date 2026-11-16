@@ -354,7 +354,7 @@ export async function openPromptDetail(page) {
  */
 export async function openPromptProperties(page) {
     await openPromptDetail(page);
-    if (!await page.locator('.sb-prompt-properties button[aria-label="Role"]').filter({ visible: true }).count()) {
+    if (!await page.locator('.sb-prompt-properties button[aria-label^="Role:"]').filter({ visible: true }).count()) {
         await page.locator('.sb-prompt-property-summary').click();
         await page.locator('.sb-prompt-properties-dialog').first().waitFor({ state: 'visible' });
         await settleOverlay(page, '.sb-prompt-properties-dialog');

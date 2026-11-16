@@ -8,7 +8,7 @@ import * as model from './sillybunny-world-info-model.js';
 import { createRow, createSwitchRow, createSpinRow, createEntryRow, createPropertyRow, createExpanderRow, createPrefGroup, releaseRowIds } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { createChipEntry } from './sillybunny-editor/chip-entry.js';
-import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
+import { mountEditorChrome, createDirtyMark, createTokenReadout, createSummaryRow, setSummaryText, nameByValue, attachToLabelRow, showDraftRecoveryToast, dismissDraftRecoveryToast } from './sillybunny-editor/chrome.js';
 import { createEditorSession } from './sillybunny-editor/session.js';
 import { createEditorDraftStore } from './sillybunny-editor/drafts.js';
 import { createSegmentedControl, setSegmentedControlValue } from './sillybunny-segmented-control.js';
@@ -288,6 +288,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         return { control: trigger, setValue: value => {
             const option = field.options.find(option => option.value === value);
             caption.textContent = option ? translate(option.label, option.i18n) : value;
+            nameByValue(trigger, label, caption.textContent);
         } };
     }
 
@@ -329,7 +330,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         }
         const strategy = model.STRATEGY_OPTIONS.find(option => option.value === model.entryStrategy(draft));
         const outlet = Number(draft.position) === model.WI_POSITION.outlet && draft.outletName ? ` ${draft.outletName}` : '';
-        setSummaryText(summary, t`World Info`, `${translate(strategy.label, strategy.i18n)} · ${model.entryBadge(draft)}${outlet} · ${model.readField(draft, 'probability') ?? '—'}% ›`);
+        setSummaryText(summary, t`World Info`, `${translate(strategy.label, strategy.i18n)} · ${model.entryBadge(draft)}${outlet} · ${model.readField(draft, 'probability') ?? '—'}%`);
     }
 
     function openProperties() {

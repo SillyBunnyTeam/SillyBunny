@@ -389,7 +389,7 @@ async function chooseAgentCategory(page, label) {
         await page.locator(`${AGENT.root} .ica-agent-property-summary`).first().click();
         await settleOverlay(page, sheet);
     }
-    await page.locator(`${inSheet ? sheet : AGENT.root} button[aria-label="Category"]`).click();
+    await page.locator(`${inSheet ? sheet : AGENT.root} button[aria-label^="Category:"]`).click();
     const menu = page.getByRole('menu', { name: 'Category', exact: true });
     await menu.getByRole('menuitemradio', { name: label, exact: true }).click();
     await menu.waitFor({ state: 'hidden' });

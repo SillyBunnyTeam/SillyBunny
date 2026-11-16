@@ -111,15 +111,30 @@ export function createSummaryRow(summary = null) {
 }
 
 /**
- * Writes the text of a property-summary button and names the button `<label>: <text>`, so that its accessible name contains
- * the text that is on screen (WCAG 2.5.3, Label in Name).
+ * Names a control that shows its current value `<label>: <value>`, so that its accessible name contains the text that is on
+ * screen (WCAG 2.5.3, Label in Name). Call it again whenever the value changes.
+ * @param {HTMLElement} control
+ * @param {string} label  What the control sets ("Role", "Category").
+ * @param {string} value  The visible value.
+ */
+export function nameByValue(control, label, value) {
+    control.setAttribute('aria-label', `${label}: ${value}`);
+}
+
+/**
+ * Writes the text of a property-summary button and names the button `<label>: <text>`. The chevron that ends the text is
+ * decoration: it is hidden from assistive technology and left out of the name.
  * @param {HTMLElement} summary
  * @param {string} label  What the summary opens ("Persona", "Prompt properties").
- * @param {string} text  The visible text.
+ * @param {string} text  The visible text, without the chevron.
  */
 export function setSummaryText(summary, label, text) {
-    summary.textContent = text;
-    summary.setAttribute('aria-label', `${label}: ${text}`);
+    const chevron = document.createElement('span');
+    chevron.className = 'sb-editor-summary__chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.textContent = '›';
+    summary.replaceChildren(`${text} `, chevron);
+    nameByValue(summary, label, text);
 }
 
 /**

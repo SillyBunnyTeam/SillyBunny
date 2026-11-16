@@ -1245,7 +1245,8 @@ function loadSettings() {
     $('#playback_rate_counter').val(Number(extension_settings.tts.playback_rate).toFixed(2));
     $('#playback_rate_block').toggle(extension_settings.tts.currentProvider !== 'System');
 
-    $('body').toggleClass('tts', extension_settings.tts.enabled);
+    // SillyBunny: `enabled` is undefined until the switch is first used, and jQuery's toggleClass flips the class for an undefined state, which showed Narrate All Chat with TTS off.
+    $('body').toggleClass('tts', Boolean(extension_settings.tts.enabled));
 }
 
 const defaultSettings = {

@@ -2969,15 +2969,12 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     }
 }
 
-.neo-range-slider {
-    border-radius: var(--sb-radius-pill);
-}
-
-/* libadwaita-style scale: thin flat trough, plain thumb, no brightness filter or inset shadow. */
+/* libadwaita-style scale: the input is the target floor tall and draws a 4px trough in its middle. */
 input[type='range'],
 input[type='range'].neo-range-slider {
-    height: 4px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
+    --sb-range-trough: linear-gradient(color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent) 0 0) center / 100% 4px no-repeat;
+    height: var(--sb-density-floor);
+    background: var(--sb-range-trough);
     border-radius: var(--sb-radius-pill);
     box-shadow: none;
     filter: none;
@@ -2986,14 +2983,18 @@ input[type='range'].neo-range-slider {
 
 /* style.css pins the .neo-range-slider track with important declarations, so these must match that weight. */
 input[type='range'].neo-range-slider {
-    height: 4px !important;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent) !important;
+    height: var(--sb-density-floor) !important;
+    margin: 0 !important;
+    background: var(--sb-range-trough) !important;
     border-radius: var(--sb-radius-pill) !important;
     box-shadow: none !important;
 }
 
-input[type='range']:hover,
-input[type='range'].neo-range-slider:hover {
+.doubleRangeInputContainer > input[type='range'] {
+    height: 4px;
+}
+
+input[type='range']:hover {
     filter: none;
 }
 
@@ -3037,8 +3038,12 @@ input[type='range']::-moz-range-progress {
 input[type='range']:focus-visible,
 input[type='range'].neo-range-slider:focus-visible {
     outline: 2px solid var(--sb-focus-ring);
-    outline-offset: 4px;
+    outline-offset: 0;
     box-shadow: none;
+}
+
+.doubleRangeInputContainer > input[type='range']:focus-visible {
+    outline-offset: 4px;
 }
 
 input[type='range']:disabled,
@@ -3327,7 +3332,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
         width: 100%;
         max-width: none;
         min-width: 0;
-        margin: 0;
     }
 
     #left-nav-panel.openDrawer :is(#amount_gen_block, #max_context_block) > .wide100p:has(> .neo-range-input) {
@@ -3375,7 +3379,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .range-block-range-and-counter) input[type='range'] {
         width: 100%;
         max-width: none;
-        margin: 0;
     }
 
     #left-nav-panel.openDrawer #range_block_openai > .range-block:has(> .wide100p > #openai_max_tokens) {
@@ -3451,7 +3454,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     }
 
     #left-nav-panel.openDrawer :is(#amount_gen_block, #max_context_block) > input[type='range'].neo-range-slider, #left-nav-panel.openDrawer #range_block_openai input[type='range'] {
-        margin: 0 !important;
         touch-action: pan-y;
     }
 
@@ -4926,7 +4928,6 @@ body.reduced-motion *::after {
         width: 100%;
         max-width: none;
         min-width: 0;
-        margin: 0;
     }
 
     #kobold_api-settings > .flex-container.gap10h5v.justifyCenter > .alignitemscenter.flex-container:has(> input[type='range'].neo-range-slider) > .neo-range-input {
@@ -7032,13 +7033,18 @@ input::placeholder {
     animation: none;
 }
 
-/* Fine-pointer floor for the help links beside setting labels. */
-a.note-link-span {
+/* Help links beside labels and titles: the glyph keeps its size inside a box of the floor. */
+:is(a.note-link-span, .notes-link:has(> .note-link-span), a.fa-circle-question, #regex_info_block_flags_hint) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-inline-size: 32px;
-    min-block-size: 32px;
+    min-inline-size: var(--sb-density-floor);
+    min-block-size: var(--sb-density-floor);
+}
+
+.streaming-display-btn {
+    min-inline-size: var(--sb-density-floor);
+    min-block-size: var(--sb-density-floor);
 }
 
 /* Touch floor for controls that size themselves with literal pixels. Placed last so that the
@@ -7048,8 +7054,7 @@ a.note-link-span {
         --sb-accent-swatch-size: var(--sb-mobile-touch-target);
     }
 
-    :is(.menu_button, .right_menu_button):is(.fa, .fa-solid, .fa-regular, .fa-brands),
-    a.note-link-span {
+    :is(.menu_button, .right_menu_button):is(.fa, .fa-solid, .fa-regular, .fa-brands) {
         min-inline-size: 44px;
         min-block-size: 44px;
     }

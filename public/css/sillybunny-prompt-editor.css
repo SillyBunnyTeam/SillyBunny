@@ -262,6 +262,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     flex: none;
     align-items: center;
     justify-content: center;
+    min-block-size: var(--sb-density-floor);
     margin: 0;
     cursor: pointer;
 }
@@ -393,6 +394,11 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-property > span {
     color: var(--sb-muted-fg);
+}
+
+label.sb-prompt-property {
+    min-block-size: var(--sb-density-floor);
+    cursor: pointer;
 }
 
 #sb-settings-page .sb-prompt-editor .sb-prompt-dropdown,

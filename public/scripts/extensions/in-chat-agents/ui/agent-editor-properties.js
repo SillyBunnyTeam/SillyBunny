@@ -2,7 +2,7 @@ import { t } from '../../../i18n.js';
 import { createSegmentedControl, setSegmentedControlValue } from '../../../sillybunny-segmented-control.js';
 import { openActionMenu } from '../../../sillybunny-action-menu.js';
 import { openDialog } from '../../../sillybunny-editor/dialog.js';
-import { setSummaryText } from '../../../sillybunny-editor/chrome.js';
+import { nameByValue, setSummaryText } from '../../../sillybunny-editor/chrome.js';
 
 let nextId = 0;
 const element = (tag, className = '', text = '') => Object.assign(document.createElement(tag), {
@@ -20,7 +20,8 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
     summary.setAttribute('aria-expanded', 'false');
     const bar = element('div', 'sb-prompt-properties ica-agent-properties');
     const property = (path, label, control) => {
-        const node = element('div', 'sb-prompt-property');
+        // A switch property is one label: a press on its text or beside the switch toggles it, so the property is the target.
+        const node = element(control.matches('input.sb-switch') ? 'label' : 'div', 'sb-prompt-property');
         node.dataset.sbEditorField = path;
         node.append(element('span', '', label), control);
         bar.append(node);
@@ -128,6 +129,7 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
             if (!categoryOptions.has(fields.category)) categoryOptions.set(fields.category, fields.category);
             currentCategory = fields.category;
             categoryLabel.textContent = categoryOptions.get(fields.category);
+            nameByValue(category, t`Category`, categoryLabel.textContent);
             setSegmentedControlValue(stage, fields.phase);
             setSegmentedControlValue(execution, fields.execution);
             stageProperty.hidden = visibility.fields.phase === false;
@@ -138,7 +140,7 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
             const labels = [categoryLabel.textContent];
             if (!stageProperty.hidden) labels.push(stages.find(([value]) => value === fields.phase)?.[1] ?? fields.phase);
             labels.push(executions.find(([value]) => value === fields.execution)?.[1] ?? fields.execution);
-            setSummaryText(summary, t`Agent properties`, `${labels.join(' · ')} ›`);
+            setSummaryText(summary, t`Agent properties`, labels.join(' · '));
         },
         destroy() {
             propertyDialog?.forceClose();

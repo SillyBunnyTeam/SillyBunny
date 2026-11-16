@@ -75,8 +75,8 @@ test('q56 dropdown sweep toggles each trigger closed on its second pointer click
             await check(trigger, `${label} row`, row.locator('.ds-row-label'));
         }
         if (id === 'pre') {
-            for (const label of ['Agent Actions', 'Connection Profile', 'Category']) {
-                const trigger = editor.detail.getByRole('button', { name: label, exact: true });
+            for (const [label, name] of [['Agent Actions', 'Agent Actions'], ['Connection Profile', 'Connection Profile'], ['Category', /^Category:/]]) {
+                const trigger = editor.detail.getByRole('button', { name, exact: true });
                 await check(trigger, label);
             }
             await editor.detail.getByRole('button', { name: 'Add Regex Script', exact: true }).click();
@@ -466,7 +466,7 @@ test('round2 every ordered header popup pair replaces the previous surface', asy
             if (!await item.isVisible()) await editor.detail.getByRole('button', { name: 'Agent Actions', exact: true }).evaluate(node => node.click());
             return activate(item);
         },
-        category: () => activate(editor.detail.getByRole('button', { name: 'Category', exact: true })),
+        category: () => activate(editor.detail.getByRole('button', { name: /^Category:/ })),
         picker: async () => {
             if (!await page.getByRole('menuitem', { name: 'New Agent from Template…', exact: true }).isVisible()) await open.add();
             await page.getByRole('menuitem', { name: 'New Agent from Template…', exact: true }).click();
@@ -619,7 +619,7 @@ test('390px phone property sheet matches Prompt pills, controls, title and summa
     const prompt = page.locator('.sb-prompt-detail');
     const promptSummary = prompt.locator('.sb-prompt-property-summary');
     await expect(promptSummary).toHaveText(/^.+ · .+ · .+ ›$/);
-    await expect(promptSummary).toHaveAccessibleName(`Prompt properties: ${await promptSummary.textContent()}`);
+    await expect(promptSummary).toHaveAccessibleName(`Prompt properties: ${(await promptSummary.textContent()).replace(/\s*›\s*$/, '')}`);
     await promptSummary.click();
     const reference = page.locator('.sb-dialog.sb-prompt-properties-dialog');
     const forbid = reference.getByRole('switch', { name: 'Forbid overrides', exact: true });
@@ -797,7 +797,7 @@ for (const width of [1440, 390]) {
         const editor = await setup(page, baseURL, width);
         await editor.open('pre');
         await openAgentProperties(editor.detail);
-        const category = page.locator('.ica-agent-properties:visible').getByRole('button', { name: 'Category', exact: true });
+        const category = page.locator('.ica-agent-properties:visible').getByRole('button', { name: /^Category:/ });
         await category.click();
         const menu = page.getByRole('menu', { name: 'Category', exact: true });
         await expect(menu).toBeVisible();
@@ -829,7 +829,7 @@ for (const width of [1440, 390]) {
         await page.screenshot({ path: `${parityScreens}/after-agents-${width}.png` });
         await openAgentProperties(editor.detail);
         const bar = page.locator('.ica-agent-properties:visible');
-        const category = bar.getByRole('button', { name: 'Category', exact: true });
+        const category = bar.getByRole('button', { name: /^Category:/ });
         await expect(bar.locator('select')).toHaveCount(0);
         await expect(category).toHaveAttribute('aria-haspopup', 'menu');
         await expect(category).toHaveAttribute('aria-expanded', 'false');
@@ -873,12 +873,12 @@ for (const width of [1440, 390]) {
             1440: async () => {},
             390: async () => {
                 const summary = prompt.locator('.sb-prompt-property-summary');
-                await expect(summary).toHaveAccessibleName(`Prompt properties: ${await summary.textContent()}`);
+                await expect(summary).toHaveAccessibleName(`Prompt properties: ${(await summary.textContent()).replace(/\s*›\s*$/, '')}`);
                 await summary.click();
             },
         };
         await promptSheet[width]();
-        const role = page.getByRole('button', { name: 'Role', exact: true });
+        const role = page.getByRole('button', { name: /^Role:/ });
         const promptStyles = await sampleDropdownTrigger(role);
         await testInfo.attach('Category vs Role trigger', {
             body: JSON.stringify({ width, agents: agentStyles, prompt: promptStyles }, null, 2),
@@ -1496,7 +1496,7 @@ for (const width of [1440, 390]) {
                 await editor.open(id);
                 await openAgentProperties(editor.detail);
                 const bar = page.locator('.ica-agent-properties:visible');
-                await expect(bar.getByRole('button', { name: 'Category', exact: true }))
+                await expect(bar.getByRole('button', { name: /^Category:/ }))
                     .toHaveText(category[0].toUpperCase() + category.slice(1));
                 const stage = bar.locator('[data-sb-editor-field="phase"]');
                 await expect(stage).toBeVisible({ visible: !companion });
