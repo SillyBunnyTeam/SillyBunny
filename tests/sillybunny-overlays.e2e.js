@@ -188,6 +188,8 @@ for (const width of [1440, 390]) {
             await expect(frame.locator('.sb-dialog__title')).toContainText('Chat History');
             await expect(frame.locator('.sb-dialog__subtitle')).toHaveText(context.characterName);
             const search = frame.getByRole('searchbox', { name: 'Search', exact: true });
+            await expect(search).toBeHidden();
+            await frame.locator('.sb-dialog__search-toggle').click();
             await expect(search).toBeVisible();
             await expectSharedDialogEntryStyles(search);
             const searchMetrics = await page.evaluate(() => {
@@ -213,15 +215,18 @@ for (const width of [1440, 390]) {
             const currentRow = frame.locator('#select_chat_div .select_chat_block[highlight="true"]');
             await expect(currentRow).toHaveAttribute('aria-current', 'true');
             await page.mouse.move(10, 10);
-            const rowBackgrounds = await historyRows.evaluateAll(rows => rows.map(row => getComputedStyle(row).backgroundColor));
-            expect(rowBackgrounds.every(background => background === rowBackgrounds[0])).toBe(true);
+            const rowBackgrounds = await historyRows.evaluateAll(rows => rows.map(row => ({ current: row.hasAttribute('highlight'), background: getComputedStyle(row).backgroundColor })));
+            // The open chat takes the shared selected fill; every other row rests on the same one.
+            const restingBackgrounds = rowBackgrounds.filter(row => !row.current).map(row => row.background);
+            expect(restingBackgrounds.every(background => background === restingBackgrounds[0])).toBe(true);
+            expect(rowBackgrounds.find(row => row.current).background).not.toBe(restingBackgrounds[0]);
             const rowData = await historyRows.filter({ hasText: 'QA History Chat 01' }).first().evaluate(row => ({
                 title: row.querySelector('.select_chat_block_filename')?.textContent,
                 date: row.querySelector('.chat_messages_date')?.textContent?.trim(),
                 size: row.querySelector('.chat_file_size')?.textContent?.trim(),
                 messageCount: row.querySelector('.chat_messages_num')?.textContent?.trim(),
                 preview: row.querySelector('.select_chat_block_mes')?.textContent,
-                actionNames: [...row.querySelectorAll('.sb-chat-history-row-actions > *')].map(action => action.getAttribute('aria-label') || action.title),
+                actionNames: [...row.querySelectorAll('.ds-entity-row__suffix > *')].map(action => action.getAttribute('aria-label') || action.title),
             }));
             const rowTypeMetrics = await page.evaluate(() => {
                 const tagHost = document.createElement('div');
@@ -236,7 +241,7 @@ for (const width of [1440, 390]) {
                 };
                 const chatRow = document.querySelector('.sb-chat-history-row');
                 const metrics = {
-                    chatTitle: read(chatRow.querySelector('.sb-chat-history-row-title .select_chat_block_filename')),
+                    chatTitle: read(chatRow.querySelector('.ds-entity-row__title')),
                     chatMetadata: read(chatRow.querySelector('.select_chat_info')),
                     chatPreview: read(chatRow.querySelector('.select_chat_block_mes')),
                     tagTitle: read(tagHost.querySelector('.ds-entity-row__title')),
@@ -263,7 +268,7 @@ for (const width of [1440, 390]) {
             expect(rowData.messageCount).toBe('2 💬');
             expect(rowData.messageCount).not.toMatch(/[(),]/);
             expect(rowData.preview).toBe('History preview 1');
-            expect(rowData.actionNames).toEqual(['Rename chat file', 'Export JSONL chat file', 'Delete chat file']);
+            expect(rowData.actionNames).toEqual(['Actions for QA History Chat 01']);
             const banner = frame.locator('.sb-chat-history-banner');
             await page.evaluate(() => {
                 document.querySelector('#chat_cleanup_status').textContent = 'Auto-labeling chats…';
@@ -317,16 +322,19 @@ for (const width of [1440, 390]) {
             const filteredRows = frame.locator('#select_chat_div .select_chat_block_wrapper');
             await expect(filteredRows).toHaveCount(1);
             const renameRow = frame.locator('#select_chat_div .select_chat_block_wrapper').filter({ hasText: 'QA History Rename' });
-            await renameRow.getByRole('button', { name: 'Export JSONL chat file', exact: true }).click();
-            await expect(page.getByRole('menu', { name: 'Export Chat', exact: true })).toBeVisible();
+            const rowMenuButton = row => row.getByRole('button', { name: /^Actions for / });
+            await rowMenuButton(renameRow).click();
+            await expect(page.getByRole('menu', { name: 'Chat Action', exact: true })).toBeVisible();
+            await expect(page.getByRole('menuitem')).toHaveText(['Rename chat file', 'Export JSONL chat file', 'Download chat as plain text document', 'Delete chat file']);
             await page.getByRole('menuitem', { name: 'Export JSONL chat file', exact: true }).click();
             await expect.poll(() => exportRequests.length).toBe(1);
             expect(exportRequests[0]).toMatchObject({ file: 'QA History Rename.jsonl', format: 'jsonl' });
-            await renameRow.getByRole('button', { name: 'Export JSONL chat file', exact: true }).click();
+            await rowMenuButton(renameRow).click();
             await page.getByRole('menuitem', { name: 'Download chat as plain text document', exact: true }).click();
             await expect.poll(() => exportRequests.length).toBe(2);
             expect(exportRequests[1]).toMatchObject({ file: 'QA History Rename.jsonl', format: 'txt' });
-            await renameRow.locator('.renameChatButton').click();
+            await rowMenuButton(renameRow).click();
+            await page.getByRole('menuitem', { name: 'Rename chat file', exact: true }).click();
             const renamePopup = page.locator('dialog.popup[open]');
             await expect(renamePopup).toBeVisible();
             const nameInput = renamePopup.locator('.popup-input');
@@ -346,14 +354,16 @@ for (const width of [1440, 390]) {
             await expect(filteredRows).toHaveCount(17);
 
             const deleteRow = frame.locator('#select_chat_div .select_chat_block_wrapper').filter({ hasText: 'QA History Renamed' });
-            await deleteRow.locator('.PastChat_cross').click();
+            await rowMenuButton(deleteRow).click();
+            await page.getByRole('menuitem', { name: 'Delete chat file', exact: true }).click();
             const confirm = page.locator('dialog[role="alertdialog"]');
             await expect(confirm).toBeVisible();
             await expect(confirm.locator('[data-response="cancel"]')).toBeFocused();
             await page.keyboard.press('Enter');
             await expect(confirm).toHaveCount(0);
             expect(deleteRequests).toHaveLength(0);
-            await deleteRow.locator('.PastChat_cross').evaluate(node => node.click());
+            await rowMenuButton(deleteRow).click();
+            await page.getByRole('menuitem', { name: 'Delete chat file', exact: true }).click();
             await page.locator('dialog[role="alertdialog"] [data-response="delete"]').click();
             await expect.poll(() => deleteRequests.length).toBe(1);
             expect(deleteRequests[0].chatfile).toBe('QA History Renamed.jsonl');
@@ -509,6 +519,7 @@ for (const width of [1440, 390]) {
             await expect(statusPage).toContainText('No Chats');
             await expect(statusPage).toContainText('Saved chats appear here.');
 
+            await frame.locator('.sb-dialog__search-toggle').click();
             await frame.getByRole('searchbox', { name: 'Search', exact: true }).fill('missing');
             await expect(statusPage).toContainText('No results');
             await expect(statusPage).not.toContainText('No Chats');
@@ -525,6 +536,7 @@ for (const width of [1440, 390]) {
             await expect(frame).toBeVisible();
             const openedHeight = await frame.evaluate(node => node.querySelector('.sb-dialog').getBoundingClientRect().height);
             const search = frame.getByRole('searchbox', { name: 'Search', exact: true });
+            await frame.locator('.sb-dialog__search-toggle').click();
             await search.fill('no-chat-matches-this');
             await expect(frame.locator('#select_chat_div .sb-status-page')).toContainText('No results');
             const filteredHeight = await frame.evaluate(node => node.querySelector('.sb-dialog').getBoundingClientRect().height);

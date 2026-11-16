@@ -214,14 +214,14 @@ test('closing the archive with a Filters edit still waiting on its debounce save
     await showList(page);
     await openFilters(page);
     await page.evaluate(async () => {
-        const tag = document.querySelector('.sbca-filters input[placeholder="Tag"]');
-        tag.value = 'late';
-        tag.dispatchEvent(new Event('input', { bubbles: true }));
+        const minimum = document.querySelector('.sbca-filters .sbca-filter-input[type="number"]');
+        minimum.value = '7';
+        minimum.dispatchEvent(new Event('input', { bubbles: true }));
         const { closeArchive } = await import('/scripts/extensions/sillybunny-chats-archive/src/ui.js');
         await closeArchive();
     });
     await expect(dialog(page)).toHaveCount(0);
-    expect(archive.uploads.at(-1)?.lastView?.tag).toBe('late');
+    expect(archive.uploads.at(-1)?.lastView?.minSize).toBe(7 * 1024 * 1024);
     const saved = archive.uploads.length;
     await page.evaluate(ms => new Promise(resolve => setTimeout(resolve, ms)), SEARCH_CONTENT_DEBOUNCE_MS * 2);
     expect(archive.uploads).toHaveLength(saved);
@@ -282,6 +282,55 @@ test('date, size and message bounds narrow the list', async ({ page }) => {
     await expect(filenames(page)).toHaveCount(2);
     await expect(from).toHaveValue('');
     await expect(numbers.nth(0)).toHaveValue('');
+});
+
+test('the Tag filter is one choice row over the tags in use, and the form keeps its rows the same height', async ({ page }) => {
+    await bootArchive(page, WIDE, {
+        fixture: small(['slow-chat', 'plain-chat'], {
+            organization: emptyOrganization({ chats: { [chatKey('Alice', 'slow-chat')]: { tags: ['slow', 'Burn'] } } }),
+        }),
+    });
+    await openArchive(page);
+    await showList(page);
+    await openFilters(page);
+    const form = page.locator('.sbca-filters');
+    await expect(form.locator('.ds-row-label').filter({ hasText: /^Tag$/ })).toHaveCount(1);
+    await expect(form.locator('input[placeholder="Tag"]')).toHaveCount(0);
+    await form.getByRole('button', { name: /Tag/ }).click();
+    await expect(page.getByRole('option')).toHaveText(['None', 'Burn', 'slow']);
+    await page.getByRole('option', { name: 'slow' }).click();
+    await expect(filenames(page)).toHaveText(['slow-chat']);
+
+    // A pick closes the popover, as the Orphan Reason row does, so the form opens again for the way back.
+    await openFilters(page);
+    await expect(page.locator('.sbca-filters').getByRole('button', { name: /Tag/ })).toContainText('slow');
+    await page.locator('.sbca-filters').getByRole('button', { name: /Tag/ }).click();
+    await page.getByRole('option', { name: 'None' }).click();
+    await expect(filenames(page)).toHaveCount(2);
+
+    await openFilters(page);
+    const heights = await page.locator('.sbca-filters .ds-row').evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).map(node => Math.round(node.getBoundingClientRect().height)));
+    expect(Math.max(...heights) - Math.min(...heights), `row heights ${heights}`).toBeLessThanOrEqual(1);
+});
+
+test('while the first load has no rows, one loading page holds the message and the action, and the banner stays out', async ({ page }) => {
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    await bootArchive(page, WIDE, { fixture: small(['loaded-chat']) });
+    await page.route('**/api/chats/archive/inventory', async route => {
+        if (route.request().postDataJSON().scope !== 'archive') return route.fallback();
+        await gate;
+        return route.fallback();
+    });
+    await openArchive(page);
+    const loading = page.locator('.sbca-list-scroll .sb-status-page');
+    await expect(loading).toContainText('Loading chats...');
+    await expect(loading.getByRole('button', { name: 'Cancel' })).toBeVisible();
+    await expect(page.locator('.sbca-banner')).toBeHidden();
+    release();
+    await showList(page);
+    await expect(filenames(page)).toHaveText(['loaded-chat']);
+    await expect(loading).toHaveCount(0);
 });
 
 test('the View menu offers nine sorts and each one reorders the list', async ({ page }) => {
@@ -879,7 +928,8 @@ test('the @mention combobox completes fuzzily, scopes the content search, and ke
     await openArchive(page);
     await showList(page);
     const field = await openSearch(page);
-    await expect(field).toHaveAttribute('placeholder', 'Type to search chats. Mention character names with @.');
+    await expect(field).toHaveAttribute('placeholder', 'Search...');
+    await expect(field).toHaveAttribute('aria-description', 'Type to search chats. Mention character names with @.');
     const menu = page.getByRole('listbox', { name: 'Character Mentions' });
 
     await field.fill('@Alce');
@@ -1167,7 +1217,7 @@ test('the sidebar and the list follow the arrow, Home, End and Enter keys', asyn
     await page.keyboard.press('ArrowDown');
     await expect(rows(page)).toHaveCount(142);
     await expect(rows(page).nth(100)).toBeFocused();
-    await expect(page.locator('.sbca-list-more')).toHaveCount(0);
+    await expect(page.locator('.sbca-list-pane .sb-list-show-more')).toBeHidden();
 
     await rows(page).nth(3).focus();
     const key = await rows(page).nth(3).getAttribute('data-sbca-key');
@@ -1182,11 +1232,11 @@ test('Show more extends the list a page at a time and tells how many remain', as
     await openArchive(page);
     await showList(page);
     await expect(rows(page)).toHaveCount(100);
-    const more = page.getByRole('button', { name: 'Show 42 More' });
+    const more = page.getByRole('button', { name: 'Show More', exact: true });
     await expect(more).toBeVisible();
     await more.click();
     await expect(rows(page)).toHaveCount(142);
-    await expect(page.getByRole('button', { name: /^Show \d+ more$/ })).toHaveCount(0);
+    await expect(page.locator('.sbca-list-pane .sb-list-show-more')).toBeHidden();
     await expect(rows(page).nth(100)).toBeFocused();
 });
 

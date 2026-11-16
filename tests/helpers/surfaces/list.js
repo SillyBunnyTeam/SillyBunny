@@ -419,7 +419,7 @@ const chatHistory = {
     states: [
         searchResults({ search: dialogSearch(CHAT_HISTORY), query: 'archive-2', rows: HISTORY_ROWS, atMost: 3 }),
     ],
-    masks: [`${CHAT_HISTORY} .select_chat_block_filename_item`],
+    masks: [`${CHAT_HISTORY} .sb-chat-history-row .ds-entity-row__subtitle`],
     needs: ['character', 'chat', 'archived-chats'],
     sources: [`${SCRIPTS}/sillybunny-chat-dialogs.js`, `${CSS}/sillybunny-tabs.css`],
 };

@@ -1,10 +1,12 @@
 import { LAYOUT_MOBILE_QUERY } from '../../../../sillybunny-editor/breakpoints.js';
+import { createIconButton } from '../../../../sillybunny-editor/dialog.js';
 import { createListEditor, isListEditorCollapsed } from '../../../../sillybunny-editor/list-shell.js';
+import { createListShowMore } from '../../../../sillybunny-editor/list-show-more.js';
 import { stopBusyTask, syncBusyControls } from './busy.js';
 import { COLLAPSE_WIDTH } from './constants.js';
 import { button, el, tr } from './dom.js';
 import { addViewControls, archiveMenuSections } from './menus.js';
-import { bindListKeys, deriveView, renderList } from './list.js';
+import { bindListKeys, deriveView, renderList, showMoreRows, syncQueryStrip } from './list.js';
 import { buildOrganizationContent } from './organization-manager.js';
 import { setOrganizationControlsEnabled, updateOrganizationStatus } from './organization-save.js';
 import { nextRenderId } from './render-id.js';
@@ -15,7 +17,7 @@ import { bindLocationKeys, renderSidebar } from './sidebar.js';
 import { focusSelection, pushPage, syncLocationPane } from './panes.js';
 import { withLocation } from './view-model.js';
 
-function buildListPane(ctx, ui) {
+function buildListPane(ctx, state, ui) {
     const pane = el('div', 'sbca-list-pane');
     ui.listHeading = el('h3', 'sbca-list-heading');
     ui.listHeading.id = `sbca_list_heading_${nextRenderId()}`;
@@ -32,11 +34,28 @@ function buildListPane(ctx, ui) {
     ui.bannerAction.hidden = true;
     ui.banner.append(ui.bannerText, ui.bannerAction);
 
-    ui.list = el('div', 'sbca-list');
+    // The pushed list page of a narrow layout has no search field, so the query shows here with the one action that clears it.
+    ui.queryStrip = el('div', 'sb-banner sbca-query-strip');
+    ui.queryStrip.hidden = true;
+    ui.queryText = el('span');
+    ui.queryClear = createIconButton(tr(ctx, 'Clear Search'), 'xmark', 'sbca-query-clear');
+    ui.queryClear.addEventListener('click', () => {
+        ui.dialog.search?.clear();
+        ui.listHeading.focus({ preventScroll: true });
+    });
+    ui.queryStrip.append(ui.queryText, ui.queryClear);
+
+    ui.listBox = el('div', 'sbca-list-box ds-entity-list');
+    ui.list = el('div', 'sbca-list ds-entity-list__rows');
     ui.list.setAttribute('role', 'list');
     ui.list.setAttribute('aria-labelledby', ui.listHeading.id);
+    ui.listFooter = el('div', 'ds-entity-list__footer');
+    ui.listFooter.hidden = true;
+    ui.showMore = createListShowMore({ onShowMore: () => showMoreRows(ctx, state, ui) });
+    ui.listFooter.append(ui.showMore.element);
+    ui.listBox.append(ui.list, ui.listFooter);
     ui.listScroll = el('div', 'sbca-list-scroll');
-    pane.append(ui.listHeading, ui.status, ui.banner, ui.listScroll);
+    pane.append(ui.listHeading, ui.status, ui.banner, ui.queryStrip, ui.listScroll);
     ui.listPane = pane;
 }
 
@@ -53,14 +72,13 @@ export function mountArchive(ctx, state, ui, dialog) {
     ui.dialog = dialog;
     ui.root = dialog.root;
     ui.searchControl = dialog.search;
-    ui.tagOptions = document.createElement('datalist');
-    ui.tagOptions.id = `sbca_tag_options_${nextRenderId()}`;
+    ui.knownTags = [];
     ui.filtersDescription = el('span', 'sbca-filters-description', tr(ctx, 'Filters are active'));
     ui.filtersDescription.id = `sbca_filters_description_${nextRenderId()}`;
     ui.filtersDescription.hidden = true;
     dialog.surface.append(ui.filtersDescription);
 
-    buildListPane(ctx, ui);
+    buildListPane(ctx, state, ui);
     buildOrganizationContent(ctx, state, ui);
     buildViewerContent(ui);
     ui.selectionBar = el('div', 'sbca-selection-bar');
@@ -82,6 +100,7 @@ export function mountArchive(ctx, state, ui, dialog) {
         });
         ui.listPage = page;
         addViewControls(ctx, state, ui, page);
+        syncQueryStrip(ui);
     };
     const chooseLocation = entry => {
         commitModel(ctx, state, ui, withLocation(state.model, entry));
@@ -122,6 +141,7 @@ export function mountArchive(ctx, state, ui, dialog) {
                 ui.splitFocusPending = false;
             }
             forcedListPage = null;
+            syncQueryStrip(ui);
             syncLocationPane(ui);
         } else {
             reconcileLayout();
@@ -135,6 +155,7 @@ export function mountArchive(ctx, state, ui, dialog) {
         layoutWatcher.disconnect();
         phone.removeEventListener('change', reconcileLayout);
         unbindSearch();
+        ui.showMore.destroy();
         ui.selection?.destroy();
         ui.listEditor?.destroy();
     };

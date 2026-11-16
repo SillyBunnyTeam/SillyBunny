@@ -1,6 +1,6 @@
 import { openPopover } from '../../../../sillybunny-action-menu.js';
 import { createIconButton } from '../../../../sillybunny-editor/dialog.js';
-import { createButtonRow, createCheckRow, createEntryRow, createRow, releaseRowIds } from '../../../../sillybunny-editor/rows.js';
+import { createButtonRow, createCheckRow, createRow, releaseRowIds } from '../../../../sillybunny-editor/rows.js';
 import { createSelectRow } from '../../../../sillybunny-editor/select-row.js';
 import { t } from '../../../../i18n.js';
 import { KINDS, ORPHAN_REASONS, SEARCH_DEBOUNCE_MS } from './constants.js';
@@ -82,22 +82,37 @@ function buildFilters(ctx, state, ui) {
         onChange: checked => commit({ favorite: checked ? undefined : false }),
     });
 
-    const tagInput = document.createElement('input');
-    tagInput.setAttribute('list', ui.tagOptions.id);
-    tagInput.placeholder = tr(ctx, 'Tag');
-    const tagRow = createEntryRow({
+    const tagSelect = document.createElement('select');
+    const syncTagOptions = () => {
+        const tags = ui.knownTags ?? [];
+        // A tag chosen earlier stays offered, so the row never shows a value that its select cannot hold.
+        const names = state.model.tag && !tags.some(tag => tag.toLocaleLowerCase() === state.model.tag.toLocaleLowerCase())
+            ? [state.model.tag, ...tags]
+            : tags;
+        tagSelect.replaceChildren();
+        appendOption(tagSelect, '', tr(ctx, 'None'));
+        for (const tag of names) appendOption(tagSelect, tag, tag);
+        const current = names.find(tag => tag.toLocaleLowerCase() === state.model.tag.toLocaleLowerCase());
+        tagSelect.value = current ?? '';
+    };
+    syncTagOptions();
+    const tagRow = createSelectRow({
+        select: tagSelect,
         label: tr(ctx, 'Tag'),
         field: 'filter-tag',
-        input: tagInput,
-        value: state.model.tag,
-        onInput: value => commitSoon('tag', () => commit({ tag: value.trim() })),
+        noneLabel: tr(ctx, 'None'),
+        emptyText: tr(ctx, 'No results'),
+        bounds: ui.dialog.surface,
+        onChange: value => commit({ tag: String(value).trim() }),
     });
 
     const dateInputs = [['minDate', 'From Date', false], ['maxDate', 'To Date', true]].map(([field, label, endOfDay]) => {
         const input = suffixInput('date', tr(ctx, label));
         input.value = dateInputText(state.model[field]);
         input.addEventListener('change', () => commit({ [field]: dateFromInput(input.value, endOfDay) }));
-        return { field, input, row: createRow({ label: tr(ctx, label), field: `filter-${field}`, suffix: input }) };
+        const row = createRow({ label: tr(ctx, label), field: `filter-${field}`, suffix: input });
+        row.row.classList.add('sbca-filter-field-row');
+        return { field, input, row };
     });
 
     const numberInputs = NUMBER_FIELDS.map(({ field, label, parse, format, step }) => {
@@ -108,6 +123,7 @@ function buildFilters(ctx, state, ui) {
         input.value = format(state.model[field]);
         input.addEventListener('input', () => commitSoon(field, () => commit({ [field]: parse(input.value) })));
         const { row } = createRow({ label: tr(ctx, label), field: `filter-${field}`, suffix: input });
+        row.classList.add('sbca-filter-field-row');
         return { field, input, format, row };
     });
 
@@ -117,7 +133,8 @@ function buildFilters(ctx, state, ui) {
         favoriteRow.setValue(model.favorite !== false);
         reasonRow.setValue(model.orphan);
         reasonRow.setVisible(model.types.has('orphan'));
-        tagRow.setValue(model.tag);
+        syncTagOptions();
+        tagRow.sync();
         for (const { field, input } of dateInputs) {
             input.value = dateInputText(model[field]);
         }
@@ -143,7 +160,6 @@ function buildFilters(ctx, state, ui) {
         favoriteRow.row,
         reasonRow.row,
         tagRow.row,
-        ui.tagOptions,
         ...dateInputs.map(({ row }) => row.row),
         ...numberInputs.map(({ row }) => row),
         resetRow.row,

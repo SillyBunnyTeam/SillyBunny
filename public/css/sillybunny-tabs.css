@@ -2838,159 +2838,38 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     flex-direction: column;
     flex: 1 1 auto;
     overflow: auto;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 78%, transparent);
-    border-radius: var(--sb-radius-card);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
-}
-
-.sb-chat-history-list-page #select_chat_div:has(> .sb-status-page) {
-    border: 0;
-    background: none;
 }
 
 .sb-chat-history-list-page .select_chat_block_wrapper + .select_chat_block_wrapper {
-    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 78%, transparent);
+    border-top: 1px solid var(--SmartThemeBorderColor);
 }
 
-.sb-chat-history-list-page .select_chat_block {
-    display: grid;
-    grid-template-columns: 24px minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 10px;
-    min-height: 88px;
+/* The row is the shared entity row on the upstream node; this resets what `.select_chat_block` and `.flex-container` set. */
+.sb-chat-history-list-page .select_chat_block.ds-entity-row {
+    flex-wrap: nowrap;
     margin: 0;
-    padding: 12px 14px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: var(--SmartThemeBodyColor);
-    transition: background-color var(--sb-transition-fast);
+    padding-block: 6px;
 }
 
-@media (hover: hover) {
-    .sb-chat-history-list-page .select_chat_block:hover {
-        background: var(--sb-flat-hover-bg);
-    }
+/* A tap leaves `:hover` on, and the shared row draws its hover fill only where hover exists. This rule ties with the upstream hover fill and loads after it; the deferred entity sheet loads after this one. */
+.sb-chat-history-row:not(.is-selected) {
+    background-color: transparent;
 }
 
-.sb-chat-history-list-page .select_chat_block:active {
-    background: var(--sb-flat-active-bg);
-}
-
-.sb-chat-history-list-page .select_chat_block[highlight] {
-    background: transparent !important;
-}
-
-.sb-chat-history-list-page .select_chat_block:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sb-chat-history-check {
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    width: 24px;
-    padding-top: 1px;
-    color: var(--sb-accent);
-    opacity: 0;
-}
-
-.sb-chat-history-list-page .select_chat_block[aria-current='true'] .sb-chat-history-check {
-    opacity: 1;
-}
-
-.sb-chat-history-row-content,
-.sb-chat-history-row-title {
-    display: flex;
-}
-
-.sb-chat-history-row-content { min-width: 0; }
-
-.sb-chat-history-row-content {
-    flex-direction: column;
-    gap: 3px;
-}
-
-.sb-chat-history-row-title {
-    align-items: center;
-    color: var(--SmartThemeBodyColor);
-    font-size: var(--sb-type-body);
-    font-weight: 400;
-}
-
-.sb-chat-history-row-title .select_chat_block_filename {
-    min-width: 0;
-    overflow: hidden;
-    opacity: 1;
-    font-size: inherit;
-    font-weight: inherit;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.sb-chat-history-row-content .select_chat_info {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-caption);
-    font-weight: 400;
-}
-
-.sb-chat-history-row-content .select_chat_info > * + *::before {
-    content: ' · ';
-}
-
-.sb-chat-history-row-content .select_chat_block_mes {
+.sb-chat-history-row .ds-entity-row__preview {
     display: -webkit-box;
     overflow: hidden;
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-caption);
-    font-weight: 400;
     line-height: 1.4;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
 }
 
-.sb-chat-history-row-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.sb-chat-history-row-actions > :is(.sb-dialog__icon-button, .PastChat_cross, .renameChatButton) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--SmartThemeBodyColor);
-    opacity: 0.78;
-    cursor: pointer;
-}
-
-@media (hover: hover) {
-    .sb-chat-history-row-actions > :is(.sb-dialog__icon-button, .PastChat_cross, .renameChatButton):hover {
-        background: var(--sb-flat-hover-bg);
-        opacity: 1;
-    }
-}
-
-.sb-chat-history-row-actions > :is(.sb-dialog__icon-button, .PastChat_cross, .renameChatButton):active {
-    background: var(--sb-flat-active-bg);
-}
-
-.sb-chat-history-row-actions .PastChat_cross {
-    color: var(--SmartThemeBodyColor);
-    animation: none;
-    filter: none;
+.sb-chat-history-row .select_chat_info > * + *::before {
+    content: '·';
+    margin-inline-end: 8px;
 }
 
 .sb-chat-history-legacy-actions {
@@ -3077,16 +2956,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 }
 
 @media (max-width: 450px) {
-    .sb-chat-history-list-page .select_chat_block {
-        grid-template-columns: 20px minmax(0, 1fr);
-        padding: 10px 12px;
-    }
-
-    .sb-chat-history-row-actions {
-        grid-column: 2;
-        justify-content: flex-end;
-    }
-
     .sb-chat-history-cleanup-actions .menu_button {
         width: 100%;
     }
@@ -8459,12 +8328,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
         min-height: 44px;
     }
 
-    .sb-chat-history-row-actions > :is(.sb-dialog__icon-button, .PastChat_cross, .renameChatButton) {
-        width: 44px;
-        min-width: 44px;
-    }
-
-    .sb-chat-history-row-actions > :is(.sb-dialog__icon-button, .PastChat_cross, .renameChatButton),
     .sb-chat-history-cleanup-page .ds-row-suffix > select,
     #right-nav-panel[data-menu-type="create"] #avatar_controls .char-button-group-icons :is(#create_button_label, #world_button) {
         height: 44px;

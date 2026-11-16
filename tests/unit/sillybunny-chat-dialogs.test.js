@@ -33,6 +33,7 @@ function createFrame(options) {
     let resolveClosed;
     const closed = new Promise(resolve => { resolveClosed = resolve; });
     let query = '';
+    let searchOpen = false;
     const searchInput = document.createElement('input');
     const search = {
         setQuery: jest.fn((value, { notify = true } = {}) => {
@@ -40,6 +41,8 @@ function createFrame(options) {
             query = value;
             return notify;
         }),
+        open: jest.fn(() => { searchOpen = true; }),
+        get isOpen() { return searchOpen; },
         get query() { return query; },
     };
     const frame = {
@@ -237,9 +240,13 @@ test('Chat History moves the source nodes, proxies frame search and restores its
     expect(source.legacyHost.classList.contains('sb-chat-history-compat-open')).toBe(true);
     expect(frame.header.querySelector('.sb-chat-history-new-chat')).not.toBeNull();
     expect(frame.options.subtitle).toBe('');
+    // The search is revealed from its icon, so it starts closed and opens only for a query that the legacy field holds.
+    expect(frame.options.search.collapsed).toBe(true);
+    expect(frame.search.open).not.toHaveBeenCalled();
     source.search.value = 'QA query';
     expect(openChatHistoryDialog()).toBe(frame);
     expect(frame.search.setQuery).toHaveBeenLastCalledWith('QA query', { notify: false });
+    expect(frame.search.open).toHaveBeenCalledTimes(1);
 
     frame.header.querySelector('.sb-chat-history-menu').click();
     const cleanupItem = openActionMenu.mock.lastCall[0].sections[0].items.find(item => item.label === 'Chat cleanup tools');

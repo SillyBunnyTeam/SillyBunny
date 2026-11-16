@@ -22,6 +22,7 @@ import {
     openMenu,
     openMenuItem,
     openRow,
+    openSearch,
     orphanRow,
     rows,
     shot,
@@ -182,7 +183,7 @@ for (const viewport of LAYOUT_VIEWPORTS) {
             await openArchive(page);
             await showList(page);
             await expect(rows(page)).toHaveCount(100);
-            const more = page.getByRole('button', { name: 'Show 42 More' });
+            const more = page.getByRole('button', { name: 'Show More', exact: true });
             await expectReachable(page, rows(page).nth(99), 'the hundredth row');
             await expectReachable(page, more, 'Show more');
             await more.click();
@@ -241,6 +242,26 @@ test.describe('the phone flow', () => {
         await expect(page.locator('.sbca-location').first()).toBeVisible();
         await expect(page.locator('.sbca-location[aria-pressed="true"]')).toContainText('Alice');
         await expect(dialog(page)).toBeVisible();
+    });
+
+    test('the pushed list page shows the query it is filtered by, with one Clear Search button', async ({ page }) => {
+        await bootArchive(page, PHONE, { fixture: bigFixture() });
+        await openArchive(page);
+        const strip = page.locator('.sbca-query-strip');
+        await expect(strip).toBeHidden();
+        await (await openSearch(page)).fill('Chapter 1');
+        await page.locator('.sbca-location', { hasText: 'Alice' }).first().click();
+        await expect(rows(page).first()).toBeVisible();
+        await expect(strip).toBeVisible();
+        await expect(strip).toContainText('Chapter 1');
+        const clear = strip.getByRole('button', { name: 'Clear Search' });
+        expect((await clear.boundingBox()).height).toBeGreaterThanOrEqual(44);
+        const filtered = await rows(page).count();
+        await clear.click();
+        await expect(strip).toBeHidden();
+        await expect.poll(() => rows(page).count()).toBeGreaterThan(filtered);
+        await goBack(page);
+        await expect(strip).toBeHidden();
     });
 });
 

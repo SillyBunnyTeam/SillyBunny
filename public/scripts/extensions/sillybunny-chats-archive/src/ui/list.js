@@ -1,9 +1,10 @@
 import { physicalChatKey, sortRows } from '../core.js';
 import { createEntityRow } from '../../../../sillybunny-editor/entity-row.js';
 import { createStatusPage } from '../../../../sillybunny-editor/status-page.js';
+import { stopBusyTask } from './busy.js';
 import { cancelNavigation } from './cancellation.js';
 import { LIST_PAGE_SIZE } from './constants.js';
-import { button, el, setCount, setStatus, tr } from './dom.js';
+import { el, setCount, setStatus, syncBanner, tr } from './dom.js';
 import { syncFilterButtons } from './filters.js';
 import { loadRows } from './inventory.js';
 import { buildLocations } from './locations.js';
@@ -83,9 +84,40 @@ function syncListHeading(ui, location) {
     ui.listHeading.textContent = location.label;
 }
 
+/**
+ * A status page replaces the list and owns the message: the banner stays hidden while it shows, so one state is
+ * never told twice. The live region still announces it.
+ */
 function showStatusPage(ui, options) {
     ui.list.replaceChildren();
+    ui.listFooter.hidden = true;
     ui.listScroll.replaceChildren(createStatusPage({ compact: true, ...options }).element);
+    ui.statusPageShown = true;
+    syncBanner(ui);
+}
+
+/** Shows the active query on the pushed list page, which has no search field of its own. */
+export function syncQueryStrip(ui) {
+    const query = ui.search.value.trim();
+    ui.queryText.textContent = query;
+    ui.queryStrip.hidden = !query || !ui.listPage;
+}
+
+/** Shows the next batch of rows and keeps the keyboard where it was reading. */
+export function showMoreRows(ctx, state, ui) {
+    const { rows } = ui.data;
+    const firstNewRow = state.visibleLimit;
+    state.visibleLimit += LIST_PAGE_SIZE;
+    const added = rows.slice(firstNewRow, state.visibleLimit).map(row => buildRow(ctx, state, ui, row));
+    ui.list.append(...added);
+    syncShowMore(state, ui, rows);
+    updateSelectionControls(ctx, state, ui);
+    added[0]?.focus({ preventScroll: true });
+}
+
+function syncShowMore(state, ui, rows) {
+    ui.showMore.update({ shown: Math.min(state.visibleLimit, rows.length), total: rows.length });
+    ui.listFooter.hidden = ui.showMore.isComplete;
 }
 
 function emptyMessage(ctx, state) {
@@ -112,6 +144,7 @@ function paintList(ctx, state, ui) {
     syncListHeading(ui, ui.data.locations.current);
     syncFilterButtons(state, ui);
     syncLocationPane(ui);
+    syncQueryStrip(ui);
 
     if (state.listState === 'loading') {
         ui.list.setAttribute('aria-busy', 'true');
@@ -119,7 +152,11 @@ function paintList(ctx, state, ui) {
             state.matchingRows = [];
             setCount(ui, '');
             // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
-            showStatusPage(ui, { state: 'loading', title: tr(ctx, 'Loading chats...') });
+            showStatusPage(ui, {
+                state: 'loading',
+                title: tr(ctx, 'Loading chats...'),
+                actions: [{ label: tr(ctx, 'Cancel'), onActivate: () => stopBusyTask(ctx, state, ui) }],
+            });
             return;
         }
     }
@@ -148,30 +185,10 @@ function paintList(ctx, state, ui) {
     }
 
     ui.list.replaceChildren(...rows.slice(0, state.visibleLimit).map(row => buildRow(ctx, state, ui, row)));
-    appendListMore(ctx, state, ui, rows);
-    ui.listScroll.replaceChildren(ui.list);
-}
-
-function appendListMore(ctx, state, ui, rows) {
-    if (rows.length <= state.visibleLimit) {
-        return;
-    }
-    const remaining = rows.length - state.visibleLimit;
-    const item = el('div', 'sbca-list-more');
-    item.setAttribute('role', 'listitem');
-    const more = button('menu_button', tr(ctx, 'Show {count} More', { count: Math.min(LIST_PAGE_SIZE, remaining) }));
-    more.addEventListener('click', () => {
-        const firstNewRow = state.visibleLimit;
-        state.visibleLimit += LIST_PAGE_SIZE;
-        item.remove();
-        const added = rows.slice(firstNewRow, state.visibleLimit).map(row => buildRow(ctx, state, ui, row));
-        ui.list.append(...added);
-        appendListMore(ctx, state, ui, rows);
-        updateSelectionControls(ctx, state, ui);
-        (added[0] ?? ui.list.querySelector('.sbca-list-more button'))?.focus({ preventScroll: true });
-    });
-    item.append(more);
-    ui.list.append(item);
+    syncShowMore(state, ui, rows);
+    ui.listScroll.replaceChildren(ui.listBox);
+    ui.statusPageShown = false;
+    syncBanner(ui);
 }
 
 function symbolicAvatar(kind) {
@@ -249,9 +266,8 @@ export function bindListKeys(ui) {
         }
         event.preventDefault();
         if (event.key === 'ArrowDown' && current === rows.length - 1) {
-            const more = ui.list.querySelector('.sbca-list-more button');
-            if (more) {
-                more.click();
+            if (!ui.showMore.isComplete) {
+                ui.showMore.button.click();
                 return;
             }
         }

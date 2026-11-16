@@ -21,7 +21,7 @@ const renderList = jest.fn();
 const deriveView = jest.fn();
 await jest.unstable_mockModule(`${archive}/busy.js`, () => ({ stopBusyTask: jest.fn(), syncBusyControls: jest.fn() }));
 await jest.unstable_mockModule(`${archive}/menus.js`, () => ({ addViewControls: jest.fn(), archiveMenuSections: jest.fn(() => []) }));
-await jest.unstable_mockModule(`${archive}/list.js`, () => ({ bindListKeys: jest.fn(), deriveView, renderList }));
+await jest.unstable_mockModule(`${archive}/list.js`, () => ({ bindListKeys: jest.fn(), deriveView, renderList, showMoreRows: jest.fn(), syncQueryStrip: jest.fn() }));
 await jest.unstable_mockModule(`${archive}/organization-manager.js`, () => ({ buildOrganizationContent: jest.fn() }));
 await jest.unstable_mockModule(`${archive}/organization-save.js`, () => ({ setOrganizationControlsEnabled: jest.fn(), updateOrganizationStatus: jest.fn() }));
 await jest.unstable_mockModule(`${archive}/saved-views.js`, () => ({ commitModel: jest.fn() }));

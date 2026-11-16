@@ -110,14 +110,14 @@
             "spacing-off-scale": 4
         },
         "public/css/sillybunny-tabs.css": {
-            "radius-literal": 10,
+            "radius-literal": 9,
             "shadow-literal": 7,
             "duration-literal": 1,
-            "important": 274,
+            "important": 273,
             "breakpoint-off-set": 12,
             "breakpoint-1000": 2,
             "focus-outline": 1,
-            "spacing-off-scale": 169,
+            "spacing-off-scale": 164,
             "spacing-off-scale-fallback": 2
         },
         "public/css/sillybunny-tag-manager.css": {
@@ -176,7 +176,7 @@
             "shadow-literal": 1,
             "italic": 1,
             "important": 19,
-            "spacing-off-scale": 36
+            "spacing-off-scale": 34
         },
         "public/scripts/extensions/sillybunny-debugger/style.css": {
             "spacing-off-scale": 3

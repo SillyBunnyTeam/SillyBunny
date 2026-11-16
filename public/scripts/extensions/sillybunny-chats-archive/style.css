@@ -95,7 +95,7 @@
 
 .sbca-sidebar {
     box-sizing: border-box;
-    padding: 0;
+    padding: 6px;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -238,15 +238,14 @@
     outline: none;
 }
 
-.sbca-banner {
+.sbca-banner,
+.sbca-query-strip {
     flex: 0 0 auto;
-    min-block-size: 48px;
-    padding-inline: var(--sbca-inset);
-    border-block-end: 1px solid var(--sb-shell-border);
     overflow-wrap: anywhere;
 }
 
-.sbca-banner > span {
+.sbca-banner > span,
+.sbca-query-strip > span {
     white-space: normal;
 }
 
@@ -255,37 +254,20 @@
     flex: 1 1 0;
     flex-direction: column;
     min-block-size: 0;
-    padding: var(--sbca-inset);
+    padding: 12px;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
 }
 
-.sbca-list {
-    display: flex;
+.sbca-list-box {
     flex: none;
-    flex-direction: column;
-    min-inline-size: 0;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    border: 1px solid var(--sbca-hairline);
-    border-radius: var(--sb-radius-card);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
 }
 
+/* A row holds a title, a caption and a one-line preview, so its first measure is larger than the shared estimate. */
 .sbca-list .sbca-row {
     position: relative;
-    gap: 12px;
-    min-block-size: 70px;
-    padding: 10px 14px;
-    border-block-end: 1px solid var(--sbca-hairline);
-    cursor: pointer;
     contain-intrinsic-size: auto 70px;
-}
-
-.sbca-list .sbca-row:last-child {
-    border-block-end: 0;
 }
 
 .sbca-list .sbca-row:focus-visible {
@@ -297,18 +279,6 @@
     background: var(--sb-flat-selected-bg);
 }
 
-.sbca-list .sbca-row > .ds-entity-row__avatar,
-.sbca-list .sbca-row .ds-entity-row__avatar > img {
-    inline-size: 42px;
-    block-size: 42px;
-    min-inline-size: 42px;
-    max-inline-size: 42px;
-}
-
-.sbca-list .sbca-row > .ds-entity-row__avatar {
-    flex: 0 0 42px;
-}
-
 .sbca-avatar-icon {
     display: inline-flex;
     align-items: center;
@@ -317,15 +287,6 @@
     block-size: 100%;
     color: var(--sbca-muted);
     font-size: 18px;
-}
-
-.sbca-list .sbca-row .ds-entity-row__title {
-    font-size: var(--sb-type-body);
-    font-weight: 700;
-}
-
-.sbca-list .sbca-row .ds-entity-row__subtitle {
-    font-size: var(--sb-type-meta);
 }
 
 /* A single clamped line keeps every row the same height regardless of the snippet. */
@@ -344,21 +305,6 @@
 
 .sbca-row-star {
     color: var(--sb-accent);
-}
-
-.sbca-list-more {
-    display: flex;
-    justify-content: center;
-    padding: var(--sbca-space-xs);
-    border-block-start: 1px solid var(--sbca-hairline);
-}
-
-.sbca-list-more button {
-    inline-size: auto;
-    min-inline-size: max-content;
-    min-block-size: 44px;
-    padding-inline: var(--sbca-space-lg);
-    white-space: nowrap;
 }
 
 .sbca-dialog .sb-dialog__page.sbca-list-page > .sb-dialog__body {
@@ -502,22 +448,17 @@
     margin-inline-start: auto;
 }
 
-.sbca-filters .ds-row-entry input,
 .sbca-filters .ds-select-row__trigger {
     min-inline-size: 0;
     max-inline-size: 180px;
-}
-
-.sbca-filters .ds-row-entry input::placeholder {
-    color: var(--sb-input-placeholder, var(--sb-muted-fg));
-    opacity: 1;
 }
 
 .sbca-filters .sbca-filter-input {
     box-sizing: border-box;
     inline-size: 180px;
     max-inline-size: 180px;
-    min-block-size: 46px;
+    min-block-size: 0;
+    block-size: 32px;
     margin: 0;
     padding: 0 12px;
     border: 1px solid var(--sb-input-border, var(--SmartThemeBorderColor));
@@ -526,6 +467,10 @@
     color: var(--SmartThemeBodyColor);
     color-scheme: light dark;
     font: inherit;
+}
+
+.sbca-filters .sbca-filter-input[type="number"] {
+    inline-size: 100px;
 }
 
 .sbca-save-view {
@@ -802,6 +747,14 @@
     .sbca-dialog :is(button, summary),
     .sbca-location {
         min-block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    .sbca-filters .sbca-filter-input {
+        block-size: var(--sb-mobile-touch-target, 44px);
+    }
+
+    .sbca-filters .sbca-filter-field-row {
+        padding-block: 0;
     }
 
     .sbca-row-action {

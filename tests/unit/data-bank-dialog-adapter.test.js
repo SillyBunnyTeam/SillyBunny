@@ -6,6 +6,10 @@ let menuOptions;
 const openActionMenu = jest.fn(options => { menuOptions = options; });
 const createListSearch = jest.fn(() => ({
     query: '',
+    isOpen: false,
+    open: jest.fn(),
+    close: jest.fn(),
+    setQuery: jest.fn(),
     toggle: jest.fn(),
     destroy: jest.fn(),
     report: jest.fn(),
@@ -61,7 +65,7 @@ function makePopup() {
     return { popup: { dlg, closeButton }, manager, search, sort, bulkInput };
 }
 
-function makeRow({ bulk = false } = {}) {
+function makeRow() {
     const root = document.createElement('div');
     root.className = 'dataBankAttachments';
     const row = document.createElement('div');
@@ -73,13 +77,6 @@ function makeRow({ bulk = false } = {}) {
     const actions = document.createElement('div');
     actions.className = 'attachmentRowActions';
     row.append(checkbox, view, actions);
-    if (bulk) {
-        const bulkInput = document.createElement('input');
-        bulkInput.type = 'checkbox';
-        bulkInput.className = 'attachmentsBulkEditCheckbox';
-        bulkInput.checked = true;
-        root.append(bulkInput);
-    }
     root.append(row);
     document.body.append(root);
     return { row, view, checkbox };
@@ -133,12 +130,95 @@ describe('Data Bank dialog adapter', () => {
         expect(click).toHaveBeenCalledTimes(1);
     });
 
-    test.each(['Enter', ' '])('toggles selection from the keyboard in bulk mode with %s', key => {
-        const { row, checkbox } = makeRow({ bulk: true });
-        decorateDataBankRow(row, { view: document.createElement('button'), actions: [] });
-        row.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-        expect(checkbox.checked).toBe(true);
-        row.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-        expect(checkbox.checked).toBe(false);
+    describe('Bulk Edit', () => {
+        function framedManager() {
+            const { popup, manager, bulkInput } = makePopup();
+            const title = document.createElement('h2');
+            title.className = 'sb-dialog__title';
+            popup.dlg.querySelector('.sb-dialog__header').append(title);
+            const lists = ['globalAttachmentsList', 'characterAttachmentsList'].map(name => {
+                const list = document.createElement('div');
+                list.className = `${name} attachmentsList`;
+                manager.append(list);
+                return list;
+            });
+            const template = document.createElement('div');
+            template.className = 'attachmentListItemTemplate';
+            manager.append(template);
+            const makeBankRow = (list, url) => {
+                const row = document.createElement('div');
+                row.className = 'attachmentListItem';
+                row.dataset.attachmentSource = 'global';
+                row.dataset.attachmentUrl = url;
+                const name = document.createElement('div');
+                name.className = 'attachmentListItemName';
+                name.textContent = url;
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'attachmentListItemCheckbox';
+                row.append(checkbox, name);
+                list.append(row);
+                return { row, checkbox };
+            };
+            const frame = frameDataBankManager(popup);
+            return { popup, manager, bulkInput, frame, lists, template, makeBankRow };
+        }
+
+        test('enters the shared selection mode and mirrors it to the upstream checkboxes', () => {
+            const { popup, bulkInput, frame, lists, template, makeBankRow } = framedManager();
+            const first = makeBankRow(lists[0], '/a.txt');
+            const second = makeBankRow(lists[1], '/b.txt');
+            const spare = makeBankRow(template, '/template.txt');
+            bulkInput.checked = true;
+            bulkInput.dispatchEvent(new Event('change'));
+            expect(popup.dlg.dataset.selectionMode).toBe('true');
+            expect(popup.dlg.querySelectorAll('.sb-selection-action').length).toBe(3);
+
+            first.row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            expect([first.checkbox.checked, second.checkbox.checked]).toEqual([true, false]);
+            first.row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+            expect(first.checkbox.checked).toBe(false);
+
+            popup.dlg.querySelector('.sb-dialog__selection-select-all').click();
+            expect([first.checkbox.checked, second.checkbox.checked, spare.checkbox.checked]).toEqual([true, true, false]);
+            frame.destroy();
+        });
+
+        test('Cancel leaves the mode and clears the upstream flag, and a finished bulk action ends it', () => {
+            const { popup, bulkInput, frame, lists, makeBankRow } = framedManager();
+            makeBankRow(lists[0], '/a.txt');
+            bulkInput.checked = true;
+            bulkInput.dispatchEvent(new Event('change'));
+            popup.dlg.querySelector('.sb-dialog__selection-cancel').click();
+            expect(popup.dlg.dataset.selectionMode).toBe('false');
+            expect(bulkInput.checked).toBe(false);
+
+            bulkInput.checked = true;
+            bulkInput.dispatchEvent(new Event('change'));
+            expect(popup.dlg.dataset.selectionMode).toBe('true');
+            // Upstream clears its own flag after a bulk action completes.
+            bulkInput.checked = false;
+            frame.report(1, 1);
+            expect(popup.dlg.dataset.selectionMode).toBe('false');
+            frame.destroy();
+        });
+
+        test('each action clicks the hidden upstream bulk control', () => {
+            const { popup, bulkInput, frame, lists, makeBankRow } = framedManager();
+            const clicks = [];
+            for (const name of ['Disable', 'Enable', 'Delete']) {
+                const control = document.createElement('div');
+                control.className = `bulkAction${name}`;
+                control.addEventListener('click', () => clicks.push(name));
+                popup.dlg.append(control);
+            }
+            const { row } = makeBankRow(lists[0], '/a.txt');
+            bulkInput.checked = true;
+            bulkInput.dispatchEvent(new Event('change'));
+            row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            for (const button of popup.dlg.querySelectorAll('.sb-selection-action')) button.click();
+            expect(clicks).toEqual(['Disable', 'Enable', 'Delete']);
+            frame.destroy();
+        });
     });
 });

@@ -95,11 +95,7 @@ function refreshTagOptions(state, ui) {
             tags.add(tag);
         }
     }
-    ui.tagOptions.replaceChildren(...[...tags].sort().map(tag => {
-        const option = document.createElement('option');
-        option.value = tag;
-        return option;
-    }));
+    ui.knownTags = [...tags].sort();
 }
 
 export function commitOrganizationChange(ctx, state, ui) {

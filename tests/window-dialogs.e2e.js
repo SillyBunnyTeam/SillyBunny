@@ -192,6 +192,8 @@ for (const viewport of WINDOW_VIEWPORTS) {
         await expect(manager.locator('.characterAttachmentsList .attachmentEmptyRow')).toHaveText('No data');
         await expect(manager.locator('.chatAttachmentsList .attachmentEmptyRow')).toHaveText('No data');
         await expect(manager.locator('.sb-data-bank-search-toggle')).toBeVisible();
+        // A status page that carries `hidden` stays out of the layout; its own display rule must not win over the attribute.
+        await expect(manager.locator('.data-bank-empty-search')).toHaveCSS('display', 'none');
         await manager.locator('.sb-data-bank-search-toggle').click();
         await expect(manager.locator('#attachmentSearch')).toBeVisible();
         await expectSharedDialogEntryStyles(manager.locator('#attachmentSearch'));
@@ -203,8 +205,10 @@ for (const viewport of WINDOW_VIEWPORTS) {
         await manager.locator('#attachmentSearch').fill('no-matching-attachment');
         await expect(rows).toHaveCount(0);
         await expect(manager.locator('.data-bank-search-status')).toHaveText('No results');
+        await expect(manager.locator('.data-bank-empty-search')).toBeVisible();
         await manager.locator('#attachmentSearch').fill('');
         await expect(rows).toHaveCount(ATTACHMENT_COUNT);
+        await expect(manager.locator('.data-bank-empty-search')).toHaveCSS('display', 'none');
         await manager.locator('.sb-data-bank-search-toggle').click();
         await expect(manager.locator('#attachmentSearch')).toBeHidden();
         await expect(manager.locator('.sb-data-bank-search-toggle')).toHaveAttribute('aria-expanded', 'false');
@@ -271,47 +275,54 @@ for (const viewport of WINDOW_VIEWPORTS) {
         expect(suggestedName(await downloadPromise, browserName)).toBe('Window attachment 01.txt');
 
         await manager.locator('.attachmentsBulkEditButton').click();
+        const selectionBar = manager.locator('.sb-data-bank-selection-bar');
+        const selectionAction = name => selectionBar.getByRole('button', { name, exact: true });
         await expect(manager.locator('.attachmentsBulkEditCheckbox')).toBeChecked();
         await expect(manager.locator('.attachmentsBulkEditButton')).toHaveAttribute('aria-pressed', 'true');
-        expect(await manager.locator('.dataBankAttachments').evaluate(node => node.matches(':has(.attachmentsBulkEditCheckbox:checked)'))).toBe(true);
-        await expect(manager.locator('.sb-data-bank-action-bar')).toHaveCSS('display', 'flex');
+        await expect(manager).toHaveAttribute('data-selection-mode', 'true');
+        await expect(selectionBar).toBeVisible();
+        await expect(selectionBar).toHaveCSS('display', 'flex');
+        await expect(selectionBar.getByRole('button')).toHaveText(['Disable', 'Enable', 'Delete']);
+        await expect(manager.locator('.attachmentBulkActionsContainer')).toBeHidden();
         await captureWindowSurface(page, viewport, 'data-bank-bulk');
-        const actionBarBounds = await manager.locator('.sb-data-bank-action-bar').boundingBox();
+        const actionBarBounds = await selectionBar.boundingBox();
         const bodyBounds = await body.boundingBox();
         expect(actionBarBounds.y).toBeGreaterThanOrEqual(bodyBounds.y + bodyBounds.height - 1);
         expect(actionBarBounds.x + actionBarBounds.width).toBeLessThanOrEqual((await manager.boundingBox()).x + (await manager.boundingBox()).width + 1);
-        await expect(rows.first().locator('.attachmentListItemCheckboxContainer')).toHaveCSS('display', 'flex');
-        await expect(rows.first().locator('.attachmentFileIcon')).toBeHidden();
-        await manager.locator('.attachmentsBulkEditButton').click();
+        await expect(rows.first().locator('.sb-selection-check')).toBeVisible();
+        await expect(selectionAction('Delete')).toBeDisabled();
+        await manager.locator('.sb-dialog__selection-cancel').click();
         await expect(manager.locator('.attachmentsBulkEditCheckbox')).not.toBeChecked();
-        await expect(manager.locator('.attachmentBulkActionsContainer')).toBeHidden();
-        await expect(rows.first().locator('.attachmentListItemCheckboxContainer')).toBeHidden();
-        await expect(rows.first().locator('.attachmentFileIcon')).toBeVisible();
+        await expect(manager.locator('.attachmentsBulkEditButton')).toHaveAttribute('aria-pressed', 'false');
+        await expect(manager).toHaveAttribute('data-selection-mode', 'false');
+        await expect(selectionBar).toBeHidden();
+        await expect(manager.locator('.sb-selection-check')).toHaveCount(0);
         if (viewport.width <= 450) {
             const add = manager.locator('.globalAttachmentsTitle .openActionModalButton');
             await expect(add).toHaveCSS('width', '44px');
             await expect(add.locator('span')).toBeHidden();
         }
         await manager.locator('.attachmentsBulkEditButton').click();
-        await rows.first().locator('.attachmentListItemCheckbox').check();
-        await manager.locator('.bulkActionDisable').click();
+        await rows.first().click();
+        await expect(rows.first().locator('.attachmentListItemCheckbox')).toBeChecked();
+        await selectionAction('Disable').click();
         await expect(rows.first()).toHaveClass(/disabled/);
         await expect(manager.locator('.attachmentsBulkEditCheckbox')).not.toBeChecked();
-        await expect(manager.locator('.attachmentBulkActionsContainer')).toBeHidden();
+        await expect(selectionBar).toBeHidden();
 
         await manager.locator('.attachmentsBulkEditButton').click();
-        await manager.locator('.bulkActionSelectAll').click();
+        await manager.locator('.sb-dialog__selection-select-all').click();
         await expect(manager.locator('.attachmentListItemCheckbox:checked')).toHaveCount(ATTACHMENT_COUNT);
-        await manager.locator('.bulkActionSelectNone').click();
+        await manager.locator('.sb-dialog__selection-select-all').click();
         await expect(manager.locator('.attachmentListItemCheckbox:checked')).toHaveCount(0);
-        await rows.first().locator('.attachmentListItemCheckbox').check();
-        await manager.locator('.bulkActionEnable').click();
+        await rows.first().click();
+        await selectionAction('Enable').click();
         await expect(rows.first()).not.toHaveClass(/disabled/);
 
         const deletesBeforeBulkConfirm = state.deletes.length;
         await manager.locator('.attachmentsBulkEditButton').click();
-        await rows.first().locator('.attachmentListItemCheckbox').check();
-        await manager.locator('.bulkActionDelete').click();
+        await rows.first().click();
+        await selectionAction('Delete').click();
         const bulkDeleteAlert = await currentPopup(page, '.popup-content');
         await expect(bulkDeleteAlert).toHaveAttribute('role', 'alertdialog');
         await expect(bulkDeleteAlert.locator('.popup-button-cancel')).toBeFocused();

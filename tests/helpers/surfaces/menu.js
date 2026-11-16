@@ -221,12 +221,12 @@ export const surfaces = [
     }),
     menu({
         id: 'chat-history.export',
-        title: 'Chat History export menu (chat row)',
+        title: 'Chat History row menu (chat row)',
         needs: ['chat'],
         sources: [`${SCRIPTS}/sillybunny-chat-dialogs.js`, ACTION_MENU],
         async open(page) {
             await openChatHistory(page);
-            await openFrom(page, '.sb-chat-history-export');
+            await openFrom(page, '.sb-chat-history-row-menu');
         },
     }),
     menu({

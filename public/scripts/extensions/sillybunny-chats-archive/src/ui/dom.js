@@ -66,7 +66,7 @@ export function setStatus(ui, text, { alert = false } = {}) {
 }
 
 export function syncBanner(ui) {
-    ui.banner.hidden = ui.banner.dataset.busy !== 'true' && !ui.banner.hasAttribute('data-alert');
+    ui.banner.hidden = Boolean(ui.statusPageShown) || (ui.banner.dataset.busy !== 'true' && !ui.banner.hasAttribute('data-alert'));
 }
 
 export function setCount(ui, text) {

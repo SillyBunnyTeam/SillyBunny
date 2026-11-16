@@ -20,6 +20,11 @@
     margin-top: 4px;
 }
 
+/* SillyBunny: the Window frame is a Popup, not a dialog host, so the host's [hidden] rule never reaches it; selection mode hides the header controls with [hidden]. */
+.sb-data-bank-window [hidden] {
+    display: none !important;
+}
+
 .sb-data-bank-search {
     box-sizing: border-box;
     max-width: 100%;
@@ -104,10 +109,6 @@
     font-weight: inherit;
 }
 
-.dataBankAttachments .attachmentsList {
-    overflow: hidden;
-}
-
 .dataBankAttachments .attachmentsList:empty::before {
     content: none;
 }
@@ -118,26 +119,17 @@
     text-align: center;
 }
 
-.dataBankAttachments .attachmentListItemName {
-    overflow: hidden;
-    color: var(--sb-shell-text, var(--SmartThemeBodyColor));
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.dataBankAttachments .attachmentListItemMeta {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .dataBankAttachments .attachmentRowActions > .right_menu_button {
     display: none;
 }
 
 .dataBankAttachments .attachmentRowActions > .viewAttachmentButton,
 .dataBankAttachments .attachmentRowActions > .attachmentRowMenu {
-    display: grid;
+    display: inline-flex;
+}
+
+.dataBankAttachments .attachmentListItem.ds-entity-row {
+    flex-wrap: nowrap;
 }
 
 .dataBankAttachments .attachmentListItem.disabled {
@@ -157,18 +149,6 @@
     display: none;
 }
 
-.dataBankAttachments .attachmentListItemCheckboxContainer {
-    flex: 0 0 24px;
-    align-items: center;
-    justify-content: flex-start;
-}
-
-.dataBankAttachments .attachmentListItemCheckbox {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--sb-accent);
-}
-
 .dataBankAttachments .data-bank-search-status {
     flex: 1;
     align-items: center;
@@ -186,31 +166,8 @@
     display: none;
 }
 
-.dataBankAttachments:has(.attachmentsBulkEditCheckbox:checked) .attachmentListItemCheckboxContainer {
-    display: inline-flex;
-}
-
-.dataBankAttachments:has(.attachmentsBulkEditCheckbox:checked) .attachmentFileIcon {
+.dataBankAttachments .attachmentBulkActionsContainer {
     display: none;
-}
-
-.sb-data-bank-window .sb-data-bank-action-bar {
-    display: none !important;
-    width: 100%;
-    background: var(--sb-layer-window);
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-}
-
-.sb-data-bank-window:has(.attachmentsBulkEditCheckbox:checked) .sb-data-bank-action-bar {
-    display: flex !important;
-}
-
-.sb-data-bank-window .sb-data-bank-action-bar .bulkActionDelete {
-    color: var(--sb-color-danger);
-}
-
-.sb-data-bank-window:has(.attachmentsBulkEditCheckbox:checked) .sb-data-bank-bulk-toggle {
-    background: var(--sb-flat-selected-bg);
 }
 
 @media (max-width: 450px) {
@@ -236,15 +193,6 @@
 
     .dataBankAttachments .openActionModalButton span {
         display: none;
-    }
-
-    .dataBankAttachments .sb-data-bank-action-bar {
-        justify-content: flex-end;
-        padding-inline: 8px;
-    }
-
-    .dataBankAttachments .sb-data-bank-action-bar > .flex-container {
-        width: 100%;
     }
 }
 

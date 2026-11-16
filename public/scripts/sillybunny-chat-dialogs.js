@@ -4,6 +4,9 @@ import { openActionMenu } from './sillybunny-action-menu.js';
 import { createCheckRow, createPrefGroup, createSpinRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 
+// The rows are shared entity rows, which this deferred sheet draws. index.html preloads it, so the load is a cache hit.
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261116v', id: 'deferred-entity-list-css' };
+
 let activeChatHistoryDialog = null;
 let legacyChatHistoryRestoreObserver = null;
 
@@ -129,6 +132,7 @@ export function openChatHistoryDialog() {
         const sourceSearch = document.getElementById('select_chat_search');
         if (sourceSearch instanceof HTMLInputElement) {
             activeChatHistoryDialog.search?.setQuery(sourceSearch.value, { notify: false });
+            if (sourceSearch.value && !activeChatHistoryDialog.search?.isOpen) activeChatHistoryDialog.search?.open();
         }
         const activeName = currentDetails?.name2 ?? '';
         activeChatHistoryDialog.setSubtitle?.(activeName);
@@ -148,7 +152,6 @@ export function openChatHistoryDialog() {
     const legacyImport = popup?.querySelector('#chat_import_button');
     const backupsButton = popup?.querySelector('[aria-controls="chat_backups_list"]');
     const backupsList = popup?.querySelector('#chat_backups_list');
-    const originalExportLabel = popup?.querySelector('.exportRawChatButton')?.getAttribute('title') || t`Export JSONL chat file`;
     if (!(popup instanceof HTMLElement) || !(legacyHost instanceof HTMLElement) || !(searchInput instanceof HTMLInputElement) || !(chatList instanceof HTMLElement)) {
         throw new Error('Chat History markup is incomplete: expected #select_chat_popup, #shadow_select_chat_popup, #select_chat_search, and #select_chat_div.');
     }
@@ -195,6 +198,8 @@ export function openChatHistoryDialog() {
         datedLabel.replaceWith(switchRow.row);
     }
 
+    void globalThis.SillyBunnyAssets?.loadStylesheetAsync?.(ENTITY_LIST_STYLESHEET.href, { id: ENTITY_LIST_STYLESHEET.id });
+    chatList.classList.add('ds-entity-list');
     legacyHost.style.display = 'block';
     legacyHost.classList.add('sb-chat-history-compat-open');
     if (heading) heading.hidden = true;
@@ -242,6 +247,7 @@ export function openChatHistoryDialog() {
         search: {
             placeholder: searchInput.placeholder || t`Search...`,
             label: t`Search`,
+            collapsed: true,
             onChange(query) {
                 searchInput.value = query;
                 searchInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -307,14 +313,18 @@ export function openChatHistoryDialog() {
         });
         return cleanupPage;
     };
-    const exportMenu = (trigger, row) => openActionMenu({
+    const rowMenu = (trigger, row) => openActionMenu({
         trigger,
-        title: t`Export Chat`,
+        title: t`Chat Action`,
         bounds: frame.surface,
-        sections: [{ items: [
-            { label: row.querySelector('.exportRawChatButton')?.getAttribute('title') || t`Export JSONL chat file`, icon: 'fa-solid fa-file-export', onSelect: () => row.querySelector('.exportRawChatButton')?.click() },
-            { label: row.querySelector('.exportChatButton')?.getAttribute('title') || t`Download chat as plain text document`, icon: 'fa-solid fa-file-lines', onSelect: () => row.querySelector('.exportChatButton')?.click() },
-        ] }],
+        sections: [
+            { items: [{ label: row.querySelector('.renameChatButton')?.getAttribute('title') || t`Rename chat file`, icon: 'fa-solid fa-pencil', onSelect: () => row.querySelector('.renameChatButton')?.click() }] },
+            { items: [
+                { label: row.querySelector('.exportRawChatButton')?.getAttribute('title') || t`Export JSONL chat file`, icon: 'fa-solid fa-file-export', onSelect: () => row.querySelector('.exportRawChatButton')?.click() },
+                { label: row.querySelector('.exportChatButton')?.getAttribute('title') || t`Download chat as plain text document`, icon: 'fa-solid fa-file-lines', onSelect: () => row.querySelector('.exportChatButton')?.click() },
+            ] },
+            { items: [{ label: row.querySelector('.PastChat_cross')?.getAttribute('title') || t`Delete chat file`, icon: 'fa-solid fa-trash-can', danger: true, onSelect: () => row.querySelector('.PastChat_cross')?.click() }] },
+        ],
     });
     const decorateRow = wrapper => {
         const chatRow = wrapper.querySelector('.select_chat_block');
@@ -333,61 +343,50 @@ export function openChatHistoryDialog() {
         if (messageCount instanceof HTMLElement) messageCount.textContent = messageCount.textContent.replace(/\)\s*$/, '');
         remove.classList.remove('fa-skull');
         remove.classList.add('fa-trash-can');
-        chatRow.classList.add('sb-chat-history-row');
-        chatRow.setAttribute('role', 'button');
+        // The row is the shared entity row on the upstream node: its click handler, file name and action nodes stay where
+        // they are, and the actions the interface used to show become one row menu.
+        chatRow.classList.add('sb-chat-history-row', 'ds-entity-row', 'ds-entity-row--activatable');
+        chatRow.classList.toggle('is-selected', chatRow.hasAttribute('highlight'));
+        // The dimming of this legacy class belongs to the upstream layout; the entity row styles its own title and metadata.
+        for (const node of chatRow.querySelectorAll('.select_chat_block_filename_item')) node.classList.remove('select_chat_block_filename_item');
+        // The row holds its own menu button, so it is a list item and not a button: a button's children are not reachable.
+        wrapper.setAttribute('role', 'listitem');
         chatRow.tabIndex = 0;
+        chatRow.dataset.sbListKey = `chat:${filename.textContent.trim()}`;
         if (chatRow.hasAttribute('highlight')) chatRow.setAttribute('aria-current', 'true');
-        const leading = document.createElement('span');
-        leading.className = 'sb-chat-history-check';
-        leading.setAttribute('aria-hidden', 'true');
-        leading.innerHTML = '<i class="fa-solid fa-check"></i>';
         const content = document.createElement('span');
-        content.className = 'sb-chat-history-row-content';
-        const titleLine = document.createElement('span');
-        titleLine.className = 'sb-chat-history-row-title';
-        titleLine.append(filename);
+        content.className = 'ds-entity-row__text sb-chat-history-row-content';
+        filename.classList.add('ds-entity-row__title');
+        metadata.classList.add('ds-entity-row__subtitle');
+        preview.classList.add('ds-entity-row__preview');
+        content.append(filename, metadata, preview);
         const actions = document.createElement('span');
-        actions.className = 'sb-chat-history-row-actions';
+        actions.className = 'ds-entity-row__suffix';
         const legacyActionStore = document.createElement('span');
         legacyActionStore.className = 'sb-chat-history-legacy-actions';
         legacyActionStore.setAttribute('aria-hidden', 'true');
-        legacyExports.forEach(node => {
+        for (const node of [rename, remove, ...legacyExports]) {
             node.tabIndex = -1;
             legacyActionStore.append(node);
-        });
-        const rawExport = wrapper.querySelector('.exportRawChatButton');
-        const exportLabel = rawExport?.getAttribute('title') || rawExport?.title || rawExport?.getAttribute('aria-label') || originalExportLabel;
-        const exportButton = document.createElement('button');
-        exportButton.type = 'button';
-        exportButton.className = 'sb-dialog__icon-button sb-chat-history-export';
-        exportButton.title = exportLabel;
-        exportButton.setAttribute('aria-label', exportLabel);
-        exportButton.innerHTML = '<i class="fa-solid fa-file-export" aria-hidden="true"></i>';
-        exportButton.addEventListener('click', event => { event.stopPropagation(); exportMenu(exportButton, chatRow); });
-        const actionNodes = [rename, remove];
-        for (const node of actionNodes) {
-            node.setAttribute('role', 'button');
-            node.tabIndex = 0;
-            const actionLabel = node.getAttribute('title') || node.getAttribute('aria-label');
-            node.setAttribute('aria-label', actionLabel || t`Chat Action`);
-            node.addEventListener('keydown', event => {
-                if (event.key !== 'Enter' && event.key !== ' ') return;
-                event.preventDefault();
-                node.click();
-            });
         }
-        exportButton.addEventListener('click', event => event.stopPropagation());
-        actions.append(rename, exportButton, remove);
-        content.append(titleLine, metadata, preview);
-        chatRow.replaceChildren(leading, content, actions);
-        chatRow.append(legacyActionStore);
+        const name = filename.textContent.trim();
+        const menuLabel = t`Actions for ${name}`;
+        const menuButton = document.createElement('button');
+        menuButton.type = 'button';
+        menuButton.className = 'ds-entity-row__button sb-chat-history-row-menu';
+        menuButton.title = menuLabel;
+        menuButton.setAttribute('aria-label', menuLabel);
+        menuButton.setAttribute('aria-haspopup', 'menu');
+        menuButton.innerHTML = '<i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>';
+        menuButton.addEventListener('click', event => { event.stopPropagation(); rowMenu(menuButton, chatRow); });
+        actions.append(menuButton);
+        chatRow.replaceChildren(content, actions, legacyActionStore);
         chatRow.addEventListener('keydown', event => {
             if (event.key !== 'Enter' && event.key !== ' ') return;
             if (event.target !== chatRow) return;
             event.preventDefault();
             chatRow.click();
         });
-        chatRow.querySelectorAll('.exportRawChatButton, .exportChatButton').forEach(node => node.classList.add('sb-chat-history-legacy-export'));
     };
     const decorateAllRows = () => chatList.querySelectorAll('.select_chat_block_wrapper').forEach(decorateRow);
     const emptyState = createStatusPage({ state: 'empty', icon: 'comments', title: t`No Chats`, description: t`Saved chats appear here.`, compact: true });
@@ -396,6 +395,8 @@ export function openChatHistoryDialog() {
         const hasRows = chatList.querySelector('.select_chat_block_wrapper') instanceof HTMLElement;
         const searching = Boolean(frame.search?.query.trim());
         emptyState.element.hidden = hasRows;
+        if (hasRows) chatList.setAttribute('role', 'list');
+        else chatList.removeAttribute('role');
         const mode = searching ? 'search' : 'empty';
         if (emptyStateMode !== mode) {
             emptyStateMode = mode;
@@ -431,7 +432,11 @@ export function openChatHistoryDialog() {
         banner.hidden = !isBusy && !(cleanupPage?.root.isConnected && status.textContent.trim());
     });
     statusObserver.observe(status, { childList: true, characterData: true, subtree: true });
-    const syncFrameSearch = () => frame.search?.setQuery(searchInput.value, { notify: false });
+    const syncFrameSearch = () => {
+        frame.search?.setQuery(searchInput.value, { notify: false });
+        // A query that the legacy field already holds must show, or the list would be filtered by a field nobody sees.
+        if (searchInput.value && !frame.search?.isOpen) frame.search?.open();
+    };
     const searchObserver = new MutationObserver(syncFrameSearch);
     searchObserver.observe(chatList, { childList: true });
     const closeFromLegacyVisibility = () => {

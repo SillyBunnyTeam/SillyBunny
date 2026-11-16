@@ -1,12 +1,16 @@
 import { t } from '../../i18n.js';
 import { openActionMenu } from '../../sillybunny-action-menu.js';
 import { createListSearch } from '../list-search.js';
+import { createSelectionMode } from '../selection-mode.js';
 import { createStatusPage } from '../status-page.js';
 
-function iconButton(label, glyph, className = '') {
+// The rows and their lists are shared entity rows, which this deferred sheet draws. index.html preloads it.
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261116v', id: 'deferred-entity-list-css' };
+
+function iconButton(label, glyph, className = '', base = 'sb-dialog__icon-button') {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `sb-dialog__icon-button ${className}`.trim();
+    button.className = `${base} ${className}`.trim();
     button.title = label;
     button.setAttribute('aria-label', label);
     const icon = document.createElement('i');
@@ -140,16 +144,71 @@ export function frameDataBankManager(popup, { onSearch, onClose } = {}) {
         bulkToggle.htmlFor = bulkInput.id;
         managerRoot.append(bulkInput);
     }
-    bulkInput?.addEventListener('change', () => bulkToggle.setAttribute('aria-pressed', String(bulkInput.checked)));
+    const onBulkChange = () => {
+        if (!(bulkInput instanceof HTMLInputElement)) return;
+        if (bulkInput.checked) selection.enter(null, bulkToggle);
+        else selection.exit();
+        syncBulk(selection.isActive);
+    };
+    bulkInput?.addEventListener('change', onBulkChange);
 
+    void globalThis.SillyBunnyAssets?.loadStylesheetAsync?.(ENTITY_LIST_STYLESHEET.href, { id: ENTITY_LIST_STYLESHEET.id });
+    for (const list of body.querySelectorAll('.attachmentsList')) list.classList.replace('ds-pref-group', 'ds-entity-list');
+    // The "No data" row is built upstream; inside a list it has to be a list item.
+    const markEmptyRows = () => {
+        for (const empty of managerRoot.querySelectorAll('.attachmentsList > .attachmentEmptyRow:not([role])')) empty.setAttribute('role', 'listitem');
+    };
+    markEmptyRows();
+
+    // The upstream bulk controls stay in the document as the source of the actions; the shared selection mode replaces what they drew.
     const bulkActions = popup.dlg.querySelector('.attachmentBulkActionsContainer');
-    if (bulkActions instanceof HTMLElement) {
-        bulkActions.classList.add('sb-dialog__bottom-bar', 'sb-data-bank-action-bar');
-        bulkActions.querySelector('.bulkActionDelete')?.classList.add('is-destructive');
-        const popupBody = body.closest('.popup-body');
-        if (popupBody instanceof HTMLElement) popupBody.after(bulkActions);
-        else page.append(bulkActions);
-    }
+    if (bulkActions instanceof HTMLElement) bulkActions.hidden = true;
+    const clickBulk = name => popup.dlg.querySelector(`.bulkAction${name}`)?.click();
+    const selectionBar = document.createElement('div');
+    selectionBar.className = 'sb-data-bank-selection-bar';
+    const popupBody = body.closest('.popup-body');
+    if (popupBody instanceof HTMLElement) popupBody.after(selectionBar);
+    else page.append(selectionBar);
+    // The upstream row template sits in the same root, so only rows inside a list count.
+    const ROW_SELECTOR = '.attachmentsList .attachmentListItem';
+    const rowKey = row => `${row.dataset.attachmentSource ?? ''}:${row.dataset.attachmentUrl ?? ''}`;
+    const syncBulk = active => {
+        if (bulkInput instanceof HTMLInputElement) bulkInput.checked = active;
+        bulkToggle.setAttribute('aria-pressed', String(active));
+    };
+    const selection = createSelectionMode({
+        root: page,
+        list: managerRoot,
+        rowSelector: ROW_SELECTOR,
+        getKey: rowKey,
+        range: true,
+        rowLabel: row => row.querySelector('.attachmentListItemName')?.textContent?.trim() ?? '',
+        headerSlots: {
+            header,
+            headerStart,
+            headerEnd,
+            get titleNode() { return header.querySelector('.sb-dialog__title'); },
+            search,
+            closeButton,
+        },
+        actionBar: selectionBar,
+        actions: [
+            { id: 'disable', label: t`Disable`, icon: 'fa-solid fa-comment-slash', onActivate: () => clickBulk('Disable') },
+            { id: 'enable', label: t`Enable`, icon: 'fa-solid fa-comment', onActivate: () => clickBulk('Enable') },
+            { id: 'delete', label: t`Delete`, icon: 'fa-solid fa-trash', danger: true, onActivate: () => clickBulk('Delete') },
+        ],
+        onChange: keys => {
+            // Upstream's bulk handlers read these checkboxes, so they mirror the selection.
+            const chosen = new Set(keys);
+            for (const row of managerRoot.querySelectorAll(ROW_SELECTOR)) {
+                const checkbox = row.querySelector('.attachmentListItemCheckbox');
+                if (checkbox instanceof HTMLInputElement) checkbox.checked = chosen.has(rowKey(row));
+            }
+            if (selection.isActive) syncBulk(true);
+        },
+        onExit: () => syncBulk(false),
+        iconOnlyAtNarrow: true,
+    });
 
     for (const section of body.querySelectorAll('.globalAttachmentsBlock, .characterAttachmentsBlock, .chatAttachmentsBlock')) {
         const heading = section.querySelector('h3');
@@ -176,10 +235,17 @@ export function frameDataBankManager(popup, { onSearch, onClose } = {}) {
         search,
         report(shown, total) {
             search.report(shown, total);
+            markEmptyRows();
+            // A finished bulk action clears upstream's checkboxes, which ends the selection; a cancelled one keeps it.
+            if (selection.isActive && bulkInput instanceof HTMLInputElement && !bulkInput.checked) selection.exit();
+            else selection.decorate({ prune: true });
             status.hidden = shown !== 0 || !search.query;
             emptySearch.element.hidden = status.hidden;
         },
         destroy() {
+            selection.destroy();
+            selectionBar.remove();
+            bulkInput?.removeEventListener('change', onBulkChange);
             search.destroy();
             searchToggle.removeEventListener('click', toggleSearch);
             searchToggle.remove();
@@ -195,16 +261,17 @@ export function frameDataBankManager(popup, { onSearch, onClose } = {}) {
 /** Add the shared row affordances without replacing any upstream action node. */
 export function decorateDataBankRow(row, { view, actions }) {
     if (!(row instanceof HTMLElement)) return;
-    row.classList.add('sb-data-bank-row', 'ds-row', 'ds-row--activatable');
+    row.classList.add('sb-data-bank-row', 'ds-entity-row', 'ds-entity-row--activatable');
     row.tabIndex = 0;
     row.setAttribute('role', 'listitem');
 
     const actionHost = row.querySelector('.attachmentRowActions') || document.createElement('div');
-    actionHost.className = 'attachmentRowActions ds-row-suffix';
-    row.querySelector('.attachmentListItemText')?.classList.add('ds-row-text');
-    row.querySelector('.attachmentListItemMeta')?.classList.add('ds-row-subtitle');
-    row.querySelectorAll('.right_menu_button').forEach(button => button.classList.add('sb-dialog__icon-button'));
-    const overflow = iconButton(t`Menu`, 'ellipsis-vertical', 'attachmentRowMenu');
+    actionHost.className = 'attachmentRowActions ds-entity-row__suffix';
+    row.querySelector('.attachmentListItemText')?.classList.add('ds-entity-row__text');
+    row.querySelector('.attachmentListItemName')?.classList.add('ds-entity-row__title');
+    row.querySelector('.attachmentListItemMeta')?.classList.add('ds-entity-row__subtitle');
+    row.querySelectorAll('.right_menu_button').forEach(button => button.classList.add('ds-entity-row__button'));
+    const overflow = iconButton(t`Menu`, 'ellipsis-vertical', 'attachmentRowMenu', 'ds-entity-row__button');
     overflow.setAttribute('aria-haspopup', 'menu');
     actionHost.append(overflow);
     row.append(actionHost);
@@ -224,12 +291,6 @@ export function decorateDataBankRow(row, { view, actions }) {
 
     const activate = event => {
         if (event.target instanceof Element && event.target.closest('button, input, a, .right_menu_button')) return;
-        const bulk = row.closest('.dataBankAttachments')?.querySelector('.attachmentsBulkEditCheckbox')?.checked;
-        if (bulk) {
-            const checkbox = row.querySelector('.attachmentListItemCheckbox');
-            if (checkbox instanceof HTMLInputElement) checkbox.checked = !checkbox.checked;
-            return;
-        }
         view.click();
     };
     row.addEventListener('click', activate);
