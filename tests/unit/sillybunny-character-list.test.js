@@ -572,10 +572,10 @@ describe('shared Characters/Groups list', () => {
         button('search').click();
         expect(state()).toEqual([false, false, 'false', 'open', 'true']);
         input.value = 'x';
-        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: rows()[0] }));
+        input.dispatchEvent(new FocusEvent('focusout', { relatedTarget: rows()[0], bubbles: true }));
         expect(field.hidden).toBe(false);
         input.value = '';
-        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: rows()[0] }));
+        input.dispatchEvent(new FocusEvent('focusout', { relatedTarget: rows()[0], bubbles: true }));
         expect(state()).toEqual([true, true, 'true', 'closed', 'false']);
     });
 

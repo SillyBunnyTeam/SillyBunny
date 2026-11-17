@@ -5,6 +5,7 @@ import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { selectTheme } from './helpers/page-contrast.js';
 import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { expectSortKeepsSearchDismissable } from './helpers/list-search-dismiss.js';
 
 const sessions = new WeakMap();
 
@@ -229,6 +230,24 @@ test.describe('Persona editor', () => {
         await expect(editor.locator('.sb-persona-selection-header .sb-selection-header')).toHaveCount(0);
         await expect(editor.locator('.sb-persona-list-header')).toBeVisible();
         expect(await page.evaluate(async avatarId => (await import('./scripts/sillybunny-folders.js')).getFolderId('personas', avatarId), persona.avatarId)).toBe(folderId);
+    });
+
+    test('the search bar closes on a press outside it, also after the sort menu was used', async ({ page }) => {
+        const editor = await openList(page);
+        const toggle = editor.locator('.sb-persona-list-header').getByRole('button', { name: 'Search', exact: true });
+        const field = editor.locator('.sb-persona-search-field');
+        const input = field.getByRole('searchbox');
+        await expectSortKeepsSearchDismissable({
+            page,
+            reveal: () => toggle.click(),
+            field,
+            input,
+            sort: field.locator('.sb-persona-sort-button'),
+            chooseSort: () => page.getByRole('menuitemradio', { name: 'Z-A', exact: true }).click(),
+            outside: editor.locator('.sb-persona-list-header'),
+            focusable: editor.getByRole('button', { name: 'Persona Management', exact: true }),
+        });
+        await expect(field).toBeHidden();
     });
 
     test('a desktop editor shows the property bar and keeps the summary for the collapsed layout', async ({ page }) => {

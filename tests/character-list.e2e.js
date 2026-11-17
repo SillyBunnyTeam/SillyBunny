@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { expectSortKeepsSearchDismissable } from './helpers/list-search-dismiss.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { q56Screenshot } from './helpers/q56-review.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
@@ -305,10 +306,18 @@ async function openTagPicker(page) {
     return { button, picker, search: picker.locator('.sb-picker__search') };
 }
 
+/** The search bar closes on a press outside it, so a close that is still playing settles before the bar is read. */
+async function openSearchBar(page) {
+    const field = list(page).locator('.sb-character-list__search');
+    await expect(field).toHaveAttribute('data-state', /^(open|closed)$/);
+    if (await field.getAttribute('data-state') === 'closed') await openHeaderMenu(page, 'search');
+    await expect(field).toHaveAttribute('data-state', 'open');
+}
+
 async function openHeaderMenu(page, action) {
     if (action === 'sort') {
         // The Sort button ends the search bar.
-        if (!await page.locator('#character_search_bar').isVisible()) await openHeaderMenu(page, 'search');
+        await openSearchBar(page);
         await list(page).locator('.sb-character-list__sort').click();
         return;
     }
@@ -327,7 +336,7 @@ async function chooseSortItem(page, label) {
 }
 
 async function setSearch(page, query) {
-    if (!await page.locator('#character_search_bar').isVisible()) await openHeaderMenu(page, 'search');
+    await openSearchBar(page);
     await page.locator('#character_search_bar').fill(query);
     await expect.poll(() => page.evaluate(() => window.SillyBunnyCharacterListController.captureState().query)).toBe(query);
     await expect.poll(() => page.evaluate(async () => (await import('/script.js')).entitiesFilter.getFilterData('search'))).toBe(query);
@@ -651,6 +660,23 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024
         await expect(input).not.toBeFocused();
         await input.fill('');
         await listRows(page, 'characters').first().focus();
+        await expect(field).toBeHidden();
+    });
+
+    test(`the search bar closes on a press outside it, also after the sort menu was used, at ${viewport.width}px`, async ({ page }) => {
+        await prepareList(page, viewport);
+        const field = list(page).locator('.sb-character-list__search');
+        const input = page.locator('#character_search_bar');
+        await expectSortKeepsSearchDismissable({
+            page,
+            reveal: () => openHeaderMenu(page, 'search'),
+            field,
+            input,
+            sort: list(page).locator('.sb-character-list__sort'),
+            chooseSort: () => page.getByRole('menuitemradio', { name: 'Z-A', exact: true }).click(),
+            outside: list(page).locator('.sb-character-list__header'),
+            focusable: list(page).locator('[data-action-id="more"]'),
+        });
         await expect(field).toBeHidden();
     });
 

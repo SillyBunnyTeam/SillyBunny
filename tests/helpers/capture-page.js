@@ -74,14 +74,15 @@ export async function prepareForCapture(page, { root, keepPointerAndFocus = fals
         // A position outside the window: a click leaves the pointer over its target, and a hover fill would show.
         await page.mouse.move(-10, -10);
         // A text field keeps its focus (a menu may hang on it, and its focus is part of what the state shows; the caret is hidden), and
-        // so does anything inside an open menu. A button or link that a click left focused is blurred.
+        // so does anything inside an open menu, and the Sort or Filter button of a search bar (an empty search closes when focus leaves
+        // it, and the state shows the bar open). A button or link that a click left focused is blurred.
         const active = await page.evaluateHandle(() => {
             const element = document.activeElement;
             if (!element || element === document.body || element === document.documentElement) {
                 return null;
             }
             const keeps = element.matches('input, textarea, select, [contenteditable=""], [contenteditable="true"]')
-                || element.closest('[role="menu"], [role="listbox"], [popover], .sb-action-menu, .sb-action-popover, .ui-autocomplete, .autoComplete-wrap, .ctx-menu, .ctx-sub-menu');
+                || element.closest('[role="menu"], [role="listbox"], [popover], .sb-action-menu, .sb-action-popover, .ui-autocomplete, .autoComplete-wrap, .ctx-menu, .ctx-sub-menu, .sb-list-search-bar, .ica-agents-search');
             return keeps ? null : element;
         });
         focused = active.asElement();

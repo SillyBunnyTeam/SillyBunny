@@ -21,9 +21,11 @@ import { t } from '../i18n.js';
  * @param {boolean} [options.shortcuts=true] Enables Ctrl/Cmd+F and type-to-search inside `scope`.
  * @param {boolean} [options.escapeClearsFirst=false] Keeps an open search visible for one Escape after clearing its query.
  * @param {string} [options.typeToSearchSelector='[data-sb-list-key]'] Focus target filter for type-to-search.
- * @param {boolean} [options.closeEmptyOnBlur=false] Closes the open field when the input loses focus to something outside it
- *   while the query is empty (a field that also holds a filter button keeps the focus inside). A close that a pointer press
- *   caused waits for the click to finish, so the list does not move under the pointer.
+ * @param {boolean} [options.closeEmptyOnBlur=false] Closes the open field while its query is empty when focus or a pointer press
+ *   leaves the field as a whole. Its own controls (a sort or filter button), the header toggle, and a menu or popover opened
+ *   from those controls (they carry `aria-expanded="true"` while it is open) count as inside; a press outside while such a
+ *   menu is open closes the menu only. A close that a pointer press caused waits for the click to finish, so the list does
+ *   not move under the pointer.
  * @returns {{ toggle: (show?: boolean) => void, open: (options?: { focus?: boolean, animate?: boolean }) => void,
  *   close: (options?: { focus?: boolean, animate?: boolean }) => void, clear: () => void,
  *   setQuery: (value: string, options?: { notify?: boolean }) => void, report: (shown: number, total: number) => void,
@@ -51,8 +53,12 @@ export function createListSearch({
     let destroyed = false;
     let pointerActive = false;
     let pointerInside = false;
-    let pendingBlur = null;
+    let pendingClose = null;
+    let pendingIsPressOnly = false;
     let blurFrame = 0;
+    let menuOpen = false;
+    let menuTimer = 0;
+    let menuWatch = null;
 
     if (!input.id) input.id = `sb-list-search-${Math.random().toString(36).slice(2, 9)}`;
     if (trigger) {
@@ -206,49 +212,83 @@ export function createListSearch({
         schedule();
     };
 
+    const menuExpanded = () => Boolean(field.querySelector('[aria-expanded="true"]'));
+    // A menu that a press outside dismisses has closed (and dropped `aria-expanded`) before this module's own pointerdown
+    // listener runs, so the flag stays up until the task ends and that press is still read as the menu's.
+    const syncMenu = () => {
+        clearTimeout(menuTimer);
+        if (menuExpanded()) {
+            menuOpen = true;
+            return;
+        }
+        menuTimer = setTimeout(() => { menuOpen = menuExpanded(); }, 0);
+    };
+
+    const closeIfEmpty = (nextFocus = null, restoreImmediately = false) => {
+        if (destroyed || input.value || field.hidden || field.dataset.state === 'closing') return;
+        const active = document.activeElement;
+        // A press on something focusable has moved the focus there already; only focus that is lost with the field goes to the trigger.
+        const focusStays = !nextFocus && active && active !== document.body && !field.contains(active);
+        close({ focus: !focusStays });
+        if (!(nextFocus instanceof HTMLElement) || !nextFocus.isConnected) return;
+        if (restoreImmediately) nextFocus.focus({ preventScroll: true });
+        else queueMicrotask(() => nextFocus.focus({ preventScroll: true }));
+    };
+
     const finishPointer = () => {
         pointerActive = false;
         pointerInside = false;
         cancelAnimationFrame(blurFrame);
         blurFrame = 0;
-        const close = pendingBlur;
-        pendingBlur = null;
-        close?.(true);
+        const pending = pendingClose;
+        pendingClose = null;
+        pending?.(true);
+    };
+    // A gesture the browser takes over (a touch scroll) never reaches a click, and was no press on the page.
+    const cancelPointer = () => {
+        if (pendingIsPressOnly) pendingClose = null;
+        finishPointer();
     };
     const startPointer = event => {
-        pointerActive = document.activeElement === input && !field.contains(event.target);
+        const target = event.target instanceof Node ? event.target : null;
         // Safari does not focus a pressed button, so the blur has no related target; a press on the field's own controls keeps it open.
-        pointerInside = document.activeElement === input && field.contains(event.target);
+        pointerInside = Boolean(target) && (field.contains(target) || Boolean(trigger?.contains(target)));
+        pointerActive = !pointerInside && !menuOpen && !field.hidden;
+        pendingClose = null;
+        if (!pointerActive) return;
+        // With no blur to read (the focus sits on the Sort button, or nowhere), the press itself closes the field.
+        pendingClose = restoreImmediately => closeIfEmpty(null, restoreImmediately);
+        pendingIsPressOnly = true;
     };
     const releasePointer = () => {
         pointerActive = false;
         pointerInside = false;
-        if (pendingBlur) blurFrame = requestAnimationFrame(finishPointer);
+        if (pendingClose) blurFrame = requestAnimationFrame(finishPointer);
     };
-    const onBlur = event => {
+    const onFocusOut = event => {
         const nextFocus = event.relatedTarget;
-        if (input.value || pointerInside || field.contains(nextFocus) || (trigger && nextFocus === trigger)) return;
-        const closeNow = (restoreImmediately = false) => {
-            if (destroyed || input.value || field.hidden) return;
-            close();
-            if (!(nextFocus instanceof HTMLElement) || !nextFocus.isConnected) return;
-            if (restoreImmediately) nextFocus.focus({ preventScroll: true });
-            else queueMicrotask(() => nextFocus.focus({ preventScroll: true }));
-        };
+        if (input.value || pointerInside || menuOpen || field.contains(nextFocus) || (trigger && nextFocus === trigger)) return;
         // Keep pointer-down coordinates stable until the browser has resolved the click target.
-        if (pointerActive) pendingBlur = closeNow;
-        else closeNow();
+        if (pointerActive) {
+            pendingClose = restoreImmediately => closeIfEmpty(nextFocus, restoreImmediately);
+            pendingIsPressOnly = false;
+        } else {
+            closeIfEmpty(nextFocus);
+        }
     };
 
     input.addEventListener('input', onInput);
     input.addEventListener('keydown', onInputKeydown);
     scope?.addEventListener('keydown', onScopeKeydown);
     if (closeEmptyOnBlur) {
-        input.addEventListener('blur', onBlur);
+        field.addEventListener('focusout', onFocusOut);
         document.addEventListener('pointerdown', startPointer, true);
         document.addEventListener('click', finishPointer, true);
         document.addEventListener('pointerup', releasePointer, true);
-        document.addEventListener('pointercancel', finishPointer, true);
+        document.addEventListener('pointercancel', cancelPointer, true);
+        menuWatch = new MutationObserver(syncMenu);
+        menuWatch.observe(field, { subtree: true, attributes: true, attributeFilter: ['aria-expanded'] });
+        menuOpen = menuExpanded();
     }
 
     return {
@@ -263,16 +303,18 @@ export function createListSearch({
         destroy() {
             destroyed = true;
             clearTimeout(timer);
+            clearTimeout(menuTimer);
+            menuWatch?.disconnect();
             cancelAnimationFrame(blurFrame);
-            pendingBlur = null;
+            pendingClose = null;
             input.removeEventListener('input', onInput);
             input.removeEventListener('keydown', onInputKeydown);
-            input.removeEventListener('blur', onBlur);
+            field.removeEventListener('focusout', onFocusOut);
             scope?.removeEventListener('keydown', onScopeKeydown);
             document.removeEventListener('pointerdown', startPointer, true);
             document.removeEventListener('click', finishPointer, true);
             document.removeEventListener('pointerup', releasePointer, true);
-            document.removeEventListener('pointercancel', finishPointer, true);
+            document.removeEventListener('pointercancel', cancelPointer, true);
         },
     };
 }

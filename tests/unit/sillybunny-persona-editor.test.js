@@ -950,7 +950,7 @@ describe('Persona editor shell', () => {
             input.focus();
             expect(document.activeElement).toBe(input);
             container.querySelector('.sb-persona-sort-button').dispatchEvent(new Event('pointerdown', { bubbles: true }));
-            input.dispatchEvent(new FocusEvent('blur', { relatedTarget: null }));
+            input.dispatchEvent(new FocusEvent('focusout', { relatedTarget: null, bubbles: true }));
             expect(container.querySelector('.sb-persona-search-field').hidden).toBe(false);
         });
     });

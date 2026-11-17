@@ -8,6 +8,7 @@ import { selectTheme } from './helpers/page-contrast.js';
 import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { expectSortKeepsSearchDismissable } from './helpers/list-search-dismiss.js';
 
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
 const TARGET_BOOK = `${BOOK}_TARGET`;
@@ -440,6 +441,24 @@ for (const width of [1440, 390]) {
             await row(editor, 'Alpha').focus();
             await expect(search).toBeHidden();
             await expect(row(editor, 'Alpha')).toBeFocused();
+        });
+
+        test('the search bar closes on a press outside it, also after the sort menu was used', async ({ page }) => {
+            const editor = await openBook(page);
+            const toggle = editor.locator('.sb-wi-list-header').getByRole('button', { name: 'Search', exact: true });
+            const field = editor.locator('.sb-wi-search-field');
+            const input = editor.locator('.sb-wi-search');
+            await expectSortKeepsSearchDismissable({
+                page,
+                reveal: () => toggle.click(),
+                field,
+                input,
+                sort: editor.locator('.sb-wi-sort-button'),
+                chooseSort: () => page.locator('.sb-action-menu').last().getByRole('menuitemradio').last().click(),
+                outside: editor.locator('.sb-wi-list-header'),
+                focusable: editor.locator('.sb-wi-book-actions'),
+            });
+            await expect(field).toBeHidden();
         });
 
         test('the book switcher is named by the book and its counts first, then by what it does', async ({ page }) => {

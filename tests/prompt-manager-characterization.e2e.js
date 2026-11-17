@@ -6,6 +6,7 @@ import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { selectTheme } from './helpers/page-contrast.js';
 import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { expectSortKeepsSearchDismissable } from './helpers/list-search-dismiss.js';
 
 // Characterizes Prompt Manager behaviour through what it persists (the /api/settings/save payload).
 // UI interactions stay in the driver; persisted-data assertions are unchanged by the replacement UI.
@@ -1054,7 +1055,10 @@ test.describe('Prompt Manager characterization', () => {
         await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveAttribute('aria-pressed', 'false');
         expect(await sortable()).toBe(false);
 
+        const orderHeading = page.locator('.sb-prompt-order > h3');
+        await expect(orderHeading).toHaveText('Prompt order');
         await chooseSort('Title A-Z');
+        await expect(orderHeading).toHaveText('Main prompts');
         const byName = (left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
         const shown = await names();
         expect(shown).toEqual([...shown].sort(byName));
@@ -1078,6 +1082,9 @@ test.describe('Prompt Manager characterization', () => {
         expect((await readLiveOai(page)).prompt_order).toEqual(baseline.prompt_order);
         expect(store.settingsSaves.every(save => JSON.stringify(orderFor(save.oai_settings, GLOBAL_ORDER_ID)) === JSON.stringify(orderFor(baseline, GLOBAL_ORDER_ID)))).toBe(true);
 
+        // The press on the row menu closed the empty search bar, and the sort button is in it.
+        await expect(page.locator('.sb-prompt-search-field')).toBeHidden();
+        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
         await chooseSort('Tokens ↘');
         await expect.poll(async () => {
             const counts = await page.locator(`${ROW_SELECTOR} .sb-prompt-token`).allTextContents();
@@ -1086,12 +1093,31 @@ test.describe('Prompt Manager characterization', () => {
         }).toBe(true);
 
         await chooseSort('Prompt order');
+        await expect(orderHeading).toHaveText('Prompt order');
         expect(await ui.visibleOrder()).toEqual(storedOrder);
         await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveAttribute('aria-pressed', 'false');
         await expect(ui.row('sbFixtureRelative').locator('.sb-prompt-grip')).toHaveAttribute('aria-disabled', 'false');
         expect(await sortable()).toBe(false);
         await ui.row('sbFixtureRelative').locator('.sb-prompt-row-menu').click();
         await expect(page.getByRole('menuitem', { name: 'Move Down', exact: true })).toBeVisible();
+    });
+
+    test('the search bar closes on a press outside it, also after the sort menu was used', async ({ page }) => {
+        await setup(page);
+        const toggle = page.getByRole('button', { name: 'Search prompts', exact: true });
+        const field = page.locator('.sb-prompt-search-field');
+        const input = page.getByRole('searchbox', { name: 'Search prompts', exact: true });
+        await expectSortKeepsSearchDismissable({
+            page,
+            reveal: () => toggle.click(),
+            field,
+            input,
+            sort: field.locator('.sb-prompt-sort-button'),
+            chooseSort: () => page.getByRole('menuitemradio', { name: 'Title Z-A', exact: true }).click(),
+            outside: page.locator('.sb-prompt-list-header'),
+            focusable: page.getByRole('button', { name: 'Prompt list actions', exact: true }),
+        });
+        await expect(field).toBeHidden();
     });
 
     test('runtime Agents align with prompt columns without interactive placeholders', async ({ page }) => {

@@ -606,7 +606,7 @@ export function initializePromptEditor(column) {
         box.setAttribute('role', 'list');
         section.append(heading, box);
         listBody.append(section);
-        const result = { section, box, rows: new Map(), count: 0 };
+        const result = { section, heading, box, rows: new Map(), count: 0 };
         listGroups.set(className, result);
         return result;
     }
@@ -731,7 +731,10 @@ export function initializePromptEditor(column) {
         }), sortOrder);
         // The assembled Agents row is inspection-only and never enters persisted order data; it stays last in every sort.
         if (matches(state.runtime)) rows.push({ prompt: state.runtime });
-        const order = group(t`Prompt order`, 'sb-prompt-order');
+        // Sorted, the group no longer shows the order the prompts are sent in, so it stops calling itself that.
+        const orderTitle = sortOrder === DEFAULT_SORT ? t`Prompt order` : t`Main prompts`;
+        const order = group(orderTitle, 'sb-prompt-order');
+        if (order.heading.textContent !== orderTitle) order.heading.textContent = orderTitle;
         renderRows(order, rows);
         const box = order.box;
         const error = listBody.querySelector('.sb-prompt-error');
@@ -900,6 +903,7 @@ export function initializePromptEditor(column) {
         scroller: listBody,
         status,
         typeToSearchSelector: '.sb-prompt-row',
+        closeEmptyOnBlur: true,
         onChange: query => {
             filter = query;
             renderList();

@@ -431,7 +431,28 @@ describe('createListSearch', () => {
     });
 
     describe('closeEmptyOnBlur', () => {
-        const blur = (input, relatedTarget) => input.dispatchEvent(new FocusEvent('blur', { relatedTarget }));
+        // The field listens to `focusout`, which the browser fires after `blur` and which bubbles from any control in the field.
+        const blur = (target, relatedTarget) => target.dispatchEvent(new FocusEvent('focusout', { relatedTarget, bubbles: true }));
+        const press = (target, type = 'pointerdown') => target.dispatchEvent(new Event(type, { bubbles: true }));
+        const nextTask = () => new Promise(resolve => setTimeout(resolve, 0));
+        // A field with a Sort button and a menu opened from it, as the list editors build their search bars.
+        function makeBar(options = {}) {
+            const bar = makeSearch({ closeEmptyOnBlur: true, ...options });
+            const sort = document.createElement('button');
+            sort.setAttribute('aria-haspopup', 'menu');
+            sort.setAttribute('aria-expanded', 'false');
+            bar.field.append(sort);
+            const menu = document.createElement('div');
+            menu.tabIndex = -1;
+            document.body.append(menu);
+            // What the shared action menu does: the trigger reads expanded while the menu is open, and a press outside closes it first.
+            const openMenu = async () => {
+                sort.setAttribute('aria-expanded', 'true');
+                await Promise.resolve();
+            };
+            const closeMenu = () => sort.setAttribute('aria-expanded', 'false');
+            return { ...bar, sort, menu, openMenu, closeMenu };
+        }
 
         test('is off by default', () => {
             const { search, input, row } = makeSearch();
@@ -480,6 +501,116 @@ describe('createListSearch', () => {
             inside.dispatchEvent(new Event('pointerup', { bubbles: true }));
             expect(search.isOpen).toBe(true);
             blur(input, row);
+            expect(search.isOpen).toBe(false);
+        });
+
+        test('a control in the field that loses the focus to the page closes an empty field, as the input does', async () => {
+            const { search, sort, row } = makeBar();
+            search.open();
+            sort.focus();
+            blur(sort, row);
+            await Promise.resolve();
+            expect(search.isOpen).toBe(false);
+            expect(document.activeElement).toBe(row);
+        });
+
+        test('Tab from the input to the Sort button keeps the field and Tab on out of it closes it', async () => {
+            const { search, input, sort, row } = makeBar();
+            search.open();
+            blur(input, sort);
+            expect(search.isOpen).toBe(true);
+            blur(sort, row);
+            await Promise.resolve();
+            expect(search.isOpen).toBe(false);
+        });
+
+        test('a menu opened from a control counts as inside while it is open, and the focus may sit in it', async () => {
+            const { search, sort, menu, row, openMenu, closeMenu } = makeBar();
+            search.open();
+            await openMenu();
+            blur(sort, menu);
+            expect(search.isOpen).toBe(true);
+            // Escape or a chosen item gives the focus back to the button; the menu is gone.
+            closeMenu();
+            await nextTask();
+            await nextTask();
+            blur(sort, row);
+            await Promise.resolve();
+            expect(search.isOpen).toBe(false);
+        });
+
+        test('a press outside while the menu is open closes the menu only, and the next press outside closes the field', async () => {
+            const { search, row, openMenu, closeMenu } = makeBar();
+            search.open();
+            await openMenu();
+            // The menu dismisses itself in a window capture listener, ahead of the field's listener on the document.
+            const dismiss = () => closeMenu();
+            window.addEventListener('pointerdown', dismiss, true);
+            cleanups.push(() => window.removeEventListener('pointerdown', dismiss, true));
+            press(row);
+            press(row, 'pointerup');
+            press(row, 'click');
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            expect(search.isOpen).toBe(true);
+            await nextTask();
+            await nextTask();
+            press(row);
+            press(row, 'pointerup');
+            press(row, 'click');
+            expect(search.isOpen).toBe(false);
+        });
+
+        test('a press outside closes an empty field whose focus sits on its Sort button, after the click and not before', () => {
+            const { search, sort, row } = makeBar();
+            search.open();
+            sort.focus();
+            press(row);
+            expect(search.isOpen).toBe(true);
+            press(row, 'pointerup');
+            expect(search.isOpen).toBe(true);
+            press(row, 'click');
+            expect(search.isOpen).toBe(false);
+        });
+
+        test('a press outside closes an empty field when the focus is nowhere in it, and leaves the focus where the press put it', () => {
+            const { search, scope, row } = makeBar();
+            const other = document.createElement('button');
+            scope.append(other);
+            search.open();
+            document.body.focus();
+            press(row);
+            other.focus();
+            press(row, 'click');
+            expect(search.isOpen).toBe(false);
+            expect(document.activeElement).toBe(other);
+        });
+
+        test('a press outside keeps a field with a query, and a press on its own controls or the toggle keeps an empty one', () => {
+            const { search, input, sort, trigger, row } = makeBar();
+            search.open();
+            typeQuery(input, 'abc');
+            press(row);
+            press(row, 'click');
+            expect(search.isOpen).toBe(true);
+            input.value = '';
+            for (const control of [sort, trigger]) {
+                press(control);
+                press(control, 'click');
+                expect(search.isOpen).toBe(true);
+            }
+        });
+
+        test('a touch that turns into a scroll is no press on the page, but a blur that already moved the focus still closes', async () => {
+            const { search, input, row } = makeBar();
+            search.open();
+            press(row);
+            press(row, 'pointercancel');
+            expect(search.isOpen).toBe(true);
+            input.focus();
+            press(row);
+            blur(input, row);
+            press(row, 'pointercancel');
+            await Promise.resolve();
             expect(search.isOpen).toBe(false);
         });
 

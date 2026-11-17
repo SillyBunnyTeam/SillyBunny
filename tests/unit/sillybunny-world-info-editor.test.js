@@ -599,15 +599,15 @@ describe('World Info shell', () => {
         await settle();
         input.focus();
         expect(bar.hidden).toBe(false);
-        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: bar.querySelector('.sb-wi-sort-button') }));
+        input.dispatchEvent(new FocusEvent('focusout', { relatedTarget: bar.querySelector('.sb-wi-sort-button'), bubbles: true }));
         expect(bar.hidden).toBe(false);
-        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: container.querySelector('.sb-wi-row') }));
+        input.dispatchEvent(new FocusEvent('focusout', { relatedTarget: container.querySelector('.sb-wi-row'), bubbles: true }));
         await settle();
         expect(bar.hidden).toBe(true);
         toggle.click();
         await settle();
         input.value = 'Entry';
-        input.dispatchEvent(new FocusEvent('blur', { relatedTarget: container.querySelector('.sb-wi-row') }));
+        input.dispatchEvent(new FocusEvent('focusout', { relatedTarget: container.querySelector('.sb-wi-row'), bubbles: true }));
         await settle();
         expect(bar.hidden).toBe(false);
     });

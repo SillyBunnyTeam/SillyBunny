@@ -539,6 +539,22 @@ describe('Prompt list sort', () => {
         expect(ids(column)).toEqual(['zeta', 'main', 'first', 'marker', 'alpha', 'runtimeAgents']);
     });
 
+    test('the order group is headed Main prompts while a sort is on and Prompt order in the prompt order', async () => {
+        useSortFixture();
+        const column = await mountEditor();
+        const heading = () => column.querySelector('.sb-prompt-order > h3');
+        const headingNode = heading();
+        expect(headingNode.textContent).toBe('Prompt order');
+        chooseSort(column, 'Tokens ↗');
+        expect(heading()).toBe(headingNode);
+        expect(headingNode.textContent).toBe('Main prompts');
+        chooseSort(column, 'Title A-Z');
+        expect(headingNode.textContent).toBe('Main prompts');
+        expect(column.querySelector('.sb-prompt-available > h3').textContent).toBe('Available');
+        chooseSort(column, 'Prompt order');
+        expect(headingNode.textContent).toBe('Prompt order');
+    });
+
     test('while a sort is on the grips are disabled and the row menus and Alt+Arrow offer no move', async () => {
         useSortFixture();
         const column = await mountEditor();

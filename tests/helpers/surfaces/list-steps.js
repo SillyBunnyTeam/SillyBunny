@@ -70,12 +70,24 @@ export async function leaveDetail(page, back) {
 }
 
 /**
+ * An empty search closes on a press outside it. The field is `hidden` and its `data-state` is `closed` at once, but it keeps
+ * its box while its exit animation runs, so a step that reads or toggles the search waits until the animation has ended.
+ */
+async function settledSearch(page, input) {
+    await page.waitForFunction(selector => {
+        const field = document.querySelector(selector)?.closest('[data-state]');
+        return !field || (!['opening', 'closing'].includes(field.dataset.state) && field.getAnimations().length === 0);
+    }, input);
+}
+
+/**
  * Opens the search of a list: its toggle button, or where the header has no room for the button, the overflow menu.
  * @param {object} target
  * @param {string} target.input The search field.
  * @param {string} target.toggle The header button that shows and hides the field.
  */
 export async function openSearch(page, { input, toggle }) {
+    await settledSearch(page, input);
     if (await page.locator(input).first().isVisible()) {
         return;
     }
@@ -122,6 +134,7 @@ export async function waitForRowCount(page, { rows, atMost }) {
  */
 export async function clearSearch(page, { input, toggle, rows }) {
     const field = page.locator(input).first();
+    await settledSearch(page, input);
     if (!await field.isVisible()) {
         return;
     }
@@ -132,7 +145,11 @@ export async function clearSearch(page, { input, toggle, rows }) {
     } else {
         await page.waitForFunction(({ rows, wanted }) => [...document.querySelectorAll(rows)].filter(row => row.getClientRects().length > 0 && !row.hidden).length >= wanted, { rows, wanted });
     }
-    await page.locator(toggle).first().evaluate(button => button.click());
+    // The toggle closes an open field and opens a closed one, and the field may have closed itself in the meantime.
+    await settledSearch(page, input);
+    if (await field.isVisible()) {
+        await page.locator(toggle).first().evaluate(button => button.click());
+    }
     await field.waitFor({ state: 'hidden' });
 }
 

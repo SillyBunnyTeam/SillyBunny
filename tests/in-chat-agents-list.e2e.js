@@ -7,6 +7,7 @@ import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintai
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { expectSortKeepsSearchDismissable } from './helpers/list-search-dismiss.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -364,6 +365,24 @@ for (const width of [1440, 390]) {
         await expect(root.locator('.ica-agent-row')).toHaveCount(4);
         expect(await page.evaluate(async () => (await import('/scripts/util/AccountStorage.js')).accountStorage.getItem('ica--agent-list-only-on'))).toBe('false');
         expect(saves()).toHaveLength(0);
+    });
+
+    test(`${width}px the search bar closes on a press outside it, also after the filter menu was used`, async ({ page, baseURL }) => {
+        const { root } = await openAgents(page, baseURL, width);
+        const trigger = root.getByRole('button', { name: 'Search Agents', exact: true });
+        const field = root.locator('.ica-agents-search');
+        await expectSortKeepsSearchDismissable({
+            page,
+            reveal: () => trigger.click(),
+            field,
+            input: root.getByRole('searchbox', { name: 'Search Agents', exact: true }),
+            sort: field.getByRole('button', { name: 'Filter Agents', exact: true }),
+            menuRole: 'menuitemcheckbox',
+            chooseSort: () => page.getByRole('menuitemcheckbox', { name: 'Tracker', exact: true }).click(),
+            outside: root.locator('.sb-list-header').first(),
+            focusable: root.getByRole('button', { name: 'Agents Menu', exact: true }),
+        });
+        await expect(field).toBeHidden();
     });
 
     test(`${width}px template pickers group and search inline/companion templates; empty status actions remain reachable`, async ({ page, baseURL }) => {
