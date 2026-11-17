@@ -92,7 +92,6 @@ describe('focus outlines', () => {
 
     test.each([
         ['sillybunny-color-picker.css', '.sb-color-picker-menu input[type=\'range\']:focus-visible'],
-        ['sillybunny-conversation.css', '.sb-conversation-switch:focus-visible'],
     ])('%s: %s keeps its outline and removes the inset ring that would stack with it', (name, selector) => {
         const declarations = declarationsOf(sheet(name), selector);
         expect(declarations).toMatch(/outline: 2px solid /);

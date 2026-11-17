@@ -74,15 +74,12 @@ describe('touch target floors of the Quick Reply editor, the composer buttons, t
         expect(tabsCss).not.toMatch(/@media \(pointer: coarse\) \{\n {4}\.ds-select-row__trigger/);
     });
 
-    test('the side panel\'s counters, the grips of the entity lists and the conversation settings fields reach the floor', () => {
+    test('the side panel\'s counters and the grips of the entity lists reach the floor', () => {
         const sidePanelCss = read('sillybunny-side-panel.css');
         expect(ruleBody(sidePanelCss, '.sb-side-panel input[type=\'number\']')).toContain('min-block-size: var(--sb-density-floor);');
         const grip = ruleBody(read('sillybunny-entity-list.css'), '.ds-entity-row__grip');
         expect(grip).toContain('flex: 0 0 var(--sb-density-floor);');
         expect(grip).toContain('min-height: var(--sb-density-floor);');
-        const conversationCss = read('sillybunny-conversation.css');
-        expect(ruleBody(conversationCss, '.sb-conversation-settings-body .text_pole[type=\'number\']')).toContain('min-block-size: max(36px, var(--sb-density-floor));');
-        expect(ruleBody(conversationCss, '.sb-conversation-memory-actions .menu_button')).toContain('min-block-size: max(36px, var(--sb-density-floor));');
     });
 
     test('the extension manager\'s switch reaches the floor through its own ::before, inside its column and row', () => {

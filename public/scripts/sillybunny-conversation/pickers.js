@@ -59,9 +59,9 @@ export function createWeeklyScheduleRow(entry = {}) {
         <div class="sb-conversation-weekly-row-meta">
             <input type="time" class="text_pole textarea_compact sb-conv-weekly-time" value="${escapeHtmlAttribute(entry.time || '08:00')}" aria-label="Schedule time" />
             <input type="text" class="text_pole textarea_compact sb-conv-weekly-message" value="${escapeHtmlAttribute(entry.message || '')}" placeholder="Good morning selfie!" aria-label="Schedule message" />
-            <label class="sb-conversation-pref-row sb-conv-weekly-enabled">
-                <span class="sb-conversation-pref-copy">On</span>
-                <input type="checkbox" class="sb-conversation-switch sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
+            <label class="sb-conv-weekly-enabled">
+                <span>On</span>
+                <input type="checkbox" role="switch" class="sb-switch sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
             </label>
             <button type="button" class="menu_button menu_button_icon sb-conv-weekly-remove" data-sb-conversation-action="weekly-remove" title="Remove slot" aria-label="Remove slot">
                 <i class="fa-solid fa-trash-can" aria-hidden="true"></i>

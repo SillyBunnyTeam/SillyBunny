@@ -99,7 +99,7 @@ export const rules = {
             selectors: [
                 { id: 'ds-heading', selector: '.ds-pref-group-heading' },
                 { id: 'flat-header', selector: '.sb-settings-flat-header :is(h4, b), .sb-settings-category-title' },
-                { id: 'own', selector: ':is(.sb-settings-group-title, .sb-wi-settings h3, .sb-persona-settings h3)' },
+                { id: 'own', selector: ':is(.sb-wi-settings h3, .sb-persona-settings h3)' },
             ],
             properties: GROUP_HEADING,
         },
@@ -107,7 +107,6 @@ export const rules = {
             id: 'group-box',
             selectors: [
                 { id: 'ds-group', selector: '.ds-pref-group' },
-                { id: 'own', selector: '.sb-settings-group, .sb-conversation-pref-list' },
             ],
             properties: GROUP_BOX,
         },
@@ -115,7 +114,6 @@ export const rules = {
             id: 'row',
             selectors: [
                 { id: 'ds-row', selector: `.ds-row${NOT_SERVER_STAT}` },
-                { id: 'own', selector: '.sb-conversation-pref-row' },
             ],
             properties: [
                 { property: 'minHeight', value: 50, source: 'DESIGN.md' },

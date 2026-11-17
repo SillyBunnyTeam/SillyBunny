@@ -186,27 +186,17 @@ describe('Conversation mobile controls', () => {
         expect(css).toMatch(/\.sb-conversation-composer\s*\{[^}]*--sb-composer-action-icon-size:\s*var\(--sb-mobile-composer-action-icon-size/);
     });
 
-    test('settings groups are boxed lists and boolean rows are switches', () => {
-        expect(getRuleDeclarations('.sb-settings-group')).toMatchObject({
-            background: 'color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent)',
-            border: '0',
-        });
-        expect(getRuleDeclarations('.sb-conversation-pref-row')).toMatchObject({
-            display: 'flex',
-            'min-block-size': 'max(var(--sb-density-floor), calc(46px - 6px * var(--sb-density-t)))',
-        });
-        expect(getRuleDeclarations('.sb-conversation-switch')).toMatchObject({
-            appearance: 'none',
-            '-webkit-appearance': 'none',
-            'inline-size': 'var(--sb-switch-width)',
-            'block-size': 'var(--sb-switch-height)',
-        });
-        expect(getRuleDeclarations('.sb-conversation-switch:checked')).toMatchObject({
-            background: 'var(--sb-accent, var(--SmartThemeQuoteColor))',
+    test('settings groups are shared boxed-list rows and boolean rows are shared switches', () => {
+        expect(getRuleDeclarations('.sb-conversation-settings-body')).toMatchObject({
+            gap: 'var(--sb-settings-group-gap)',
+            padding: 'var(--sb-settings-inset-top) var(--sb-settings-inset) var(--sb-settings-inset)',
         });
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-settings-body [hidden]')).toMatchObject({
             display: 'none !important',
         });
+        expect(getRuleDeclarations('.sb-conversation-members-wrapper:not([hidden])')).toMatchObject({ display: 'contents' });
+        // The group, row and switch looks come from the shared .ds-* and .sb-switch rules; no local copy is left.
+        expect(css).not.toMatch(/\.sb-settings-group|\.sb-conversation-pref-|\.sb-conversation-switch/);
         expect(css).not.toMatch(/\.sb-conversation-idle-actions/);
     });
 
@@ -237,6 +227,20 @@ describe('Conversation mobile controls', () => {
             '--sb-drop-hint-ring': 'inset 0 0 0 2px color-mix(in srgb, var(--sb-accent) 40%, transparent)',
         });
         expect(hint).not.toHaveProperty('border');
+    });
+
+    test('an overlay settings pane stays beside the rail, so the header keeps its width', () => {
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-layout=\'overlay\'] #sb_conversation_settings_drawer')).toMatchObject({
+            'inline-size': 'min(var(--sb-conv-pane-width), calc(100% - var(--sb-conv-sidebar-width)))',
+        });
+    });
+
+    test('the header avatars reach the touch floor with a real box', () => {
+        const media = findMediaRule(query => query === '(pointer: coarse)');
+        expect(getDeclarations(media, '.sb-conversation-header-avatar .sb-conversation-participant-avatar')).toMatchObject({
+            'inline-size': 'var(--sb-density-floor)',
+            'block-size': 'var(--sb-density-floor)',
+        });
     });
 
     test('desktop pickers use auto inset so JS can park them on the trigger', () => {

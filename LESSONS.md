@@ -1015,6 +1015,15 @@ This is the largest class by a wide margin.
 - **Guards:** a footer item of the shared picker takes `disabled` as a boolean or a function; the function is read again after each selection (`syncFooter()` in `picker.js`), which is how Create Group stays off until two members are chosen.
 - **Tests:** `tests/sillybunny-conversation-mobile-controls.test.js`; `tests/sillybunny-conversation-render-scheduler.test.js`; `tests/conversation-start-picker.e2e.js`; `tests/conversation-message-actions.e2e.js`; `tests/conversation-action-sheet-focus.e2e.js`; `tests/foundation/conversation-mode.e2e.js`; the audit spec for `chat.conversation.timeline`, `menu.message.conversation` and `status.conversation.*`.
 
+### Conversation settings pane (layout, shared rows)
+
+- **Breaks:**
+  - `settings-panel.js` chose the docked layout by `window.innerWidth >= 1200`, but at 1440x900 `#sheld` is about 790px wide, so the 360px pane and the 220px rail left the timeline about 210px and the composer input 34px. `layoutForSheld()` docks the pane (`split`) only when `#sheld` itself is at least 1120px wide and otherwise lays it over the timeline (`overlay`), limited to `100% - var(--sb-conv-sidebar-width)` so it never covers the rail.
+  - `.sb-conversation-switch` (specificity 0,1,0) lost to the global checkbox rules, so the pane's booleans drew as plain checkboxes. The pane is built from the shared rows (`buildSettingsDrawerContent()` in `timeline-render.js` with `rows.js` and `select-row.js`), and its booleans are `createSwitchRow` rows with `role=switch`.
+  - A group heading at level 3 is boxed by the theme: `h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3)` in `sillybunny-theme.css` gives every `h3` outside a dialog and the chat a border, padding and fill, and its `#chat` argument outranks a class-scoped fix. The pane's groups use `createPrefGroup({ headingLevel: 4 })`.
+  - The mute listener was bound once to the pre-built drawer and lost when the drawer was rebuilt on open, so muting stopped disabling Priority. The Mute row's `onChange` (`updateConversationNotificationSettingsVisibility`) does it now.
+- **Tests:** `tests/foundation/conversation-mode.e2e.js` (overlay at 1440 with the name left of the pane, `split` at 2400, `role=switch`); `tests/sillybunny-conversation-mobile-controls.test.js` (overlay width, coarse header avatar); `tests/conversation-lorebook-hint.e2e.js`; `tests/libadwaita-states-css.test.js` (no local switch rule).
+
 ### Target size, accessible names and roles (cross-cutting)
 
 - **Breaks:**

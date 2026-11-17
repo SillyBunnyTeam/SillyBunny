@@ -61,13 +61,9 @@ describe('switch size', () => {
         expect(themeCss).not.toMatch(/translateX\((?:16|18)px\)/);
     });
 
-    test('the Conversation switch, the settings suffix and the Prompt Editor slot share the variables', () => {
-        const conversation = bodies(conversationCss, '.sb-conversation-switch');
-        expect(conversation).toMatch(/inline-size:\s*var\(--sb-switch-width\);/);
-        expect(conversation).toMatch(/block-size:\s*var\(--sb-switch-height\);/);
-        expect(conversation).toMatch(/background:\s*color-mix\(in srgb, var\(--SmartThemeBodyColor\) 15%, transparent\);/);
-        expect(bodies(conversationCss, '.sb-conversation-switch::before')).toMatch(/inline-size:\s*var\(--sb-switch-thumb\);/);
-        expect(bodies(conversationCss, '.sb-conversation-switch:checked::before')).toMatch(/inset-inline-start:\s*calc\(var\(--sb-switch-width\) - var\(--sb-switch-thumb\) - var\(--sb-switch-padding\)\);/);
+    test('the settings suffix and the Prompt Editor slot share the variables, and the Conversation pane has no switch of its own', () => {
+        // The pane's boolean rows are the shared .sb-switch rows (createSwitchRow), so no local switch is left to drift.
+        expect(conversationCss).not.toContain('.sb-conversation-switch');
 
         const tabsCss = read('public/css/sillybunny-tabs.css');
         expect(bodies(tabsCss, '#sb-settings-page .ds-row-switch > .ds-row-suffix')).toMatch(/width:\s*var\(--sb-switch-width\);/);

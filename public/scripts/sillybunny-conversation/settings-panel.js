@@ -35,13 +35,7 @@ import {
 } from './schedule.js';
 import { clearConversationMemorySummary, getConversationMemorySummary, getSettings, saveConversationMemorySummary, saveSettings } from './settings-store.js';
 import { getConversationThread, hasConversationMessageContent } from './thread-store.js';
-import {
-    buildChimingPartnerOptions,
-    buildConnectionProfileOptions,
-    buildLorebookOptions,
-    buildSettingsDrawerHtml,
-    ensureConversationChrome,
-} from './timeline-render.js';
+import { ensureConversationChrome, replaceSettingsDrawerContent } from './timeline-render.js';
 
 const MOBILE_LAYOUT_QUERY = LAYOUT_MOBILE_QUERY;
 
@@ -78,20 +72,26 @@ export function syncConversationPage() {
 
 export const setConversationBackdropVisible = syncConversationPage;
 
-// Settings docks as a third column only when the sidebar, a usable timeline and the pane all fit.
-const SPLIT_LAYOUT_MIN_WIDTH = 1200;
+// Settings docks as a third column only when the sidebar, a timeline the composer's tool row fits in, and the pane all fit
+// in #sheld: 280px (the widest sidebar) + 480px + 360px (--sb-conv-pane-width). Narrower, the pane overlays the timeline,
+// which keeps its own width instead of being squeezed.
+const SPLIT_LAYOUT_MIN_WIDTH = 1120;
 let layoutObserver = null;
 let settingsPaneMotionToken = 0;
+
+function layoutForSheld(sheld) {
+    if (isMobileConversationLayout()) {
+        return 'pages';
+    }
+    return sheld.offsetWidth >= SPLIT_LAYOUT_MIN_WIDTH ? 'split' : 'overlay';
+}
 
 function getConversationLayout() {
     const sheld = document.getElementById('sheld');
     if (sheld instanceof HTMLElement && sheld.dataset.sbConversationLayout) {
         return sheld.dataset.sbConversationLayout;
     }
-    if (isMobileConversationLayout()) {
-        return 'pages';
-    }
-    return typeof window !== 'undefined' && window.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH ? 'split' : 'overlay';
+    return sheld instanceof HTMLElement ? layoutForSheld(sheld) : 'overlay';
 }
 
 function waitForSplitSettingsTuck(onDone) {
@@ -131,9 +131,7 @@ export function syncConversationLayout() {
     if (!(sheld instanceof HTMLElement)) {
         return;
     }
-    const layout = isMobileConversationLayout()
-        ? 'pages'
-        : (typeof window !== 'undefined' && window.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH) ? 'split' : 'overlay';
+    const layout = layoutForSheld(sheld);
     if (sheld.dataset.sbConversationLayout !== layout) {
         sheld.dataset.sbConversationLayout = layout;
     }
@@ -644,24 +642,11 @@ export function openConversationSettings() {
     const personaId = getConversationPersonaId();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const settings = getSettings(avatar, { groupId, personaId });
-    chrome.drawer.innerHTML = buildSettingsDrawerHtml();
+    // The rebuilt drawer reads the live lorebooks, connection profiles and partners itself.
+    replaceSettingsDrawerContent(chrome.drawer);
     chrome.drawer.dataset.conversationAvatar = avatar || '';
     chrome.drawer.dataset.conversationGroupId = groupId || '';
     chrome.drawer.dataset.conversationPersonaId = personaId;
-
-    // Refresh live-data dropdowns before showing the drawer.
-    const lorebookSelect = document.getElementById('sb_conv_lorebook_override');
-    if (lorebookSelect instanceof HTMLSelectElement) {
-        lorebookSelect.innerHTML = buildLorebookOptions(settings.lorebook_override);
-    }
-    const profileSelect = document.getElementById('sb_conv_connection_profile');
-    if (profileSelect instanceof HTMLSelectElement) {
-        profileSelect.innerHTML = buildConnectionProfileOptions(settings.connection_profile);
-    }
-    const partnerList = document.getElementById('sb_conv_chiming_partner_list');
-    if (partnerList instanceof HTMLElement) {
-        partnerList.innerHTML = buildChimingPartnerOptions(settings.multi_char_names);
-    }
 
     applySettingsToPanel(settings);
     bindWeeklyScheduleEditor();

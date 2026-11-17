@@ -38,6 +38,18 @@ await jest.unstable_mockModule('../public/script.js', () => ({
     name1: 'User',
 }));
 await jest.unstable_mockModule('../public/scripts/personas.js', () => ({ user_avatar: 'persona-a.png' }));
+// The settings pane is built from the shared rows, which load the motion helpers and need a browser; no test here builds it.
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/rows.js', () => ({
+    createButtonRow: jest.fn(),
+    createEntryRow: jest.fn(),
+    createPrefGroup: jest.fn(),
+    createRow: jest.fn(),
+    createSpinRow: jest.fn(),
+    createSwitchRow: jest.fn(),
+    createTextAreaField: jest.fn(),
+    releaseRowIds: jest.fn(),
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/select-row.js', () => ({ createSelectRow: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({ world_names: [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
     createConversationBranch: (name, id = 'new-branch') => ({ id, name, messages: [] }),

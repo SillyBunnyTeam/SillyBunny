@@ -57,8 +57,9 @@ test('desktop split view groups bubbles and keeps settings as a pane', async ({ 
     test.skip(isMobile, 'Desktop split view.');
     await seedConversation(page);
 
+    // At 1440 the chat column is about 790px wide: too narrow to dock a third column beside the rail.
     const sheld = page.locator('#sheld[data-sb-conversation-mode="on"]');
-    await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'split');
+    await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'overlay');
     await expect(page.locator('#sb_conversation_pals_rail')).toBeVisible();
     await expect(page.locator('#sb_conversation_header')).toBeVisible();
     await expect(page.locator('#sb_conversation_form [data-sb-conversation-action="attach-file"]')).toBeVisible();
@@ -73,9 +74,48 @@ test('desktop split view groups bubbles and keeps settings as a pane', async ({ 
     await page.locator('[data-sb-conversation-action="open-settings"]').click();
     await expect(page.locator('#sb_conversation_settings_drawer')).toBeVisible();
     await expect(page.locator('#sb_conversation_settings_backdrop')).toBeHidden();
-    await expect(page.locator('#sb_conv_idle_followup')).toHaveClass(/sb-conversation-switch/);
+    // The boolean rows are the shared switch rows.
+    await expect(page.locator('#sb_conv_idle_followup')).toHaveClass(/sb-switch/);
+    await expect(page.locator('#sb_conv_idle_followup')).toHaveAttribute('role', 'switch');
     await expect(page.locator('#sb_conv_grounded_dialogue_rules')).toBeHidden();
     await expect(page.locator('[data-sb-conversation-action="edit-grounded-dialogue-rules"]')).toBeVisible();
+
+    // The pane stays beside the rail, and the content header keeps its full width, so the name and status stay readable.
+    const boxes = await page.evaluate(() => {
+        const box = selector => {
+            const rect = document.querySelector(selector).getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width };
+        };
+        return {
+            rail: box('#sb_conversation_pals_rail'),
+            drawer: box('#sb_conversation_settings_drawer'),
+            header: box('#sb_conversation_header'),
+            name: box('[data-sb-conversation-name]'),
+            input: box('#sb_conversation_input'),
+        };
+    });
+    expect(boxes.drawer.left, 'the pane does not cover the rail').toBeGreaterThanOrEqual(boxes.rail.right);
+    expect(boxes.header.width, 'the header is not squeezed by the pane').toBeGreaterThan(480);
+    expect(boxes.name.width, 'the name keeps room').toBeGreaterThan(60);
+    expect(boxes.name.right, 'the name is not under the pane').toBeLessThanOrEqual(boxes.drawer.left);
+    expect(boxes.input.width, 'the composer entry stays usable').toBeGreaterThan(150);
+});
+
+test.describe('wide desktop', () => {
+    test.use({ viewport: { width: 2400, height: 1200 } });
+
+    test('a chat column of 1120px or more docks settings as a third column', async ({ page, isMobile }) => {
+        test.skip(isMobile, 'Desktop split view.');
+        await seedConversation(page);
+
+        const sheld = page.locator('#sheld[data-sb-conversation-mode="on"]');
+        await expect(sheld).toHaveAttribute('data-sb-conversation-layout', 'split');
+        await page.locator('[data-sb-conversation-action="open-settings"]').click();
+        await expect(page.locator('#sb_conversation_settings_drawer')).toBeVisible();
+        await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'settings');
+        await expect.poll(() => page.evaluate(() => Math.round(document.getElementById('sb_conversation_timeline').getBoundingClientRect().width))).toBeGreaterThanOrEqual(480);
+        await expect.poll(() => page.evaluate(() => Math.round(document.getElementById('sb_conversation_settings_drawer').getBoundingClientRect().width))).toBe(360);
+    });
 });
 
 for (const compact of [false, true]) {
@@ -154,7 +194,8 @@ test('mobile pages keep pals, chat, and settings as full screens', async ({ page
     await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();
     await expect(sheld).toHaveAttribute('data-sb-conversation-page', 'settings');
     await expect(page.locator('#sb_conversation_settings_drawer')).toBeVisible();
-    await expect(page.locator('#sb_conv_notifications_muted')).toHaveClass(/sb-conversation-switch/);
+    await expect(page.locator('#sb_conv_notifications_muted')).toHaveClass(/sb-switch/);
+    await expect(page.locator('#sb_conv_notifications_muted')).toHaveAttribute('role', 'switch');
 });
 
 test('composer entry only scrolls once it reaches its max height', async ({ page }) => {

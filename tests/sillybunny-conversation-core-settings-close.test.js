@@ -93,11 +93,8 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread
     hasConversationMessageContent: () => false,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeline-render.js', () => ({
-    buildChimingPartnerOptions: () => '',
-    buildConnectionProfileOptions: () => '',
-    buildLorebookOptions: () => '',
-    buildSettingsDrawerHtml: () => '',
     ensureConversationChrome: () => null,
+    replaceSettingsDrawerContent: jest.fn(),
 }));
 
 const { closeConversationSettings } = await import('../public/scripts/sillybunny-conversation/settings-panel.js');

@@ -141,8 +141,8 @@ describe('conversation mode scoped connection profile', () => {
         expect(constantsSource).toContain('{ id: \'sb_conv_grounded_dialogue_rules\', key: \'grounded_dialogue_rules\', prop: \'value\' }');
         expect(constantsSource).toContain('grounded_dialogue_rules_enabled');
         expect(constantsSource).toContain('grounded_dialogue_rules');
-        expect(timelineSource).toContain('data-sb-conversation-action="edit-grounded-dialogue-rules"');
-        expect(timelineSource).toContain('<textarea id="sb_conv_grounded_dialogue_rules" hidden></textarea>');
+        expect(timelineSource).toContain('action: \'edit-grounded-dialogue-rules\'');
+        expect(timelineSource).toContain('createSettingsControl(\'textarea\', \'sb_conv_grounded_dialogue_rules\', { hidden: true })');
         expect(chromeSource).toContain('openGroundedDialogueRulesEditor');
         expect(chromeSource).toContain('case \'edit-grounded-dialogue-rules\':');
         expect(chromeSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
@@ -177,14 +177,16 @@ describe('conversation mode scoped connection profile', () => {
         for (const id of switchIds) {
             expect(timelineSource).toContain(`id: '${id}'`);
         }
-        expect(timelineSource).toContain('class="sb-conversation-switch"');
-        expect(timelineSource).toContain('sb-conversation-pref-suffix');
-        expect(timelineSource).toContain('<input id="sb_conv_copy_memory_to_new_branch" type="checkbox" hidden />');
+        // The pane's rows are the shared switch rows, not a Conversation-only checkbox class.
+        expect(timelineSource).toContain('createSwitchRow(');
+        expect(timelineSource).not.toContain('sb-conversation-switch');
+        expect(timelineSource).not.toContain('sb-conversation-pref-');
+        expect(timelineSource).toContain('createSettingsHiddenInput(\'sb_conv_copy_memory_to_new_branch\', \'checkbox\')');
         expect(chromeSource).toContain('toggleAddDmPicker(target)');
         expect(chromeSource).toContain('toggleConversationGroupPicker({ anchor: target })');
         expect(chromeSource).toContain('togglePersonaPicker(target)');
         expect(pickersSource).toContain('preferBelow: true');
-        expect(pickersSource).toContain('class="sb-conversation-switch sb-conv-weekly-enabled-check"');
+        expect(pickersSource).toContain('role="switch" class="sb-switch sb-conv-weekly-enabled-check"');
         expect(palsRailSource).toContain('Messaging-app order: newest message first');
         expect(palsRailSource).not.toContain('first.key === activeKey');
         expect(chromeSource).toContain('window.matchMedia?.(LAYOUT_MOBILE_QUERY)?.matches');
@@ -197,7 +199,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).not.toContain('bubble.append(actionBar, mobileTrigger)');
         expect(pickersSource).toContain('maxLeft < minLeft');
         expect(actionMenuSource).toContain('maxLeft < minLeft');
-        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261117v');
+        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261117y');
     });
 
     test('keeps saved Conversation-owned group DMs visible without messages', () => {

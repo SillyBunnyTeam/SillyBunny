@@ -7,6 +7,17 @@ import {
 } from '../../script.js';
 import { world_names } from '../world-info.js';
 import {
+    createButtonRow,
+    createEntryRow,
+    createPrefGroup,
+    createRow,
+    createSpinRow,
+    createSwitchRow,
+    createTextAreaField,
+    releaseRowIds,
+} from '../sillybunny-editor/rows.js';
+import { createSelectRow } from '../sillybunny-editor/select-row.js';
+import {
     CHROME_IDS,
     CONVERSATION_ATTACHMENT_ACCEPT,
     CONVERSATION_REACTION_LABELS,
@@ -1506,7 +1517,10 @@ export function updateConversationNotificationSettingsVisibility() {
     const shouldDisablePriority = muted instanceof HTMLInputElement && muted.checked;
     if (priority instanceof HTMLSelectElement) {
         priority.disabled = shouldDisablePriority;
+        priority.closest('.ds-row')?.classList.toggle('is-insensitive', shouldDisablePriority);
     }
+    // applySettingsToPanel ends here; picker rows mirror their select, which changes without an event.
+    syncSettingsDrawerRows();
 }
 
 export function normalizeConversationReactionLabel(reaction) {
@@ -1595,279 +1609,365 @@ export function highlightConversationMentions(container, avatar = getCurrentChar
     }
 }
 
-function buildConversationSwitchRow({ id, labelHtml, title = '', extra = '' } = {}) {
-    const safeId = escapeHtmlAttribute(id);
-    const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : '';
-    const input = `<input id="${safeId}" type="checkbox" class="sb-conversation-switch" />`;
-    if (extra) {
-        return `<div class="sb-conversation-pref-row"${titleAttr}><label class="sb-conversation-pref-copy" for="${safeId}">${labelHtml}</label>${extra}${input}</div>`;
-    }
-    return `<label class="sb-conversation-pref-row"${titleAttr} for="${safeId}"><span class="sb-conversation-pref-copy">${labelHtml}</span>${input}</label>`;
+let settingsSelectRows = [];
+
+function settingsFieldName(id) {
+    return id.replace(/^sb_conv_/, '').replace(/_/g, '-');
 }
 
-export function buildSettingsDrawerHtml() {
+function createSettingsControl(tagName, id, attributes = {}) {
+    const control = document.createElement(tagName);
+    control.id = id;
+    for (const [name, value] of Object.entries(attributes)) {
+        control.setAttribute(name, value === true ? '' : String(value));
+    }
+    return control;
+}
+
+function appendSettingScope(label) {
+    const chip = document.createElement('span');
+    chip.className = 'sb-conversation-setting-scope';
+    chip.textContent = 'Global';
+    label.append(' ', chip);
+}
+
+function markSettingScope(controller) {
+    appendSettingScope(controller.row.querySelector('.ds-row-label'));
+    return controller;
+}
+
+function createSettingsSwitch({ id, label, subtitle, title, scope = false, onChange }) {
+    const controller = createSwitchRow({ id, field: settingsFieldName(id), label, subtitle, onChange });
+    if (title) {
+        controller.row.title = title;
+    }
+    return scope ? markSettingScope(controller) : controller;
+}
+
+function createSettingsSpin({ id, label, subtitle, min, max, step, value }) {
+    const input = createSettingsControl('input', id, { type: 'number', class: 'text_pole', min, max, step, value });
+    return createSpinRow({ normalize: false, input, label, subtitle, field: settingsFieldName(id) });
+}
+
+function createSettingsEntry({ id, label, placeholder }) {
+    const input = createSettingsControl('input', id, { type: 'text' });
+    return createEntryRow({ floating: true, input, label, placeholder, field: settingsFieldName(id) });
+}
+
+function createSettingsSelect({ id, label, subtitle, optionsHtml, scope = false }) {
+    const select = createSettingsControl('select', id);
+    select.innerHTML = optionsHtml;
+    const controller = createSelectRow({ select, label, subtitle, field: settingsFieldName(id) });
+    settingsSelectRows.push(controller);
+    return scope ? markSettingScope(controller) : controller;
+}
+
+function createSettingsTextArea({ id, label, subtitle, placeholder, rows, scope = false, readOnly = false }) {
+    const attributes = { class: readOnly ? 'text_pole textarea_compact' : 'text_pole textarea_compact autoSetHeight', placeholder };
+    if (readOnly) {
+        attributes.readonly = true;
+    }
+    const controller = createTextAreaField({
+        input: createSettingsControl('textarea', id, attributes),
+        field: settingsFieldName(id),
+        label,
+        subtitle,
+        rows,
+        expand: !readOnly,
+        expandLabel: 'Expand the editor',
+    });
+    if (scope) {
+        appendSettingScope(controller.labelRow.querySelector('.ds-row-textarea__label'));
+    }
+    return controller;
+}
+
+function createSettingsAction({ action, label, icon, danger = false }) {
+    const controller = createButtonRow({ label, icon, danger, field: action });
+    controller.row.dataset.sbConversationAction = action;
+    return controller;
+}
+
+function createSettingsTimeEntry({ id, label }) {
+    const input = createSettingsControl('input', id, {
+        type: 'text',
+        class: 'text_pole sb-conversation-quiet-time-input',
+        inputmode: 'numeric',
+        autocomplete: 'off',
+        maxlength: 5,
+        placeholder: 'HH:MM',
+    });
+    const controller = createRow({ label, field: settingsFieldName(id), suffix: input });
+    const caption = controller.row.querySelector('.ds-row-label');
+    caption.id = `${id}_label`;
+    input.setAttribute('aria-labelledby', caption.id);
+    return controller;
+}
+
+function createSettingsHiddenInput(id, type, value) {
+    return createSettingsControl('input', id, value === undefined ? { type, hidden: true } : { type, value });
+}
+
+function createSettingsGroup({ title, subtitle, field, rows, hidden = [] }) {
+    // Level 4: the theme boxes every h3 outside a dialog, and a group heading takes no box.
+    const group = createPrefGroup({ title, subtitle, field, rows, headingLevel: 4 });
+    group.section.append(...hidden);
+    return group.section;
+}
+
+function createSettingsDrawerHeader(drawerTitle) {
+    const header = document.createElement('div');
+    header.className = 'sb-conversation-settings-header';
+    header.innerHTML = `
+        <button type="button" class="sb-conversation-flat-button sb-conversation-settings-close" data-sb-conversation-action="close-settings" title="Close Conversation settings" aria-label="Close Conversation settings">
+            <i class="fa-solid fa-xmark sb-conversation-settings-close-x" aria-hidden="true"></i>
+            <i class="fa-solid fa-arrow-left sb-conversation-settings-close-back" aria-hidden="true"></i>
+        </button>
+        <div>
+            <div class="sb-conversation-settings-kicker">Conversation Mode</div>
+            <div class="sb-conversation-settings-title">${escapeHtmlText(drawerTitle)}</div>
+        </div>
+    `;
+    return header;
+}
+
+function createGroupMembersWrapper(settings, { autoChatCooldown }) {
+    const search = createSettingsControl('input', 'sb_conv_multi_char_search', {
+        type: 'text',
+        class: 'text_pole textarea_compact sb-conversation-member-search',
+        placeholder: 'Search group members...',
+    });
+    const list = createSettingsControl('div', 'sb_conv_chiming_partner_list', { class: 'sb-conversation-partner-list' });
+    list.innerHTML = buildChimingPartnerOptions(settings.multi_char_names);
+    const field = document.createElement('div');
+    field.className = 'sb-conversation-members-field';
+    field.append(search, list);
+
+    const members = createRow({
+        label: 'Group DM Members',
+        subtitle: 'Selected characters are considered part of this Conversation thread. Type @Name, such as @Kaveh, to tag them. Autonomous character-to-character chat uses this same group list.',
+        field: 'group-members',
+        stacked: true,
+        suffix: field,
+    });
+    const autoChat = createSettingsSwitch({ id: 'sb_conv_auto_character_chat', label: 'Allow characters to talk to each other', subtitle: 'Allow enabled characters to chat with each other autonomously in this thread' });
+    const cooldown = createSettingsSpin({ id: 'sb_conv_auto_chat_cooldown', label: 'Character chat cooldown (mins)', subtitle: 'Minimum time between autonomous character-to-character messages in this Conversation thread', min: 1, max: 1440, step: 1, value: autoChatCooldown });
+
+    const wrapper = createSettingsControl('div', 'sb_conv_group_members_wrapper', { class: 'sb-conversation-members-wrapper' });
+    wrapper.append(members.row, autoChat.row, cooldown.row);
+    return wrapper;
+}
+
+/**
+ * Builds the settings drawer from the shared boxed-list rows. The drawer is a live store for
+ * applySettingsToPanel and saveCurrentPanelSettings, so it is built whole and synchronously.
+ */
+export function buildSettingsDrawerContent() {
     const avatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(avatar);
     const settings = getSettings(avatar, { groupId });
     const isGroupConversation = Boolean(groupId);
-    const drawerTitle = isGroupConversation ? 'Group controls' : 'DM controls';
-    const proactiveTitle = isGroupConversation
-        ? 'Let group members message you first based on the group schedule and mood'
-        : 'Let the character message you first based on their schedule and mood';
-    const proactiveLabel = isGroupConversation ? 'Let group members message me first' : 'Let this character message me first';
-    const proactiveHint = isGroupConversation
-        ? 'These proactive controls apply only to this group Conversation, not solo DMs.'
-        : 'Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.';
-    const relatedMemoryLabel = isGroupConversation ? 'Remember solo DMs in this group DM' : 'Remember group DMs in this solo DM';
-    const relatedMemoryHint = isGroupConversation
-        ? 'When enabled, this group DM can reference saved memory from this character\'s solo DM.'
-        : 'When enabled, this solo DM can reference saved memory from group DMs that include this character.';
-    const groundedRulesEdit = '<button type="button" class="menu_button menu_button_icon sb-conversation-pref-suffix" data-sb-conversation-action="edit-grounded-dialogue-rules" title="Edit Grounded Dialogue Rules" aria-label="Edit Grounded Dialogue Rules"><i class="fa-solid fa-pencil" aria-hidden="true"></i></button>';
-    return `
-        <div class="sb-conversation-settings-header">
-            <button type="button" class="sb-conversation-flat-button sb-conversation-settings-close" data-sb-conversation-action="close-settings" title="Close Conversation settings" aria-label="Close Conversation settings">
-                <i class="fa-solid fa-xmark sb-conversation-settings-close-x" aria-hidden="true"></i>
-                <i class="fa-solid fa-arrow-left sb-conversation-settings-close-back" aria-hidden="true"></i>
-            </button>
-            <div>
-                <div class="sb-conversation-settings-kicker">Conversation Mode</div>
-                <div class="sb-conversation-settings-title">${drawerTitle}</div>
-            </div>
-        </div>
-        <div class="sb-conversation-settings-body">
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-signal" aria-hidden="true"></i><span>Presence &amp; availability</span></h4>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_availability">Status</label>
-                    <select id="sb_conv_availability" class="text_pole textarea_compact wide100p">
-                        <option value="online">Online</option>
-                        <option value="idle">Idle</option>
-                        <option value="dnd">Do Not Disturb</option>
-                        <option value="offline">Offline</option>
-                    </select>
-                </div>
-                <div class="sb-conversation-pref-list">
-                    ${buildConversationSwitchRow({ id: 'sb_conv_idle_followup', labelHtml: 'Send auto follow-up <span class="sb-conversation-setting-scope">Global</span>', title: 'After the user has been quiet, send a check-in tied to the current conversation.' })}
-                    ${buildConversationSwitchRow({ id: 'sb_conv_idle_spontaneous', labelHtml: 'Spontaneous ping <span class="sb-conversation-setting-scope">Global</span>', title: 'After a longer quiet stretch, start a casual new topic or send an ambient thought.' })}
-                </div>
-                <p class="sb-conversation-field-hint">Follow-ups react to silence in the current thread. Spontaneous pings can start a fresh thought; when both are enabled, pings wait for a longer quiet stretch.</p>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_idle_limit">Idle Minimum (minutes)</label>
-                    <input id="sb_conv_idle_limit" class="text_pole textarea_compact wide100p" type="number" min="1" max="1440" step="1" value="15" />
-                </div>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_offline_message">Offline/DND Auto-responder</label>
-                    <input id="sb_conv_offline_message" class="text_pole textarea_compact wide100p" type="text" placeholder="[{{user}} is currently offline. Leave a message!]" />
-                </div>
-                ${buildConversationSwitchRow({ id: 'sb_conv_notifications_muted', labelHtml: 'Mute this DM', title: 'Keep unread badges but suppress sounds and popups for this Conversation.' })}
-                <div class="sb-conversation-notification-grid">
-                    <label class="sb-conversation-field-stack" for="sb_conv_notification_priority">
-                        <span>Priority</span>
-                        <select id="sb_conv_notification_priority" class="text_pole textarea_compact wide100p">
-                            <option value="normal">Normal</option>
-                            <option value="silent">Silent</option>
-                            <option value="priority">Priority</option>
-                        </select>
-                    </label>
-                    <label class="sb-conversation-field-stack" for="sb_conv_quiet_hours_start">
-                        <span>Quiet start</span>
-                        <input id="sb_conv_quiet_hours_start" class="text_pole textarea_compact wide100p sb-conversation-quiet-time-input" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="HH:MM" />
-                    </label>
-                    <label class="sb-conversation-field-stack" for="sb_conv_quiet_hours_end">
-                        <span>Quiet end</span>
-                        <input id="sb_conv_quiet_hours_end" class="text_pole textarea_compact wide100p sb-conversation-quiet-time-input" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="HH:MM" />
-                    </label>
-                </div>
-                <p class="sb-conversation-field-hint">Unread badges still update while muted or inside quiet hours.</p>
-            </div>
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i><span>Character schedule</span></h4>
-                <p class="sb-conversation-field-hint">Auto-generate a weekly schedule using the current active connection profile and selected model. This informs when the character is available to chat.</p>
-                <div class="sb-conversation-field-stack">
-                    <div class="sb-conversation-field-row sb-conversation-schedule-actions">
-                        <button type="button" class="menu_button sb-conversation-generate-schedule" data-sb-conversation-action="generate-schedule">
-                            <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>Generate schedule</span>
-                        </button>
-                        <button type="button" class="menu_button" data-sb-conversation-action="edit-schedule">
-                            <i class="fa-solid fa-pencil" aria-hidden="true"></i><span>Edit schedule</span>
-                        </button>
-                    </div>
-                    <div class="sb-conversation-schedule-display" id="sb_conv_schedule_display" aria-live="polite"></div>
-                    <input id="sb_conv_auto_schedule" type="hidden" value="${escapeHtmlAttribute(settings.auto_schedule)}" />
-                </div>
-            </div>
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i><span>Proactive messaging</span></h4>
-                ${buildConversationSwitchRow({ id: 'sb_conv_proactive_messaging', labelHtml: escapeHtmlText(proactiveLabel), title: proactiveTitle })}
-                <div class="sb-conversation-proactive-inputs">
-                    <div class="sb-conversation-field-stack">
-                        <label for="sb_conv_inactivity_threshold">Patience (mins)</label>
-                        <input id="sb_conv_inactivity_threshold" class="text_pole textarea_compact wide100p" type="number" min="15" max="360" step="5" value="120" />
-                    </div>
-                    <div class="sb-conversation-field-stack">
-                        <label for="sb_conv_max_followups">Max follow-ups</label>
-                        <input id="sb_conv_max_followups" class="text_pole textarea_compact wide100p" type="number" min="1" max="3" step="1" value="3" />
-                    </div>
-                    <div class="sb-conversation-field-stack">
-                        <label for="sb_conv_talkativeness">Talkativeness</label>
-                        <input id="sb_conv_talkativeness" class="text_pole textarea_compact wide100p" type="number" min="0" max="100" step="5" value="50" />
-                    </div>
-                    <div class="sb-conversation-field-stack">
-                        <label for="sb_conv_reply_delay_multiplier">Reply delay</label>
-                        <input id="sb_conv_reply_delay_multiplier" class="text_pole textarea_compact wide100p" type="number" min="0" max="300" step="10" value="100" />
-                    </div>
-                    <div class="sb-conversation-field-stack">
-                        <label for="sb_conv_reply_max_tokens">Max reply tokens</label>
-                        <input id="sb_conv_reply_max_tokens" class="text_pole textarea_compact wide100p" type="number" min="64" max="64000" step="64" value="16000" />
-                    </div>
-                </div>
-                <p class="sb-conversation-field-hint">${proactiveHint}</p>
-                <div class="sb-conversation-pref-list">
-                    ${buildConversationSwitchRow({ id: 'sb_conv_selfie_command_enabled', labelHtml: 'Selfies through Quick Image Gen ([selfie])', title: 'Let the character turn [selfie: prompt] into a Quick Image Gen request' })}
-                    ${buildConversationSwitchRow({ id: 'sb_conv_schedule_command_enabled', labelHtml: 'Character status updates ([schedule_update])', title: 'Let the character update its current availability/activity through [schedule_update]' })}
-                </div>
-                <p class="sb-conversation-field-hint">Selfie commands are hidden from the chat and sent as image prompts. Schedule updates let the character adjust what they are doing now.</p>
-            </div>
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-brain" aria-hidden="true"></i><span>Chat memories</span></h4>
-                <p class="sb-conversation-field-hint">Persistent notes the LLM writes for continuity. They survive deleted chats and only clear when you use Clear memory.</p>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_memory_summary">Conversation memory</label>
-                    <textarea id="sb_conv_memory_summary" class="text_pole textarea_compact wide100p sb-conversation-memory-summary" rows="5" readonly placeholder="No memory summary yet. It appears after enough messages, or you can refresh it manually once this Conversation has chat history."></textarea>
-                    <p id="sb_conv_memory_meta" class="sb-conversation-field-hint sb-conversation-memory-meta"></p>
-                </div>
-                <div class="sb-conversation-field-row sb-conversation-memory-actions">
-                    <button type="button" class="menu_button" data-sb-conversation-action="create-memory">
-                        <i class="fa-solid fa-plus" aria-hidden="true"></i><span>Create memory</span>
-                    </button>
-                    <button type="button" class="menu_button" data-sb-conversation-action="refresh-memory">
-                        <i class="fa-solid fa-rotate" aria-hidden="true"></i><span>Refresh memory</span>
-                    </button>
-                    <button type="button" class="menu_button" data-sb-conversation-action="clear-memory">
-                        <i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Clear memory</span>
-                    </button>
-                </div>
-                <input id="sb_conv_copy_memory_to_new_branch" type="checkbox" hidden />
-                <p class="sb-conversation-field-hint">Memory is kept across new chats and deleted histories until you clear it.</p>
-                ${buildConversationSwitchRow({ id: 'sb_conv_include_related_memory', labelHtml: escapeHtmlText(relatedMemoryLabel), title: 'Share saved memory summaries between this character\'s solo and group Conversation threads' })}
-                <p class="sb-conversation-field-hint">${relatedMemoryHint}</p>
-            </div>
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-clock" aria-hidden="true"></i><span>Manual scheduling</span></h4>
-                <p class="sb-conversation-field-hint">Use this for fixed-time check-ins. Weekly slots decide when messages can happen; cooldown prevents repeated sends too close together.</p>
-                ${buildConversationSwitchRow({ id: 'sb_conv_auto_message', labelHtml: 'Enable Scheduling', title: 'Enable autonomous scheduled messages' })}
-                <label class="sb-conversation-field-stack sb-conversation-inline-number" title="Auto-message minimum delay/cooldown in seconds">
-                    <span>Cooldown</span>
-                    <span class="sb-conversation-inline-number-row">
-                        <input id="sb_conv_cooldown" class="text_pole textarea_compact widthUnset" type="number" min="10" max="9999" step="1" value="60" />
-                        <span class="auto_mode_delay_unit">secs</span>
-                    </span>
-                </label>
-                <div class="sb-conversation-field-stack">
-                    <label>Weekly Schedule</label>
-                    <div class="sb-conversation-weekly-schedule" id="sb_conv_weekly_schedule_editor"></div>
-                    <button type="button" class="menu_button sb-conversation-weekly-add" data-sb-conversation-action="weekly-add">
-                        <i class="fa-solid fa-plus" aria-hidden="true"></i><span>Add weekly slot</span>
-                    </button>
-                    <input id="sb_conv_weekly_schedule" type="hidden" value="${escapeHtmlAttribute(settings.weekly_schedule)}" />
-                </div>
-            </div>
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-scroll" aria-hidden="true"></i><span>Prompts &amp; formats</span></h4>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_geechan_chatroom_prompt">Geechan Chatroom System Prompt</label>
-                    <textarea id="sb_conv_geechan_chatroom_prompt" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="Type the chatroom system prompt here..."></textarea>
-                    <button type="button" class="menu_button sb-conversation-reset-prompt" data-sb-conversation-action="reset-prompt">
-                        <i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>Reset to default</span>
-                    </button>
-                </div>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_custom_instructions">Custom Instructions <span class="sb-conversation-setting-scope">Global</span></label>
-                    <textarea id="sb_conv_custom_instructions" class="text_pole textarea_compact autoSetHeight wide100p" rows="3" placeholder="Type any custom instructions or guidelines here..."></textarea>
-                    <p class="sb-conversation-field-hint">Applies to every solo and group Conversation DM.</p>
-                </div>
-                <div class="sb-conversation-field-stack">
-                    ${buildConversationSwitchRow({ id: 'sb_conv_grounded_dialogue_rules_enabled', labelHtml: 'Grounded Dialogue Rules <span class="sb-conversation-setting-scope">Global</span>', title: 'Apply the global Grounded Dialogue Rules block to Conversation Mode prompts.', extra: groundedRulesEdit })}
-                    <textarea id="sb_conv_grounded_dialogue_rules" hidden></textarea>
-                    <p class="sb-conversation-field-hint">Optional anti-cliché style guard. Use the pencil to edit the full rules without expanding this drawer.</p>
-                </div>
-                ${buildConversationSwitchRow({ id: 'sb_conv_multi_char', labelHtml: 'Add additional members in the chat', title: 'Enable additional characters in the chat to chime in' })}
-                <div id="sb_conv_group_members_wrapper" class="sb-conversation-field-stack">
-                    <div class="sb-conversation-field-stack">
-                        <label>Group DM Members</label>
-                        <p class="sb-conversation-field-hint">Selected characters are considered part of this Conversation thread. Type @Name, such as @Kaveh, to tag them. Autonomous character-to-character chat uses this same group list.</p>
-                        <input type="text" id="sb_conv_multi_char_search" class="text_pole textarea_compact wide100p sb-conversation-member-search" placeholder="Search group members..." />
-                        <div class="sb-conversation-partner-list" id="sb_conv_chiming_partner_list">${buildChimingPartnerOptions(settings.multi_char_names)}</div>
-                        <input id="sb_conv_multi_char_names" type="hidden" value="${escapeHtmlAttribute(settings.multi_char_names)}" />
-                    </div>
-                    ${buildConversationSwitchRow({ id: 'sb_conv_auto_character_chat', labelHtml: 'Allow characters to talk to each other', title: 'Allow enabled characters to chat with each other autonomously in this thread' })}
-                    <label class="sb-conversation-field-stack sb-conversation-inline-number" title="Minimum time between autonomous character-to-character messages in this Conversation thread">
-                        <span>Character chat cooldown</span>
-                        <span class="sb-conversation-inline-number-row">
-                            <input id="sb_conv_auto_chat_cooldown" class="text_pole textarea_compact widthUnset" type="number" min="1" max="1440" step="1" value="${DEFAULT_AUTO_CHAT_COOLDOWN}" />
-                            <span class="auto_mode_delay_unit">mins</span>
-                        </span>
-                    </label>
-                </div>
-                ${buildConversationSwitchRow({ id: 'sb_conv_roleplay_reactions', labelHtml: 'React to current roleplay', title: 'Allow this character to privately react to the current roleplay or group chat' })}
-            </div>
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-book-atlas" aria-hidden="true"></i><span>Context overrides</span></h4>
-                <div class="sb-conversation-field-stack">
-                    <label class="checkbox_label">
-                        <input id="sb_conv_lorebooks_enabled" type="checkbox" />
-                        <span>Use Character Lorebooks <span class="sb-conversation-setting-scope">Global</span></span>
-                    </label>
-                    <p class="sb-conversation-field-hint">When off, Conversation replies use no lorebooks at all, including the override below.</p>
-                </div>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_lorebook_override">Lorebook Override</label>
-                    <select id="sb_conv_lorebook_override" class="text_pole textarea_compact wide100p">
-                        ${buildLorebookOptions(settings.lorebook_override)}
-                    </select>
-                </div>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_connection_profile">Connection Profile <span class="sb-conversation-setting-scope">Global</span></label>
-                    <select id="sb_conv_connection_profile" class="text_pole textarea_compact wide100p">
-                        ${buildConnectionProfileOptions(settings.connection_profile)}
-                    </select>
-                    <p class="sb-conversation-field-hint">Used for all Conversation Mode generations unless left on the current active connection.</p>
-                </div>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_authors_note">Author's Note Override</label>
-                    <textarea id="sb_conv_authors_note" class="text_pole textarea_compact autoSetHeight wide100p" rows="2" placeholder="[Author's Note: Keep responses short, direct, and conversational as if chatting in a DM.]"></textarea>
-                </div>
-            </div>
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-image" aria-hidden="true"></i><span>Image generation</span></h4>
-                ${buildConversationSwitchRow({ id: 'sb_conv_image_gen_enabled', labelHtml: 'Enable chatroom image generation', title: 'Enable in-chat image generation' })}
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_image_gen_prompt_template">Image Prompt Template</label>
-                    <input id="sb_conv_image_gen_prompt_template" type="text" class="text_pole wide100p" placeholder="a photo of {{char}}, {{scene}}" />
-                </div>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_image_gen_negative">Negative Prompt</label>
-                    <input id="sb_conv_image_gen_negative" type="text" class="text_pole wide100p" placeholder="blurry, distorted" />
-                </div>
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_image_gen_cooldown">Image Cooldown (minutes)</label>
-                    <input id="sb_conv_image_gen_cooldown" type="number" min="0" max="1440" step="1" class="text_pole wide100p" value="10" />
-                </div>
-                ${buildConversationSwitchRow({ id: 'sb_conv_spontaneous_selfies', labelHtml: 'Enable Spontaneous Selfies', title: 'Character spontaneously generates selfies during the conversation' })}
-                <div class="sb-conversation-field-stack">
-                    <label for="sb_conv_selfie_prompt">Selfie Prompt Template</label>
-                    <input id="sb_conv_selfie_prompt" type="text" class="text_pole wide100p" placeholder="raw photo, selfie of {{char}}" />
-                </div>
-            </div>
-            <div class="sb-settings-group">
-                <h4 class="sb-settings-group-title"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i><span>DM tweaks</span></h4>
-                <div class="sb-conversation-pref-list">
-                    ${buildConversationSwitchRow({ id: 'sb_conv_editable_messages', labelHtml: 'Enable Quick-Edit DM Actions', title: 'Add quick inline edit buttons next to messages in the Conversation thread' })}
-                    ${buildConversationSwitchRow({ id: 'sb_conv_prose_polisher', labelHtml: 'Character Prose Polisher', title: 'Enable a magic wand icon on character replies to polish and refine their outputs.' })}
-                </div>
-            </div>
-        </div>
-    `;
+    settingsSelectRows = [];
+
+    const presence = createSettingsGroup({
+        title: 'Presence & availability',
+        field: 'presence',
+        rows: [
+            createSettingsSelect({
+                id: 'sb_conv_availability',
+                label: 'Status',
+                optionsHtml: '<option value="online">Online</option><option value="idle">Idle</option><option value="dnd">Do Not Disturb</option><option value="offline">Offline</option>',
+            }),
+            createSettingsSwitch({ id: 'sb_conv_idle_followup', label: 'Send auto follow-up', subtitle: 'Follow-ups react to silence in the current thread.', title: 'After the user has been quiet, send a check-in tied to the current conversation.', scope: true }),
+            createSettingsSwitch({ id: 'sb_conv_idle_spontaneous', label: 'Spontaneous ping', subtitle: 'Spontaneous pings can start a fresh thought; when both are enabled, pings wait for a longer quiet stretch.', title: 'After a longer quiet stretch, start a casual new topic or send an ambient thought.', scope: true }),
+            createSettingsSpin({ id: 'sb_conv_idle_limit', label: 'Idle Minimum (minutes)', min: 1, max: 1440, step: 1, value: 15 }),
+            createSettingsEntry({ id: 'sb_conv_offline_message', label: 'Offline/DND Auto-responder', placeholder: '[{{user}} is currently offline. Leave a message!]' }),
+            createSettingsSwitch({
+                id: 'sb_conv_notifications_muted',
+                label: 'Mute this DM',
+                subtitle: 'Unread badges still update while muted or inside quiet hours.',
+                title: 'Keep unread badges but suppress sounds and popups for this Conversation.',
+                onChange: updateConversationNotificationSettingsVisibility,
+            }),
+            createSettingsSelect({
+                id: 'sb_conv_notification_priority',
+                label: 'Priority',
+                optionsHtml: '<option value="normal">Normal</option><option value="silent">Silent</option><option value="priority">Priority</option>',
+            }),
+            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_start', label: 'Quiet start' }),
+            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_end', label: 'Quiet end' }),
+        ],
+    });
+
+    const schedule = createSettingsGroup({
+        title: 'Character schedule',
+        subtitle: 'Auto-generate a weekly schedule using the current active connection profile and selected model. This informs when the character is available to chat.',
+        field: 'schedule',
+        rows: [
+            createSettingsAction({ action: 'generate-schedule', label: 'Generate schedule', icon: 'wand-magic-sparkles' }),
+            createSettingsAction({ action: 'edit-schedule', label: 'Edit schedule', icon: 'pencil' }),
+        ],
+        hidden: [createSettingsHiddenInput('sb_conv_auto_schedule', 'hidden', settings.auto_schedule)],
+    });
+    const scheduleDisplay = createSettingsControl('div', 'sb_conv_schedule_display', { class: 'sb-conversation-schedule-display', 'aria-live': 'polite' });
+    schedule.append(scheduleDisplay);
+
+    const proactiveRows = [
+        createSettingsSwitch({
+            id: 'sb_conv_proactive_messaging',
+            label: isGroupConversation ? 'Let group members message me first' : 'Let this character message me first',
+            subtitle: isGroupConversation
+                ? 'Let group members message you first based on the group schedule and mood'
+                : 'Let the character message you first based on their schedule and mood',
+        }),
+        createSettingsSpin({ id: 'sb_conv_inactivity_threshold', label: 'Patience (mins)', min: 15, max: 360, step: 5, value: 120 }),
+        createSettingsSpin({ id: 'sb_conv_max_followups', label: 'Max follow-ups', min: 1, max: 3, step: 1, value: 3 }),
+        createSettingsSpin({ id: 'sb_conv_talkativeness', label: 'Talkativeness', min: 0, max: 100, step: 5, value: 50 }),
+        createSettingsSpin({ id: 'sb_conv_reply_delay_multiplier', label: 'Reply delay', min: 0, max: 300, step: 10, value: 100 }),
+        createSettingsSpin({
+            id: 'sb_conv_reply_max_tokens',
+            label: 'Max reply tokens',
+            subtitle: isGroupConversation ? undefined : 'Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.',
+            min: 64,
+            max: 64000,
+            step: 64,
+            value: 16000,
+        }),
+        createSettingsSwitch({ id: 'sb_conv_selfie_command_enabled', label: 'Selfies through Quick Image Gen ([selfie])', subtitle: 'Selfie commands are hidden from the chat and sent as image prompts.', title: 'Let the character turn [selfie: prompt] into a Quick Image Gen request' }),
+        createSettingsSwitch({ id: 'sb_conv_schedule_command_enabled', label: 'Character status updates ([schedule_update])', subtitle: 'Schedule updates let the character adjust what they are doing now.', title: 'Let the character update its current availability/activity through [schedule_update]' }),
+    ];
+    const proactive = createSettingsGroup({
+        title: 'Proactive messaging',
+        subtitle: isGroupConversation ? 'These proactive controls apply only to this group Conversation, not solo DMs.' : undefined,
+        field: 'proactive',
+        rows: proactiveRows,
+    });
+
+    const memorySummary = createSettingsTextArea({
+        id: 'sb_conv_memory_summary',
+        label: 'Conversation memory',
+        placeholder: 'No memory summary yet. It appears after enough messages, or you can refresh it manually once this Conversation has chat history.',
+        rows: 5,
+        readOnly: true,
+    });
+    const memoryMeta = createSettingsControl('small', 'sb_conv_memory_meta', { class: 'ds-row-subtitle ds-row-textarea__caption sb-conversation-memory-meta' });
+    memorySummary.row.append(memoryMeta);
+    memorySummary.control.setAttribute('aria-describedby', memoryMeta.id);
+    const memory = createSettingsGroup({
+        title: 'Chat memories',
+        subtitle: 'Persistent notes the LLM writes for continuity. They survive deleted chats and only clear when you use Clear memory.',
+        field: 'memory',
+        rows: [
+            memorySummary,
+            createSettingsAction({ action: 'create-memory', label: 'Create memory', icon: 'plus' }),
+            createSettingsAction({ action: 'refresh-memory', label: 'Refresh memory', icon: 'rotate' }),
+            createSettingsAction({ action: 'clear-memory', label: 'Clear memory', icon: 'eraser', danger: true }),
+            createSettingsSwitch({
+                id: 'sb_conv_include_related_memory',
+                label: isGroupConversation ? 'Remember solo DMs in this group DM' : 'Remember group DMs in this solo DM',
+                subtitle: isGroupConversation
+                    ? 'When enabled, this group DM can reference saved memory from this character\'s solo DM.'
+                    : 'When enabled, this solo DM can reference saved memory from group DMs that include this character.',
+                title: 'Share saved memory summaries between this character\'s solo and group Conversation threads',
+            }),
+        ],
+        hidden: [createSettingsHiddenInput('sb_conv_copy_memory_to_new_branch', 'checkbox')],
+    });
+    const memoryNote = document.createElement('p');
+    memoryNote.className = 'ds-row-subtitle sb-conversation-section-note';
+    memoryNote.textContent = 'Memory is kept across new chats and deleted histories until you clear it.';
+    memory.append(memoryNote);
+
+    const weeklyEditor = createSettingsControl('div', 'sb_conv_weekly_schedule_editor', { class: 'sb-conversation-weekly-schedule' });
+    const manual = createSettingsGroup({
+        title: 'Manual scheduling',
+        subtitle: 'Use this for fixed-time check-ins. Weekly slots decide when messages can happen; cooldown prevents repeated sends too close together.',
+        field: 'manual-scheduling',
+        rows: [
+            createSettingsSwitch({ id: 'sb_conv_auto_message', label: 'Enable Scheduling', subtitle: 'Enable autonomous scheduled messages' }),
+            createSettingsSpin({ id: 'sb_conv_cooldown', label: 'Cooldown (secs)', subtitle: 'Auto-message minimum delay/cooldown in seconds', min: 10, max: 9999, step: 1, value: 60 }),
+            createRow({ label: 'Weekly Schedule', field: 'weekly-schedule', stacked: true, suffix: weeklyEditor }),
+            createSettingsAction({ action: 'weekly-add', label: 'Add weekly slot', icon: 'plus' }),
+        ],
+        hidden: [createSettingsHiddenInput('sb_conv_weekly_schedule', 'hidden', settings.weekly_schedule)],
+    });
+
+    const prompts = createSettingsGroup({
+        title: 'Prompts & formats',
+        field: 'prompts',
+        rows: [
+            createSettingsTextArea({ id: 'sb_conv_geechan_chatroom_prompt', label: 'Geechan Chatroom System Prompt', placeholder: 'Type the chatroom system prompt here...', rows: 3 }),
+            createSettingsAction({ action: 'reset-prompt', label: 'Reset to default', icon: 'rotate-left' }),
+            createSettingsTextArea({ id: 'sb_conv_custom_instructions', label: 'Custom Instructions', subtitle: 'Applies to every solo and group Conversation DM.', placeholder: 'Type any custom instructions or guidelines here...', rows: 3, scope: true }),
+            createSettingsSwitch({
+                id: 'sb_conv_grounded_dialogue_rules_enabled',
+                label: 'Grounded Dialogue Rules',
+                subtitle: 'Optional anti-cliché style guard. Use the pencil to edit the full rules without expanding this drawer.',
+                title: 'Apply the global Grounded Dialogue Rules block to Conversation Mode prompts.',
+                scope: true,
+            }),
+            createSettingsAction({ action: 'edit-grounded-dialogue-rules', label: 'Edit Grounded Dialogue Rules', icon: 'pencil' }),
+            createSettingsSwitch({ id: 'sb_conv_multi_char', label: 'Add additional members in the chat', subtitle: 'Enable additional characters in the chat to chime in' }),
+            createGroupMembersWrapper(settings, { autoChatCooldown: DEFAULT_AUTO_CHAT_COOLDOWN }),
+            createSettingsSwitch({ id: 'sb_conv_roleplay_reactions', label: 'React to current roleplay', subtitle: 'Allow this character to privately react to the current roleplay or group chat' }),
+        ],
+        hidden: [
+            createSettingsControl('textarea', 'sb_conv_grounded_dialogue_rules', { hidden: true }),
+            createSettingsHiddenInput('sb_conv_multi_char_names', 'hidden', settings.multi_char_names),
+        ],
+    });
+
+    const context = createSettingsGroup({
+        title: 'Context overrides',
+        field: 'context',
+        rows: [
+            createSettingsSwitch({ id: 'sb_conv_lorebooks_enabled', label: 'Use Character Lorebooks', subtitle: 'When off, Conversation replies use no lorebooks at all, including the override below.', scope: true }),
+            createSettingsSelect({ id: 'sb_conv_lorebook_override', label: 'Lorebook Override', optionsHtml: buildLorebookOptions(settings.lorebook_override) }),
+            createSettingsSelect({ id: 'sb_conv_connection_profile', label: 'Connection Profile', subtitle: 'Used for all Conversation Mode generations unless left on the current active connection.', optionsHtml: buildConnectionProfileOptions(settings.connection_profile), scope: true }),
+            createSettingsTextArea({ id: 'sb_conv_authors_note', label: 'Author\'s Note Override', placeholder: '[Author\'s Note: Keep responses short, direct, and conversational as if chatting in a DM.]', rows: 2 }),
+        ],
+    });
+
+    const images = createSettingsGroup({
+        title: 'Image generation',
+        field: 'images',
+        rows: [
+            createSettingsSwitch({ id: 'sb_conv_image_gen_enabled', label: 'Enable chatroom image generation', subtitle: 'Enable in-chat image generation' }),
+            createSettingsEntry({ id: 'sb_conv_image_gen_prompt_template', label: 'Image Prompt Template', placeholder: 'a photo of {{char}}, {{scene}}' }),
+            createSettingsEntry({ id: 'sb_conv_image_gen_negative', label: 'Negative Prompt', placeholder: 'blurry, distorted' }),
+            createSettingsSpin({ id: 'sb_conv_image_gen_cooldown', label: 'Image Cooldown (minutes)', min: 0, max: 1440, step: 1, value: 10 }),
+            createSettingsSwitch({ id: 'sb_conv_spontaneous_selfies', label: 'Enable Spontaneous Selfies', subtitle: 'Character spontaneously generates selfies during the conversation' }),
+            createSettingsEntry({ id: 'sb_conv_selfie_prompt', label: 'Selfie Prompt Template', placeholder: 'raw photo, selfie of {{char}}' }),
+        ],
+    });
+
+    const tweaks = createSettingsGroup({
+        title: 'DM tweaks',
+        field: 'tweaks',
+        rows: [
+            createSettingsSwitch({ id: 'sb_conv_editable_messages', label: 'Enable Quick-Edit DM Actions', subtitle: 'Add quick inline edit buttons next to messages in the Conversation thread' }),
+            createSettingsSwitch({ id: 'sb_conv_prose_polisher', label: 'Character Prose Polisher', subtitle: 'Enable a magic wand icon on character replies to polish and refine their outputs.' }),
+        ],
+    });
+
+    const body = document.createElement('div');
+    body.className = 'sb-conversation-settings-body';
+    body.append(presence, schedule, proactive, memory, manual, prompts, context, images, tweaks);
+
+    const fragment = document.createDocumentFragment();
+    fragment.append(createSettingsDrawerHeader(isGroupConversation ? 'Group controls' : 'DM controls'), body);
+    return fragment;
+}
+
+export function replaceSettingsDrawerContent(drawer) {
+    releaseRowIds(drawer);
+    drawer.replaceChildren(buildSettingsDrawerContent());
+}
+
+export function syncSettingsDrawerRows() {
+    for (const row of settingsSelectRows) {
+        row.sync();
+    }
 }
 
 function bindConversationChromeControlsAsync(sheld) {
@@ -2068,7 +2168,7 @@ export function ensureConversationChrome() {
         drawer.id = CHROME_IDS.settingsDrawer;
         drawer.hidden = true;
         drawer.setAttribute('aria-label', 'Conversation settings');
-        drawer.innerHTML = buildSettingsDrawerHtml();
+        replaceSettingsDrawerContent(drawer);
         sheld.appendChild(drawer);
     }
 

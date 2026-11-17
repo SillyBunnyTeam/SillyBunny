@@ -13,10 +13,11 @@ test('the Use Character Lorebooks switch of the Conversation settings explains i
     await openQuietChatForSmoke(page, { selectCharacter: false });
 
     const hint = await page.evaluate(async () => {
-        const { buildSettingsDrawerHtml } = await import('/scripts/sillybunny-conversation/timeline-render.js');
-        const drawer = new DOMParser().parseFromString(buildSettingsDrawerHtml(), 'text/html');
-        const stack = drawer.querySelector('#sb_conv_lorebooks_enabled').closest('.sb-conversation-field-stack');
-        const note = stack.querySelector('.sb-conversation-field-hint');
+        const { buildSettingsDrawerContent } = await import('/scripts/sillybunny-conversation/timeline-render.js');
+        const drawer = document.createElement('div');
+        drawer.append(buildSettingsDrawerContent());
+        const row = drawer.querySelector('#sb_conv_lorebooks_enabled').closest('.ds-row');
+        const note = row.querySelector('.ds-row-subtitle');
         return { text: note.textContent, marked: note.hasAttribute('data-sb-copy-placeholder') };
     });
 

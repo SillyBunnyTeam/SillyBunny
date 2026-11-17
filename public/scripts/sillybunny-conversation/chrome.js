@@ -89,7 +89,6 @@ import {
     toggleConversationSearchBar,
     speakConversationMessage,
     toggleConversationMessagePin,
-    updateConversationNotificationSettingsVisibility,
     updateConversationSearchQuery,
 } from './timeline-render.js';
 import { setLastConversationPreview } from './typing.js';
@@ -97,7 +96,9 @@ import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117v';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117y';
+const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261117l';
+const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
 /**
  * Sizes the composer entry to its content. Border-box height must include the border that
@@ -167,7 +168,11 @@ function ensureConversationStylesheet() {
 
     conversationStylesheetStatus = 'loading';
     insertConversationStylesheetLink();
-    loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID })
+    // The settings pane is built from shared rows whose button, text-area and insensitive styles live in the editor shell.
+    Promise.all([
+        loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID }),
+        loadStylesheetAsync(EDITOR_SHELL_STYLESHEET_HREF, { id: EDITOR_SHELL_STYLESHEET_ID }),
+    ])
         .then(() => {
             conversationStylesheetStatus = 'ready';
             const input = document.getElementById(CHROME_IDS.input);
@@ -1125,12 +1130,6 @@ export function bindConversationChromeControls(sheld) {
     if (drawer instanceof HTMLElement && drawer.dataset.sbConversationBound !== 'true') {
         drawer.dataset.sbConversationBound = 'true';
         drawer.addEventListener('change', saveCurrentPanelSettings);
-    }
-
-    const notificationMuted = document.getElementById('sb_conv_notifications_muted');
-    if (notificationMuted instanceof HTMLInputElement && notificationMuted.dataset.sbConversationBound !== 'true') {
-        notificationMuted.dataset.sbConversationBound = 'true';
-        notificationMuted.addEventListener('change', updateConversationNotificationSettingsVisibility);
     }
 
     const searchInput = document.getElementById(CHROME_IDS.search);

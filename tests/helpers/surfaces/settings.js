@@ -382,7 +382,7 @@ export const surfaces = [
         title: 'Conversation settings panel',
         root: '#sb_conversation_settings_drawer',
         // The edge of a switch changes by a few pixels between two screenshots of the same page, so that the capture never settles.
-        masks: ['#sb_conversation_settings_drawer input.sb-conversation-switch'],
+        masks: ['#sb_conversation_settings_drawer input.sb-switch'],
         open: openConversationSettings,
         async close(page) {
             await page.locator('[data-sb-conversation-action="close-settings"]').first().click();

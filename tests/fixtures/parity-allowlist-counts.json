@@ -1,12 +1,12 @@
 {
     "version": 1,
     "temporary": {
-        "settings": 20,
+        "settings": 0,
         "list": 134,
         "editor": 43,
         "dialog": 3,
         "menu": 348,
-        "header": 93,
+        "header": 86,
         "panel": 0,
         "status": 62,
         "home": 1
