@@ -62,6 +62,7 @@ export function createAgentEditorDialogs({
                     field: key,
                     label,
                     value: draft[key],
+                    floating: true,
                     onInput: value => {
                         draft[key] = value;
                     },

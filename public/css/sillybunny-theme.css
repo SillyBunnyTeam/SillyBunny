@@ -6781,6 +6781,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden]),
         .sb-wi-property-popover,
         .sb-persona-property-popover,
+        .stih--history,
         .sb-search-results,
         #sb-mode-menu,
         #sb-persona-picker,

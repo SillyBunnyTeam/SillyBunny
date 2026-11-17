@@ -81,6 +81,7 @@ test('q56 dropdown sweep toggles each trigger closed on its second pointer click
             }
             await editor.detail.getByRole('button', { name: 'Add Regex Script', exact: true }).click();
             const dialog = page.locator('dialog[open]');
+            await expect(dialog.locator('.ds-row-entry--floating')).toHaveCount(2);
             await dialog.getByRole('textbox', { name: 'Script Name', exact: true }).fill('QA toggle');
             await dialog.getByRole('textbox', { name: 'Find', exact: true }).fill('/QA/g');
             await acceptPopup(dialog);

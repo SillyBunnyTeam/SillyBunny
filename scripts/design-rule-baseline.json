@@ -172,7 +172,6 @@
         "public/scripts/extensions/sillybunny-chats-archive/style.css": {
             "radius-literal": 2,
             "shadow-literal": 1,
-            "italic": 1,
             "important": 19,
             "spacing-off-scale": 34
         },

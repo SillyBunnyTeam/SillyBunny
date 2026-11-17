@@ -655,7 +655,7 @@
 }
 
 .sbca-msg[data-sbca-role='system'] {
-    font-style: italic;
+    color: var(--sb-muted-fg);
 }
 
 .sbca-msg-match {
