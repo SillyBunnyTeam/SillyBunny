@@ -122,7 +122,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     line-height: 1.2;
 }
 
-.sb-prompt-list-header .sb-list-header__button {
+:is(.sb-prompt-list-header, .sb-prompt-search-field) .sb-list-header__button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -142,11 +142,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-selection-actions {
     flex: none;
-}
-
-.sb-prompt-search-field {
-    flex: none;
-    margin: 0 8px 8px;
 }
 
 .sb-prompt-list-body {

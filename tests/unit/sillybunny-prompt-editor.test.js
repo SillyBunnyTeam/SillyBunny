@@ -11,6 +11,10 @@ await jest.unstable_mockModule('../../public/script.js', () => ({
 }));
 await jest.unstable_mockModule('../../public/scripts/openai.js', () => ({ promptManager: { serviceSettings: {} } }));
 await jest.unstable_mockModule('../../public/scripts/user.js', () => ({ getCurrentUserHandle: () => 'test-user' }));
+const accountItems = new Map();
+await jest.unstable_mockModule('../../public/scripts/util/AccountStorage.js', () => ({
+    accountStorage: { getItem: key => accountItems.get(key) ?? null, setItem: (key, value) => accountItems.set(key, String(value)) },
+}));
 const countTokens = jest.fn(async () => 12);
 await jest.unstable_mockModule('../../public/scripts/tokenizers.js', () => ({ getTokenCountAsync: countTokens, getTokenizerModel: () => 'test-tokenizer' }));
 const openActionMenu = jest.fn();
@@ -124,6 +128,7 @@ beforeEach(() => {
     popupOptions.length = 0;
     document.body.replaceChildren();
     localStorage.clear();
+    accountItems.clear();
     scope = baseScope;
     newDrafts = 0;
     counts = {};
@@ -462,6 +467,150 @@ describe('Prompt list', () => {
         column.querySelector('.sb-selection-action[data-action-id="off"]').click();
         await flush();
         expect(fakeModel.toggle).toHaveBeenCalledWith('first', scope);
+    });
+});
+
+describe('Prompt list sort', () => {
+    // The stored order is main, first, zeta, a marker and Alpha, which has no count until its content is counted.
+    function useSortFixture() {
+        promptRecords = [
+            record('main', 'Main Prompt', { system_prompt: true }),
+            record('first', 'First'),
+            record('zeta', 'Zeta'),
+            record('marker', 'Chat History', { marker: true, system_prompt: true, content: undefined }),
+            record('alpha', 'Alpha'),
+            record('spare', 'Beta spare'),
+        ];
+        // Beta spare is a prompt that is not in the order, so it sits in the Available group.
+        order = ['main', 'first', 'zeta', 'marker', 'alpha'].map(identifier => ({ identifier, enabled: true }));
+        counts = { main: 10, first: 30, zeta: 20, spare: 5 };
+    }
+    const ids = (column, group = 'sb-prompt-order') => [...column.querySelectorAll(`.${group} .sb-prompt-row`)].map(row => row.dataset.promptId);
+    const sortButton = column => column.querySelector('.sb-prompt-search-field .sb-prompt-sort-button');
+
+    function chooseSort(column, label) {
+        sortButton(column).click();
+        const menu = openActionMenu.mock.calls.at(-1)[0];
+        menu.sections[0].items.find(item => item.label === label).onSelect();
+    }
+
+    function rowMenuLabels(column, id) {
+        column.querySelector(`[data-prompt-id="${id}"] .sb-prompt-row-menu`).click();
+        return openActionMenu.mock.calls.at(-1)[0].sections.flatMap(section => section.items.map(item => item.label));
+    }
+
+    test('ends the search bar, with the list header keeping its three buttons', async () => {
+        const column = await mountEditor();
+        const field = column.querySelector('.sb-prompt-search-field');
+        expect(field.classList.contains('sb-list-search-bar')).toBe(true);
+        expect(field.firstElementChild.classList.contains('sb-search-entry')).toBe(true);
+        expect(field.lastElementChild).toBe(sortButton(column));
+        expect(column.querySelector('.sb-prompt-list-header .sb-prompt-sort-button')).toBeNull();
+        const sort = sortButton(column);
+        expect([sort.title, sort.getAttribute('aria-label'), sort.getAttribute('aria-haspopup'), sort.getAttribute('aria-pressed')]).toEqual(['Sort', 'Sort', 'menu', 'false']);
+        expect(column.querySelector('button[aria-label="Search prompts"]').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    test('opens a Sort By section of radio items with the prompt order checked first', async () => {
+        const column = await mountEditor();
+        sortButton(column).click();
+        const menu = openActionMenu.mock.calls.at(-1)[0];
+        expect(menu.trigger).toBe(sortButton(column));
+        expect(menu.sections).toHaveLength(1);
+        expect(menu.sections[0].title).toBe('Sort By');
+        expect(menu.sections[0].items.map(item => [item.label, item.kind, item.checked])).toEqual([
+            ['Prompt order', 'radio', true], ['Title A-Z', 'radio', false], ['Title Z-A', 'radio', false], ['Tokens ↗', 'radio', false], ['Tokens ↘', 'radio', false],
+        ]);
+    });
+
+    test('Title A-Z shows the prompts by name, keeps the stored order and the Agents row last, and presses both buttons', async () => {
+        useSortFixture();
+        const column = await mountEditor();
+        expect(ids(column)).toEqual(['main', 'first', 'zeta', 'marker', 'alpha', 'runtimeAgents']);
+        chooseSort(column, 'Title A-Z');
+        expect(ids(column)).toEqual(['alpha', 'marker', 'first', 'main', 'zeta', 'runtimeAgents']);
+        expect(ids(column, 'sb-prompt-available')).toEqual(['spare']);
+        expect(order.map(entry => entry.identifier)).toEqual(['main', 'first', 'zeta', 'marker', 'alpha']);
+        expect(fakeModel.reorder).not.toHaveBeenCalled();
+        expect(accountItems.get('PromptList_SortOrder')).toBe('name-asc');
+        expect(sortButton(column).getAttribute('aria-pressed')).toBe('true');
+        expect(column.querySelector('button[aria-label="Search prompts"]').getAttribute('aria-pressed')).toBe('true');
+        chooseSort(column, 'Title Z-A');
+        expect(ids(column)).toEqual(['zeta', 'main', 'first', 'marker', 'alpha', 'runtimeAgents']);
+    });
+
+    test('while a sort is on the grips are disabled and the row menus and Alt+Arrow offer no move', async () => {
+        useSortFixture();
+        const column = await mountEditor();
+        expect(rowMenuLabels(column, 'first')).toEqual(expect.arrayContaining(['Move Up', 'Move Down']));
+        const altDown = () => column.querySelector('[data-prompt-id="first"] .sb-prompt-grip').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true }));
+        altDown();
+        expect(fakeModel.reorder).toHaveBeenCalledTimes(1);
+        fakeModel.reorder.mockClear();
+        chooseSort(column, 'Title A-Z');
+        for (const grip of column.querySelectorAll('.sb-prompt-order .sb-prompt-grip')) expect(grip.getAttribute('aria-disabled')).toBe('true');
+        expect(rowMenuLabels(column, 'first').filter(label => label.startsWith('Move'))).toEqual([]);
+        altDown();
+        expect(fakeModel.reorder).not.toHaveBeenCalled();
+        chooseSort(column, 'Prompt order');
+        expect(ids(column)).toEqual(['main', 'first', 'zeta', 'marker', 'alpha', 'runtimeAgents']);
+        for (const grip of column.querySelectorAll('.sb-prompt-order .sb-prompt-grip[aria-label^="Drag"]')) expect(grip.getAttribute('aria-disabled')).toBe('false');
+        expect(rowMenuLabels(column, 'first')).toEqual(expect.arrayContaining(['Move Up', 'Move Down']));
+        expect(sortButton(column).getAttribute('aria-pressed')).toBe('false');
+        expect(column.querySelector('button[aria-label="Search prompts"]').getAttribute('aria-pressed')).toBe('false');
+        expect(accountItems.get('PromptList_SortOrder')).toBe('order');
+    });
+
+    test('Tokens ↘ puts the largest count first and the rows with no count last, then places a count that arrives later', async () => {
+        useSortFixture();
+        const column = await mountEditor();
+        chooseSort(column, 'Tokens ↘');
+        expect(ids(column)).toEqual(['first', 'zeta', 'main', 'marker', 'alpha', 'runtimeAgents']);
+        await jest.advanceTimersByTimeAsync(300);
+        expect(column.querySelector('[data-prompt-id="alpha"] .sb-prompt-token').textContent).toBe('12');
+        expect(ids(column)).toEqual(['first', 'zeta', 'alpha', 'main', 'marker', 'runtimeAgents']);
+        expect(ids(column, 'sb-prompt-available')).toEqual(['spare']);
+        chooseSort(column, 'Tokens ↗');
+        expect(ids(column)).toEqual(['main', 'alpha', 'zeta', 'first', 'marker', 'runtimeAgents']);
+    });
+
+    test('the Available group follows the sort', async () => {
+        useSortFixture();
+        promptRecords.push(record('gamma', 'Gamma'));
+        counts.gamma = 50;
+        const column = await mountEditor();
+        expect(ids(column, 'sb-prompt-available')).toEqual(['spare', 'gamma']);
+        chooseSort(column, 'Tokens ↘');
+        expect(ids(column, 'sb-prompt-available')).toEqual(['gamma', 'spare']);
+        chooseSort(column, 'Title A-Z');
+        expect(ids(column, 'sb-prompt-available')).toEqual(['spare', 'gamma']);
+    });
+
+    test('a search shows its matches in the chosen sort', async () => {
+        useSortFixture();
+        const column = await mountEditor();
+        chooseSort(column, 'Title Z-A');
+        search(column, 'a');
+        expect(ids(column)).toEqual(['zeta', 'main', 'marker', 'alpha', 'runtimeAgents']);
+    });
+
+    test('the choice is read from the account storage when the editor opens', async () => {
+        useSortFixture();
+        accountItems.set('PromptList_SortOrder', 'tokens-asc');
+        const column = await mountEditor();
+        expect(ids(column)).toEqual(['main', 'zeta', 'first', 'marker', 'alpha', 'runtimeAgents']);
+        expect(sortButton(column).getAttribute('aria-pressed')).toBe('true');
+        sortButton(column).click();
+        expect(openActionMenu.mock.calls.at(-1)[0].sections[0].items.filter(item => item.checked).map(item => item.label)).toEqual(['Tokens ↗']);
+    });
+
+    test('a stored value that is not a sort is the prompt order', async () => {
+        useSortFixture();
+        accountItems.set('PromptList_SortOrder', 'by-colour');
+        const column = await mountEditor();
+        expect(ids(column)).toEqual(['main', 'first', 'zeta', 'marker', 'alpha', 'runtimeAgents']);
+        expect(sortButton(column).getAttribute('aria-pressed')).toBe('false');
+        expect(column.querySelector('.sb-prompt-order .sb-prompt-grip').getAttribute('aria-disabled')).toBe('false');
     });
 });
 

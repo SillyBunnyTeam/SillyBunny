@@ -11,6 +11,10 @@ await jest.unstable_mockModule('../../public/script.js', () => ({
 }));
 await jest.unstable_mockModule('../../public/scripts/openai.js', () => ({ promptManager: { serviceSettings: {} } }));
 await jest.unstable_mockModule('../../public/scripts/user.js', () => ({ getCurrentUserHandle: () => 'test-user' }));
+const accountItems = new Map();
+await jest.unstable_mockModule('../../public/scripts/util/AccountStorage.js', () => ({
+    accountStorage: { getItem: key => accountItems.get(key) ?? null, setItem: (key, value) => accountItems.set(key, String(value)) },
+}));
 const countTokens = jest.fn(async () => 12);
 await jest.unstable_mockModule('../../public/scripts/tokenizers.js', () => ({ getTokenCountAsync: countTokens, getTokenizerModel: () => 'test-tokenizer' }));
 const openActionMenu = jest.fn();
@@ -78,6 +82,7 @@ beforeEach(() => {
     jest.clearAllMocks();
     document.body.replaceChildren();
     localStorage.clear();
+    accountItems.clear();
     const legacy = document.createElement('textarea');
     legacy.id = 'sysprompt_content';
     const position = document.createElement('select');
@@ -143,6 +148,14 @@ describe('Text Completion template list', () => {
         expect(more.getAttribute('aria-label')).toBe('Actions for User');
         more.click();
         expect(openActionMenu.mock.calls.at(-1)[0].sections[0].items.map(item => item.label)).toEqual(['Edit', 'Preview']);
+    });
+
+    test('has no sort control, and a sort saved for the prompts does not press Search or reorder the groups', async () => {
+        accountItems.set('PromptList_SortOrder', 'name-desc');
+        const column = await mountEditor();
+        expect(column.querySelector('.sb-prompt-search-field .sb-prompt-sort-button').hidden).toBe(true);
+        expect(column.querySelector('button[aria-label="Search prompts"]').getAttribute('aria-pressed')).toBe('false');
+        expect([...column.querySelectorAll('.sb-prompt-tc-instruct .sb-prompt-row')].map(row => row.dataset.promptId)).toEqual(['tc-user', 'tc-system']);
     });
 
     test('a template that is not in use says so in words in its subtitle', async () => {

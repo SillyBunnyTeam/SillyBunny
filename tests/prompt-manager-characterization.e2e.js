@@ -1041,6 +1041,59 @@ test.describe('Prompt Manager characterization', () => {
         await expect(ui.row('sbFixtureRelative').locator('.sb-prompt-grip')).toHaveAttribute('aria-disabled', 'false');
     });
 
+    test('a sort other than the prompt order changes only what the list shows, locks reordering and is saved with the account', async ({ page }) => {
+        const { store, ui, baseline } = await setup(page);
+        const storedOrder = await ui.visibleOrder();
+        const names = () => page.locator(`${ROW_SELECTOR}:not([data-prompt-id="sillybunnyRuntimeAgents"]) .sb-prompt-row-name`).allTextContents();
+        const chooseSort = async label => {
+            await page.locator('.sb-prompt-search-field .sb-prompt-sort-button').click();
+            await page.getByRole('menuitemradio', { name: label, exact: true }).click();
+        };
+        const sortable = () => page.evaluate(() => window.$('.sb-prompt-order .sb-prompt-box').sortable('option', 'disabled'));
+        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveAttribute('aria-pressed', 'false');
+        expect(await sortable()).toBe(false);
+
+        await chooseSort('Title A-Z');
+        const byName = (left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+        const shown = await names();
+        expect(shown).toEqual([...shown].sort(byName));
+        expect(await ui.visibleOrder()).not.toEqual(storedOrder);
+        expect([...await ui.visibleOrder()].sort()).toEqual([...storedOrder].sort());
+        expect(await page.locator(ROW_SELECTOR).last().evaluate(row => row.dataset.promptId)).toBe('sillybunnyRuntimeAgents');
+        await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.getByRole('button', { name: 'Search prompts', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(ui.row('sbFixtureRelative').locator('.sb-prompt-grip')).toHaveAttribute('aria-disabled', 'true');
+        expect(await sortable()).toBe(true);
+        await ui.row('sbFixtureRelative').locator('.sb-prompt-row-menu').click();
+        await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: /^Move /u })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        const before = await ui.visibleOrder();
+        await ui.row('sbFixtureRelative').focus();
+        await page.keyboard.press('Alt+ArrowDown');
+        expect(await ui.visibleOrder()).toEqual(before);
+
+        await expect.poll(() => store.settingsSaves.at(-1)?.accountStorage?.PromptList_SortOrder).toBe('name-asc');
+        expect((await readLiveOai(page)).prompt_order).toEqual(baseline.prompt_order);
+        expect(store.settingsSaves.every(save => JSON.stringify(orderFor(save.oai_settings, GLOBAL_ORDER_ID)) === JSON.stringify(orderFor(baseline, GLOBAL_ORDER_ID)))).toBe(true);
+
+        await chooseSort('Tokens ↘');
+        await expect.poll(async () => {
+            const counts = await page.locator(`${ROW_SELECTOR} .sb-prompt-token`).allTextContents();
+            const numeric = counts.map(Number).filter(Number.isFinite);
+            return numeric.length > 0 && numeric.every((count, index) => index === 0 || numeric[index - 1] >= count);
+        }).toBe(true);
+
+        await chooseSort('Prompt order');
+        expect(await ui.visibleOrder()).toEqual(storedOrder);
+        await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveAttribute('aria-pressed', 'false');
+        await expect(ui.row('sbFixtureRelative').locator('.sb-prompt-grip')).toHaveAttribute('aria-disabled', 'false');
+        expect(await sortable()).toBe(false);
+        await ui.row('sbFixtureRelative').locator('.sb-prompt-row-menu').click();
+        await expect(page.getByRole('menuitem', { name: 'Move Down', exact: true })).toBeVisible();
+    });
+
     test('runtime Agents align with prompt columns without interactive placeholders', async ({ page }) => {
         const { ui } = await setup(page);
         for (const prepare of [async () => {}, () => ui.openEditor('main')]) {

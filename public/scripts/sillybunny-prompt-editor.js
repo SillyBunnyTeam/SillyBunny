@@ -24,12 +24,22 @@ import { createListHeader } from './sillybunny-editor/list-header.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { createCheckRow, releaseRowIds } from './sillybunny-editor/rows.js';
+import { accountStorage } from './util/AccountStorage.js';
 
 const mountedEditors = new WeakSet();
 let countingEditorContent = false;
 let tokenizerPrefilterInstalled = false;
 const TRIGGERS = ['normal', 'continue', 'impersonate', 'swipe', 'regenerate', 'quiet'];
 const SELECTABLE_ROW = '.sb-prompt-row:not([data-prompt-bulk="false"])';
+const SORT_STORAGE_KEY = 'PromptList_SortOrder';
+const DEFAULT_SORT = 'order';
+const SORT_ORDERS = [DEFAULT_SORT, 'name-asc', 'name-desc', 'tokens-asc', 'tokens-desc'];
+
+/** The saved sort of the prompt list; a value that is not one of the sorts is the prompt order. */
+function readSortOrder() {
+    const saved = accountStorage.getItem(SORT_STORAGE_KEY);
+    return SORT_ORDERS.includes(saved) ? saved : DEFAULT_SORT;
+}
 
 function element(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -149,10 +159,23 @@ export function initializePromptEditor(column) {
     const listActionsButton = listHeader.button('more');
     const searchEntry = createSearchEntry({
         clearLabel: t`Clear Entry`,
-        variant: 'bar', className: 'sb-prompt-search-field', inputClassName: 'sb-prompt-search',
+        variant: 'bar', className: 'sb-prompt-search-entry', inputClassName: 'sb-prompt-search',
         placeholder: t`Search...`, label: t`Search prompts`, clearOnEscape: false,
     });
-    const searchField = searchEntry.element;
+    // The sort button ends the search bar, as in the other list editors, so the header keeps its three buttons.
+    const sortLabel = t`Sort`;
+    const sortButton = element('button', 'sb-list-header__button sb-header-icon-button sb-prompt-sort-button');
+    sortButton.type = 'button';
+    sortButton.dataset.actionId = 'sort';
+    sortButton.title = sortLabel;
+    sortButton.setAttribute('aria-label', sortLabel);
+    sortButton.setAttribute('aria-haspopup', 'menu');
+    sortButton.setAttribute('aria-expanded', 'false');
+    sortButton.setAttribute('aria-pressed', 'false');
+    sortButton.append(icon('arrow-down-wide-short'));
+    sortButton.addEventListener('click', () => openSortMenu(sortButton));
+    const searchField = element('div', 'sb-prompt-search-field sb-list-search-bar');
+    searchField.append(searchEntry.element, sortButton);
     const search = searchEntry.input;
     searchField.hidden = true;
     const listBody = element('div', 'sb-prompt-list-body');
@@ -177,6 +200,7 @@ export function initializePromptEditor(column) {
     let tokenTimer = null;
     let listTokenTimer = null;
     let tokenRequest = 0;
+    let placingCounts = false;
     let toastTimer = null;
     let replayingChange = false;
     let stylesReady = false;
@@ -297,6 +321,27 @@ export function initializePromptEditor(column) {
         return state.counts[prompt.identifier] ?? contentCounts.get(prompt.content) ?? '-';
     }
 
+    // Returns the entries in the displayed order of a sort. A row with no count yet, a marker included, stays after the
+    // counted ones in either direction, and equal rows keep the stored order.
+    function sortEntries(entries, sortOrder) {
+        if (sortOrder === DEFAULT_SORT) return entries;
+        const [field, direction] = sortOrder.split('-');
+        const sign = direction === 'desc' ? -1 : 1;
+        if (field === 'name') {
+            const nameOf = ({ prompt }) => translate(prompt.name);
+            return [...entries].sort((left, right) => sign * nameOf(left).localeCompare(nameOf(right), undefined, { numeric: true, sensitivity: 'base' }));
+        }
+        const countOf = ({ prompt }) => {
+            const count = knownCount(prompt);
+            return typeof count === 'number' && Number.isFinite(count) ? count : null;
+        };
+        return [...entries].sort((left, right) => {
+            const [a, b] = [countOf(left), countOf(right)];
+            if (a === null || b === null) return (a === null) - (b === null);
+            return sign * (a - b);
+        });
+    }
+
     function textCompletionContent(entry) {
         return Object.entries(entry.values)
             .filter(([id, value]) => id !== 'instruct_system_same_as_user' && typeof value === 'string' && value)
@@ -359,8 +404,12 @@ export function initializePromptEditor(column) {
         rowFor(id)?.focus({ preventScroll: true });
     }
 
+    // The list order is the order the prompts are sent in, so only the prompt order can be changed from the list: a search
+    // hides rows, and any other sort shows them in an order that is not the stored one.
+    const reorderLocked = () => Boolean(filter) || readSortOrder() !== DEFAULT_SORT;
+
     function move(id, position) {
-        if (filter) return false;
+        if (reorderLocked()) return false;
         const ids = orderedIds();
         const previous = ids.indexOf(id);
         if (previous < 0) return false;
@@ -377,7 +426,7 @@ export function initializePromptEditor(column) {
         return reorderMenuItems({
             index: ids.indexOf(id),
             count: ids.length,
-            filtered: Boolean(filter),
+            filtered: reorderLocked(),
             extremes: true,
             name: promptFor(id)?.name ?? '',
             move: to => move(id, to),
@@ -535,7 +584,7 @@ export function initializePromptEditor(column) {
             grip.removeAttribute('aria-hidden');
             grip.setAttribute('role', 'button');
             grip.setAttribute('aria-label', t`Drag to reorder ${nameText}`);
-            grip.setAttribute('aria-disabled', String(Boolean(filter)));
+            grip.setAttribute('aria-disabled', String(reorderLocked()));
             grip.title = grip.getAttribute('aria-label');
         } else if (grip) {
             grip.classList.add('sb-prompt-handle-slot');
@@ -591,7 +640,8 @@ export function initializePromptEditor(column) {
                 if (row.classList.contains('is-selected') !== selected) row.classList.toggle('is-selected', selected);
                 if (row.classList.contains('is-disabled') !== disabled) row.classList.toggle('is-disabled', disabled);
                 const grip = row.querySelector('.sb-prompt-grip');
-                if (grip && grip.getAttribute('aria-disabled') !== String(Boolean(filter))) grip.setAttribute('aria-disabled', String(Boolean(filter)));
+                const locked = String(reorderLocked());
+                if (grip && grip.getAttribute('aria-disabled') !== locked) grip.setAttribute('aria-disabled', locked);
                 const control = row.querySelector('input.sb-switch');
                 if (control && control.checked !== Boolean(orderEntry.enabled)) control.checked = Boolean(orderEntry.enabled);
                 const token = row.querySelector('.sb-prompt-token');
@@ -634,8 +684,15 @@ export function initializePromptEditor(column) {
             return;
         }
         const textCompletion = textCompletionView();
-        for (const control of [addPromptButton, listActionsButton]) {
+        // The templates are a fixed set of nine in three groups by role, two to four in each; the user neither adds nor moves
+        // them, so they have no sort.
+        for (const control of [addPromptButton, listActionsButton, sortButton]) {
             if (control.hidden !== textCompletion) control.hidden = textCompletion;
+        }
+        const sortOrder = readSortOrder();
+        const sorted = !textCompletion && sortOrder !== DEFAULT_SORT;
+        for (const control of [sortButton, searchButton]) {
+            if (control.getAttribute('aria-pressed') !== String(sorted)) control.setAttribute('aria-pressed', String(sorted));
         }
         listHeader.setTitle(textCompletion ? t`Prompt templates` : t`Prompts`);
         syncSectionVisibility(textCompletion);
@@ -660,17 +717,19 @@ export function initializePromptEditor(column) {
             return true;
         }
         const utilities = UTILITY_FIELDS.map(([identifier, name]) => ({ identifier, name: translate(name), content: model.readUtility(identifier) }));
-        const nextKey = JSON.stringify([state.scope, state.prompts, state.order, state.counts, state.sources, state.error, state.runtime, state.character?.name, utilities, filter, selectedId(), tokenizerKey]);
+        // A token sort reads counts that arrive after the state does, so the counts it read are part of the key.
+        const tokenCounts = sortOrder.startsWith('tokens') ? state.prompts.map(knownCount) : null;
+        const nextKey = JSON.stringify([state.scope, state.prompts, state.order, state.counts, state.sources, state.error, state.runtime, state.character?.name, utilities, filter, selectedId(), tokenizerKey, sortOrder, tokenCounts]);
         if (nextKey === renderedListKey) return false;
         renderedListKey = nextKey;
         const focused = listBody.contains(document.activeElement) ? document.activeElement : null;
         const focusedId = focused?.closest('[data-prompt-id]')?.dataset.promptId;
         const matches = prompt => prompt.name.toLowerCase().includes(filter.toLowerCase());
-        const rows = state.order.flatMap(entry => {
+        const rows = sortEntries(state.order.flatMap(entry => {
             const prompt = promptFor(entry.identifier);
             return prompt && matches(prompt) ? [{ prompt, orderEntry: entry }] : [];
-        });
-        // The assembled Agents row is inspection-only and never enters persisted order data.
+        }), sortOrder);
+        // The assembled Agents row is inspection-only and never enters persisted order data; it stays last in every sort.
         if (matches(state.runtime)) rows.push({ prompt: state.runtime });
         const order = group(t`Prompt order`, 'sb-prompt-order');
         renderRows(order, rows);
@@ -680,7 +739,7 @@ export function initializePromptEditor(column) {
         else if (!error) listBody.prepend(element('div', 'sb-prompt-error', state.error));
         else if (error.textContent !== state.error) error.textContent = state.error;
         const available = state.prompts.filter(prompt => !state.order.some(entry => entry.identifier === prompt.identifier));
-        const availableRows = available.filter(matches).map(prompt => ({ prompt, available: true }));
+        const availableRows = sortEntries(available.filter(matches).map(prompt => ({ prompt, available: true })), sortOrder);
         const utilityRows = utilities.filter(matches).map(prompt => ({ prompt, utility: true }));
         renderRows(group(t`Available`, 'sb-prompt-available'), availableRows);
         renderRows(group(t`Utility prompts`), utilityRows);
@@ -690,7 +749,7 @@ export function initializePromptEditor(column) {
         bindSortable(box, {
             handle: '.sb-prompt-grip',
             items: '> .sb-prompt-row:has(.sb-prompt-grip)',
-            disabled: Boolean(filter),
+            disabled: reorderLocked(),
             touch: () => mobile.matches,
             start: () => dragScope = state.scope,
             update: (_event, ui) => {
@@ -702,7 +761,7 @@ export function initializePromptEditor(column) {
             stop: () => requestAnimationFrame(() => shell.flushRefresh()),
         });
         if (focusedId && !focused.isConnected) rowFor(focusedId)?.focus({ preventScroll: true });
-        scheduleListTokens();
+        if (!placingCounts) scheduleListTokens();
         return true;
     }
 
@@ -762,6 +821,7 @@ export function initializePromptEditor(column) {
                 return;
             }
             const prompts = [...listBody.querySelectorAll('[data-prompt-id]')].map(row => promptFor(row.dataset.promptId)).filter(prompt => prompt && !prompt.marker && prompt.content && knownCount(prompt) === '-');
+            let counted = false;
             for (const prompt of prompts) {
                 if (knownCount(prompt) !== '-') continue;
                 const content = prompt.content;
@@ -771,9 +831,16 @@ export function initializePromptEditor(column) {
                     if (promptFor(prompt.identifier)?.content !== content) continue;
                     const token = rowFor(prompt.identifier)?.querySelector('.sb-prompt-token');
                     if (token && !shell.isNavigating) token.textContent = String(count);
+                    counted = true;
                 } catch { return; }
             }
-            if (!shell.isNavigating) updateListSubtitle();
+            if (shell.isNavigating) return;
+            updateListSubtitle();
+            if (counted && readSortOrder().startsWith('tokens')) {
+                // The new counts can change a token sort. The render that places them does not ask for counts again.
+                placingCounts = true;
+                try { renderList(); } finally { placingCounts = false; }
+            }
         }, 300);
     }
 
@@ -799,6 +866,30 @@ export function initializePromptEditor(column) {
             [menuItem(t`Import prompt list`, 'file-import', async () => { if (await allowLeave()) model.importList(); }), menuItem(t`Export prompt list`, 'file-export', () => model.exportList()), state.strategy === 'character' && state.character && menuItem(t`Export character prompts`, 'file-export', () => model.exportCharacter())],
             [menuItem(t`Select`, 'list-check', () => selection.enter(null, trigger)), menuItem(t`Reset order`, 'rotate-left', async () => { if (await allowLeave()) model.resetOrder(); })],
         ]);
+    }
+
+    // A sort changes what the list shows, never the order the prompts are stored and sent in.
+    function openSortMenu(trigger) {
+        const current = readSortOrder();
+        const labels = [[DEFAULT_SORT, t`Prompt order`], ['name-asc', t`Title A-Z`], ['name-desc', t`Title Z-A`], ['tokens-asc', t`Tokens ↗`], ['tokens-desc', t`Tokens ↘`]];
+        openActionMenu({
+            trigger,
+            title: sortButton.getAttribute('aria-label'),
+            sections: [{
+                title: t`Sort By`,
+                items: labels.map(([value, label]) => ({
+                    label,
+                    icon: 'fa-solid fa-arrow-down-wide-short',
+                    kind: 'radio',
+                    checked: value === current,
+                    onSelect: () => {
+                        accountStorage.setItem(SORT_STORAGE_KEY, value);
+                        renderList();
+                    },
+                })),
+            }],
+        });
+        markPromptMenus();
     }
 
     const searchControl = createListSearch({
@@ -1563,7 +1654,7 @@ export function initializePromptEditor(column) {
     Promise.all([
         loadListEditorStyles(),
         window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261117s', { id: 'deferred-entity-list-css' }),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117r', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117w', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));
