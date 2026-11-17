@@ -511,7 +511,6 @@ dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
     font: inherit;
 }
 
-.ica--companion-empty,
 .ica--companion-pending,
 .ica--companion-error {
     display: flex;
@@ -529,14 +528,6 @@ dialog.popup.sb-dialog--window .pf--settings:not(.pf--settings-embedded) {
     display: flex;
     flex-direction: column;
     gap: 10px;
-}
-
-/* Shared with the companion panel's empty and hidden-state rows. */
-.ica--cdash-empty {
-    padding: 12px 0;
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-body);
-    line-height: var(--sb-line-body);
 }
 
 /* ── Companion Panel ────────────────────────────────── */

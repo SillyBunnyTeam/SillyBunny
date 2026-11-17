@@ -239,7 +239,7 @@ export function formatCompanionContent(agentId, result = {}, message = null, sty
     }
 
     if (!rawContent) {
-        return '<div class="ica--companion-empty">No note returned.</div>';
+        return '<div class="ica--companion-empty sb-inline-hint">No note returned.</div>';
     }
 
     const content = applyAgentRegexToCompanionContent(agentId, rawContent, message);
@@ -314,7 +314,7 @@ function buildCompanionBody(agentId, result, message) {
     }
 
     if (status === 'cancelled') {
-        return '<div class="ica--companion-empty">Companion run was cancelled.</div>';
+        return '<div class="ica--companion-empty sb-inline-hint">Companion run was cancelled.</div>';
     }
 
     return formatCompanionContent(agentId, result, message);

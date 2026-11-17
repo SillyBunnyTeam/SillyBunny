@@ -58,7 +58,10 @@ import {
     clearConversationMemoryFromPanel,
     closeConversationSettings,
     closePalsRail,
+    dismissConversationSettings,
+    dismissConversationSettingsOnEscape,
     forceCreateMemoryFromPanel,
+    isConversationPagesLayout,
     observeConversationLayout,
     openConversationSettings,
     openScheduleEditorModal,
@@ -94,10 +97,9 @@ import {
 import { setLastConversationPreview } from './typing.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
-import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117y';
-const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261117l';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117zb';
+const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261117zb';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
 /**
@@ -490,8 +492,8 @@ function openConversationOverflowMenu(trigger) {
                     { label: 'New chat', icon: 'fa-solid fa-message', disabled: !avatar, onSelect: runFromMenu('new-chat') },
                     { label: 'Edit schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
                     { label: 'Mark all as read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
-                    // The header gear covers settings on desktop; mobile hides the gear, so the menu keeps it there.
-                    ...(typeof window !== 'undefined' && window.matchMedia?.(LAYOUT_MOBILE_QUERY)?.matches
+                    // The header gear covers settings in the split and overlay layouts; the pages layout hides the gear, so the menu keeps it there.
+                    ...(isConversationPagesLayout()
                         ? [{ label: 'Conversation settings', icon: 'fa-solid fa-gear', onSelect: runFromMenu('open-settings') }]
                         : []),
                 ],
@@ -1030,8 +1032,7 @@ export function bindConversationChromeControls(sheld) {
         const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
         if (drawer instanceof HTMLElement && !drawer.hidden && event.target instanceof Node && drawer.contains(event.target)) {
             event.preventDefault();
-            closeConversationSettings();
-            document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-action="open-settings"]`)?.focus?.({ preventScroll: true });
+            dismissConversationSettings();
             return;
         }
 
@@ -1047,6 +1048,12 @@ export function bindConversationChromeControls(sheld) {
             event.preventDefault();
             toggleConversationSearchBar(false);
             document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-action="toggle-search"]`)?.focus?.({ preventScroll: true });
+        }
+    });
+    // After the handlers above, so an open search or the rail still takes its Escape first.
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !event.isComposing && !event.defaultPrevented && dismissConversationSettingsOnEscape(event.target)) {
+            event.preventDefault();
         }
     });
     sheld.addEventListener('keydown', (event) => {
@@ -1173,7 +1180,7 @@ export function bindConversationChromeControls(sheld) {
     if (backdrop instanceof HTMLElement && backdrop.dataset.sbConversationBound !== 'true') {
         backdrop.dataset.sbConversationBound = 'true';
         backdrop.addEventListener('click', () => {
-            closeConversationSettings();
+            dismissConversationSettings();
             closePalsRail();
         });
     }

@@ -1,7 +1,7 @@
 /*
  * Conversation mode: a libadwaita split view modelled on Fractal.
  * #sheld carries two attributes set by chrome.js / settings-panel.js:
- *   data-sb-conversation-layout = split | overlay | pages (from the #sheld width and the 768px viewport breakpoint)
+ *   data-sb-conversation-layout = split | overlay | pages (from the #sheld width: pages below 670px or in the 768px mobile layout)
  *   data-sb-conversation-page   = pals | chat | settings (navigation state; drives the mobile pages)
  * Every surface is an opaque --sb-layer-* token. No backdrop-filter.
  */
@@ -19,6 +19,8 @@
 #sheld[data-sb-conversation-mode='on'] {
     --sb-conv-sidebar-width: clamp(220px, 25%, 280px);
     --sb-conv-pane-width: 360px;
+    /* The pane's shadow is that of an overlay sidebar's (slide-shade.js), over the shade. */
+    --sb-conv-pane-shadow: 0 0 56px var(--sb-dialog-backdrop);
     --sb-conv-column-width: 100%;
     --sb-conv-headerbar-height: 52px;
     --sb-conv-button-size: max(40px, var(--sb-density-floor));
@@ -59,11 +61,6 @@
 #sheld[data-sb-conversation-mode='on'] > #chat,
 #sheld[data-sb-conversation-mode='on'] > #form_sheld {
     display: none !important;
-}
-
-/* The legacy settings scrim stays in the DOM for compatibility; the settings pane is non-modal. */
-#sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_backdrop {
-    display: none;
 }
 
 /* ---------- Flat header-bar buttons (libadwaita .flat.circular) ---------- */
@@ -661,6 +658,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     --sb-conv-bubble-radius: 18px;
     --sb-conv-bubble-attached: 6px;
     --sb-conv-avatar-size: 36px;
+    container: sb-conv-timeline / inline-size;
     min-block-size: 0;
     display: flex;
     flex: 1 1 auto;
@@ -795,7 +793,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     position: absolute;
     inset-block: 0;
     inset-inline-end: 0;
-    z-index: var(--sb-z-raised);
+    z-index: calc(var(--sb-z-raised) + 4);
     box-sizing: border-box;
     inline-size: min(var(--sb-conv-pane-width), 100%);
     min-block-size: 0;
@@ -803,11 +801,25 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     flex-direction: column;
     border-inline-start: 1px solid var(--sb-shell-border);
     background: var(--sb-layer-drawer);
-    box-shadow: var(--sb-shadow-dialog);
+    box-shadow: var(--sb-conv-pane-shadow);
 }
 
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_drawer[hidden] {
     display: none;
+}
+
+/* An overlay pane dims everything in the workspace outside it (rail, header, timeline and composer) with the page transition
+   shade (half the dialog backdrop), as the shield of an overlay split view does. A press on the shade only hides the pane. A
+   docked (split) pane is a column of the layout and has no shade. */
+#sheld[data-sb-conversation-layout='overlay'] #sb_conversation_settings_backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: calc(var(--sb-z-raised) + 3);
+    background: color-mix(in srgb, var(--sb-dialog-backdrop) 50%, transparent);
+}
+
+#sheld[data-sb-conversation-layout='overlay'] #sb_conversation_settings_backdrop:not([hidden]) {
+    display: block;
 }
 
 /* Wide #sheld: keep a third grid track so the pane can tuck instead of snapping the layout. */
@@ -1181,6 +1193,19 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     margin-block-start: 8px;
 }
 
+/* A fine pointer's toolbar rises above the name row, so a group starts 12px below the text above it, and the name row gives
+   way while the toolbar shows (message-menu.js syncMetaClearance). */
+@media not all and (pointer: coarse) {
+    .sb-conversation-message[data-group-position='start'],
+    .sb-conversation-message[data-group-position='single'] {
+        margin-block-start: 12px;
+    }
+
+    .sb-conversation-day-divider {
+        margin-block-end: 12px;
+    }
+}
+
 .sb-conversation-message[data-group-position='start']:first-child,
 .sb-conversation-message[data-group-position='single']:first-child,
 .sb-conversation-day-divider + .sb-conversation-message {
@@ -1414,10 +1439,24 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     z-index: var(--sb-z-raised, 10);
 }
 
-/* With the chat beside the rail, every action fits one row even past a short bubble; a narrower window keeps the cap and wraps. */
-@media (min-width: 769px) {
+/* Where the timeline is wide enough for the whole set (447px, from the 44px avatar slot to the bubble's end), every action fits
+   one row even past a short bubble. Narrower, the toolbar keeps the actions that fit one row (a second row would cover the
+   message above); the menu holds the rest, and below 340px the reactions go there too. */
+@container sb-conv-timeline (min-width: 512px) {
     .sb-conversation-message-actions {
         max-inline-size: max(100%, 30rem);
+    }
+}
+
+@container sb-conv-timeline (max-width: 511px) {
+    .sb-conversation-message-actions > [data-sb-secondary] {
+        display: none;
+    }
+}
+
+@container sb-conv-timeline (max-width: 339px) {
+    .sb-conversation-message-actions > :is(.sb-conversation-reaction-button, .sb-conversation-message-divider:not([data-sb-secondary])) {
+        display: none;
     }
 }
 
@@ -1437,6 +1476,17 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 .sb-conversation-message:focus-within .sb-conversation-message-actions {
     opacity: 1;
     pointer-events: auto;
+}
+
+/* message-menu.js marks a message whose toolbar would reach its name or time; the row gives way while the toolbar shows. */
+.sb-conversation-message[data-sb-meta-covered]:is(:focus-within, .has-open-menu, [data-sb-actions-expanded]) .sb-conversation-message-meta {
+    visibility: hidden;
+}
+
+@media (hover: hover) {
+    .sb-conversation-message[data-sb-meta-covered]:hover .sb-conversation-message-meta {
+        visibility: hidden;
+    }
 }
 
 /* Flat buttons on the OSD fill: neutral white fills, no hover lift. */
@@ -2591,194 +2641,192 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     }
 }
 
-/* ---------- Mobile (<= 768px): navigation pages ---------- */
-@media (max-width: 768px) {
-    #sheld[data-sb-conversation-mode='on'],
-    body:not(.movingUI) #sheld[data-sb-conversation-mode='on'] {
-        --sb-conv-button-size: var(--sb-mobile-touch-target, 44px);
-        --sb-conv-headerbar-height: 56px;
-        --sb-conv-column-gutter: 10px;
-        overflow: hidden;
-        grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto minmax(0, 1fr);
-        grid-template-areas:
-            'header'
-            'stage';
-        border: 0;
-        border-radius: 0;
-        /* Beat the global -1px bounce gap so the header sits flush under the top bar. */
-        height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important;
-        max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-headerbar {
-        padding-inline: max(6px, env(safe-area-inset-left)) max(6px, env(safe-area-inset-right));
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-header-back {
-        display: inline-grid;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-header-settings {
-        display: none;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-header-avatar {
-        margin-inline-start: 0;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-header-title {
-        flex: 1 1 auto;
-        padding-inline: 6px;
-    }
-
-    /* Pals page: the sidebar becomes a full-screen page covering the chat. */
-    #sheld[data-sb-conversation-mode='on'] #sb_conversation_pals_rail {
-        position: absolute;
-        inset: 0;
-        grid-area: unset;
-        z-index: var(--sb-z-raised);
-        inline-size: 100%;
-        block-size: 100%;
-        border-inline-end: 0;
-        visibility: hidden;
-        transform: translateX(-100%);
-        pointer-events: none;
-        transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration);
-    }
-
-    #sheld[data-sb-conversation-mode='on'][data-sb-conversation-page='pals'] #sb_conversation_pals_rail {
-        visibility: visible;
-        transform: none;
-        pointer-events: auto;
-        transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] :is(#sb_conversation_header, #sb_conversation_stage) {
-        transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s;
-    }
-
-    #sheld[data-sb-conversation-mode='on'][data-sb-conversation-page='pals'] :is(#sb_conversation_header, #sb_conversation_stage) {
-        visibility: hidden;
-        transform: translateX(100%);
-        transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration);
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-rail-search {
-        padding-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-pals-list {
-        padding: 4px max(6px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-pal {
-        min-block-size: 60px;
-        padding-block: 8px;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-search-entry {
-        font-size: max(16px, var(--mainFontSize));
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-search-bar {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-search-bar .sb-conversation-search-wrap {
-        flex: 0 0 auto;
-    }
-
-    /* Keyboard: #sheld already contracts to the visual viewport, so the composer stays above it.
-       Match Roleplay's #send_form 6px floor (Conversation's own chrome is 8px) plus the real
-       safe-area; do not reuse --sb-mobile-safe-area-bottom's 34px home-indicator token. */
-    /* Composer row ([+], entry, send) shares Roleplay's mobile composer size tokens from
-       sillybunny-mobile-shell.css, so both send buttons follow compact mode and the bar scale. */
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-composer {
-        --sb-conv-button-size: var(--sb-mobile-composer-action-size, var(--sb-mobile-touch-target, 44px));
-        --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size, 16px);
-        padding-block-end: max(8px, env(safe-area-inset-bottom, 0px));
-        padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right));
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-more {
-        display: inline-grid;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-attach,
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-composer-actions {
-        display: none;
-    }
-
-    /* Centre one line (1.35em) inside the shared button height, minus the 2px border, so the
-       entry never overflows at 44px or the 38px compact size. */
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-composer textarea {
-        padding-block: max(4px, calc((var(--sb-conv-button-size) - 2px - 1.35em) / 2));
-        font-size: max(16px, var(--mainFontSize));
-    }
-
-    .sb-conversation-drop-hint {
-        inset-inline: 10px;
-        inset-block-end: 116px;
-    }
-
-    /* Settings page: a full-screen pushed page with a back arrow. */
-    #sheld[data-sb-conversation-mode='on'] #sb_conversation_settings_drawer {
-        inset: 0;
-        z-index: var(--sb-z-raised);
-        inline-size: 100%;
-        border-inline-start: 0;
-        box-shadow: none;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-header {
-        padding-inline-start: max(6px, env(safe-area-inset-left));
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-header > div {
-        order: 0;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-close-x {
-        display: none;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-close-back {
-        display: inline-block;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-settings-body {
-        padding-block-end: max(16px, env(safe-area-inset-bottom));
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-persona-note-option {
-        align-items: center;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-message {
-        max-inline-size: 100%;
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-message-body {
-        max-inline-size: min(82%, calc(100% - 80px));
-    }
-
-    .sb-conversation-message-meta {
-        padding-inline-end: 0;
-    }
-
-    .sb-conversation-message-avatar {
-        inline-size: var(--sb-conv-avatar-size);
-        block-size: var(--sb-conv-avatar-size);
-        flex-basis: var(--sb-conv-avatar-size);
-    }
-
+/* ---------- Narrow #sheld (or the mobile layout): navigation pages ---------- */
+#sheld[data-sb-conversation-layout='pages'],
+body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
+    --sb-conv-button-size: var(--sb-mobile-touch-target, 44px);
+    --sb-conv-headerbar-height: 56px;
+    --sb-conv-column-gutter: 10px;
+    overflow: hidden;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+        'header'
+        'stage';
+    border: 0;
+    border-radius: 0;
+    /* Beat the global -1px bounce gap so the header sits flush under the top bar. */
+    height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important;
+    max-height: calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important;
 }
 
-/* Overlay rule (sillybunny-editor/breakpoints.js OVERLAY_SHEET_QUERY): pickers become bottom
-   sheets under the AdwDialog condition; 451-768px keeps the anchored popover. */
-@media (max-width: 450px), (max-height: 360px) {
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-headerbar {
+    padding-inline: max(6px, env(safe-area-inset-left)) max(6px, env(safe-area-inset-right));
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-header-back {
+    display: inline-grid;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-header-settings {
+    display: none;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-header-avatar {
+    margin-inline-start: 0;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-header-title {
+    flex: 1 1 auto;
+    padding-inline: 6px;
+}
+
+/* Pals page: the sidebar becomes a full-screen page covering the chat. */
+#sheld[data-sb-conversation-layout='pages'] #sb_conversation_pals_rail {
+    position: absolute;
+    inset: 0;
+    grid-area: unset;
+    z-index: var(--sb-z-raised);
+    inline-size: 100%;
+    block-size: 100%;
+    border-inline-end: 0;
+    visibility: hidden;
+    transform: translateX(-100%);
+    pointer-events: none;
+    transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration);
+}
+
+#sheld[data-sb-conversation-layout='pages'][data-sb-conversation-page='pals'] #sb_conversation_pals_rail {
+    visibility: visible;
+    transform: none;
+    pointer-events: auto;
+    transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s;
+}
+
+#sheld[data-sb-conversation-layout='pages'] :is(#sb_conversation_header, #sb_conversation_stage) {
+    transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s;
+}
+
+#sheld[data-sb-conversation-layout='pages'][data-sb-conversation-page='pals'] :is(#sb_conversation_header, #sb_conversation_stage) {
+    visibility: hidden;
+    transform: translateX(100%);
+    transition: transform var(--sb-spring-navigation-duration) var(--sb-spring-navigation), visibility 0s linear var(--sb-spring-navigation-duration);
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-rail-search {
+    padding-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-pals-list {
+    padding: 4px max(6px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-pal {
+    min-block-size: 60px;
+    padding-block: 8px;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-search-entry {
+    font-size: max(16px, var(--mainFontSize));
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-search-bar {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-search-bar .sb-conversation-search-wrap {
+    flex: 0 0 auto;
+}
+
+/* Keyboard: #sheld already contracts to the visual viewport, so the composer stays above it.
+   Match Roleplay's #send_form 6px floor (Conversation's own chrome is 8px) plus the real
+   safe-area; do not reuse --sb-mobile-safe-area-bottom's 34px home-indicator token. */
+/* Composer row ([+], entry, send) shares Roleplay's mobile composer size tokens from
+   sillybunny-mobile-shell.css, so both send buttons follow compact mode and the bar scale. */
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer {
+    --sb-conv-button-size: var(--sb-mobile-composer-action-size, var(--sb-mobile-touch-target, 44px));
+    --sb-composer-action-icon-size: var(--sb-mobile-composer-action-icon-size, 16px);
+    padding-block-end: max(8px, env(safe-area-inset-bottom, 0px));
+    padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right));
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer-more {
+    display: inline-grid;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer-attach,
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer-actions {
+    display: none;
+}
+
+/* Centre one line (1.35em) inside the shared button height, minus the 2px border, so the
+   entry never overflows at 44px or the 38px compact size. */
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-composer textarea {
+    padding-block: max(4px, calc((var(--sb-conv-button-size) - 2px - 1.35em) / 2));
+    font-size: max(16px, var(--mainFontSize));
+}
+
+:where(#sheld[data-sb-conversation-layout='pages']) .sb-conversation-drop-hint {
+    inset-inline: 10px;
+    inset-block-end: 116px;
+}
+
+/* Settings page: a full-screen pushed page with a back arrow. */
+#sheld[data-sb-conversation-layout='pages'] #sb_conversation_settings_drawer {
+    inset: 0;
+    z-index: var(--sb-z-raised);
+    inline-size: 100%;
+    border-inline-start: 0;
+    box-shadow: none;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-header {
+    padding-inline-start: max(6px, env(safe-area-inset-left));
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-header > div {
+    order: 0;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-close-x {
+    display: none;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-close-back {
+    display: inline-block;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-settings-body {
+    padding-block-end: max(16px, env(safe-area-inset-bottom));
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-persona-note-option {
+    align-items: center;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-message {
+    max-inline-size: 100%;
+}
+
+#sheld[data-sb-conversation-layout='pages'] .sb-conversation-message-body {
+    max-inline-size: min(82%, calc(100% - 80px));
+}
+
+:where(#sheld[data-sb-conversation-layout='pages']) .sb-conversation-message-meta {
+    padding-inline-end: 0;
+}
+
+:where(#sheld[data-sb-conversation-layout='pages']) .sb-conversation-message-avatar {
+    inline-size: var(--sb-conv-avatar-size);
+    block-size: var(--sb-conv-avatar-size);
+    flex-basis: var(--sb-conv-avatar-size);
+}
+
+
+/* Menu rule (sillybunny-editor/breakpoints.js MENU_SHEET_QUERY): pickers become bottom sheets in the mobile layout
+   and in a window too short for a popover. */
+@media (max-width: 768px), (max-height: 360px) {
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker-backdrop[data-open='true'] {
         position: absolute;
         inset: 0;

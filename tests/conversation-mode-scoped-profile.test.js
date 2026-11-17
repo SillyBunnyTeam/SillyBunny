@@ -189,7 +189,9 @@ describe('conversation mode scoped connection profile', () => {
         expect(pickersSource).toContain('role="switch" class="sb-switch sb-conv-weekly-enabled-check"');
         expect(palsRailSource).toContain('Messaging-app order: newest message first');
         expect(palsRailSource).not.toContain('first.key === activeKey');
-        expect(chromeSource).toContain('window.matchMedia?.(LAYOUT_MOBILE_QUERY)?.matches');
+        // The menu keeps the settings entry whenever the pages layout hides the header gear, whatever the viewport width.
+        expect(chromeSource).toContain('...(isConversationPagesLayout()');
+        expect(chromeSource).not.toContain('LAYOUT_MOBILE_QUERY');
         expect(timelineSource).toContain('sb-conversation-composer-attach');
         expect(timelineSource).toContain('sb-conversation-composer-actions');
         expect(timelineSource).toContain('data-sb-conversation-action="attach-file"');
@@ -199,7 +201,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).not.toContain('bubble.append(actionBar, mobileTrigger)');
         expect(pickersSource).toContain('maxLeft < minLeft');
         expect(actionMenuSource).toContain('maxLeft < minLeft');
-        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261117y');
+        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261117zb');
     });
 
     test('keeps saved Conversation-owned group DMs visible without messages', () => {

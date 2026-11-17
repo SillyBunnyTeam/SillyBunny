@@ -675,7 +675,7 @@ function buildPanelAgentSection(state) {
                     <span class="ica--tpanel-agent-name"><i class="fa-solid ${escapeHtml(icon)}"></i><span>${escapeHtml(name)}</span></span>
                     <span class="ica--tpanel-agent-actions">${dragHandleButton}${hiddenButton}${runLatestButton}${settingsButton}</span>
                 </div>
-                <div class="ica--cdash-empty">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
+                <div class="ica--cdash-empty sb-inline-hint">No state yet. It will appear after the next reply${getCompanionConfig(state.agent).trigger === 'manual' ? ' you run it on' : ''}.</div>
                 ${buildPanelEntryControls(state)}
             </section>
         `;

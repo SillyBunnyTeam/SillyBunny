@@ -211,6 +211,15 @@ function buildPickerContent(state, body) {
     state.input = input;
     state.list = list;
 
+    if (state.multiple && state.selectionCount) {
+        const count = document.createElement('div');
+        count.className = 'sb-picker__count';
+        count.setAttribute('role', 'status');
+        count.setAttribute('aria-live', 'polite');
+        body.append(count);
+        state.countElement = count;
+    }
+
     const footer = document.createElement('div');
     footer.className = 'sb-picker__footer';
     state.footer.forEach((item, index) => {
@@ -238,6 +247,13 @@ function buildPickerContent(state, body) {
         body.append(footer);
     }
     syncFooter(state);
+    syncSelectionCount(state);
+}
+
+/** Writes the count only when its text changes, so a live region announces a pick and not a re-render. */
+function syncSelectionCount(state) {
+    const text = state.countElement ? String(state.selectionCount()) : '';
+    if (state.countElement && state.countElement.textContent !== text) state.countElement.textContent = text;
 }
 
 /** A footer action can be unavailable while the picker's own selection says so, such as a group that is too small. */
@@ -304,6 +320,7 @@ function renderOptions(state) {
         : -1;
     state.list.replaceChildren();
     syncFooter(state);
+    syncSelectionCount(state);
 
     if (!state.filtered.length) {
         const empty = document.createElement('li');
@@ -537,6 +554,8 @@ function finishClose() {
  * @param {(value: unknown) => void} options.onSelect
  * @param {{ label: string, icon?: string|Element, onSelect: () => void, disabled?: boolean|(() => boolean) }[]} [options.footer=[]]
  *     A `disabled` function is read again after every selection change.
+ * @param {(() => string)|null} [options.selectionCount=null] A `multiple` picker shows this text under the list, read again after
+ *     every selection change and announced politely.
  * @param {string} [options.searchLabel]
  * @param {string} [options.emptyText]
  * @param {Element|null} [options.bounds=null]
@@ -559,6 +578,7 @@ export function openPicker({
     getItemState = null,
     onSelect,
     footer = [],
+    selectionCount = null,
     searchLabel = t`Search`,
     emptyText = t`No results`,
     bounds = null,
@@ -588,6 +608,8 @@ export function openPicker({
         onSelect,
         footer: [...footer],
         footerButtons: [],
+        selectionCount: typeof selectionCount === 'function' ? selectionCount : null,
+        countElement: null,
         searchLabel,
         emptyText,
         bounds,

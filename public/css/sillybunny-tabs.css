@@ -3195,11 +3195,12 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     font-size: var(--sb-type-meta);
 }
 
-.sb-persona-picker-appendices-empty {
+.sb-inline-hint {
     margin: 0;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
-    font-size: var(--sb-type-meta);
-    line-height: 1.35;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-caption);
+    line-height: 1.4;
+    text-align: center;
 }
 
 .sb-persona-picker-appendix-toggles {

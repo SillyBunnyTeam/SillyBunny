@@ -280,10 +280,6 @@ export function updateConversationHeader(settings = getSettings()) {
             status.title = statusText;
         }
     }
-    const titleButton = document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-action="open-branch-menu"]`);
-    if (titleButton instanceof HTMLElement && name instanceof HTMLElement) {
-        titleButton.setAttribute('aria-label', `${name.textContent}, branches`);
-    }
 }
 
 export function updateConversationChrome(settings = getSettings()) {

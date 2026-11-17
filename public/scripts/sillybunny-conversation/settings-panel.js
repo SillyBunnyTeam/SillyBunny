@@ -43,21 +43,37 @@ function isMobileConversationLayout() {
     return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_LAYOUT_QUERY).matches;
 }
 
+const SHADE_ENTER = [{ opacity: 0 }, { opacity: 1 }];
+const SHADE_EXIT = [{ opacity: 1 }, { opacity: 0 }];
+
+// The shield of an overlay pane (AdwOverlaySplitView): it dims the content beside the pane and takes the press that hides it.
+function setSettingsShade(backdrop, shown) {
+    if (!(backdrop instanceof HTMLElement) || shown === !backdrop.hidden) {
+        return;
+    }
+    if (shown) {
+        backdrop.hidden = false;
+        animateIn(backdrop, SHADE_ENTER, { duration: MOTION_FAST });
+    } else {
+        animateOut(backdrop, SHADE_EXIT, () => { backdrop.hidden = true; });
+    }
+}
+
 /**
  * Derives the mobile navigation page (`#sheld[data-sb-conversation-page]`) from the rail and
- * settings state. Every rail and settings open/close path calls this. The legacy settings
- * backdrop stays in the DOM for compatibility but never shows: the settings pane is non-modal.
+ * settings state, and shows the shade behind an overlay settings pane. Every rail and settings
+ * open/close path calls this.
  */
 export function syncConversationPage() {
     const backdrop = document.getElementById(CHROME_IDS.settingsBackdrop);
     const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
     const palsRail = document.getElementById(CHROME_IDS.palsRail);
-    if (backdrop instanceof HTMLElement) {
-        backdrop.hidden = true;
-    }
 
     const sheld = document.getElementById('sheld');
     if (!(sheld instanceof HTMLElement) || typeof sheld.setAttribute !== 'function') {
+        if (backdrop instanceof HTMLElement) {
+            backdrop.hidden = true;
+        }
         return;
     }
 
@@ -68,6 +84,7 @@ export function syncConversationPage() {
     const palsOpen = palsRail instanceof HTMLElement && palsRail.dataset.open === 'true';
     const page = settingsOpen ? 'settings' : (palsOpen || !getCurrentCharAvatar()) ? 'pals' : 'chat';
     sheld.setAttribute('data-sb-conversation-page', page);
+    setSettingsShade(backdrop, settingsOpen && getConversationLayout() === 'overlay');
 }
 
 export const setConversationBackdropVisible = syncConversationPage;
@@ -76,11 +93,16 @@ export const setConversationBackdropVisible = syncConversationPage;
 // in #sheld: 280px (the widest sidebar) + 480px + 360px (--sb-conv-pane-width). Narrower, the pane overlays the timeline,
 // which keeps its own width instead of being squeezed.
 const SPLIT_LAYOUT_MIN_WIDTH = 1120;
+// The rail and the timeline share #sheld only while the composer keeps a usable entry: its buttons take 288px and the entry
+// needs 160px, so with the narrowest rail (220px) and the 2px frame of #sheld the two panes need 670px. Narrower, the rail is
+// a pushed page, as it is in the mobile layout.
+const TWO_PANE_MIN_WIDTH = 670;
 let layoutObserver = null;
 let settingsPaneMotionToken = 0;
+let settingsOpener = null;
 
 function layoutForSheld(sheld) {
-    if (isMobileConversationLayout()) {
+    if (isMobileConversationLayout() || sheld.offsetWidth < TWO_PANE_MIN_WIDTH) {
         return 'pages';
     }
     return sheld.offsetWidth >= SPLIT_LAYOUT_MIN_WIDTH ? 'split' : 'overlay';
@@ -92,6 +114,11 @@ function getConversationLayout() {
         return sheld.dataset.sbConversationLayout;
     }
     return sheld instanceof HTMLElement ? layoutForSheld(sheld) : 'overlay';
+}
+
+/** The pages layout hides the header gear, so whatever else opens settings must follow the layout and not the viewport. */
+export function isConversationPagesLayout() {
+    return getConversationLayout() === 'pages';
 }
 
 function waitForSplitSettingsTuck(onDone) {
@@ -125,7 +152,7 @@ function waitForSplitSettingsTuck(onDone) {
     finish();
 }
 
-/** Sets `#sheld[data-sb-conversation-layout]` to pages (mobile), split or overlay from the #sheld width. */
+/** Sets `#sheld[data-sb-conversation-layout]` to pages (mobile or a narrow #sheld), split or overlay from the #sheld width. */
 export function syncConversationLayout() {
     const sheld = document.getElementById('sheld');
     if (!(sheld instanceof HTMLElement)) {
@@ -134,6 +161,7 @@ export function syncConversationLayout() {
     const layout = layoutForSheld(sheld);
     if (sheld.dataset.sbConversationLayout !== layout) {
         sheld.dataset.sbConversationLayout = layout;
+        syncConversationPage();
     }
 }
 
@@ -655,6 +683,10 @@ export function openConversationSettings() {
     renderConversationMemoryPanel();
     updateUserFooter();
     const wasHidden = chrome.drawer.hidden;
+    if (wasHidden) {
+        const active = document.activeElement;
+        settingsOpener = active instanceof HTMLElement && active !== document.body ? active : null;
+    }
     chrome.drawer.hidden = false;
     delete chrome.drawer.dataset.closing;
     settingsPaneMotionToken += 1;
@@ -681,10 +713,57 @@ export function openConversationSettings() {
     focusSettings();
 }
 
-export function closeConversationSettings(identity = null) {
+/** Gives focus back to the control that opened the settings pane: the header's gear, or the conversation menu where the gear is not shown. */
+function focusSettingsOpener() {
+    const header = document.getElementById(CHROME_IDS.header);
+    const candidates = [
+        settingsOpener,
+        header?.querySelector('[data-sb-conversation-action="open-settings"]'),
+        header?.querySelector('[data-sb-conversation-action="open-conversation-menu"]'),
+    ];
+    settingsOpener = null;
+    for (const candidate of candidates) {
+        if (candidate instanceof HTMLElement && candidate.isConnected && candidate.getClientRects().length) {
+            candidate.focus({ preventScroll: true });
+            if (document.activeElement === candidate) {
+                return;
+            }
+        }
+    }
+}
+
+/** Hides the settings pane as Escape and a press on the shade do, and returns focus to its opener. */
+export function dismissConversationSettings() {
+    closeConversationSettings(null, { restoreFocus: true });
+}
+
+/**
+ * Escape hides an open settings pane when focus is in it, and, while the pane overlays the timeline, wherever focus is in the
+ * Conversation or nowhere. Returns whether it did.
+ * @param {EventTarget | null} target
+ */
+export function dismissConversationSettingsOnEscape(target) {
+    const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
+    const sheld = document.getElementById('sheld');
+    if (!(drawer instanceof HTMLElement) || !(sheld instanceof HTMLElement) || drawer.hidden || drawer.dataset.closing === 'true') {
+        return false;
+    }
+    const node = target instanceof Node ? target : null;
+    const inPane = node !== null && drawer.contains(node);
+    const overlaid = getConversationLayout() === 'overlay'
+        && (node === null || node === document.body || node === document.documentElement || sheld.contains(node));
+    if (!inPane && !overlaid) {
+        return false;
+    }
+    dismissConversationSettings();
+    return true;
+}
+
+export function closeConversationSettings(identity = null, { restoreFocus = false } = {}) {
     const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
     if (drawer instanceof HTMLElement) {
         const shouldSave = drawer.hidden === false;
+        const focusWasInPane = shouldSave && typeof drawer.contains === 'function' && document.activeElement instanceof Node && drawer.contains(document.activeElement);
         const capturedIdentity = {
             avatar: identity?.avatar || drawer.dataset.conversationAvatar || getCurrentCharAvatar(),
             groupId: Object.prototype.hasOwnProperty.call(identity || {}, 'groupId')
@@ -713,6 +792,9 @@ export function closeConversationSettings(identity = null) {
                 syncConversationPage();
             }
             saveCurrentPanelSettings(capturedIdentity);
+            if (restoreFocus || focusWasInPane) {
+                focusSettingsOpener();
+            }
         } else {
             drawer.hidden = true;
             delete drawer.dataset.closing;

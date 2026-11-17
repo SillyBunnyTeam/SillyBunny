@@ -19,12 +19,18 @@ function getDeclarations(media, selector) {
 }
 
 function getRuleDeclarations(selector) {
-    const rule = ast.stylesheet.rules.find(candidate => candidate.type === 'rule' && candidate.selectors.includes(selector));
-    expect(rule).toBeDefined();
-    return Object.fromEntries(rule.declarations
-        .filter(declaration => declaration.type === 'declaration')
-        .map(declaration => [declaration.property, declaration.value]));
+    return getDeclarations(ast.stylesheet, selector);
 }
+
+function findContainerRule(query) {
+    return ast.stylesheet.rules.find(rule => rule.type === 'container' && rule.container === query);
+}
+
+const PAGES = '#sheld[data-sb-conversation-layout=\'pages\']';
+const pagesSelectors = ast.stylesheet.rules
+    .filter(rule => rule.type === 'rule')
+    .flatMap(rule => rule.selectors)
+    .filter(selector => selector.includes('data-sb-conversation-layout=\'pages\''));
 
 describe('Conversation mobile controls', () => {
     test('44px touch targets follow the pointer, not a width', () => {
@@ -42,8 +48,7 @@ describe('Conversation mobile controls', () => {
             inset: 'auto',
             transform: 'none',
         });
-        expect(findMediaRule(query => query === '(max-width: 768px)').rules.flatMap(rule => rule.selectors ?? []))
-            .not.toContain('.sb-conversation-mobile-menu-trigger');
+        expect(pagesSelectors.join(' ')).not.toContain('.sb-conversation-mobile-menu-trigger');
         expect(getDeclarations(media, '.sb-conversation-reply-cancel')).toMatchObject({
             'inline-size': 'var(--sb-mobile-touch-target, 44px)',
             'block-size': 'var(--sb-mobile-touch-target, 44px)',
@@ -52,73 +57,85 @@ describe('Conversation mobile controls', () => {
         });
     });
 
-    test('touch-target sizing is not confined to the 768px phone breakpoint', () => {
-        const phoneMedia = findMediaRule(query => query.includes('max-width: 768px') && !query.includes('pointer: coarse'));
-        expect(phoneMedia).toBeDefined();
-        const phoneSelectors = phoneMedia.rules
-            .filter(rule => rule.type === 'rule')
-            .flatMap(rule => rule.selectors);
-        expect(phoneSelectors).not.toContain('.sb-conversation-selfie-action');
-        expect(phoneSelectors).not.toContain('.sb-conversation-reply-cancel');
+    test('touch-target sizing is not confined to the pages layout', () => {
+        expect(pagesSelectors.length).toBeGreaterThan(0);
+        expect(pagesSelectors).not.toContain(`${PAGES} .sb-conversation-selfie-action`);
+        expect(pagesSelectors).not.toContain(`${PAGES} .sb-conversation-reply-cancel`);
+    });
+
+    test('the pages layout follows the layout attribute, not a viewport media query', () => {
+        // The layout is decided from the #sheld width in settings-panel.js, so a viewport query here would disagree with it.
+        expect(findMediaRule(query => query.includes('max-width: 768px') && !query.includes('max-height'))
+            ?.rules.flatMap(rule => rule.selectors ?? []).filter(selector => selector.includes('#sb_conversation_pals_rail'))).toEqual([]);
+        expect(css).not.toMatch(/@media \(max-width: 450px\)/);
     });
 
     test('mobile pages are driven by data-sb-conversation-page', () => {
-        const media = findMediaRule(query => query === '(max-width: 768px)');
-        expect(media).toBeDefined();
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_pals_rail')).toMatchObject({
+        const media = ast.stylesheet;
+        expect(getDeclarations(media, `${PAGES} #sb_conversation_pals_rail`)).toMatchObject({
             position: 'absolute',
             inset: '0',
             'grid-area': 'unset',
             transform: 'translateX(-100%)',
         });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-page=\'pals\'] #sb_conversation_pals_rail')).toMatchObject({
+        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='pals'] #sb_conversation_pals_rail`)).toMatchObject({
             visibility: 'visible',
             transform: 'none',
         });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-page=\'pals\'] :is(#sb_conversation_header, #sb_conversation_stage)')).toMatchObject({
+        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='pals'] :is(#sb_conversation_header, #sb_conversation_stage)`)).toMatchObject({
             visibility: 'hidden',
         });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-back')).toMatchObject({
-            display: 'inline-grid',
-        });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-settings')).toMatchObject({
-            display: 'none',
-        });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-title')).toMatchObject({
-            flex: '1 1 auto',
-        });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-more')).toMatchObject({
-            display: 'inline-grid',
-        });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-attach')).toMatchObject({
-            display: 'none',
-        });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-actions')).toMatchObject({
-            display: 'none',
-        });
-        const overlayMedia = findMediaRule(query => query.includes('max-width: 450px') && query.includes('max-height: 360px'));
-        expect(overlayMedia).toBeDefined();
-        expect(getDeclarations(overlayMedia, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-picker:not([hidden])')).toMatchObject({
-            inset: 'auto 0 0',
-        });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\']')).toMatchObject({
+        expect(getDeclarations(media, `${PAGES} .sb-conversation-header-back`)).toMatchObject({ display: 'inline-grid' });
+        expect(getDeclarations(media, `${PAGES} .sb-conversation-header-settings`)).toMatchObject({ display: 'none' });
+        expect(getDeclarations(media, `${PAGES} .sb-conversation-header-title`)).toMatchObject({ flex: '1 1 auto' });
+        expect(getDeclarations(media, `${PAGES} .sb-conversation-composer-more`)).toMatchObject({ display: 'inline-grid' });
+        expect(getDeclarations(media, `${PAGES} .sb-conversation-composer-attach`)).toMatchObject({ display: 'none' });
+        expect(getDeclarations(media, `${PAGES} .sb-conversation-composer-actions`)).toMatchObject({ display: 'none' });
+        expect(getDeclarations(media, PAGES)).toMatchObject({
             border: '0',
             height: 'calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important',
         });
-        expect(getDeclarations(media, 'body:not(.movingUI) #sheld[data-sb-conversation-mode=\'on\']')).toMatchObject({
+        expect(getDeclarations(media, `body:not(.movingUI) ${PAGES}`)).toMatchObject({
             border: '0',
             height: 'calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important',
         });
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\']')).not.toHaveProperty('position');
-        expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer')).toMatchObject({
+        expect(getDeclarations(media, PAGES)).not.toHaveProperty('position');
+        expect(getDeclarations(media, `${PAGES} .sb-conversation-composer`)).toMatchObject({
             'padding-block-end': 'max(8px, env(safe-area-inset-bottom, 0px))',
         });
+        // Three rules stay in :where() so the layout selector does not outrank the rules they sat beside as media rules.
+        expect(getDeclarations(media, `:where(${PAGES}) .sb-conversation-message-meta`)).toMatchObject({ 'padding-inline-end': '0' });
+    });
+
+    test('pickers are bottom sheets under the menu rule: the mobile width or a window too short for a popover', () => {
+        const sheet = findMediaRule(query => query === '(max-width: 768px), (max-height: 360px)');
+        expect(sheet).toBeDefined();
+        expect(getDeclarations(sheet, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-picker:not([hidden])')).toMatchObject({
+            inset: 'auto 0 0',
+        });
+        expect(readFileSync(fileURLToPath(new URL('../public/scripts/sillybunny-conversation/pickers.js', import.meta.url)), 'utf8'))
+            .toMatch(/PICKER_MOBILE_QUERY = MENU_SHEET_QUERY;/);
     });
 
     test('settings is a non-modal pane that docks as a split column', () => {
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_settings_backdrop')).toMatchObject({
-            display: 'none',
+        // Hidden by default; only an overlay pane shows it, so a split pane or a page gets no shade.
+        expect(getRuleDeclarations('#sb_conversation_settings_backdrop')).toMatchObject({ display: 'none' });
+        const OVERLAY = '#sheld[data-sb-conversation-layout=\'overlay\']';
+        expect(getRuleDeclarations(`${OVERLAY} #sb_conversation_settings_backdrop:not([hidden])`)).toMatchObject({ display: 'block' });
+        expect(css.match(/#sb_conversation_settings_backdrop/g)).toHaveLength(3);
+        // Half the dialog backdrop over the whole workspace (the rail included), under the pane: the page transition shade of an overlay split view.
+        const shade = getRuleDeclarations(`${OVERLAY} #sb_conversation_settings_backdrop`);
+        expect(shade).toMatchObject({
+            inset: '0',
+            background: 'color-mix(in srgb, var(--sb-dialog-backdrop) 50%, transparent)',
         });
+        expect(shade).not.toHaveProperty('inset-inline-start');
+        const drawer = getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_settings_drawer');
+        expect(drawer).toMatchObject({ 'box-shadow': 'var(--sb-conv-pane-shadow)' });
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['--sb-conv-pane-shadow']).toBe('0 0 56px var(--sb-dialog-backdrop)');
+        expect(drawer['z-index']).toBe('calc(var(--sb-z-raised) + 4)');
+        expect(shade['z-index']).toBe('calc(var(--sb-z-raised) + 3)');
+        expect(getRuleDeclarations(`${PAGES} #sb_conversation_settings_drawer`)).toMatchObject({ 'box-shadow': 'none' });
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-layout=\'split\'] #sb_conversation_settings_drawer')).toMatchObject({
             'grid-area': 'settings',
             position: 'relative',
@@ -210,8 +227,15 @@ describe('Conversation mobile controls', () => {
         expect(toolbar).not.toHaveProperty('border');
         expect(toolbar).not.toHaveProperty('box-shadow');
         expect(getRuleDeclarations('.sb-conversation-message-action')['border-radius']).toBe('var(--sb-radius-inner)');
-        const wide = findMediaRule(query => query === '(min-width: 769px)');
+        // The timeline is a container, so the toolbar follows the width it has, not the viewport's.
+        expect(getRuleDeclarations('.sb-conversation-timeline')).toMatchObject({ container: 'sb-conv-timeline / inline-size' });
+        const wide = findContainerRule('sb-conv-timeline (min-width: 512px)');
         expect(getDeclarations(wide, '.sb-conversation-message-actions')).toEqual({ 'max-inline-size': 'max(100%, 30rem)' });
+        // Narrower, the secondary actions leave the toolbar (the menu keeps them) so it never wraps onto the message above.
+        const narrow = findContainerRule('sb-conv-timeline (max-width: 511px)');
+        expect(getDeclarations(narrow, '.sb-conversation-message-actions > [data-sb-secondary]')).toEqual({ display: 'none' });
+        const narrowest = findContainerRule('sb-conv-timeline (max-width: 339px)');
+        expect(Object.keys(getDeclarations(narrowest, '.sb-conversation-message-actions > :is(.sb-conversation-reaction-button, .sb-conversation-message-divider:not([data-sb-secondary]))'))).toEqual(['display']);
         expect(toolbar['--sb-osd-contrast-ring']).toBe('0 0 0 1px var(--sb-osd-ink)');
         const contrast = ast.stylesheet.rules.find(rule => rule.type === 'media' && rule.media === '(prefers-contrast: more)'
             && rule.rules.some(inner => inner.selectors?.includes('.sb-conversation-message-actions')));

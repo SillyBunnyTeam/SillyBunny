@@ -7,7 +7,7 @@ import {
 } from '../../script.js';
 import { user_avatar } from '../personas.js';
 import { runConversationAction, selectConversationThread } from './chrome.js';
-import { OVERLAY_SHEET_QUERY } from '../sillybunny-editor/breakpoints.js';
+import { MENU_SHEET_QUERY } from '../sillybunny-editor/breakpoints.js';
 import { closePicker, openPicker } from '../sillybunny-editor/picker.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
 import { bindSheetGestures, createSheetHandle } from '../sillybunny-editor/sheet-gestures.js';
@@ -129,8 +129,8 @@ export function readChimingPartnersFromList() {
     return readPartnersFromList('sb_conv_chiming_partner_list');
 }
 
-// Overlay rule: pickers are bottom sheets under the AdwDialog condition (sillybunny-conversation.css).
-const PICKER_MOBILE_QUERY = OVERLAY_SHEET_QUERY;
+// Pickers are bottom sheets under the menu condition, like every other menu (sillybunny-conversation.css repeats it).
+const PICKER_MOBILE_QUERY = MENU_SHEET_QUERY;
 const PICKER_GAP = 6;
 const PICKER_MARGIN = 8;
 let activePicker = null;
@@ -768,6 +768,7 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
         items,
         multiple: true,
         getItemState: index => (selectedMembers.has(avatarOf(index)) ? 'selected' : null),
+        selectionCount: () => `${selectedMembers.size} selected`,
         onSelect: index => {
             const avatar = avatarOf(index);
             if (!avatar || lockedMembers.has(avatar)) {

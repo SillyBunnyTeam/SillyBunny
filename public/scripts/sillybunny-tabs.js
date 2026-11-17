@@ -753,7 +753,7 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261117zb', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261117p', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261117w', id: 'deferred-prompt-editor-css' },
@@ -761,13 +761,13 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
-        { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261117zb', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261117p', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-world-info-editor.css?v=20261117l', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
-        { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261117zb', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261117p', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
@@ -786,7 +786,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-character-list.css?v=20261117l', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261117zb', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261116i', id: 'deferred-character-import-css' },
     ],
@@ -795,16 +795,16 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     ],
     // SillyBunny: the Extensions list builds button, entry and activatable rows, which the editor shell sheet styles.
     'right:extensions': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261117zb', id: 'deferred-editor-shell-css' },
         { href: 'css/extensions-panel.css?v=20261117s', id: 'deferred-extensions-panel-css' },
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
     'right:data-security': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261117zb', id: 'deferred-editor-shell-css' },
     ],
     // SillyBunny: Appearance builds entry, text-area and button rows, which the same sheet styles.
     'right:appearance': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261117zb', id: 'deferred-editor-shell-css' },
     ],
 });
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';
@@ -12685,7 +12685,7 @@ function renderPersonaPickerAppendixControls(picker, context, avatarId) {
     section.appendChild(header);
 
     if (!appendices.length) {
-        const empty = createElement('p', { className: 'sb-persona-picker-appendices-empty', text: 'No Scenario Notes on this persona yet.' });
+        const empty = createElement('p', { className: 'sb-persona-picker-appendices-empty sb-inline-hint', text: 'No Scenario Notes on this persona yet.' });
         section.appendChild(empty);
         picker.appendChild(section);
         return;

@@ -12,6 +12,8 @@ const COARSE_POINTER_QUERY = '(pointer: coarse)';
 const MESSAGE_SELECTOR = '.sb-conversation-message';
 const TRIGGER_SELECTOR = `${MESSAGE_SELECTOR} [data-sb-conversation-menu]`;
 const OPEN_CLASS = 'has-open-menu';
+const META_COVERED_ATTRIBUTE = 'data-sb-meta-covered';
+const META_CLEARANCE = 6;
 
 let initialized = false;
 let coarseQuery = null;
@@ -120,6 +122,41 @@ function syncMenuTitle(target) {
     }
 }
 
+/**
+ * The toolbar rests over the name row. A short bubble leaves the row no room beside the toolbar, so the row is marked for
+ * the style sheet to hide while the toolbar shows, and the toolbar covers no text. The toolbar is laid out even while it is
+ * transparent, so its box is known before it appears.
+ */
+function syncMetaClearance(target) {
+    const item = asElement(target)?.closest(MESSAGE_SELECTOR);
+    if (!(item instanceof HTMLElement)) {
+        return;
+    }
+    const toolbar = item.querySelector('.sb-conversation-message-actions');
+    const meta = item.querySelector('.sb-conversation-message-meta');
+    let covered = false;
+    if (!isCoarsePointer() && toolbar instanceof HTMLElement && meta instanceof HTMLElement && item.dataset.showHeader === 'true') {
+        const bar = toolbar.getBoundingClientRect();
+        covered = bar.width > 0 && [...meta.children].some((child) => {
+            const box = child.getBoundingClientRect();
+            return box.width > 0 && box.right > bar.left - META_CLEARANCE && box.left < bar.right + META_CLEARANCE;
+        });
+    }
+    if (item.hasAttribute(META_COVERED_ATTRIBUTE) !== covered) {
+        item.toggleAttribute(META_COVERED_ATTRIBUTE, covered);
+    }
+}
+
+/** Holding Shift widens the toolbar of the message under the pointer or focus, so its clearance is measured again. */
+function syncHoveredMetaClearance(event) {
+    if (event.key !== 'Shift') {
+        return;
+    }
+    requestAnimationFrame(() => {
+        document.querySelectorAll(`${MESSAGE_SELECTOR}:hover, ${MESSAGE_SELECTOR}:focus-within`).forEach(syncMetaClearance);
+    });
+}
+
 function handleClickCapture(event) {
     const trigger = asElement(event.target)?.closest(TRIGGER_SELECTOR);
     if (!(trigger instanceof HTMLElement)) {
@@ -171,6 +208,14 @@ export function initializeConversationMessageMenu() {
     window.addEventListener('click', handleClickCapture, true);
     window.addEventListener('keydown', handleMenuKey, true);
     document.addEventListener('contextmenu', handleContextMenu);
-    document.addEventListener('pointerover', event => syncMenuTitle(event.target), { passive: true });
-    document.addEventListener('focusin', event => syncMenuTitle(event.target));
+    document.addEventListener('pointerover', (event) => {
+        syncMenuTitle(event.target);
+        syncMetaClearance(event.target);
+    }, { passive: true });
+    document.addEventListener('focusin', (event) => {
+        syncMenuTitle(event.target);
+        syncMetaClearance(event.target);
+    });
+    window.addEventListener('keydown', syncHoveredMetaClearance, { passive: true });
+    window.addEventListener('keyup', syncHoveredMetaClearance, { passive: true });
 }

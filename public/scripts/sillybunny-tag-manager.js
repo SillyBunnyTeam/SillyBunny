@@ -10,7 +10,7 @@ import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261117zb', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-tag-manager.css?v=20261117h', id: 'deferred-tag-manager-css' },
 ];

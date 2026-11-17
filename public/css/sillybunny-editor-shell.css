@@ -1166,6 +1166,14 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     margin-inline: 0;
 }
 
+.sb-picker__count {
+    flex: none;
+    padding: 6px 12px;
+    color: var(--sb-muted-fg);
+    font-size: var(--sb-type-caption);
+    line-height: 1.4;
+}
+
 .sb-picker__footer {
     display: grid;
     flex: none;
