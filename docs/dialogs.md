@@ -128,7 +128,9 @@ scrolling in `onOpen`, because the opening animation scales or slides the dialog
 decides in this order:
 
 1. An explicit `tier`.
-2. CROP, `transparent` and image-zoom content keep their own frame.
+2. CROP, `transparent` and image-zoom content keep their own frame above the overlay breakpoint. Under
+   it they are bottom sheets in the tier `resolveOwnFrameSheetTier` gives: a crop is a Dialog with
+   Cancel and Crop in the header, and an enlarged picture is a Window with Close.
 3. `large` gives Window. `wide`, `wider` and DISPLAY give Dialog.
 4. Otherwise Alert, or Dialog after promotion.
 
@@ -252,7 +254,7 @@ See [Selection Mode](../DESIGN.md#selection-mode) and
   `iconOnlyAtNarrow: true` hides action labels under the overlay breakpoint; actions keep their
   `aria-label` and `title`.
 - `openActionMenu({ trigger, sections, title, bounds, forcePopover, onClose })` opens a popover, or a
-  bottom sheet under the overlay breakpoint. A second call for the same trigger closes it. Sections
+  bottom sheet in the mobile layout (`MENU_SHEET_QUERY`). A second call for the same trigger closes it. Sections
   are `{ items: [{ label, icon, danger, onSelect }] }`. From a dialog, pass `bounds: dialog.surface`,
   and give every item an explicit `icon`. `openPopover({ trigger, content, title, bounds,
   initialFocus, onClose })` shows an element the same way and returns `{ close, isOpen }`.
@@ -299,11 +301,16 @@ makes it narrower.
 
 From `sillybunny-editor/breakpoints.js`:
 
-- `OVERLAY_SHEET_QUERY` is `(max-width: 450px), (max-height: 360px)`. Alerts, dialogs, windows, menus,
-  pickers and popovers become bottom sheets. In CSS, use the same condition in `@media`.
-- `LAYOUT_MOBILE_QUERY` is `(max-width: 768px)`. It drives layout only: the settings sidebar, list
-  editor collapse and message action row. Touch target size follows `(pointer: coarse)` instead.
-- `MOBILE_QUERY` in `sillybunny-action-menu.js` is a deprecated alias of the overlay query.
+- `OVERLAY_SHEET_QUERY` is `(max-width: 450px), (max-height: 360px)`. Alerts, dialogs and windows
+  become bottom sheets. In CSS, use the same condition in `@media`.
+- `MENU_SHEET_QUERY` is `(max-width: 768px), (max-height: 360px)`: the mobile layout, or a short
+  window. Menus, pickers and popovers become bottom sheets (`openActionMenu`, `openPopover`, the
+  shared picker, and `presentMenuAsSheet` in `sheet-gestures.js` for a popover a library positions).
+- `LAYOUT_MOBILE_QUERY` is `(max-width: 768px)`. It drives layout only: the settings sidebar and list
+  editor collapse. The message action row and touch target size follow `(pointer: coarse)` instead.
+- `BOTTOM_BAR_COMPACT_QUERY` is `(max-width: 768px), (pointer: coarse) and (max-height: 450px)`. It
+  switches the shell to its mobile bottom bar (`data-sb-mobile-ui-mode`).
+- `MOBILE_QUERY` in `sillybunny-action-menu.js` is a deprecated alias of `MENU_SHEET_QUERY`.
 
 ## Testing Checklist
 
@@ -325,6 +332,7 @@ From `sillybunny-editor/breakpoints.js`:
   `dialog.popup` keeps `[open]` with `[closing]` until it is removed, so match `:not([closing])`.
 - Check 1440×900 (floating), 390×844 (sheet) and 844×390. At 390px tall a landscape phone is not a
   sheet, because the height query stops at 360px. Use 360px or less to test the landscape sheet.
+  Menus, pickers and popovers are sheets up to 768px wide, so check them at 768px and 769px too.
 - The last content is reachable: scroll the body to the end, with and without the keyboard inset, and
   confirm the bottom bar does not cover the last row.
 - Switches and checks sit at the row end. Cancel is at the header start and the affirmative response
