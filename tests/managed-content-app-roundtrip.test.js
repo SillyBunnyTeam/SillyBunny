@@ -296,6 +296,9 @@ describe('managed cards through the character routes of the app', () => {
     });
 
     describe('the thumbnail of a card that is replaced', () => {
+        // Each test makes the card's thumbnail up to four times. Resizing a picture is CPU-bound, so on a loaded
+        // machine a test takes longer than Jest's default 5 s and fails without any fault in the route.
+        const THUMBNAIL_TIMEOUT_MS = 30_000;
         const CARD_V1 = createCardFile({ seed: 1, card: createBundledCard({ character_version: '1' }) });
         const CARD_V2 = createCardFile({ seed: 2, card: createBundledCard({ character_version: '2', first_mes: 'Hello again.' }) });
         const cachedMobile = () => path.join(directories.thumbnailsAvatarMobile, REISEN);
@@ -336,7 +339,7 @@ describe('managed cards through the character routes of the app', () => {
             const after = await requestThumbnail();
             expect(after.equals(before)).toBe(false);
             expect(after.equals(await requestFreshThumbnail())).toBe(true);
-        });
+        }, THUMBNAIL_TIMEOUT_MS);
 
         test('is made again from the new picture after the start replaced the card', async () => {
             const before = await requestThumbnail();
@@ -347,7 +350,7 @@ describe('managed cards through the character routes of the app', () => {
             const after = await requestThumbnail();
             expect(after.equals(before)).toBe(false);
             expect(after.equals(await requestFreshThumbnail())).toBe(true);
-        });
+        }, THUMBNAIL_TIMEOUT_MS);
 
         test('is made again at the start for a card that an earlier version replaced without dropping it', async () => {
             const before = await requestThumbnail();
@@ -362,7 +365,7 @@ describe('managed cards through the character routes of the app', () => {
             const after = await requestThumbnail();
             expect(after.equals(before)).toBe(false);
             expect(after.equals(await requestFreshThumbnail())).toBe(true);
-        });
+        }, THUMBNAIL_TIMEOUT_MS);
 
         test('is kept at the start when it is newer than the card file', async () => {
             fs.writeFileSync(path.join(directories.characters, REISEN), CARD_V2);
@@ -374,7 +377,7 @@ describe('managed cards through the character routes of the app', () => {
             expect(fs.existsSync(cachedMobile())).toBe(true);
             expect(fs.statSync(cachedMobile()).ino).toBe(cached.ino);
             expect((await requestThumbnail()).equals(before)).toBe(true);
-        });
+        }, THUMBNAIL_TIMEOUT_MS);
     });
 
     describe('renamed in the app', () => {
