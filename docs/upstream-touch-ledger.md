@@ -2027,6 +2027,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-16, UI polish sweep (task 7.7). |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/keyboard.js`, `public/css/extensions-panel.css` and the Quick Reply and Regex extension sheets - target floors
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/keyboard.js` (the wand menu's focusable selector); `public/css/extensions-panel.css` (the Extensions manager's switches); `public/scripts/extensions/quick-reply/style.css` (the phone layout's actions and the grips); `public/scripts/extensions/regex/style.css` (the editor's checkbox rows, the bulk checkbox and the drag handle). |
+| Area | Controls under the target floor (32px on a fine pointer, 44px on a coarse one), and a dead tab stop in the wand menu. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `--sb-density-floor` (the pointer's floor) in each rule; `--qr--target` in the Quick Reply sheet; an invisible `::before` hit area on `.extensions_info .extension_toggle input[type="checkbox"]`. |
+| Adapter shape | Since 2026-11-17 (UI polish sweep, task 7.9): the wand menu's focusable selector skips `.extension_container`, a wrapper with no role that took a tab stop of its own; the Extensions manager's switches keep their drawn size and row height and gain an invisible hit area at the floor, with the upstream tick reset so it does not move; the Quick Reply sheet's 38px sizes at 600px and below become `--qr--target`, `max(38px, var(--sb-density-floor, 38px))`, which the grid columns also use, and its grips and set-settings labels take the floor; the regex editor's checkbox labels, bulk checkbox and drag handle take `min-block-size: var(--sb-density-floor)`. Each change carries a `SillyBunny:` marker. |
+| Protecting tests | `tests/touch-target-floors-css.test.js`; `tests/composer-menu-sheets.e2e.js` (no wrapper tab stop in the wand); `tests/quick-reply-bar-layout.e2e.js`; `tests/extensions-row-actions.e2e.js`. |
+| Validation | 2026-11-17: root and tests lint, the full unit run, the related e2e specs, the audit of `menu.composer.wand`, `editor.regex`, `dialog.window.regex-editor` and `list.quick-replies` (23 `target-size` records and one `aria-required-children` record removed), and the capture comparison against a baseline at `ae7d9c2bb`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-17, UI polish sweep (task 7.9). |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

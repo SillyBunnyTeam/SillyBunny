@@ -147,6 +147,7 @@
 }
 
 .sb-side-panel input[type='number'] {
+    min-block-size: var(--sb-density-floor);
     border-color: var(--sb-input-border, var(--SmartThemeBorderColor));
     border-radius: var(--sb-radius-button);
     color: var(--SmartThemeBodyColor);

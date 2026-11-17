@@ -377,6 +377,12 @@ test.describe('the Options menu and the wand menu hold what they should', () => 
         expect(rows.filter(row => !row.iconGlyph || row.iconGlyph === 'none' || row.iconGlyph === 'normal' || row.iconGlyph === '"1"').map(row => row.id)).toEqual([]);
         // TTS is off: its playback row is hidden by the extension, and no rule of the shell shows it again.
         expect(rows.map(row => row.id)).not.toContain('ttsExtensionMenuItem');
+        // An extension's wrapper only holds its rows: the tab stops and the roles are the rows', never the wrapper's.
+        const wrappers = await page.evaluate(() => [...document.querySelectorAll('#extensionsMenu > .extension_container')].map(node => ({
+            id: node.id, tabindex: node.getAttribute('tabindex'), role: node.getAttribute('role'), interactable: node.classList.contains('interactable'),
+        })));
+        expect(wrappers.length).toBeGreaterThan(0);
+        expect(wrappers.filter(wrapper => wrapper.tabindex !== null || wrapper.role !== null || wrapper.interactable).map(wrapper => wrapper.id)).toEqual([]);
         await closeMenuWithEscape(page, MENUS[1]);
     });
 

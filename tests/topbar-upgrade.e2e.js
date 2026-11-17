@@ -114,6 +114,11 @@ async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly, mobi
 
     await expect(page.locator('#sb-home-toggle')).toBeVisible();
     await expect(page.locator('#sb-character-toggle')).toBeVisible();
+    // Label in Name (WCAG 2.5.3): a button that shows a word is named by it, and its tooltip stays as the description.
+    for (const [selector, name] of [['#sb-home-toggle', 'Home'], ['#sb-character-toggle', 'Characters'], ['#sb-right-shell-toggle', 'Customize']]) {
+        await expect(page.locator(selector)).toHaveAccessibleName(name);
+        await expect(page.locator(selector)).toHaveAttribute('title', /\(Ctrl\+[A-Z]\)$/);
+    }
     expect(await page.evaluate(() => localStorage.getItem('sb-mobile-nav-show-customize'))).toBe('false');
 }
 

@@ -29,6 +29,22 @@
     margin: 0;
 }
 
+/* SillyBunny: the switch is not inside a label here, so its own box is the target. The ::before that the shared switch
+   leaves empty reaches out to the pointer's floor without leaving the toggle's row, and draws nothing (style.css draws
+   the checkbox tick in it). */
+.extensions_info .extension_toggle input[type="checkbox"]::before {
+    content: '';
+    position: absolute;
+    inset-block: min(0px, calc((var(--sb-switch-height) - var(--sb-density-floor)) / 2));
+    inset-inline: min(0px, calc((var(--sb-switch-width) - var(--sb-density-floor)) / 2));
+    width: auto;
+    height: auto;
+    background: none;
+    -webkit-clip-path: none;
+    clip-path: none;
+    transform: none;
+}
+
 label[for="extensions_autoconnect"]:not(.ds-row) {
     display: flex;
     align-items: center;

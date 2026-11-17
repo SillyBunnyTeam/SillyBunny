@@ -267,6 +267,11 @@
 #qr--settings #qr--set-settings #qr--injectInputContainer {
   flex-wrap: nowrap;
 }
+/* SillyBunny: each option's label is the control of its checkbox, so it is as tall as the pointer's floor. */
+#qr--settings #qr--set-settings label {
+  align-items: center;
+  min-block-size: var(--sb-density-floor, 0px);
+}
 #qr--settings #qr--set-qrList .qr--set-qrListContents {
   padding: 0 0.5em;
 }
@@ -392,6 +397,15 @@
   color: var(--sb-shell-text);
 }
 
+/* SillyBunny: a grip is as large as the pointer's floor; its glyph stays small and centred in it. */
+#qr--settings :is(.qr--setList > .qr--item, .qr--set-qrListContents > .qr--set-item .qr--content) > .drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: var(--sb-density-floor, 0px);
+  min-block-size: var(--sb-density-floor, 0px);
+}
+
 #qr--settings .qr--setList > .qr--item > .qr--visible {
   flex: 0 0 auto;
   min-height: 40px;
@@ -412,7 +426,12 @@
   }
 }
 
+/* SillyBunny: the 38px action size of a narrow window is raised to the pointer's floor. */
 @media screen and (max-width: 600px) {
+  #qr--settings {
+    --qr--target: max(38px, var(--sb-density-floor, 38px));
+  }
+
   #qr--settings #qr--editor > .qr--head {
     flex-direction: column;
     align-items: stretch;
@@ -433,13 +452,13 @@
   }
 
   #qr--settings #qr--editor > .qr--head > .qr--actions > .menu_button {
-    flex: 0 0 38px;
-    width: 38px;
-    min-width: 38px;
-    max-width: 38px;
-    height: 38px;
-    min-height: 38px;
-    max-height: 38px;
+    flex: 0 0 var(--qr--target);
+    width: var(--qr--target);
+    min-width: var(--qr--target);
+    max-width: var(--qr--target);
+    height: var(--qr--target);
+    min-height: var(--qr--target);
+    max-height: var(--qr--target);
     padding: 0;
   }
 
@@ -467,7 +486,7 @@
 
   #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content {
     display: grid;
-    grid-template-columns: 32px minmax(0, 1fr) 38px;
+    grid-template-columns: var(--qr--target) minmax(0, 1fr) var(--qr--target);
     gap: 0.4em;
     align-items: center;
     padding: 0.4em 0;
@@ -510,13 +529,13 @@
 
   #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--action,
   #qr--settings .qr--set-qrListActions > .menu_button {
-    flex: 0 0 38px;
-    width: 38px;
-    min-width: 38px;
-    max-width: 38px;
-    height: 38px;
-    min-height: 38px;
-    max-height: 38px;
+    flex: 0 0 var(--qr--target);
+    width: var(--qr--target);
+    min-width: var(--qr--target);
+    max-width: var(--qr--target);
+    height: var(--qr--target);
+    min-height: var(--qr--target);
+    max-height: var(--qr--target);
     padding: 0;
   }
 

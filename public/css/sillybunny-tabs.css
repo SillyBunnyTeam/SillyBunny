@@ -4985,9 +4985,9 @@ body.reduced-motion :is(.ds-row.ds-row-entry--floating, .ds-row-entry--floating 
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    min-width: 0;
+    min-width: var(--sb-density-floor);
     max-width: 100%;
-    min-height: 32px;
+    min-height: var(--sb-density-floor);
     margin: 0;
     padding: 0;
     border: 0;
@@ -5086,10 +5086,6 @@ body.reduced-motion :is(.ds-row.ds-row-entry--floating, .ds-row-entry--floating 
 }
 
 @media (pointer: coarse) {
-    .ds-select-row__trigger {
-        min-height: 44px;
-    }
-
     .ds-select-row__menu {
         width: 44px;
         height: 44px;

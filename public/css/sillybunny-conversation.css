@@ -2237,7 +2237,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-settings-body .text_pole[type='number'] {
-    min-block-size: 36px;
+    min-block-size: max(36px, var(--sb-density-floor));
     padding-block: 4px;
 }
 
@@ -2256,7 +2256,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-memory-actions .menu_button {
-    min-block-size: 36px;
+    min-block-size: max(36px, var(--sb-density-floor));
 }
 
 /* Schedule display */

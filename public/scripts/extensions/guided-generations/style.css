@@ -33,13 +33,15 @@
 }
 
 .gg-action-button {
-    width: var(--bottomFormBlockSize);
-    min-width: var(--bottomFormBlockSize);
-    height: var(--bottomFormBlockSize);
+    /* SillyBunny: never under the pointer's target floor. */
+    --gg-action-size: max(var(--bottomFormBlockSize), var(--sb-density-floor, 0px));
+    width: var(--gg-action-size);
+    min-width: var(--gg-action-size);
+    height: var(--gg-action-size);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 var(--bottomFormBlockSize);
+    flex: 0 0 var(--gg-action-size);
 }
 
 /*
@@ -125,7 +127,7 @@
 
 @media screen and (max-width: 600px) {
     .gg-action-buttons-container {
-        --gg-mobile-action-size: clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px);
+        --gg-mobile-action-size: max(var(--sb-density-floor, 28px), clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px));
         --gg-mobile-action-icon-size: clamp(13px, calc(var(--bottomFormIconSize, 20px) * 0.75), 16px);
     }
 

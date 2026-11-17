@@ -1562,7 +1562,7 @@ export function initializePromptEditor(column) {
     window.addEventListener('pagehide', () => session.flushDraft());
     Promise.all([
         loadListEditorStyles(),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261117h', { id: 'deferred-entity-list-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261117s', { id: 'deferred-entity-list-css' }),
         window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261117r', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })

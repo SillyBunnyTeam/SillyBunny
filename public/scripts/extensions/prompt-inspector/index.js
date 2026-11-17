@@ -42,9 +42,7 @@ function addLaunchButton() {
         throw new Error('Could not find the extensions menu');
     }
 
-    extensionsMenu.classList.add('interactable');
-    extensionsMenu.tabIndex = 0;
-
+    // SillyBunny: the menu entry above is the control, so the container that holds it takes no tab stop of its own.
     extensionsMenu.appendChild(launchButton);
     launchButton.addEventListener('click', () => {
         toggleInspectNext();

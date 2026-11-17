@@ -30,7 +30,8 @@ const interactableSelectors = [
 
 if (CSS.supports('selector(:has(*))')) {
     // Option entries in the extension menu popup that are coming from extensions
-    interactableSelectors.push('#extensionsMenu div:has(.extensionsMenuExtensionButton)');
+    // SillyBunny: an extension's `.extension_container` wrapper only holds its rows; it is not a row, so it takes no tab stop and no role.
+    interactableSelectors.push('#extensionsMenu div:has(.extensionsMenuExtensionButton):not(.extension_container)');
 }
 
 export const INTERACTABLE_CONTROL_CLASS = 'interactable';

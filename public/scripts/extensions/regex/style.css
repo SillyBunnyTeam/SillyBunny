@@ -127,6 +127,16 @@ input.enable_scoped {
     margin-right: 5px;
 }
 
+/* SillyBunny: the pointer's target floor for the row's selection checkbox and grip, and for the editor's checkbox rows (the label is the control). */
+.regex-script-label :is(.regex_bulk_checkbox, .drag-handle) {
+    min-block-size: var(--sb-density-floor, 0px);
+}
+
+.regex_editor label.checkbox {
+    align-items: center;
+    min-block-size: var(--sb-density-floor, 0px);
+}
+
 .regex_settings .regex_bulk_operations,
 .regex_settings .regex_bulk_checkbox,
 .regex_settings .regex_bulk_operations_hr {

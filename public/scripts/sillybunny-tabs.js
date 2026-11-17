@@ -755,7 +755,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
         { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261117p', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261117r', id: 'deferred-prompt-editor-css' },
     ],
     'characters:world-info': [
@@ -769,25 +769,25 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
         { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261117p', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261117a', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
-        { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261117p', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-character-list.css?v=20261117l', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
         // SillyBunny: Characters and Groups use the same deferred selection UI — see docs/ui-migration.md.
-        { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261117p', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-character-list.css?v=20261117l', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
         { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261116i', id: 'deferred-character-import-css' },
     ],
     'left:advanced-formatting': [
@@ -796,7 +796,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     // SillyBunny: the Extensions list builds button, entry and activatable rows, which the editor shell sheet styles.
     'right:extensions': [
         { href: 'css/sillybunny-editor-shell.css?v=20261117l', id: 'deferred-editor-shell-css' },
-        { href: 'css/extensions-panel.css?v=20261115v', id: 'deferred-extensions-panel-css' },
+        { href: 'css/extensions-panel.css?v=20261117s', id: 'deferred-extensions-panel-css' },
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
     'right:data-security': [
@@ -3865,14 +3865,15 @@ function stopProxyPointerPropagation(element) {
     element.addEventListener('touchstart', stop, { passive: true });
 }
 
-function createProxyButton({ id, icon, label, title, className = '' }, onClick) {
+// SillyBunny: a button that shows its label is named by it (`name`), so the accessible name contains the visible text; its title stays the tooltip, which assistive technology reads as the description.
+function createProxyButton({ id, icon, label, title, name = title, className = '' }, onClick) {
     const button = createElement('button', {
         id,
         className: `sb-proxy-button ${className}`.trim(),
         attrs: {
             type: 'button',
             title,
-            'aria-label': title,
+            'aria-label': name,
             'aria-expanded': 'false',
             'data-sb-proxy-button': 'true',
         },
@@ -7293,6 +7294,7 @@ function buildTopBar() {
             id: 'sb-home-toggle',
             icon: 'fa-house',
             label: 'Home',
+            name: 'Home',
             title: 'Return to the landing page (Ctrl+O)',
         },
         () => {
@@ -7305,6 +7307,7 @@ function buildTopBar() {
             id: 'sb-right-shell-toggle',
             icon: getShellConfig('right').proxyIcon,
             label: getShellConfig('right').proxyLabel,
+            name: getShellConfig('right').proxyLabel,
             title: 'Open customization tools (Ctrl+I)',
         },
         () => toggleSettingsPage('right'),
@@ -7315,6 +7318,7 @@ function buildTopBar() {
             id: 'sb-character-toggle',
             icon: 'fa-address-card',
             label: 'Characters',
+            name: 'Characters',
             title: 'Open character management (Ctrl+P)',
         },
         activateCharacterTopbarButton,

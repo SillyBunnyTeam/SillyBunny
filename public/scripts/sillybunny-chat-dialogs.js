@@ -5,7 +5,7 @@ import { createCheckRow, createPrefGroup, createSpinRow, createSwitchRow } from 
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 
 // The rows are shared entity rows, which this deferred sheet draws. index.html preloads it, so the load is a cache hit.
-const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261117h', id: 'deferred-entity-list-css' };
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' };
 
 let activeChatHistoryDialog = null;
 let legacyChatHistoryRestoreObserver = null;

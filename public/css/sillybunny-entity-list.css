@@ -68,7 +68,8 @@
     align-items: center;
     justify-content: center;
     align-self: stretch;
-    flex: 0 0 24px;
+    flex: 0 0 var(--sb-density-floor);
+    min-height: var(--sb-density-floor);
     color: var(--sb-muted-fg);
     -webkit-user-select: none;
     user-select: none;
@@ -824,11 +825,6 @@ body.reduced-motion .sb-folder-row .ds-entity-row__chevron {
 }
 
 @media (pointer: coarse) {
-    .ds-entity-row__grip {
-        flex-basis: 44px;
-        min-height: 44px;
-    }
-
     .ds-entity-row .ds-entity-row__button,
     .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next),
     .ds-entity-list__footer .paginationjs-pages ul li a {

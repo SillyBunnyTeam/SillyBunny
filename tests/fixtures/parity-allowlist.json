@@ -199,7 +199,6 @@
         {"family":"list","surface":"list.quick-replies","viewport":"390x844","part":"row","property":"paddingInlineStart","value":0,"canonical":12,"kind":"temporary","reason":"outlier at the base"},
         {"family":"list","surface":"list.quick-replies","viewport":"390x844","part":"row","property":"paddingTop","value":0,"canonical":6,"kind":"temporary","reason":"outlier at the base"},
         {"family":"list","surface":"list.quick-replies","viewport":"390x844","part":"row-button","property":"markup","value":"own","canonical":"entity-row","kind":"temporary","reason":"outlier at the base"},
-        {"family":"list","surface":"list.quick-replies","viewport":"390x844","part":"row-button","property":"offsetHeight","value":38,"canonical":44,"kind":"temporary","reason":"outlier at the base"},
         {"family":"list","surface":"list.regex-scripts","viewport":"1440x900","part":"row","property":"alignItems","value":"stretch","canonical":"center","kind":"temporary","reason":"outlier at the base"},
         {"family":"list","surface":"list.regex-scripts","viewport":"1440x900","part":"row","property":"columnGap","value":0,"canonical":10,"kind":"temporary","reason":"outlier at the base"},
         {"family":"list","surface":"list.regex-scripts","viewport":"1440x900","part":"row","property":"columnGap","value":6,"canonical":10,"kind":"temporary","reason":"outlier at the base"},

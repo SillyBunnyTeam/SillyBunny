@@ -12,14 +12,16 @@
   padding: 0 8px 0;
 }
 .stih--buttons .stih--button {
-  flex: 0 0 var(--bottomFormBlockSize);
+  /* SillyBunny: never under the pointer's target floor. */
+  --stih-action-size: max(var(--bottomFormBlockSize), var(--sb-density-floor, 0px));
+  flex: 0 0 var(--stih-action-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: var(--bottomFormBlockSize);
-  min-width: var(--bottomFormBlockSize);
-  height: var(--bottomFormBlockSize);
+  width: var(--stih-action-size);
+  min-width: var(--stih-action-size);
+  height: var(--stih-action-size);
   margin: 0;
   padding: 0;
   background-color: transparent;
@@ -125,7 +127,7 @@ html > body .stih--history .stih--hidden {
 @media screen and (max-width: 600px) {
   .stih--buttons,
   .stih--buttons.stih--standalone {
-    --stih-mobile-action-size: clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px);
+    --stih-mobile-action-size: max(var(--sb-density-floor, 28px), clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px));
     --stih-mobile-action-icon-size: clamp(13px, calc(var(--bottomFormIconSize, 20px) * 0.75), 16px);
     gap: 4px;
   }
