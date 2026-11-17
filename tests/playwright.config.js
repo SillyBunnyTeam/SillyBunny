@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 // SillyBunny: the fork can start several test servers and spread the workers over them.
-import { getServerConfig } from './e2e-servers.js';
+import { SUITE_IGNORE, getServerConfig } from './e2e-servers.js';
 
 const baseURL = process.env.SILLYBUNNY_TEST_BASE_URL || process.env.ST_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4444';
 // SillyBunny: Playwright imports this config again in each worker, and a worker reads its server here.
@@ -9,7 +9,7 @@ const sillyBunny = await getServerConfig();
 export default defineConfig({
     testMatch: '*.e2e.js',
     // SillyBunny: `foundation/` runs under playwright.foundation.config.js and `audit/` holds the opt-in audit specs, which run under playwright.audit.config.js; this suite runs neither.
-    testIgnore: ['**/foundation/**', '**/audit/**'],
+    testIgnore: [...SUITE_IGNORE],
     use: {
         baseURL,
         video: 'only-on-failure',
