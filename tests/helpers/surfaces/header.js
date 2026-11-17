@@ -59,15 +59,14 @@ async function showHome(page) {
 // ---------------------------------------------------------------------------------------------------------------------
 
 /**
- * Shows Home with the top bar in one of its two modes, with its search closed. The mode is stored per device (a desktop
- * copy and a phone copy) and the viewport picks the copy that applies, so both are set. The top bar cannot be closed, so
- * this step is also the reset: it puts back what the other mode and the states changed.
+ * Shows Home with the top bar in one of its two modes, with its search closed. Only the desktop bar has an icons-only
+ * mode: the phone bar has no labels, so the phone reads no icons-only value. The top bar cannot be closed, so this step
+ * is also the reset: it puts back what the other mode and the states changed.
  */
 async function openTopBar(page, { iconsOnly }) {
     await showHome(page);
     await page.evaluate(iconsOnly => {
         window.SillyBunnyShell.setTopbarIconsOnly('desktop', iconsOnly);
-        window.SillyBunnyShell.setTopbarIconsOnly('mobile', iconsOnly);
         if (document.getElementById('sb-topbar-search-row')?.classList.contains('is-open')) {
             document.getElementById('sb-topbar-search-toggle').click();
         }
@@ -77,7 +76,7 @@ async function openTopBar(page, { iconsOnly }) {
     await settle(page);
 }
 
-function topBar({ id, title, iconsOnly }) {
+function topBar({ id, title, iconsOnly, viewports }) {
     const long = FIXTURES['characters-many'].characters[2];
     const { name } = long;
     return {
@@ -86,6 +85,7 @@ function topBar({ id, title, iconsOnly }) {
         owner: 'A',
         title,
         root: '#top-bar',
+        ...(viewports ? { viewports } : {}),
         // The top bar is there before `open` runs. Both modes show the page title and the Backend button, so `open` waits for the mode itself.
         ready: [withText('#top-bar #sb-topbar-title', 'Home'), '#top-bar #sb-left-shell-toggle'],
         open: page => openTopBar(page, { iconsOnly }),
@@ -370,7 +370,7 @@ function propertySheetHeader({ id, title, editor, header, heading = `${header} .
 /** @type {import('./index.js').Surface[]} */
 export const surfaces = [
     topBar({ id: 'labelled', title: 'Top bar with labels', iconsOnly: false }),
-    topBar({ id: 'icons-only', title: 'Top bar, icons only', iconsOnly: true }),
+    topBar({ id: 'icons-only', title: 'Top bar, icons only', iconsOnly: true, viewports: WIDE_LAYOUT_VIEWPORTS }),
     {
         id: 'header.settings.content',
         family: 'header',

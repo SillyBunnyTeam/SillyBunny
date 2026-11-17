@@ -127,7 +127,6 @@
         {"family":"header","surface":"header.topbar.icons-only","viewport":"1440x900","part":"bar","property":"alignItems","value":"flex-start","canonical":"center","kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.topbar.icons-only","viewport":"1440x900","part":"bar","property":"columnGap","value":2,"canonical":6,"kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.topbar.icons-only","viewport":"1440x900","part":"bar","property":"paddingInlineStart","value":10,"canonical":6,"kind":"temporary","reason":"outlier at the base"},
-        {"family":"header","surface":"header.topbar.icons-only","viewport":"390x844","part":"bar","property":"columnGap","value":2,"canonical":6,"kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.topbar.labelled","viewport":"1440x900","part":"bar","property":"alignItems","value":"flex-start","canonical":"center","kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.topbar.labelled","viewport":"1440x900","part":"bar","property":"columnGap","value":2,"canonical":6,"kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.topbar.labelled","viewport":"1440x900","part":"bar","property":"paddingInlineStart","value":10,"canonical":6,"kind":"temporary","reason":"outlier at the base"},

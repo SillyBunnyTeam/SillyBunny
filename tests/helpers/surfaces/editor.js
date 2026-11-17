@@ -492,10 +492,11 @@ export const surfaces = [
                 async open(page) {
                     await page.locator('#sb_character_editor_quick_edit').click();
                     await page.waitForFunction(() => document.getElementById('sb_character_editor_quick_edit').getAttribute('aria-pressed') === 'true');
-                    // On a phone the first screen of the sheet is Essentials either way: the end of the sheet is where the
-                    // hidden sections would start. The tags decide how tall Essentials is, so the step gives them a moment.
+                    // Quick Edit shows Essentials, Character Fields, the first message and Metadata, so the capture is the
+                    // sheet's first screen, which starts with Essentials. The tags decide how tall Essentials is, so the step
+                    // gives them a moment.
                     await page.locator('#tagList .tag').first().waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
-                    await page.locator(CHARACTER.scroller).evaluate(body => { body.scrollTop = body.scrollHeight; });
+                    await page.locator(CHARACTER.scroller).evaluate(body => { body.scrollTop = 0; });
                     await settle(page);
                 },
             },
