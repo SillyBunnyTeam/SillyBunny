@@ -93,9 +93,9 @@
     overflow: hidden;
 }
 
+/* SillyBunny: the shared `.ds-row` sets the height of this button row, so none is set here. */
 .regex-debugger-run-button {
     justify-content: flex-start;
-    min-height: 44px;
     white-space: nowrap;
 }
 

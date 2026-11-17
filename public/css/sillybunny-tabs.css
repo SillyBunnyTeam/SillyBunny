@@ -1841,11 +1841,6 @@ body:not(.movingUI) .drawer-content.maximized {
     align-items: stretch;
 }
 
-/* A property row keeps the 6px block padding of every row. */
-:is(.sb-data-security-group, .sb-prompting-group-body) .ds-row.ds-row-property {
-    padding-block: 6px;
-}
-
 .sb-import-file-input {
     display: none;
 }

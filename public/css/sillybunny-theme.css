@@ -6012,10 +6012,13 @@ dialog.popup.sb-dialog .checkbox_label {
     flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-start;
-    gap: 12px;
     width: 100%;
     box-sizing: border-box;
     text-align: start;
+}
+
+dialog.popup.sb-dialog .checkbox_label:not(.ds-row) {
+    gap: 12px;
 }
 
 dialog.popup.sb-dialog .checkbox_label > input[type='checkbox'] {
@@ -6040,7 +6043,7 @@ dialog.popup.sb-dialog .checkbox_label > input[type='checkbox'] {
 dialog.popup.sb-dialog .ds-row--stacked {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
+    gap: var(--sb-density-row-gap);
 }
 
 dialog.popup.sb-dialog .ds-row--stacked > .ds-row-text,
@@ -6098,23 +6101,12 @@ dialog.popup.sb-dialog.sb-icon-picker {
     min-height: calc(var(--sb-density-row-min-height) + 8px);
 }
 
-/* Adopted rows retain caller selectors without inheriting generic checkbox-label spacing. */
+/* Adopted rows retain caller selectors, and the generic checkbox-label rules (control height, 8px gap on touch) match at the
+   same specificity as `.ds-row`, so the row's own tokens are set again here. */
 .sb-dialog .ds-row.checkbox_label {
-    min-height: 44px;
-    gap: 12px;
-    padding: 6px 16px;
-}
-
-.sb-dialog .ds-row.checkbox_label:has(.ds-row-subtitle) {
-    min-height: 52px;
-}
-
-.sb-dialog .ds-row.checkbox_label .ds-row-label {
-    line-height: 1.3;
-}
-
-.sb-dialog .ds-row.checkbox_label .ds-row-subtitle {
-    line-height: 1.4;
+    min-height: var(--sb-density-row-min-height);
+    gap: var(--sb-density-row-gap);
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
 }
 
 dialog.popup.sb-dialog--alert .popup-content :is(h2, h3) {

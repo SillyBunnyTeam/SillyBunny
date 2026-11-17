@@ -173,6 +173,52 @@ export function scraperDialogOptions(source, kind) {
     };
 }
 
+/**
+ * The TabbyAPI model downloader keeps its inputs, names and values: the caller reads them by `name` from the template root after
+ * the popup closes. The captions come from the template, so the Repo ID text node and the translated labels stay as written.
+ */
+export function tabbyDownloaderOptions(source) {
+    const root = asElement(source);
+    const content = root.firstElementChild;
+    const control = name => content?.querySelector(`[name="${name}"]`);
+    const [repo, revision, folder, token, include, exclude] = ['hf_repo_id', 'revision', 'folder_name', 'hf_token', 'tabby_download_include', 'tabby_download_exclude'].map(control);
+    const repoCaption = [...content?.childNodes ?? []].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+    if (![repo, revision, folder, token, include, exclude].every(Boolean) || !repoCaption) {
+        throw new TypeError('The Tabby downloader needs its six source fields and the Repo ID caption.');
+    }
+
+    // The captions of the two groups of help text are `.range-block-title` rows; each holds a title and an info icon whose tooltip is the help.
+    const [optionsTitle, includeTitle, excludeTitle] = content.querySelectorAll('.range-block-title');
+    const helpOf = title => title.querySelector('[title]')?.title.replace(/\s+/g, ' ').trim() ?? '';
+    const captionOf = input => input.parentElement.querySelector('label small');
+
+    const caption = document.createElement('span');
+    caption.textContent = repoCaption.textContent.trim();
+    const repoRow = entryRow(repo, caption);
+    const optionRows = [revision, folder, token].map(input => entryRow(input, captionOf(input)));
+    const patternRows = [[include, includeTitle], [exclude, excludeTitle]].map(([input, title]) => entryRow(input, title.querySelector('span'), helpOf(title)));
+
+    // The two help lines and the link to the downloader's notes read as the description of the first group.
+    const notes = content.querySelector('h3 a.notes-link');
+    const intro = [...content.querySelectorAll(':scope > small')];
+    const groups = [
+        createPrefGroup({ field: 'tabby-repo', subtitle: intro.map(textOf).join(' '), rows: [repoRow] }),
+        createPrefGroup({ field: 'tabby-options', title: textOf(optionsTitle.querySelector('span')), subtitle: helpOf(optionsTitle), rows: optionRows }),
+        createPrefGroup({ field: 'tabby-patterns', rows: patternRows }),
+    ];
+    const optionsKey = optionsTitle.querySelector('span').dataset.i18n;
+    if (optionsKey) groups[1].section.querySelector('.ds-pref-group-heading').dataset.i18n = optionsKey;
+    if (notes) groups[0].section.querySelector('.ds-pref-group-subtitle')?.append(' ', notes);
+    root.classList.add('sb-dialog-rows');
+    root.replaceChildren(...groups.map(group => group.section));
+    return {
+        tier: 'dialog',
+        title: t`Download Model`,
+        onOpening() { repoRow.control.focus({ preventScroll: true }); },
+        onClose() { releaseRowIds(root); },
+    };
+}
+
 export function iconPickerOptions(source) {
     const root = asElement(source);
     const input = root.querySelector('input.faQuery');

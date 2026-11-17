@@ -24,6 +24,17 @@ export const FORMS = Object.freeze({
 /** A target size: at least 44px on a coarse pointer and 32px on a fine one (DESIGN.md Layout). */
 export const TARGET_SIZE = Object.freeze({ fine: 32, coarse: 44 });
 
+/**
+ * A row of a boxed list: at least 50px, `6px 12px` padding and 6px between its parts (DESIGN.md Boxed Lists and Rows). A
+ * settings page and a dialog measure the same row. The gap only means something on a flex or grid container.
+ */
+export const ROW_METRICS = [
+    { property: 'minHeight', value: 50, source: 'DESIGN.md' },
+    { property: 'paddingTop', value: 6, source: 'DESIGN.md' },
+    { property: 'paddingInlineStart', value: 12, source: 'DESIGN.md' },
+    { property: 'columnGap', value: 6, ifDisplay: ['flex', 'inline-flex', 'grid', 'inline-grid'], source: 'DESIGN.md' },
+];
+
 /** The header bar of a dialog, window or sheet: at least as tall as the buttons it holds, with 6px of inline padding. */
 export const DIALOG_HEADER = [
     { property: 'offsetHeight', value: TARGET_SIZE, floor: true, source: 'DESIGN.md' },
@@ -68,6 +79,12 @@ export const rules = {
                 { property: 'borderTopLeftRadius', token: '--sb-radius-overlay', source: 'DESIGN.md' },
                 { property: 'borderTopWidth', value: 1, source: 'DESIGN.md' },
             ],
+        },
+        {
+            id: 'row',
+            selectors: [{ id: 'shared', selector: '.ds-row' }],
+            // A family holds at most 20 properties; the height and the gap are what a dialog's own row rules changed, and the padding is the settings family's to hold.
+            properties: ROW_METRICS.filter(({ property }) => ['minHeight', 'columnGap'].includes(property)),
         },
         {
             id: 'heading',

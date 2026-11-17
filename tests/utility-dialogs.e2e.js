@@ -176,6 +176,36 @@ for (const viewport of UTILITY_VIEWPORTS) {
         });
     }
 
+    test(`Tabby downloader keeps its field names and sends them from entry rows at ${size}`, async ({ page }) => {
+        await bootUtilityDialogs(page, viewport);
+        const requests = [];
+        await page.route('**/api/backends/text-completions/tabby/download', route => {
+            requests.push(route.request().postDataJSON());
+            return route.fulfill({ json: {} });
+        });
+        await page.evaluate(async () => {
+            const { textgenerationwebui_settings: textgen_settings, textgen_types } = await import('/scripts/textgen-settings.js');
+            textgen_settings.server_urls[textgen_types.TABBY] = 'http://127.0.0.1:5000';
+            (await import('/script.js')).setOnlineStatus('connected');
+            $('#tabby_download_model').trigger('click');
+        });
+        const popup = page.locator('dialog.popup[open]').last();
+        await popup.locator('input[name="hf_repo_id"]').waitFor();
+        await page.waitForFunction(() => !document.querySelector('dialog.popup[open][opening]'));
+        await expectUtilityFrame(popup, viewport, expect);
+        await expect(popup.locator('.sb-dialog__title')).toHaveText('Download Model');
+        for (const name of ['hf_repo_id', 'revision', 'folder_name', 'hf_token', 'tabby_download_include', 'tabby_download_exclude']) {
+            await expect(popup.locator(`.ds-row-entry [name="${name}"]`)).toHaveCount(1);
+        }
+        await popup.locator('input[name="hf_repo_id"]').fill('author/model');
+        await popup.locator('input[name="revision"]').fill('6.0bpw');
+        await popup.locator('textarea[name="tabby_download_include"]').fill('*.json\n*.txt');
+        await popup.locator('.popup-button-ok').click();
+        await expect.poll(() => requests.length).toBe(1);
+        expect(requests[0]).toMatchObject({ repo_id: 'author/model', revision: '6.0bpw', include: ['*.json', '*.txt'], api_server: 'http://127.0.0.1:5000' });
+        expect(requests[0].exclude).toBeUndefined();
+    });
+
     test(`Icon picker body search preserves filter, keyboard selection, No Icon and Cancel at ${size}`, async ({ page }) => {
         await bootUtilityDialogs(page, viewport);
         let popup = await openUtilityDialog(page, 'icons');

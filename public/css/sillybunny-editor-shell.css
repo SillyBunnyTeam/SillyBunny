@@ -345,7 +345,6 @@ body.reduced-motion .sb-list-editor__divider::before {
 
 .ds-row-property {
     align-items: flex-start;
-    padding-block: 10px;
 }
 
 .ds-row-property__value {

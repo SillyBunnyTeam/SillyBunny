@@ -18,9 +18,19 @@ const FORMS = Object.freeze({
     defaultSet: { closest: '.sb-status-page:not(.sb-status-page--compact)' },
 });
 
+/**
+ * Surfaces of this family that show no status page, so no part of the family's rules describes them: the census read the dialog
+ * frame's title wrapper and Close button, and the About window's rows, as status parts.
+ */
+const SKIPPED = Object.freeze({
+    'status.home.about-unknown': 'an unknown version is a value in a property row of the About window, which has no status page',
+    'status.sampling.unavailable': 'an unavailable sampler is an inert row of a boxed list with a badge, not an empty view',
+});
+
 export const rules = {
     family: 'status',
     forms: FORMS,
+    skip: SKIPPED,
     groupOf: surface => (STYLE_OF.exec(surface.title)?.[1] === 'shared' ? 'shared' : 'own'),
     groupLabels: { shared: 'Members that use the shared status page', own: 'Members with their own markup (own, adapted or none)' },
     parts: [

@@ -10,6 +10,8 @@ import { isMobile } from './RossAscends-mods.js';
 import { updateServiceTierOptions } from './service-tiers.js';
 // SillyBunny: model details for the shared picker rows of the Connections select rows.
 import { registerOptionDetails } from './sillybunny-editor/option-details.js';
+// SillyBunny: the TabbyAPI downloader's inputs become shared entry rows in the Dialog tier.
+import { tabbyDownloaderOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
 import { describeMancerModel, describeOpenRouterModel, describeTogetherModel } from './sillybunny-model-details.js';
 
 let mancerModels = [];
@@ -1069,7 +1071,12 @@ async function downloadTabbyModel() {
         }
 
         const downloadHtml = $(await renderTemplateAsync('tabbyDownloader'));
-        const popupResult = await callGenericPopup(downloadHtml, POPUP_TYPE.CONFIRM, '', { okButton: 'Download', cancelButton: 'Cancel' });
+        const popupResult = await callGenericPopup(downloadHtml, POPUP_TYPE.CONFIRM, '', {
+            okButton: 'Download',
+            cancelButton: 'Cancel',
+            // SillyBunny: presentation only; the inputs keep their names and values, which this function reads below.
+            ...tabbyDownloaderOptions(downloadHtml),
+        });
 
         // User cancelled the download
         if (!popupResult) {

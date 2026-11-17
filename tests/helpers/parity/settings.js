@@ -9,7 +9,7 @@
  */
 
 import { auditLibadwaita, LIBADWAITA_AUDIT_ALLOWLIST } from '../libadwaita-audit.js';
-import { FORMS } from './dialog.js';
+import { FORMS, ROW_METRICS } from './dialog.js';
 
 const AUDIT_RULES = { auditContentInset: 'content-inset', auditRowEdges: 'row-edges', auditRowGeometry: 'row-geometry', auditGroupAnatomy: 'group-anatomy' };
 
@@ -115,12 +115,7 @@ export const rules = {
             selectors: [
                 { id: 'ds-row', selector: `.ds-row${NOT_SERVER_STAT}` },
             ],
-            properties: [
-                { property: 'minHeight', value: 50, source: 'DESIGN.md' },
-                { property: 'paddingTop', value: 6, source: 'DESIGN.md' },
-                { property: 'paddingInlineStart', value: 12, source: 'DESIGN.md' },
-                { property: 'columnGap', value: 6, ifDisplay: IF_FLEX, source: 'DESIGN.md' },
-            ],
+            properties: ROW_METRICS,
         },
         {
             id: 'group-description',

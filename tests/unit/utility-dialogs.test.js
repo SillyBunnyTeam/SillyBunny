@@ -143,3 +143,26 @@ test('icon picker keeps the source search listener and makes every icon keyboard
     expect(clicked).toHaveBeenCalledTimes(1);
     options.onClose();
 });
+
+test('the Tabby downloader puts every input in an entry row and keeps its name, id and value for the caller', () => {
+    const node = root(readFileSync(new URL('../../public/scripts/templates/tabbyDownloader.html', import.meta.url), 'utf8')).firstElementChild;
+    const names = ['hf_repo_id', 'revision', 'folder_name', 'hf_token', 'tabby_download_include', 'tabby_download_exclude'];
+    const controls = names.map(name => node.querySelector(`[name="${name}"]`));
+    controls[0].value = 'author/model';
+    controls[4].value = '*.json\n*.txt';
+    const options = adapters.tabbyDownloaderOptions(node);
+    expect(options).toMatchObject({ tier: 'dialog', title: 'Download Model' });
+    expect(names.map(name => node.querySelector(`[name="${name}"]`))).toEqual(controls);
+    for (const control of controls) {
+        expect(control.closest('.ds-row-entry')).not.toBeNull();
+    }
+    expect(controls.map(control => control.closest('.ds-row').querySelector('.ds-row-label').textContent.trim())).toEqual([
+        'Repo ID', 'Revision', 'Output Folder Name', 'HF Token', 'Include Patterns', 'Exclude Patterns',
+    ]);
+    expect(controls.slice(4).every(control => control.closest('.ds-row--stacked'))).toBe(true);
+    expect([...node.querySelectorAll('h3')].map(heading => heading.textContent)).toEqual(['Downloader Options']);
+    expect(node.querySelector('a.notes-link')?.href).toContain('async-hf-downloader');
+    expect(node.querySelector('[name="hf_repo_id"]').value).toBe('author/model');
+    expect(node.querySelector('[name="tabby_download_include"]').value).toBe('*.json\n*.txt');
+    options.onClose({ content: node });
+});
