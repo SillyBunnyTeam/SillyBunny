@@ -14,8 +14,8 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
 }));
 
-const { findLeadingHeading, framePopup, resolvePopupTier, shouldPromoteAlert } = await import('../../public/scripts/sillybunny-editor/popup-frame.js');
-const POPUP_TYPE = { TEXT: 1, CONFIRM: 2, INPUT: 3, DISPLAY: 4 };
+const { findLeadingHeading, framePopup, resolveOwnFrameSheetTier, resolvePopupTier, shouldPromoteAlert } = await import('../../public/scripts/sillybunny-editor/popup-frame.js');
+const POPUP_TYPE = { TEXT: 1, CONFIRM: 2, INPUT: 3, DISPLAY: 4, CROP: 5 };
 const POPUP_RESULT = { AFFIRMATIVE: 1, NEGATIVE: 0 };
 
 afterEach(() => document.body.replaceChildren());
@@ -136,6 +136,91 @@ describe('Popup tier resolution', () => {
         const value = popup({ content: '<label><input type="checkbox"></label>' });
         expect(shouldPromoteAlert(value)).toBe(false);
         expect(resolvePopupTier(value)).toBe('alert');
+    });
+});
+
+describe('Popups with their own frame', () => {
+    test('a crop is a Dialog sheet and an enlarged picture a Window sheet; nothing else takes a sheet tier', () => {
+        expect(resolveOwnFrameSheetTier(popup({ type: POPUP_TYPE.CROP }))).toBe('dialog');
+        expect(resolveOwnFrameSheetTier(popup({ type: POPUP_TYPE.DISPLAY, classes: ['transparent_dialogue_popup'] }))).toBe('window');
+        expect(resolveOwnFrameSheetTier(popup({ type: POPUP_TYPE.DISPLAY, content: '<div class="img_enlarged_container"></div>' }))).toBe('window');
+        expect(resolveOwnFrameSheetTier(popup())).toBeNull();
+        expect(resolveOwnFrameSheetTier(popup({ classes: ['wide_dialogue_popup'] }))).toBeNull();
+    });
+
+    test('above the overlay breakpoint a crop and an enlarged picture keep their own floating frame', () => {
+        setupDialogMedia({ sheet: false });
+        for (const value of [popupDom({ type: POPUP_TYPE.CROP }), popupDom({ type: POPUP_TYPE.DISPLAY, contentHtml: '<div class="img_enlarged_container"></div>' })]) {
+            const frame = framePopup(value);
+            value.dlg.showModal();
+            frame.opened();
+            expect(value.dlg.classList.contains('sb-dialog')).toBe(false);
+            expect(value.dlg.dataset.presentation).toBeUndefined();
+            expect(value.dlg.querySelector('.sb-dialog__handle')).toBeNull();
+            frame.dispose();
+        }
+    });
+
+    test('below it a crop is a Dialog sheet with Cancel and the affirmative response in the header, and keeps every response node', () => {
+        setupDialogMedia({ sheet: true });
+        const value = popupDom({ type: POPUP_TYPE.CROP, contentHtml: 'Set the crop position of the avatar image' });
+        const frame = framePopup(value);
+        value.dlg.showModal();
+        frame.opened();
+        expect(value.dlg.classList.contains('sb-dialog--dialog')).toBe(true);
+        expect(value.dlg.dataset.presentation).toBe('sheet');
+        expect(value.dlg.querySelector(':scope > .sb-dialog__handle')).not.toBeNull();
+        const header = value.dlg.querySelector(':scope > .sb-dialog__header');
+        expect(header.contains(value.okButton)).toBe(true);
+        expect(header.contains(value.cancelButton)).toBe(true);
+        expect(value.okButton.dataset.result).toBe(String(POPUP_RESULT.AFFIRMATIVE));
+        expect(value.cancelButton.dataset.result).toBe(String(POPUP_RESULT.NEGATIVE));
+        expect(value.closeButton.style.display).toBe('none');
+        frame.dispose();
+    });
+
+    test('below it an enlarged picture is a Window sheet that follows its picture, with Close in the header', () => {
+        setupDialogMedia({ sheet: true });
+        const value = popupDom({ type: POPUP_TYPE.DISPLAY, contentHtml: '<div class="img_enlarged_container"></div>' });
+        value.dlg.classList.add('large_dialogue_popup', 'transparent_dialogue_popup');
+        const frame = framePopup(value);
+        value.dlg.showModal();
+        frame.opened();
+        expect(value.dlg.classList.contains('sb-dialog--window')).toBe(true);
+        expect(value.dlg.classList.contains('sb-dialog--fill')).toBe(false);
+        expect(value.dlg.classList.contains('large_dialogue_popup')).toBe(false);
+        expect(value.dlg.dataset.presentation).toBe('sheet');
+        expect(value.dlg.querySelector(':scope > .sb-dialog__header .sb-dialog__close')).toBe(value.closeButton);
+        frame.dispose();
+    });
+
+    test('a swipe that sprang back is not taken for a press, and a press still is', () => {
+        setupDialogMedia({ sheet: true });
+        const value = popupDom({ type: POPUP_TYPE.DISPLAY, contentHtml: '<div class="img_enlarged_container"></div>' });
+        const frame = framePopup(value);
+        value.dlg.showModal();
+        frame.opened();
+        const pressed = jest.fn();
+        value.dlg.addEventListener('click', pressed);
+        const handle = value.dlg.querySelector('.sb-dialog__handle');
+
+        handle.dispatchEvent(pointerEvent('pointerdown', { y: 10 }));
+        handle.dispatchEvent(pointerEvent('pointermove', { y: 60 }));
+        value.dlg.dispatchEvent(pointerEvent('click', { y: 60 }));
+        expect(pressed).not.toHaveBeenCalled();
+
+        handle.dispatchEvent(pointerEvent('pointerdown', { y: 10 }));
+        handle.dispatchEvent(pointerEvent('pointermove', { y: 12 }));
+        value.dlg.dispatchEvent(pointerEvent('click', { y: 12 }));
+        expect(pressed).toHaveBeenCalledTimes(1);
+
+        const picture = value.content.querySelector('.img_enlarged_container');
+        picture.dispatchEvent(pointerEvent('pointerdown', { y: 10 }));
+        picture.dispatchEvent(pointerEvent('pointermove', { y: 90 }));
+        picture.dispatchEvent(pointerEvent('click', { y: 90 }));
+        // A drag that starts on the picture is not a swipe of the sheet.
+        expect(pressed).toHaveBeenCalledTimes(2);
+        frame.dispose();
     });
 });
 

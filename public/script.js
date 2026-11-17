@@ -19298,6 +19298,15 @@ jQuery(async function () {
         resetMovableStyles(drawerId);
     });
 
+    // SillyBunny: the Close controls of zoomed avatars and gallery windows are divs with a button role, so Enter and Space click them as they would a button.
+    document.addEventListener('keydown', (event) => {
+        if ((event.key !== 'Enter' && event.key !== ' ') || event.altKey || event.ctrlKey || event.metaKey) return;
+        const control = event.target instanceof Element ? event.target.closest('.dragClose[role="button"]') : null;
+        if (!control) return;
+        event.preventDefault();
+        /** @type {HTMLElement} */ (control).click();
+    });
+
     $(document).on('click', '.mes .avatar', function () {
         const messageElement = $(this).closest('.mes');
         const avatarImage = $(this).children('img');

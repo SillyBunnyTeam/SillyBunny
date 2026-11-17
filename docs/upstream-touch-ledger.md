@@ -2041,6 +2041,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-17, UI polish sweep (task 7.9). |
 | Owner | `TODO(copy)` |
 
+### `public/index.html`, `public/script.js`, `public/style.css`, `public/css/mobile-styles.css`, `public/css/popup.css` and the Gallery, Expressions and Summarize extensions - picture overlays
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` (the two `dragClose` templates); `public/script.js` (the Close keyboard handler); `public/style.css` (the zoomed avatar's cap, the focus reveal of its controls, opaque `.draggable` windows, and six rules removed whose selectors nothing in `public/` uses: `#bgtest`, `#rm_characters_topbar_buttons`, `#GroupFavDelOkBack .menu_button`, `#form_rename_chat`, `.nanogpt_info_btn`, the `.character-greetings-*` and `.character-greeting-label-row` rules); `public/css/mobile-styles.css` (the zoomed avatar and Visual Novel wrapper rules, moved to `sillybunny-theme.css`); `public/css/popup.css` (the crop and enlarged image heights in a sheet); `public/scripts/extensions/gallery/index.js` (the gallery window's inline background); `public/scripts/extensions/expressions/style.css` (the Visual Novel wrapper's box); `public/scripts/extensions/memory/style.css` (the summary popout's restore label). |
+| Area | The zoomed avatar, the gallery and the other draggable windows, the crop and image zoom popups, and the Visual Novel sprites. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `.zoomed_avatar` and `.draggable` (`dragClose` as a button); `resolveOwnFrameSheetTier()` in `public/scripts/sillybunny-editor/popup-frame.js`, which `popup.js` reaches through `framePopup()`; `body.waifuMode #visual-novel-wrapper`. |
+| Adapter shape | Since 2026-11-17 (UI polish sweep, task 9.3a): the zoomed avatar is capped to the window less the top bar and centred under it, so its Close is never under the bar (360x294 and short landscapes); the `dragClose` controls of the avatar and gallery templates are buttons named Close, with Enter and Space handled by one delegated keydown; draggable windows are opaque without blur; under the overlay breakpoint the crop and image zoom popups are Dialog and Window sheets, and above it they keep their own frames; in Visual Novel mode the sprites fill the free area above the chat instead of covering the chat and the composer (`expressions/index.js` keeps its z-index); the summary popout's restore label reaches 4.5:1 once its window is opaque. |
+| Protecting tests | `tests/picture-overlays.e2e.js`; `tests/audit/picture-overlay-fixtures.e2e.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/side-panel-adapters.e2e.js`; `tests/side-panel-engine.e2e.js`; `tests/popup-scroll.e2e.js`. |
+| Validation | 2026-11-17: root and tests lint, the full unit run, budgets, contracts and design rules, `frontend-performance.e2e.js`, the related e2e specs (209 on the branch, 163 on the merge), and the audit of `panel.moving.zoomed-avatar`, `panel.moving.gallery`, `panel.moving.visual-novel`, `dialog.own-frame.crop`, `dialog.own-frame.image-zoom` and the summary, group members and Quick Reply popouts. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-17, UI polish sweep (task 9.3a). |
+| Owner | `TODO(copy)` |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

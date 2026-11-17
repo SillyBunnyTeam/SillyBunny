@@ -30,7 +30,7 @@
         }
     </script>
     <script src="scripts/sillybunny-restart-cache-clear.js?v=20261013a"></script>
-    <link rel="preload" as="style" href="style.css?v=20261117j">
+    <link rel="preload" as="style" href="style.css?v=20261117za">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
@@ -57,14 +57,14 @@
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link rel="stylesheet" type="text/css" href="style.css?v=20261117j">
+    <link rel="stylesheet" type="text/css" href="style.css?v=20261117za">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
     <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css?v=20261117d">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20260609a">
     <!-- SillyBunny: this cache key tracks fork edits to the mobile stylesheet. -->
-    <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261117o" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261117za" media="(max-width: 768px)">
     <!-- SillyBunny: shell stylesheet cache keys track fork CSS changes without changing upstream asset URLs. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261117t">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261117zd">
     <!-- SillyBunny: the mobile surface stylesheet cache key tracks its fork-owned responsive rules. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261112t" media="(max-width: 768px)">
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
@@ -7595,7 +7595,8 @@
             <div class="zoomed_avatar">
                 <div class="panelControlBar flex-container">
                     <div class="fa-fw fa-solid fa-grip drag-grabber"></div>
-                    <div class="fa-fw fa-solid fa-circle-xmark dragClose" id="closeZoom"></div>
+                    <!-- SillyBunny: a named button that Enter and Space operate (the delegated keydown handler in script.js). -->
+                    <div class="fa-fw fa-solid fa-circle-xmark dragClose" id="closeZoom" role="button" tabindex="0" title="Close" aria-label="Close" data-i18n="[title]Close;[aria-label]Close"></div>
                 </div>
                 <div class="zoomed_avatar_container">
                     <img class="zoomed_avatar_img" src="" data-izoomify-url="" data-izoomify-magnify="1.8" data-izoomify-duration="300" alt="">
@@ -7607,7 +7608,8 @@
                 <div class="dragTitle"></div>
                 <div class="panelControlBar flex-container">
                     <div class="fa-fw fa-solid fa-grip drag-grabber"></div>
-                    <div class="fa-fw fa-solid fa-circle-xmark dragClose"></div>
+                    <!-- SillyBunny: a named button that Enter and Space operate (the delegated keydown handler in script.js). -->
+                    <div class="fa-fw fa-solid fa-circle-xmark dragClose" role="button" tabindex="0" title="Close" aria-label="Close" data-i18n="[title]Close;[aria-label]Close"></div>
                 </div>
             </div>
         </template>

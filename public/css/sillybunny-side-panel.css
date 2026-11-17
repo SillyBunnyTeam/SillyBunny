@@ -310,17 +310,16 @@ body.sb-has-docked-panel #visual-novel-wrapper {
     top: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) !important;
     left: var(--sb-chat-offset) !important;
     width: var(--sb-chat-width) !important;
-    height: calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important;
+    height: calc(var(--sb-vn-area, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important;
 }
 
-body.sb-has-docked-panel #visual-novel-wrapper .expression-holder {
-    max-width: 100%;
-    max-height: 100%;
+/* In Visual Novel mode the chat is the bottom 40dvh panel of that column, so the sprites keep the area above it. */
+body.waifuMode.sb-has-docked-panel #visual-novel-wrapper {
+    --sb-vn-area: 60dvh;
 }
 
-body.sb-has-docked-panel #visual-novel-wrapper .expression-holder img.expression {
+body.sb-has-docked-panel #visual-novel-wrapper :is(.expression-holder, .expression-holder img.expression) {
     max-width: 100%;
-    max-height: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {

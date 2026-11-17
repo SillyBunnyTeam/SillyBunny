@@ -1,7 +1,7 @@
 @charset "UTF-8";
 
 @import url(css/animations.css);
-@import url(css/popup.css?v=20260803a);
+@import url(css/popup.css?v=20261117za);
 @import url(css/promptmanager.css?v=20261112a);
 @import url(css/loader.css?v=20261110a);
 @import url(css/character-group-overlay.css);
@@ -989,7 +989,8 @@ body .panelControlBar {
     opacity: 0;
 }
 
-.zoomed_avatar:hover .panelControlBar {
+/* SillyBunny: focus reveals Close as hover does. */
+.zoomed_avatar:is(:hover, :focus-within) .panelControlBar {
     opacity: 1;
 }
 
@@ -3347,13 +3348,7 @@ select option[disabled]:not(:checked) {
     flex-direction: column;
 }
 
-#rm_characters_topbar_buttons {
-    margin-top: 0;
-    margin-bottom: 10px;
-    display: flex;
-    flex-direction: row;
-    align-items: baseline;
-}
+/* SillyBunny: #rm_characters_topbar_buttons rule removed, nothing uses it. */
 
 #rm_characters_topbar_expander {
     flex-grow: 1;
@@ -3370,13 +3365,7 @@ select option[disabled]:not(:checked) {
     column-gap: 5px;
 }
 
-#GroupFavDelOkBack .menu_button {
-    margin: 0;
-    height: fit-content;
-    padding: 5px;
-    border-radius: 5px;
-    aspect-ratio: 1 / 1;
-}
+/* SillyBunny: #GroupFavDelOkBack rule removed, nothing uses it. */
 
 #character_sort_order {
     flex: 1;
@@ -3901,24 +3890,8 @@ grammarly-extension {
     gap: 10px;
 }
 
-.character-greetings-summary {
-    color: var(--SmartThemeEmColor);
-    line-height: 1.45;
-}
-
-.character-greetings-primary,
-.character-greetings-editor {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--color-surface, var(--SmartThemeBlurTintColor)) 65%, transparent);
-}
-
-.character-greeting-label-row,
-.character-greetings-editor-title {
+/* SillyBunny: the .character-greetings-* rules are removed, nothing uses them. */
+.character-greeting-label-row {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -4191,16 +4164,7 @@ grammarly-extension {
     top: 0;
 }
 
-#bgtest {
-    display: none;
-    width: 100vw;
-    width: 100dvw;
-    height: 100vh;
-    height: 100dvh;
-    position: absolute;
-    z-index: -100;
-    background-color: red;
-}
+/* SillyBunny: #bgtest rule removed, nothing uses it. */
 
 .prompt_order {
     display: flex;
@@ -4330,13 +4294,7 @@ grammarly-extension {
     user-select: none;
 }
 
-#form_rename_chat {
-    display: flex;
-    align-items: center;
-    flex: 1;
-    opacity: 0.8;
-    gap: 5px;
-}
+/* SillyBunny: #form_rename_chat rule removed, nothing uses it. */
 
 
 /* Override toastr default styles */
@@ -6512,15 +6470,18 @@ body:not(.movingUI) .drawer-content.maximized {
     border-radius: 10px;
     border: 1px solid var(--SmartThemeBorderColor);
     aspect-ratio: unset;
-    -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
-    backdrop-filter: var(--SmartThemeBackdropFilter);
-    background-color: var(--SmartThemeBlurTintColor);
+    /* SillyBunny: a Window layer is opaque, no blur. */
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: var(--sb-layer-window, var(--SmartThemeBlurTintColor));
     padding: 5px;
 }
 
 .zoomed_avatar {
+    /* SillyBunny: capped to the window less the top bar, so Close is never under it. */
+    --sb-zoomed-avatar-height: calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize)));
     /* Max height with 2/3 aspect ratio */
-    --maxWidth: calc(90vh * 0.666);
+    --maxWidth: calc(var(--sb-zoomed-avatar-height) * 0.666);
     /* Left gap between the left corner and chat */
     --leftGapWidth: calc((100vw - var(--sheldWidth)) / 2);
     /* Left position of the avatar (half of the gap minus half of the avatar width) */
@@ -6532,18 +6493,19 @@ body:not(.movingUI) .drawer-content.maximized {
     left: var(--leftPosition);
     position: absolute;
     height: auto;
-    max-height: 90vh !important;
+    max-height: var(--sb-zoomed-avatar-height) !important;
     align-items: start;
 }
 
 .zoomed_avatar_container {
     width: 100%;
     /* margin-inline: 10px; */
-    max-height: 90vh;
+    max-height: var(--sb-zoomed-avatar-height, 90vh);
     max-width: 90dvh;
 }
 
 .zoomed_avatar img {
+    max-height: var(--sb-zoomed-avatar-height);
     height: unset !important;
     width: 100%;
     object-fit: contain !important;
@@ -7232,16 +7194,7 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 }
 
-.nanogpt_info_btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.8em;
-    min-height: 1.8em;
-    margin-left: 0.15em;
-    vertical-align: middle;
-}
-
+/* SillyBunny: .nanogpt_info_btn rule removed, nothing uses it. */
 .nanogpt-credits-popup {
     display: grid;
     gap: 0.25em 1em;

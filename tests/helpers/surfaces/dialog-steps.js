@@ -17,8 +17,12 @@ const frameOf = tier => `dialog.sb-dialog-host:not([closing]) section.sb-dialog-
 export const ALERT_FRAME = frameOf('alert');
 export const DIALOG_FRAME = frameOf('dialog');
 export const WINDOW_FRAME = frameOf('window');
-/** A Popup that the frame hook left alone (crop, image zoom): the native dialog with the Popup's own markup. */
-export const OWN_POPUP = 'dialog.popup[open]:not([closing]):not(.sb-dialog)';
+/**
+ * The Popup of a crop or an enlarged picture. Above the overlay breakpoint the frame hook leaves it alone, so it is the native dialog
+ * with the Popup's own markup; below it the hook frames it as a Dialog (crop) or Window (picture) sheet. A step closes every dialog
+ * before it opens one of these, so the selector does not need to tell the two forms apart.
+ */
+export const OWN_POPUP = 'dialog.popup[open]:not([closing])';
 
 /**
  * A selector for what sits inside a frame. A frame is a list of two forms, so the descendant has to follow each form: a plain

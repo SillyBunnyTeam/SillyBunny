@@ -17,6 +17,20 @@
     overflow: hidden;
 }
 
+/* SillyBunny: in Visual Novel mode the chat is the bottom 40dvh panel (`body.waifuMode #sheld`), so the sprites stand in the area above
+   it and never cover the chat or the composer. The wrapper is fixed, so the holders that sit at its bottom are bounded by it. */
+body.waifuMode #visual-novel-wrapper {
+    position: fixed;
+    top: var(--sb-topbar-layout-offset, var(--topBarBlockSize));
+    left: 0;
+    height: calc(60dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize)));
+}
+
+body.waifuMode #visual-novel-wrapper :is(.expression-holder, img.expression) {
+    height: 100%;
+    max-height: 100%;
+}
+
 #visual-novel-wrapper .expression-holder {
     width: max-content;
     display: flex;

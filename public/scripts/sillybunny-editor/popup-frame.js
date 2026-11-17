@@ -18,6 +18,8 @@ const RESULT_CANCELLED = null;
 const TIERS = new Set(['alert', 'dialog', 'window']);
 const HEADING_SELECTOR = 'h2, h3, .popup-header';
 const MEDIA_SELECTOR = 'img, svg, video, canvas, iframe, input, select, textarea, button';
+/** The distance in pixels from which a pointer that moved counts as a swipe (as in `sheet-gestures.js`). */
+const SWIPE_SLOP = 4;
 let nextId = 0;
 
 function isShown(node) {
@@ -71,6 +73,19 @@ export function resolvePopupTier(popup, explicit = null) {
     if (dlg.matches('.wide_dialogue_popup, .wider_dialogue_popup')) return 'dialog';
     if (popup.type === TYPE_DISPLAY) return 'dialog';
     return shouldPromoteAlert(popup) ? 'dialog' : 'alert';
+}
+
+/**
+ * Tier that a popup with its own frame takes under the overlay breakpoint, where it is a bottom sheet: a crop is a Dialog, with
+ * Cancel and Crop in the header, and an enlarged picture is a Window (a viewer), with Close. Null for every other popup.
+ * @param {object} popup
+ * @returns {'dialog'|'window'|null}
+ */
+export function resolveOwnFrameSheetTier(popup) {
+    if (popup.type === TYPE_CROP) return 'dialog';
+    const { dlg, content } = popup;
+    if (dlg.matches('.transparent_dialogue_popup') || content.querySelector('.img_enlarged_container')) return 'window';
+    return null;
 }
 
 /** Turns custom-input checkboxes into switch rows that adopt the input (its id feeds inputResults). */
@@ -376,14 +391,48 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         runOpening();
     }
 
+    /**
+     * A drag that starts on the handle or the header ends in a click on the dialog, because the sheet holds the pointer. A popup with
+     * its own click handler (an enlarged picture closes on any click) must not take a swipe that sprang back for a press.
+     */
+    function ignoreClickAfterSwipe() {
+        let swipe = null;
+        const onDown = (event) => {
+            const onGrip = event.target instanceof Element && Boolean(event.target.closest('.sb-dialog__handle, .sb-dialog__header'));
+            swipe = onGrip && event.isPrimary ? { startY: event.clientY, moved: false } : null;
+        };
+        const onMove = (event) => {
+            if (swipe && Math.abs(event.clientY - swipe.startY) > SWIPE_SLOP) swipe.moved = true;
+        };
+        const onClick = (event) => {
+            const swiped = swipe?.moved;
+            swipe = null;
+            if (!swiped) return;
+            event.stopImmediatePropagation();
+            event.preventDefault();
+        };
+        dlg.addEventListener('pointerdown', onDown);
+        dlg.addEventListener('pointermove', onMove);
+        dlg.addEventListener('click', onClick, true);
+        cleanups.push(() => {
+            dlg.removeEventListener('pointerdown', onDown);
+            dlg.removeEventListener('pointermove', onMove);
+            dlg.removeEventListener('click', onClick, true);
+        });
+    }
+
     function frameOpened() {
-        const resolved = resolvePopupTier(popup, tier);
+        const query = window.matchMedia?.(OVERLAY_SHEET_QUERY) ?? { matches: false, addEventListener() {}, removeEventListener() {} };
+        let resolved = resolvePopupTier(popup, tier);
+        // The popups with their own frame stay floating cards above the overlay breakpoint and are sheets below it.
+        const ownFrameSheet = !resolved && query.matches;
+        if (ownFrameSheet) resolved = resolveOwnFrameSheetTier(popup);
         if (!resolved) return;
         framed = true;
         dlg.classList.add('sb-dialog', `sb-dialog--${resolved}`);
         const isDocument = dlg.matches('.sb-document, .sb-maximized-editor') || dlg.querySelector('.sb-document, .sb-maximized-editor');
         if (resolved === 'window') dlg.classList.remove('large_dialogue_popup');
-        if (resolved === 'window' && (size === 'fill' || isDocument)) dlg.classList.add('sb-dialog--fill');
+        if (resolved === 'window' && ((size === 'fill' && !ownFrameSheet) || isDocument)) dlg.classList.add('sb-dialog--fill');
         if (resolved === 'window' && dlg.querySelector('.sb-maximized-editor')) dlg.classList.add('sb-dialog--maximized-editor');
         // SillyBunny: document windows (maximized editors, notes, inspectors, debugger output)
         // use a View body instead of a Window body.
@@ -398,8 +447,8 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         handle.className = 'sb-dialog__handle';
         handle.setAttribute('aria-hidden', 'true');
         dlg.append(handle);
+        if (ownFrameSheet) ignoreClickAfterSwipe();
 
-        const query = window.matchMedia?.(OVERLAY_SHEET_QUERY) ?? { matches: false, addEventListener() {}, removeEventListener() {} };
         const isSheet = () => query.matches && !dlg.classList.contains('sb-dialog--page');
         const sync = () => {
             dlg.dataset.presentation = isSheet() ? 'sheet' : 'floating';

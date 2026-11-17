@@ -7,7 +7,7 @@ import { returnFocusTo } from './page-chain.js';
 import { bindSheetGestures, createSheetHandle } from './sheet-gestures.js';
 
 export const SIDE_PANEL_STYLESHEET = {
-    href: 'css/sillybunny-side-panel.css?v=20261117s',
+    href: 'css/sillybunny-side-panel.css?v=20261117za',
     id: 'deferred-side-panel-css',
 };
 

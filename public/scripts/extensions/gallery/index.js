@@ -377,7 +377,8 @@ async function makeMovable(url) {
     const id = 'gallery';
     const template = $('#generic_draggable_template').html();
     const newElement = $(template);
-    newElement.css({ 'background-color': 'var(--SmartThemeBlurTintColor)', 'opacity': 0 });
+    // SillyBunny: no inline background, so the opaque Window layer of `.draggable` (style.css) paints the window.
+    newElement.css({ 'opacity': 0 });
     newElement.attr('forChar', id);
     newElement.attr('id', id);
     newElement.find('.drag-grabber').attr('id', `${id}header`);

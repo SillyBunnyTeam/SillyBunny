@@ -395,6 +395,16 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     z-index: var(--sb-z-zoomed-avatar) !important;
 }
 
+/* Centred under the top bar. */
+@media (max-width: 1024px) {
+    .zoomed_avatar:not(.sb-conversation-zoomed-avatar) {
+        inset: var(--sb-topbar-layout-offset, var(--topBarBlockSize)) 0 0;
+        width: fit-content;
+        height: fit-content;
+        margin: auto;
+    }
+}
+
 .zoomed_avatar > :is(.zoomed_avatar_container, .avatar_zoom_container) {
     position: relative;
     z-index: 0 !important;
@@ -409,9 +419,9 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    min-width: 2rem;
-    height: 2rem;
+    width: var(--sb-density-floor);
+    min-width: var(--sb-density-floor);
+    height: var(--sb-density-floor);
     border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 20%, transparent);
     border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 82%, transparent);
@@ -429,7 +439,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     }
 }
 
-@media (pointer: coarse), (hover: none) {
+@media (pointer: coarse), (hover: none), (max-width: 1024px) {
     .zoomed_avatar > .panelControlBar {
         opacity: 1;
     }
