@@ -38,13 +38,13 @@ export function hintKindFor(status) {
 export function getRequestErrorHint(kind) {
     switch (kind) {
         case REQUEST_ERROR_HINT_KINDS.key:
-            return t`The provider didn't accept your API key. Check it in Backend ▸ Connections.`;
+            return t`The provider didn’t accept your API key. Check it in Backend ▸ Connections.`;
         case REQUEST_ERROR_HINT_KINDS.model:
-            return t`The provider couldn't find the selected model or address. Check both in Backend ▸ Connections.`;
+            return t`The provider couldn’t find the selected model or address. Check both in Backend ▸ Connections.`;
         case REQUEST_ERROR_HINT_KINDS.rate:
             return t`The provider is limiting your requests, or your credits ran out. Wait a moment and try again, or check your account with the provider.`;
         case REQUEST_ERROR_HINT_KINDS.down:
-            return t`The provider couldn't be reached or is having problems. Try again in a few minutes.`;
+            return t`The provider couldn’t be reached or is having problems. Try again in a few minutes.`;
         default:
             return '';
     }

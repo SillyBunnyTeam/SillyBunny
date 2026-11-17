@@ -495,6 +495,11 @@ function ensureTooltip() {
     return tooltip;
 }
 
+/** The device's safe-area inset on one side, which CSS declares as `--sb-safe-area-<side>`. */
+function safeAreaInset(side) {
+    return Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue(`--sb-safe-area-${side}`)) || 0;
+}
+
 function showTooltip(target, label) {
     const element = ensureTooltip();
     clearTimeout(tooltipHideTimer);
@@ -507,8 +512,8 @@ function showTooltip(target, label) {
         top = targetRect.bottom + 8;
     }
     const left = Math.min(
-        Math.max(targetRect.left + targetRect.width / 2 - rect.width / 2, VIEWPORT_MARGIN),
-        window.innerWidth - rect.width - VIEWPORT_MARGIN,
+        Math.max(targetRect.left + targetRect.width / 2 - rect.width / 2, Math.max(VIEWPORT_MARGIN, safeAreaInset('left'))),
+        window.innerWidth - rect.width - Math.max(VIEWPORT_MARGIN, safeAreaInset('right')),
     );
     element.style.top = `${Math.round(top)}px`;
     element.style.left = `${Math.round(left)}px`;

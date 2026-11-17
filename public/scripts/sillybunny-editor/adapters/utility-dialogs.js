@@ -238,9 +238,11 @@ export function iconPickerOptions(source) {
         });
     }
     return {
-        tier: 'dialog', title: input.placeholder,
+        tier: 'dialog', title: t`Choose Icon`,
         onOpening(popup) {
             popup.dlg.classList.add('sb-icon-picker');
+            // Picking an icon is the action; No Icon clears the choice, so it is not the suggested response.
+            popup.okButton.classList.add('is-plain');
             input.focus({ preventScroll: true });
         },
         onClose() { releaseRowIds(root); },

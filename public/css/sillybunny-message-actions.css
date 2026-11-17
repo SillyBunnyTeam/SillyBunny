@@ -592,7 +592,7 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     flex-direction: column;
     gap: 6px;
     max-block-size: min(80dvh, 40rem);
-    padding: 6px 6px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 6px max(6px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
     box-sizing: border-box;
     border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
     background: var(--sb-layer-drawer);

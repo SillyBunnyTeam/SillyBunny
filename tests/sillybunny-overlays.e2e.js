@@ -139,6 +139,19 @@ for (const width of [1440, 390]) {
             await expect(selectAll).toBeVisible();
             await expect(frame.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
             await expect(frame.getByRole('button', { name: 'Delete older', exact: true })).toBeVisible();
+            // The age presets meet the touch floor of the pointer (44px coarse, 32px fine), and the footer label stays on one line.
+            const floor = width === 390 ? 44 : 32;
+            for (const chip of await frame.locator('.sb-chat-delete-presets .menu_button').all()) {
+                const box = await chip.boundingBox();
+                expect(box.width, 'a preset chip is not narrower than the floor').toBeGreaterThanOrEqual(floor - 0.5);
+                expect(box.height, 'a preset chip is not shorter than the floor').toBeGreaterThanOrEqual(floor - 0.5);
+            }
+            const olderLines = await frame.getByRole('button', { name: 'Delete older', exact: true }).evaluate(node => {
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                return new Set([...range.getClientRects()].filter(rect => rect.width > 0).map(rect => Math.round(rect.top))).size;
+            });
+            expect(olderLines, 'the footer response label is one line').toBe(1);
             await rows.last().scrollIntoViewIfNeeded();
             await expect(rows.last()).toBeInViewport();
             const first = rows.filter({ hasText: 'QA History Chat 01' }).first();

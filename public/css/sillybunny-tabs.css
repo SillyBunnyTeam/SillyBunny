@@ -2602,7 +2602,9 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
 }
 
 :is(.sb-dialog.sb-chat-mass-delete, .sb-dialog__page.sb-chat-mass-delete) .sb-chat-delete-presets .menu_button {
-    min-height: 40px;
+    width: auto;
+    min-width: var(--sb-control-min-height);
+    min-height: var(--sb-control-min-height);
     margin: 0;
 }
 

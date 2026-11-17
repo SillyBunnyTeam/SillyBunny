@@ -115,6 +115,8 @@
     --sb-chat-composer-gap: 8px;
     --sb-chat-composer-edge-gap: 8px;
     --sb-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --sb-safe-area-left: env(safe-area-inset-left, 0px);
+    --sb-safe-area-right: env(safe-area-inset-right, 0px);
     --sb-mobile-safe-area-bottom: max(34px, env(safe-area-inset-bottom, 0px));
     --sb-mobile-touch-target: 44px;
     --sb-everforest-dusk-main: rgba(131, 179, 142, 1);
@@ -1193,10 +1195,11 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     }
 }
 
-/* Under more contrast the tray and a pressed toggle gain a 1px ring at the border strength; the selected toggle's
-   ring is part of --sb-toggle-raised-shadow. */
+/* Under more contrast the tray, a pressed toggle and a toast gain a 1px ring at the border strength; the selected
+   toggle's ring is part of --sb-toggle-raised-shadow. */
 @media (prefers-contrast: more) {
     .sb-boolean-radio-group,
+    #toast-container > div,
     .sb-boolean-radio-option:active > input[type="radio"]:not(:checked) + span {
         outline: 1px solid var(--sb-shell-border);
         outline-offset: -1px;
@@ -1486,9 +1489,15 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     line-height: 1;
 }
 
+/* `.is-plain` opts a Popup OK response out of the suggested fill and keeps the class, which extensions query. */
+.menu_button.popup-button-ok.is-plain {
+    color: var(--SmartThemeBodyColor);
+    box-shadow: none;
+}
+
 /* Mirrors the base .menu_button enabled-state :not() chain so the accent fill keeps winning on specificity. */
 .menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']),
-.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
+.menu_button.popup-button-ok:not(.is-plain):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 88%, white 12%);
     color: var(--sb-on-accent);
     border-color: transparent;
@@ -1506,7 +1515,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 
 @media (hover: hover) {
     .menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover,
-    .menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
+    .menu_button.popup-button-ok:not(.is-plain):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
         background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
         border-color: transparent;
         box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
@@ -1519,7 +1528,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
     }
 
     .menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible,
-    .menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
+    .menu_button.popup-button-ok:not(.is-plain):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):focus-visible {
         background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
         border-color: transparent;
         box-shadow: var(--sb-focus-ring-inset);
@@ -1533,9 +1542,9 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 }
 
 .menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
-.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
+.menu_button.popup-button-ok:not(.is-plain):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):active,
 .menu_button.menu_button_primary:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active,
-.menu_button.popup-button-ok:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active {
+.menu_button.popup-button-ok:not(.is-plain):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']).active {
     background: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 82%, white 18%);
     border-color: transparent;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, var(--sb-accent)) 34%, transparent);
@@ -4653,20 +4662,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     color: var(--sb-accent-ink);
 }
 
-body #toast-container {
-    --sb-toast-surface: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%);
-    --toast-success-bg: var(--sb-toast-surface);
-    --toast-error-bg: var(--sb-toast-surface);
-    --toast-info-bg: var(--sb-toast-surface);
-    --toast-warning-bg: var(--sb-toast-surface);
-}
-
-@supports (color: rgb(from red r g b / 1)) {
-    body #toast-container {
-        --sb-toast-surface: rgb(from color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--SmartThemeBodyColor) 8%) r g b / 1);
-    }
-}
-
 /* The toast layer is dark in both tones, where the accent ring does not reach 3:1. The ring takes the ink of the toast,
    or, where relative colours work, libadwaita's light form of the accent. The two tokens that read --sb-focus-ring
    resolve where they are declared, so they are declared again here. */
@@ -4680,17 +4675,6 @@ body #toast-container {
     body #toast-container {
         --sb-focus-ring: oklab(from var(--sb-accent) max(l, 0.85) a b);
     }
-}
-
-.toast {
-    border-radius: var(--sb-radius-md) !important;
-}
-
-/* Toastr's type icons are white PNGs; difference-blending keeps them legible on light surfaces too. */
-body #toast-container > .toast,
-body #toast-container > .toast:hover {
-    background-blend-mode: difference;
-    box-shadow: var(--sb-shadow-toast);
 }
 
 @keyframes sb-entity-select-pulse {
@@ -6543,9 +6527,10 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     background: var(--sb-sidebar-bg);
 }
 
-/* Extra responses stay end-aligned instead of inheriting Popup's wrapped-row growth. */
-.sb-dialog .sb-dialog__bottom-bar > .popup-button-custom {
+/* Extra responses stay end-aligned; `width: auto` undoes upstream's `min-content`, which wraps a label per word. */
+.sb-dialog .sb-dialog__bottom-bar > :is(.popup-button-custom, .sb-dialog__response) {
     flex: 0 1 auto;
+    width: auto;
 }
 
 .sb-dialog__status {
@@ -6662,7 +6647,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
 /* Bottom sheets (AdwDialog under max-width 450px or max-height 360px). */
 .sb-dialog-host[data-presentation='sheet'][open] {
     align-items: flex-end;
-    padding: calc(env(safe-area-inset-top, 0px) + 24px) 0 var(--sb-dialog-keyboard-inset, 0px);
+    padding: calc(env(safe-area-inset-top, 0px) + 24px) env(safe-area-inset-right, 0px) var(--sb-dialog-keyboard-inset, 0px) env(safe-area-inset-left, 0px);
 }
 
 .sb-dialog-host[data-presentation='sheet'] .sb-dialog {
@@ -7040,15 +7025,48 @@ body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
     }
 }
 
-/* Toasts - toast layer with no border */
-#toast-container > div {
+/* Toasts: a pill on the toast layer. `[class]` beats toastr's per-position width and margin; the end padding clears the caps. */
+body #toast-container[class] > div {
+    width: fit-content;
+    max-width: min(450px, calc(100% - 24px));
+    margin: 12px auto 0;
+    padding: 9px 24px 9px 36px;
     background-color: var(--sb-layer-toast) !important;
     color: var(--sb-layer-toast-fg) !important;
     border: none !important;
-    border-radius: var(--sb-radius-overlay) !important;
+    border-radius: var(--sb-radius-pill) !important;
     box-shadow: var(--sb-shadow-toast) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+}
+
+/* Status colour on the icon glyph and title only; the toast is dark in both tones, so a light tone's colour is lifted. */
+#toast-container > .toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
+#toast-container > .toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }
+#toast-container > .toast-warning { --sb-toast-src: var(--sb-color-warning); --sb-toast-glyph: '\f071'; }
+
+#toast-container > .toast:not(.toast-info) {
+    --sb-toast-status: var(--sb-toast-src);
+    background-image: none !important;
+}
+
+@supports (color: oklab(from red l a b)) {
+    #toast-container > .toast:not(.toast-info) {
+        --sb-toast-status: oklab(from var(--sb-toast-src) max(l, 0.76) a b);
+    }
+}
+
+#toast-container > .toast:not(.toast-info)::before {
+    content: var(--sb-toast-glyph);
+    position: absolute;
+    inset: 50% auto auto 12px;
+    translate: 0 -50%;
+    font: 900 18px/1 "Font Awesome 6 Free";
+}
+
+#toast-container > .toast:not(.toast-info)::before,
+#toast-container > .toast:not(.toast-info) .toast-title {
+    color: var(--sb-toast-status);
 }
 
 /* Toast enter animation - slide down from own height */

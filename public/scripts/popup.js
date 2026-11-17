@@ -287,7 +287,8 @@ export class Popup {
         this.okButton.textContent = typeof okButton === 'string' ? okButton : 'OK';
         this.okButton.dataset.i18n = this.okButton.textContent;
         this.cancelButton.textContent = typeof cancelButton === 'string' ? cancelButton : template.getAttribute('popup-button-cancel');
-        this.cancelButton.dataset.i18n = this.cancelButton.textContent;
+        // SillyBunny: a default caption is translated by the template key it was read from, not by its already translated text.
+        this.cancelButton.dataset.i18n = typeof cancelButton === 'string' ? this.cancelButton.textContent : 'popup-button-cancel';
 
         /** @param {HTMLElement} control @param {string} text Sets the title attribute and translation, if text is provided  */
         function setTitleFromTooltip(control, text) {
@@ -482,8 +483,15 @@ export class Popup {
                 if (okButton === false) this.okButton.style.display = 'none';
                 if (cancelButton === false) this.cancelButton.style.display = 'none';
                 // Override default captions for confirm on OK->Yes, CANCEL->No
-                if (!okButton) this.okButton.textContent = template.getAttribute('popup-button-yes');
-                if (!cancelButton) this.cancelButton.textContent = template.getAttribute('popup-button-no');
+                // SillyBunny: each default caption keeps the template key it came from, so a later locale pass translates it as Yes and No, not as OK and Cancel.
+                if (!okButton) {
+                    this.okButton.textContent = template.getAttribute('popup-button-yes');
+                    this.okButton.dataset.i18n = 'popup-button-yes';
+                }
+                if (!cancelButton) {
+                    this.cancelButton.textContent = template.getAttribute('popup-button-no');
+                    this.cancelButton.dataset.i18n = 'popup-button-no';
+                }
                 break;
             }
             case POPUP_TYPE.INPUT: {
@@ -492,7 +500,11 @@ export class Popup {
                 if (okButton === false) this.okButton.style.display = 'none';
                 if (cancelButton === false) this.cancelButton.style.display = 'none';
                 // Override default captions for input on OK->Save
-                if (!okButton) this.okButton.textContent = template.getAttribute('popup-button-save');
+                // SillyBunny: the default caption keeps its template key, as in the confirm branch.
+                if (!okButton) {
+                    this.okButton.textContent = template.getAttribute('popup-button-save');
+                    this.okButton.dataset.i18n = 'popup-button-save';
+                }
                 break;
             }
             case POPUP_TYPE.DISPLAY: {
@@ -518,7 +530,11 @@ export class Popup {
                 if (okButton === false) this.okButton.style.display = 'none';
                 if (cancelButton === false) this.cancelButton.style.display = 'none';
                 // Override default captions for crop on OK->Crop
-                if (!okButton) this.okButton.textContent = template.getAttribute('popup-button-crop');
+                // SillyBunny: the default caption keeps its template key, as in the confirm branch.
+                if (!okButton) {
+                    this.okButton.textContent = template.getAttribute('popup-button-crop');
+                    this.okButton.dataset.i18n = 'popup-button-crop';
+                }
                 break;
             }
             default: {

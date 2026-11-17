@@ -166,7 +166,7 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await page.locator('dialog.popup[open] #resetSettingsPassword').waitFor();
         const openedReset = page.locator('dialog.popup[open]').last();
         const destructiveConfirm = page.locator(`dialog.popup[data-id="${await openedReset.getAttribute('data-id')}"]`);
-        await expect(destructiveConfirm).toHaveClass(/sb-dialog--dialog/);
+        await expect(destructiveConfirm).toHaveClass(/sb-dialog--alert/);
         await expect(destructiveConfirm.locator('.popup-button-ok')).toHaveClass(/is-destructive/);
         await expect(destructiveConfirm.locator('.popup-button-cancel')).toBeFocused();
         await page.keyboard.press('Enter');

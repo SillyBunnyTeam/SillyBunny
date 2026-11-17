@@ -202,21 +202,25 @@ export function switchBranchOptions(select) {
 export function accountFormOptions(source, { title = null, destructive = false } = {}) {
     const root = asElement(source);
     const fields = [...root.querySelectorAll('input[type="password"], input[type="text"]')];
+    // A question with one field to confirm it is an Alert (DESIGN: Dialogs, Tiers); the form's own heading is the question.
+    const oneQuestion = fields.length === 1 && !root.querySelector('input[type="checkbox"]');
     for (const input of fields) {
         const container = input.closest('.currentPasswordBlock, .newPasswordBlock, .confirmPasswordBlock, .resetCodeBlock');
         const caption = container?.querySelector('label') ?? input.previousElementSibling;
         if (!caption) throw new TypeError('An account field needs its upstream caption.');
         const anchor = document.createComment('account entry row');
         input.before(anchor);
-        const row = createEntryRow({ label: textOf(caption), field: input.name, input, type: input.type, floating: true });
-        moveCaption(row.row.querySelector('.ds-row-label'), caption, { copyId: true });
+        // An Alert is too narrow for a floating label as long as the caption, so the caption stays above the field as body text.
+        const alertLabel = oneQuestion && input.placeholder;
+        const row = createEntryRow({ label: alertLabel || textOf(caption), field: input.name, input, type: input.type, floating: true });
+        if (!alertLabel) moveCaption(row.row.querySelector('.ds-row-label'), caption, { copyId: true });
         const group = createPrefGroup({ field: `${input.name}-field`, rows: [row] });
         if (container) container.replaceChildren(group.section);
         else anchor.replaceWith(group.section);
     }
     root.classList.add('sb-dialog-rows');
     return dialogCleanup(root, {
-        ...(title ? { title } : {}),
+        ...(oneQuestion ? { tier: 'alert' } : title ? { title } : {}),
         onOpening(popup) {
             const switchRow = root.querySelector(':scope > .ds-row-switch');
             if (switchRow) {

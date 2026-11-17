@@ -236,7 +236,14 @@ for (const viewport of MISC_VIEWPORTS) {
         test(`Account ${surface} preserves entries and safe intercepted requests at ${size}`, async ({ page }) => {
             const state = await bootMiscDialogs(page, viewport);
             let popup = await openMiscDialog(page, surface);
-            await expectFrame(popup, viewport);
+            if (surface === 'settings') {
+                // One question and one field is an Alert over the profile dialog, not a Dialog page.
+                await expect(popup).toHaveClass(/sb-dialog--alert/);
+                await expect(popup).toHaveAttribute('data-presentation', viewport.presentation);
+                await expect(popup.locator('.sb-dialog__heading')).toBeVisible();
+            } else {
+                await expectFrame(popup, viewport);
+            }
             popup = await expectAccountDefault(page, popup, state, surface);
             await fillAccountForm(popup, surface);
             await popup.locator('.popup-button-ok').click();

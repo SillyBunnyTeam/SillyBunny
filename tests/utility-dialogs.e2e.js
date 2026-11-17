@@ -210,6 +210,10 @@ for (const viewport of UTILITY_VIEWPORTS) {
         await bootUtilityDialogs(page, viewport);
         let popup = await openUtilityDialog(page, 'icons');
         await expectUtilityFrame(popup, viewport, expect);
+        // The header names the dialog, and No Icon, which clears the choice, wears the fill of Cancel, not the suggested fill.
+        await expect(popup.locator('.sb-dialog__title')).toHaveText('Choose Icon');
+        const fills = await popup.evaluate(node => ['.popup-button-ok', '.popup-button-cancel'].map(selector => getComputedStyle(node.querySelector(selector)).backgroundColor));
+        expect(fills[0]).toBe(fills[1]);
         await popup.locator('.faQuery').fill('star');
         await expect(popup.locator('.faPicker > :not(.hidden)')).toHaveCount(30);
         const icon = popup.locator('.faPicker > :not(.hidden)').last();

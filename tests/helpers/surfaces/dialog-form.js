@@ -132,10 +132,10 @@ async function openAccountInfo(page) {
 }
 
 /** A state of Account Info: a form of the account, pushed over it as a page. */
-function accountPage(id, button, field) {
+function accountPage(id, button, field, tier = 'dialog') {
     return {
         id,
-        root: `dialog.popup.sb-dialog--dialog[open]:not([closing]):not([data-sb-covered]):has(${field})`,
+        root: `dialog.popup.sb-dialog--${tier}[open]:not([closing]):not([data-sb-covered]):has(${field})`,
         ready: `${TOP_POPUP} ${field}`,
         async open(page) {
             await page.locator(within(DIALOG_FRAME, button)).first().dispatchEvent('click');
@@ -159,7 +159,8 @@ export const surfaces = [
         open: openAccountInfo,
         states: [
             accountPage('change-password', '.userChangePasswordButton', 'input[name="confirm"]'),
-            accountPage('reset-settings', '.userResetSettingsButton', '#resetSettingsPassword'),
+            // One question and one field: an Alert over the profile dialog, not a Dialog.
+            accountPage('reset-settings', '.userResetSettingsButton', '#resetSettingsPassword', 'alert'),
             accountPage('reset-everything', '.userResetAllButton', 'input[name="code"]'),
         ],
         sources: [`${SCRIPTS}/user.js`, `${ADAPTERS}/window-content-dialogs.js`, `${ADAPTERS}/misc-dialogs.js`],

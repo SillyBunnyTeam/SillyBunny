@@ -505,10 +505,11 @@ toastr.options = {
     positionClass: 'toast-top-center',
     closeButton: false,
     progressBar: false,
-    showDuration: 250,
-    hideDuration: 250,
-    timeOut: 4000,
-    extendedTimeOut: 10000,
+    showDuration: 300,
+    hideDuration: 300,
+    // SillyBunny: a toast stays for 5 seconds and shows and hides over 300ms (DESIGN: Toasts, Timing); holding it is handled below.
+    timeOut: 5000,
+    extendedTimeOut: 5000,
     showEasing: 'linear',
     hideEasing: 'linear',
     showMethod: 'fadeIn',
@@ -540,6 +541,20 @@ toastr.subscribe(function (args) {
     // Meaning of "clickable":
     // Interactable unless tapToDismiss was explicitly false
     const isInteractable = args.options.tapToDismiss !== false;
+    // SillyBunny: toastr keeps a hovered toast and skips hiding one that has focus inside, but it never starts the timer
+    // again when the focus leaves, and it does not know a touch press. Both call the hover handlers toastr bound (they
+    // exist only when the toast has a timeout).
+    const holdToast = () => $toast.triggerHandler('mouseenter');
+    const releaseToast = () => {
+        if (!$toast.is(':hover') && !$toast.find(':focus').length) $toast.triggerHandler('mouseleave');
+    };
+    $toast.on('focusout', () => setTimeout(releaseToast));
+    $toast.on('pointerdown', event => {
+        if (event.originalEvent?.pointerType === 'touch') holdToast();
+    });
+    $toast.on('pointerup pointercancel', event => {
+        if (event.originalEvent?.pointerType === 'touch') releaseToast();
+    });
     $toast.toggleClass('interactable', isInteractable);
     if (isInteractable) {
         $toast.attr('title', t`Tap to close`);

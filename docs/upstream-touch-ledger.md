@@ -150,6 +150,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-17, UI polish sweep (tasks 9.5b and 9.5c). |
 | Owner | UI overhaul integrator. |
 
+### `public/script.js` and `public/style.css` - toasts
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` (`toastr.options`: `timeOut` and `extendedTimeOut` 5000, fades of 300ms; the `toastr.subscribe` handler holds a toast while it is pressed on touch and starts its timer again when focus leaves it, both through toastr's own hover handlers); `public/style.css` (the unused toast tokens and the per-type fills are deleted; the toast rule keeps only `opacity`, `filter` and `font-size`). |
+| Area | Toasts. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The toast rules in `public/css/sillybunny-theme.css` (`body #toast-container[class] > div`: the pill, the status colour on the icon and title only, the `prefers-contrast` ring). |
+| Adapter shape | Since 2026-11-17 (UI polish sweep, task 9.4b): marked option values and handler lines in `script.js`, and one marked rule in `style.css`. |
+| Protecting tests | `tests/toast-surface.e2e.js`; `tests/toast-sheet-css.test.js`; `tests/request-errors.e2e.js`. |
+| Validation | 2026-11-17: root and tests lint, the full unit run, budgets, contracts and design rules, the dialog family audit (85 tests), the coder's related runs with each failure rerun alone, and the merge's related run (`e2e-related --since 891947cea`). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-17, UI polish sweep (task 9.4b). |
+| Owner | `TODO(copy)` |
+
 ### Confirm response labels
 | Field | Value |
 | --- | --- |
@@ -157,11 +171,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Confirmation response labels and destructive confirmation defaults. |
 | Divergence reason | Upstream confirmations use the generic OK button, and the default result is the affirmative one. SillyBunny names the affirmative response with the action's own verb and labels the default negative response Cancel, so each confirmation reads clearly and a destructive one does not default to the affirmative. |
 | Target seam | `public/scripts/sillybunny-editor/popup-frame.js`. |
-| Adapter shape | Keep upstream confirmation handlers and result values, name affirmative responses with existing action strings, and map the default negative response to Cancel in the shared frame. Destructive confirmations add `is-destructive` to `popup.okButton` in `onOpening`, so OK is red from the first frame. Since 2026-11-17 (task 9.1b), an upstream confirm that showed the generic Yes spreads ``confirmVerb(t`Verb`, { destructive, negative })`` from `public/scripts/sillybunny-delete-confirm.js` into its options under a `SillyBunny:` marker: `negative` passes `cancelButton`, so the frame keeps a negative that is not a cancel; `destructive` sets the negative default and the destructive class. Third-party confirms keep the frame's default Yes. `callPopup` marks `#dialogue_popup_ok` `is-destructive` for the types that delete. |
-| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/world-info-editor.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/native-dialog-replacements.e2e.js`; `tests/character-list.e2e.js`; `tests/tag-manager.e2e.js`; `tests/destructive-first-paint.e2e.js`; `tests/unit/native-dialog-replacements.test.js`; `tests/unit/confirm-verbs.test.js` (every upstream CONFIRM sets a verb, and the verb and style per file). |
+| Adapter shape | Keep upstream confirmation handlers and result values, name affirmative responses with existing action strings, and map the default negative response to Cancel in the shared frame. Destructive confirmations add `is-destructive` to `popup.okButton` in `onOpening`, so OK is red from the first frame. Since 2026-11-17 (task 9.1b), an upstream confirm that showed the generic Yes spreads ``confirmVerb(t`Verb`, { destructive, negative })`` from `public/scripts/sillybunny-delete-confirm.js` into its options under a `SillyBunny:` marker: `negative` passes `cancelButton`, so the frame keeps a negative that is not a cancel; `destructive` sets the negative default and the destructive class. Third-party confirms keep the frame's default Yes. `callPopup` marks `#dialogue_popup_ok` `is-destructive` for the types that delete. Since 2026-11-17 (task 9.4b, F-320), `popup.js` keeps each default caption's template key as its `data-i18n` (`popup-button-yes`, `-no`, `-save`, `-crop`, and `popup-button-cancel` for the default Cancel), so a later locale pass translates by that key instead of by "OK". |
+| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/world-info-editor.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/native-dialog-replacements.e2e.js`; `tests/character-list.e2e.js`; `tests/tag-manager.e2e.js`; `tests/destructive-first-paint.e2e.js`; `tests/unit/native-dialog-replacements.test.js`; `tests/unit/confirm-verbs.test.js` (every upstream CONFIRM sets a verb, and the verb and style per file).; `tests/unit/popup-default-captions.test.js`. |
 | Validation | Root lint; tests lint; focused and full unit suites; frontend budgets; Chromium confirmation and dialog regressions. |
 | Rollback path | In each listed file, remove the `okButton` verb strings and `defaultResult: POPUP_RESULT.NEGATIVE` options that sit under a `SillyBunny:` marker. In `public/scripts/popup.js`, remove the `cancelButtonProvided` argument passed to `framePopup()`. In `public/scripts/sillybunny-editor/popup-frame.js`, remove `replaceDefaultNegativeLabel()`. Then update `tests/unit/popup-contract.test.js` and `tests/unit/sillybunny-popup-frame.test.js`. |
-| Last reviewed | 2026-11-17, UI polish sweep (tasks 9.2 and 9.1b). |
+| Last reviewed | 2026-11-17, UI polish sweep (tasks 9.2, 9.1b and 9.4b). |
 | Owner | UI overhaul integrator. |
 
 ### Native browser dialog replacements

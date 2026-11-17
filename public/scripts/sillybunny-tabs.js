@@ -3445,6 +3445,8 @@ async function confirmClearCookiesAndCache() {
             { id: 'cancel', label: t`Cancel` },
             { id: 'clear', label: 'Clear cookies & cache', appearance: 'destructive' },
         ],
+        // The affirmative label is too wide for two responses at 372px, so the Alert widens to keep Cancel first in a row like its siblings.
+        preferWide: true,
     });
     return response === 'clear';
 }
@@ -14162,7 +14164,8 @@ function openModeDropdown() {
     if (btn instanceof HTMLElement) {
         const rect = btn.getBoundingClientRect();
         const menuWidth = menu.offsetWidth || 240;
-        const left = Math.min(rect.left + rect.width / 2 - menuWidth / 2, window.innerWidth - menuWidth - 8);
+        const insetRight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sb-safe-area-right')) || 0;
+        const left = Math.min(rect.left + rect.width / 2 - menuWidth / 2, window.innerWidth - menuWidth - Math.max(8, insetRight));
         menu.style.setProperty('--sb-mode-menu-top', `${rect.bottom + 6}px`);
         menu.style.setProperty('--sb-mode-menu-left', `${Math.max(8, left)}px`);
     }

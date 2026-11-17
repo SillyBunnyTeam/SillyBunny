@@ -81,10 +81,10 @@ describe('hintKindFor', () => {
 
 describe('getRequestErrorHint', () => {
     test.each([
-        ['key', 'The provider didn\'t accept your API key. Check it in Backend ▸ Connections.'],
-        ['model', 'The provider couldn\'t find the selected model or address. Check both in Backend ▸ Connections.'],
+        ['key', 'The provider didn’t accept your API key. Check it in Backend ▸ Connections.'],
+        ['model', 'The provider couldn’t find the selected model or address. Check both in Backend ▸ Connections.'],
         ['rate', 'The provider is limiting your requests, or your credits ran out. Wait a moment and try again, or check your account with the provider.'],
-        ['down', 'The provider couldn\'t be reached or is having problems. Try again in a few minutes.'],
+        ['down', 'The provider couldn’t be reached or is having problems. Try again in a few minutes.'],
     ])('says what to do about a %s failure', (kind, text) => {
         expect(getRequestErrorHint(kind)).toBe(text);
     });

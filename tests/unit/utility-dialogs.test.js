@@ -141,6 +141,13 @@ test('icon picker keeps the source search listener and makes every icon keyboard
     expect(icon.getAttribute('aria-label')).toBe('star');
     icon.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
     expect(clicked).toHaveBeenCalledTimes(1);
+    // The search placeholder is blanked for the floating label, so the title must not read it afterwards.
+    expect(options.title.trim()).not.toBe('');
+    const okButton = document.createElement('button');
+    okButton.className = 'popup-button-ok';
+    options.onOpening({ dlg: document.createElement('dialog'), okButton });
+    expect(okButton.classList.contains('is-plain')).toBe(true);
+    expect(okButton.classList.contains('popup-button-ok')).toBe(true);
     options.onClose();
 });
 

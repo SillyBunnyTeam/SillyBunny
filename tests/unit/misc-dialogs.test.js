@@ -154,6 +154,20 @@ test.each(['changePassword', 'deleteUser', 'resetSettings', 'userReset'])('%s re
     options.onClose();
 });
 
+test.each([
+    ['resetSettings', true],
+    ['changePassword', false],
+    ['deleteUser', false],
+    ['userReset', false],
+])('%s is an Alert only when the form is one question and one field', (name, alert) => {
+    const node = form(name);
+    const options = adapters.accountFormOptions(node, { title: 'Title', destructive: name !== 'changePassword' });
+    expect(options.tier).toBe(alert ? 'alert' : 'dialog');
+    // An Alert is headed by the question the form already asks, so the dialog title would repeat it.
+    expect(options.title).toBe(alert ? undefined : 'Title');
+    options.onClose();
+});
+
 test('upstream seams keep result parsing, intercepted request contracts and destructive defaults', () => {
     const read = name => readFileSync(new URL(`../../public/${name}`, import.meta.url), 'utf8');
     const core = read('script.js');

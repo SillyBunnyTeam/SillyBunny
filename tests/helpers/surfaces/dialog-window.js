@@ -471,6 +471,8 @@ export const surfaces = [
         async open(page) {
             await closeDialogs(page);
             // The debugger is off until a user turns it on in Bundled Extras, so the audit starts it the way the extension loader does.
+            // The loader adds the stylesheet of the manifest when it activates an extension; calling init() alone does not.
+            await page.addStyleTag({ url: '/scripts/extensions/sillybunny-debugger/style.css' });
             await page.evaluate(async () => (await import('/scripts/extensions/sillybunny-debugger/index.js')).init());
             await page.waitForFunction(() => [...document.querySelectorAll('[data-extension-name="SillyBunny-Debugger"] .ds-button-row')].some(button => button.textContent.trim() === 'Diagnostic report'));
             await page.evaluate(() => [...document.querySelectorAll('[data-extension-name="SillyBunny-Debugger"] .ds-button-row')].find(button => button.textContent.trim() === 'Diagnostic report').click());
