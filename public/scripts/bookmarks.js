@@ -28,6 +28,7 @@ import {
 import { loader } from './action-loader.js';
 import { getLastMessageId } from './macros.js';
 import { Popup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { commonEnumProviders } from './slash-commands/SlashCommandCommonEnumsProvider.js';
@@ -352,7 +353,8 @@ export async function convertSoloToGroupChat() {
         return;
     }
 
-    const confirm = await Popup.show.confirm(t`Convert to group chat`, t`Are you sure you want to convert this chat to a group chat?` + '<br />' + t`This cannot be reverted.`);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirm = await Popup.show.confirm(t`Convert to group chat`, t`Are you sure you want to convert this chat to a group chat?` + '<br />' + t`This cannot be reverted.`, confirmVerb(t`Convert to group`));
     if (!confirm) {
         return;
     }

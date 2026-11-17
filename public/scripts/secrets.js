@@ -3,6 +3,7 @@ import { event_types, eventSource, getRequestHeaders, saveSettings } from '../sc
 import { t } from './i18n.js';
 import { chat_completion_sources } from './openai.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { enumIcons } from './slash-commands/SlashCommandCommonEnumsProvider.js';
@@ -531,7 +532,8 @@ const generateChallenge = (codeVerifier) => {
  */
 async function authorizeOpenRouter() {
     if (secret_state[SECRET_KEYS.OPENROUTER]) {
-        const confirmed = await Popup.show.confirm(t`OpenRouter API key already exists`, t`Do you really wish to create a new OpenRouter key? Your existing key will not be deleted.`);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirmed = await Popup.show.confirm(t`OpenRouter API key already exists`, t`Do you really wish to create a new OpenRouter key? Your existing key will not be deleted.`, confirmVerb(t`Authorize`));
         if (!confirmed) {
             return;
         }
@@ -692,7 +694,8 @@ async function openKeyManagerDialog(key) {
             if (result !== POPUP_RESULT.AFFIRMATIVE) {
                 return;
             }
-            const allowEmpty = await Popup.show.confirm(t`No value entered`, t`No value was entered for the secret. Do you want to add an empty secret?`);
+            // SillyBunny: names the response with a verb (confirmVerb).
+            const allowEmpty = await Popup.show.confirm(t`No value entered`, t`No value was entered for the secret. Do you want to add an empty secret?`, confirmVerb(t`Add`));
             if (!allowEmpty) {
                 return;
             }

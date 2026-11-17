@@ -70,6 +70,7 @@ import { AUTOCOMPLETE_SELECT_KEY, AUTOCOMPLETE_STATE, AUTOCOMPLETE_WIDTH } from 
 import { SlashCommandEnumValue, enumTypes } from './slash-commands/SlashCommandEnumValue.js';
 import { commonEnumProviders, enumIcons } from './slash-commands/SlashCommandCommonEnumsProvider.js';
 import { POPUP_RESULT, POPUP_TYPE, callGenericPopup, fixToastrForDialogs } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { loadSystemPrompts } from './sysprompt.js';
 import { fuzzySearchCategories } from './filters.js';
 import { accountStorage } from './util/AccountStorage.js';
@@ -3475,7 +3476,8 @@ async function deleteTheme() {
     }
 
     const template = $(await renderTemplateAsync('themeDelete', { themeName }));
-    const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
 
     if (!confirm) {
         return;
@@ -3550,7 +3552,8 @@ async function importTheme(file) {
 
     if (typeof parsed.custom_css === 'string' && parsed.custom_css.includes('@import')) {
         const template = $(await renderTemplateAsync('themeImportWarning'));
-        const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Import`));
         if (!confirm) {
             throw new Error('Theme contains @import lines');
         }

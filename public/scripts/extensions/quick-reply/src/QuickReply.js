@@ -1,5 +1,7 @@
 import { hljs, morphdom } from '../../../../lib.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../../../popup.js';
+import { confirmVerb } from '../../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { t } from '../../../i18n.js'; // SillyBunny: translates the response verb.
 import { setSlashCommandAutoComplete } from '../../../slash-commands.js';
 import { SlashCommandAbortController } from '../../../slash-commands/SlashCommandAbortController.js';
 import { SlashCommandBreakPoint } from '../../../slash-commands/SlashCommandBreakPoint.js';
@@ -365,6 +367,8 @@ export class QuickReply {
                                 const result = await Popup.show.confirm(
                                     'Remove Quick Reply',
                                     'Are you sure you want to remove this Quick Reply?',
+                                    // SillyBunny: names the response with a verb (confirmVerb).
+                                    confirmVerb(t`Remove`, { destructive: true }),
                                 );
                                 if (result != POPUP_RESULT.AFFIRMATIVE) {
                                     return;

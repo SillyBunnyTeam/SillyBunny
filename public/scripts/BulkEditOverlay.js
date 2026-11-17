@@ -23,6 +23,7 @@ import { loader } from './action-loader.js';
 import { groups, resetSelectedGroup, selected_group } from './group-chats.js';
 import { convertCharacterToPersona } from './personas.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { createTagInput, getTagKeyForEntity, getTagsList, printTagList, tag_map, compareTagsForSort, removeTagFromMap, importTags, tag_import_setting } from './tags.js';
 import { t } from './i18n.js';
 // SillyBunny: retain the upstream tag controls and listeners inside the shared Dialog frame.
@@ -1050,7 +1051,8 @@ class BulkEditOverlay {
         const isGroups = entityIds.some(id => typeof id === 'string');
         const popupContent = $(BulkEditOverlay.#getDeletePopupContentHtml(entityIds, isGroups));
         const checkbox = popupContent.find('#del_char_checkbox');
-        const promise = callGenericPopup(popupContent, POPUP_TYPE.CONFIRM)
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const promise = callGenericPopup(popupContent, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }))
             .then((accept) => {
                 if (!accept) return;
 

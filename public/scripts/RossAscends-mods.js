@@ -40,6 +40,8 @@ import { textgen_types, textgenerationwebui_settings as textgen_settings, getTex
 import { debounce_timeout, SWIPE_SOURCE } from './constants.js';
 
 import { Popup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { t } from './i18n.js'; // SillyBunny: translates the response verb.
 import { accountStorage } from './util/AccountStorage.js';
 import { getCurrentUserHandle } from './user.js';
 import { kai_settings } from './kai-settings.js';
@@ -1129,6 +1131,8 @@ export function initRossMods() {
                 } else {
                     let regenerateWithCtrlEnter = false;
                     const result = await Popup.show.confirm('Regenerate Message', 'Are you sure you want to regenerate the latest message?', {
+                        // SillyBunny: names the response with a verb (confirmVerb).
+                        ...confirmVerb(t`Regenerate`),
                         customInputs: [{ id: 'regenerateWithCtrlEnter', label: 'Don\'t ask again' }],
                         onClose: (popup) => {
                             regenerateWithCtrlEnter = Boolean(popup.inputResults.get('regenerateWithCtrlEnter') ?? false);

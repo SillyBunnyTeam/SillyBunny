@@ -261,6 +261,25 @@ describe('Popup frame adapter', () => {
         customFrame.dispose();
     });
 
+    test('Alert puts a custom response that cancels in the Cancel slot, and no other response', () => {
+        setupDialogMedia();
+        const popup = popupDom();
+        const cancelling = document.createElement('div');
+        cancelling.className = 'menu_button popup-button-custom';
+        cancelling.dataset.result = 'null';
+        const deleting = document.createElement('div');
+        deleting.className = 'menu_button popup-button-custom';
+        deleting.dataset.result = '3';
+        popup.buttonControls.append(deleting, cancelling);
+        const frame = framePopup(popup);
+        popup.dlg.showModal();
+        frame.opened();
+        expect(cancelling.style.order).toBe('-2');
+        expect(deleting.style.order).toBe('');
+        expect(popup.cancelButton.style.order).toBe('');
+        frame.dispose();
+    });
+
     test('Alert keeps its leading heading in the body and adopts one checkbox as an extra switch row', () => {
         setupDialogMedia();
         const popupValue = popupDom({ contentHtml: '<h3>Delete Character?</h3><p>Permanent.</p><label class="checkbox_label"><input id="delete-chat-files" type="checkbox"><small data-i18n="Also delete chat files">Also delete chat files</small></label>' });

@@ -7,8 +7,12 @@ await jest.unstable_mockModule('../public/script.js', () => ({
 
 await jest.unstable_mockModule('../public/scripts/popup.js', () => ({
     Popup: { show: { confirm: jest.fn(), input: jest.fn() } },
-    POPUP_RESULT: { AFFIRMATIVE: 1 },
+    POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0 },
     POPUP_TYPE: { CONFIRM: 1 },
+}));
+
+await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({
+    t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
 }));
 
 await jest.unstable_mockModule('../public/scripts/slash-commands.js', () => ({

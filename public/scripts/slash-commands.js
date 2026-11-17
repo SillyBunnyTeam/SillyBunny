@@ -95,6 +95,7 @@ import { SlashCommandAbortController } from './slash-commands/SlashCommandAbortC
 import { SlashCommandNamedArgumentAssignment } from './slash-commands/SlashCommandNamedArgumentAssignment.js';
 import { SlashCommandEnumValue, enumTypes } from './slash-commands/SlashCommandEnumValue.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 // SillyBunny: slash-command button lists use the shared trailing-action rows.
 import { createButtonRow } from './sillybunny-editor/rows.js';
 import { commonEnumProviders, enumIcons, commonEnumMatchProviders } from './slash-commands/SlashCommandCommonEnumsProvider.js';
@@ -5630,7 +5631,8 @@ async function deleteCharacterCallback(args) {
             ? t`Are you sure you want to delete "${character.name}" and all associated chats? This action cannot be undone.`
             : t`Are you sure you want to delete "${character.name}"? This action cannot be undone.`;
 
-        const result = await callGenericPopup(confirmMessage, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const result = await callGenericPopup(confirmMessage, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (result !== POPUP_RESULT.AFFIRMATIVE) {
             return 'false';
         }

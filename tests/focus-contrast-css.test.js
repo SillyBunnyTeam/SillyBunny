@@ -137,7 +137,7 @@ describe('the outer ring on solid fills and pictures', () => {
     const sheet = name => read('public', 'css', name);
     const outerOutline = 'outline: 2px solid var(--sb-focus-ring-color); outline-offset: 1px;';
     const outer = `${outerOutline} box-shadow: none;`;
-    const buttonFamily = '.menu_button:is(.menu_button_primary, .popup-button-ok, .suggested-action, .is-suggested, .red_button, .redWarningBG, .is-destructive:is(.popup-button-ok, .sb-dialog__response)):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled=\'true\']):focus-visible';
+    const buttonFamily = '.menu_button:is(.menu_button_primary, .popup-button-ok, .suggested-action, .is-suggested, .red_button, .redWarningBG, .is-destructive:is(.popup-button-ok, .popup-button-custom, .sb-dialog__response)):not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled=\'true\']):focus-visible';
 
     test.each([
         ['one rule: suggested, primary, popup OK, status-page, Connections Connect and destructive buttons', 'sillybunny-theme.css', buttonFamily],

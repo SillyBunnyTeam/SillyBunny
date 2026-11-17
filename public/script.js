@@ -364,7 +364,7 @@ import { onboardingExperimentalMacroEngine } from './scripts/macros/engine/Macro
 import { compressRequest, setRequestCompressionConfig } from './scripts/request-compression.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { bindIOSFastTapSendButton, isIOSWebKitPlatform } from './scripts/mobile-send-button.js';
-import { DELETE_CHOICE, confirmMessageDeletion } from './scripts/sillybunny-delete-confirm.js';
+import { DELETE_CHOICE, confirmMessageDeletion, confirmVerb } from './scripts/sillybunny-delete-confirm.js';
 // SillyBunny: a temporary chat is never written; the narrow write seams below ask this flag. The module has no imports, so it adds no cycle.
 import { getStoredChatName, isTemporaryChat, isTemporaryChatWith, reassertReservedChatName } from './scripts/sillybunny-temporary-chat-state.js';
 // SillyBunny: starting, saving and leaving a temporary chat; its functions run only after script.js has loaded.
@@ -10118,7 +10118,8 @@ export async function duplicateCharacter({ avatar = null, silent = false } = {})
     // Show confirmation unless silent
     if (!silent) {
         const confirmMessage = $(await renderTemplateAsync('duplicateConfirm'));
-        const confirm = await callGenericPopup(confirmMessage, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(confirmMessage, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Duplicate`));
 
         if (!confirm) {
             console.log('User cancelled duplication');
@@ -14827,7 +14828,7 @@ async function autoLabelDatedChats() {
         <p>${t`Current chats are safe to rename, and existing chat contents are not changed.`}</p>`,
         POPUP_TYPE.CONFIRM,
         null,
-        { wider: true },
+        { wider: true, /* SillyBunny: names the response with a verb (confirmVerb). */ ...confirmVerb(t`Rename`) },
     );
     if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
         return;
@@ -14989,8 +14990,8 @@ async function runChatCleanup() {
         {
             wider: true,
             allowVerticalScrolling: true,
-            // SillyBunny: Cleanup defaults to cancel so the destructive action is always opt-in.
-            defaultResult: POPUP_RESULT.NEGATIVE,
+            // SillyBunny: Cleanup names the delete and defaults to cancel, so the destructive action is always opt-in (confirmVerb).
+            ...confirmVerb(t`Delete`, { destructive: true }),
         },
     );
     if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
@@ -15270,7 +15271,8 @@ function syncAlternateGreetingsEditor() {
             event.preventDefault();
             event.stopImmediatePropagation();
 
-            const confirm = await callGenericPopup(t`Are you sure you want to delete this alternate greeting?`, POPUP_TYPE.CONFIRM);
+            // SillyBunny: names the response with a verb (confirmVerb).
+            const confirm = await callGenericPopup(t`Are you sure you want to delete this alternate greeting?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
             if (!confirm) {
                 return;
             }
@@ -15828,6 +15830,8 @@ export function callPopup(text, type, inputValue = '', { okButton, rows, wide, w
     // SillyBunny: clear the inline display instead of forcing inline-block, which made Cancel a block box whose label sat at the top while OK (a flex box) centred its label.
     $dialoguePopupCancel.css('display', '');
     $dialoguePopupOk.text(getOkButtonText());
+    // SillyBunny: the legacy OK is the suggested action, and red only for the types that delete (the label falls back to Delete).
+    $dialoguePopupOk.toggleClass('is-destructive', !['text', 'char_not_selected', 'new_chat', 'confirm', 'input'].includes(popup_type));
     $dialoguePopupInput.toggle(popup_type === 'input').val(inputValue).attr('rows', rows ?? 1);
     $dialoguePopupText.empty().append(text);
     $shadowPopup.css('display', 'block');
@@ -16584,6 +16588,9 @@ export async function createOrEditCharacter(e, saveReceipt) {
                 const confirmation = await callGenericPopup(
                     t`SillyBunny is about to save this character with previously populated definition fields empty: ${fieldList}. This can happen after a stale frontend load. Reload the page unless you intentionally cleared these fields. Continue saving?`,
                     POPUP_TYPE.CONFIRM,
+                    '',
+                    // SillyBunny: names the response with a verb (confirmVerb).
+                    confirmVerb(t`Save`, { destructive: true }),
                 );
 
                 if (confirmation !== POPUP_RESULT.AFFIRMATIVE) {
@@ -19035,7 +19042,8 @@ jQuery(async function () {
     });
 
     $(document).on('click', '.mes_edit_copy', async function () {
-        const confirmation = await callGenericPopup(t`Create a copy of this message?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirmation = await callGenericPopup(t`Create a copy of this message?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Duplicate`));
         if (!confirmation) {
             return;
         }

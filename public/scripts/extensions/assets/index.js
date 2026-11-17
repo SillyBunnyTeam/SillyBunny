@@ -7,6 +7,7 @@ import { DOMPurify } from '../../../lib.js';
 import { getRequestHeaders, processDroppedFiles, eventSource, event_types } from '../../../script.js';
 import { deleteExtension, EMPTY_AUTHOR, extensionNames, getAuthorFromUrl, getContext, installExtension, renderExtensionTemplateAsync, isOfficialExtension } from '../../extensions.js';
 import { POPUP_TYPE, Popup, callGenericPopup } from '../../popup.js';
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { accountStorage } from '../../util/AccountStorage.js';
 import { escapeHtml, flashHighlight, getStringHash, isValidUrl } from '../../utils.js';
 import { t, translate } from '../../i18n.js';
@@ -562,6 +563,8 @@ export async function init() {
         const skipConfirm = accountStorage.getItem(rememberKey) === 'true';
 
         const confirmation = skipConfirm || await Popup.show.confirm(t`Loading Asset List`, '<span>' + t`Are you sure you want to connect to the following url?` + `</span><var>${escapeHtml(url.href)}</var>`, {
+            // SillyBunny: names the response with a verb (confirmVerb).
+            ...confirmVerb(t`Connect`),
             customInputs: [{ id: 'assets-remember', label: 'Don\'t ask again for this URL' }],
             onClose: popup => {
                 if (popup.result) {

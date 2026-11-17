@@ -18,6 +18,7 @@ import { SlashCommandEnumValue, enumTypes } from './slash-commands/SlashCommandE
 import { commonEnumProviders, enumIcons } from './slash-commands/SlashCommandCommonEnumsProvider.js';
 import { SlashCommandClosure } from './slash-commands/SlashCommandClosure.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { StructuredCloneMap } from './util/StructuredCloneMap.js';
 import { renderTemplateAsync } from './templates.js';
 import { t } from './i18n.js';
@@ -2580,7 +2581,8 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
     // Regardless of whether success is displayed or not. Make sure the delete button is available.
     // Do not put this code behind.
     $('#world_popup_delete').off('click').on('click', async () => {
-        const confirmation = await Popup.show.confirm(`Delete the World/Lorebook: "${name}"?`, 'This action is irreversible!');
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirmation = await Popup.show.confirm(`Delete the World/Lorebook: "${name}"?`, 'This action is irreversible!', confirmVerb(t`Delete`, { destructive: true }));
         if (!confirmation) {
             return;
         }
@@ -4449,7 +4451,8 @@ export async function deleteWorldInfoEntry(data, uid, { silent = false } = {}) {
         ? `<strong>${t`Entry`}:</strong><br>${escapeHtml(previewText).replace(/\n/g, '<br>')}<br><br>${t`This action is irreversible!`}`
         : t`This action is irreversible!`;
 
-    const confirmation = silent || await Popup.show.confirm(popupHeader, popupText);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirmation = silent || await Popup.show.confirm(popupHeader, popupText, confirmVerb(t`Delete`, { destructive: true }));
     if (!confirmation) {
         return false;
     }
@@ -4990,6 +4993,8 @@ async function updateWorldInfoLinks(oldName, newName) {
     const updatePastLinksConfirm = await Popup.show.confirm(
         t`World/Lorebook renamed!`,
         `<p>${t`Auxiliary Lorebook links have been updated. Would you like to update primary lorebook links for ${linkedChIDs.length} character(s) as well?`}</p>`,
+        // SillyBunny: "No" skips the link update after the rename, so the negative keeps its own label (confirmVerb).
+        confirmVerb(t`Continue`, { negative: t`No` }),
     ) == POPUP_RESULT.AFFIRMATIVE;
 
     if (updatePastLinksConfirm) {

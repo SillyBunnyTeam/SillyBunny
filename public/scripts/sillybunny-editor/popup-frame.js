@@ -254,6 +254,11 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         if (!promoted) dlg.setAttribute('aria-describedby', ensureId(content, 'sb-popup-body'));
         adoptAlertOption(popup, cleanups);
         convertCustomInputs(popup, false, cleanups);
+        // The default Cancel is ordered first by the sheet. A custom response that resolves to `null` is a cancel too and
+        // is ordered ahead of any other response, so it takes the Cancel slot instead of sitting in the middle of the row.
+        for (const cancelling of buttonControls.querySelectorAll(':scope > .popup-button-custom[data-result="null"]')) {
+            cancelling.style.order = '-2';
+        }
         body.after(buttonControls);
         closeButton.style.display = 'none';
     }

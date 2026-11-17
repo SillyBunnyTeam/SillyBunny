@@ -17,6 +17,7 @@ import { commonEnumProviders } from '../../slash-commands/SlashCommandCommonEnum
 import { slashCommandReturnHelper } from '../../slash-commands/SlashCommandReturnHelper.js';
 import { generateWebLlmChatPrompt, isWebLlmSupported } from '../shared.js';
 import { Popup, POPUP_RESULT } from '../../popup.js';
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { t } from '../../i18n.js';
 import { removeReasoningFromString } from '../../reasoning.js';
 import {
@@ -1715,6 +1716,8 @@ async function onClickExpressionRegenerate(event) {
     const confirmed = await Popup.show.confirm(
         t`Regenerate Sprite`,
         t`Replace ${fileName} for ${expression} with a new Quick Image Gen sprite? This can use provider credits.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Regenerate`, { destructive: true }),
     );
 
     if (!confirmed) return;
@@ -1754,6 +1757,8 @@ async function onClickRemoveAllSprites(event) {
     const confirmed = await Popup.show.confirm(
         t`Remove All Sprites`,
         t`Remove ${spriteFiles.length} sprite image(s) from ${name}? This cannot be undone.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Remove`, { destructive: true }),
     );
 
     if (!confirmed) return;
@@ -1807,6 +1812,8 @@ async function onClickRedoSpriteCleanup(event) {
     const confirmed = await Popup.show.confirm(
         t`Redo Crop and Transparency`,
         t`Reprocess ${spriteFiles.length} sprite image(s) in ${name} with the improved crop and transparency cleanup? Existing sprite files will be overwritten.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Continue`, { destructive: true }),
     );
 
     if (!confirmed) return;
@@ -1866,6 +1873,8 @@ async function onClickUploadSpriteSheet(event) {
     const confirmed = await Popup.show.confirm(
         t`Upload Character Sheet`,
         t`Upload a character sheet for ${missingLabels.length} missing sprite(s) in ${spriteFolderName}. The extension will split it as a ${grid.columns} x ${grid.rows} grid, left-to-right, top-to-bottom in this order: ${missingLabels.join(', ')}.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Continue`),
     );
 
     if (!confirmed) return;
@@ -1933,6 +1942,8 @@ async function onClickGenerateMissingSprites(event) {
         getExpressionSpriteGenerationMode() === EXPRESSION_SPRITE_GENERATION_MODE.sheet && missingLabels.length > 1
             ? t`Generate one character sheet for ${missingLabels.length} missing sprite(s) in ${spriteFolderName}, then split it into individual expression images? This can use provider credits.`
             : t`Generate ${missingLabels.length} missing sprite(s) for ${spriteFolderName} with Quick Image Gen? This may take a while and can use provider credits.`,
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Continue`),
     );
 
     if (!confirmed) return;
@@ -2830,7 +2841,8 @@ async function onClickExpressionRemoveCustom() {
     }
 
     const template = await renderExtensionTemplateAsync(MODULE_NAME, 'remove-custom-expression', { expression: selectedExpression });
-    const confirmation = await Popup.show.confirm(null, template);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirmation = await Popup.show.confirm(null, template, confirmVerb(t`Remove`));
 
     if (!confirmation) {
         console.debug('Custom expression removal cancelled');
@@ -3188,9 +3200,10 @@ async function onClickExpressionDelete(event) {
         return;
     }
 
+    // SillyBunny: names the response with a verb (confirmVerb).
     const confirmation = await Popup.show.confirm(t`Delete Expression`, t`Are you sure you want to delete this expression? Once deleted, it\'s gone forever!`
         + '<br /><br />'
-        + t`Expression:` + ' <tt>' + expressionListItem.attr('data-filename') + '</tt>');
+        + t`Expression:` + ' <tt>' + expressionListItem.attr('data-filename') + '</tt>', confirmVerb(t`Delete`, { destructive: true }));
     if (!confirmation) {
         return;
     }

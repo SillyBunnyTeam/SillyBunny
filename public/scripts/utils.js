@@ -12,6 +12,7 @@ import { isMobile } from './RossAscends-mods.js';
 import { collapseNewlines, power_user } from './power-user.js';
 import { debounce_timeout } from './constants.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommandClosure } from './slash-commands/SlashCommandClosure.js';
 import { getTagsList } from './tags.js';
 import { groups, selected_group } from './group-chats.js';
@@ -2501,7 +2502,8 @@ export async function checkOverwriteExistingData(type, existingNames, name, { in
         return true;
     }
 
-    const overwrite = interactive && await Popup.show.confirm(`${type} ${actionName}`, `<p>A ${type.toLowerCase()} with the same name already exists:<br />${existing}</p>Do you want to overwrite it?`);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const overwrite = interactive && await Popup.show.confirm(`${type} ${actionName}`, `<p>A ${type.toLowerCase()} with the same name already exists:<br />${existing}</p>Do you want to overwrite it?`, confirmVerb(t`Overwrite`, { destructive: true }));
     if (!overwrite) {
         toastr.warning(`${type} ${actionName.toLowerCase()} cancelled. A ${type.toLowerCase()} with the same name already exists:<br />${existing}`, `${type} ${actionName}`, { escapeHtml: false });
         return false;

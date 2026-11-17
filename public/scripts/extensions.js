@@ -2,6 +2,7 @@ import { DOMPurify, Popper } from '../lib.js';
 
 import { eventSource, event_types, saveSettings, saveSettingsDebounced, getRequestHeaders, animation_duration, CLIENT_VERSION, getChatGeneration } from '../script.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { renderTemplate, renderTemplateAsync } from './templates.js';
 import { delay, deleteValueByPath, equalsIgnoreCaseAndAccents, escapeHtml, sanitizeSelector, setValueByPath, versionCompare } from './utils.js';
 import { isAdmin } from './user.js';
@@ -1825,7 +1826,7 @@ export async function confirmAndDeleteExtension(extensionName) {
         type: 'checkbox',
         defaultState: false,
     }] : [];
-    const popup = new Popup(t`Are you sure you want to delete ${escapeHtml(extensionName)}?`, POPUP_TYPE.CONFIRM, '', { customInputs });
+    const popup = new Popup(t`Are you sure you want to delete ${escapeHtml(extensionName)}?`, POPUP_TYPE.CONFIRM, '', { customInputs, /* SillyBunny: names the response with a verb (confirmVerb). */ ...confirmVerb(t`Delete`, { destructive: true }) });
     const confirmation = await popup.show();
     if (confirmation === POPUP_RESULT.AFFIRMATIVE) {
         const shouldClean = hasCleanHook && Boolean(popup.inputResults?.get('extension_delete_cleanup'));
@@ -1849,7 +1850,8 @@ async function onDeleteClick() {
 async function onCleanClick() {
     const extensionName = $(this).data('name');
 
-    const confirmation = await Popup.show.confirm(t`Clean extension data`, t`Are you sure you want to clean up data for ${escapeHtml(extensionName)}? This action cannot be undone.`);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirmation = await Popup.show.confirm(t`Clean extension data`, t`Are you sure you want to clean up data for ${escapeHtml(extensionName)}? This action cannot be undone.`, confirmVerb(t`Delete`, { destructive: true }));
     if (!confirmation) {
         return;
     }
@@ -1897,7 +1899,8 @@ async function onReinstallClick() {
         t`This will delete and reinstall ${extensionName} from ${repoUrl}. Any local changes will be lost. Continue?`,
         POPUP_TYPE.CONFIRM,
         '',
-        {},
+        // SillyBunny: names the response with a verb (confirmVerb).
+        confirmVerb(t`Continue`, { destructive: true }),
     );
 
     if (confirmation !== POPUP_RESULT.AFFIRMATIVE) {
@@ -1992,7 +1995,8 @@ async function onMoveClick() {
         ? t`Are you sure you want to move ${extensionName} to your local extensions? This will make it available only for you.`
         : t`Are you sure you want to move ${extensionName} to the global extensions? This will make it available for all users.`;
 
-    const confirmation = await Popup.show.confirm(confirmationHeader, confirmationText);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirmation = await Popup.show.confirm(confirmationHeader, confirmationText, confirmVerb(t`Move`));
 
     if (!confirmation) {
         return;

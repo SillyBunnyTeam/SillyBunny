@@ -3,6 +3,7 @@ import { DOMPurify, Fuse } from '../../../lib.js';
 import { activateSendButtons, deactivateSendButtons, event_types, eventSource, main_api, online_status, saveSettings, saveSettingsDebounced } from '../../../script.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../extensions.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from '../../popup.js';
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { SlashCommandAbortController } from '../../slash-commands/SlashCommandAbortController.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../slash-commands/SlashCommandArgument.js';
@@ -852,7 +853,8 @@ async function deleteConnectionProfile() {
 
     const profile = extension_settings.connectionManager.profiles[index];
     const name = profile.name;
-    const confirm = await Popup.show.confirm(t`Are you sure you want to delete the selected profile?`, name);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirm = await Popup.show.confirm(t`Are you sure you want to delete the selected profile?`, name, confirmVerb(t`Delete`, { destructive: true }));
 
     if (!confirm) {
         return;
@@ -927,9 +929,8 @@ async function deleteAllConnectionProfiles() {
         t`Delete selected connection profiles?`,
         t`This will permanently delete ${profilesToDelete.length} saved connection profile(s).`,
         {
-            // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action.
-            defaultResult: POPUP_RESULT.NEGATIVE,
-            onOpening: popup => popup.okButton.classList.add('is-destructive'),
+            // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action, with a verb (confirmVerb).
+            ...confirmVerb(t`Delete`, { destructive: true }),
         },
     );
 
@@ -1610,9 +1611,8 @@ export async function init() {
                         ? t`Deleting "${folder.name}" will move ${profileCount} profile(s) to the root level.`
                         : folder.name,
                     {
-                        // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action.
-                        defaultResult: POPUP_RESULT.NEGATIVE,
-                        onOpening: popup => popup.okButton.classList.add('is-destructive'),
+                        // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action, with a verb (confirmVerb).
+                        ...confirmVerb(t`Delete`, { destructive: true }),
                     },
                 );
                 if (!confirm) {

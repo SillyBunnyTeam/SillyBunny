@@ -42,6 +42,7 @@ await jest.unstable_mockModule('../../public/scripts/utils.js', () => ({
 }));
 
 const { Popup, POPUP_TYPE, POPUP_RESULT, callGenericPopup, getTopmostModalLayer } = await import('../../public/scripts/popup.js');
+const { confirmVerb } = await import('../../public/scripts/sillybunny-delete-confirm.js');
 
 const settle = async () => { for (let index = 0; index < 20; index++) await Promise.resolve(); };
 const templateHtml = fs.readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8')
@@ -191,6 +192,57 @@ describe('Popup button visibility and captions per type', () => {
         const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', { okButton: false, cancelButton: false });
         expect(visible(popup.okButton)).toBe(false);
         expect(visible(popup.cancelButton)).toBe(false);
+    });
+});
+
+describe('Popup confirm verbs', () => {
+    test('a verb replaces "Yes", and the default negative still reads Cancel', async () => {
+        const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', confirmVerb('Duplicate'));
+        const result = popup.show();
+        await settle();
+        expect(popup.okButton.textContent).toBe('Duplicate');
+        expect(popup.cancelButton.textContent).toBe('Cancel');
+        expect(popup.okButton.classList.contains('is-destructive')).toBe(false);
+        popup.okButton.click();
+        await expect(result).resolves.toBe(POPUP_RESULT.AFFIRMATIVE);
+    });
+
+    test('a destructive verb is red from the first frame and Cancel takes Enter', async () => {
+        const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', confirmVerb('Delete', { destructive: true }));
+        const result = popup.show();
+        expect(popup.okButton.classList.contains('is-destructive')).toBe(true);
+        await settle();
+        expect(popup.okButton.textContent).toBe('Delete');
+        expect(popup.defaultResult).toBe(POPUP_RESULT.NEGATIVE);
+        expect(popup.dlg.querySelector('[data-result="0"]').classList.contains('menu_button_default')).toBe(true);
+        popup.cancelButton.click();
+        await expect(result).resolves.toBe(POPUP_RESULT.NEGATIVE);
+    });
+
+    test('a negative label stays "No" and resolves like Cancel did', async () => {
+        const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', confirmVerb('Allow', { negative: 'No' }));
+        const result = popup.show();
+        await settle();
+        expect(popup.okButton.textContent).toBe('Allow');
+        expect(popup.cancelButton.textContent).toBe('No');
+        popup.cancelButton.click();
+        await expect(result).resolves.toBe(POPUP_RESULT.NEGATIVE);
+    });
+
+    test('a call site keeps its custom buttons beside the verb options', async () => {
+        const custom = { text: 'Cancel', result: POPUP_RESULT.CANCELLED, appendAtEnd: true };
+        const popup = new Popup('x', POPUP_TYPE.CONFIRM, '', { ...confirmVerb('Remove', { negative: 'No' }), customButtons: [custom] });
+        const result = popup.show();
+        await settle();
+        const labels = [...popup.buttonControls.children].map(button => button.textContent).sort();
+        expect(labels.filter(label => label === 'Cancel')).toHaveLength(1);
+        expect(labels).toEqual(expect.arrayContaining(['No', 'Remove', 'Cancel']));
+        popup.cancelButton.click();
+        await expect(result).resolves.toBe(POPUP_RESULT.NEGATIVE);
+    });
+
+    test('a third-party confirm without a verb still shows "Yes"', () => {
+        expect(new Popup('x', POPUP_TYPE.CONFIRM).okButton.textContent).toBe('Yes');
     });
 });
 

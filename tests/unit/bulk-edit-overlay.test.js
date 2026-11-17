@@ -34,7 +34,7 @@ await jest.unstable_mockModule('../../public/scripts/RossAscends-mods.js', () =>
 await jest.unstable_mockModule('../../public/scripts/action-loader.js', () => ({ loader: { show: jest.fn(() => ({ hide: hideLoader })), ToastMode: { STATIC: 1 } } }));
 await jest.unstable_mockModule('../../public/scripts/group-chats.js', () => ({ groups, resetSelectedGroup: jest.fn(), selected_group: null, getGroupAvatarElement: () => document.createElement('span') }));
 await jest.unstable_mockModule('../../public/scripts/personas.js', () => ({ convertCharacterToPersona: jest.fn() }));
-await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({ callGenericPopup, POPUP_TYPE: { CONFIRM: 1 } }));
+await jest.unstable_mockModule('../../public/scripts/popup.js', () => ({ callGenericPopup, Popup: class Popup {}, POPUP_TYPE: { CONFIRM: 1 }, POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0, CANCELLED: null } }));
 await jest.unstable_mockModule('../../public/scripts/tags.js', () => Object.fromEntries([
     'createTagInput', 'getTagKeyForEntity', 'printTagList', 'compareTagsForSort', 'removeTagFromMap', 'importTags',
 ].map(name => [name, jest.fn()]).concat([['getTagsList', jest.fn(() => [])], ['tag_map', {}], ['tag_import_setting', {}]])));
@@ -221,7 +221,7 @@ describe('explicit bulk actions', () => {
         callGenericPopup.mockResolvedValueOnce(true);
         await overlay.runBulkAction('delete', ['01']);
         await settle();
-        expect(callGenericPopup).toHaveBeenCalledWith(expect.anything(), 1);
+        expect(callGenericPopup).toHaveBeenCalledWith(expect.anything(), 1, '', expect.objectContaining({ okButton: 'Delete', defaultResult: 0 }));
         expect(globalThis.fetch).toHaveBeenCalledTimes(1);
         expect(globalThis.fetch).toHaveBeenCalledWith('/api/groups/delete', expect.objectContaining({ method: 'POST', body: JSON.stringify({ id: '01' }) }));
         expect(deleteCharacter).not.toHaveBeenCalled();

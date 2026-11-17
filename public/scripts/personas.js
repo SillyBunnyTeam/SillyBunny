@@ -63,6 +63,7 @@ import { debounce_timeout } from './constants.js';
 import { FILTER_TYPES, FilterHelper } from './filters.js';
 import { groups, selected_group } from './group-chats.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 // SillyBunny: mirror the native lorebook select while retaining persona persistence upstream.
 import { lorebookSelectOptions } from './sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 import { t } from './i18n.js';
@@ -882,10 +883,13 @@ export async function convertPersonaToCharacter(avatarId = user_avatar) {
     }
 
     const descriptor = getPersonaDescriptionEntry(avatarId);
-    const popup = new Popup(t`Create Character Card from Persona`, POPUP_TYPE.CONFIRM, `
+    // SillyBunny: a CONFIRM hides its main input, so the question is the popup content (with its heading) instead of the input value.
+    const popup = new Popup(`
+        <h3>${t`Create Character Card from Persona`}</h3>
         <p>${t`Create a normal character card from this persona?`}</p>
-        <p><strong>${personaName}</strong></p>
-    `, {
+        <p><strong>${escapeHtml(personaName)}</strong></p>
+    `, POPUP_TYPE.CONFIRM, '', {
+        ...confirmVerb(t`Create`), // SillyBunny: names the response with a verb (confirmVerb).
         customInputs: [{
             id: 'copy_lorebook',
             type: 'checkbox',
@@ -972,7 +976,8 @@ export async function convertCharacterToPersona(characterId = null) {
 
     const isOverwrite = overwriteName in power_user.personas;
     if (isOverwrite) {
-        const confirm = await Popup.show.confirm(t`Overwrite Existing Persona`, t`This character exists as a persona already. Do you want to overwrite it?`);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await Popup.show.confirm(t`Overwrite Existing Persona`, t`This character exists as a persona already. Do you want to overwrite it?`, confirmVerb(t`Overwrite`, { destructive: true }));
         if (!confirm) {
             console.log('User cancelled the overwrite of the persona');
             return false;
@@ -980,7 +985,9 @@ export async function convertCharacterToPersona(characterId = null) {
     }
 
     if (description.includes('{{char}}') || description.includes('{{user}}')) {
-        const confirm = await Popup.show.confirm(t`Persona Description Macros`, t`This character has a description that uses <code>{{char}}</code> or <code>{{user}}</code> macros. Do you want to swap them in the persona description?`);
+        const confirm = await Popup.show.confirm(t`Persona Description Macros`, t`This character has a description that uses <code>{{char}}</code> or <code>{{user}}</code> macros. Do you want to swap them in the persona description?`,
+            // SillyBunny: "No" keeps the macros and the conversion goes on, so the negative keeps its own label (confirmVerb).
+            confirmVerb(t`Apply`, { negative: t`No` }));
         if (confirm) {
             description = description.replace(/{{char}}/gi, '{{personaChar}}').replace(/{{user}}/gi, '{{personaUser}}');
             description = description.replace(/{{personaUser}}/gi, '{{char}}').replace(/{{personaChar}}/gi, '{{user}}');
@@ -1584,7 +1591,9 @@ async function deletePersona(avatarId, { silent = false } = {}) {
     if (!silent) {
         const confirm = await Popup.show.confirm(
             t`Delete Persona` + `: ${name}`,
-            t`Are you sure you want to delete this avatar?` + '<br />' + t`All information associated with its linked persona will be lost.`);
+            t`Are you sure you want to delete this avatar?` + '<br />' + t`All information associated with its linked persona will be lost.`,
+            // SillyBunny: names the response with a verb (confirmVerb).
+            confirmVerb(t`Delete`, { destructive: true }));
 
         if (!confirm) {
             console.debug('User cancelled deleting avatar');
@@ -1818,7 +1827,8 @@ async function toggleDefaultPersona(avatarId, { quiet = false } = {}) {
 
     if (avatarId === currentDefault) {
         if (!quiet) {
-            const confirm = await Popup.show.confirm(t`Are you sure you want to remove the default persona?`, power_user.personas[avatarId]);
+            // SillyBunny: names the response with a verb (confirmVerb).
+            const confirm = await Popup.show.confirm(t`Are you sure you want to remove the default persona?`, power_user.personas[avatarId], confirmVerb(t`Remove`));
             if (!confirm) {
                 console.debug('User cancelled removing default persona');
                 return;
@@ -1835,7 +1845,9 @@ async function toggleDefaultPersona(avatarId, { quiet = false } = {}) {
             const confirm = await Popup.show.confirm(t`Set Default Persona`,
                 t`Are you sure you want to set \"${power_user.personas[avatarId]}\" as the default persona?`
                 + '<br /><br />'
-                + t`This name and avatar will be used for all new chats, as well as existing chats where the user persona is not locked.`);
+                + t`This name and avatar will be used for all new chats, as well as existing chats where the user persona is not locked.`,
+                // SillyBunny: names the response with a verb (confirmVerb).
+                confirmVerb(t`Confirm`));
             if (!confirm) {
                 console.debug('User cancelled setting default persona');
                 return;
@@ -2302,7 +2314,8 @@ async function syncUserNameToPersona({ start = 0, end = chat.length - 1, quiet =
                 : t`User-sent messages with name "${nameFilter}" in the specified range will be attributed to ${name1}.`;
 
     if (!quiet) {
-        const confirmation = await Popup.show.confirm(t`Are you sure?`, confirmMessage);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirmation = await Popup.show.confirm(t`Are you sure?`, confirmMessage, confirmVerb(t`Apply`));
         if (!confirmation) {
             return;
         }
@@ -2352,7 +2365,8 @@ async function duplicatePersona(avatarId, { silent = false, select = false } = {
     }
 
     if (!silent) {
-        const confirm = await Popup.show.confirm(t`Are you sure you want to duplicate this persona?`, personaName);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await Popup.show.confirm(t`Are you sure you want to duplicate this persona?`, personaName, confirmVerb(t`Duplicate`));
 
         if (!confirm) {
             console.debug('User cancelled duplicating persona');

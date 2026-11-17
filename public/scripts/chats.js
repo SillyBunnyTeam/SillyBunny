@@ -50,6 +50,7 @@ import {
 } from './utils.js';
 import { extension_settings, renderExtensionTemplateAsync, saveMetadataDebounced } from './extensions.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { ScraperManager } from './scrapers.js';
 import { DragAndDropHandler } from './dragdrop.js';
 import { renderTemplateAsync } from './templates.js';
@@ -1003,13 +1004,15 @@ async function deleteMessageMedia(messageId, mediaIndex, messageBlock) {
     let deleteFromServer = true;
 
     const value = await Popup.show.confirm(t`Delete media from message?`, t`This action can't be undone.`, {
-        okButton: t`Delete one`,
+        // SillyBunny: both delete responses are destructive and Return cancels (confirmVerb, is-destructive).
+        ...confirmVerb(t`Delete one`, { destructive: true }),
         cancelButton: false,
         customButtons: [
             {
                 text: t`Delete all`,
                 appendAtEnd: true,
                 result: POPUP_RESULT.CUSTOM1,
+                classes: ['is-destructive'],
             },
             {
                 text: t`Cancel`,

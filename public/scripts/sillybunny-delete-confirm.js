@@ -11,6 +11,27 @@ export const DELETE_CHOICE = Object.freeze({
     SWIPE: 'swipe',
 });
 
+/**
+ * Popup options for an upstream confirm that would otherwise show the generic "Yes". An upstream call site spreads
+ * the result into its options, so the label stays at the call site and the destructive rule lives here.
+ * @param {string} label The affirmative response, a verb for the action.
+ * @param {object} [options]
+ * @param {boolean} [options.destructive] Cancel is the default response and OK is drawn in the destructive colour.
+ * @param {string} [options.negative] Label of the negative response. Setting it stops the frame from renaming that
+ * response to "Cancel", which is wrong where the negative means "do not do this part" and the flow goes on.
+ * @returns {{ okButton: string, cancelButton?: string, defaultResult?: number, onOpening?: (popup: Popup) => void }}
+ */
+export function confirmVerb(label, { destructive = false, negative = null } = {}) {
+    const options = { okButton: label };
+    if (negative) options.cancelButton = negative;
+    if (destructive) {
+        options.defaultResult = POPUP_RESULT.NEGATIVE;
+        // `onOpening` runs before the first paint, so OK is never drawn in the suggested colour first.
+        options.onOpening = popup => popup.okButton.classList.add('is-destructive');
+    }
+    return options;
+}
+
 export async function confirmDestructiveAction({ text, confirmLabel, heading = null, copyPlaceholder = false }) {
     const popup = new Popup(text, POPUP_TYPE.CONFIRM, null, {
         okButton: confirmLabel,

@@ -129,9 +129,11 @@ export const surfaces = [
                 const { Popup, POPUP_RESULT } = await import('/scripts/popup.js');
                 void Popup.show.confirm('Delete media from message?', 'This action can\'t be undone.', {
                     okButton: 'Delete one',
+                    defaultResult: POPUP_RESULT.NEGATIVE,
+                    onOpening: popup => popup.okButton.classList.add('is-destructive'),
                     cancelButton: false,
                     customButtons: [
-                        { text: 'Delete all', appendAtEnd: true, result: POPUP_RESULT.CUSTOM1 },
+                        { text: 'Delete all', appendAtEnd: true, result: POPUP_RESULT.CUSTOM1, classes: ['is-destructive'] },
                         { text: 'Cancel', appendAtEnd: true, result: POPUP_RESULT.CANCELLED },
                     ],
                     customInputs: [{ type: 'checkbox', label: 'Also delete files from server', id: 'delete_media_files_checkbox', defaultState: true }],

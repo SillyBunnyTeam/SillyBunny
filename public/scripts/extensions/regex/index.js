@@ -2,6 +2,7 @@ import { characters, eventSource, event_types, getCurrentChatId, messageFormatti
 import { extension_settings, renderExtensionTemplateAsync } from '../../extensions.js';
 import { selected_group } from '../../group-chats.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from '../../popup.js';
+import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../slash-commands/SlashCommandArgument.js';
 import { commonEnumProviders, enumIcons } from '../../slash-commands/SlashCommandCommonEnumsProvider.js';
@@ -466,7 +467,8 @@ class RegexPresetManager {
         }
 
         const presetName = extension_settings.regex_presets[presetIndex].name;
-        const confirm = await Popup.show.confirm(t`Are you sure you want to delete this regex preset?`, presetName);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await Popup.show.confirm(t`Are you sure you want to delete this regex preset?`, presetName, confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             return;
         }
@@ -1679,7 +1681,8 @@ async function checkCharEmbeddedRegexScripts() {
                 if (!accountStorage.getItem(checkKey)) {
                     accountStorage.setItem(checkKey, 'true');
                     const template = await renderExtensionTemplateAsync('regex', 'embeddedScripts', {});
-                    const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '');
+                    // SillyBunny: "No" means "do not allow" and the prompt is not shown again, so the negative keeps its own label (confirmVerb).
+                    const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Allow`, { negative: t`No` }));
 
                     if (result) {
                         allowScopedScripts(character);
@@ -1722,7 +1725,8 @@ async function checkPresetEmbeddedRegexScripts() {
             if (!accountStorage.getItem(checkKey)) {
                 accountStorage.setItem(checkKey, 'true');
                 const template = await renderExtensionTemplateAsync('regex', 'presetEmbeddedScripts', {});
-                const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '');
+                // SillyBunny: "No" means "do not allow" and the prompt is not shown again, so the negative keeps its own label (confirmVerb).
+                const result = await callGenericPopup(template, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Allow`, { negative: t`No` }));
 
                 if (result) {
                     allowPresetScripts(apiId, name);
@@ -1912,7 +1916,8 @@ export async function init() {
     }
 
     $('#bulk_regex_move_to_global').on('click', async () => {
-        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to global?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to global?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Move`));
         if (!confirm) {
             return;
         }
@@ -1928,7 +1933,8 @@ export async function init() {
             toastr.error(t`Cannot edit scoped scripts in group chats.`);
             return;
         }
-        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to scoped?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to scoped?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Move`));
         if (!confirm) {
             return;
         }
@@ -1936,7 +1942,8 @@ export async function init() {
     });
 
     $('#bulk_regex_move_to_preset').on('click', async function () {
-        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to preset?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Are you sure you want to move the selected regex scripts to preset?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Move`));
         if (!confirm) {
             return;
         }
@@ -1949,7 +1956,8 @@ export async function init() {
             toastr.warning(t`No regex scripts selected for deletion.`);
             return;
         }
-        const confirm = await callGenericPopup(t`Are you sure you want to delete the selected regex scripts?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Are you sure you want to delete the selected regex scripts?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             return;
         }

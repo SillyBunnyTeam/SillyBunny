@@ -25,6 +25,7 @@ import { deleteGroupChatByName, getGroupAvatar, groups, openGroupById, openGroup
 import { extension_settings } from './extensions.js';
 import { t } from './i18n.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { renderTemplateAsync } from './templates.js';
 import { accountStorage } from './util/AccountStorage.js';
 import { clamp, flashHighlight, isElementInViewport, sortMoments, timestampToMoment } from './utils.js';
@@ -1039,7 +1040,8 @@ async function renameRecentConversationChat(avatarId, groupId, branchId, branchN
  */
 async function deleteRecentConversationChat(avatarId, groupId, branchId, recentChat) {
     try {
-        const confirm = await callGenericPopup(t`Delete the Chat File?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Delete the Chat File?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             return;
         }
@@ -1213,7 +1215,8 @@ async function deleteRecentCharacterChat(avatarId, fileName) {
         return;
     }
     try {
-        const confirm = await callGenericPopup(t`Delete the Chat File?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Delete the Chat File?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             console.log('Deletion cancelled by user');
             return;
@@ -1243,7 +1246,8 @@ async function deleteRecentGroupChat(groupId, fileName) {
         return;
     }
     try {
-        const confirm = await callGenericPopup(t`Delete the Chat File?`, POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup(t`Delete the Chat File?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             console.log('Deletion cancelled by user');
             return;

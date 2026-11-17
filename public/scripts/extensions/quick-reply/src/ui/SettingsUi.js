@@ -1,4 +1,6 @@
 import { Popup } from '../../../../popup.js';
+import { confirmVerb } from '../../../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
+import { t } from '../../../../i18n.js'; // SillyBunny: translates the response verb.
 import { getSortableDelay } from '../../../../utils.js';
 import { log, warn } from '../shared.js';
 import { QuickReply } from '../QuickReply.js';
@@ -300,7 +302,8 @@ export class SettingsUi {
     }
 
     async deleteQrSet() {
-        const confirmed = await Popup.show.confirm('Delete Quick Reply Set', `Are you sure you want to delete the Quick Reply Set "${this.currentQrSet.name}"?<br>This cannot be undone.`);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirmed = await Popup.show.confirm('Delete Quick Reply Set', `Are you sure you want to delete the Quick Reply Set "${this.currentQrSet.name}"?<br>This cannot be undone.`, confirmVerb(t`Delete`, { destructive: true }));
         if (confirmed) {
             if (await this.doDeleteQrSet(this.currentQrSet)) {
                 this.rerender();
@@ -375,7 +378,8 @@ export class SettingsUi {
         if (name && name.length > 0) {
             const oldQrs = QuickReplySet.get(name);
             if (oldQrs) {
-                const replace = await Popup.show.confirm('Replace existing Quick Reply Set', `A Quick Reply Set named "${name}" already exists.<br>Do you want to overwrite the existing Quick Reply Set?<br>The existing set will be deleted. This cannot be undone.`);
+                // SillyBunny: names the response with a verb (confirmVerb).
+                const replace = await Popup.show.confirm('Replace existing Quick Reply Set', `A Quick Reply Set named "${name}" already exists.<br>Do you want to overwrite the existing Quick Reply Set?<br>The existing set will be deleted. This cannot be undone.`, confirmVerb(t`Overwrite`, { destructive: true }));
                 if (replace) {
                     const idx = QuickReplySet.list.indexOf(oldQrs);
                     await this.doDeleteQrSet(oldQrs);
@@ -438,7 +442,8 @@ export class SettingsUi {
                 qrs.init();
                 const oldQrs = QuickReplySet.get(props.name);
                 if (oldQrs) {
-                    const replace = await Popup.show.confirm('Replace existing Quick Reply Set', `A Quick Reply Set named "${props.name}" already exists.<br>Do you want to overwrite the existing Quick Reply Set?<br>The existing set will be deleted. This cannot be undone.`);
+                    // SillyBunny: names the response with a verb (confirmVerb).
+                    const replace = await Popup.show.confirm('Replace existing Quick Reply Set', `A Quick Reply Set named "${props.name}" already exists.<br>Do you want to overwrite the existing Quick Reply Set?<br>The existing set will be deleted. This cannot be undone.`, confirmVerb(t`Overwrite`, { destructive: true }));
                     if (replace) {
                         const idx = QuickReplySet.list.indexOf(oldQrs);
                         await this.doDeleteQrSet(oldQrs);

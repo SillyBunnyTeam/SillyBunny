@@ -27,7 +27,7 @@ jest.unstable_mockModule('../../public/scripts/popup.js', () => ({
     Popup: FakePopup, POPUP_TYPE: { CONFIRM: 1 }, POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0, CANCELLED: null },
 }));
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: strings => strings.join('') }));
-const { confirmDestructiveAction } = await import('../../public/scripts/sillybunny-delete-confirm.js');
+const { confirmDestructiveAction, confirmVerb } = await import('../../public/scripts/sillybunny-delete-confirm.js');
 
 beforeEach(() => document.body.replaceChildren());
 
@@ -76,5 +76,35 @@ describe('confirmDestructiveAction', () => {
         expect(popup.content.dataset.sbCopyPlaceholder).toBe('true');
         popup.complete(null);
         await expect(result).resolves.toBe(false);
+    });
+});
+
+describe('confirmVerb', () => {
+    test('a plain verb sets only the OK label', () => {
+        expect(confirmVerb('Duplicate')).toEqual({ okButton: 'Duplicate' });
+    });
+
+    test('a destructive verb focuses Cancel and marks OK before the first paint', () => {
+        const options = confirmVerb('Delete', { destructive: true });
+        expect(options.okButton).toBe('Delete');
+        expect(options.defaultResult).toBe(0);
+        const okButton = document.createElement('button');
+        options.onOpening({ okButton });
+        expect(okButton.classList.contains('is-destructive')).toBe(true);
+    });
+
+    test('a negative label is passed as cancelButton, so the frame keeps it', () => {
+        expect(confirmVerb('Allow', { negative: 'No' })).toEqual({ okButton: 'Allow', cancelButton: 'No' });
+    });
+
+    test('a destructive verb with a negative label sets all four options', () => {
+        const options = confirmVerb('Remove', { destructive: true, negative: 'No' });
+        expect(Object.keys(options).sort()).toEqual(['cancelButton', 'defaultResult', 'okButton', 'onOpening']);
+    });
+
+    test('the options spread into the options of a call site, which keep their own keys', () => {
+        const options = { ...confirmVerb('Delete', { destructive: true }), wide: true };
+        expect(options.wide).toBe(true);
+        expect(options.okButton).toBe('Delete');
     });
 });

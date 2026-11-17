@@ -25,6 +25,7 @@ import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
 import { isMobile } from './RossAscends-mods.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup, callGenericPopup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { INTERACTABLE_CONTROL_CLASS } from './keyboard.js';
 import { commonEnumProviders } from './slash-commands/SlashCommandCommonEnumsProvider.js';
 import { renderTemplateAsync } from './templates.js';
@@ -2081,7 +2082,8 @@ async function onTagsPruneClick() {
         return;
     }
 
-    const confirm = await Popup.show.confirm(t`Prune ${tagsToPrune.length} tags and ${tagMapsToPrune.length} references`, t`Are you sure you want to remove all unused tags and references to missing or deleted characters and groups?`);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirm = await Popup.show.confirm(t`Prune ${tagsToPrune.length} tags and ${tagMapsToPrune.length} references`, t`Are you sure you want to remove all unused tags and references to missing or deleted characters and groups?`, confirmVerb(t`Remove`, { destructive: true }));
 
     if (!confirm) {
         return;

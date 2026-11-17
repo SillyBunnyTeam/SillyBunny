@@ -83,6 +83,7 @@ import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '
 import { renderTemplateAsync } from './templates.js';
 import { SlashCommandEnumValue } from './slash-commands/SlashCommandEnumValue.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 // SillyBunny: Native confirmation uses the shared alert so discarded drafts keep a safe default.
 import { openAlert } from './sillybunny-editor/dialog.js';
 import { t } from './i18n.js';
@@ -826,7 +827,8 @@ async function validateReverseProxy(signal) {
     const rememberKey = `Proxy_SkipConfirm_${getStringHash(oai_settings.reverse_proxy)}`;
     const skipConfirm = accountStorage.getItem(rememberKey) === 'true';
 
-    const confirmation = skipConfirm || await Popup.show.confirm(t`Connecting To Proxy`, await renderTemplateAsync('proxyConnectionWarning', { proxyURL: DOMPurify.sanitize(oai_settings.reverse_proxy) }));
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirmation = skipConfirm || await Popup.show.confirm(t`Connecting To Proxy`, await renderTemplateAsync('proxyConnectionWarning', { proxyURL: DOMPurify.sanitize(oai_settings.reverse_proxy) }), confirmVerb(t`Connect`));
 
     if (signal?.aborted) {
         return;
@@ -8146,7 +8148,8 @@ async function onPresetImportFileChange(e) {
     }
 
     if (name in openai_setting_names) {
-        const confirm = await callGenericPopup('Preset name already exists. Overwrite?', POPUP_TYPE.CONFIRM);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await callGenericPopup('Preset name already exists. Overwrite?', POPUP_TYPE.CONFIRM, '', confirmVerb(t`Overwrite`, { destructive: true }));
 
         if (!confirm) {
             return;
@@ -8205,7 +8208,8 @@ async function onExportPresetClick() {
         const textHeader = t`Your preset contains proxy and/or custom endpoint settings.`;
         const textMessage = '<div>' + t`Do you want to remove these fields before exporting?` + `</div><br>${DOMPurify.sanitize(fieldValues.join('<br>'))}`;
         const cancelButton = { text: 'Cancel', result: POPUP_RESULT.CANCELLED, appendAtEnd: true };
-        const popupOptions = { customButtons: [cancelButton] };
+        // SillyBunny: "No" exports with the fields, so it keeps its own label and the custom Cancel is the only Cancel (confirmVerb).
+        const popupOptions = { ...confirmVerb(t`Remove`, { negative: t`No` }), customButtons: [cancelButton] };
         const popupResult = await Popup.show.confirm(textHeader, textMessage, popupOptions);
 
         if (popupResult === POPUP_RESULT.CANCELLED) {
@@ -8289,7 +8293,8 @@ function onLogitBiasPresetExportClick() {
 }
 
 async function onDeletePresetClick() {
-    const confirm = await callGenericPopup(t`Delete the preset? This action is irreversible and your current settings will be overwritten.`, POPUP_TYPE.CONFIRM);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const confirm = await callGenericPopup(t`Delete the preset? This action is irreversible and your current settings will be overwritten.`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
 
     if (!confirm) {
         return;
@@ -8325,7 +8330,8 @@ async function onDeletePresetClick() {
 }
 
 async function onLogitBiasPresetDeleteClick() {
-    const value = await callGenericPopup(t`Delete the preset?`, POPUP_TYPE.CONFIRM);
+    // SillyBunny: names the response with a verb (confirmVerb).
+    const value = await callGenericPopup(t`Delete the preset?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
 
     if (!value) {
         return;

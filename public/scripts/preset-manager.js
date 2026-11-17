@@ -25,6 +25,7 @@ import { kai_settings } from './kai-settings.js';
 import { convertNovelPreset } from './nai-settings.js';
 import { getChatCompletionPreset, getPresetApplicationPromise, oai_settings, openai_setting_names, openai_settings } from './openai.js';
 import { POPUP_RESULT, POPUP_TYPE, Popup } from './popup.js';
+import { confirmVerb } from './sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 // SillyBunny: adopt preset choices into shared dialog rows without changing their values.
 import { presetChoicesOptions } from './sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 import { context_presets, getContextSettings, power_user } from './power-user.js';
@@ -860,7 +861,8 @@ class PresetManager {
         const bodyText = !this.isAdvancedFormatting()
             ? t`This will overwrite the selected preset.`
             : t`This will overwrite the selected template.`;
-        const confirm = await Popup.show.confirm(headerText, bodyText);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await Popup.show.confirm(headerText, bodyText, confirmVerb(t`Save`));
         if (confirm !== POPUP_RESULT.AFFIRMATIVE) {
             console.debug(!this.isAdvancedFormatting() ? 'Preset update cancelled' : 'Template update cancelled');
             return;
@@ -1702,7 +1704,8 @@ export async function initPresetManager() {
         }
 
         const headerText = !presetManager.isAdvancedFormatting() ? t`Delete this preset?` : t`Delete this template?`;
-        const confirm = await Popup.show.confirm(headerText, t`This action is irreversible and your current settings will be overwritten.`);
+        // SillyBunny: names the response with a verb (confirmVerb).
+        const confirm = await Popup.show.confirm(headerText, t`This action is irreversible and your current settings will be overwritten.`, confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             return;
         }
@@ -1741,8 +1744,8 @@ export async function initPresetManager() {
         const confirm = await Popup.show.confirm(
             t`Delete selected ${pluralNoun}?`,
             t`This will permanently delete ${presetNames.length} selected ${pluralNoun} for this section. The built-in GUI preset is kept.`,
-            // SillyBunny: Return must cancel the final destructive confirmation too.
-            { defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') },
+            // SillyBunny: Return must cancel the final destructive confirmation too (confirmVerb).
+            confirmVerb(t`Delete`, { destructive: true }),
         );
 
         if (!confirm) {
@@ -1796,7 +1799,8 @@ export async function initPresetManager() {
             const confirmText = !presetManager.isAdvancedFormatting()
                 ? t`Resetting a <b>default preset</b> will restore the default settings.`
                 : t`Resetting a <b>default template</b> will restore the default settings.`;
-            const confirm = await Popup.show.confirm(t`Are you sure?`, confirmText);
+            // SillyBunny: names the response with a verb (confirmVerb).
+            const confirm = await Popup.show.confirm(t`Are you sure?`, confirmText, confirmVerb(t`Restore`, { destructive: true }));
             if (!confirm) {
                 return;
             }
@@ -1811,7 +1815,8 @@ export async function initPresetManager() {
             const confirmText = !presetManager.isAdvancedFormatting()
                 ? t`Resetting a <b>custom preset</b> will restore to the last saved state.`
                 : t`Resetting a <b>custom template</b> will restore to the last saved state.`;
-            const confirm = await Popup.show.confirm(t`Are you sure?`, confirmText);
+            // SillyBunny: names the response with a verb (confirmVerb).
+            const confirm = await Popup.show.confirm(t`Are you sure?`, confirmText, confirmVerb(t`Restore`, { destructive: true }));
             if (!confirm) {
                 return;
             }
@@ -1836,6 +1841,8 @@ export async function initPresetManager() {
         const confirm = await Popup.show.confirm(
             t`Restore default presets?`,
             t`Deleted bundled default ${noun} for this section will be restored. Custom ${noun} are kept.`,
+            // SillyBunny: names the response with a verb (confirmVerb).
+            confirmVerb(t`Restore`),
         );
 
         if (!confirm) {
