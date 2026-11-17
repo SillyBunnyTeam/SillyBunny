@@ -273,8 +273,9 @@
   align-items: center;
   min-block-size: var(--sb-density-floor, 0px);
 }
+/* SillyBunny: the rows carry the row inset themselves (below), so the list adds none. */
 #qr--settings #qr--set-qrList .qr--set-qrListContents {
-  padding: 0 0.5em;
+  padding: 0;
 }
 #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder {
   display: flex;
@@ -405,6 +406,18 @@
   justify-content: center;
   min-inline-size: var(--sb-density-floor, 0px);
   min-block-size: var(--sb-density-floor, 0px);
+}
+
+/* SillyBunny: a Quick Reply row has the metrics of a boxed-list row. */
+#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item {
+  box-sizing: border-box;
+  min-height: 52px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--SmartThemeBorderColor);
+}
+
+#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item:last-child {
+  border-bottom: 0;
 }
 
 #qr--settings .qr--setList > .qr--item > .qr--visible {
@@ -772,11 +785,13 @@
 }
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList {
-  background-color: var(--stcdx--bgColor);
-  border: 1px solid var(--SmartThemeBorderColor);
-  -webkit-backdrop-filter: var(--SmartThemeBackdropFilter);
-  backdrop-filter: var(--SmartThemeBackdropFilter);
-  border-radius: 10px;
+  /* SillyBunny: the popover surface of the other lists (opaque layer, overlay radius, a ring in the shadow). `--stcdx--bgColor` is defined nowhere, so the list had no background. */
+  background-color: var(--sb-layer-popover);
+  border: 0;
+  box-shadow: var(--sb-typeahead-shadow);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: var(--sb-radius-overlay, 15px);
   font-size: smaller;
   position: absolute;
   top: 100%;
@@ -784,7 +799,7 @@
   right: 0;
   overflow: auto;
   margin: 0;
-  padding: 0.5em;
+  padding: 6px;
   max-height: 50vh;
   list-style: none;
   z-index: 40000;
@@ -792,20 +807,25 @@
 }
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem {
+  /* SillyBunny: a row of the popover list (32px, 44px on a coarse pointer, flat fills). */
   display: flex;
   gap: 1em;
+  align-items: center;
+  min-height: var(--sb-density-floor, 32px);
+  padding: 0 12px;
+  border-radius: var(--sb-radius-control, 9px);
   text-align: left;
-  opacity: 0.75;
-  transition: var(--animation-duration-2x);
   cursor: pointer;
 }
-.popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem:hover,
-.popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem:hover {
-  opacity: 1;
+@media (hover: hover) {
+  .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem:hover,
+  .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem:hover {
+    background-color: var(--sb-flat-hover-bg);
+  }
 }
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem.qr--current,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem.qr--current {
-  opacity: 1;
+  background-color: var(--sb-flat-selected-bg);
 }
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--modal-switcherItem.qr--current .qr--label,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--modal-switcherItem.qr--current .qr--label,
@@ -823,6 +843,13 @@
   height: min-content;
   width: min-content;
   margin: 0 0.5em 0 0;
+  /* SillyBunny: the icon is a glyph in a row, not a button, so it takes none of the button's size, fill or border. */
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList .qr--id,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList .qr--id {

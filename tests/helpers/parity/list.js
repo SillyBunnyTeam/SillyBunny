@@ -8,7 +8,7 @@
 import { FORMS, TARGET_SIZE } from './dialog.js';
 import { IF_FLEX, ROW_SUBTITLE, ROW_TITLE } from './settings.js';
 
-const OWN_ROW = ':is(.attachmentListItem, .regex-script-label, .qr--set-item, .openai_logit_bias_form, .tag_view_item, .sb-wi-row, .ds-row)';
+const OWN_ROW = ':is(.attachmentListItem, .regex-script-label, .qr--set-item, .openai_logit_bias_form, .tag_view_item, .sb-wi-row, .ds-row:not(.regex-script-label *))';
 const OWN_TITLE = ':is(.ds-row-label, .attachmentListItemName, .regex_script_name, [class*="name" i]:not(input, .tag, .tag *))';
 const READY_ROWS = '^list\\.(backgrounds|chat-history|sampler-order-|swipe-picker)';
 

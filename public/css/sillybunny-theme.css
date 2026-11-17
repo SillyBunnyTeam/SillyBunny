@@ -836,14 +836,70 @@ h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3) {
     color: var(--SmartThemeBodyColor);
 }
 
-.prompt_order.is-sampler-order-locked > div::after {
-    content: "\f023";
-    font-family: "Font Awesome 6 Free";
-    font-weight: 900;
+/* Upstream sortable lists lead with the six-dot grip and use boxed-list row metrics. The sampler rows have no handle element, so the grip is their pseudo-element. */
+:is(.openai_logit_bias_form, .regex-script-label, .qr--content, .qr--setList > .qr--item) > .drag-handle {
+    display: flex;
+    align-items: center;
+    font-size: 0;
+}
+
+:is(.openai_logit_bias_form, .regex-script-label, .qr--content, .qr--setList > .qr--item) > .drag-handle::before,
+.prompt_order > div::after {
+    content: "\f58e";
+    font: var(--fa-font-solid);
+    font-size: var(--sb-type-body);
+    color: var(--sb-muted-fg);
+}
+
+.prompt_order > div::after {
+    position: static;
+    order: -1;
 }
 
 .prompt_order.is-sampler-order-locked > div {
     cursor: default;
+}
+
+.prompt_order.is-sampler-order-locked > div::after {
+    opacity: 0.45;
+}
+
+.prompt_order {
+    gap: 0;
+    padding: 0;
+}
+
+.prompt_order > div {
+    min-height: 52px;
+    padding: 6px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 0;
+    background: transparent;
+}
+
+.prompt_order > div:last-child {
+    border-bottom: 0;
+}
+
+@media (hover: hover) {
+    .prompt_order:not(.ui-sortable-disabled) > div:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.openai_logit_bias_list {
+    gap: 0;
+}
+
+.openai_logit_bias_form {
+    min-height: 52px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+}
+
+.openai_logit_bias_form:last-child {
+    border-bottom: 0;
 }
 
 .checkbox_label {
@@ -2344,9 +2400,10 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 /* libadwaita swipe picker: borderless rows, flat hover, neutral selection like the shell tabs. */
 .swipe_picker_block {
     position: relative;
-    gap: 8px;
+    gap: 10px;
     margin: 0;
-    padding: 12px 14px;
+    min-height: 52px;
+    padding: 6px 12px;
     border: 1px solid transparent;
     border-bottom: 1px solid var(--sb-shell-border);
     border-color: transparent;
@@ -2556,8 +2613,8 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 /* Swipe picker header: more breathing room. */
 
 .swipe_picker_block .select_chat_block_filename {
-    font-size: calc(var(--mainFontSize) * 0.88);
-    font-weight: 700;
+    font-size: var(--sb-type-body);
+    font-weight: 400;
     color: var(--SmartThemeBodyColor);
     opacity: 1;
 }
@@ -3096,19 +3153,12 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     transition: none;
 }
 
+/* No cap on .select2-results: .select2-results__options is the one scroll container, and capping both nests two scrollbars.
+   The container of a body-level drop-down has zero width, so a percentage cap collapsed the list. */
 .select2-container--default .select2-dropdown {
-    background-color: var(--sb-layer-popover);
-    background-image: none;
-    border-radius: var(--sb-radius-button);
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 88%, transparent);
-    box-shadow: var(--sb-shadow-popover);
-    max-width: 100%;
+    max-width: calc(100vw - 16px);
     overflow: hidden;
 }
-
-/* No cap on the .select2-results wrapper: .select2-results__options is the one
-   scroll container (300px base, 320px for World Info). Capping both nests two
-   scrollbars and cuts the option list off mid-row. */
 
 .select2-container--default .select2-results__options {
     background-color: var(--sb-layer-popover);
@@ -3119,11 +3169,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     background-color: transparent;
     color: var(--SmartThemeBodyColor);
     opacity: 1;
-}
-
-.select2-container--default .select2-results__option--selected {
-    background-color: var(--sb-flat-selected-bg);
-    background-image: none;
 }
 
 .select2-container--default .select2-selection--single {
@@ -3151,18 +3196,17 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 }
 
 .select2-container--default .select2-search--dropdown .select2-search__field {
+    box-sizing: border-box;
+    width: 100%;
     background: var(--sb-input-bg);
     border: 1px solid var(--sb-input-border);
-    border-radius: var(--sb-radius-card);
+    border-radius: var(--sb-radius-control);
     color: var(--SmartThemeBodyColor);
-    padding: 10px 12px;
+    padding: 8px 12px;
 }
 
-.select2-container--default .select2-results__option--highlighted[aria-selected] {
-    background-color: var(--sb-flat-selected-hover-bg);
-    background-image: none;
-    color: var(--SmartThemeBodyColor);
-    opacity: 1;
+.select2-container--default .select2-results > .select2-results__options {
+    max-height: min(300px, 60dvh);
 }
 
 .select2-dropdown:has(:is(#select2-world_info-results, #select2-world_editor_select-results)) {
@@ -3195,28 +3239,11 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 :is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option,
 .sb-world-info-select2-dropdown .select2-results__option {
-    display: block;
-    min-height: 32px;
-    padding: 8px 12px 8px 30px;
-    color: var(--SmartThemeBodyColor);
-    background-color: transparent;
-    opacity: 1;
+    height: auto;
+    min-height: var(--sb-density-floor);
+    padding-block: 6px;
     visibility: visible;
     pointer-events: auto;
-}
-
-:is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option--selected,
-.sb-world-info-select2-dropdown .select2-results__option--selected {
-    background-color: var(--sb-flat-selected-bg);
-    background-image: none;
-}
-
-:is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option--highlighted[aria-selected],
-.sb-world-info-select2-dropdown .select2-results__option--highlighted[aria-selected] {
-    background-color: var(--sb-flat-selected-hover-bg);
-    background-image: none;
-    color: var(--SmartThemeBodyColor);
-    opacity: 1;
 }
 
 #range_block_openai {
@@ -6807,16 +6834,41 @@ body.reduced-motion .sb-dialog-host * {
     transition: none !important;
 }
 
-/* Select2 Dropdowns */
-.select2-container--default .select2-dropdown {
-    background: var(--sb-layer-popover);
-    /* select2-overrides.css sets the dropdown border with !important. */
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
-    border-radius: var(--sb-radius-overlay);
+/* Upstream type-ahead lists stay lists and take the popover surface of DESIGN.md Menus and Popovers. Only the theme style of the slash list takes the popover layer. */
+.select2-container--default .select2-dropdown,
+.ui-autocomplete,
+.list-group.ctx-menu,
+.autoComplete-wrap > .autoComplete,
+.autoComplete-detailsWrap:not(.commandContainer > *) > .autoComplete-details {
     padding: 6px;
-    box-shadow: var(--sb-shadow-popover);
+    border: 0;
+    border-radius: var(--sb-radius-overlay);
+    box-shadow: var(--sb-typeahead-shadow);
+    text-shadow: none;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+}
+
+/* One property serves every list; the contrast variant swaps the ring colour. */
+:root {
+    --sb-typeahead-shadow: 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent), var(--sb-shadow-popover);
+}
+
+@media (prefers-contrast: more) {
+    :root {
+        --sb-typeahead-shadow: 0 0 0 1px var(--SmartThemeBorderColor), var(--sb-shadow-popover);
+    }
+}
+
+.select2-container--default .select2-dropdown,
+.ui-autocomplete,
+.list-group.ctx-menu {
+    background: var(--sb-layer-popover);
+    color: var(--SmartThemeBodyColor);
+}
+
+.autoComplete-detailsWrap:not(.commandContainer > *) > .autoComplete-details {
+    padding: 8px;
 }
 
 .select2-container--default .select2-results__option {
@@ -6824,9 +6876,33 @@ body.reduced-motion .sb-dialog-host * {
     height: 32px;
     display: flex;
     align-items: center;
+    column-gap: 6px;
     border-radius: var(--sb-radius-control);
     color: var(--SmartThemeBodyColor);
     opacity: 1;
+}
+
+.select2-container--default .select2-results__option::before {
+    position: static;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 38%, transparent);
+    border-radius: var(--sb-radius-inner);
+    background: transparent;
+}
+
+.select2-container--default .select2-results__option[aria-selected="true"]::before {
+    border-color: var(--color-primary, var(--sb-accent));
+    background: var(--color-primary, var(--sb-accent));
+    color: var(--sb-on-solid-accent, var(--sb-on-accent));
+    font-size: 11px;
+}
+
+.select2-container--default .select2-results__option--group {
+    background: transparent;
+    color: var(--sb-muted-fg);
 }
 
 .select2-container--default .select2-results__option[aria-selected="true"] {
@@ -6841,21 +6917,82 @@ body.reduced-motion .sb-dialog-host * {
     background: var(--sb-flat-selected-hover-bg);
 }
 
-@media (pointer: coarse) {
-    .select2-container--default .select2-results__option {
-        height: 44px;
+.ui-autocomplete .ui-menu-item {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: var(--sb-radius-control);
+    cursor: pointer;
+}
+
+.ui-autocomplete .ui-menu-item-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    color: inherit;
+    font-weight: inherit;
+    overflow-wrap: anywhere;
+}
+
+.ui-autocomplete .ui-menu-item:has(> .ui-state-active) {
+    background: var(--sb-flat-selected-bg);
+}
+
+body[data-stscript-style='theme'] :is(.autoComplete, .autoComplete-details) {
+    --ac-color-background: var(--sb-layer-popover);
+    --ac-color-hoveredBackground: var(--sb-flat-hover-bg);
+    --ac-color-selectedBackground: var(--sb-flat-selected-bg);
+    --ac-color-notSelectableBackground: var(--sb-flat-selected-hover-bg);
+    /* On the popover layer the syntax colours fall under 4.5:1, so they take part of the body colour. */
+    --ac-color-text: var(--SmartThemeBodyColor);
+    --ac-color-argName: color-mix(in srgb, var(--ac-style-color-argName) 30%, var(--SmartThemeBodyColor));
+    --ac-color-type: color-mix(in srgb, var(--ac-style-color-type) 30%, var(--SmartThemeBodyColor));
+    --ac-color-string: color-mix(in srgb, var(--ac-style-color-string) 30%, var(--SmartThemeBodyColor));
+}
+
+.autoComplete-wrap > .autoComplete > .item > .help {
+    opacity: 0.9;
+}
+
+/* The script writes the wrapper offsets as strings that cannot sit inside max(), so padding keeps the lists 8px from the window edge. */
+.autoComplete-wrap,
+.autoComplete-detailsWrap:not(.commandContainer > *) {
+    padding-inline: max(0px, calc(8px - 1vw));
+}
+
+/* A box on the list's columns, so the item takes the row fills and radius. */
+.autoComplete-wrap > .autoComplete > .item:not(.blank) {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    gap: 0 6px;
+    min-height: 32px;
+    padding: 3px 12px;
+    border-radius: var(--sb-radius-control);
+}
+
+.autoComplete-wrap > .autoComplete > .item:not(.blank) > :is(.specs, .stopgap) {
+    padding-left: 0;
+}
+
+.autoComplete-wrap > .autoComplete > .item:not(.blank) > * {
+    background-color: transparent;
+}
+
+@media (hover: hover) {
+    .autoComplete-wrap > .autoComplete > .item:hover {
+        background-color: var(--ac-color-hoveredBackground);
     }
 }
 
-/* Quick Reply context menus (list-group.ctx-menu) */
-.list-group.ctx-menu {
-    background: var(--sb-layer-popover);
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
-    border-radius: var(--sb-radius-overlay);
-    padding: 6px;
-    box-shadow: var(--sb-shadow-popover);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+.autoComplete-wrap > .autoComplete > .item.selected {
+    background-color: var(--ac-color-selectedBackground);
+}
+
+.autoComplete-wrap > .autoComplete > .item.selected.not-selectable {
+    background-color: var(--ac-color-notSelectableBackground);
 }
 
 .list-group.ctx-menu .list-group-item {
@@ -6868,6 +7005,12 @@ body.reduced-motion .sb-dialog-host * {
     border: none;
     display: flex;
     align-items: center;
+    column-gap: 6px;
+}
+
+/* The extension pads an item with 1em on narrow windows. */
+.list-group.ctx-menu .list-group-item.ctx-item {
+    padding: 0 12px;
 }
 
 @media (hover: hover) {
@@ -6886,8 +7029,14 @@ body.reduced-motion .sb-dialog-host * {
 }
 
 @media (pointer: coarse) {
+    .select2-container--default .select2-results__option,
     .list-group.ctx-menu .list-group-item {
         height: 44px;
+    }
+
+    .ui-autocomplete .ui-menu-item,
+    .autoComplete-wrap > .autoComplete > .item:not(.blank) {
+        min-height: 44px;
     }
 }
 

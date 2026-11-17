@@ -12,16 +12,22 @@ import { IF_FLEX } from './settings.js';
 /** Menus and pickers are sheets in the mobile layout (MENU_SHEET_QUERY of `sillybunny-editor/breakpoints.js`), where dialogs wait for 450px. */
 const MENU_FORMS = Object.freeze({ ...FORMS, sheet: { media: '(max-width: 768px), (max-height: 360px)' } });
 
+const SKIP_REASON = 'third-party library list whose markup is its own, so any census would only record two markup exceptions';
+
 export const rules = {
     family: 'menu',
     forms: MENU_FORMS,
+    skip: {
+        'menu.select2.extension-dropdown': SKIP_REASON,
+    },
     parts: [
         {
             id: 'surface',
             only: '^menu\\.(?!tooltip\\.)',
             selectors: [
                 { id: 'popover', selector: '.sb-action-popover, .sb-action-sheet, .sb-picker, .sb-picker-sheet, .sb-custom-popover' },
-                { id: 'own', selector: '#options, #extensionsMenu, .actionButtonsModal, .ctx-menu, .autoComplete-wrap, .ui-autocomplete' },
+                // The slash-command list is the `.autoComplete` box: its `.autoComplete-wrap` only positions it and draws nothing.
+                { id: 'own', selector: '#options, #extensionsMenu, .actionButtonsModal, .ctx-menu, .autoComplete, .ui-autocomplete' },
             ],
             properties: [
                 { property: 'borderTopLeftRadius', token: '--sb-radius-overlay', source: 'DESIGN.md' },

@@ -70,7 +70,7 @@ async function assertPickerLayout(page, messageId, screenshotPath) {
     const title = row.locator('.select_chat_block_filename').first();
     const metadata = row.locator('.select_chat_info');
     await expect(title).toHaveCSS('color', /rgb\(/);
-    await expect(title).toHaveCSS('font-weight', '700');
+    await expect(title).toHaveCSS('font-weight', '400');
     await expect(metadata).toHaveCSS('color', /rgb\(/);
     await expect(row.locator('.swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete')).toHaveCount(3);
     const geometry = await row.evaluate(node => {

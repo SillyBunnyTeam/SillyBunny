@@ -23,6 +23,8 @@ const COARSE_VIEWPORTS = ['768x1024', '844x390', '820x360', '390x844', '360x640'
 const SMALL_VIEWPORTS = ['390x844', '360x640', '360x294', '320x568'];
 /** The open list of a jQuery UI autocomplete. A closed one keeps an inline `display: none`; `:visible` is not valid for the settle step. */
 const AUTOCOMPLETE = '.ui-autocomplete:not([style*="display: none"])';
+const SELECT2_DROPDOWN = '.select2-dropdown';
+const CSS = 'public/css';
 /** An input of a custom popover, in both forms. */
 const POPOVER_INPUT = '.sb-custom-popover input, .sb-action-sheet:not([hidden]) input';
 /** A row of an action menu with this text: names the target menu when a parent menu is open on the way to it. */
@@ -654,13 +656,10 @@ export const surfaces = [
                 await page.locator('.ctx-menu').first().waitFor({ state: 'hidden' });
                 await page.locator('#qr--bar .qr--button.qr--hasCtx').last().click({ button: 'right' });
                 await settleFade(page, '.ctx-menu');
-                // A mouse pointer opens the submenu on hover, and the expander's own click would then fold it again. A touch has no hover
-                // and opens it through the expander; the phone submenu also covers the middle of its parent item, so a hover cannot land there.
-                if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
-                    await page.locator('.ctx-menu .ctx-has-children .ctx-expander').first().tap();
-                } else {
-                    await page.locator('.ctx-menu .ctx-has-children').first().hover();
-                }
+                // A mouse pointer opens the submenu on hover, and the expander's own click would then fold it again. On a phone the submenu
+                // opens under its parent item, so the hover lands on the item at every size. A tap would not hold the submenu here: the
+                // emulated touch leaves the mouse where the menu opened, and the submenu closes when that mouse is outside both menus.
+                await page.locator('.ctx-menu .ctx-has-children').first().hover();
                 await settleFade(page, '.ctx-sub-menu');
             },
         }],
@@ -1028,6 +1027,37 @@ export const surfaces = [
         async close(page) {
             await page.locator('#gallery input[placeholder="Folder Name"]').press('Escape');
             await page.locator(AUTOCOMPLETE).first().waitFor({ state: 'hidden' });
+        },
+    }),
+    menu({
+        id: 'select2.extension-dropdown',
+        title: 'select2 drop-down (as an extension opens it)',
+        owner: 'B',
+        root: SELECT2_DROPDOWN,
+        ready: `${SELECT2_DROPDOWN} .select2-results__option`,
+        needs: [],
+        // The app's own selects are adopted by select rows, so a select2 box shows only where an extension builds one. This is a multiple
+        // select on the library the app still loads for extensions, and its list is opened the way an extension would open it.
+        sources: [`${CSS}/select2-overrides.css`],
+        async open(page) {
+            await page.evaluate(() => {
+                const host = document.createElement('div');
+                host.id = 'sb-audit-select2-host';
+                host.style.cssText = 'position: fixed; top: 96px; left: 16px; width: min(320px, calc(100vw - 32px)); z-index: 2000;';
+                host.innerHTML = '<select id="sb-audit-select2" multiple>'
+                    + ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'].map((name, index) => `<option value="${name}"${index === 1 ? ' selected' : ''}>${name}</option>`).join('')
+                    + '</select>';
+                document.body.append(host);
+                window.$('#sb-audit-select2').select2({ width: '100%', closeOnSelect: false, placeholder: 'Select items' }).select2('open');
+            });
+            await settleOverlay(page, SELECT2_DROPDOWN);
+        },
+        async close(page) {
+            await page.evaluate(() => {
+                window.$('#sb-audit-select2').select2('destroy');
+                document.getElementById('sb-audit-select2-host')?.remove();
+            });
+            await page.locator(SELECT2_DROPDOWN).first().waitFor({ state: 'hidden' });
         },
     }),
 ];

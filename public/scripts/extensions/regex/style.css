@@ -53,12 +53,24 @@
 }
 
 .regex-script-label {
-    align-items: baseline;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 10px;
-    padding: 0 5px;
-    margin-top: 1px;
-    margin-bottom: 1px;
+    /* SillyBunny: a script row has the metrics of a boxed-list row (52px, 6px 12px, a separator under it). */
+    align-items: center;
+    column-gap: 10px;
+    min-height: 52px;
+    padding: 6px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 0;
+    margin: 0;
+}
+
+.regex-script-label:last-child {
+    border-bottom: 0;
+}
+
+/* SillyBunny: the name of a row starts at the row's inline start, like the label of any other list row. */
+.regex-script-label .regex_script_name {
+    text-align: start;
 }
 
 .regex-script-label:has(.disable_regex:checked) .regex_script_name {
@@ -173,5 +185,48 @@ input.enable_scoped {
 .regex-script-label label.regex_script_expand input[name="regex_expand"],
 .regex-script-label:has(input[name="regex_expand"]:checked) label.regex_script_expand,
 .regex-script-label:not(:has(input[name="regex_expand"]:checked)) .regex_script_buttons {
+    display: none;
+}
+
+/* SillyBunny: the settings normaliser marks a script row as a row wrapper, whose rules zero the row's metrics. The row stays a flex row, and its switch and expand labels sit in it as icons. */
+#sb-settings-page .sb-settings-mounted-shell .regex-script-label.sb-settings-row-wrapper {
+    min-height: 52px;
+    padding: 6px 12px;
+    column-gap: 10px;
+}
+
+/* SillyBunny: the panel's rule for flex rows lets every child grow and keep 14em, which pushes the controls off a narrow row. */
+#sb-settings-page .sb-settings-mounted-shell .regex-script-label > :is(.drag-handle, .regex_bulk_checkbox) {
+    flex: 0 0 auto;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .regex-script-label > .regex_script_name {
+    min-width: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .regex-script-label .sb-settings-row-wrapper {
+    flex: 0 0 auto;
+    width: auto;
+    align-items: center;
+    gap: 6px;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .regex-script-label .ds-row-switch {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    min-height: var(--sb-density-floor, 32px);
+    padding: 0 6px;
+    border: 0;
+    background: none;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .regex-script-label :is(.ds-row-subtitle, .ds-row-suffix) {
+    display: none;
+}
+
+/* SillyBunny: the state glyphs follow the switch by sibling selector, and the switch now sits in the row's suffix. */
+.regex-script-label:has(.disable_regex:checked) .regex-toggle-on,
+.regex-script-label:not(:has(.disable_regex:checked)) .regex-toggle-off {
     display: none;
 }

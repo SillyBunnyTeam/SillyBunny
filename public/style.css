@@ -5475,7 +5475,8 @@ body .ui-slider-handle {
     border-color: var(--SmartThemeBorderColor) !important;
 }
 
-body .ui-widget-content {
+/* SillyBunny: the autocomplete list is a popover (surface and rows in sillybunny-theme.css), so these widget rules leave it out. */
+body .ui-widget-content:not(.ui-autocomplete) {
     background-color: var(--SmartThemeBlurTintColor);
     border: 1px solid var(--SmartThemeBorderColor) !important;
     border-radius: 10px;
@@ -5505,7 +5506,7 @@ body .ui-widget-content .ui-menu-item-wrapper {
     border: unset;
 }
 
-body .ui-widget-content li {
+body .ui-widget-content:not(.ui-autocomplete) li {
     padding: 5px;
     text-decoration: none;
     display: flex;
@@ -5515,7 +5516,7 @@ body .ui-widget-content li {
     transition: opacity var(--animation-duration-2x);
 }
 
-body .ui-widget-content li:hover {
+body .ui-widget-content:not(.ui-autocomplete) li:hover {
     /* background-color: var(--SmartThemeEmColor); */
     opacity: 1;
 }

@@ -260,7 +260,7 @@ for (const width of [1440, 390]) {
             expect(rowTypeMetrics.tagSubtitle).toEqual({ size: '12.3px', weight: '400' });
             expect(rowTypeMetrics.chatMetadata).toEqual(rowTypeMetrics.tagSubtitle);
             expect(rowTypeMetrics.chatPreview).toEqual(rowTypeMetrics.tagSubtitle);
-            expect(rowTypeMetrics.swipeTitle).toEqual({ size: '13.2px', weight: '700' });
+            expect(rowTypeMetrics.swipeTitle).toEqual(rowTypeMetrics.tagTitle);
             expect(rowTypeMetrics.swipePreview.size).toBe('12.9px');
             expect(rowData.title).toContain('QA History Chat 01');
             expect(rowData.date).toBeTruthy();

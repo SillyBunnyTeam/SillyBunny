@@ -2041,6 +2041,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-17, UI polish sweep (task 7.9). |
 | Owner | `TODO(copy)` |
 
+### `public/style.css`, `public/css/select2-overrides.css` and the Quick Reply and Regex extensions - type-ahead lists and list overlays
+| Field | Value |
+| --- | --- |
+| File | `public/style.css` (`:not(.ui-autocomplete)` on the three `body .ui-widget-content` rules, so jQuery UI's autocomplete list takes SillyBunny's popover surface); `public/css/select2-overrides.css` (the `!important` border on `.select2-dropdown` removed, because the popover surface draws its edge as a ring); `public/scripts/extensions/quick-reply/style.css` (the set switcher list and rows, the icon reset in its rows, the set row metrics); `public/scripts/extensions/regex/style.css` (the script row metrics and the row-wrapper overrides, loaded after `sillybunny-tabs.css`); `public/scripts/extensions/quick-reply/src/ui/ctx/SubMenu.js` (`place()` opens the submenu under or above its parent item when neither side has room). `public/index.html` changes cache keys only. |
+| Area | The select2 drop-downs, the jQuery UI autocomplete lists, the slash-command list, the server URL history, the Quick Reply context menu, submenu and set switcher, and the sortable rows of the regex, Quick Reply, logit bias and sampler lists. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The shared popover block and `--sb-typeahead-shadow` in `public/css/sillybunny-theme.css`; the row family of `DESIGN.md` (Boxed Lists and Rows). |
+| Adapter shape | Since 2026-11-17 (UI polish sweep, task 9.3b): marked declarations and rules in the files above, and one fallback branch in `SubMenu.place()`. |
+| Protecting tests | `tests/quick-reply-editor.e2e.js`; `tests/swipe-picker.e2e.js`; `tests/sillybunny-overlays.e2e.js`; `tests/characters-menu-contrast-css.test.js`; the menu and list surfaces of `tests/audit/surface-audit.e2e.js` (`menu.select2.extension-dropdown`, `menu.autocomplete.*`, `menu.quick-reply.context`, `list.quick-replies`, `list.regex-scripts`). |
+| Validation | 2026-11-17: root and tests lint, the full unit run, budgets, contracts and design rules, the coder's related run (190) and named-class specs (154), the merge's related run (`e2e-related --since 5e5aad48f`, 13 specs, 196 tests), and the audit of 18 surfaces (smoke, parity, axe). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-17, UI polish sweep (task 9.3b). |
+| Owner | `TODO(copy)` |
+
 ### `public/script.js`, `public/scripts/secrets.js`, `public/scripts/user.js`, `public/scripts/group-chats.js`, `public/css/secrets.css` and the Summarize, Quick Reply, Regex and TTS extensions - upstream windows and dialogs
 | Field | Value |
 | --- | --- |
