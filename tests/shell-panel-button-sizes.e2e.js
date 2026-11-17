@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 // The phone rule for `.sb-shell-panel-scroller .menu_button` and the compact-mode rule exclude status-page actions.
 // That exclusion must not add specificity, or both rules override the more specific size rules of single controls.
@@ -10,7 +11,7 @@ test.setTimeout(60_000);
 test.beforeEach(async ({ page }) => {
     await protectMaintainerServer(page);
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'connections'));
     await expect(page.locator('.sb-shell-panel-scroller #customize_additional_parameters')).toBeAttached();
 });

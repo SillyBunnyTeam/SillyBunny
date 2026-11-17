@@ -4,6 +4,7 @@ import { applyHomeTestSettings, captureAccountStorageSaves } from './helpers/get
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { IMPORT_PENDING_KEY as IMPORT_PENDING, SEEN_VERSION_KEY as SEEN_VERSION, SHOW_AT_STARTUP_KEY as SHOW_AT_STARTUP } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 /*
  * When Welcome opens at startup, and what it keeps. Each test names the account it boots with. The specs that are
@@ -71,11 +72,7 @@ async function boot(page, { firstRun = false, showAtStartup = null, seen = true,
     return captured;
 }
 
-const waitForReady = page => page.waitForFunction(
-    () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
-    null,
-    { timeout: STARTUP_TIMEOUT },
-);
+const waitForReady = page => waitForAppReady(page, { timeout: STARTUP_TIMEOUT });
 
 async function expectHome(page) {
     await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on', { timeout: STARTUP_TIMEOUT });

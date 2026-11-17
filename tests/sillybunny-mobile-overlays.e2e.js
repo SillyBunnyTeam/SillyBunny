@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const publicRoot = path.resolve(fileURLToPath(new URL('../public/', import.meta.url)));
 const WORLD_BOOK = `SB_MOBILE_OVERLAYS_${Date.now()}`;
@@ -19,7 +20,7 @@ const layouts = [
 test.describe.configure({ timeout: 90_000 });
 
 async function waitForApp(page) {
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60_000 });
+    await waitForAppReady(page, { timeout: 60_000 });
 }
 
 async function useChatCompletionSettings(page) {

@@ -28,6 +28,7 @@
 
 import { FIXTURES } from './fixture-data.js';
 import { chooseMenuItem, settle } from './steps.js';
+import { waitForAppReady } from '../app-ready.js';
 
 const SCRIPTS = 'public/scripts';
 const HOME_SCRIPTS = `${SCRIPTS}/sillybunny-home`;
@@ -1011,7 +1012,7 @@ async function holdSplash(page, variant) {
 async function releaseSplash(page) {
     const gate = splashGates.get(page);
     gate?.release();
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60_000 });
+    await waitForAppReady(page, { timeout: 60_000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     if (gate) {
         await page.evaluate((before) => {
@@ -1105,7 +1106,7 @@ async function leaveLogin(page) {
         loginStubs.delete(page);
     }
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60_000 });
+    await waitForAppReady(page, { timeout: 60_000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
 }
 

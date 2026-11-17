@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { activateButton } from './helpers/browser-neutral.js';
 import { openMenuItem } from './helpers/chats-archive.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -59,7 +60,7 @@ test.beforeEach(async ({ page, baseURL }) => {
         window.SillyBunnyClearFrontendCache = async () => true;
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
 });
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {

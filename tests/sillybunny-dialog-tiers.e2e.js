@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const VIEWPORTS = [
     { width: 1440, height: 900, presentation: 'floating' },
@@ -14,7 +15,7 @@ async function boot(page, viewport, { reduceMotion = true } = {}) {
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     if (reduceMotion) await page.emulateMedia({ reducedMotion: 'reduce' });
 }

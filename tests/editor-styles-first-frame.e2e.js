@@ -4,6 +4,7 @@ import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 // The editors' shared rules live in a deferred sheet. The sheet is held back here until the test lets it go, so an
 // editor that painted before the sheet applied would show its header unstyled. A service worker would answer the held
@@ -70,7 +71,7 @@ async function bootWithHeldSheet(page, viewport) {
     });
     // The held request keeps the load event from firing, so the boot is awaited by its own signal.
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: STARTUP_TIMEOUT });
+    await waitForAppReady(page, { timeout: STARTUP_TIMEOUT });
     return { requested, release };
 }
 

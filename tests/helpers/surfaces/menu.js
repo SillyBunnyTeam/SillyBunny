@@ -533,7 +533,8 @@ export const surfaces = [
             await openSettingsTab(page, { shell: 'right', tab: 'extensions' });
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
             await page.locator('#extensions_details').waitFor({ state: 'visible' });
-            await page.locator('#extensions_details').click();
+            // A click of Playwright would scroll the button into view, and with it the page behind the Window.
+            await page.locator('#extensions_details').evaluate(button => button.click());
             await page.locator('.extensions_info').first().waitFor({ state: 'visible' });
             await openFrom(page, '.extensions_info .sb-extension-actions-menu');
         },

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const BOOK = 'sb-cross-links-in-memory-book';
 const PERSONA = 'sb-cross-links-persona.png';
@@ -30,7 +31,7 @@ test.beforeEach(async ({ page }) => {
         }])) } });
     });
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.evaluate(async ({ book, persona, personaName }) => {
         const app = await import('/script.js');
         const wi = await import('/scripts/world-info.js');

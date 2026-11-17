@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 test.setTimeout(90000);
@@ -52,7 +53,7 @@ async function openQuantizations(page, baseURL, kind = 'chat') {
         return route.continue();
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'api'));
     const select = page.locator(`#openrouter_quantizations_${kind}`);
     const trigger = page.locator(`[data-sb-editor-field="openrouter_quantizations_${kind}"] .ds-select-row__trigger`);

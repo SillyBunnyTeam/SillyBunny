@@ -3,6 +3,7 @@ import { auditPromptingLayout } from './helpers/libadwaita-audit.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 test.beforeEach(async ({ page }) => { await protectMaintainerServer(page); });
 
@@ -181,11 +182,7 @@ async function loadSettings(page, baseURL, settingsStore = null) {
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(hostname);
     await mockWrites(page, settingsStore);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(
-        () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
-        null,
-        { timeout: 60000 },
-    );
+    await waitForAppReady(page, { timeout: 60000 });
 }
 
 async function openSettingsTab(page, tab, shell = 'left') {
@@ -1268,11 +1265,7 @@ test.describe('Settings entry regressions', () => {
                 await expect(scale).toHaveValue('75');
 
                 await page.reload({ waitUntil: 'domcontentloaded' });
-                await page.waitForFunction(
-                    () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
-                    null,
-                    { timeout: 60000 },
-                );
+                await waitForAppReady(page, { timeout: 60000 });
                 await openInterface();
                 await expect(scale).toHaveValue('75');
                 await scale.focus();
@@ -1303,11 +1296,7 @@ test.describe('Settings entry regressions', () => {
                     await expect(iconsOnly).toBeChecked({ checked: nextIconsOnly });
 
                     await page.reload({ waitUntil: 'domcontentloaded' });
-                    await page.waitForFunction(
-                        () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
-                        null,
-                        { timeout: 60000 },
-                    );
+                    await waitForAppReady(page, { timeout: 60000 });
                     await openInterface();
                     await expect(iconsOnly).toBeChecked({ checked: nextIconsOnly });
                     await iconsOnly.setChecked(!nextIconsOnly);
@@ -1407,11 +1396,7 @@ test.describe('Settings entry regressions', () => {
                     await expect(pin).toBeChecked({ checked: next });
 
                     await page.reload({ waitUntil: 'domcontentloaded' });
-                    await page.waitForFunction(
-                        () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
-                        null,
-                        { timeout: 60000 },
-                    );
+                    await waitForAppReady(page, { timeout: 60000 });
                     await openInterface();
                     await expect(pin).toBeChecked({ checked: next });
                     await pin.setChecked(!next);
@@ -1545,11 +1530,7 @@ test.describe('Preset persistence regression', () => {
         expect(settingsStore.saved).toBeTruthy();
 
         await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(
-            () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
-            null,
-            { timeout: 60000 },
-        );
+        await waitForAppReady(page, { timeout: 60000 });
         await switchBackend(page, 'openai');
         const reloadedPrompting = await openSettingsTab(page, 'prompting');
         await expect(reloadedPrompting.locator('#respective-presets-block #settings_preset_openai')).toHaveValue(selectedValue);

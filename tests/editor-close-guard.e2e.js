@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const CARD = 'qa-close-guard-card.png';
 const GROUP = 'qa-close-guard-group';
@@ -109,7 +110,7 @@ async function bootFixtures(page) {
 
 async function bootApp(page) {
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'), null, { timeout: 60000 });
 }
 

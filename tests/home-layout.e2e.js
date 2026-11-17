@@ -2182,7 +2182,13 @@ test.describe('Home filtered empty state', () => {
         });
         await page.goto('/', { waitUntil: 'domcontentloaded' });
         await expectHome(page);
-        await page.waitForFunction(() => window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar), undefined, { timeout: STARTUP_TIMEOUT });
+        await page.waitForFunction(() => {
+            try {
+                return Boolean(window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar));
+            } catch {
+                return false;
+            }
+        }, undefined, { timeout: STARTUP_TIMEOUT });
         const characters = await pickFixtureCharacters(page, 1);
         await renderHome(page, recentChatEntries(characters, 1, { distinctFiles: true }));
         const filtered = page.locator('.welcomePanel [data-recent-chat-empty-state="filtered"]');
@@ -2255,7 +2261,13 @@ test.describe('Home Recent Chats empty states', () => {
                 await installFixtureChats(page);
                 await page.goto('/', { waitUntil: 'domcontentloaded' });
                 await expectHome(page);
-                await page.waitForFunction(() => window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar), undefined, { timeout: STARTUP_TIMEOUT });
+                await page.waitForFunction(() => {
+                    try {
+                        return Boolean(window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar));
+                    } catch {
+                        return false;
+                    }
+                }, undefined, { timeout: STARTUP_TIMEOUT });
             });
 
             // Wide Home puts Tewi beside the text, and narrow Home puts a banner above it.
@@ -2348,7 +2360,13 @@ test.describe('Home Recent Chats group row', () => {
                 await installFixtureChats(page);
                 await page.goto('/', { waitUntil: 'domcontentloaded' });
                 await expectHome(page);
-                await page.waitForFunction(() => window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar), undefined, { timeout: STARTUP_TIMEOUT });
+                await page.waitForFunction(() => {
+                    try {
+                        return Boolean(window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar));
+                    } catch {
+                        return false;
+                    }
+                }, undefined, { timeout: STARTUP_TIMEOUT });
                 const characters = await pickFixtureCharacters(page, 2);
                 // The recent chat list only keeps rows whose group is known, so one stand-in group is added in the page.
                 await page.evaluate(async (members) => {
@@ -2395,7 +2413,13 @@ test.describe('Home while its template loads', () => {
         });
 
         await page.goto('/', { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar), undefined, { timeout: STARTUP_TIMEOUT });
+        await page.waitForFunction(() => {
+            try {
+                return Boolean(window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar));
+            } catch {
+                return false;
+            }
+        }, undefined, { timeout: STARTUP_TIMEOUT });
         await expect.poll(() => templateRequested, { message: 'the Home template request is held while the chat opens', timeout: STARTUP_TIMEOUT }).toBe(true);
         await page.evaluate(async () => {
             const { characters, selectCharacterById } = await import('/script.js');

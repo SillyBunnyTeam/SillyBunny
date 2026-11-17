@@ -3,6 +3,7 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { restoreAnimationSpeed, slowAnimations } from './helpers/animation-speed.js';
 import { fetchBodyOrSkip, fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 /*
  * Every overlay bottom sheet that a sheet controller or the Conversation workspace builds has the
@@ -13,7 +14,7 @@ test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
 test.describe.configure({ timeout: 90_000 });
 
 async function waitForApp(page) {
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60_000 });
+    await waitForAppReady(page, { timeout: 60_000 });
 }
 
 // The test data turns the reduced-motion setting on, which would skip every spring.

@@ -393,7 +393,8 @@ export async function openExtensionsManager(page) {
     await closeExtensionsManager(page);
     await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
     await shown(page, '#extensions_details');
-    await page.locator('#extensions_details').click();
+    // A click of Playwright would scroll the button into view, and with it the page behind the Window.
+    await page.locator('#extensions_details').evaluate(button => button.click());
     await shown(page, `${EXTENSIONS_MANAGER} .extension_block`);
     await settled(page, EXTENSIONS_MANAGER);
 }

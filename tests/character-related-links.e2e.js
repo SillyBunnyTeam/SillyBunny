@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const CHARACTER = 'qa-related-character.png';
 const PERSONA = 'qa-related-persona.png';
@@ -24,7 +25,7 @@ test.beforeEach(async ({ page }) => {
     await page.route('**/api/chats/info', route => route.fulfill({ json: { file_name: 'qa-related-chat.jsonl', chat_items: 1 } }));
     await page.route('**/api/characters/chats', route => route.fulfill({ json: { 0: { file_name: 'qa-related-chat.jsonl' } } }));
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'));
+    await waitForAppReady(page);
     await page.evaluate(async ({ characterAvatar, personaAvatar, groupId }) => {
         const app = await import('/script.js');
         const { power_user, setCharacterEditorQuickEdit } = await import('/scripts/power-user.js');

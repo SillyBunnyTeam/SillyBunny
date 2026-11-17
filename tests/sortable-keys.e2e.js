@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { selectBackend, openSettingsTab, settle } from './helpers/surfaces/steps.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -47,7 +48,7 @@ async function loadSettings(page, baseURL) {
         return route.continue();
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     return store;
 }
 

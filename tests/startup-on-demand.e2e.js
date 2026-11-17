@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import path from 'node:path';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const deferredScripts = new Map([
     ['sillybunny-server-tools.js', /\/sillybunny-server-tools(?:-[a-f0-9]{12})?\.js(?:\?[^#]*)?$/],
@@ -39,7 +40,7 @@ test.beforeEach(async ({ page, baseURL }) => {
 
 async function openApp(page) {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function');
 }
 

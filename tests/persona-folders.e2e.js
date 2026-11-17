@@ -2,13 +2,14 @@ import { expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const sessions = new WeakMap();
 
 test.setTimeout(90000);
 
 async function waitForApp(page) {
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
 }
 
 // Uploads and deletes are stubbed, so no avatar file is written or removed on the server these tests run against.

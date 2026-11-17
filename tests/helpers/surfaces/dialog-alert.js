@@ -170,7 +170,8 @@ export const surfaces = [
             await button.waitFor({ state: 'visible' });
             // The button listens only after the tab has bound it.
             await page.waitForFunction(() => document.getElementById('clear_cookies_cache_button')?.dataset.sbCookiesCacheBound === 'true');
-            await button.click();
+            // A click of Playwright would scroll the button into view, and with it the page behind the alert.
+            await button.evaluate(element => element.click());
             await settleFrame(page, ALERT_FRAME);
         },
         sources: [`${SCRIPTS}/sillybunny-server-tools.js`, `${SCRIPTS}/sillybunny-editor/dialog.js`],

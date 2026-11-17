@@ -3,6 +3,7 @@ import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- The viewport matrix adds mobile-only sheet gesture assertions. */
 
 const manager = page => page.locator('#tag_view_list');
@@ -28,7 +29,7 @@ test.beforeEach(async ({ page }) => {
 async function prepare(page, width) {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.locator('#sb-character-toggle').click();
     await page.evaluate(async () => {

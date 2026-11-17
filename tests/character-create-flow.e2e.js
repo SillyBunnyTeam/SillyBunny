@@ -2,6 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 function makeCharacter(avatar, name, nickname = '') {
     const data = {
@@ -62,7 +63,7 @@ test.beforeEach(async ({ page }) => {
 
 async function openView(page, view) {
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.evaluate(async view => window.SillyBunnyShell.openTab('characters', view), view);
     await expect(page.locator('.sb-character-list[data-mounted="true"]')).toHaveAttribute('data-view', view);

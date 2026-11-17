@@ -39,8 +39,14 @@ function readGroupAvatars(page) {
 test('opening Create New Chat Group keeps the group list avatars', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
-    await page.waitForFunction(() => !document.getElementById('preloader')
-        && window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'));
+    await page.waitForFunction(() => {
+        try {
+            return !document.getElementById('preloader')
+                && Boolean(window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'));
+        } catch {
+            return false;
+        }
+    });
     const id = await page.evaluate(async () => {
         const app = await import('/script.js');
         const { groups } = await import('/scripts/group-chats.js');

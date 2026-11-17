@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect } from '@playwright/test';
 import { protectMaintainerServer } from './maintainer-server.js';
 import { fetchJsonOrSkip } from './route-fetch.js';
+import { waitForAppReady } from './app-ready.js';
 
 export const BOOK = 'qa-import-book';
 const AVATAR = readFileSync(new URL('../../public/img/ai4.png', import.meta.url));
@@ -79,7 +80,7 @@ export async function protectImportFixtures(page) {
 
 export async function bootImport(page) {
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.evaluate(async () => {
         const { power_user } = await import('/scripts/power-user.js');

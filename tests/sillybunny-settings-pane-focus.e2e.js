@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { showSettingsSidebar } from './helpers/settings-phone-pane.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -42,7 +43,7 @@ async function loadApp(page, baseURL, { viewport }) {
         return route.continue();
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));
 }
 

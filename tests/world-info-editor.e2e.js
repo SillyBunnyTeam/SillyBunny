@@ -7,6 +7,7 @@ import { selectionCheckAppearance } from './helpers/selection-check-appearance.j
 import { selectTheme } from './helpers/page-contrast.js';
 import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const BOOK = `WI_EDITOR_E2E_${Date.now()}`;
 const TARGET_BOOK = `${BOOK}_TARGET`;
@@ -52,7 +53,7 @@ test.beforeEach(async ({ page }) => {
         return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
     });
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.evaluate(async name => {
         for (const key of Object.keys(localStorage)) if (key.startsWith('sb-wi-editor-draft-') && key.includes(encodeURIComponent(name))) localStorage.removeItem(key);
     }, BOOK);
@@ -177,7 +178,7 @@ test.describe('World Info editor', () => {
         await expect.poll(async () => (await readEntries(page))[0].content).toBe('Edited content');
 
         await page.reload();
-        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+        await waitForAppReady(page, { timeout: 60000 });
         const reopened = await openBook(page);
         await row(reopened, 'Alpha').click();
         await expect(reopened.locator('.sb-wi-entry-textarea')).toHaveValue('Edited content');
@@ -224,7 +225,7 @@ test.describe('World Info editor', () => {
         await expect(entry.locator('.sb-wi-entry-dirty')).toBeHidden();
         expect((await readEntries(page))[0]).toMatchObject({ constant: true, vectorized: false, position: 4, role: 1, depth: 8, order: 250, probability: 45 });
         await page.reload();
-        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+        await waitForAppReady(page, { timeout: 60000 });
         const reopened = await openBook(page);
         await row(reopened, 'Alpha').click();
         await expect(reopened.getByRole('spinbutton', { name: 'Depth', exact: true })).toHaveValue('8');
@@ -576,7 +577,7 @@ test.describe('World Info editor on mobile', () => {
         await entry.locator('.sb-wi-entry-save').click();
         await expect(entry.locator('.sb-wi-entry-dirty')).toBeHidden();
         await page.reload();
-        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+        await waitForAppReady(page, { timeout: 60000 });
         const reopened = await openBook(page);
         await row(reopened, 'Alpha').click();
         await expect(reopened.locator('.sb-wi-property-summary')).toContainText('mobile-outlet');

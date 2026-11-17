@@ -4,13 +4,14 @@ import { protectMaintainerServer, showToasts } from './helpers/maintainer-server
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { selectTheme } from './helpers/page-contrast.js';
 import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const sessions = new WeakMap();
 
 test.setTimeout(60000);
 
 async function waitForApp(page) {
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
 }
 
 test.beforeEach(async ({ page }) => {

@@ -442,7 +442,8 @@ async function openRegexSubpage(page) {
     await row.waitFor();
     const section = page.locator('#regex_container');
     if (!await section.isVisible()) {
-        await row.click();
+        // A click of Playwright would scroll the row into view, and with it the page behind the editor.
+        await row.evaluate(element => element.click());
         await section.waitFor({ state: 'visible' });
     }
 }

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { waitForQuietFrames } from './helpers/quiet-frames.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- The viewport matrix switches between floating and sheet assertions. */
 
 // The shared frame in sillybunny-editor/dialog.js: tiers, the AdwDialog sheet condition
@@ -21,7 +22,7 @@ async function prepare(page, viewport) {
     await protectMaintainerServer(page);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.emulateMedia({ reducedMotion: 'reduce' });
 }

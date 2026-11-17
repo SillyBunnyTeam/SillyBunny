@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const CARD = 'qa-favorite-card.png';
 const GROUP = 'qa-favorite-group';
@@ -95,7 +96,7 @@ async function showList(page, view) {
 
 async function bootList(page, view) {
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await showToasts(page);
     await showList(page, view);

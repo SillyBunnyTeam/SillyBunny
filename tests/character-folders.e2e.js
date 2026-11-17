@@ -5,6 +5,7 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 function readPayload(request) {
     const body = request.postDataBuffer();
@@ -54,7 +55,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function waitForApp(page) {
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
 }
 

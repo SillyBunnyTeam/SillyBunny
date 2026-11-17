@@ -24,6 +24,7 @@ import { protectMaintainerServer } from './maintainer-server.js';
 import { LANDSCAPE_PHONE, SHEET_BOUNDARY_PHONE } from './matrix.js';
 import { bootMiscDialogs, openMiscFixtureChat } from './misc-dialogs.js';
 import { fetchJsonOrSkip } from './route-fetch.js';
+import { waitForAppReady } from './app-ready.js';
 
 export const DESKTOP = { width: 1440, height: 900 };
 export const PHONE = { width: 390, height: 844 };
@@ -199,7 +200,7 @@ async function bootHome(page, baseURL, viewport, options, { firstRun = false, as
     if (firstRun) {
         await expect(page.locator(OPEN_DIALOG)).toBeVisible({ timeout: HOME_READY_TIMEOUT });
     } else {
-        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: HOME_READY_TIMEOUT });
+        await waitForAppReady(page, { timeout: HOME_READY_TIMEOUT });
         await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on', { timeout: HOME_READY_TIMEOUT });
         await expect(page.locator('#chat > .welcomePanel .sbHomeTile').first()).toBeVisible();
     }

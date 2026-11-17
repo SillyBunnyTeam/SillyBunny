@@ -1,6 +1,7 @@
 import { devices, expect, test } from '@playwright/test';
 import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const sessions = new WeakMap();
 
@@ -19,7 +20,7 @@ test.beforeEach(async ({ page }) => {
         return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
     });
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
 });
 
 test.afterEach(async ({ page }) => {

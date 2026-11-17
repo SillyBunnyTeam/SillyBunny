@@ -6,6 +6,7 @@ import { contrastOf, over, resolveColor, TEXT_CONTRAST } from './helpers/page-co
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 import { settledRead } from './helpers/settled-read.js';
 import { stubTheme } from './helpers/theme-stub.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 test.use({ serviceWorkers: 'block' });
 test.describe.configure({ timeout: 60_000 });
@@ -533,11 +534,7 @@ async function bootApp(page, { account = {}, reducedMotion } = {}) {
         return route.fulfill({ response, json: { ...data, settings: JSON.stringify(settings) } });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(
-        () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
-        null,
-        { timeout: APP_STARTUP_TIMEOUT },
-    );
+    await waitForAppReady(page, { timeout: APP_STARTUP_TIMEOUT });
 }
 
 async function openInterface(page) {
@@ -676,7 +673,7 @@ test.describe('Splash colours', () => {
         await protectMaintainerServer(page);
         await stubTheme(page, 'Libadwaita Light');
         await page.goto('/', { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60_000 });
+        await waitForAppReady(page, { timeout: 60_000 });
         await expect.poll(() => page.evaluate(() => localStorage.getItem('sb-boot-surface'))).not.toBeNull();
         const surface = JSON.parse(await page.evaluate(() => localStorage.getItem('sb-boot-surface')));
         const seeded = { bg: await resolveColor(page, surface.bg), fg: await resolveColor(page, surface.fg) };

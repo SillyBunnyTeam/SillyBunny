@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -40,7 +41,7 @@ async function openSearch(page, baseURL, query = 'button size') {
         return route.continue();
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     // The context option keeps the mobile settings slide transitions off, so captures stay settled.
     expect(await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()));

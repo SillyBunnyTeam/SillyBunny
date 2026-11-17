@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 // A default-size Popup with long content must scroll on desktop. Before the SillyBunny dialog frame,
 // popup.css clipped .popup-content (overflow: hidden above 1000px), so the last rows were unreachable.
@@ -8,7 +9,7 @@ async function openCreateProfile(page, viewport) {
     await protectMaintainerServer(page);
     await page.setViewportSize(viewport);
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.evaluate(async () => {
         const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');

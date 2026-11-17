@@ -2,6 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import { protectMaintainerServer } from './maintainer-server.js';
 import { fetchJsonOrSkip } from './route-fetch.js';
 import { applyWelcomeSettings } from './welcome-dialog.js';
+import { waitForAppReady } from './app-ready.js';
 
 export const PL_VIEWPORTS = [
     { width: 1440, height: 900, presentation: 'floating' },
@@ -85,7 +86,7 @@ export async function bootPresetLorebookDialogs(page, viewport, { reducedMotion 
     });
     await page.route(/\/api\/backends\/[^/]+\/status/, route => route.fulfill({ json: { error: true } }));
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.evaluate(async entries => {
         const wi = await import('/scripts/world-info.js');

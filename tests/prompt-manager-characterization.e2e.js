@@ -5,6 +5,7 @@ import { fetchBodyOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { selectTheme } from './helpers/page-contrast.js';
 import { expectToggleGroupForm, SELECTION_TONES } from './helpers/selection-forms.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 // Characterizes Prompt Manager behaviour through what it persists (the /api/settings/save payload).
 // UI interactions stay in the driver; persisted-data assertions are unchanged by the replacement UI.
@@ -239,11 +240,7 @@ function promptEditorDriver(page) {
             const hostname = new URL(BASE_URL).hostname;
             expect(['127.0.0.1', 'localhost', '[::1]']).toContain(hostname);
             await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForFunction(
-                () => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'),
-                null,
-                { timeout: 60000 },
-            );
+            await waitForAppReady(page, { timeout: 60000 });
             await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'editor'));
             const panel = page.locator('[data-sb-panel="editor"]');
             await expect(panel).toHaveAttribute('aria-hidden', 'false');

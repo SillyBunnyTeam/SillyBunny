@@ -6,6 +6,7 @@ import { buttonStates, expectRaisedSelectionButtons, promptButtonReference, q56S
 import { assertIsolatedServer, protectMaintainerServer } from './helpers/maintainer-server.js';
 import { selectionCheckAppearance } from './helpers/selection-check-appearance.js';
 import { fetchBodyOrSkip } from './helpers/route-fetch.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -59,7 +60,7 @@ async function openAgents(page, baseURL, width = 1440, { withChat = false } = {}
         });
     });
     await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'));
+    await waitForAppReady(page);
     if (withChat) await selectSampleCharacter(page);
     await page.evaluate(async () => {
         window.$('#themes').val('Libadwaita').trigger('change');

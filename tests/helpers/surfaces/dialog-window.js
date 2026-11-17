@@ -228,7 +228,8 @@ export const surfaces = [
             await closeDialogs(page);
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
             await page.locator('#extensions_details').waitFor({ state: 'visible' });
-            await page.locator('#extensions_details').click();
+            // A click of Playwright would scroll the button into view, and with it the page behind the Window.
+            await page.locator('#extensions_details').evaluate(button => button.click());
             await settleFrame(page, WINDOW_FRAME);
             await page.locator(within(WINDOW_FRAME, '.extension_block')).first().waitFor({ state: 'visible' });
         },

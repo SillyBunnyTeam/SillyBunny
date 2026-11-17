@@ -4,6 +4,7 @@ import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 // The overlays are measured and queried the moment they open. The app turns its own reduced-motion setting on from
 // this media query at boot, so the result does not depend on what the server's saved settings hold.
@@ -570,7 +571,7 @@ async function prepareCharacterList(page) {
         return route.fulfill({ json: { result: 'ok', version: (payload._version ?? 0) + 1 } });
     });
     await page.goto('/');
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60_000 });
+    await waitForAppReady(page, { timeout: 60_000 });
     await page.waitForFunction(() => !document.getElementById('preloader'));
     await page.evaluate(async () => {
         const app = await import('/script.js');

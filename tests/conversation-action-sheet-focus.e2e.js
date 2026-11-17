@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
 
@@ -52,7 +53,7 @@ async function openConversation(page, baseURL) {
         return route.continue();
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+    await waitForAppReady(page, { timeout: 60000 });
     // The context option disables the sheet spring motion, so the focus checks time against hidden state only.
     expect(await page.evaluate(async () => {
         const { prefersReducedMotion } = await import('/scripts/sillybunny-motion.js');

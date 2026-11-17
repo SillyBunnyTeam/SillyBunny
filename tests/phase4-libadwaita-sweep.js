@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 import { chromium } from 'playwright';
 import { auditLibadwaita, LIBADWAITA_AUDIT_ALLOWLIST } from './helpers/libadwaita-audit.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
+import { waitForAppReady } from './helpers/app-ready.js';
 
 const baseURL = process.env.SILLYBUNNY_TEST_BASE_URL || 'http://127.0.0.1:4444';
 const outputPath = process.env.PHASE4_AUDIT_OUTPUT || '/tmp/opencode/phase4-libadwaita-audit.json';
@@ -297,7 +298,7 @@ async function main() {
         // Route every possible write before page.goto so startup cannot persist fixture changes.
         await mockWritesBeforeNavigation(page, parsedBaseURL.origin);
         await page.goto(baseURL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.waitForFunction(() => window.SillyTavern?.getContext?.()?.eventSource?.autoFireLastArgs?.has('app_ready'), null, { timeout: 60000 });
+        await waitForAppReady(page, { timeout: 60000 });
 
         for (const theme of themes) {
             for (const viewport of viewports) {
