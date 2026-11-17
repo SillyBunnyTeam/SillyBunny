@@ -13,6 +13,24 @@ test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } 
 
 const BACKEND_CATEGORY_TITLE = ':scope > .sb-settings-flat-header .sb-settings-category-title, :scope > .sb-settings-flat-header b';
 
+/**
+ * The names of the visible groups, in order: a group's heading, or, for a group whose one row carries the title and so
+ * has no heading, the label that names its box. A group with neither is left out, as the heading locator left it out.
+ */
+async function groupNames(groups) {
+    return groups.evaluateAll((elements, titleSelector) => elements
+        .filter(element => {
+            const box = element.getBoundingClientRect();
+            return box.width > 0 && box.height > 0 && getComputedStyle(element).visibility !== 'hidden';
+        })
+        .map(element => {
+            const heading = element.querySelector(titleSelector);
+            if (heading) return heading.textContent.replace(/\s+/g, ' ').trim();
+            return element.querySelector('[role="group"][aria-label]')?.getAttribute('aria-label') ?? null;
+        })
+        .filter(name => name !== null), BACKEND_CATEGORY_TITLE);
+}
+
 async function loadSettings(page, baseURL, settingsStore) {
     const origin = new URL(baseURL).origin;
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(baseURL).hostname);
@@ -115,12 +133,12 @@ async function expectPromptingFlow(prompting, api) {
     if (api !== 'openai') {
         // NovelAI's loose phrase, preamble and banned token blocks are groups of their own, after Character Names.
         const novelGroups = api === 'novel' ? ['Phrase Repetition Penalty', 'Preamble', 'Banned Tokens'] : [];
-        await expect(prompting.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
+        await expect.poll(() => groupNames(prompting.locator('.sb-prompting-group'))).toEqual([
             'Presets', 'Generation Settings', 'System Prompt', 'Instruct Template', 'Context Template', 'Character Names', ...novelGroups, 'Reasoning Template',
         ]);
         return;
     }
-    await expect(prompting.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
+    await expect.poll(() => groupNames(prompting.locator('.sb-prompting-group'))).toEqual([
         'Presets', 'Preset API/Sampler Linking', 'Generation Settings', 'Character Names Behavior', 'Continue Postfix',
         'System Messages', 'Reply Prefill', 'Request Options', 'Enable function calling', 'Send inline media',
         'Request model reasoning', 'Reasoning Template',
@@ -222,7 +240,7 @@ async function expectSamplingTaxonomy(sampling, api) {
         return failures.map(failure => `${title?.textContent}: ${failure}`);
     }))).toEqual([]);
     if (api !== 'textgenerationwebui') return;
-    await expect(sampling.locator('.sb-sampling-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
+    await expect.poll(() => groupNames(sampling.locator('.sb-sampling-group'))).toEqual([
         'Sampling', 'Penalties & Repetition', 'Advanced Algorithms', 'Token Control', 'Banned Tokens/Strings', 'Output & Generation',
     ]);
     await expect(sampling.locator('.sb-sampling-group[data-sb-sampling-group="presets"]')).toHaveCount(0);
@@ -489,7 +507,7 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
     await selectBackend(page, 'openai', 'openrouter');
     const formatting = await openPanel(page, 'context');
     await expect(page.locator('[data-sb-settings-tab="context"]')).toContainText('Formatting');
-    await expect(formatting.locator('.sb-formatting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
+    await expect.poll(() => groupNames(formatting.locator('.sb-formatting-group'))).toEqual([
         'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering',
     ]);
     await expect(formatting.locator('#sb-af-reply-prefix #start_reply_with')).toBeVisible();
@@ -499,7 +517,7 @@ test('Prompting and Formatting rehome live template nodes across repeated backen
 
     await selectBackend(page, 'textgenerationwebui', 'ooba');
     const textFormatting = await openPanel(page, 'context');
-    await expect(textFormatting.locator('.sb-formatting-group:visible').locator(BACKEND_CATEGORY_TITLE)).toHaveText([
+    await expect.poll(() => groupNames(textFormatting.locator('.sb-formatting-group'))).toEqual([
         'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering', 'Advanced Formatting',
     ]);
 });
@@ -690,7 +708,7 @@ test('The connection profile change notice names the Presets and Formatting grou
                 const [entryName, group, ...rest] = entry.group.split(' > ');
                 if (entryName !== name || rest.length) continue;
                 await expect.poll(
-                    () => panel.locator('.sb-prompting-group:visible').locator(BACKEND_CATEGORY_TITLE).allTextContents(),
+                    () => groupNames(panel.locator('.sb-prompting-group')),
                     { message: `${entry.id} is shown in ${entry.group} for ${api}` },
                 ).toContain(group);
             }
