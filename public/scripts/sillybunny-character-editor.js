@@ -43,7 +43,7 @@ import { mountEditorChrome, showDraftRecoveryToast, dismissDraftRecoveryToast } 
 import { registerEditorNavigation, confirmEditorLeave, discardEditorChanges } from './sillybunny-editor/navigation.js';
 import { holdEditorsUntilStyled } from './sillybunny-editor/list-shell.js';
 import { objectNavigation } from './sillybunny-editor/object-navigation.js';
-import { adoptExpanderRow, adoptEditorFields, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
+import { adoptExpanderRow, adoptEditorFields, createDefinitionsReveal, createExpanderRow, createRow } from './sillybunny-editor/rows.js';
 import { adoptTagField } from './sillybunny-editor/tag-filter-menu.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { reconcileRows } from './sillybunny-editor/list-rows.js';
@@ -81,6 +81,8 @@ const navigation = {
 let chrome = null;
 /** @type {ReturnType<typeof mountEditorPreviews>|null} */
 let previews = null;
+/** @type {ReturnType<typeof createDefinitionsReveal>|null} */
+let definitionsReveal = null;
 /** Header title for the open session; follows inline renames. */
 let editorTitle = '';
 let folderSelectRow = null;
@@ -122,6 +124,7 @@ export function initCharacterEditor() {
     });
     _mountChrome();
     _bindToolbarButtons();
+    _bindDefinitionsReveal();
     _bindExportMenu();
     _bindTokenMirror();
     previews = mountEditorPreviews(/** @type {HTMLElement} */ (document.getElementById('form_create')), _renderPreview);
@@ -401,6 +404,7 @@ function _openSession(context) {
     previews?.reset();
     _syncRoleSegment();
     session.open(context);
+    definitionsReveal?.follow(context.entityId);
     _renderRelatedLinks();
     _syncTokenReadout();
     _syncFavoritePressed();
@@ -516,7 +520,10 @@ function _mountChrome() {
 
 /** @param {import('./sillybunny-editor/session.js').EditorState} state */
 function _renderChrome(state) {
-    if (!state.open) return;
+    if (!state.open) {
+        definitionsReveal?.reset();
+        return;
+    }
     chrome?.render({
         mode: state.mode,
         dirty: state.dirty,
@@ -562,10 +569,11 @@ function _bindToolbarButtons() {
             const btn = document.getElementById('sb_character_editor_quick_edit');
             const pressed = btn?.getAttribute('aria-pressed') === 'true';
             setCharacterEditorQuickEdit(!pressed);
-            // Leaving Quick Edit reveals the other sections; fade them in so the change
-            // reads as a reveal. Entering it only hides content, which stays instant.
+            // Leaving Quick Edit reveals what it hid (Advanced Fields, Related, and the alternate and group
+            // greetings); fade those in so the change reads as a reveal. Entering it only hides content,
+            // which stays instant.
             if (pressed) {
-                document.querySelectorAll('#form_create .sb-editor-section:not([data-sb-section="essentials"])').forEach(section => {
+                document.querySelectorAll('#form_create :is([data-sb-section="advanced-fields"], [data-sb-section="related"], #character_greetings_editor, #sb_character_group_greetings)').forEach(section => {
                     animateIn(/** @type {HTMLElement} */ (section), [{ opacity: 0 }, { opacity: 1 }], {
                         duration: MOTION_FAST,
                         easing: MOTION_EASE_OUT_QUAD,
@@ -585,6 +593,19 @@ function _bindToolbarButtons() {
     }
 
     _syncQuickEditPressed();
+}
+
+function _bindDefinitionsReveal() {
+    const sheet = document.getElementById('form_create');
+    const button = document.getElementById('sb_character_spoiler_reveal_button');
+    if (!sheet || !button) return;
+    definitionsReveal = createDefinitionsReveal({
+        sheet,
+        button,
+        getEntityId: () => session.context?.entityId ?? null,
+        // The pressed button leaves the layout, so focus would be lost; move it to the first revealed field.
+        onReveal: () => sheet.querySelector('[data-sb-section="character-fields"] :is(textarea, input)')?.focus({ preventScroll: true }),
+    });
 }
 
 /**

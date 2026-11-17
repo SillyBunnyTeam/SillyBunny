@@ -425,6 +425,7 @@ export const power_user = {
     },
     sb_preset_autosave: false,
     characterEditorQuickEdit: false,
+    spoiler_free_mode: false,
     blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeBlurTintColor').trim()}`,
     chat_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeChatTintColor').trim()}`,
     user_mes_blur_tint_color: `${getComputedStyle(document.documentElement).getPropertyValue('--SmartThemeUserMesBlurTintColor').trim()}`,
@@ -1329,18 +1330,31 @@ function switchWaifuMode() {
     scrollChatToBottom();
 }
 
-// SillyBunny: Quick edit replaces upstream spoiler-free mode and collapses the sheet to Essentials.
-// `spoiler_free_mode` is read once as a migration source and left in settings for upstream compatibility.
+// SillyBunny: Quick edit and Spoiler Free Mode are separate settings that both only add a class to the character
+// sheet. Quick edit (`characterEditorQuickEdit`) is the beginner's view. Spoiler Free Mode (the upstream
+// `spoiler_free_mode` key) hides the character definitions until the user reveals them for the open character.
+// The sets they hide combine, so neither handler reads or writes the other's setting.
 function applyCharacterEditorQuickEdit() {
     const enabled = !!power_user.characterEditorQuickEdit;
     document.getElementById('form_create')?.classList.toggle('sb-editor-sheet--quick-edit', enabled);
-    $('#spoiler_free_mode').prop('checked', enabled);
     $('#sb_character_editor_quick_edit').attr('aria-pressed', String(enabled));
 }
 
 export function setCharacterEditorQuickEdit(enabled) {
     power_user.characterEditorQuickEdit = !!enabled;
     applyCharacterEditorQuickEdit();
+    saveSettingsDebounced();
+}
+
+function applyCharacterEditorSpoilerFree() {
+    const enabled = !!power_user.spoiler_free_mode;
+    document.getElementById('form_create')?.classList.toggle('sb-editor-sheet--spoiler-free', enabled);
+    $('#spoiler_free_mode').prop('checked', enabled);
+}
+
+export function setCharacterEditorSpoilerFree(enabled) {
+    power_user.spoiler_free_mode = !!enabled;
+    applyCharacterEditorSpoilerFree();
     saveSettingsDebounced();
 }
 
@@ -2303,10 +2317,6 @@ export async function loadPowerUserSettings(settings, data) {
         power_user.sb_preset_autosave = !!settings.firstRun;
     }
 
-    if (!Object.hasOwn(savedPowerUserSettings, 'characterEditorQuickEdit')) {
-        power_user.characterEditorQuickEdit = !!savedPowerUserSettings.spoiler_free_mode;
-    }
-
     // SillyBunny: Dark V 1.0 was the previous bundled default. Migrate only
     // that exact legacy selection; explicitly chosen themes remain untouched.
     if (power_user.theme === 'Dark V 1.0') {
@@ -2647,6 +2657,7 @@ export async function loadPowerUserSettings(settings, data) {
     loadMaxContextUnlocked();
     switchWaifuMode();
     applyCharacterEditorQuickEdit();
+    applyCharacterEditorSpoilerFree();
     applyGoogleFont();
     loadMovingUIState();
     loadCharListState();
@@ -5068,9 +5079,8 @@ jQuery(async () => {
     });
 
     $('#spoiler_free_mode').on('input', function () {
-        setCharacterEditorQuickEdit($(this).prop('checked'));
+        setCharacterEditorSpoilerFree($(this).prop('checked'));
     });
-
 
     $('#custom_stopping_strings').on('input', function () {
         power_user.custom_stopping_strings = String($(this).val()).trim();

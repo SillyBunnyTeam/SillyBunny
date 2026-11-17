@@ -77,7 +77,7 @@
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261117x">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261117zf">
     <!-- SillyBunny: the editor chrome sheet is deferred, so it stays out of the blocking-CSS budget. The editors, the lists and the windows that use it load it through loadListEditorStyles() and wait for it before they show; the character and group editors are held hidden until it applies (holdEditorsUntilStyled() in sillybunny-editor/list-shell.js). Keep this version aligned with the runtime loader URLs. -->
-    <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261117p" data-sb-deferred-style data-sb-media="all">
+    <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261117zg" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css?v=20261112k" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -6955,6 +6955,21 @@
                                                 </div>
                                                 <div id="character_folder_row" class="ds-field"></div>
                                             </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <!-- SillyBunny: Spoiler Free Mode hides the character definitions; this row reveals them for the open character. CSS shows it only while they are hidden. -->
+                                <section class="sb-editor-section" data-sb-section="spoiler-reveal" aria-labelledby="sb_character_spoiler_reveal_label">
+                                    <div class="ds-pref-group sb-editor-section__body">
+                                        <div class="ds-row" id="sb_character_spoiler_reveal">
+                                            <span class="ds-row-text">
+                                                <span class="ds-row-label" id="sb_character_spoiler_reveal_label" data-i18n="Spoiler Free Mode">Spoiler Free Mode</span>
+                                                <small class="ds-row-subtitle" data-sb-copy-placeholder="true">TODO(copy)</small>
+                                            </span>
+                                            <span class="ds-row-suffix">
+                                                <button type="button" id="sb_character_spoiler_reveal_button" class="menu_button" aria-label="Show Definitions" title="Show Definitions" data-i18n="[aria-label]Show Definitions;[title]Show Definitions">Show Definitions</button>
+                                            </span>
                                         </div>
                                     </div>
                                 </section>

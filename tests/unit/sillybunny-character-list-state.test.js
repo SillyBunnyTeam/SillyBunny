@@ -981,6 +981,7 @@ describe('id-based list actions', () => {
             editorTitle: '',
             chrome: null,
             previews: null,
+            definitionsReveal: null,
             _syncRoleSegment: jest.fn(),
             _syncTokenReadout: jest.fn(),
             _renderRelatedLinks: jest.fn(),

@@ -1149,12 +1149,31 @@ body.reduced-motion :is(
     transition: none;
 }
 
-/* Quick edit mode — hide all sections except Essentials
-   the toolbar and its quick-edit toggle remain accessible so the user can turn it off
+/* Quick edit and Spoiler Free Mode each hide their own sections; both classes can be on, and the hidden sets
+   combine. The toolbar and its quick-edit toggle stay visible so the user can turn Quick Edit off.
    ========================================================================= */
 
-.sb-editor-sheet--quick-edit .sb-editor-section:not([data-sb-section="essentials"]) {
+/* Quick edit keeps Essentials, Character Fields, the first message and Metadata. */
+.sb-editor-sheet--quick-edit .sb-editor-section:not([data-sb-section="essentials"], [data-sb-section="character-fields"], [data-sb-section="greetings"], [data-sb-section="metadata"], [data-sb-section="spoiler-reveal"]),
+.sb-editor-sheet--quick-edit :is(#character_greetings_editor, #sb_character_group_greetings) {
     display: none !important;
+}
+
+/* Spoiler Free Mode hides the definitions until the reveal row is pressed for the open character. */
+.sb-editor-sheet--spoiler-free:not(.sb-editor-sheet--definitions-revealed) .sb-editor-section:is([data-sb-section="character-fields"], [data-sb-section="advanced-fields"], [data-sb-section="greetings"]) {
+    display: none;
+}
+
+.sb-editor-section[data-sb-section="spoiler-reveal"] {
+    display: none;
+}
+
+.sb-editor-sheet--spoiler-free:not(.sb-editor-sheet--definitions-revealed) .sb-editor-section[data-sb-section="spoiler-reveal"] {
+    display: flex;
+}
+
+#sb_character_spoiler_reveal_button {
+    white-space: nowrap;
 }
 
 /* Mobile overrides

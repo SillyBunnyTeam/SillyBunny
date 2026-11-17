@@ -7160,7 +7160,7 @@
         {"identity":"#prefer_character_jailbreak","identityKind":"id","kind":"switch","name":"Prefer Char. Instructions","group":"Character Handling","where":"visible","keys":["power_user.prefer_character_jailbreak"],"selfSaves":true},
         {"identity":"#never_resize_avatars","identityKind":"id","kind":"switch","name":"Never resize avatars","group":"Character Handling","where":"visible","keys":["power_user.never_resize_avatars"],"selfSaves":true},
         {"identity":"#show_card_avatar_urls","identityKind":"id","kind":"switch","name":"Show avatar filenames","group":"Character Handling","where":"visible","keys":["power_user.show_card_avatar_urls"],"selfSaves":true},
-        {"identity":"#spoiler_free_mode","identityKind":"id","kind":"switch","name":"Spoiler Free Mode","group":"Character Handling","where":"visible","keys":["power_user.characterEditorQuickEdit"],"selfSaves":true},
+        {"identity":"#spoiler_free_mode","identityKind":"id","kind":"switch","name":"Spoiler Free Mode","group":"Character Handling","where":"visible","keys":["power_user.spoiler_free_mode"],"selfSaves":true},
         {"identity":"#console_log_prompts","identityKind":"id","kind":"switch","name":"Log prompts to console","group":"Diagnostics","where":"visible","keys":["power_user.console_log_prompts"],"selfSaves":true},
         {"identity":"#request_token_probabilities","identityKind":"id","kind":"switch","name":"Request token probabilities","group":"Diagnostics","where":"visible","keys":["power_user.request_token_probabilities"],"selfSaves":true}
       ]

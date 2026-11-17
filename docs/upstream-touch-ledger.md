@@ -52,6 +52,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05, PR #870 (opening layout). |
 | Owner | UI overhaul integrator. |
 
+### `public/scripts/power-user.js` and `public/index.html` - character editor Quick Edit and Spoiler Free Mode
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/power-user.js` (`applyCharacterEditorQuickEdit` and `applyCharacterEditorSpoilerFree` toggle one class each on `#form_create`; the Customize checkbox `#spoiler_free_mode` writes only upstream's `power_user.spoiler_free_mode`; the migration from `spoiler_free_mode` into `characterEditorQuickEdit` is removed); `public/index.html` (the reveal row `#sb_character_spoiler_reveal` in the character editor). |
+| Area | The character editor's Quick Edit view (Essentials, Character Fields, the first message and Metadata) and upstream's Spoiler Free Mode (Character Fields, Advanced Fields and Greetings hidden behind a Show Definitions row, for the open character only). |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/css/sillybunny-character-editor.css` (the two classes' hidden sets); `createDefinitionsReveal()` in `public/scripts/sillybunny-editor/rows.js`; `public/scripts/sillybunny-character-editor.js` (the toolbar toggle and the reveal reset). |
+| Adapter shape | Since 2026-11-17 (UI polish sweep, task 5.8): the two class toggles and the checkbox handler in `power-user.js`, and one marked reveal row in `index.html`. Upstream's `spoiler_free_mode` key keeps its meaning; no new stored key. |
+| Protecting tests | `tests/character-editor-quick-edit.test.js`; `tests/unit/sillybunny-definitions-reveal.test.js`; `tests/character-editor-modes.e2e.js`; `tests/frontend-performance.e2e.js` (the reveal lives in an existing module, so the startup count holds). |
+| Validation | 2026-11-17: root and tests lint, the full unit run, budgets, contracts and design rules, `tests/character-editor-modes.e2e.js` at 1440x900 and 390x844, the coder's related run (44 tests) and the merge's (`e2e-related --since 50619e454`). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-17, UI polish sweep (task 5.8). |
+| Owner | `TODO(copy)` |
+
 ### `public/index.html` - character editor Group-only greetings expander
 | Field | Value |
 | --- | --- |

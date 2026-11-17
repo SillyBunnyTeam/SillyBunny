@@ -1154,3 +1154,41 @@ export function adoptEditorFields(root, { t, entryTextAreas = [] }) {
         }
     }
 }
+
+export const REVEALED_CLASS = 'sb-editor-sheet--definitions-revealed';
+
+/**
+ * Per-character reveal for Spoiler Free Mode. The reveal belongs to the character that was open when the
+ * button was pressed, so it changes no setting and ends when another character opens or the editor closes.
+ * @param {object} options
+ * @param {{ classList: DOMTokenList }} options.sheet  The element that carries the sheet classes.
+ * @param {{ addEventListener: (type: string, handler: () => void) => void }} options.button
+ * @param {() => string|null} options.getEntityId  The character the editor shows now.
+ * @param {() => void} [options.onReveal]
+ */
+export function createDefinitionsReveal({ sheet, button, getEntityId, onReveal = () => {} }) {
+    /** @type {string|null} */
+    let revealedFor = null;
+
+    const render = () => sheet.classList.toggle(REVEALED_CLASS, revealedFor !== null);
+
+    button.addEventListener('click', () => {
+        revealedFor = getEntityId() ?? null;
+        render();
+        onReveal();
+    });
+
+    return {
+        /** Ends the reveal unless the editor still shows the character it was granted for. */
+        follow(entityId) {
+            if (revealedFor !== entityId) {
+                revealedFor = null;
+                render();
+            }
+        },
+        reset() {
+            revealedFor = null;
+            render();
+        },
+    };
+}
