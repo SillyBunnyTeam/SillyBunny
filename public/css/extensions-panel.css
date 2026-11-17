@@ -52,6 +52,13 @@ label[for="extensions_autoconnect"]:not(.ds-row) {
     margin: 0 !important;
 }
 
+/* SillyBunny: the assets extension marks its connect button with .redOverlayGlow (#800 at 80%) until a list loads. On a filled
+   entry row that colour is under 2:1, so the glyph takes the warning ink, which is mixed for contrast on both tones. */
+.sb-assets-section #assets-connect-button.redOverlayGlow {
+    color: var(--sb-warning-fg);
+    opacity: 1 !important;
+}
+
 .extensions_url_block {
     display: flex;
     align-items: center;

@@ -34,6 +34,41 @@
     }
 }
 
+/* The title is Body at regular weight and the modules line is a dimmed Caption subtitle, as in every boxed-list row. The
+   title wraps at word boundaries: the row grows instead of hiding the version or cutting the modules list. */
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_text_block > :is(.extension_enabled, .extension_disabled, .extension_missing, a),
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_text_block > a > :is(.extension_enabled, .extension_disabled, .extension_missing) {
+    overflow: visible;
+    font-weight: 400;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+
+/* st-tailwind.css colours the module names lightgray, which is under 1.5:1 on the light tone. They take the line's dimmed ink. */
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_modules > .optional {
+    color: inherit;
+}
+
+/* The homepage link wraps the name, the version and the modules line. Only the name carries the link underline. */
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_text_block > a {
+    text-decoration: none;
+}
+
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_text_block > a .extension_name {
+    text-decoration: underline;
+}
+
+.extensions_info .sb-extensions-section .extension_block.ds-row .extension_name {
+    font-size: var(--sb-type-body);
+}
+
+.extensions_info .sb-extensions-section .extension_block.ds-row :is(.extension_version, .extension_author, .extension_modules) {
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-caption);
+    opacity: 1;
+}
+
 .extensions_info .sb-extensions-section {
     margin: 0 0 16px;
 }

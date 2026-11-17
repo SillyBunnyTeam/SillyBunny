@@ -57,7 +57,8 @@ for (const viewport of [
     test(`extension row actions at ${viewport.width}×${viewport.height}`, async ({ page }) => {
         const { fullRow, singleRow } = await openExtensionsManager(page, viewport);
         const fullLayout = await fullRow.evaluate(row => {
-            const title = row.querySelector('.extension_name').getBoundingClientRect();
+            // The name wraps inside its text column, so the column (the flex item that holds it) is the title's box.
+            const title = row.querySelector('.extension_name').closest('.extension_text_block > *').getBoundingClientRect();
             const menu = row.querySelector('.sb-extension-actions-menu');
             const originals = [...row.querySelectorAll('.extension_actions > button:not(.sb-extension-actions-menu)')];
             const toggle = row.querySelector('.extension_toggle').getBoundingClientRect();

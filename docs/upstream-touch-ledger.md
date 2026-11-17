@@ -31,11 +31,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Extensions manager row layout and action overflow. |
 | Divergence reason | Upstream renders every extension action as an inline button, so rows with many actions crowd out the title on narrow screens. SillyBunny keeps the actions at the row end and moves the ones that do not fit into one overflow menu. |
 | Target seam | `public/scripts/sillybunny-extension-actions.js`. |
-| Adapter shape | Keep upstream action buttons and delegated handlers in the row; the owned adapter measures the row, hides crowded inline controls, and exposes their existing clicks through one shared action menu. |
-| Protecting tests | `tests/extensions-row-actions.e2e.js`; `tests/extensions-discover.test.js`; `tests/extensions-disable.test.js`; `tests/extensions-bundled-third-party.test.js`. |
+| Adapter shape | Keep upstream action buttons and delegated handlers in the row; the owned adapter measures the row, hides crowded inline controls, and exposes their existing clicks through one shared action menu. Since 2026-11-17 (UI polish sweep, task 10.2): one marked rule gives the assets connect glyph (`.sb-assets-section #assets-connect-button.redOverlayGlow`) the `--sb-warning-fg` ink at full opacity, because the extension's own `#800` at 80% was under 2:1 on the entry row. |
+| Protecting tests | `tests/extensions-row-actions.e2e.js`; `tests/extensions-discover.test.js`; `tests/extensions-disable.test.js`; `tests/extensions-bundled-third-party.test.js`.; the `settings.customize.extensions` surface of `tests/audit/surface-audit.e2e.js`. |
 | Validation | 2026-10-24: root/tests lint, extension unit specs, `git diff --check`, and Chromium E2E at 1440×900 and 390×844. |
 | Rollback path | Delete the marked rules in `public/css/extensions-panel.css` that keep actions trailing, limit title width and hide the transport buttons. Remove the `import './sillybunny-extension-actions.js'` line from `public/scripts/sillybunny-tabs.js`. The upstream buttons and handlers stay in each row, so no data changes. Then drop `tests/extensions-row-actions.e2e.js`. |
-| Last reviewed | 2026-10-27, PR #870 (paths, markers and unit tests re-checked). |
+| Last reviewed | 2026-11-17, UI polish sweep (task 10.2). |
 | Owner | UI overhaul integrator. |
 
 ### Extensions manager Window adapter

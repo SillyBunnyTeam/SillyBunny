@@ -5,7 +5,7 @@ import { loadStylesheetAsync } from '../../dynamic-styles.js';
 let extensionsManagerStyles;
 
 export function loadExtensionsManagerStyles() {
-    extensionsManagerStyles ??= loadStylesheetAsync('/css/sillybunny-extensions-manager.css', { id: 'sillybunny-extensions-manager-css' });
+    extensionsManagerStyles ??= loadStylesheetAsync('/css/sillybunny-extensions-manager.css?v=20261118d', { id: 'sillybunny-extensions-manager-css' });
     return extensionsManagerStyles;
 }
 
