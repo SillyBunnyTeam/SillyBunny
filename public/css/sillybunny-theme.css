@@ -2478,11 +2478,6 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     margin-inline-start: 6px;
 }
 
-.swipe_picker_block .select_chat_actions {
-    grid-area: 1 / 2;
-    justify-self: end;
-}
-
 /* Cancels upstream's sticky white hover on touch; hover-capable devices get the flat fill below. */
 .swipe_picker_block:hover {
     background: transparent;
@@ -2582,7 +2577,21 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     display: none;
 }
 
+.swipe_picker_block .swipe_picker_select {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
 .swipe_picker_block .swipe_picker_menu {
+    position: relative;
+    z-index: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2599,7 +2608,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
 
-.swipe_picker_block :is([role="button"], .swipe_picker_menu):focus-visible {
+.swipe_picker_block :is(.swipe_picker_select, .swipe_picker_menu):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }

@@ -1391,9 +1391,9 @@ body:not(.movingUI) .drawer-content.maximized {
     max-height: min(340px, calc(100dvh - var(--sb-topbar-layout-offset) - var(--sb-topbar-search-row-height) - 28px));
     padding: 6px;
     overflow-y: auto;
-    /* libadwaita popover: opaque popover layer, 1px border, one popover shadow. */
+    /* libadwaita popover: opaque popover layer and one popover shadow, whose ring draws the edge. */
     border-radius: var(--sb-radius-overlay);
-    border: 1px solid var(--sb-shell-border);
+    border: 0;
     background: var(--sb-layer-popover);
     box-shadow: var(--sb-shadow-popover);
 }
@@ -7796,7 +7796,7 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
     margin-top: 8px;
     padding: 6px;
     overflow: auto;
-    border: 1px solid var(--sb-shell-border);
+    border: 0;
     border-radius: var(--sb-radius-overlay);
     background: var(--sb-layer-popover, var(--sb-layer-drawer));
     box-shadow: var(--sb-shadow-popover);

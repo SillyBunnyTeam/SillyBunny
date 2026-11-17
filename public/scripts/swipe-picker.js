@@ -130,7 +130,6 @@ async function openSwipePicker(messageId) {
             const template = $('#past_chat_template .select_chat_block_wrapper').clone();
             const block = template.find('.select_chat_block');
             block.removeClass('select_chat_block').addClass('swipe_picker_block');
-            block.find('.select_chat_actions').removeClass('gap10px');
             const branchButton = template.find('.exportRawChatButton');
             const deleteButton = template.find('.PastChat_cross');
             const swipeInfo = Array.isArray(message.swipe_info) ? message.swipe_info[index] : null;
@@ -302,6 +301,18 @@ async function openSwipePicker(messageId) {
                 node.setAttribute('tabindex', '-1');
                 node.setAttribute('aria-hidden', 'true');
             });
+            // SillyBunny: the row's activating area is a button of its own, a sibling of the menu button. A button inside a
+            // role=button row is a nested interactive control, which assistive technology cannot announce or reach reliably.
+            // The button comes first in the row so that Tab reaches it before the menu button, covers the whole row, and has the menu button above it.
+            const selectButton = document.createElement('button');
+            selectButton.type = 'button';
+            selectButton.className = 'swipe_picker_select';
+            selectButton.setAttribute('aria-label', `#${index + 1}`);
+            // The name stays the short `#N`; the swipe's text is the description.
+            const previewId = `swipe_picker_preview_${messageId}_${index}`;
+            block.find('.select_chat_block_mes').attr('id', previewId);
+            selectButton.setAttribute('aria-describedby', previewId);
+            block[0].prepend(selectButton);
             const menuButton = document.createElement('button');
             menuButton.type = 'button';
             menuButton.className = 'swipe_picker_menu';
@@ -328,9 +339,9 @@ async function openSwipePicker(messageId) {
                 event.stopPropagation();
                 openSwipeMenu(event.detail === 0);
             });
-            // The Menu key and Shift+F10 open the same menu from the row, as a secondary click does elsewhere.
-            block[0].addEventListener('keydown', (event) => {
-                if (event.target !== block[0] || !(event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) return;
+            // The Menu key and Shift+F10 open the same menu from the row's select button, as a secondary click does elsewhere.
+            selectButton.addEventListener('keydown', (event) => {
+                if (!(event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) return;
                 event.preventDefault();
                 event.stopPropagation();
                 openSwipeMenu(true);
@@ -350,17 +361,8 @@ async function openSwipePicker(messageId) {
             template.find('.chat_messages_num').text(swipeDetails.length > 1 ? `${swipeDetails.slice(1).join(', ')})` : '');
             template.find('.select_chat_block_mes').text(previewText ? swipeText : t`(empty swipe)`);
 
-            // SillyBunny: keyboard activation must use the same selection and commit path as a row double click.
-            block.attr({ role: 'button', tabindex: '0' });
-            block.on('click', async (event) => {
-                if (event.target instanceof Element && event.target.closest('.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete, .swipe_picker_expand_toggle, .swipe_picker_menu')) return;
-                setSelectedSwipe(index);
-                if (canJumpToSwipe) await popup.completeAffirmative();
-            });
-            block.on('keydown', async (event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') return;
-                if (event.target instanceof Element && event.target !== block[0] && event.target.closest('.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete, .swipe_picker_expand_toggle, .swipe_picker_menu')) return;
-                event.preventDefault();
+            // SillyBunny: the select button's click covers pointer and keyboard activation, so both use one selection and commit path.
+            selectButton.addEventListener('click', async () => {
                 setSelectedSwipe(index);
                 if (canJumpToSwipe) await popup.completeAffirmative();
             });

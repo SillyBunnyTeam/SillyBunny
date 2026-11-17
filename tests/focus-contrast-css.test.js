@@ -208,9 +208,12 @@ describe('popover edges', () => {
         ['sillybunny-persona-detail.css', '.sb-persona-property-popover'],
         ['sillybunny-world-info-editor.css', '.sb-wi-property-popover'],
         ['sillybunny-conversation.css', '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-picker:not([hidden])'],
+        ['sillybunny-tabs.css', '.sb-search-results'],
+        ['sillybunny-tabs.css', '.sb-inline-select-picker-menu'],
+        ['sillybunny-color-picker.css', '.sb-color-picker-menu'],
     ])('%s: %s has no border under the ring', (file, selector) => {
         const css = read('public', 'css', file);
-        const rule = blockAt(css, css.indexOf(`${selector} {`));
+        const rule = blockAt(css, css.indexOf(`\n${selector} {`));
         expect(rule).toContain('box-shadow: var(--sb-shadow-popover)');
         expect(rule).toMatch(/\n\s*border:\s*0;/);
     });

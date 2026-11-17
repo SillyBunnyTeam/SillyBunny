@@ -12,7 +12,7 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
-    border: 1px solid var(--sb-shell-border);
+    border: 0;
     border-radius: var(--sb-radius-overlay);
     background: var(--sb-layer-popover);
     box-shadow: var(--sb-shadow-popover);

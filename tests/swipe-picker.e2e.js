@@ -190,9 +190,15 @@ test.describe('swipe picker shared Window', () => {
         const dialog = page.locator('dialog[open].sb-dialog--window');
         const row = dialog.locator('.swipe_picker_block').nth(2);
         const menuButton = row.locator('.swipe_picker_menu');
+        const selectButton = row.locator('.swipe_picker_select');
 
+        // The row is a plain container: the select and menu buttons are siblings, so no button sits inside another.
+        await expect(row).not.toHaveAttribute('role', 'button');
+        await expect(selectButton).toHaveCount(1);
+        await expect(selectButton).toHaveAccessibleName('#3');
+        await expect(selectButton).toHaveAccessibleDescription('Swipe 3 preview text');
         // The menu button is reachable by Tab from the row.
-        await row.focus();
+        await selectButton.focus();
         await page.keyboard.press('Tab');
         await expect(menuButton).toBeFocused();
         await page.keyboard.press('Enter');
@@ -219,12 +225,12 @@ test.describe('swipe picker shared Window', () => {
         await expect(menuButton).toBeFocused();
 
         // Shift+F10 and the Menu key on a row open it too.
-        await row.focus();
+        await selectButton.focus();
         await page.keyboard.press('Shift+F10');
         await expect(menu).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(menu).toHaveCount(0);
-        await row.focus();
+        await selectButton.focus();
         await page.keyboard.press('ContextMenu');
         await expect(menu).toBeVisible();
 
@@ -254,9 +260,9 @@ test.describe('swipe picker shared Window', () => {
         const lastRow = dialog.locator('.swipe_picker_block').last();
         await lastRow.scrollIntoViewIfNeeded();
         await expect(lastRow).toBeInViewport();
-        const firstRow = dialog.locator('.swipe_picker_block').first();
-        await firstRow.focus();
-        await expect(firstRow).toBeFocused({ timeout: 15000 });
+        const firstSelect = dialog.locator('.swipe_picker_block .swipe_picker_select').first();
+        await firstSelect.focus();
+        await expect(firstSelect).toBeFocused({ timeout: 15000 });
         await page.keyboard.press('Space');
         await expect.poll(() => getSwipeState(page, messageId), { timeout: 15000 }).toMatchObject({ swipeId: 0 });
         await expect(dialog).toBeHidden();

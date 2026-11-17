@@ -24,4 +24,10 @@ describe('libadwaita swipe styling', () => {
         expect(themeCss).toMatch(/\.swipe_picker_block \.swipe_picker_menu:hover\s*\{[^}]*var\(--sb-flat-hover-bg\)/);
         expect(themeCss).toMatch(/@media \(pointer: coarse\)\s*\{\s*\.swipe_picker_block \.swipe_picker_menu\s*\{[^}]*inline-size:\s*44px/);
     });
+
+    test('the swipe row activates through a select button that covers it, with the menu button above', () => {
+        expect(themeCss).toMatch(/\.swipe_picker_block \.swipe_picker_select\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;/);
+        expect(themeCss).toMatch(/\.swipe_picker_block \.swipe_picker_menu\s*\{[^}]*z-index:\s*1;/);
+        expect(themeCss).not.toContain('.select_chat_actions');
+    });
 });
