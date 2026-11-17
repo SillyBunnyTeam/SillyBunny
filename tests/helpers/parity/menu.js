@@ -9,9 +9,12 @@
 import { FORMS, SHEET_HANDLE } from './dialog.js';
 import { IF_FLEX } from './settings.js';
 
+/** Menus and pickers are sheets in the mobile layout (MENU_SHEET_QUERY of `sillybunny-editor/breakpoints.js`), where dialogs wait for 450px. */
+const MENU_FORMS = Object.freeze({ ...FORMS, sheet: { media: '(max-width: 768px), (max-height: 360px)' } });
+
 export const rules = {
     family: 'menu',
-    forms: FORMS,
+    forms: MENU_FORMS,
     parts: [
         {
             id: 'surface',

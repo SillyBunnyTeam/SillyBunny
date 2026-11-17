@@ -72,7 +72,7 @@ function menuLabels(page, selector) {
 test('mobile row shows Edit and the menu button, which opens a labelled overlay', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'The sheet is mobile-only.');
     await seedChat(page, { longName: true });
-    const menu = page.viewportSize().width <= 450 ? sheet : popover;
+    const menu = page.viewportSize().width <= 768 ? sheet : popover;
 
     const message = page.locator(target);
     const hint = message.locator('.mes_buttons > .extraMesButtonsHint');
@@ -111,7 +111,7 @@ test('mobile row shows Edit and the menu button, which opens a labelled overlay'
 test('mobile edit row leads with Cancel and Confirm and keeps the rest in the overlay', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'The edit sheet is mobile-only.');
     await seedChat(page);
-    const menu = page.viewportSize().width <= 450 ? sheet : popover;
+    const menu = page.viewportSize().width <= 768 ? sheet : popover;
 
     const message = page.locator(target);
     await message.locator('.mes_buttons .mes_edit').click();

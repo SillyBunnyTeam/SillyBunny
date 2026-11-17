@@ -174,8 +174,8 @@ for (const viewport of VIEWPORTS) {
         }
 
         await panel.locator('.sb-side-panel__menu-trigger').click();
-        // The menu is the shared action menu: a popover beside the trigger on a wide window, a bottom sheet under the overlay breakpoint.
-        const menuForm = viewport.width <= 450 || viewport.height <= 360 ? '.sb-action-sheet' : '.sb-action-popover';
+        // The menu is the shared action menu: a popover beside the trigger on a wide window, a bottom sheet in the mobile layout.
+        const menuForm = viewport.width <= 768 || viewport.height <= 360 ? '.sb-action-sheet' : '.sb-action-popover';
         await expect(page.locator(menuForm)).toBeVisible();
         const moveItem = page.getByRole('menuitem', { name: 'Move to Other Side', exact: true });
         await expect(moveItem).toBeVisible();

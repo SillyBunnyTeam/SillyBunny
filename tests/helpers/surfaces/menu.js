@@ -654,8 +654,13 @@ export const surfaces = [
                 await page.locator('.ctx-menu').first().waitFor({ state: 'hidden' });
                 await page.locator('#qr--bar .qr--button.qr--hasCtx').last().click({ button: 'right' });
                 await settleFade(page, '.ctx-menu');
-                // A mouse pointer opens the submenu on hover, and the expander's own click would then fold it again.
-                await page.locator('.ctx-menu .ctx-has-children').first().hover();
+                // A mouse pointer opens the submenu on hover, and the expander's own click would then fold it again. A touch has no hover
+                // and opens it through the expander; the phone submenu also covers the middle of its parent item, so a hover cannot land there.
+                if (await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+                    await page.locator('.ctx-menu .ctx-has-children .ctx-expander').first().tap();
+                } else {
+                    await page.locator('.ctx-menu .ctx-has-children').first().hover();
+                }
                 await settleFade(page, '.ctx-sub-menu');
             },
         }],

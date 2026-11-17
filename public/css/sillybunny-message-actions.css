@@ -535,17 +535,14 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
 .sb-manager-name-popover__create { grid-area: create; box-sizing: border-box; min-width: 76px; height: max(34px, var(--sb-control-min-height)); min-height: max(34px, var(--sb-control-min-height)); margin: 0; }
 .sb-manager-name-popover [hidden] { display: none; }
 
-@media (max-width: 450px), (max-height: 360px) {
-    .sb-action-sheet .sb-manager-name-popover {
-        grid-template: "input" auto "error" auto "create" auto / minmax(0, 1fr);
-        min-inline-size: 0;
-        padding: 10px;
-    }
-
-    .sb-action-sheet .sb-manager-name-popover__input,
-    .sb-action-sheet .sb-manager-name-popover__create { width: 100%; height: var(--sb-control-min-height); min-height: var(--sb-control-min-height); }
-
+.sb-action-sheet .sb-manager-name-popover {
+    grid-template: "input" auto "error" auto "create" auto / minmax(0, 1fr);
+    min-inline-size: 0;
+    padding: 10px;
 }
+
+.sb-action-sheet .sb-manager-name-popover__input,
+.sb-action-sheet .sb-manager-name-popover__create { width: 100%; height: var(--sb-control-min-height); min-height: var(--sb-control-min-height); }
 
 .sb-action-popover[hidden],
 .sb-action-sheet[hidden],

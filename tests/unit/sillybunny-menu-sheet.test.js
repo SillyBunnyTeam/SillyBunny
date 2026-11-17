@@ -123,20 +123,23 @@ afterEach(() => {
 });
 
 describe('the presentation condition', () => {
-    test('is the overlay breakpoint cut to the phone stylesheet, and the presenter asks for it', async () => {
+    test('is the mobile layout or a short window, and the presenter asks for it', async () => {
         const parts = makeMenu();
         present(parts);
 
-        expect(MENU_SHEET_QUERY).toBe('(max-width: 450px), (max-width: 768px) and (max-height: 360px)');
+        expect(MENU_SHEET_QUERY).toBe('(max-width: 768px), (max-height: 360px)');
         expect(window.matchMedia).toHaveBeenCalledWith(MENU_SHEET_QUERY);
     });
 
-    test('the sheet rules sit under the same condition in the phone stylesheet', () => {
-        const css = readFileSync(new URL('../../public/css/sillybunny-mobile-shell.css', import.meta.url), 'utf8');
+    test('the sheet rules sit under the same condition in a stylesheet that every width loads', () => {
+        const css = readFileSync(new URL('../../public/css/sillybunny-theme.css', import.meta.url), 'utf8');
         const block = css.slice(css.indexOf('Composer menus presented as bottom sheets'));
+        const index = readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8');
 
-        expect(block).toContain('@media screen and (max-width: 450px), screen and (max-width: 768px) and (max-height: 360px) {');
-        expect(block).not.toMatch(/^@media screen and \(max-width: 768px\) \{/m);
+        expect(block).toContain('@media screen and (max-width: 768px), screen and (max-height: 360px) {');
+        expect(index).toMatch(/<link [^>]*href="css\/sillybunny-theme\.css\?v=[^"]+">/);
+        const mobileShell = readFileSync(new URL('../../public/css/sillybunny-mobile-shell.css', import.meta.url), 'utf8');
+        expect(mobileShell).not.toContain('data-sb-menu-sheet');
     });
 });
 

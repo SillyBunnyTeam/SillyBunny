@@ -209,10 +209,10 @@ function restoreAttribute(element, name, value) {
 
 /**
  * Presents a menu that upstream code already opens and closes (a node it shows with `display`, positioned by
- * Popper) as a bottom sheet under the overlay breakpoint (`MENU_SHEET_QUERY`), and leaves it as that popover above it. The node, its
+ * Popper) as a bottom sheet in the mobile layout (`MENU_SHEET_QUERY`), and leaves it as that popover above it. The node, its
  * children and the upstream open and close paths stay as they are: the presenter watches the node, and while it
- * is shown on a phone it adds a grab handle (first child), a scrim (the node's previous sibling) and the
- * `data-sb-menu-sheet` attribute that the sheet rules of `sillybunny-mobile-shell.css` read. Those rules win over
+ * is shown as a sheet it adds a grab handle (first child), a scrim (the node's previous sibling) and the
+ * `data-sb-menu-sheet` attribute that the sheet rules of `sillybunny-theme.css` read. Those rules win over
  * Popper's inline `position`, `inset` and `transform` with `!important`; a swipe moves the sheet through `translate`,
  * which composes with Popper's `transform`, so Popper keeps writing and nothing here fights it. Popper's placement
  * returns by itself: the node is closed when the width crosses the breakpoint, and the next open measures it again.

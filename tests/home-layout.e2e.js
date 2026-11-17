@@ -60,6 +60,17 @@ async function escapeOpenMenu(page) {
     await expect(page.locator(ANY_MENU_PART)).toHaveCount(0);
 }
 
+/** A popover stays inside the Home panel; a sheet (the mobile layout, 768px and narrower) spans the window instead. */
+async function expectMenuInsideItsBounds(page, menu) {
+    const menuBox = await menu.boundingBox();
+    const sheet = await page.locator(OPEN_ACTION_SHEET).count() > 0;
+    const panelBox = await measure(page, '#chat > .welcomePanel');
+    const left = sheet ? 0 : Math.max(0, panelBox.left);
+    const right = sheet ? page.viewportSize().width : Math.min(page.viewportSize().width, panelBox.right);
+    expect(menuBox.x).toBeGreaterThanOrEqual(left - 1);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(right + 1);
+}
+
 const HERO_SELECTOR = ':is([data-sb-art-placeholder="hero-duo"], [data-sb-art-placeholder="hero-duo-night"])';
 
 /** The hero is the day or the night scene by the clock of the machine, and the layout is the same for both. */
@@ -1338,10 +1349,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await expect(menu.getByRole('menuitem')).toHaveText(['New Chat in Conversation']);
             await expect(menu.getByRole('menuitem').locator('i')).toHaveCount(1);
             await expect(menu.getByRole('menuitem')).not.toHaveAttribute('data-sb-stub', /.*/);
-            const menuBox = await menu.boundingBox();
-            const panelBox = await measure(page, '#chat > .welcomePanel');
-            expect(menuBox.x).toBeGreaterThanOrEqual(Math.max(0, panelBox.left) - 1);
-            expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(Math.min(page.viewportSize().width, panelBox.right) + 1);
+            await expectMenuInsideItsBounds(page, menu);
 
             await escapeOpenMenu(page);
             await expect(menu).toHaveCount(0);
@@ -1817,10 +1825,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await expect(menu.getByRole('menuitem')).toHaveText(['Rename', 'Delete']);
             await expect(menu.getByRole('menuitem', { name: 'Delete' }).locator('i.fa-trash')).toHaveCount(1);
             await expect(menu.getByRole('menuitem', { name: 'Delete' })).toHaveClass(/is-danger/);
-            const menuBox = await menu.boundingBox();
-            const panelBox = await measure(page, '#chat > .welcomePanel');
-            expect(menuBox.x).toBeGreaterThanOrEqual(Math.max(0, panelBox.left) - 1);
-            expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(Math.min(page.viewportSize().width, panelBox.right) + 1);
+            await expectMenuInsideItsBounds(page, menu);
 
             await page.keyboard.press('Escape');
             await expect(menu).toHaveCount(0);

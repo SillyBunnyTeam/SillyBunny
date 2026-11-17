@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LAYOUT_MOBILE_QUERY, OVERLAY_SHEET_QUERY } from '../../public/scripts/sillybunny-editor/breakpoints.js';
+import { LAYOUT_MOBILE_QUERY, MENU_SHEET_QUERY, OVERLAY_SHEET_QUERY } from '../../public/scripts/sillybunny-editor/breakpoints.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = relative => fs.readFileSync(path.join(repoRoot, relative), 'utf8');
@@ -32,6 +32,20 @@ describe('shared breakpoints', () => {
     test('the shell layout query is 768px and the overlay sheet query is the AdwDialog condition', () => {
         expect(LAYOUT_MOBILE_QUERY).toBe('(max-width: 768px)');
         expect(OVERLAY_SHEET_QUERY).toBe('(max-width: 450px), (max-height: 360px)');
+    });
+
+    test('menus and pickers become sheets in the mobile layout, dialogs under the AdwDialog condition', () => {
+        expect(MENU_SHEET_QUERY).toBe(`${LAYOUT_MOBILE_QUERY}, (max-height: 360px)`);
+        expect(MENU_SHEET_QUERY).not.toBe(OVERLAY_SHEET_QUERY);
+    });
+
+    test.each([
+        'public/scripts/sillybunny-action-menu.js',
+        'public/scripts/sillybunny-editor/picker.js',
+    ])('%s decides its sheet with the menu query, not the dialog one', relative => {
+        const source = read(relative);
+        expect(source).toMatch(/\bMENU_SHEET_QUERY\b/);
+        expect(source).not.toMatch(/\bOVERLAY_SHEET_QUERY\b/);
     });
 
     test.each(LAYOUT_MODULES)('%s takes the layout query from breakpoints.js', relative => {

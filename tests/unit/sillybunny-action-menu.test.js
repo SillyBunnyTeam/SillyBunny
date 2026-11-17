@@ -176,8 +176,11 @@ describe('action menu optional sections', () => {
             ],
         });
         const menu = document.querySelector('[role="menu"]');
-        const headings = [...menu.querySelectorAll('h3')];
+        const headings = [...menu.querySelectorAll('.sb-action-menu-section-title')];
         expect(headings.map(node => node.textContent)).toEqual(['Show', 'Sort by']);
+        // A heading role inside a group fails aria-required-children on the menu.
+        expect(headings.every(node => node.getAttribute('role') === 'presentation')).toBe(true);
+        expect(menu.querySelectorAll('[role="heading"]')).toHaveLength(0);
         expect(headings.every(node => node.tabIndex === -1)).toBe(true);
         expect(menu.querySelector('[role="group"]').getAttribute('aria-labelledby')).toBe(headings[0].id);
         expect(menu.querySelectorAll('[role="separator"]')).toHaveLength(1);

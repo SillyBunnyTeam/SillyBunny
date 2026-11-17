@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 import { DESKTOP, PHONE, bootMiscWithChat } from './helpers/dialog-accessibility-surfaces.js';
 
 /*
- * The composer menus are the upstream nodes that Popper places. Under the overlay breakpoint (450px wide, or 360px tall up to 768px wide) they are bottom sheets on the same nodes
+ * The composer menus are the upstream nodes that Popper places. In the mobile layout (768px wide or narrower) and in a window 360px tall or shorter they are bottom sheets on the same nodes
  * (grab handle, scrim, swipe to close); above it they stay popovers. At both sizes Escape closes them and the focus
  * goes in and comes back to the trigger.
  */
@@ -183,13 +183,18 @@ test.describe('on a phone', () => {
         await closeMenuWithEscape(page, wand);
     });
 
-    test('the width crossing 450px closes an open menu and the next opening is a popover that Popper places', async ({ page, baseURL }) => {
+    test('the width crossing 768px closes an open menu and the next opening is a popover that Popper places', async ({ page, baseURL }) => {
         const options = MENUS[0];
         await boot(page, baseURL, PHONE);
         await openMenu(page, options);
         expect((await readPlacement(page, options)).sheet).toBe(true);
 
+        // 450px is the dialogs' breakpoint, not the menus': the open sheet stays.
         await page.setViewportSize({ width: 600, height: 844 });
+        await expect(page.locator(options.node)).toBeVisible();
+        expect((await readPlacement(page, options)).sheet).toBe(true);
+
+        await page.setViewportSize({ width: 900, height: 844 });
         await expect(page.locator(options.node)).toBeHidden();
         await expect(page.locator('.sb-menu-sheet-scrim')).toHaveCount(0);
 
@@ -201,10 +206,37 @@ test.describe('on a phone', () => {
     });
 });
 
+test.describe('in the mobile layout above the dialogs\' 450px breakpoint', () => {
+    for (const viewport of [{ width: 600, height: 900 }, { width: 768, height: 1024 }]) {
+        test.describe(`at ${viewport.width}x${viewport.height}`, () => {
+            test.use({ viewport, isMobile: true, hasTouch: true });
+
+            for (const menu of MENUS) {
+                test(`the ${menu.name} is a bottom sheet`, async ({ page, baseURL }) => {
+                    await boot(page, baseURL, viewport);
+                    await openMenu(page, menu);
+                    await waitForFocusIn(page, menu);
+
+                    const placement = await readPlacement(page, menu);
+                    expect(placement.sheet).toBe(true);
+                    expect(placement.handle).toBe(true);
+                    expect(placement.scrim).toBe(true);
+                    expect(placement.position).toBe('fixed');
+                    expect(placement.width).toBeCloseTo(placement.viewportWidth, 0);
+                    expect(placement.bottom).toBeCloseTo(placement.viewportHeight, 0);
+                    const rowHeight = await page.locator(menu.row).first().evaluate(row => row.getBoundingClientRect().height);
+                    expect(rowHeight).toBeGreaterThanOrEqual(44);
+                    await closeMenuWithEscape(page, menu);
+                });
+            }
+        });
+    }
+});
+
 test.describe('in a short landscape window', () => {
     test.use({ viewport: { width: 700, height: 340 }, isMobile: true, hasTouch: true });
 
-    test('the Options menu is a sheet at 700x340 and a popover at 900x340', async ({ page, baseURL }) => {
+    test('the Options menu is a sheet at 700x340 and at 900x340, and a popover at 900x400', async ({ page, baseURL }) => {
         const options = MENUS[0];
         await boot(page, baseURL, { width: 700, height: 340 });
         await openMenu(page, options);
@@ -217,8 +249,19 @@ test.describe('in a short landscape window', () => {
         expect(sheet.bottom).toBeCloseTo(sheet.viewportHeight, 0);
         await closeMenuWithEscape(page, options);
 
-        // Wider than the phone stylesheet's 768px: no sheet rules load, so the popover stays.
+        // The height rule has no width limit, and its sheet rules are in a stylesheet that every width loads.
         await page.setViewportSize({ width: 900, height: 340 });
+        await openMenu(page, options);
+        await waitForFocusIn(page, options);
+        const wide = await readPlacement(page, options);
+        expect(wide.sheet).toBe(true);
+        expect(wide.handle).toBe(true);
+        expect(wide.position).toBe('fixed');
+        expect(wide.width).toBeCloseTo(wide.viewportWidth, 0);
+        expect(wide.bottom).toBeCloseTo(wide.viewportHeight, 0);
+        await closeMenuWithEscape(page, options);
+
+        await page.setViewportSize({ width: 900, height: 400 });
         await openMenu(page, options);
         const popover = await readPlacement(page, options);
         expect(popover.sheet).toBe(false);

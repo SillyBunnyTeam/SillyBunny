@@ -1,7 +1,7 @@
 /*
  * Labelled message menu shared by Roleplay and Conversation message actions.
  * Desktop: a popover anchored to its trigger (or a pointer position).
- * Under the overlay sheet breakpoint (AdwDialog: max-width 450px or max-height 360px): a bottom sheet built on sillybunny-sheet.js.
+ * In the mobile layout (MENU_SHEET_QUERY: max-width 768px or max-height 360px): a bottom sheet built on sillybunny-sheet.js.
  * Callers pass sections of rows; each row's onSelect runs after the menu has closed.
  */
 
@@ -9,11 +9,11 @@ import { translate } from './i18n.js';
 import { MOTION_EASE_OUT_CUBIC, MOTION_FAST, MOTION_POPOVER_CLOSE, animateIn, animateOut, stopMotion } from './sillybunny-motion.js';
 import { blockUpstreamDrawerClose, createSheetController } from './sillybunny-sheet.js';
 import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
-import { OVERLAY_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
+import { MENU_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
 import { bindSheetSwipeClose, createSheetHandle } from './sillybunny-editor/sheet-gestures.js';
 
-/** @deprecated Use OVERLAY_SHEET_QUERY or LAYOUT_MOBILE_QUERY from sillybunny-editor/breakpoints.js. */
-export const MOBILE_QUERY = OVERLAY_SHEET_QUERY;
+/** @deprecated Use MENU_SHEET_QUERY or LAYOUT_MOBILE_QUERY from sillybunny-editor/breakpoints.js. */
+export const MOBILE_QUERY = MENU_SHEET_QUERY;
 const POPOVER_GAP = 6;
 const POPOVER_MARGIN = 8;
 const POPOVER_MIN_HEIGHT = 120;
@@ -50,7 +50,7 @@ let open = null;
 let initialized = false;
 
 function isMobileLayout() {
-    mobileQuery ??= window.matchMedia(OVERLAY_SHEET_QUERY);
+    mobileQuery ??= window.matchMedia(MENU_SHEET_QUERY);
     return mobileQuery.matches;
 }
 
@@ -112,6 +112,9 @@ function buildMenu(sections, label) {
             container = document.createElement('div');
             container.setAttribute('role', 'group');
             const heading = document.createElement('h3');
+            // A `role="menu"` may own only items, groups and separators, so a heading in a group fails aria-required-children;
+            // the group is named through aria-labelledby, which reads the text whatever the role.
+            heading.setAttribute('role', 'presentation');
             heading.className = 'sb-action-menu-section-title';
             heading.id = `${MENU_ID}-section-${index}`;
             heading.textContent = section.title;
@@ -735,7 +738,7 @@ function initialize() {
         return;
     }
     initialized = true;
-    mobileQuery ??= window.matchMedia(OVERLAY_SHEET_QUERY);
+    mobileQuery ??= window.matchMedia(MENU_SHEET_QUERY);
     mobileQuery.addEventListener('change', handleLayoutChange);
     window.addEventListener('pointerdown', handlePointerDownCapture, true);
     window.addEventListener('wheel', handleScrollIntent, { capture: true, passive: true });
