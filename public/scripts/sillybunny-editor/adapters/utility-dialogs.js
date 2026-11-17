@@ -248,3 +248,177 @@ export function iconPickerOptions(source) {
         onClose() { releaseRowIds(root); },
     };
 }
+
+// The Regex extension's script rows.
+
+// A script that already lives in the list it would move to has no such action.
+const MOVE_TARGET_OWN_LIST = '#global_scripts_block .move_to_global, #preset_scripts_block .move_to_preset, #scoped_scripts_block .move_to_scoped';
+
+function iconButton(label, glyph, className) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `ds-entity-row__button ${className}`;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-haspopup', 'menu');
+    const icon = document.createElement('i');
+    icon.className = `fa-solid fa-${glyph}`;
+    icon.setAttribute('aria-hidden', 'true');
+    button.append(icon);
+    return button;
+}
+
+/**
+ * Builds the list that holds a group of regex scripts. Call it before the rows are added.
+ * @param {HTMLElement} container One of the three script lists.
+ */
+export function adoptRegexScriptList(container) {
+    container.classList.add('ds-entity-list__rows');
+    container.setAttribute('role', 'list');
+}
+
+/**
+ * Turns a script row from the upstream template into a shared entity row: a grip, the name, a switch and a menu.
+ * Every upstream node stays in the row with its handlers, so the actions the menu offers are the template's own buttons.
+ * @param {HTMLElement} row The cloned template, with its handlers bound.
+ */
+export function adoptRegexScriptRow(row) {
+    row.classList.add('ds-entity-row', 'ds-entity-row--activatable');
+    // The settings normaliser would read the row's checkboxes and buttons as settings of their own.
+    row.setAttribute('data-sb-presentation', 'manual');
+    row.setAttribute('role', 'listitem');
+
+    const grip = row.querySelector(':scope > .drag-handle');
+    grip?.classList.add('ds-entity-row__grip');
+
+    const name = row.querySelector('.regex_script_name');
+    const text = document.createElement('div');
+    text.className = 'ds-entity-row__text';
+    name.classList.add('ds-entity-row__title');
+    name.replaceWith(text);
+    text.append(name);
+
+    row.querySelector('.regex_bulk_checkbox').setAttribute('aria-label', t`Select ${name.textContent}`);
+
+    const disable = row.querySelector('.disable_regex');
+    const enabled = document.createElement('input');
+    enabled.type = 'checkbox';
+    enabled.className = 'sb-switch regex-script-switch';
+    enabled.setAttribute('role', 'switch');
+    enabled.setAttribute('aria-label', t`Enable ${name.textContent}`);
+    enabled.checked = !disable.checked;
+    enabled.addEventListener('change', () => {
+        disable.checked = !enabled.checked;
+        disable.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    disable.addEventListener('input', () => { enabled.checked = !disable.checked; });
+    const target = document.createElement('label');
+    target.className = 'regex-script-switch-target';
+    target.append(enabled);
+
+    const more = iconButton(t`Actions for ${name.textContent}`, 'ellipsis-vertical', 'regex-script-menu');
+    more.addEventListener('click', async () => {
+        const { openActionMenu } = await import('../../sillybunny-action-menu.js');
+        const item = (selector, icon, danger = false) => {
+            const button = row.querySelector(selector);
+            return button && !button.matches(MOVE_TARGET_OWN_LIST)
+                ? { label: button.title, icon: `fa-solid fa-${icon}`, danger, onSelect: () => button.click() }
+                : null;
+        };
+        openActionMenu({
+            trigger: more,
+            title: name.textContent,
+            sections: [
+                { items: [item('.edit_existing_regex', 'pencil')].filter(Boolean) },
+                { items: [item('.move_to_global', 'globe'), item('.move_to_preset', 'sliders'), item('.move_to_scoped', 'address-card'), item('.export_regex', 'file-export')].filter(Boolean) },
+                { items: [item('.delete_regex', 'trash', true)].filter(Boolean) },
+            ],
+            bounds: row.closest('#sb-settings-page') ?? null,
+        });
+    });
+
+    const suffix = document.createElement('div');
+    suffix.className = 'ds-entity-row__suffix';
+    suffix.append(target, more);
+
+    // The template's own controls keep their place in the document for the code that finds them; the row shows the shared ones.
+    const original = row.querySelector(':scope > .flex-container');
+    original.hidden = true;
+    row.append(suffix);
+
+    // A click that the menu or a test sends to a template button bubbles to the row, which must not answer it again.
+    row.addEventListener('click', event => {
+        if (event.target instanceof Element && event.target.closest('.regex_bulk_checkbox, .drag-handle, .ds-entity-row__suffix, [hidden]')) return;
+        // The checkbox is shown in bulk edit only; there the whole row selects the script.
+        const selection = row.querySelector('.regex_bulk_checkbox');
+        if (getComputedStyle(selection).display !== 'none') selection.click();
+        else row.querySelector('.edit_existing_regex').click();
+    });
+}
+
+// The injection positions of Summarize and Vector Storage.
+
+/**
+ * Replaces the radios that choose where an extension injects its text (None, before the main prompt, after it, in-chat at
+ * a depth) with one select that the settings normaliser shows as a select row. The radios stay in the page, hidden, as the
+ * state that the extension reads and writes, so its handlers and its saved value are the ones it always had. The depth and
+ * the role of the in-chat position move out of that radio's label into labelled fields, which the normaliser shows as rows.
+ * Call it after the extension has set the radios from its saved settings: the select reads them once and then follows them.
+ * @param {HTMLElement} root The extension's settings block.
+ * @param {string} name The `name` of the radios, a plain identifier. The select takes it as its id, and the label that points at that id becomes its title.
+ */
+export function adoptPositionRadios(root, name) {
+    const radios = [...root.querySelectorAll(`input[type="radio"][name="${name}"]`)];
+    const group = radios[0]?.closest('.radio_group');
+    const heading = root.querySelector(`label[for="${name}"]`);
+    if (!(group instanceof HTMLElement) || !(heading instanceof HTMLElement) || root.querySelector(`select#${name}`)) return;
+
+    const select = document.createElement('select');
+    select.id = name;
+    select.className = 'text_pole';
+    for (const radio of radios) {
+        const caption = radio.closest('label')?.querySelector('span[data-i18n]');
+        const option = document.createElement('option');
+        option.value = radio.value;
+        option.textContent = caption?.textContent?.trim() ?? radio.value;
+        if (caption?.dataset.i18n) option.dataset.i18n = caption.dataset.i18n;
+        select.append(option);
+    }
+
+    let syncing = false;
+    const readRadios = () => {
+        const checked = radios.find(radio => radio.checked);
+        if (!checked || select.value === checked.value) return;
+        syncing = true;
+        select.value = checked.value;
+        // The select row redraws its trigger on a change event.
+        select.dispatchEvent(new Event('change'));
+        syncing = false;
+    };
+    select.addEventListener('change', () => {
+        if (syncing) return;
+        const radio = radios.find(candidate => candidate.value === select.value);
+        if (radio) globalThis.jQuery(radio).prop('checked', true).trigger('change');
+    });
+    globalThis.jQuery(radios).on('input change', readRadios);
+    readRadios();
+
+    const inChat = radios.find(radio => radio.value === '1')?.closest('label');
+    const fields = document.createElement('div');
+    fields.className = 'sb-position-fields';
+    const depth = inChat?.querySelector('input[type="number"]');
+    const role = inChat?.querySelector('select');
+    for (const [control, key] of [[depth, 'In-chat @ Depth'], [role, 'Role']]) {
+        if (!(control instanceof HTMLElement)) continue;
+        const label = document.createElement('label');
+        label.htmlFor = control.id;
+        label.dataset.i18n = key;
+        label.textContent = key;
+        fields.append(label, control);
+    }
+
+    heading.after(select, fields);
+    // `.radio_group` sets its own display, which would beat the hidden attribute.
+    group.hidden = true;
+    group.style.display = 'none';
+}

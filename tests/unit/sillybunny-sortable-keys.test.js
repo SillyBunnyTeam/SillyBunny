@@ -66,7 +66,9 @@ describe('attachSortableKeys: focus targets', () => {
         });
         const row = list.children[1];
         const grip = row.querySelector('.grip');
-        expect(grip.getAttribute('tabindex')).toBe('0');
+        // The list has one tab stop, on its first handle; the arrow keys move it.
+        expect(grip.getAttribute('tabindex')).toBe('-1');
+        expect(list.children[0].querySelector('.grip').getAttribute('tabindex')).toBe('0');
         expect(grip.getAttribute('role')).toBe('button');
         expect(grip.getAttribute('aria-label')).toBe('Drag to reorder B');
         expect(row.hasAttribute('tabindex')).toBe(false);
@@ -144,11 +146,10 @@ describe('attachSortableKeys: moves', () => {
         expect(stop).not.toHaveBeenCalled();
     });
 
-    test('ignores keys without exactly Alt, and keys from inside a row control', () => {
+    test('ignores keys with a modifier other than Alt, and keys from inside a row control', () => {
         const { list, stop } = makeList({ rowHtml: name => `<div data-id="${name}">${name}<input></div>` });
         const row = list.children[1];
-        expect(press(row, 'ArrowDown', { altKey: false }).defaultPrevented).toBe(false);
-        expect(press(row, 'ArrowDown', { shiftKey: true }).defaultPrevented).toBe(false);
+        expect(press(row, 'ArrowDown', { altKey: false, shiftKey: true }).defaultPrevented).toBe(false);
         expect(press(row, 'ArrowDown', { ctrlKey: true }).defaultPrevented).toBe(false);
         expect(press(row, 'ArrowDown', { metaKey: true }).defaultPrevented).toBe(false);
         expect(press(row.querySelector('input'), 'ArrowDown').defaultPrevented).toBe(false);
@@ -332,7 +333,8 @@ describe('attachSortableKeys: disabled and excluded rows', () => {
             rowHtml: name => `<div data-id="${name}" class="${name === 'C' ? 'locked' : ''}">${name}</div>`,
         });
         expect(list.children[2].hasAttribute('tabindex')).toBe(false);
-        expect(list.children[1].getAttribute('tabindex')).toBe('0');
+        expect(list.children[0].getAttribute('tabindex')).toBe('0');
+        expect(list.children[1].getAttribute('tabindex')).toBe('-1');
         press(list.children[1], 'ArrowDown');
         expect(order(list)).toEqual(['A', 'C', 'D', 'B']);
     });
@@ -374,6 +376,48 @@ describe('attachSortableKeys: disabled and excluded rows', () => {
     });
 });
 
+describe('attachSortableKeys: one tab stop per list', () => {
+    const stops = list => [...list.children].filter(row => row.getAttribute('tabindex') === '0');
+
+    test('only one row of the list is in the tab order, and the others can be focused by script', () => {
+        const { list } = makeList({ names: ['A', 'B', 'C', 'D', 'E'] });
+        expect(stops(list)).toEqual([list.children[0]]);
+        expect([...list.children].slice(1).map(row => row.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1', '-1']);
+    });
+
+    test('the arrow keys move the focus and the tab stop, and Home and End go to the ends', () => {
+        const { list } = makeList({ names: ['A', 'B', 'C', 'D'] });
+        const [a, b, c, d] = list.children;
+        a.focus();
+        expect(press(a, 'ArrowDown', { altKey: false }).defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(b);
+        expect(stops(list)).toEqual([b]);
+        press(b, 'End', { altKey: false });
+        expect(document.activeElement).toBe(d);
+        press(d, 'ArrowUp', { altKey: false });
+        expect(document.activeElement).toBe(c);
+        press(c, 'Home', { altKey: false });
+        expect(document.activeElement).toBe(a);
+        expect(order(list)).toEqual(['A', 'B', 'C', 'D']);
+    });
+
+    test('an arrow key at the end of the list stays where it is and is left to the page', () => {
+        const { list } = makeList({ names: ['A', 'B'] });
+        const [a, b] = list.children;
+        b.focus();
+        expect(press(b, 'ArrowDown', { altKey: false }).defaultPrevented).toBe(false);
+        expect(press(a, 'ArrowUp', { altKey: false }).defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(b);
+    });
+
+    test('a row that brings its own tabindex keeps it', () => {
+        const { list } = makeList({ rowHtml: name => `<div data-id="${name}" tabindex="0">${name}</div>` });
+        expect([...list.children].map(row => row.getAttribute('tabindex'))).toEqual(['0', '0', '0', '0']);
+        press(list.children[1], 'ArrowDown', { altKey: false });
+        expect(document.activeElement).not.toBe(list.children[2]);
+    });
+});
+
 describe('attachSortableKeys: rows that arrive later', () => {
     test('makes a row that the list adds or builds again focusable', async () => {
         const { list } = makeList();
@@ -382,7 +426,7 @@ describe('attachSortableKeys: rows that arrive later', () => {
         added.textContent = 'E';
         list.append(added);
         await flush();
-        expect(added.getAttribute('tabindex')).toBe('0');
+        expect(added.getAttribute('tabindex')).toBe('-1');
         press(added, 'ArrowUp');
         expect(order(list)).toEqual(['A', 'B', 'C', 'E', 'D']);
 
@@ -439,7 +483,9 @@ describe('adoptUpstreamSortables', () => {
         $(listed).sortable('destroy');
         $(listed).sortable({ stop });
         await flush();
-        expect(listed.children[0].getAttribute('tabindex')).toBe('0');
+        // The row that was moved took the focus, so it is the list's tab stop again.
+        expect(listed.children[1].getAttribute('tabindex')).toBe('0');
+        expect(listed.children[0].getAttribute('tabindex')).toBe('-1');
     });
 
     test('lists every upstream sortable of the app once', () => {

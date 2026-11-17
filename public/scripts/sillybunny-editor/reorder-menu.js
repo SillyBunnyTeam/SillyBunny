@@ -222,6 +222,16 @@ export function attachSortableKeys(list, { name = null, movable = null, key = nu
         decorated.delete(target);
     };
 
+    // One stop per list keeps Tab moving between lists, so a list of hundreds of rows is not hundreds of tab stops. The arrow
+    // keys move the stop inside the list. Only a tabindex that this helper added is managed; a row's own value is left alone.
+    let stop = null;
+    const applyStop = () => {
+        const owned = [...decorated.entries()].filter(([, entry]) => entry.tabindex).map(([target]) => target)
+            .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+        const active = owned.includes(stop) ? stop : owned[0];
+        for (const target of owned) target.setAttribute('tabindex', target === active ? '0' : '-1');
+    };
+
     const refresh = () => {
         const sortable = readSortable(list);
         const targets = isActive(sortable) ? moveTargets(sortable) : [];
@@ -230,6 +240,7 @@ export function attachSortableKeys(list, { name = null, movable = null, key = nu
             if (!current.has(target)) undecorate(target);
         }
         for (const { row, target } of targets) decorate(target, row);
+        applyStop();
     };
 
     /** Calls the list's own handlers as a finished drag does: `update` when the order changed, then `stop`. */
@@ -246,6 +257,20 @@ export function attachSortableKeys(list, { name = null, movable = null, key = nu
     };
 
     const onKeydown = event => {
+        if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.isComposing && decorated.get(event.target)?.tabindex) {
+            const step = { ArrowUp: -1, ArrowDown: 1 }[event.key];
+            const sortable = readSortable(list);
+            if ((step || event.key === 'Home' || event.key === 'End') && isActive(sortable)) {
+                const targets = moveTargets(sortable);
+                const from = targets.findIndex(({ target }) => target === event.target);
+                const to = event.key === 'Home' ? 0 : event.key === 'End' ? targets.length - 1 : from + step;
+                if (from >= 0 && to >= 0 && to < targets.length) {
+                    event.preventDefault();
+                    targets[to].target.focus();
+                }
+                return;
+            }
+        }
         if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
         if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
         const sortable = readSortable(list);
@@ -294,6 +319,10 @@ export function attachSortableKeys(list, { name = null, movable = null, key = nu
     const onFocusIn = event => {
         const entry = decorated.get(event.target);
         if (entry?.label) event.target.setAttribute('aria-label', labelOf(entry.row));
+        if (entry?.tabindex && stop !== event.target) {
+            stop = event.target;
+            applyStop();
+        }
     };
 
     // Only the list's own children and its class matter: the sortable toggles its disabled class on the list, and a list

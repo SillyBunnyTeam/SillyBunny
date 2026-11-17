@@ -58,6 +58,11 @@ const SB_CUSTOMIZE_TABS = new Set(['appearance', 'interface', 'messages', 'data-
  */
 function createRowSubtitle(row, { placeholder = true } = {}) {
     let existing = row.querySelector('.ds-row-subtitle, :scope > .toggle-description, label small + small');
+    // An extension's label may carry its own note as a trailing `small` inside the title span (Quick Reply's "Inject user input"). A span that holds nothing else is a title, not a note.
+    if (!existing && !placeholder) {
+        const note = row.querySelector(':scope > span:not(.ds-row-text) > small:last-child');
+        if (note && note.parentElement.textContent.trim() !== note.textContent.trim()) existing = note;
+    }
     // These rows already own live help beside the label. Keep that node (and its dynamic
     // provider/preset updates) instead of promoting a redundant title or a status-icon tooltip.
     if (!existing && row.matches('label:is([for="bind_preset_to_connection"], [for="bind_preset_to_sampling"], [for="squash_system_messages"], [for="openai_function_calling"], [for="openai_media_inlining"])') && row.nextElementSibling?.matches('.toggle-description')) {
@@ -1532,7 +1537,9 @@ const SB_EXT_SWITCH_LABELS = '.checkbox_label, label:has(> input[type="checkbox"
  * @type {ReadonlyMap<string, {left?: string, entriesOnly?: string}>}
  */
 const SB_EXT_AREAS = new Map([
-    ['qr_container', { left: '#qr--global, #qr--chat, #qr--character, #qr--editor' }],
+    ['qr_container', { left: '#qr--global, #qr--chat, #qr--character, #qr--editor > :not(#qr--set-settings)' }],
+    // The script rows are shared entity rows that the extension's own adapter builds.
+    ['regex_container', { left: '.regex-script-label' }],
     ['tts_container', { entriesOnly: '#tts_provider_settings' }],
 ]);
 

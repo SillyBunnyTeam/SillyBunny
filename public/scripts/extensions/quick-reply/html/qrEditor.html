@@ -1,4 +1,5 @@
 <div id="qr--modalEditor">
+	<!-- SillyBunny: the switch and spin row titles of this editor are in header capitalisation; the data-i18n keys keep their upstream text. -->
 	<div id="qr--main">
 		<h3 data-i18n="Labels and Message">Labels and Message</h3>
 		<div class="qr--labels">
@@ -32,19 +33,19 @@
 			<div class="qr--modal-editorSettings">
 				<label class="checkbox_label">
 					<input type="checkbox" id="qr--modal-wrap">
-					<span data-i18n="Word wrap">Word wrap</span>
+					<span data-i18n="Word wrap">Word Wrap</span>
 				</label>
 				<label class="checkbox_label">
-					<span data-i18n="Tab size:">Tab size:</span>
+					<span data-i18n="Tab size:">Tab Size:</span>
 					<input type="number" min="1" max="9" id="qr--modal-tabSize" class="text_pole">
 				</label>
 				<label class="checkbox_label">
 					<input type="checkbox" id="qr--modal-executeShortcut">
-					<span data-i18n="Ctrl+Enter to execute">Ctrl+Enter to execute</span>
+					<span data-i18n="Ctrl+Enter to execute">Ctrl+Enter to Execute</span>
 				</label>
 				<label class="checkbox_label">
 					<input type="checkbox" id="qr--modal-syntax">
-					<span>Syntax highlight</span>
+					<span>Syntax Highlight</span>
 				</label>
 				<small>Ctrl+Alt+Click (or F9) to set / remove breakpoints</small>
 				<small>Ctrl+<span id="qr--modal-commentKey"></span> to toggle block comments</small>
@@ -86,39 +87,39 @@
 		<div id="qr--autoExec" class="flex-container flexFlowColumn">
 			<label class="checkbox_label" title="Prevent this quick reply from triggering other auto-executed quick replies while auto-executing (i.e., prevent recursive auto-execution)">
 				<input type="checkbox" id="qr--preventAutoExecute" >
-				<span><i class="fa-solid fa-fw fa-plane-slash"></i><span data-i18n="Don't trigger auto-execute">Don't trigger auto-execute</span></span>
+				<span><i class="fa-solid fa-fw fa-plane-slash"></i><span data-i18n="Don't trigger auto-execute">Don't Trigger Auto-Execute</span></span>
 			</label>
 			<label class="checkbox_label">
 				<input type="checkbox" id="qr--isHidden" >
-				<span><i class="fa-solid fa-fw fa-eye-slash"></i><span data-i18n="Invisible (auto-execute only)">Invisible (auto-execute only)</span></span>
+				<span><i class="fa-solid fa-fw fa-eye-slash"></i><span data-i18n="Invisible (auto-execute only)">Invisible (Auto-Execute Only)</span></span>
 			</label>
 			<label class="checkbox_label">
 				<input type="checkbox" id="qr--executeOnStartup" >
-				<span><i class="fa-solid fa-fw fa-rocket"></i><span data-i18n="Execute on startup">Execute on startup</span></span>
+				<span><i class="fa-solid fa-fw fa-rocket"></i><span data-i18n="Execute on startup">Execute on Startup</span></span>
 			</label>
 			<label class="checkbox_label">
 				<input type="checkbox" id="qr--executeOnUser" >
-				<span><i class="fa-solid fa-fw fa-user"></i><span data-i18n="Execute on user message">Execute on user message</span></span>
+				<span><i class="fa-solid fa-fw fa-user"></i><span data-i18n="Execute on user message">Execute on User Message</span></span>
 			</label>
 			<label class="checkbox_label">
 				<input type="checkbox" id="qr--executeOnAi" >
-				<span><i class="fa-solid fa-fw fa-robot"></i><span data-i18n="Execute on AI message">Execute on AI message</span></span>
+				<span><i class="fa-solid fa-fw fa-robot"></i><span data-i18n="Execute on AI message">Execute on AI Message</span></span>
 			</label>
 			<label class="checkbox_label">
 				<input type="checkbox" id="qr--executeOnChatChange" >
-				<span><i class="fa-solid fa-fw fa-message"></i><span data-i18n="Execute on chat change">Execute on chat change</span></span>
+				<span><i class="fa-solid fa-fw fa-message"></i><span data-i18n="Execute on chat change">Execute on Chat Change</span></span>
 			</label>
             <label class="checkbox_label">
                 <input type="checkbox" id="qr--executeOnNewChat">
-                <span><i class="fa-solid fa-fw fa-comments"></i><span data-i18n="Execute on new chat">Execute on new chat</span></span>
+                <span><i class="fa-solid fa-fw fa-comments"></i><span data-i18n="Execute on new chat">Execute on New Chat</span></span>
             </label>
             <label class="checkbox_label">
                 <input type="checkbox" id="qr--executeOnGroupMemberDraft">
-                <span><i class="fa-solid fa-fw fa-people-group"></i><span data-i18n="Execute on group member draft">Execute on group member draft</span></span>
+                <span><i class="fa-solid fa-fw fa-people-group"></i><span data-i18n="Execute on group member draft">Execute on Group Member Draft</span></span>
             </label>
             <label class="checkbox_label">
     			<input type="checkbox" id="qr--executeBeforeGeneration" >
-    			<span><i class="fa-solid fa-fw fa-paper-plane"></i><span data-i18n="Execute before message generation">Execute before message generation</span></span>
+    			<span><i class="fa-solid fa-fw fa-paper-plane"></i><span data-i18n="Execute before message generation">Execute Before Message Generation</span></span>
    			</label>
             <div class="flex-container alignItemsBaseline flexFlowColumn flexNoGap" title="Activate this quick reply when a World Info entry with the same Automation ID is triggered.">
                 <small data-i18n="Automation ID:">Automation ID</small>

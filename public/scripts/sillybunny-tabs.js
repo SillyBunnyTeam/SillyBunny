@@ -795,9 +795,10 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },
     ],
-    // SillyBunny: the Extensions list builds button, entry and activatable rows, which the editor shell sheet styles.
+    // SillyBunny: the Extensions list builds button, entry and activatable rows, which the editor shell sheet styles. The Regex page lists its scripts as entity rows.
     'right:extensions': [
         { href: 'css/sillybunny-editor-shell.css?v=20261117zo', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/extensions-panel.css?v=20261117s', id: 'deferred-extensions-panel-css' },
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.

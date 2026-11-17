@@ -13,8 +13,8 @@ import { allowPresetScripts, allowScopedScripts, disallowPresetScripts, disallow
 import { t } from '../../i18n.js';
 import { accountStorage } from '../../util/AccountStorage.js';
 import { getPresetManager } from '../../preset-manager.js';
-// SillyBunny: adopt the import target radios into a shared segmented row.
-import { regexImportOptions } from '../../sillybunny-editor/adapters/utility-dialogs.js';
+// SillyBunny: adopt the import target radios into a shared segmented row, and the script rows into shared entity rows.
+import { adoptRegexScriptList, adoptRegexScriptRow, regexImportOptions } from '../../sillybunny-editor/adapters/utility-dialogs.js';
 // SillyBunny: present debugger controls with shared rows while retaining the live source elements.
 import { createToggleRow } from '../../sillybunny-editor/toggle-row.js';
 import { createSelectRow } from '../../sillybunny-editor/select-row.js';
@@ -636,6 +636,8 @@ async function loadRegexScripts() {
     $('#saved_regex_scripts').empty();
     $('#saved_scoped_scripts').empty();
     $('#saved_preset_scripts').empty();
+    // SillyBunny: the script lists hold shared entity rows.
+    $('#saved_regex_scripts, #saved_scoped_scripts, #saved_preset_scripts').each((_, list) => adoptRegexScriptList(list));
     setToggleAllIcon(false);
 
     const scriptTemplate = $(await renderExtensionTemplateAsync('regex', 'scriptTemplate'));
@@ -755,6 +757,8 @@ async function loadRegexScripts() {
             }, 0);
         });
 
+        // SillyBunny: the row is built from the template's nodes after every handler above is bound.
+        adoptRegexScriptRow(scriptHtml.filter('.regex-script-label').get(0));
         $(container).append(scriptHtml);
     }
 

@@ -16,6 +16,11 @@
     margin-bottom: 10px;
 }
 
+/* SillyBunny: the settings page insets each block by the row padding, and a script row spans the card. */
+#sb-settings-page .sb-settings-mounted-shell .regex-script-container.ds-entity-list__rows {
+    margin-inline: calc(-1 * var(--sb-density-row-padding-inline, 12px));
+}
+
 /* SillyBunny: the template is sanitised, which drops the old non-data attribute. */
 .regex-script-container:empty::after {
     content: attr(data-no-scripts-text);
@@ -52,25 +57,10 @@
     display: none;
 }
 
-.regex-script-label {
-    /* SillyBunny: a script row has the metrics of a boxed-list row (52px, 6px 12px, a separator under it). */
-    align-items: center;
-    column-gap: 10px;
-    min-height: 52px;
-    padding: 6px 12px;
-    border: 0;
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 0;
-    margin: 0;
-}
-
-.regex-script-label:last-child {
-    border-bottom: 0;
-}
-
-/* SillyBunny: the name of a row starts at the row's inline start, like the label of any other list row. */
+/* SillyBunny: a script's name is the user's own text and the only thing that tells rows apart, so it wraps instead of being cut at a narrow width. */
 .regex-script-label .regex_script_name {
-    text-align: start;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .regex-script-label:has(.disable_regex:checked) .regex_script_name {
@@ -97,16 +87,6 @@ input.enable_scoped {
 
 .regex-toggle-on {
     cursor: pointer;
-}
-
-.disable_regex:checked~.regex-toggle-on,
-.disable_regex:not(:checked)~.regex-toggle-off {
-    display: none;
-}
-
-.disable_regex:not(:checked)~.regex-toggle-on,
-.disable_regex:checked~.regex-toggle-off {
-    display: block;
 }
 
 /* SillyBunny: the group labels of the editor take the Label size of the field labels above them; the footer's reduced size was applied to them twice (9.75px). */
@@ -140,15 +120,10 @@ input.enable_scoped {
 }
 
 .regex_settings .regex-script-container .regex-script-label .regex_bulk_checkbox {
-    margin-left: 5px;
-    margin-right: 5px;
+    margin-inline: 5px;
 }
 
-/* SillyBunny: the pointer's target floor for the row's selection checkbox and grip, and for the editor's checkbox rows (the label is the control). */
-.regex-script-label :is(.regex_bulk_checkbox, .drag-handle) {
-    min-block-size: var(--sb-density-floor, 0px);
-}
-
+/* SillyBunny: the pointer's target floor for the editor's checkbox rows (the label is the control). In bulk mode the whole script row toggles its checkbox, so the checkbox itself keeps its size. */
 .regex_editor label.checkbox {
     align-items: center;
     min-block-size: var(--sb-density-floor, 0px);
@@ -172,61 +147,17 @@ input.enable_scoped {
     display: inline-grid;
 }
 
-@supports not selector(:has(*)) {
-    .regex-script-label label.regex_script_expand {
-        display: none;
-    }
-
-    .regex-script-label .regex_script_buttons {
-        display: flex;
-    }
-}
-
-.regex-script-label label.regex_script_expand input[name="regex_expand"],
-.regex-script-label:has(input[name="regex_expand"]:checked) label.regex_script_expand,
-.regex-script-label:not(:has(input[name="regex_expand"]:checked)) .regex_script_buttons {
+/* SillyBunny: the row shows the shared switch and menu. The template's own controls stay in the row for the code that finds them, and the class display of `.flex-container` would otherwise show them. */
+.regex-script-label > [hidden] {
     display: none;
 }
 
-/* SillyBunny: the settings normaliser marks a script row as a row wrapper, whose rules zero the row's metrics. The row stays a flex row, and its switch and expand labels sit in it as icons. */
-#sb-settings-page .sb-settings-mounted-shell .regex-script-label.sb-settings-row-wrapper {
-    min-height: 52px;
-    padding: 6px 12px;
-    column-gap: 10px;
-}
-
-/* SillyBunny: the panel's rule for flex rows lets every child grow and keep 14em, which pushes the controls off a narrow row. */
-#sb-settings-page .sb-settings-mounted-shell .regex-script-label > :is(.drag-handle, .regex_bulk_checkbox) {
-    flex: 0 0 auto;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .regex-script-label > .regex_script_name {
-    min-width: 0;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .regex-script-label .sb-settings-row-wrapper {
-    flex: 0 0 auto;
-    width: auto;
+.regex-script-switch-target {
+    display: inline-flex;
+    flex: none;
     align-items: center;
-    gap: 6px;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .regex-script-label .ds-row-switch {
-    flex: 0 0 auto;
-    width: auto;
-    min-width: 0;
-    min-height: var(--sb-density-floor, 32px);
-    padding: 0 6px;
-    border: 0;
-    background: none;
-}
-
-#sb-settings-page .sb-settings-mounted-shell .regex-script-label :is(.ds-row-subtitle, .ds-row-suffix) {
-    display: none;
-}
-
-/* SillyBunny: the state glyphs follow the switch by sibling selector, and the switch now sits in the row's suffix. */
-.regex-script-label:has(.disable_regex:checked) .regex-toggle-on,
-.regex-script-label:not(:has(.disable_regex:checked)) .regex-toggle-off {
-    display: none;
+    justify-content: center;
+    min-block-size: var(--sb-density-floor, 32px);
+    margin: 0;
+    cursor: pointer;
 }

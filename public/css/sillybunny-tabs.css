@@ -6506,7 +6506,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
    separators, so a padded or gapped wrapper insets them twice and breaks the separator line
    (Quick Access, AutoComplete, MovingUI). Rows stack, and any loose label, note, or button strip
    beside them takes the row inset itself. Buttons take it as margin so they keep their size. */
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .regex-script-label, .regex-script-label *) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) {
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: stretch;
@@ -6514,21 +6514,30 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     gap: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .regex-script-label, .regex-script-label *, .sb-prompting-row-with-help) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .sb-prompting-row-with-help) > :not(.ds-row, .ds-row-expander, .sb-settings-row-wrapper, .sb-settings-flat-section, .menu_button, button, :has(.ds-row, .ds-row-expander)) {
     padding: 10px var(--sb-density-row-padding-inline);
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .regex-script-label, .regex-script-label *) > :is(label, small, span):not(.ds-row, .checkbox_label) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :is(label, small, span):not(.ds-row, .checkbox_label) {
     display: block;
     padding: 10px var(--sb-density-row-padding-inline) 0;
 }
 
+/* An extension lays number fields out side by side in flex columns (Vector Storage's query row and chunk rows). A row is a full-width control, so a wrapper whose columns hold rows stacks them instead of shrinking each to a third of the width. */
+#sb-settings-page .sb-settings-mounted-shell .flex-container:has(> .flex1 > :is(.ds-row, .ds-select-row)):not(.ds-row) {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0;
+    margin: 0;
+}
+
 /* The first row after a loose heading owns the gap the heading opened. */
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .regex-script-label, .regex-script-label *) > :is(label, small, span):not(.ds-row, .checkbox_label) + :is(.ds-row, .ds-row-expander) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :is(label, small, span):not(.ds-row, .checkbox_label) + :is(.ds-row, .ds-row-expander) {
     border-top: 0;
 }
 
-#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card, .regex-script-label, .regex-script-label *) > :is(.menu_button, button):not(.ds-row) {
+#sb-settings-page .sb-settings-mounted-shell .ds-pref-group :is(.sb-settings-row-wrapper, :has(> .ds-row, > .ds-row-expander)):not(.ds-row, .ds-row-expander, .ds-pref-group, .ds-row-suffix, .sb-sampling-control-card) > :is(.menu_button, button):not(.ds-row) {
     align-self: flex-start;
     margin: 10px var(--sb-density-row-padding-inline);
 }

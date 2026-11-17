@@ -45,6 +45,7 @@ import { isTemporaryChat } from '../../sillybunny-temporary-chat-state.js';
 // SillyBunny: The shared alert keeps vector-index deletion Cancel-focused and non-default.
 import { openAlert } from '../../sillybunny-editor/dialog.js';
 import { t } from '../../i18n.js';
+import { adoptPositionRadios } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the injection positions are select rows.
 
 // SillyBunny: no chat id while the chat is temporary, so its chat collection is never listed, filled, queried or purged.
 const getCurrentChatId = () => (isTemporaryChat() ? '' : getOpenChatId());
@@ -2213,6 +2214,9 @@ export async function init() {
         });
     });
 
+    // SillyBunny: the injection positions are select rows. The radios hold the saved values by now.
+    adoptPositionRadios($('#vectors_container')[0], 'vectors_position');
+    adoptPositionRadios($('#vectors_container')[0], 'vectors_file_position_db');
     toggleSettings();
     eventSource.on(event_types.MESSAGE_DELETED, onChatEvent);
     eventSource.on(event_types.MESSAGE_EDITED, onChatEvent);

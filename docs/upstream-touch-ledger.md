@@ -150,6 +150,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-17, UI polish sweep (tasks 9.5b and 9.5c). |
 | Owner | UI overhaul integrator. |
 
+### The Regex, Quick Reply, Summarize and Vector Storage extensions - settings rows and script rows
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/regex/index.js` (`loadRegexScripts` hands each script row to the entity-row adapter; one import and two calls, marked); `public/scripts/extensions/regex/style.css` (the script row styling the adapter replaces is deleted; the remaining overrides marked); `public/scripts/extensions/regex/editor.html` (checkbox labels in sentence case, `data-i18n` keys unchanged); `public/scripts/extensions/quick-reply/html/qrEditor.html` (row titles in header capitalisation, keys unchanged); `public/scripts/extensions/memory/index.js` and `public/scripts/extensions/vectors/index.js` (one call each to `adoptPositionRadios`, marked); `public/scripts/extensions/vectors/settings.html` (the `vectors_score_threshold` label typo). `public/index.html` changes a cache key only. |
+| Area | Built-in extension settings: Regex script rows, Quick Reply's apply-at-once options, the Summarize and Vector Storage injection positions. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The entity-row and position-radio adapters in `public/scripts/sillybunny-editor/adapters/utility-dialogs.js`; the extension pass of `public/scripts/sillybunny-settings-presentation.js` (it skips `.regex-script-label` and takes a trailing `small` in a title as the subtitle); one tab stop per sortable list in `public/scripts/sillybunny-editor/reorder-menu.js`. |
+| Adapter shape | Since 2026-11-17 (UI polish sweep, task 10.1a): a Regex script row is a shared entity row (grip, name, switch, ⋮ menu whose items click the template's hidden buttons, so every id and handler runs); the injection-position radios are select rows whose radios stay hidden as the saved state, with depth and role as rows of their own. |
+| Protecting tests | `tests/unit/extension-row-adapters.test.js`; `tests/unit/quick-reply-editor.test.js`; `tests/sortable-keys.e2e.js`; `tests/window-dialogs.e2e.js`; the audit surfaces `list.regex-scripts`, `list.quick-replies`, `editor.quick-reply`, `editor.regex`; the settings inventory sections `qr_container`, `summarize_container`, `vectors_container`. |
+| Validation | 2026-11-17: root and tests lint, the full unit run, budgets, contracts and design rules, `frontend-performance.e2e.js` (startup at 863), the coder's related runs and the merge's (`e2e-related --since f1d500152`), the four audit surfaces and the extensions inventory. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-17, UI polish sweep (task 10.1a). |
+| Owner | `TODO(copy)` |
+
 ### `public/script.js` and `public/style.css` - toasts
 | Field | Value |
 | --- | --- |

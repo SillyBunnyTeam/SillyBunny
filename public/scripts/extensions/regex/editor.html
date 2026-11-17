@@ -1,5 +1,6 @@
 <div id="regex_editor_template">
     <div class="regex_editor">
+        <!-- SillyBunny: the checkbox labels are in sentence capitalisation; the data-i18n keys keep their upstream text. -->
         <h3 class="flex-container justifyCenter alignItemsBaseline">
             <strong data-i18n="Regex Editor">Regex Editor</strong>
             <a href="https://docs.sillytavern.app/extensions/regex/" class="notes-link" target="_blank" rel="noopener noreferrer">
@@ -83,19 +84,19 @@
                 <div data-i18n="[title]ext_regex_user_input_desc" title="Messages sent by the user.">
                     <label class="checkbox flex-container">
                         <input type="checkbox" name="replace_position" value="1">
-                        <span data-i18n="ext_regex_user_input">User Input</span>
+                        <span data-i18n="ext_regex_user_input">User input</span>
                     </label>
                 </div>
                 <div data-i18n="[title]ext_regex_ai_input_desc" title="Messages received from the Generation API.">
                     <label class="checkbox flex-container">
                         <input type="checkbox" name="replace_position" value="2">
-                        <span data-i18n="ext_regex_ai_output">AI Output</span>
+                        <span data-i18n="ext_regex_ai_output">AI output</span>
                     </label>
                 </div>
                 <div data-i18n="[title]ext_regex_slash_desc" title="Messages sent using STscript commands.">
                     <label class="checkbox flex-container">
                         <input type="checkbox" name="replace_position" value="3">
-                        <span data-i18n="Slash Commands">Slash Commands</span>
+                        <span data-i18n="Slash Commands">Slash commands</span>
                     </label>
                 </div>
                 <div data-i18n="[title]ext_regex_wi_desc" title="Lorebook/World Info entry contents. Requires 'Only Format Prompt' to be checked!">
@@ -135,7 +136,7 @@
                 </label>
                 <label class="checkbox flex-container" data-i18n="[title]ext_regex_run_on_edit_desc" title="Run the regex script when the message belonging a to specified role(s) is edited.">
                     <input type="checkbox" name="run_on_edit" />
-                    <span data-i18n="Run On Edit">Run On Edit</span>
+                    <span data-i18n="Run On Edit">Run on edit</span>
                 </label>
                 <label class="checkbox flex-container flexNoGap marginBot5" data-i18n="[title]ext_regex_substitute_regex_desc" title="Substitute &lcub;&lcub;macros&rcub;&rcub; in Find Regex before running it">
                     <span>
@@ -154,11 +155,11 @@
                 </span>
                 <label class="checkbox flex-container" data-i18n="[title]ext_regex_only_format_visual_desc" title="Chat history file contents won't change, but regex will be applied to the messages displayed in the Chat UI.">
                     <input type="checkbox" name="only_format_display" />
-                    <span data-i18n="Only Format Display">Alter Chat Display</span>
+                    <span data-i18n="Only Format Display">Alter chat display</span>
                 </label>
                 <label class="checkbox flex-container" data-i18n="[title]ext_regex_only_format_prompt_desc" title="Chat history file contents won't change, but regex will be applied to the outgoing prompt before it is sent to the LLM.">
                     <input type="checkbox" name="only_format_prompt" />
-                    <span data-i18n="Only Format Prompt (?)">Alter Outgoing Prompt</span>
+                    <span data-i18n="Only Format Prompt (?)">Alter outgoing prompt</span>
                 </label>
 
             </div>

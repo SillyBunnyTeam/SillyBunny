@@ -140,7 +140,9 @@ test('the logit bias list moves by its handle, and a keyboard move is saved in t
 
     const bottom = list.locator(':scope > *').last().locator('.drag-handle');
     await expect(bottom).toHaveAttribute('role', 'button');
-    await expect(bottom).toHaveAttribute('tabindex', '0');
+    // The list is one tab stop, on its first handle; the others are reached by the arrow keys.
+    await expect(bottom).toHaveAttribute('tabindex', '-1');
+    await expect(list.locator(':scope > *').first().locator('.drag-handle')).toHaveAttribute('tabindex', '0');
     await expect(bottom).toHaveAttribute('aria-label', 'Drag to reorder one');
     await expect(list.locator(':scope > *').last()).not.toHaveAttribute('tabindex', /.*/);
 

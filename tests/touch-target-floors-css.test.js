@@ -115,9 +115,8 @@ describe('touch target floors of the Quick Reply editor, the composer buttons, t
         expect(history).toContain('--stih-mobile-action-size: max(var(--sb-density-floor, 28px), clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px));');
     });
 
-    test('the regex editor\'s checkbox rows and the script row\'s checkbox and grip take the floor', () => {
+    test('the regex editor\'s checkbox rows take the floor', () => {
         const css = readExtension('regex');
         expect(ruleBody(css, '.regex_editor label.checkbox')).toContain('min-block-size: var(--sb-density-floor, 0px);');
-        expect(ruleBody(css, '.regex-script-label :is(.regex_bulk_checkbox, .drag-handle)')).toContain('min-block-size: var(--sb-density-floor, 0px);');
     });
 });
