@@ -25,6 +25,8 @@ const ALT_TEWI = 'Late at night, Tewi rests her chin on her hands at the desk be
 const ENLARGE = 'Enlarge Picture';
 const HEIGHT_SHARE = 0.7;
 const MIN_FILL = 0.75;
+// The fit reads the overflow of the chat as whole pixels, so the picture can be up to a pixel smaller than the room.
+const FIT_ROUNDING = 1.5;
 
 const VIEWPORTS = [
     { name: 'desktop 1440x900', options: { viewport: { width: 1440, height: 900 } } },
@@ -172,6 +174,10 @@ const measure = page => page.evaluate(() => {
     return {
         column: figure.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
         chatHeight: document.querySelector('#chat').clientHeight,
+        // What the chat holds besides the picture, which is the height that a fitted picture has to leave room for.
+        otherHeight: figure.closest('.mes').getBoundingClientRect().height - box.height,
+        overflows: document.querySelector('#chat').scrollHeight > document.querySelector('#chat').clientHeight,
+        touch: matchMedia('(pointer: coarse)').matches,
         width: box.width,
         height: box.height,
         artWidth: Number(image.getAttribute('width')),
@@ -199,10 +205,33 @@ function ruleFor({ column, boxHeight, artWidth, artHeight, dpr }) {
         : { mode: 'smooth', step: null, source: '2x', width: fittedWidth, height: (fittedWidth * artHeight) / artWidth };
 }
 
-/** Whether a measurement is what the rule asks for, down to the file that the picture shows. */
+/**
+ * What the fit asks for in a room, worked out here and not from the page: the largest whole step of device pixels per
+ * art pixel that fits the room, from the 1x file drawn pixelated, and only when none fits, the room filled smoothly
+ * from the 2x file with the aspect kept.
+ */
+function fitRuleFor({ column, boxHeight, artWidth, artHeight, dpr }) {
+    const available = Math.min(column, (boxHeight * artWidth) / artHeight);
+    for (let step = Math.max(1, Math.round(dpr)); step >= 1; step--) {
+        const width = (artWidth * step) / dpr;
+        if (width <= available + 0.01) return { mode: 'pixel', step, source: '1x', width, height: (artHeight * step) / dpr };
+    }
+    return { mode: 'smooth', step: null, source: '2x', width: available, height: (available * artHeight) / artWidth };
+}
+
+/**
+ * Whether a measurement is what the rule asks for, down to the file that the picture shows. On a touch screen, a chat
+ * that holds only the greeting may instead have the picture fitted to the room that its text leaves, with nothing
+ * left to scroll.
+ */
 function followsTheScale(m) {
-    const rule = ruleFor({ ...m, boxHeight: m.chatHeight * HEIGHT_SHARE });
-    const near = (actual, expected) => Math.abs(actual - expected) < 0.51;
+    if (followsTheRule(m, m.chatHeight * HEIGHT_SHARE)) return true;
+    return m.touch && !m.overflows && followsTheRule(m, m.chatHeight - m.otherHeight - FIT_ROUNDING / 2, FIT_ROUNDING, fitRuleFor);
+}
+
+function followsTheRule(m, boxHeight, slack = 0.51, rule_ = ruleFor) {
+    const rule = rule_({ ...m, boxHeight });
+    const near = (actual, expected) => Math.abs(actual - expected) < slack;
     const file = rule.source === '2x' ? /@2x\.webp$/ : /greeting-[a-z]+\.webp$/;
     return m.mode === rule.mode && m.source === rule.source && m.step === (rule.step === null ? '' : String(rule.step))
         && m.rendering === (rule.mode === 'pixel' ? 'pixelated' : 'auto')
@@ -832,6 +861,39 @@ test.describe('a chat that holds only the greeting, on a phone', () => {
 
         await waitUntilHoldIsOver(page);
         expect(await viewOf(page)).toMatchObject({ top: 0, max: 0, holding: false });
+    });
+});
+
+test.describe('the picture of a chat that holds only the greeting, on a phone, follows the composer and not the keyboard', () => {
+    test.use(VIEWPORTS[1].options);
+
+    test('is fitted again when the tray opens, and keeps its size while the keyboard is up', async ({ page }) => {
+        await boot(page);
+        await openFromHome(page, 'assistant-reisen', 'Start New Chat');
+        await expectOneFigure(page);
+        await expect.poll(async () => (await measure(page)).overflows, { timeout: 10_000 }).toBe(false);
+        const closed = await measure(page);
+
+        const toggle = page.locator('.sb-bottom-chat-tray-toggle');
+        await toggle.click();
+        await expect.poll(async () => (await measure(page)).height, { timeout: 10_000 }).toBeLessThan(closed.height);
+        await expect.poll(async () => (await measure(page)).overflows, { timeout: 10_000 }).toBe(false);
+        const open = await measure(page);
+        expect(followsTheScale(open), JSON.stringify(open)).toBe(true);
+        await toggle.click();
+        await expect.poll(async () => (await measure(page)).height, { timeout: 10_000 }).toBe(closed.height);
+
+        // A soft keyboard takes the height from the window, which Chromium reports as a smaller viewport.
+        await page.locator('#send_textarea').focus();
+        await page.setViewportSize({ width: 390, height: 544 });
+        await expect.poll(async () => (await measure(page)).chatHeight, { timeout: 10_000 }).toBeLessThan(closed.chatHeight - 200);
+        await waitForFrames(page);
+        expect(await measure(page)).toMatchObject({ width: closed.width, height: closed.height, mode: closed.mode, src: closed.src });
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.locator('#send_textarea').blur();
+        await expect.poll(async () => (await measure(page)).chatHeight, { timeout: 10_000 }).toBe(closed.chatHeight);
+        expect(await measure(page)).toMatchObject({ width: closed.width, height: closed.height });
     });
 });
 

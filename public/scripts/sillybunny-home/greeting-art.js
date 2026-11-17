@@ -1,10 +1,13 @@
 import { getGreetingArtAlt } from './assistant-copy.js';
 import { createOpeningHold } from './greeting-art-opening.js';
-import { GREETING_ART_HEIGHT_SHARE, findGreetingArt, pickPixelStep, sourceFor } from './greeting-art-rules.js';
+import { pixelCssSize, pixelStep, largestStepThatFits } from './pixel-art.js';
+import { GREETING_ART_HEIGHT_SHARE, GREETING_ART_MIN_FIT, findGreetingArt, pickPixelStep, sourceFor } from './greeting-art-rules.js';
 
 const FIGURE_CLASS = 'sbGreetingArt';
 const GREETING_SELECTOR = ':scope > .mes[mesid="0"]';
 const ENLARGE_LABEL = 'Enlarge Picture';
+/** The height that the keyboard has to take from the viewport to count; the same as `MOBILE_IOS_KEYBOARD_MIN_HEIGHT_PX`. */
+const KEYBOARD_MIN_HEIGHT_PX = 80;
 
 /**
  * @typedef {object} ChatReading
@@ -63,6 +66,7 @@ export function createGreetingArt({ chatElement, readChat, openViewer, shellElem
     let pixelRatio = null;
     let wasVisualNovel = false;
     let started = false;
+    let stableViewportHeight = 0;
 
     const opening = createOpeningHold({
         chatElement,
@@ -80,27 +84,80 @@ export function createGreetingArt({ chatElement, readChat, openViewer, shellElem
     function layout() {
         if (!current) return;
         const { figure, image, art } = current;
+        // The keyboard shrinks the chat, and the picture keeps the size that it had without it.
+        if (fitsToRoom() && keyboardIsOpen() && image.style.width) return;
 
         // The text column has its own right padding, and it differs between chat styles and screen sizes.
         const text = figure.parentElement?.querySelector(':scope > .mes_text');
         figure.style.paddingRight = `${text ? parseFloat(win.getComputedStyle(text).paddingRight) || 0 : 0}px`;
         const padding = win.getComputedStyle(figure);
 
-        const scale = pickPixelStep({
+        const input = {
             artWidth: art.width,
             artHeight: art.height,
             maxCssWidth: figure.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight),
             maxCssHeight: room.height * GREETING_ART_HEIGHT_SHARE,
             dpr: room.dpr,
-        });
+        };
+        const scale = pickPixelStep(input);
         if (!scale) return;
 
+        apply(figure, image, art, scale);
+        if (!fitsToRoom()) return;
+
+        // The art is drawn at its normal size now, so what the chat overflows by is what the art has to give up. The
+        // read forces one layout, which is why this runs only for a chat that holds the greeting alone.
+        const overflow = chatElement.scrollHeight - chatElement.clientHeight;
+        if (overflow <= 0) return;
+        const fitted = scale.cssHeight - overflow;
+        if (fitted < scale.cssHeight * GREETING_ART_MIN_FIT) return;
+        apply(figure, image, art, fitScale(art, Math.min(input.maxCssWidth, (fitted * art.width) / art.height), room.dpr));
+    }
+
+    /**
+     * The picture in `availableWidth`: the largest whole step of device pixels per art pixel that fits, and only when
+     * even one device pixel per art pixel is too wide, the 2x file shrunk by a fraction and drawn smooth.
+     * @returns {import('./greeting-art-rules.js').PixelScale}
+     */
+    function fitScale(art, availableWidth, dpr) {
+        const fit = largestStepThatFits({ widths: [art.width], step: pixelStep(dpr), ratio: dpr, availableWidth });
+        const cssWidth = pixelCssSize(art.width, fit.step, fit.ratio);
+        const cssHeight = (cssWidth * art.height) / art.width;
+        return fit.ratio === dpr
+            ? { mode: 'pixel', step: fit.step, source: '1x', cssWidth, cssHeight }
+            : { mode: 'smooth', step: null, source: '2x', cssWidth, cssHeight };
+    }
+
+    /**
+     * Whether an on-screen keyboard is covering the chat: a chat composer has focus and the visible viewport is
+     * much shorter than the tallest one seen while no composer had focus. Every platform shrinks `#chat` for it, but
+     * by different means (the layout viewport, the visual viewport, a shell inset), so the chat's own height cannot
+     * tell it from the tray opening.
+     */
+    function keyboardIsOpen() {
+        const height = Math.min(win.innerHeight, win.visualViewport?.height ?? Infinity);
+        const typing = doc.activeElement instanceof HTMLElement && doc.activeElement.closest('#form_sheld') !== null
+            && (doc.activeElement.isContentEditable || /^(INPUT|TEXTAREA)$/.test(doc.activeElement.tagName));
+        if (!typing) stableViewportHeight = height;
+        return typing && stableViewportHeight - height > KEYBOARD_MIN_HEIGHT_PX;
+    }
+
+    function apply(figure, image, art, scale) {
         const source = sourceFor(art, scale);
         if (image.getAttribute('src') !== source) image.setAttribute('src', source);
         image.style.width = `${scale.cssWidth}px`;
         figure.dataset.sbScale = scale.mode;
         figure.dataset.sbSource = scale.source;
         figure.dataset.sbPixelStep = scale.step === null ? '' : String(scale.step);
+    }
+
+    /**
+     * Whether the picture gives up size so that the whole greeting shows above the composer. That is for a chat that
+     * holds only the greeting, on a touch screen, where the composer is tall and the greeting would otherwise scroll
+     * under it. A pointer screen keeps the picture at its share of the chat, and the chat scrolls.
+     */
+    function fitsToRoom() {
+        return readChat().messageCount === 1 && win.matchMedia('(pointer: coarse)').matches;
     }
 
     /**
@@ -220,7 +277,8 @@ export function createGreetingArt({ chatElement, readChat, openViewer, shellElem
             if (shell) observe(MutationObserver, sync, shell, { attributes: true, attributeFilter: ['data-sb-conversation-mode'] });
             observe(MutationObserver, onBodyClassChange, doc.body, { attributes: true, attributeFilter: ['class'] });
             observe(ResizeObserver, () => {
-                if (chatElement.offsetWidth !== room.width) measureRoom();
+                // A fitted picture also follows the height of the chat, which the tray and the soft keyboard change.
+                if (chatElement.offsetWidth !== room.width || (fitsToRoom() && chatElement.clientHeight !== room.height && !keyboardIsOpen())) measureRoom();
             }, chatElement);
             wasVisualNovel = doc.body.classList.contains('waifuMode');
             doc.addEventListener('sb:chat-style-updated', measureRoom);

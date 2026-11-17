@@ -8,6 +8,13 @@ export const GREETING_ART_HEIGHT_SHARE = 0.7;
  */
 export const GREETING_ART_MIN_FILL = 0.75;
 
+/**
+ * The smallest share of its normal height that the picture gives up to fit the greeting above a touch screen's
+ * composer. When the whole greeting cannot fit even then (a landscape phone, a long greeting with the keyboard open),
+ * the picture keeps its normal size, because a smaller picture would not save the scroll.
+ */
+export const GREETING_ART_MIN_FIT = 0.3;
+
 /** Absorbs the rounding of a division, so a column of exactly three steps is not read as two and a bit. */
 const TOLERANCE = 1e-9;
 
