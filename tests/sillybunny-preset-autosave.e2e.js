@@ -270,10 +270,9 @@ test('Update is disabled for bundled presets only and saves the same shape as au
     await selectPreset(page, 'openai', 'Default');
     await expect(update).toHaveAttribute('aria-disabled', 'true');
     let menu = await openPresetMenu(page);
-    const readOnlyUpdate = menu.getByRole('menuitem', { name: 'Update', exact: true });
-    await expect(readOnlyUpdate).toHaveAttribute('aria-disabled', 'true');
-    await expect(readOnlyUpdate).toHaveAttribute('title', 'Bundled presets are read-only. Use Save as to keep your changes.');
-    await readOnlyUpdate.click({ force: true });
+    // An action that does not apply is left out of the menu, not drawn dimmed.
+    await expect(menu.getByRole('menuitem', { name: 'Update', exact: true })).toHaveCount(0);
+    await update.dispatchEvent('click');
     // eslint-disable-next-line playwright/no-wait-for-timeout -- A write that was not sent has no event to wait for.
     await page.waitForTimeout(WRITE_TAIL_MS);
     expect(saves).toHaveLength(0);

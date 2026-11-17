@@ -2831,7 +2831,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     gap: 2px;
     padding: 6px;
     background: var(--sb-layer-popover);
-    border: 1px solid var(--sb-shell-border);
     border-radius: var(--sb-radius-overlay);
     box-shadow: var(--sb-shadow-popover);
     z-index: calc(var(--sb-z-modal-content, 3100) + 1);
@@ -2865,8 +2864,9 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 }
 
 .sb-mode-menu-item:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    background: var(--sb-flat-selected-bg);
 }
 
 .sb-mode-menu-item.is-active {
@@ -2915,7 +2915,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     gap: 4px;
     overflow: hidden;
     background: var(--sb-layer-popover);
-    border: 1px solid var(--sb-shell-border);
     border-radius: var(--sb-radius-overlay);
     padding: 6px;
     z-index: calc(var(--sb-z-modal-content, 3100) + 1);
@@ -2954,19 +2953,17 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     min-height: 40px;
 }
 
-.sb-persona-option:focus-visible {
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-}
-
 @media (hover: hover) {
     .sb-persona-option:hover {
-        background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+        background: var(--sb-flat-hover-bg);
     }
 }
 
+/* Keyboard selection is a fill; a transparent outline is repainted by forced colours, which remove fills. */
 .sb-persona-option:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    background: var(--sb-flat-selected-bg);
 }
 
 .sb-persona-option.is-active {

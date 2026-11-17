@@ -437,7 +437,7 @@ export function mountAgentsPanel(column) {
                 ...(section === 'organise' ? moveItems(current) : []),
             ],
         }));
-        showMenu(trigger, sections, t`Agent Menu`);
+        showMenu(trigger, sections, current.entry.agent.name);
     }
 
     function makeRow(value) {

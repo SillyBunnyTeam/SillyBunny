@@ -23,6 +23,24 @@ test('the persona menu ignores a click that the app dispatches and closes on a c
     await expect(picker).toHaveCount(0);
 });
 
+test('Escape closes the persona menu whether the focus is in it or has been moved to the message box', async ({ page }) => {
+    await openQuietChatForSmoke(page);
+    const picker = page.locator('#sb-persona-picker');
+
+    await page.locator('#sb-persona-bubble').click();
+    await expect(picker).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(picker).toHaveCount(0);
+
+    // The app moves the focus to the message box a moment after a chat loads; the menu was opened before that.
+    await page.locator('#sb-persona-bubble').click();
+    await expect(picker).toBeVisible();
+    await page.evaluate(() => document.getElementById('send_textarea').focus());
+    await expect(page.locator('#send_textarea')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(picker).toHaveCount(0);
+});
+
 test('the persona menu stays shown, in place, while a persona event renders it again', async ({ page }) => {
     await openQuietChatForSmoke(page);
     const picker = page.locator('#sb-persona-picker');

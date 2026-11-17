@@ -4,6 +4,7 @@ import { protectMaintainerServer } from './helpers/maintainer-server.js';
 import { expectSharedDialogEntryStyles } from './helpers/dialog-entry-parity.js';
 import { visiblePageClose } from './helpers/dialog-pages.js';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { expectSortKeepsSearchDismissable } from './helpers/list-search-dismiss.js';
 /* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- The viewport matrix adds mobile-only sheet gesture assertions. */
 
 const manager = page => page.locator('#tag_view_list');
@@ -129,7 +130,10 @@ async function headerMenu(page) {
 
 /** The sort button ends the search bar, so the bar opens first. */
 async function sortMenu(page) {
-    if (!await manager(page).locator('.sb-dialog__search-input').isVisible()) await manager(page).locator('.sb-dialog__search-toggle').click();
+    // A press outside the bar closes an empty search, so a bar that is closing is waited out before it is opened again.
+    const field = manager(page).locator('.sb-dialog__search');
+    await expect(field).not.toHaveAttribute('data-state', 'closing');
+    if (await field.getAttribute('data-state') !== 'open') await manager(page).locator('.sb-dialog__search-toggle').click();
     await manager(page).locator('.sb-tag-manager__sort').click();
     return page.locator('#sb-action-menu:visible').last();
 }
@@ -443,6 +447,23 @@ for (const width of [1440, 390]) {
             expect(await page.evaluate(async () => (await import('/scripts/tags.js')).tag_map['qa-tag-character.png'])).toEqual(['qa-tag-beta']);
         });
 
+        test('the search bar closes on a press outside it, also after the sort menu was used', async ({ page }) => {
+            await prepare(page, width);
+            await openFromList(page);
+            const field = manager(page).locator('.sb-dialog__search');
+            await expectSortKeepsSearchDismissable({
+                page,
+                reveal: () => manager(page).locator('.sb-dialog__search-toggle').click(),
+                field,
+                input: field.locator('.sb-dialog__search-input'),
+                sort: field.locator('.sb-tag-manager__sort'),
+                chooseSort: () => page.getByRole('menuitemradio', { name: 'Alphabetical (A-Z)', exact: true }).click(),
+                outside: manager(page).locator('.sb-dialog__titles'),
+                focusable: manager(page).locator('.sb-dialog__menu'),
+            });
+            await expect(field).toBeHidden();
+        });
+
         test('header and row menus retain sort, Backup, Restore, Prune and delete/merge flows', async ({ page }) => {
             await prepare(page, width);
             await openFromList(page);
@@ -452,9 +473,15 @@ for (const width of [1440, 390]) {
             expect((await indicator.boundingBox()).x).toBeLessThan((await label.boundingBox()).x);
             const headingStyles = await menu.locator('.sb-action-menu-section-title').first().evaluate(node => {
                 const style = getComputedStyle(node);
-                return { background: style.backgroundColor, radius: style.borderRadius };
+                return {
+                    background: style.backgroundColor, radius: style.borderRadius, border: style.borderTopWidth, weight: style.fontWeight,
+                    // The Label role is smaller than the rows' labels, and the start inset lines the title up with them.
+                    smallerThanRows: parseFloat(style.fontSize) < parseFloat(getComputedStyle(node.closest('.sb-action-menu').querySelector('.sb-action-menu-label')).fontSize),
+                    startInset: parseFloat(style.paddingInlineStart),
+                };
             });
-            expect(headingStyles).toEqual({ background: 'rgba(0, 0, 0, 0)', radius: '0px' });
+            // The theme's boxed h3 (border, fill, 10px 14px padding, title size) does not apply to a menu's section title.
+            expect(headingStyles).toEqual({ background: 'rgba(0, 0, 0, 0)', radius: '0px', border: '0px', weight: '700', smallerThanRows: true, startInset: 32 });
             await expect(menu.getByRole('menuitemcheckbox', { name: 'Tags as Folders', exact: true })).toHaveCount(0);
             await expect(row(page, fixtureTag).locator('.sb-tag-manager__folder')).toHaveCount(0);
             await page.keyboard.press('Escape');

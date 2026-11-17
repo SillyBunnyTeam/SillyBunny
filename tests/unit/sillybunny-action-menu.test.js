@@ -610,3 +610,69 @@ describe('an open popover follows the visual viewport', () => {
         expect(rect).not.toHaveBeenCalled();
     });
 });
+
+describe('a menu that is open while the focus is elsewhere', () => {
+    const key = (target, name) => {
+        const event = new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true });
+        target.dispatchEvent(event);
+        return event;
+    };
+
+    test('Escape closes it and gives the focus back to its trigger', () => {
+        const button = trigger();
+        const outside = document.createElement('textarea');
+        document.body.append(outside);
+        openActionMenu({ trigger: button, sections: [{ items: [{ label: 'One', onSelect() {} }] }] });
+        expect(isActionMenuOpen(button)).toBe(true);
+
+        const event = key(outside, 'Escape');
+
+        expect(isActionMenuOpen()).toBe(false);
+        expect(document.activeElement).toBe(button);
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    test('Escape inside the menu is left to the menu, which closes itself once', () => {
+        const button = trigger();
+        openActionMenu({ trigger: button, keyboard: true, sections: [{ items: [{ label: 'One', onSelect() {} }] }] });
+
+        key(document.activeElement, 'Escape');
+
+        expect(isActionMenuOpen()).toBe(false);
+        expect(document.activeElement).toBe(button);
+    });
+
+    test('a picker that opened from inside it is a child layer: its focus, presses, scrolls and Escape leave the menu open, and it goes with the menu', () => {
+        const button = trigger();
+        const content = document.createElement('div');
+        const inner = document.createElement('button');
+        content.append(inner);
+        openPopover({ trigger: button, content });
+        const popover = document.querySelector('.sb-action-popover');
+        popover.id = 'sb-menu-layer-test';
+        const layer = document.createElement('div');
+        layer.dataset.sbParentLayer = 'sb-menu-layer-test';
+        const search = document.createElement('input');
+        layer.append(search);
+        document.body.append(layer);
+        const closed = jest.fn();
+        document.addEventListener('sb-menu-layer-closed', closed);
+
+        search.focus();
+        popover.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: search }));
+        search.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        search.dispatchEvent(new Event('wheel', { bubbles: true }));
+        key(search, 'Escape');
+        expect(isActionMenuOpen(button)).toBe(true);
+        expect(closed).not.toHaveBeenCalled();
+
+        const stranger = document.createElement('div');
+        document.body.append(stranger);
+        stranger.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+
+        expect(isActionMenuOpen()).toBe(false);
+        expect(closed).toHaveBeenCalledTimes(1);
+        expect(closed.mock.calls[0][0].detail).toBe('sb-menu-layer-test');
+        document.removeEventListener('sb-menu-layer-closed', closed);
+    });
+});

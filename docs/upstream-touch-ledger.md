@@ -2041,6 +2041,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-17, UI polish sweep (task 7.9). |
 | Owner | `TODO(copy)` |
 
+### `public/script.js` and the TTS extension - menu focus and menu icons
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` (the delayed chat autofocus in `getChat()` and `getTemporaryChat()` returns early while focus is in a menu surface: `[role="menu"]`, `[role="listbox"]`, `.sb-action-popover`, `.sb-action-sheet` or `#sb-persona-picker`); `public/scripts/extensions/tts/index.js` (`addAudioControl()` gives `#tts_media_control` the `fa-solid fa-circle-play` class from the start, and closes its `div` correctly). `public/index.html` changes cache keys only. |
+| Area | Focus after a chat loads while a menu or picker is open; the TTS row of the wand menu. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-action-menu.js` (menu layers, Escape from outside) and the persona picker's Escape handling; the `#tts_media_control` markup. |
+| Adapter shape | Since 2026-11-17 (UI polish sweep, task 9.4a): one marked guard in each of the two delayed-focus callbacks, and one marked class on the TTS control. |
+| Protecting tests | `tests/persona-picker-dismiss.e2e.js`; `tests/unit/sillybunny-action-menu.test.js`; `tests/composer-menu-sheets.e2e.js`; the `menu.composer.wand` surface of `tests/audit/surface-audit.e2e.js`. |
+| Validation | 2026-11-17: root and tests lint, the full unit run, budgets, contracts and design rules, `frontend-performance.e2e.js`, the coder's related and named-class specs (39 files, failures rerun alone), the merge's related run (`e2e-related --since d5fae16fa`), and the menu family audit (77 of 78, the one failure pre-existing). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-17, UI polish sweep (task 9.4a). |
+| Owner | `TODO(copy)` |
+
 ### `public/style.css`, `public/css/select2-overrides.css` and the Quick Reply and Regex extensions - type-ahead lists and list overlays
 | Field | Value |
 | --- | --- |

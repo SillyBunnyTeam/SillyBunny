@@ -244,13 +244,14 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
         const item = ([id, label]) => {
             const original = findAction(id);
             if (!(original instanceof HTMLElement)) return null;
+            // An action that does not apply (no profile is selected) is left out, not drawn dimmed.
             const disabled = original.classList.contains('disabled')
                 || original.hasAttribute('disabled')
                 || original.getAttribute('aria-disabled') === 'true';
+            if (disabled) return null;
             return {
                 label,
                 icon: original.querySelector('i')?.className,
-                disabled,
                 ...(id === 'toggle_profile_favorite' ? { checked: original.getAttribute('aria-pressed') === 'true' } : {}),
                 ...(id.startsWith('delete_') ? { danger: true } : {}),
                 onSelect: () => original.click(),

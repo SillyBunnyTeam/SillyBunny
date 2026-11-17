@@ -12455,6 +12455,8 @@ export async function getChat({ allowMissingPersisted = false, switchMenu = true
             if ($(document.activeElement).is('input:visible, textarea:visible')) {
                 return;
             }
+            // SillyBunny: a menu keeps the focus it was opened with; moved to the message box, it would stop answering Escape and the arrow keys.
+            if (document.activeElement?.closest('[role="menu"], [role="listbox"], .sb-action-popover, .sb-action-sheet, #sb-persona-picker')) return;
             $('#send_textarea').trigger('click').trigger('focus');
         });
         return true;
@@ -12501,6 +12503,8 @@ async function getTemporaryChat({ switchMenu = true } = {}) {
             if ($(document.activeElement).is('input:visible, textarea:visible')) {
                 return;
             }
+            // SillyBunny: a menu keeps the focus it was opened with (see getChat()).
+            if (document.activeElement?.closest('[role="menu"], [role="listbox"], .sb-action-popover, .sb-action-sheet, #sb-persona-picker')) return;
             $('#send_textarea').trigger('click').trigger('focus');
         });
         return true;

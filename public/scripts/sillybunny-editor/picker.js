@@ -529,6 +529,7 @@ function finishClose() {
     activePicker = null;
     clearTimeout(state.searchTimer);
     state.removeContentListeners?.();
+    state.removeParentListener?.();
     window.removeEventListener('resize', handleResize);
     document.removeEventListener('pointerdown', handleOutsidePointerDown, true);
     state.input.setAttribute('aria-expanded', 'false');
@@ -597,6 +598,9 @@ export function openPicker({
     }
     closePicker({ animate: false, restoreFocus: false });
 
+    // A picker opened from inside a menu popover or sheet (a select row in a form popover) is a popover over it on any width,
+    // so the menu surface stays open under the pick, as a dialog does under a nested picker.
+    const parentLayer = trigger.closest('.sb-action-popover, .sb-action-sheet');
     const state = {
         trigger,
         owner: owner instanceof HTMLElement ? owner : trigger,
@@ -623,7 +627,8 @@ export function openPicker({
         activeIndex: 0,
         searchTimer: 0,
         surface: null,
-        kind: renderAsPopover || !isMobileLayout() ? 'popover' : 'sheet',
+        kind: renderAsPopover || parentLayer || !isMobileLayout() ? 'popover' : 'sheet',
+        removeParentListener: null,
     };
     setTriggerExpanded(trigger, true);
 
@@ -681,6 +686,18 @@ export function openPicker({
     }
     state.surface.id ||= createId('sb-picker-dialog');
     trigger.setAttribute('aria-controls', state.surface.id);
+    if (parentLayer) {
+        parentLayer.id ||= createId('sb-menu-layer');
+        const parentId = parentLayer.id;
+        state.surface.dataset.sbParentLayer = parentId;
+        const onParentClosed = event => {
+            if (/** @type {CustomEvent} */ (event).detail === parentId && activePicker === state) {
+                closePicker({ animate: false, restoreFocus: false });
+            }
+        };
+        document.addEventListener('sb-menu-layer-closed', onParentClosed);
+        state.removeParentListener = () => document.removeEventListener('sb-menu-layer-closed', onParentClosed);
+    }
     return {
         close: () => {
             if (activePicker === state) {

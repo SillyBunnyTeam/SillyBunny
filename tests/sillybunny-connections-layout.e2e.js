@@ -745,7 +745,7 @@ test.describe('profile menu', () => {
         await testInfo.attach('q56 Connections dropdown sweep', { body: JSON.stringify(trace), contentType: 'application/json' });
     });
 
-    test('proxies all nine buttons in four sections and mirrors their state', async ({ page }) => {
+    test('proxies the nine buttons in sections, leaves out the ones that do not apply and mirrors the state of the rest', async ({ page }) => {
         await mountConnections(page);
         await page.evaluate(ids => {
             window.profileClicks = [];
@@ -759,15 +759,13 @@ test.describe('profile menu', () => {
         await openMenu();
         const menu = page.locator('.sb-action-popover .sb-action-menu');
         const items = menu.locator('[role^="menuitem"]');
-        await expect(items.locator('.sb-action-menu-label')).toHaveText(PROFILE_ACTIONS.map(([, label]) => label));
-        await expect(menu.locator('[role="separator"]')).toHaveCount(3);
-        for (const label of ['Update', 'Reload', 'Edit…']) {
-            await expect(items.filter({ hasText: label })).toHaveAttribute('aria-disabled', 'true');
-        }
-        await expect(items.filter({ hasText: 'View Details' })).not.toHaveAttribute('aria-disabled', 'true');
+        const notApplicable = ['update_connection_profile', 'reload_connection_profile', 'edit_connection_profile'];
+        const enabled = PROFILE_ACTIONS.filter(([id]) => !notApplicable.includes(id));
+        await expect(items.locator('.sb-action-menu-label')).toHaveText(enabled.map(([, label]) => label));
+        await expect(items.and(page.locator('[aria-disabled="true"]'))).toHaveCount(0);
+        await expect(menu.locator('[role="separator"]')).toHaveCount(2);
         await expect(items.filter({ hasText: 'Favorite' })).toHaveAttribute('aria-checked', 'true');
 
-        const enabled = PROFILE_ACTIONS.filter(([id]) => !['update_connection_profile', 'reload_connection_profile', 'edit_connection_profile'].includes(id));
         await items.filter({ hasText: new RegExp(`^${enabled[0][1]}$`) }).click();
         for (const [, label] of enabled.slice(1)) {
             await openMenu();

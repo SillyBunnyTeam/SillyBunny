@@ -98,8 +98,8 @@ import { setLastConversationPreview } from './typing.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117zb';
-const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261117zh';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117zn';
+const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261117zn';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
 /**
@@ -429,13 +429,6 @@ function getActiveThreadIdentity() {
     return { avatar, groupId: avatar ? getConversationGroupIdForAvatar(avatar) : '' };
 }
 
-function getStatusDotIcon(status) {
-    const dot = document.createElement('span');
-    dot.className = 'sb-conversation-status-dot';
-    dot.dataset.status = status;
-    return dot;
-}
-
 function runFromMenu(action, data = {}, trigger = null) {
     return () => void runConversationAction(action, data, trigger);
 }
@@ -458,7 +451,7 @@ function openConversationBranchMenu(trigger) {
             {
                 items: branches.map(branch => ({
                     label: branch.name || 'Conversation',
-                    icon: branch.id === activeBranchId ? 'fa-solid fa-check' : 'fa-solid fa-code-branch',
+                    checked: branch.id === activeBranchId,
                     detail: branch.unread > 0 ? String(branch.unread) : '',
                     onSelect: runFromMenu('select-branch', { ...identity, branchId: branch.id }),
                 })),
@@ -535,8 +528,8 @@ function openConversationPersonaMenu(trigger) {
             {
                 items: USER_STATUS_MENU_ITEMS.map(({ status, label }) => ({
                     label,
-                    icon: getStatusDotIcon(status),
-                    detail: status === current ? '✓' : '',
+                    checked: status === current,
+                    data: { sbStatus: status },
                     onSelect: runFromMenu('set-user-status', { status }),
                 })),
             },

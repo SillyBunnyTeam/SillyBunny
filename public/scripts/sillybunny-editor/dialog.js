@@ -594,6 +594,7 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
             field, input: searchInput, trigger: searchToggle, scope: page, scroller: body, status,
             typeToSearchSelector: search.typeToSearchSelector,
             escapeClearsFirst: Boolean(search.escapeClearsFirst),
+            closeEmptyOnBlur: Boolean(search.closeEmptyOnBlur),
             debounce: search.debounce ?? 0, onChange: query => search.onChange?.(query),
         });
         searchToggle.addEventListener('click', () => searchControl.toggle());
@@ -646,13 +647,16 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
  * A window with other controls named "Search" gives it a more specific name, for example "Search Help".
  * `search.label` names the field in the same way.
  * `search.controls` are the list's sort or filter buttons: they sit at the end of the search bar, as in the list editors.
+ * `search.closeEmptyOnBlur` closes an empty search when focus or a press leaves the bar, as the list editors' searches do
+ * (see `createListSearch`); a menu opened from the bar's controls counts as inside while it is open. Off by default: a window
+ * whose search is its main control keeps it open.
  *
  * @param {object} o
  * @param {'dialog'|'window'} [o.tier='dialog']
  * @param {string} o.title
  * @param {string} [o.subtitle]
  * @param {HTMLElement|((body: HTMLElement) => void)} [o.content]
- * @param {{ placeholder?: string, label?: string, toggleLabel?: string, debounce?: number, input?: HTMLInputElement, ariaAutocomplete?: string, ariaControls?: string, enterKeyHint?: string, escapeClearsFirst?: boolean, onEscape?: (event: KeyboardEvent) => boolean, controls?: HTMLElement[], onChange: (query: string) => void }|null} [o.search]
+ * @param {{ placeholder?: string, label?: string, toggleLabel?: string, debounce?: number, input?: HTMLInputElement, ariaAutocomplete?: string, ariaControls?: string, enterKeyHint?: string, escapeClearsFirst?: boolean, closeEmptyOnBlur?: boolean, onEscape?: (event: KeyboardEvent) => boolean, controls?: HTMLElement[], onChange: (query: string) => void }|null} [o.search]
  * @param {((trigger: HTMLElement) => object[])|null} [o.menu] Sections for openActionMenu.
  * @param {string} [o.menuLabel]
  * @param {null|{ cancel?: { label?: string }, affirmative?: { id?: string, label: string, appearance?: 'suggested'|'destructive', enabled?: boolean }, extra?: { id: string, label: string }[] }} [o.responses]

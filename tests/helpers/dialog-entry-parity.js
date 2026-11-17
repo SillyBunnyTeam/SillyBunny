@@ -36,7 +36,10 @@ export async function expectSharedDialogEntryStyles(entry) {
         referenceSurface.append(referenceField);
         referenceHost.append(referenceSurface);
         document.body.append(referenceHost);
-        node.blur();
+        // A search that closes when its focus leaves (closeEmptyOnBlur) stays open if the focus moves to a control inside its own field.
+        const sibling = node.closest('.sb-dialog__search')?.querySelector('button');
+        if (sibling) sibling.focus();
+        else node.blur();
         reference.blur();
         const actualRest = read(node);
         const referenceRest = read(reference);

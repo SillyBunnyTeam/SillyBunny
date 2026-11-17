@@ -1028,7 +1028,7 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
 .sb-picker__option {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 6px;
     min-block-size: 40px;
     box-sizing: border-box;
     padding: 6px 12px;
@@ -1135,9 +1135,11 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     background: var(--sb-flat-hover-bg);
 }
 
+/* Keyboard selection is a fill; a transparent outline is repainted by forced colours, which remove fills. */
 .sb-picker__option:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    background: var(--sb-flat-selected-bg);
 }
 
 .sb-picker__option.is-disabled {

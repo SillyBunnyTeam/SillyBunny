@@ -301,16 +301,35 @@ test('the Tag filter is one choice row over the tags in use, and the form keeps 
     await page.getByRole('option', { name: 'slow' }).click();
     await expect(filenames(page)).toHaveText(['slow-chat']);
 
-    // A pick closes the popover, as the Orphan Reason row does, so the form opens again for the way back.
-    await openFilters(page);
-    await expect(page.locator('.sbca-filters').getByRole('button', { name: /Tag/ })).toContainText('slow');
-    await page.locator('.sbca-filters').getByRole('button', { name: /Tag/ }).click();
+    // The picker is a layer over the Filters popover, so a pick leaves the form open for the next change.
+    await expect(form).toBeVisible();
+    await expect(form.getByRole('button', { name: /Tag/ })).toContainText('slow');
+    await form.getByRole('button', { name: /Tag/ }).click();
     await page.getByRole('option', { name: 'None' }).click();
     await expect(filenames(page)).toHaveCount(2);
+    await expect(form).toBeVisible();
 
-    await openFilters(page);
     const heights = await page.locator('.sbca-filters .ds-row').evaluateAll(nodes => nodes.filter(node => node.getClientRects().length).map(node => Math.round(node.getBoundingClientRect().height)));
     expect(Math.max(...heights) - Math.min(...heights), `row heights ${heights}`).toBeLessThanOrEqual(1);
+});
+
+test('on a phone the Filters sheet stays open under the Tag picker and after the pick', async ({ page }) => {
+    await bootArchive(page, PHONE, {
+        fixture: small(['slow-chat', 'plain-chat'], {
+            organization: emptyOrganization({ chats: { [chatKey('Alice', 'slow-chat')]: { tags: ['slow', 'Burn'] } } }),
+        }),
+    });
+    await openArchive(page);
+    await showList(page);
+    await openFilters(page);
+    const form = page.locator('.sbca-filters');
+    await form.getByRole('button', { name: /Tag/ }).click();
+    await expect(page.getByRole('option', { name: 'slow' })).toBeVisible();
+    await expect(form).toBeVisible();
+    await page.getByRole('option', { name: 'slow' }).click();
+    await expect(filenames(page)).toHaveText(['slow-chat']);
+    await expect(form).toBeVisible();
+    await expect(form.getByRole('button', { name: /Tag/ })).toContainText('slow');
 });
 
 test('while the first load has no rows, one loading page holds the message and the action, and the banner stays out', async ({ page }) => {

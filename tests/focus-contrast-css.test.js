@@ -77,12 +77,32 @@ describe('focus outlines', () => {
 
     test.each([
         ['sillybunny-message-actions.css', '#chat .mes :is(.mes_buttons .mes_button, .extraMesButtons > div):focus-visible', 'opacity: 1; ' + ring],
-        ['sillybunny-tabs.css', '.sb-mode-menu-item:focus-visible', ring],
-        ['sillybunny-tabs.css', '.sb-persona-option:focus-visible', ring],
         ['sillybunny-tabs.css', '.sb-subpage-back:focus-visible', ring],
         ['sillybunny-tabs.css', '#sb-settings-page .sb-sampling-panel .sb-sampling-help-toggle:focus-visible', ring],
     ])('%s: %s draws the inset ring and no outline', (name, selector, expected) => {
         expect(declarationsOf(sheet(name), selector)).toBe(expected);
+    });
+
+    // Keyboard selection in a menu is a fill. Forced colours remove fills, so each row keeps a transparent outline that they repaint.
+    test.each([
+        ['sillybunny-message-actions.css', '.sb-action-menu-item:focus-visible'],
+        ['sillybunny-editor-shell.css', '.sb-picker__option:focus-visible'],
+        ['sillybunny-tabs.css', '.sb-mode-menu-item:focus-visible'],
+        ['sillybunny-tabs.css', '.sb-persona-option:focus-visible'],
+    ])('%s: %s selects with a fill, not the inset ring', (name, selector) => {
+        const declarations = declarationsOf(sheet(name), selector);
+        expect(declarations).toContain('background: var(--sb-flat-selected-bg);');
+        expect(declarations).toContain('outline: 2px solid transparent;');
+        expect(declarations).not.toContain('--sb-focus-ring-inset');
+    });
+
+    test('the composer menus (#options, #extensionsMenu, the Data Bank Add menu) select with the same fill', () => {
+        const start = themeCss.indexOf('.actionButtonsModal > .actionButton):focus-visible {');
+        expect(start).toBeGreaterThan(0);
+        const declarations = blockAt(themeCss, start).replace(/\s+/g, ' ').trim();
+        expect(declarations).toContain('background: var(--sb-flat-selected-bg) !important;');
+        expect(declarations).toContain('outline: 2px solid transparent !important;');
+        expect(declarations).not.toContain('--sb-focus-ring-inset');
     });
 
     test('the activatable rows of the editor shell, which the Extensions list rows are, draw the inset ring and no outline', () => {

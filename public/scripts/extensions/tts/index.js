@@ -676,9 +676,10 @@ function onAudioControlClicked() {
 }
 
 function addAudioControl() {
+    // SillyBunny: the control starts with the play icon, so the wand menu row never shows an empty icon slot before the first state update.
     $('#tts_wand_container').append(applyLocale(`
         <div id="ttsExtensionMenuItem" class="list-group-item flex-container flexGap5">
-            <div id="tts_media_control" class="extensionsMenuExtensionButton "/></div>
+            <div id="tts_media_control" class="fa-solid fa-circle-play extensionsMenuExtensionButton"></div>
             <span data-i18n="TTS Playback">TTS Playback</span>
         </div>`));
     $('#tts_wand_container').append(applyLocale(`

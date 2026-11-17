@@ -10,7 +10,7 @@ import { openActionMenu, openPopover } from './sillybunny-action-menu.js';
 import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261117zh', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261117zn', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-tag-manager.css?v=20261117h', id: 'deferred-tag-manager-css' },
 ];
@@ -495,7 +495,7 @@ export function createTagManager(adapter) {
         const dot = element('span', 'sb-tag-manager__dot');
         dot.dataset.sbTagId = tag.id;
         dot.setAttribute('aria-hidden', 'true');
-        const more = rowButton(t`Manage tags`, 'ellipsis-vertical', trigger => openMenu(trigger, rowSections(currentTag(), row)), 'sb-tag-manager__row-menu');
+        const more = rowButton(t`Manage tags`, 'ellipsis-vertical', trigger => openMenu(trigger, rowSections(currentTag(), row), currentTag().name), 'sb-tag-manager__row-menu');
         more.setAttribute('aria-haspopup', 'menu');
         const entity = createEntityRow({
             key: entityKey('tag', tag.id), label: tag.name, title: name, avatar: dot,
@@ -705,7 +705,7 @@ export function createTagManager(adapter) {
                 title: t`Tag Management`,
                 className: 'sb-tag-manager',
                 content,
-                search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.tag_view_item', debounce: 300, controls: [sortButton], onChange: () => refresh() },
+                search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, closeEmptyOnBlur: true, typeToSearchSelector: '.tag_view_item', debounce: 300, controls: [sortButton], onChange: () => refresh() },
                 // A pending invalid rename blocks the menus as it blocks closing.
                 menu: trigger => (canClose() ? headerSections(trigger) : []),
                 menuLabel: t`Tag Management`,

@@ -1007,13 +1007,26 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     border-color: var(--sb-conv-dot-ring, var(--sb-layer-headerbar));
 }
 
-/* Action-menu rows may carry a status dot as their icon. */
-.sb-action-menu-item > .sb-conversation-status-dot:first-child {
-    inline-size: 11px;
-    block-size: 11px;
-    margin-inline: calc((1.25em - 11px) / 2);
-    border-color: transparent;
-    opacity: 1;
+/* A status row shows its radio state at the start and the status colour as a dot at the end. */
+.sb-action-menu-item[data-sb-status]::after {
+    content: '';
+    flex: none;
+    inline-size: 9px;
+    block-size: 9px;
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-color-success);
+}
+
+.sb-action-menu-item[data-sb-status='idle']::after {
+    background: var(--sb-color-warning);
+}
+
+.sb-action-menu-item[data-sb-status='dnd']::after {
+    background: var(--sb-color-danger);
+}
+
+.sb-action-menu-item[data-sb-status='offline']::after {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 38%, transparent);
 }
 
 @keyframes sb-conversation-popover-in {

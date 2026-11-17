@@ -70,8 +70,8 @@
         },
         "public/css/sillybunny-message-actions.css": {
             "radius-literal": 2,
-            "important": 12,
-            "spacing-off-scale": 15
+            "important": 9,
+            "spacing-off-scale": 13
         },
         "public/css/sillybunny-mobile-navigation.css": {
             "important": 33,
@@ -128,7 +128,7 @@
         "public/css/sillybunny-theme.css": {
             "radius-literal": 1,
             "shadow-literal": 25,
-            "important": 189,
+            "important": 188,
             "hover-ungated": 5,
             "breakpoint-off-set": 4,
             "focus-outline": 1,

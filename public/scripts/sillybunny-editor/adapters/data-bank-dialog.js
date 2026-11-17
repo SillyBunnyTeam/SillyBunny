@@ -276,16 +276,17 @@ export function decorateDataBankRow(row, { view, actions }) {
     actionHost.append(overflow);
     row.append(actionHost);
 
+    // The destructive action comes last, in a section of its own.
     const actionItems = actions.map(action => ({
         label: action.label,
         icon: action.icon,
-        danger: action.danger,
+        danger: action.danger ?? action.button.classList.contains('deleteAttachmentButton'),
         onSelect: () => action.button.click(),
     }));
     overflow.addEventListener('click', () => openActionMenu({
         trigger: overflow,
-        title: t`Menu`,
-        sections: [{ items: actionItems }],
+        title: row.querySelector('.attachmentListItemName')?.textContent?.trim() || t`Menu`,
+        sections: [{ items: actionItems.filter(item => !item.danger) }, { items: actionItems.filter(item => item.danger) }],
         bounds: row.closest('.sb-dialog'),
     }));
 

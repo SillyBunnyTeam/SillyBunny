@@ -829,3 +829,61 @@ describe('picker group headings', () => {
         expect(optionTexts(list)).toEqual(['Claude Sonnet']);
     });
 });
+
+describe('picker opened from inside a menu layer', () => {
+    function menuLayer(className = 'sb-action-popover') {
+        const layer = document.createElement('div');
+        layer.className = className;
+        const trigger = document.createElement('button');
+        layer.append(trigger);
+        document.body.append(layer);
+        return { layer, trigger };
+    }
+
+    test('it is a popover that records its parent layer, even where the width would give a sheet', () => {
+        window.matchMedia.mockReturnValue({ matches: true });
+        const { layer, trigger } = menuLayer('sb-action-sheet');
+
+        const { surface } = makePicker({ trigger });
+
+        expect(surface.classList.contains('sb-picker')).toBe(true);
+        expect(surface.classList.contains('sb-picker-sheet')).toBe(false);
+        expect(mockCreateSheetController).not.toHaveBeenCalled();
+        expect(layer.id).not.toBe('');
+        expect(surface.dataset.sbParentLayer).toBe(layer.id);
+    });
+
+    test('a pick closes the picker and leaves the layer under it alone', () => {
+        const { layer, trigger } = menuLayer();
+        const closed = jest.fn();
+        document.addEventListener('sb-menu-layer-closed', closed);
+        cleanups.push(() => document.removeEventListener('sb-menu-layer-closed', closed));
+        const { picker, input, onSelect } = makePicker({ trigger });
+
+        keydown(input, 'Enter');
+
+        expect(onSelect).toHaveBeenCalledWith('a');
+        expect(picker.isOpen).toBe(false);
+        expect(layer.isConnected).toBe(true);
+        expect(closed).not.toHaveBeenCalled();
+    });
+
+    test('it closes without moving the focus when its parent layer closes', () => {
+        const { layer, trigger } = menuLayer();
+        const { picker, onClose } = makePicker({ trigger });
+
+        document.dispatchEvent(new CustomEvent('sb-menu-layer-closed', { detail: 'another-layer' }));
+        expect(picker.isOpen).toBe(true);
+
+        document.dispatchEvent(new CustomEvent('sb-menu-layer-closed', { detail: layer.id }));
+
+        expect(picker.isOpen).toBe(false);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    test('a picker from outside any layer keeps its width-based kind and no parent record', () => {
+        const { surface } = makePicker();
+
+        expect(surface.dataset.sbParentLayer).toBeUndefined();
+    });
+});

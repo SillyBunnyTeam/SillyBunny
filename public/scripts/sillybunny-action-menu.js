@@ -494,6 +494,11 @@ function finishClose() {
     visualViewportWatch?.stop();
     visualViewportWatch = null;
     setTriggerExpanded(state.trigger, false);
+    const root = state.kind === 'popover' ? state.popover : state.frame.element;
+    if (root.id) {
+        // A picker that was opened from inside this surface goes with it.
+        document.dispatchEvent(new CustomEvent('sb-menu-layer-closed', { detail: root.id }));
+    }
     if (state.frame) {
         releaseSheetIds(state);
     }
@@ -697,9 +702,22 @@ function handlePopoverKeydown(event) {
     }
 }
 
+/**
+ * True for a layer that a picker opened from inside the open menu surface (it carries that surface's id): the surface stays open
+ * under it, and a press, a scroll or the focus in the layer is not one outside the surface.
+ */
+function isChildLayerOfOpen(node) {
+    if (!open || !(node instanceof Element)) {
+        return false;
+    }
+    const root = open.kind === 'popover' ? open.popover : open.frame.element;
+    const layer = node.closest('[data-sb-parent-layer]');
+    return Boolean(root.id) && layer instanceof HTMLElement && layer.dataset.sbParentLayer === root.id;
+}
+
 function handlePopoverFocusOut(event) {
     const next = event.relatedTarget instanceof Node ? event.relatedTarget : null;
-    if (open?.kind === 'popover' && next && !open.popover.contains(next) && next !== open.trigger) {
+    if (open?.kind === 'popover' && next && !open.popover.contains(next) && next !== open.trigger && !isChildLayerOfOpen(next)) {
         closeActionMenu();
     }
 }
@@ -709,7 +727,7 @@ function handlePointerDownCapture(event) {
         return;
     }
     const target = event.target instanceof Node ? event.target : null;
-    if (target && (open.popover.contains(target) || open.trigger?.contains(target))) {
+    if (target && (open.popover.contains(target) || open.trigger?.contains(target) || isChildLayerOfOpen(target))) {
         return;
     }
     closeActionMenu();
@@ -723,10 +741,31 @@ function handleScrollIntent(event) {
         return;
     }
     const target = event.target instanceof Node ? event.target : null;
-    if (target && open.popover.contains(target)) {
+    if (target && (open.popover.contains(target) || isChildLayerOfOpen(target))) {
         return;
     }
     closeActionMenu();
+}
+
+/**
+ * The menu's own key handlers sit on the menu, so a menu that is open while the focus is elsewhere (something moved it) would
+ * ignore Escape. Escape then closes it and gives the focus back to its trigger.
+ */
+function handleEscapeFromOutside(event) {
+    if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented || !open) {
+        return;
+    }
+    const root = open.kind === 'popover' ? open.popover : open.frame.element;
+    if (event.target instanceof Node && (root.contains(event.target) || isChildLayerOfOpen(event.target))) {
+        return;
+    }
+    const trigger = open.trigger;
+    event.preventDefault();
+    event.stopPropagation();
+    closeActionMenu({ restoreFocus: true });
+    if (trigger?.isConnected) {
+        trigger.focus({ preventScroll: true });
+    }
 }
 
 function handleLayoutChange() {
@@ -744,6 +783,7 @@ function initialize() {
     window.addEventListener('wheel', handleScrollIntent, { capture: true, passive: true });
     window.addEventListener('touchmove', handleScrollIntent, { capture: true, passive: true });
     window.addEventListener('keydown', handleScrollIntent, { capture: true, passive: true });
+    window.addEventListener('keydown', handleEscapeFromOutside, true);
     window.addEventListener('resize', handleLayoutChange, { passive: true });
     // Layout-driven scrolls (streaming, scroll anchoring) keep the popover pinned to its trigger.
     document.addEventListener('scroll', event => {

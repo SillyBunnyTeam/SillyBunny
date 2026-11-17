@@ -327,13 +327,21 @@ body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right, .swipes-counter)
     line-height: 1;
 }
 
-.sb-action-menu-indicator--radio::before {
+.sb-action-menu-indicator--radio::before,
+.sb-action-menu-indicator--check::before {
     inline-size: 0.78em;
     block-size: 0.78em;
     box-sizing: border-box;
     border: 1px solid color-mix(in srgb, currentColor 52%, transparent);
     border-radius: 50%;
     content: '';
+}
+
+/* A check item draws its box when it is off too, so its slot is never empty. */
+.sb-action-menu-indicator--check::before {
+    inline-size: 0.86em;
+    block-size: 0.86em;
+    border-radius: calc(var(--sb-radius-inner) / 2);
 }
 
 .sb-action-menu-indicator-dot {
@@ -345,7 +353,9 @@ body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right, .swipes-counter)
 }
 
 .sb-action-menu-indicator-check {
-    font-size: 0.92em;
+    position: absolute;
+    color: var(--sb-accent, currentColor);
+    font-size: 0.62em;
     font-weight: 700;
 }
 
@@ -354,7 +364,8 @@ body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right, .swipes-counter)
         forced-color-adjust: none;
     }
 
-    .sb-action-menu-indicator--radio::before {
+    .sb-action-menu-indicator--radio::before,
+    .sb-action-menu-indicator--check::before {
         border-color: ButtonText;
     }
 
@@ -394,7 +405,13 @@ body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right, .swipes-counter)
     background: var(--sb-flat-active-bg);
 }
 
-.sb-action-menu-item:focus-visible,
+/* Keyboard selection in a menu is a fill; a transparent outline is repainted by forced colours, which remove fills. */
+.sb-action-menu-item:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    background: var(--sb-flat-selected-bg);
+}
+
 .sb-action-menu-reaction:focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
@@ -419,6 +436,10 @@ body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right, .swipes-counter)
     }
 }
 
+.sb-action-menu-item.is-danger:focus-visible {
+    background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
+}
+
 .sb-action-menu-item.is-danger:active {
     background: color-mix(in srgb, var(--sb-color-danger) 20%, transparent);
 }
@@ -434,13 +455,10 @@ body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right, .swipes-counter)
     display: block;
     margin: 0;
     padding: 4px 32px;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
     color: var(--sb-muted-fg);
-    font-size: calc(var(--mainFontSize) * 0.75);
+    font-size: var(--sb-type-caption);
     font-weight: 700;
-    box-shadow: none;
+    line-height: 1.35;
 }
 
 .sb-action-menu-reactions {
@@ -505,11 +523,15 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     box-sizing: border-box;
     overflow-y: auto;
     overscroll-behavior: contain;
-    border: 1px solid var(--sb-shell-border);
     border-radius: var(--sb-radius-overlay);
     background: var(--sb-layer-popover);
     color: var(--SmartThemeBodyColor);
     box-shadow: var(--sb-shadow-popover);
+}
+
+/* A popover that is not a menu list (a field, a form) takes 8px. */
+.sb-action-popover.sb-custom-popover {
+    padding: 8px;
 }
 
 .sb-action-popover:focus {
@@ -524,7 +546,6 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
         "error error" auto / minmax(0, 1fr) auto;
     gap: 6px;
     min-inline-size: min(320px, calc(100vw - 48px));
-    padding: 4px;
 }
 
 .sb-action-popover:has(.sb-manager-name-popover) { max-inline-size: min(380px, calc(100vw - 16px)); }
@@ -571,14 +592,12 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     flex-direction: column;
     gap: 6px;
     max-block-size: min(80dvh, 40rem);
-    padding: 8px 8px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 6px 6px calc(12px + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
-    border: 1px solid var(--sb-shell-border, var(--SmartThemeBorderColor));
-    border-width: 1px 0 0;
     border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
     background: var(--sb-layer-drawer);
     color: var(--SmartThemeBodyColor);
-    box-shadow: var(--sb-shadow-dialog);
+    box-shadow: var(--sb-shadow-dialog), var(--sb-shadow-dialog-highlight);
 }
 
 .sb-action-sheet-header {

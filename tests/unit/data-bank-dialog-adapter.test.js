@@ -109,16 +109,47 @@ describe('Data Bank dialog adapter', () => {
         const { row, view } = makeRow();
         const actions = ['Enable', 'Move', 'Edit', 'Download', 'Delete'].map(label => {
             const button = document.createElement('button');
+            if (label === 'Delete') button.className = 'deleteAttachmentButton';
             const click = jest.fn();
             button.addEventListener('click', click);
             return { label, button, click };
         });
         decorateDataBankRow(row, { view, actions });
         row.querySelector('.attachmentRowMenu').click();
-        const items = menuOptions.sections[0].items;
-        items.forEach(item => item.onSelect());
+        menuOptions.sections.flatMap(section => section.items).forEach(item => item.onSelect());
         expect(actions.map(action => action.click)).toEqual(actions.map(() => expect.any(Function)));
         actions.forEach(action => expect(action.click).toHaveBeenCalledTimes(1));
+    });
+
+    test('the menu is titled with the attachment name, and "Menu" when the row has none', () => {
+        const named = makeRow();
+        const name = document.createElement('div');
+        name.className = 'attachmentListItemName';
+        name.textContent = ' notes.txt ';
+        named.row.append(name);
+        decorateDataBankRow(named.row, { view: named.view, actions: [] });
+        named.row.querySelector('.attachmentRowMenu').click();
+        expect(menuOptions.title).toBe('notes.txt');
+
+        const bare = makeRow();
+        decorateDataBankRow(bare.row, { view: bare.view, actions: [] });
+        bare.row.querySelector('.attachmentRowMenu').click();
+        expect(menuOptions.title).toBe('Menu');
+    });
+
+    test('Delete is the red last item, in a section of its own', () => {
+        const { row, view } = makeRow();
+        const actions = ['Enable', 'Edit', 'Delete'].map(label => {
+            const button = document.createElement('button');
+            if (label === 'Delete') button.className = 'deleteAttachmentButton';
+            return { label, button };
+        });
+        decorateDataBankRow(row, { view, actions });
+        row.querySelector('.attachmentRowMenu').click();
+
+        expect(menuOptions.sections.map(section => section.items.map(item => item.label))).toEqual([['Enable', 'Edit'], ['Delete']]);
+        expect(menuOptions.sections[1].items[0].danger).toBe(true);
+        expect(menuOptions.sections[0].items.some(item => item.danger)).toBe(false);
     });
 
     test.each(['Enter', ' '])('activates View from the keyboard with %s', key => {

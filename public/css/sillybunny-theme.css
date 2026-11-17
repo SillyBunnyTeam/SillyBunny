@@ -278,7 +278,9 @@
     --sb-layer-toast: var(--sb-layer-toast-source);
     --sb-layer-toast-fg: var(--SmartThemeBodyColor);
     --sb-headerbar-shade: 1px solid var(--sb-shell-border);
+    --sb-popover-ring: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
     --sb-shadow-popover:
+        0 0 0 1px var(--sb-popover-ring),
         0 1px 5px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 50%, transparent),
         0 2px 14px 3px color-mix(in srgb, var(--SmartThemeShadowColor) 30%, transparent);
     --sb-shadow-dialog:
@@ -573,6 +575,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
         --sb-selection-check-outline-hover: color-mix(in srgb, var(--SmartThemeBodyColor) 60%, transparent);
         --sb-toggle-raised-shadow: inset 0 0 0 1px var(--sb-shell-border), 0 1px 3px 1px rgb(0 0 6 / 7%), 0 2px 6px 2px rgb(0 0 6 / 3%);
         --sb-shadow-dialog-highlight: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+        --sb-popover-ring: var(--SmartThemeBorderColor);
         --sb-shadow-card:
             0 0 0 1px var(--SmartThemeBorderColor),
             0 1px 3px 1px color-mix(in srgb, var(--SmartThemeShadowColor) 20%, transparent),
@@ -702,7 +705,7 @@ h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3),
 }
 
 .standoutHeader,
-h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3) {
+h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3):not(:where(.sb-action-menu h3)) {
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 74%, transparent);
     border-radius: var(--sb-radius-md);
     padding: 10px 14px;
@@ -4979,9 +4982,10 @@ body.reduced-motion *::after {
 
 /* Options Menu (#options) and Extensions Menu (#extensionsMenu) - popover surfaces */
 #options,
-#extensionsMenu {
+#extensionsMenu,
+.actionButtonsModal.options-content {
     background: var(--sb-layer-popover) !important;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent) !important;
+    border: 0 !important;
     border-radius: var(--sb-radius-overlay) !important;
     padding: 6px;
     box-shadow: var(--sb-shadow-popover);
@@ -4995,7 +4999,7 @@ body.reduced-motion *::after {
 }
 
 /* `display` has no `!important`: hide() and `.displayNone` must still hide a row that does not apply. */
-:is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle)) {
+:is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle), .actionButtonsModal > .actionButton) {
     height: var(--sb-menu-row-height, 34px);
     padding: 0 12px;
     border-radius: var(--sb-radius-control) !important;
@@ -5014,24 +5018,26 @@ body.reduced-motion *::after {
 #options a i,
 #options a .fa-fw,
 #extensionsMenu i,
-#extensionsMenu .fa-fw {
+#extensionsMenu .fa-fw,
+.actionButtonsModal i {
     opacity: 0.7;
 }
 
 @media (hover: hover) {
-    :is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle)):hover {
+    :is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle), .actionButtonsModal > .actionButton):hover {
         background: var(--sb-flat-hover-bg) !important;
     }
 }
 
-:is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle)):active {
+:is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle), .actionButtonsModal > .actionButton):active {
     background: var(--sb-flat-active-bg) !important;
 }
 
-/* A transparent outline is repainted by forced colours, so these rows keep a focus indicator there. */
-:is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle)):focus-visible {
+/* Keyboard selection is a fill. A transparent outline is repainted by forced colours, so these rows keep a focus indicator there. */
+:is(#options a, #extensionsMenu > .extension_container > div, #extensionsMenu > :not(.extension_container, .sb-dialog__handle), .actionButtonsModal > .actionButton):focus-visible {
     outline: 2px solid transparent !important;
-    box-shadow: var(--sb-focus-ring-inset) !important;
+    outline-offset: -2px;
+    background: var(--sb-flat-selected-bg) !important;
 }
 
 #options a#option_delete_mes {
@@ -5040,7 +5046,8 @@ body.reduced-motion *::after {
 
 @media (pointer: coarse) {
     #options,
-    #extensionsMenu {
+    #extensionsMenu,
+    .actionButtonsModal {
         --sb-menu-row-height: 44px;
     }
 }
@@ -5088,7 +5095,6 @@ body.reduced-motion #extensionsMenu {
         inset: auto 0 0 0 !important;
         margin: 0 !important;
         transform: none !important;
-        border-width: 1px 0 0 !important;
         border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0 !important;
         background: var(--sb-layer-drawer) !important;
         z-index: calc(var(--sb-z-critical) + 2 * var(--sb-menu-sheet-level, 0) + 1);
@@ -5096,10 +5102,10 @@ body.reduced-motion #extensionsMenu {
         inline-size: auto;
         max-inline-size: none;
         max-block-size: min(80dvh, 40rem);
-        padding: 0 6px calc(12px + env(safe-area-inset-bottom, 0px));
+        padding: 6px 6px calc(12px + env(safe-area-inset-bottom, 0px));
         overflow-y: auto;
         overscroll-behavior: contain;
-        box-shadow: var(--sb-shadow-dialog);
+        box-shadow: var(--sb-shadow-dialog), var(--sb-shadow-dialog-highlight);
         animation: none;
     }
 
@@ -5116,7 +5122,7 @@ body.reduced-motion #extensionsMenu {
         z-index: 2;
         flex: none;
         block-size: 20px;
-        margin: 0 -6px;
+        margin: -6px -6px 0;
         opacity: 1;
         background: var(--sb-layer-drawer);
         touch-action: none;
@@ -6849,15 +6855,10 @@ body.reduced-motion .sb-dialog-host * {
     -webkit-backdrop-filter: none;
 }
 
-/* One property serves every list; the contrast variant swaps the ring colour. */
+/* The type-ahead lists take the popover shadow, whose ring (`--sb-popover-ring`) already follows prefers-contrast.
+   A second ring here would draw the same edge twice. */
 :root {
-    --sb-typeahead-shadow: 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent), var(--sb-shadow-popover);
-}
-
-@media (prefers-contrast: more) {
-    :root {
-        --sb-typeahead-shadow: 0 0 0 1px var(--SmartThemeBorderColor), var(--sb-shadow-popover);
-    }
+    --sb-typeahead-shadow: var(--sb-shadow-popover);
 }
 
 .select2-container--default .select2-dropdown,
