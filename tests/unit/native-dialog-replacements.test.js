@@ -122,6 +122,10 @@ test('server admin reload and thumbnail cache actions wait for Alert responses',
     expect(openAlert).toHaveBeenLastCalledWith(expect.objectContaining({
         heading: 'Clear cached thumbnails for this user?',
         body: 'They will be rebuilt as images are loaded.',
+        responses: [
+            { id: 'cancel', label: 'Cancel' },
+            { id: 'clear', label: 'Clear cache', appearance: 'suggested' },
+        ],
         defaultResponse: 'clear',
     }));
 });
@@ -241,7 +245,7 @@ test('extension sync cancellation prevents the request and confirmation runs it'
         heading: 'Sync third-party extensions from this SillyTavern folder into the current SillyBunny account?',
         responses: [
             { id: 'cancel', label: 'Cancel' },
-            { id: 'sync', label: 'Yes', appearance: 'destructive' },
+            { id: 'sync', label: 'Sync', appearance: 'destructive' },
         ],
     }));
 
@@ -346,7 +350,7 @@ test('vector index purge awaits the destructive Alert response', async () => {
         heading: 'Are you sure?',
         responses: [
             { id: 'cancel', label: 'Cancel' },
-            { id: 'purge', label: 'Yes', appearance: 'destructive' },
+            { id: 'purge', label: 'Purge Vectors', appearance: 'destructive' },
         ],
     }));
 

@@ -665,18 +665,18 @@ body.reduced-motion :is(.sb-action-menu-item, .sb-action-menu-reaction) {
     overscroll-behavior: contain;
 }
 
-/* ---------- Delete confirmation (sillybunny-delete-confirm.js) ---------- */
+/* ---------- Delete confirmation: custom response (OK uses .is-destructive) ---------- */
 
 .sb-popup-destructive-confirm .menu_button.sb-popup-destructive:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']) {
     border-color: transparent;
-    background: color-mix(in srgb, var(--sb-color-danger) 18%, transparent);
+    background: var(--sb-color-danger);
     box-shadow: none;
-    color: var(--sb-color-danger);
+    color: var(--sb-on-solid-accent);
 }
 
 @media (hover: hover) {
     .sb-popup-destructive-confirm .menu_button.sb-popup-destructive:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
-        background: color-mix(in srgb, var(--sb-color-danger) 26%, transparent);
+        background: color-mix(in srgb, var(--sb-color-danger) 90%, var(--sb-shell-text));
     }
 }
 

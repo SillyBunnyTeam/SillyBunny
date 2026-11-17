@@ -1169,7 +1169,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             body: 'They will be rebuilt as images are loaded.',
             responses: [
                 { id: 'cancel', label: t`Cancel` },
-                { id: 'clear', label: t`Yes`, appearance: 'suggested' },
+                { id: 'clear', label: t`Clear cache`, appearance: 'suggested' },
             ],
             defaultResponse: 'clear',
         });

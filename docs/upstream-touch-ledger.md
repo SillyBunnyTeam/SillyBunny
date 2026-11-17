@@ -153,15 +153,15 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### Confirm response labels
 | Field | Value |
 | --- | --- |
-| File | `public/script.js`; `public/scripts/popup.js`; `public/scripts/PromptManager.js`; `public/scripts/backgrounds.js`; `public/scripts/chat-backups.js`; `public/scripts/chats.js`; `public/scripts/data-maid-dialog.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/group-chats.js`; `public/scripts/preset-manager.js`; `public/scripts/reasoning.js`; `public/scripts/secrets.js`; `public/scripts/world-info.js`. |
+| File | `public/script.js`; `public/scripts/popup.js`; `public/scripts/PromptManager.js`; `public/scripts/backgrounds.js`; `public/scripts/chat-backups.js`; `public/scripts/chats.js`; `public/scripts/data-maid-dialog.js`; `public/scripts/extensions/regex/index.js`; `public/scripts/group-chats.js`; `public/scripts/preset-manager.js`; `public/scripts/reasoning.js`; `public/scripts/secrets.js`; `public/scripts/world-info.js`; `public/scripts/extensions/vectors/index.js` (the purge-all-vectors response, 2026-11-17, task 9.2). |
 | Area | Confirmation response labels and destructive confirmation defaults. |
 | Divergence reason | Upstream confirmations use the generic OK button, and the default result is the affirmative one. SillyBunny names the affirmative response with the action's own verb and labels the default negative response Cancel, so each confirmation reads clearly and a destructive one does not default to the affirmative. |
 | Target seam | `public/scripts/sillybunny-editor/popup-frame.js`. |
 | Adapter shape | Keep upstream confirmation handlers and result values, name affirmative responses with existing action strings, and map the default negative response to Cancel in the shared frame. Destructive confirmations add `is-destructive` to `popup.okButton` in `onOpening`, so OK is red from the first frame. |
-| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/world-info-editor.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/native-dialog-replacements.e2e.js`; `tests/character-list.e2e.js`; `tests/tag-manager.e2e.js`; `tests/destructive-first-paint.e2e.js`. |
+| Protecting tests | `tests/unit/popup-contract.test.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/world-info-editor.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`; `tests/native-dialog-replacements.e2e.js`; `tests/character-list.e2e.js`; `tests/tag-manager.e2e.js`; `tests/destructive-first-paint.e2e.js`; `tests/unit/native-dialog-replacements.test.js`. |
 | Validation | Root lint; tests lint; focused and full unit suites; frontend budgets; Chromium confirmation and dialog regressions. |
 | Rollback path | In each listed file, remove the `okButton` verb strings and `defaultResult: POPUP_RESULT.NEGATIVE` options that sit under a `SillyBunny:` marker. In `public/scripts/popup.js`, remove the `cancelButtonProvided` argument passed to `framePopup()`. In `public/scripts/sillybunny-editor/popup-frame.js`, remove `replaceDefaultNegativeLabel()`. Then update `tests/unit/popup-contract.test.js` and `tests/unit/sillybunny-popup-frame.test.js`. |
-| Last reviewed | 2026-11-05, PR #870 (opening layout). |
+| Last reviewed | 2026-11-17, UI polish sweep (task 9.2). |
 | Owner | UI overhaul integrator. |
 
 ### Native browser dialog replacements

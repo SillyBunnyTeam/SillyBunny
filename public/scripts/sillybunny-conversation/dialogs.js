@@ -64,7 +64,7 @@ export async function confirmConversationAction({ title, text = '', confirmLabel
     popup.dlg.classList.add('sb-conversation-dialog');
     if (destructive) {
         popup.dlg.classList.add('sb-popup-destructive-confirm');
-        popup.okButton.classList.add('sb-popup-destructive');
+        popup.okButton.classList.add('sb-popup-destructive', 'is-destructive');
     }
     return await popup.show() === POPUP_RESULT.AFFIRMATIVE;
 }

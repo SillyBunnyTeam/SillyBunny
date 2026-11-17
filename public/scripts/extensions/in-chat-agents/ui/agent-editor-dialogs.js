@@ -41,7 +41,7 @@ export function createAgentEditorDialogs({
         if (!current()) return false;
         const result = await showPopup(new Popup(content, POPUP_TYPE.CONFIRM, '', {
             okButton: t`Apply`,
-            cancelButton: t`Discard`,
+            cancelButton: t`Cancel`,
             tier: 'dialog',
             wide: true,
             ...options,
@@ -157,6 +157,7 @@ export function createAgentEditorDialogs({
                     form,
                     {
                         title: draft.scriptName || t`Add Regex Script`,
+                        okButton: script ? t`Save` : t`Add`,
                         onClosing: popup => {
                             if (popup.result !== POPUP_RESULT.AFFIRMATIVE) return true;
                             const invalid = validateAgentRegexScript(draft).length > 0;
@@ -252,7 +253,7 @@ export function createAgentEditorDialogs({
                 '',
                 {
                     okButton: t`Apply`,
-                    cancelButton: t`Discard`,
+                    cancelButton: t`Cancel`,
                     title: t`Generate Kit`,
                     tier: 'window',
                     wide: true,

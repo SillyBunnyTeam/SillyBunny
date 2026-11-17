@@ -618,6 +618,7 @@ async function convertTrackersFromList() {
     // SillyBunny: confirmation labels identify the tracker conversion action.
     const result = await new Popup(`Convert ${inlineTrackers.length} tracker agent(s) to companion execution? They will run automatically on their own model and show in the Tracker panel.`, POPUP_TYPE.CONFIRM, '', {
         tier: 'alert',
+        title: t`Convert Trackers to Companions`,
         okButton: t`Convert`,
     }).show();
     if (result !== POPUP_RESULT.AFFIRMATIVE) return;
@@ -1468,7 +1469,7 @@ async function updateAgentFromSourceTemplate(agent) {
         `Update "${escapeHtml(agent.name || template.name)}" from template v${escapeHtml(agentVersion)} to v${escapeHtml(templateVersion)}? Enabled state, quick toggle pin, order, and profile overrides will be kept.`,
         POPUP_TYPE.CONFIRM,
         '',
-        { tier: 'alert', okButton: t`Update` },
+        { tier: 'alert', title: t`Update Agent`, okButton: t`Update` },
     ).show();
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
@@ -1498,7 +1499,7 @@ async function updateAllAgentsFromSourceTemplates() {
         `Update ${outdatedAgents.length} agent(s) to their latest templates? Enabled state, quick toggle pin, order, and profile overrides will be kept.<ul class="ica--update-all-list">${names}</ul>`,
         POPUP_TYPE.CONFIRM,
         '',
-        { tier: 'alert', allowVerticalScrolling: true, okButton: t`Update` },
+        { tier: 'alert', allowVerticalScrolling: true, title: t`Update All Agents`, okButton: t`Update` },
     ).show();
 
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
@@ -3513,7 +3514,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
 
         const acceptResult = await new Popup(diffHtml, POPUP_TYPE.CONFIRM, '', {
             okButton: t`Accept`,
-            cancelButton: t`Discard`,
+            cancelButton: t`Cancel`,
             tier: 'dialog',
             title: t`Refine`,
             wide: true,

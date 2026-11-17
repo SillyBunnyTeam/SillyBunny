@@ -430,7 +430,7 @@ export function mountAgentsPanel(column) {
             items: [
                 ...getAgentRowMenuItems(current.entry, { model, rowKey: current.key }).filter(item => item.section === section && !item.id.startsWith('move-')).map(item => ({
                     label: menuLabel(item), icon: `fa-solid fa-${ROW_MENU_GLYPHS[item.id]}`, danger: item.danger, onSelect: () => run(async () => {
-                        if (item.danger && !await confirmDestructiveAction({ text: t`lorum ipsum`, confirmLabel: item.id === 'delete' ? t`Delete` : t`Restore Default`, copyPlaceholder: true })) return;
+                        if (item.danger && !await confirmDestructiveAction({ text: t`lorum ipsum`, heading: item.id === 'delete' ? t`Delete Agent` : t`Restore Default`, confirmLabel: item.id === 'delete' ? t`Delete` : t`Restore Default`, copyPlaceholder: true })) return;
                         await mutate(row, entry => adapter.perform(entry, item.id));
                     }),
                 })),

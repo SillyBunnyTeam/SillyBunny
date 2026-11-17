@@ -249,6 +249,7 @@ export class DataMaidDialog {
             button.addEventListener('click', async (event) => {
                 event.stopPropagation();
                 const confirm = await Popup.show.confirm(t`Are you sure?`, t`This will permanently delete all files in this category. THIS CANNOT BE UNDONE!`, {
+                    okButton: t`Delete`,
                     // SillyBunny: destructive cleanup must focus Cancel and never confirm on Return.
                     defaultResult: POPUP_RESULT.NEGATIVE,
                     onOpening: popup => popup.okButton.classList.add('is-destructive'),
@@ -270,6 +271,7 @@ export class DataMaidDialog {
                 const hash = item?.getAttribute('data-hash');
                 if (hash) {
                     const confirm = await Popup.show.confirm(t`Are you sure?`, t`This will permanently delete the file. THIS CANNOT BE UNDONE!`, {
+                        okButton: t`Delete`,
                         // SillyBunny: destructive cleanup must focus Cancel and never confirm on Return.
                         defaultResult: POPUP_RESULT.NEGATIVE,
                         onOpening: popup => popup.okButton.classList.add('is-destructive'),
@@ -409,11 +411,6 @@ export class DataMaidDialog {
             large: true,
             tier: 'window',
             title,
-            onOpening: popup => {
-                const headerEnd = popup.dlg.querySelector('.sb-dialog__header-end');
-                const scan = this.container.querySelector('.dataMaidStartButton');
-                if (headerEnd && scan) headerEnd.prepend(scan);
-            },
         });
 
         if (this.token) {

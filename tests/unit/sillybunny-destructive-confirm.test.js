@@ -40,8 +40,20 @@ describe('confirmDestructiveAction', () => {
         expect(popup.options.okButton).toBe('Delete');
         expect(popup.dlg.classList.contains('sb-popup-destructive-confirm')).toBe(true);
         expect(popup.okButton.classList.contains('sb-popup-destructive')).toBe(true);
+        expect(popup.okButton.classList.contains('is-destructive')).toBe(true);
         popup.cancelButton.click();
         await expect(result).resolves.toBe(false);
+    });
+
+    test('a heading becomes the Popup title and none leaves it null', async () => {
+        const withHeading = confirmDestructiveAction({ text: 'Delete?', confirmLabel: 'Delete', heading: 'Delete Agent' });
+        expect(popup.options.title).toBe('Delete Agent');
+        popup.cancelButton.click();
+        await withHeading;
+        const without = confirmDestructiveAction({ text: 'Delete?', confirmLabel: 'Delete' });
+        expect(popup.options.title).toBeNull();
+        popup.cancelButton.click();
+        await without;
     });
 
     test('Return cannot confirm even when the destructive response has focus', async () => {

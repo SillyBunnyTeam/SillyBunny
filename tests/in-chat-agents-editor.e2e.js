@@ -1216,7 +1216,7 @@ for (const width of [1440, 390]) {
             await expect(dialog.locator('.sb-dialog__title')).toHaveText('Generate Kit');
             await expect(dialog).toHaveClass(/sb-dialog--window/);
             await expect(dialog.locator('.popup-button-ok')).toHaveText('Apply');
-            await expect(dialog.locator('.popup-button-cancel')).toHaveText('Discard');
+            await expect(dialog.locator('.popup-button-cancel')).toHaveText('Cancel');
             await expect(dialog.locator('.sb-dialog__bottom-bar').getByText('Regenerate', { exact: true })).toBeVisible();
             await expect(dialog.locator('#ica--tracker-builder-extra-instructions')).toBeVisible();
             await expect(dialog.locator('.editor_maximize, .ica--textarea-fullscreen-toggle')).toHaveCount(0);

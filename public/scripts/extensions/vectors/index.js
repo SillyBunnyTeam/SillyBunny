@@ -2486,7 +2486,8 @@ export async function init() {
             heading: 'Are you sure?',
             responses: [
                 { id: 'cancel', label: t`Cancel` },
-                { id: 'purge', label: t`Yes`, appearance: 'destructive' },
+                // SillyBunny: a verb replaces "Yes" on this destructive response.
+                { id: 'purge', label: t`Purge Vectors`, appearance: 'destructive' },
             ],
         });
         if (response !== 'purge') {

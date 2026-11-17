@@ -11,14 +11,16 @@ export const DELETE_CHOICE = Object.freeze({
     SWIPE: 'swipe',
 });
 
-export async function confirmDestructiveAction({ text, confirmLabel, copyPlaceholder = false }) {
+export async function confirmDestructiveAction({ text, confirmLabel, heading = null, copyPlaceholder = false }) {
     const popup = new Popup(text, POPUP_TYPE.CONFIRM, null, {
         okButton: confirmLabel,
         cancelButton: t`Cancel`,
         defaultResult: POPUP_RESULT.NEGATIVE,
+        title: heading,
     });
     popup.dlg.classList.add('sb-popup-destructive-confirm');
-    popup.okButton.classList.add('sb-popup-destructive');
+    // `is-destructive` carries the shared Destructive Red fill; `sb-popup-destructive` stays for callers that query it.
+    popup.okButton.classList.add('sb-popup-destructive', 'is-destructive');
     if (copyPlaceholder) popup.content.dataset.sbCopyPlaceholder = 'true';
     const cancelOnReturn = event => {
         if (event.key !== 'Enter' || event.isComposing) return;
@@ -51,7 +53,7 @@ export async function confirmMessageDeletion({ text = t`Are you sure you want to
         defaultResult: POPUP_RESULT.NEGATIVE,
     });
     popup.dlg.classList.add('sb-popup-destructive-confirm');
-    popup.okButton.classList.add('sb-popup-destructive');
+    popup.okButton.classList.add('sb-popup-destructive', 'is-destructive');
     const result = await popup.show();
     if (result === POPUP_RESULT.AFFIRMATIVE) {
         return DELETE_CHOICE.MESSAGE;

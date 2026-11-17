@@ -9400,7 +9400,7 @@ async function handleSillyTavernExtensionSync() {
         body: `${sourcePath}\n\nMatching extension folders will be replaced. SillyBunny will show a detailed report instead of reloading immediately.`,
         responses: [
             { id: 'cancel', label: t`Cancel` },
-            { id: 'sync', label: t`Yes`, appearance: 'destructive' },
+            { id: 'sync', label: t`Sync`, appearance: 'destructive' },
         ],
     });
     if (response !== 'sync') {
