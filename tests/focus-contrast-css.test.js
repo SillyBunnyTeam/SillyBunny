@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -42,6 +42,85 @@ describe('forced colours', () => {
 
     test('one shared rule draws a Highlight outline on every focus, because forced colours remove the box-shadow ring', () => {
         expect(declarationsOf(forced, ':focus-visible')).toBe('outline: 2px solid Highlight !important; outline-offset: -2px !important;');
+    });
+});
+
+describe('forced colours: the edge of a surface that draws it as a shadow ring', () => {
+    const publicRoot = path.join(repoRoot, 'public');
+    const sheets = [];
+    const collect = directory => {
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+            const entryPath = path.join(directory, entry.name);
+            if (entry.isDirectory()) {
+                if (!['lib', 'third-party', 'quick-image-gen'].includes(entry.name)) collect(entryPath);
+            } else if (entry.name.endsWith('.css')) {
+                sheets.push(entryPath);
+            }
+        }
+    };
+    collect(publicRoot);
+
+    const splitSelectors = list => {
+        const parts = [];
+        let depth = 0;
+        let current = '';
+        for (const char of list) {
+            if (char === '(' || char === '[') depth++;
+            else if (char === ')' || char === ']') depth--;
+            if (char === ',' && depth === 0) {
+                parts.push(current);
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        parts.push(current);
+        return parts.map(part => part.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    };
+
+    const edgeMatch = forcedColorsBlocks.map(block => block.match(/:is\(\s*(\.sb-action-popover,[^{}]*?)\s*\) \{\s*outline: 1px solid CanvasText;\s*outline-offset: -1px;\s*\}/)).find(Boolean);
+    const edgeRule = edgeMatch?.[0];
+    const edgeSelectors = edgeMatch ? splitSelectors(edgeMatch[1]).sort() : [];
+
+    // Flat rules only: a stylesheet nests no rule inside a style rule, and the at-rules around them are skipped by the pattern.
+    const ringRules = sheets.flatMap(sheet => {
+        const css = readFileSync(sheet, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+        return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+            .filter(([, , body]) => /box-shadow:\s*var\(--sb-(shadow-popover|typeahead-shadow)\b/.test(body))
+            .map(([, selector, body]) => ({ sheet: path.relative(repoRoot, sheet), selectors: splitSelectors(selector), body }));
+    });
+
+    // A drag helper is a copy of a row that is on the page already. A menu sheet is the same element as its popover.
+    const notSurfaces = new Set(['.ui-sortable-helper.ica--tpanel-agent', '#rm_group_members .group_member.ui-sortable-helper', ':is(#options, #extensionsMenu, #sd_dropdown, .actionButtonsModal)[data-sb-menu-sheet]']);
+
+    test('one rule in the theme sheet, inside forced-colors, draws a 1px inset outline in a system colour', () => {
+        expect(edgeRule).toBeDefined();
+        expect(edgeRule).toMatch(/\)\s*\{\s*outline: 1px solid CanvasText;\s*outline-offset: -1px;\s*\}/);
+        expect(edgeSelectors.length).toBeGreaterThan(15);
+    });
+
+    test('every selector that uses the popover ring or the type-ahead ring is in that rule, unless it draws a border', () => {
+        expect(ringRules.length).toBeGreaterThan(15);
+        const missing = [];
+        for (const { sheet, selectors, body } of ringRules) {
+            const drawsBorder = /(^|[\s;])border(-width)?:\s*[1-9]/.test(body);
+            for (const selector of selectors) {
+                if (drawsBorder || notSurfaces.has(selector) || edgeSelectors.includes(selector)) continue;
+                missing.push(`${sheet}: ${selector}`);
+            }
+        }
+        expect(missing).toEqual([]);
+    });
+
+    test('the action menu sheet and popover, which edge their frames with a ring, are in the rule', () => {
+        expect(edgeSelectors).toEqual(expect.arrayContaining(['.sb-action-sheet', '.sb-action-popover']));
+    });
+
+    test('the rule lists no selector that no stylesheet gives the ring', () => {
+        const ringSelectors = new Set(ringRules.flatMap(rule => rule.selectors));
+        const sheetRing = sheets.map(sheet => readFileSync(sheet, 'utf8')).join('\n');
+        const unknown = edgeSelectors.filter(selector => !ringSelectors.has(selector) && !sheetRing.includes(selector));
+        expect(unknown).toEqual([]);
     });
 });
 

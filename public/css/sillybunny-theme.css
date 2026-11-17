@@ -6764,6 +6764,40 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         outline-offset: -1px;
     }
 
+    /* The edge of a menu, popover, picker, sheet or type-ahead list is a ring inside `--sb-shadow-popover`, and forced colours
+       remove box shadows. This one rule gives each of those surfaces an edge in forced colours only. An inset outline adds
+       no size, so it moves nothing, and the `:focus-visible` rule below (important) wins on a focused surface. A surface that
+       draws a real border needs no entry here. Every selector here is checked against the stylesheets by
+       `focus-contrast-css.test.js`. */
+    :is(
+        .sb-action-popover,
+        .sb-action-sheet,
+        .sb-press-tooltip,
+        #options,
+        #extensionsMenu,
+        .actionButtonsModal.options-content,
+        #sd_dropdown,
+        .sb-color-picker-menu,
+        #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker:not([hidden]),
+        .sb-wi-property-popover,
+        .sb-persona-property-popover,
+        .sb-search-results,
+        #sb-mode-menu,
+        #sb-persona-picker,
+        .sb-model-id-picker-menu,
+        .sb-inline-select-picker-menu,
+        .select2-container--default .select2-dropdown,
+        .ui-autocomplete.ui-widget-content,
+        .list-group.ctx-menu,
+        .autoComplete-wrap > .autoComplete,
+        .autoComplete-detailsWrap:not(.commandContainer > *) > .autoComplete-details,
+        .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList,
+        .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList
+    ) {
+        outline: 1px solid CanvasText;
+        outline-offset: -1px;
+    }
+
     /* Forced colours remove the fill that is a flat control's only edge. */
     :is(.menu_button, .sb-dialog__icon-button, .sb-dialog__close, .sb-dialog__back, .sb-action-menu-item, .sb-action-sheet-close, .sb-boolean-radio-option > span) {
         outline: 1px solid ButtonBorder;
