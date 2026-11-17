@@ -1146,7 +1146,7 @@ export function initializePromptEditor(column) {
             const content = element('div', 'sb-prompt-triggers');
             content.setAttribute('role', 'group');
             content.setAttribute('aria-label', t`Generation triggers`);
-            content.append(...TRIGGERS.map(value => createCheckRow({
+            const rows = TRIGGERS.map(value => createCheckRow({
                 label: translate(capitalized(value)),
                 field: `trigger-${value}`,
                 checked: draft.injection_trigger?.includes(value) ?? false,
@@ -1160,7 +1160,29 @@ export function initializePromptEditor(column) {
                     markDirty();
                     refreshSummary();
                 },
-            }).row));
+            }));
+            // A pick-several list of more than five items has Select All; its box is mixed while only some are checked.
+            const selectAll = createCheckRow({ label: t`Select All`, field: 'trigger-all' });
+            selectAll.control.dataset.sbSelectAll = 'true';
+            selectAll.row.querySelector('.ds-row-label').dataset.i18n = 'Select All';
+            const inputs = rows.map(row => row.control);
+            const syncSelectAll = () => {
+                const checked = inputs.filter(input => input.checked).length;
+                selectAll.control.checked = checked === inputs.length;
+                selectAll.control.indeterminate = checked > 0 && checked < inputs.length;
+            };
+            selectAll.control.addEventListener('change', () => {
+                const checked = selectAll.control.checked;
+                for (const input of inputs) {
+                    if (input.checked === checked) continue;
+                    input.checked = checked;
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                syncSelectAll();
+            });
+            for (const input of inputs) input.addEventListener('change', syncSelectAll);
+            syncSelectAll();
+            content.append(selectAll.row, ...rows.map(row => row.row));
             openPopover({
                 trigger,
                 title: t`Generation triggers`,

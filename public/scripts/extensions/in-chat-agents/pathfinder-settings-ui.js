@@ -486,6 +486,20 @@ function renderToolToggles() {
     }
 }
 
+function getConfirmableToolNames() {
+    return ALL_TOOL_NAMES.filter(toolName => CONFIRMABLE_TOOLS.has(toolName));
+}
+
+/** A pick-several list of more than five items has Select All; its box is mixed while only some are checked. */
+function syncConfirmSelectAll() {
+    const toolNames = getConfirmableToolNames();
+    const confirmTools = currentAgent.settings.confirmTools ?? {};
+    const confirmed = toolNames.filter(toolName => confirmTools[toolName] === true).length;
+    settingsEl.find('#pf--confirm-tool-list input[data-confirm-select-all]')
+        .prop('checked', toolNames.length > 0 && confirmed === toolNames.length)
+        .prop('indeterminate', confirmed > 0 && confirmed < toolNames.length);
+}
+
 function renderConfirmToggles() {
     const confirmList = settingsEl.find('#pf--confirm-tool-list');
     if (!confirmList.length) {
@@ -494,11 +508,13 @@ function renderConfirmToggles() {
 
     const confirmTools = currentAgent.settings.confirmTools ?? {};
     confirmList.empty();
-    for (const toolName of ALL_TOOL_NAMES) {
-        if (!CONFIRMABLE_TOOLS.has(toolName)) {
-            continue;
-        }
-
+    confirmList.append($(`
+        <label class="checkbox_label">
+            <input type="checkbox" data-confirm-select-all />
+            <span data-i18n="Select All">Select All</span>
+        </label>
+    `));
+    for (const toolName of getConfirmableToolNames()) {
         const item = $(`
             <label class="checkbox_label">
                 <input type="checkbox" data-confirm-tool="${escapeHtml(toolName)}" />
@@ -508,6 +524,7 @@ function renderConfirmToggles() {
         item.find('input').prop('checked', confirmTools[toolName] === true);
         confirmList.append(item);
     }
+    syncConfirmSelectAll();
 }
 
 function renderPermissionMatrix(lorebooks = null) {
@@ -938,6 +955,18 @@ function bindEvents() {
     settingsEl.on('change', '#pf--confirm-tool-list input[data-confirm-tool]', function () {
         const toolName = $(this).data('confirmTool');
         currentAgent.settings.confirmTools = { ...currentAgent.settings.confirmTools, [toolName]: this.checked };
+        syncConfirmSelectAll();
+        return save(['confirmTools']);
+    });
+
+    settingsEl.on('change', '#pf--confirm-tool-list input[data-confirm-select-all]', function () {
+        const checked = this.checked;
+        currentAgent.settings.confirmTools = {
+            ...currentAgent.settings.confirmTools,
+            ...Object.fromEntries(getConfirmableToolNames().map(toolName => [toolName, checked])),
+        };
+        settingsEl.find('#pf--confirm-tool-list input[data-confirm-tool]').prop('checked', checked);
+        syncConfirmSelectAll();
         return save(['confirmTools']);
     });
 

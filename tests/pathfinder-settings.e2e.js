@@ -166,6 +166,26 @@ test('Pathfinder uses native keyboard disclosures, labelled controls and narrow 
     }
 });
 
+test('Pathfinder\'s Ask Before Executing list has Select All, mixed while some tools are checked', async ({ page, baseURL }) => {
+    const state = await openSettings(page, baseURL);
+    const list = page.locator('#pf--confirm-tool-list');
+    const selectAll = list.getByRole('checkbox', { name: 'Select All', exact: true });
+    const tools = list.locator('input[data-confirm-tool]');
+    await expect(tools).toHaveCount(6);
+    await expect(list.getByRole('checkbox').first()).toHaveAccessibleName('Select All');
+    await selectAll.check();
+    await expect(tools.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(6).fill(true));
+    await expect.poll(() => Object.values(state.saves.at(-1)?.settings?.confirmTools ?? {})).toEqual(Array(6).fill(true));
+    await tools.first().uncheck();
+    await expect.poll(() => selectAll.evaluate(input => ({ checked: input.checked, mixed: input.indeterminate }))).toEqual({ checked: false, mixed: true });
+    // A mixed box that is pressed once checks every tool; pressed again it clears them.
+    await selectAll.check();
+    await expect(tools.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(6).fill(true));
+    await selectAll.uncheck();
+    await expect(tools.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(6).fill(false));
+    await expect.poll(() => Object.values(state.saves.at(-1)?.settings?.confirmTools ?? {})).toEqual(Array(6).fill(false));
+});
+
 test('Pathfinder saves rapid toggles in order and an unticked attached book stays excluded', async ({ page, baseURL }) => {
     const state = await openSettings(page, baseURL);
     state.saveMode = 'hold';

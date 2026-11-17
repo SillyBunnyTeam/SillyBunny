@@ -538,10 +538,20 @@ function presentReasoningTemplate(section, context) {
  * @param {{id: string, title: string, titleKey?: string, description?: string, descriptionKey?: string}} options
  * @returns {{section: HTMLElement, body: HTMLElement}}
  */
-function createGroup({ id, title, titleKey, description, descriptionKey }) {
+function createGroup({ id, title, titleKey, description, descriptionKey, headless = false }) {
     const section = document.createElement('section');
     section.id = id;
     section.className = 'sb-prompting-group';
+    const body = document.createElement('div');
+    body.className = 'ds-pref-group sb-prompting-group-body';
+    if (headless) {
+        // A group whose one row carries the title has no heading of its own; its box is named by a label instead.
+        body.setAttribute('role', 'group');
+        body.setAttribute('aria-label', title);
+        section.dataset.sbDescription = 'none';
+        section.append(body);
+        return { section, body };
+    }
     const header = document.createElement('div');
     header.className = 'sb-settings-flat-header sb-settings-category-header';
     const heading = document.createElement('div');
@@ -561,8 +571,6 @@ function createGroup({ id, title, titleKey, description, descriptionKey }) {
         section.dataset.sbDescription = 'none';
     }
     header.append(heading);
-    const body = document.createElement('div');
-    body.className = 'ds-pref-group sb-prompting-group-body';
     section.append(header, body);
     return { section, body };
 }
@@ -586,40 +594,60 @@ function absorbHelp(root) {
 }
 
 /**
- * A radio choice as a check row: the input leads, the whole row picks it. The input keeps its node, id and listeners.
- * @param {HTMLLabelElement} source
- * @param {string} name
+ * A set of upstream radios as one select row. The radios stay in the document, hidden, because upstream reads and writes
+ * them: a preset load checks one with `prop('checked')` and no event, and a user's choice has to reach their `input`
+ * handler. A mirror select is therefore the row's control, and the radios remain the stored value's transport.
+ * @param {HTMLElement} set  The upstream block that holds the labelled radios and the readout of the chosen label.
+ * @param {string} name  The field name of the row.
+ * @param {string} title
+ * @returns {HTMLElement|null} The row.
  */
-function createRadioRow(source, name) {
-    const input = source.querySelector('input[type="radio"]');
-    if (!(input instanceof HTMLInputElement)) return null;
-    const row = document.createElement('label');
-    row.className = 'ds-row ds-row-check';
-    row.dataset.sbEditorField = name;
-    row.htmlFor = input.id;
-    const text = document.createElement('span');
-    text.className = 'ds-row-text';
-    const title = document.createElement('span');
-    title.className = 'ds-row-label';
-    title.id = `sb-setting-${input.id}-label`;
-    carry(title, source.querySelector(':scope > span'));
-    text.append(title);
-    input.setAttribute('aria-labelledby', title.id);
-    const hint = source.querySelector(':scope > small');
-    if (hint) {
-        const subtitle = document.createElement('small');
-        subtitle.className = 'ds-row-subtitle';
-        subtitle.id = `sb-setting-${input.id}-description`;
-        carry(subtitle, hint);
-        text.append(subtitle);
-        input.setAttribute('aria-describedby', subtitle.id);
+export function createRadioSelectRow(set, name, title) {
+    const labels = [...set.querySelectorAll(':scope > label')].filter(label => label.querySelector('input[type="radio"]'));
+    if (!labels.length) return null;
+    const radios = labels.map(label => /** @type {HTMLInputElement} */ (label.querySelector('input[type="radio"]')));
+    const select = document.createElement('select');
+    select.id = `sb-${name}-select`;
+    for (const [index, label] of labels.entries()) {
+        const option = document.createElement('option');
+        option.value = radios[index].value;
+        option.textContent = textOf(label.querySelector(':scope > span'));
+        const hint = textOf(label.querySelector(':scope > small'));
+        if (hint) option.dataset.hint = hint;
+        select.append(option);
     }
-    row.append(input, text);
-    return row;
+    const built = createSelectRow({
+        select,
+        label: title,
+        field: name,
+        searchLabel: t`Search`,
+        emptyText: t`No results`,
+        mapItem: (item, option) => (option.dataset.hint ? { ...item, subtitle: option.dataset.hint } : item),
+        onChange: value => {
+            const radio = radios.find(input => input.value === value);
+            if (!radio || radio.checked) return;
+            radio.checked = true;
+            radio.dispatchEvent(new Event('input', { bubbles: true }));
+            radio.dispatchEvent(new Event('change', { bubbles: true }));
+        },
+    });
+    const showChecked = () => {
+        const checked = radios.find(input => input.checked);
+        if (checked && select.value !== checked.value) built.setValue(checked.value);
+    };
+    showChecked();
+    for (const radio of radios) radio.addEventListener('change', showChecked);
+    // A preset load checks a radio with no event, then rewrites the readout of the chosen label; the row follows that rewrite.
+    const readout = set.querySelector('[id$="_display"]');
+    if (readout) new MutationObserver(showChecked).observe(readout, { childList: true, characterData: true, subtree: true });
+    // The capture listener runs before the row opens its picker, so the picker never shows a stale choice.
+    built.trigger.addEventListener('click', showChecked, true);
+    return built.row;
 }
 
 /**
- * Character Names Behavior and Continue Postfix are sets of choices, so each becomes a group of its own.
+ * Character Names Behavior and Continue Postfix are sets of four exclusive choices, so each becomes a group of its own with
+ * one select row.
  * @param {HTMLElement} root
  */
 function presentNames(root) {
@@ -635,11 +663,13 @@ function presentNames(root) {
             id: ['sb-openai-names-behavior', 'sb-openai-continue-postfix'][index],
             title: textOf(heading),
             titleKey: heading?.dataset.i18n,
+            headless: true,
         });
-        group.body.setAttribute('role', 'radiogroup');
-        group.body.setAttribute('aria-labelledby', `${group.section.id}-heading`);
-        const rows = [...set.querySelectorAll(':scope > label')].map(label => createRadioRow(label, label.querySelector('input')?.id ?? 'choice')).filter(Boolean);
-        group.body.append(...rows);
+        const row = createRadioSelectRow(set, ['names-behavior', 'continue-postfix'][index], textOf(heading));
+        if (!row) continue;
+        const title = row.querySelector('.ds-row-label');
+        if (title instanceof HTMLElement && heading?.dataset.i18n) title.dataset.i18n = heading.dataset.i18n;
+        group.body.append(row);
         names.before(group.section);
         // The readout of the chosen value stays in the document for the code that writes it.
         retire(set);

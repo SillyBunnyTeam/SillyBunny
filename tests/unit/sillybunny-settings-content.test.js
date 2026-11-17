@@ -180,6 +180,24 @@ describe('Interface settings groups', () => {
     });
 });
 
+describe('Appearance settings groups', () => {
+    const order = SB_SETTINGS_SECTION_ORDER.appearance;
+
+    test('puts Slider Mode in the place of the Zen Sliders and Mad Lab Mode switches', () => {
+        const visual = order.entries.find(entry => entry.id === 'visual-toggles');
+        expect(visual.rows).toContain('#sb-slider-mode');
+        expect(visual.rows).not.toContain('#enableZenSliders');
+        expect(visual.rows).not.toContain('#enableLabMode');
+        expect(visual.rows.indexOf('#sb-slider-mode')).toBe(visual.rows.indexOf('#expandMessageActions') + 1);
+    });
+
+    test('names one Top Bar Label group and one Custom Text group, with none for the phone', () => {
+        const sections = order.entries.map(entry => entry.section).filter(Boolean);
+        expect(sections).toEqual(expect.arrayContaining(['#sb-topbar-label-drawer', '[data-sb-category="topbar-custom-text"]']));
+        expect(sections.filter(section => /mobile/.test(section))).toEqual([]);
+    });
+});
+
 describe('Account popup', () => {
     test('leaves Settings Snapshots and Download Backup to Data & Security', () => {
         const templateHtml = readFileSync(path.join(repoRoot, 'public', 'scripts', 'templates', 'userProfile.html'), 'utf8');

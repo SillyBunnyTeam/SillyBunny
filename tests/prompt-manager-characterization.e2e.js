@@ -989,7 +989,21 @@ test.describe('Prompt Manager characterization', () => {
         await expect(page.getByRole('spinbutton', { name: 'Depth', exact: true })).toBeVisible();
         await expect(page.getByRole('spinbutton', { name: 'Order', exact: true })).toBeVisible();
         await page.getByRole('button', { name: /^Triggers:/ }).click();
-        await expect(page.getByRole('dialog', { name: 'Generation triggers', exact: true }).getByRole('checkbox')).toHaveCount(6);
+        const triggers = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
+        // Six items make a pick-several list long enough for Select All, which comes first.
+        await expect(triggers.getByRole('checkbox')).toHaveCount(7);
+        await expect(triggers.getByRole('checkbox').first()).toHaveAccessibleName('Select All');
+        const selectAll = triggers.getByRole('checkbox', { name: 'Select All', exact: true });
+        const others = triggers.locator('input[type="checkbox"]:not([data-sb-select-all])');
+        await selectAll.check();
+        await expect(others.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(6).fill(true));
+        await expect(page.getByRole('button', { name: /^Triggers:/ })).toContainText('Normal, Continue, Impersonate, Swipe, Regenerate, Quiet');
+        await triggers.getByRole('checkbox', { name: 'Quiet', exact: true }).uncheck();
+        await expect.poll(() => selectAll.evaluate(input => ({ checked: input.checked, mixed: input.indeterminate }))).toEqual({ checked: false, mixed: true });
+        await selectAll.check();
+        await selectAll.uncheck();
+        await expect(others.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(6).fill(false));
+        await expect(page.getByRole('button', { name: /^Triggers:/ })).toContainText('All triggers');
     });
 
     test('Preview renders macros from the draft instead of the edit form', async ({ page }) => {
@@ -1199,7 +1213,8 @@ test.describe('Prompt Manager characterization', () => {
         await expect(menu).toHaveCount(0);
         await editor.getByRole('button', { name: /^Triggers:/ }).click();
         const popover = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
-        await expect(popover.getByRole('checkbox')).toHaveCount(6);
+        // The six triggers and the Select All row above them.
+        await expect(popover.getByRole('checkbox')).toHaveCount(7);
         await expect(popover.getByRole('button')).toHaveCount(0);
         await popover.getByRole('checkbox', { name: 'Swipe', exact: true }).check();
         await expect(editor.getByRole('button', { name: /^Triggers:/ })).toContainText('Swipe');

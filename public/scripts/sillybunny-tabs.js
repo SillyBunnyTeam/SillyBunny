@@ -30,7 +30,7 @@ import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProt
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { adoptComposerMenus, adoptLegacyPopup } from './sillybunny-editor/sheet-gestures.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
-import { createCheckRow, createEntryRow, createExpanderRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
+import { createEntryRow, createExpanderRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
@@ -665,7 +665,9 @@ const SB_STORAGE_KEYS = Object.freeze({
     surfaceTransparency: 'sb-surface-transparency',
     topbarScaleDesktop: 'sb-topbar-scale-desktop',
     topbarScaleMobile: 'sb-topbar-scale-mobile',
+    // The one stored list of label parts, read at every width. The name is from when it held the desktop label only.
     topbarLabelDesktopParts: 'sb-topbar-label-desktop-parts',
+    // Read once, to seed the list above for a browser that stored only a phone value; nothing writes it.
     topbarLabelMobilePart: 'sb-topbar-label-mobile-part',
     topbarLabelCustomText: 'sb-topbar-label-custom-text',
     chatbarVisible: 'sb-chatbar-visible',
@@ -683,11 +685,10 @@ const SB_STORAGE_KEYS = Object.freeze({
     mobileButtonScale: 'sb-mobile-button-scale',
     settingsDrawerAutoClose: 'sb-settings-drawer-auto-close',
     compactMode: 'sb-compact-mode',
-    // Legacy single-key form of the per-device pair below; kept as a read-only seed so a bar
-    // configured before the split keeps its look on both devices.
+    // Legacy single-key form of the desktop value below; kept as a read-only seed so a bar
+    // configured before the split keeps its look.
     topbarIconsOnly: 'sb-topbar-icons-only',
     desktopTopbarIconsOnly: 'sb-desktop-topbar-icons-only',
-    mobileTopbarIconsOnly: 'sb-mobile-topbar-icons-only',
 
     bottomChatBarVisible: 'sb-bottom-chat-bar-visible',
     paperTextureEnabled: 'sb-paper-texture-enabled',
@@ -1413,8 +1414,7 @@ const SB_TOPBAR_GROUP_ORDER = Object.freeze({
 // The title shows only while at least this much of it (or all of it, when it is shorter) fits.
 const SB_TOPBAR_BRAND_MIN_WIDTH = 60;
 
-// The per-device key wins; the legacy single key seeds both sides of the split so a bar
-// configured before it keeps its look everywhere until a device is set on its own.
+// The desktop key wins; the legacy single key seeds it so a bar configured before the split keeps its look.
 function readTopbarIconsOnlySetting(storageKey) {
     return normalizeStoredBoolean(
         safeGetItem(storageKey),
@@ -1435,7 +1435,6 @@ const sbState = {
     compactMode: normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), false),
     topbarIconsOnly: {
         desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),
-        mobile: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.mobileTopbarIconsOnly),
     },
     topbarSections: {
         syncFrame: 0,
@@ -1457,12 +1456,7 @@ const sbState = {
         mobile: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.topbarScaleMobile)),
     },
     topbarLabel: {
-        desktopParts: safeGetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts) === null
-            ? ['char']
-            : normalizeTopbarLabelParts(safeGetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts), []),
-        mobilePart: safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart) === null
-            ? 'char'
-            : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), ''),
+        desktopParts: readTopbarLabelParts(),
         customText: normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText)),
         contextTokens: null,
         refreshTimer: 0,
@@ -1586,6 +1580,35 @@ function normalizeTopbarLabelParts(value, fallback = []) {
         : [];
 
     return normalizedParts.length ? normalizedParts : fallbackParts;
+}
+
+/**
+ * The stored list of label parts. A browser that has no list but stored a phone value gets a list of that one part, and an
+ * empty phone value gives an empty list, which shows the default label as it did before.
+ * @returns {string[]}
+ */
+function readTopbarLabelParts() {
+    if (safeGetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts) !== null) {
+        return normalizeTopbarLabelParts(safeGetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts), []);
+    }
+
+    const phonePart = safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart);
+    if (phonePart === null) {
+        return ['char'];
+    }
+
+    const part = normalizeTopbarLabelPart(phonePart, '');
+    return part ? [part] : [];
+}
+
+/** Writes the list that `readTopbarLabelParts` derived from a phone value, so that the phone key is not read again. */
+function seedTopbarLabelParts() {
+    if (safeGetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts) !== null || safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart) === null) {
+        return;
+    }
+
+    safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(readTopbarLabelParts()));
+    flushSbStorageWrites();
 }
 
 function normalizeTopbarCustomText(value) {
@@ -1716,18 +1739,12 @@ function restorePersistedTopbarState() {
     sbState.bottomBarScale = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale));
     sbState.desktopButtonScale = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale));
     sbState.mobileButtonScale = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.mobileButtonScale));
-    sbState.topbarLabel.desktopParts = safeGetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts) === null
-        ? ['char']
-        : normalizeTopbarLabelParts(safeGetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts), []);
-    sbState.topbarLabel.mobilePart = safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart) === null
-        ? 'char'
-        : normalizeTopbarLabelPart(safeGetItem(SB_STORAGE_KEYS.topbarLabelMobilePart), '');
+    sbState.topbarLabel.desktopParts = readTopbarLabelParts();
     sbState.topbarLabel.customText = normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText));
     sbState.chatbar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.chatbarVisible), sbState.chatbar.visible);
     sbState.chatbar.topbarOffset = normalizeTopbarOffset(safeGetItem(SB_STORAGE_KEYS.topbarOffset));
     sbState.compactMode = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.compactMode), sbState.compactMode);
     sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);
-    sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);
     sbState.bottomChatBar.visible = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.bottomChatBarVisible), sbState.bottomChatBar.visible);
 }
 
@@ -2007,11 +2024,10 @@ function setCompactMode(enabled, { persist = true } = {}) {
     updateThemePickerUi();
 }
 
-// SillyBunny: the icons-only top bar (the labelled bar without its labels) is stored per device and
-// only the viewport's own setting is ever in force. Only the Desktop group has a switch
-// for it; a value an earlier build stored for phones is still read and kept, but no control writes it.
+// SillyBunny: the icons-only top bar (the labelled bar without its labels) is a desktop setting. The phone bar
+// never has labels, so no value is in force there; a value an earlier build stored for phones stays in storage, unread.
 function isTopbarIconsOnlyActive() {
-    return isMobileViewport() ? sbState.topbarIconsOnly.mobile : sbState.topbarIconsOnly.desktop;
+    return !isMobileViewport() && sbState.topbarIconsOnly.desktop;
 }
 
 function applyTopbarIconsOnlyPreference() {
@@ -2021,20 +2037,17 @@ function applyTopbarIconsOnlyPreference() {
     scheduleCharacterToggleGhostSync();
 }
 
+// `mode` stays in the signature because `window.SillyBunnyShell.setTopbarIconsOnly(mode, value)` is public; only 'desktop' has a value.
 function setTopbarIconsOnly(mode, enabled, { persist = true } = {}) {
-    const isDesktop = mode === 'desktop';
+    if (mode !== 'desktop') return;
     const nextEnabled = Boolean(enabled);
 
-    if (isDesktop) {
-        sbState.topbarIconsOnly.desktop = nextEnabled;
-    } else {
-        sbState.topbarIconsOnly.mobile = nextEnabled;
-    }
+    sbState.topbarIconsOnly.desktop = nextEnabled;
 
     applyTopbarIconsOnlyPreference();
 
     if (persist) {
-        safeSetItem(isDesktop ? SB_STORAGE_KEYS.desktopTopbarIconsOnly : SB_STORAGE_KEYS.mobileTopbarIconsOnly, String(nextEnabled));
+        safeSetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly, String(nextEnabled));
     }
 
     updateThemePickerUi();
@@ -3233,7 +3246,7 @@ function setPaperTextureOpacity(value, { persist = true } = {}) {
     updateThemePickerUi();
 }
 
-function setDesktopTopbarLabelPart(partId, enabled) {
+function setTopbarLabelPart(partId, enabled) {
     const normalizedPart = normalizeTopbarLabelPart(partId);
     if (!normalizedPart) {
         return;
@@ -3248,22 +3261,6 @@ function setDesktopTopbarLabelPart(partId, enabled) {
 
     sbState.topbarLabel.desktopParts = normalizeTopbarLabelParts(Array.from(nextParts), []);
     safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(sbState.topbarLabel.desktopParts));
-    flushSbStorageWrites();
-    updateThemePickerUi();
-    updateTopBarBrand();
-    scheduleTopbarContextRefresh(0);
-}
-
-function setMobileTopbarLabelPart(partId, enabled) {
-    const normalizedPart = normalizeTopbarLabelPart(partId);
-    const nextPart = enabled ? normalizedPart : '';
-
-    if (sbState.topbarLabel.mobilePart === nextPart) {
-        return;
-    }
-
-    sbState.topbarLabel.mobilePart = nextPart;
-    safeSetItem(SB_STORAGE_KEYS.topbarLabelMobilePart, nextPart);
     flushSbStorageWrites();
     updateThemePickerUi();
     updateTopBarBrand();
@@ -3593,8 +3590,7 @@ function setTopbarContextTokens(tokens) {
 }
 
 function isTopbarContextLabelEnabled() {
-    return sbState.topbarLabel.desktopParts.includes('ctx')
-        || sbState.topbarLabel.mobilePart === 'ctx';
+    return sbState.topbarLabel.desktopParts.includes('ctx');
 }
 
 function syncTopbarContextTokensFromPromptManager() {
@@ -3667,10 +3663,6 @@ async function refreshTopbarContextTokens() {
 }
 
 function getConfiguredTopbarLabelParts() {
-    if (isMobileViewport()) {
-        return sbState.topbarLabel.mobilePart ? [sbState.topbarLabel.mobilePart] : [];
-    }
-
     return normalizeTopbarLabelParts(sbState.topbarLabel.desktopParts);
 }
 
@@ -6861,8 +6853,7 @@ function scheduleCharacterToggleGhostSync() {
 }
 window.addEventListener('resize', syncCharacterToggleGhostRect, { passive: true });
 window.matchMedia(SB_MOBILE_MEDIA_QUERY).addEventListener('change', () => {
-    // Crossing the breakpoint can change which device's icons-only setting is in force, so the
-    // whole preference re-applies.
+    // The icons-only setting is in force on the desktop layout only, so crossing the breakpoint re-applies the whole preference.
     applyTopbarIconsOnlyPreference();
     updateTopBarBrand();
     // Crossing the breakpoint also decides which rail third-party composer buttons belong in.
@@ -9610,32 +9601,21 @@ function createThemeSliderGroup({ title, valueId, inputId, value, min, max, step
     return sliderGroup;
 }
 
-/**
- * One part of the top bar label: a switch for the desktop label, which mixes any combination, and a check for
- * the mobile one, which keeps a single part.
- */
-function createTopbarLabelPartRow(mode, part) {
+/** One part of the top bar label, as a switch: any mix of parts can be on, at every width. */
+function createTopbarLabelPartRow(part) {
     const input = createElement('input', {
-        id: `sb-topbar-label-${mode}-${part.id}`,
+        id: `sb-topbar-label-desktop-${part.id}`,
         attrs: {
             type: 'checkbox',
-            'data-sb-topbar-label-mode': mode,
             'data-sb-topbar-label-part': part.id,
         },
     });
-    const createPartRow = mode === 'mobile' ? createCheckRow : createSwitchRow;
-    return createPartRow({
+    return createSwitchRow({
         label: part.label,
         subtitle: part.description,
-        field: `topbar-label-${mode}-${part.id}`,
+        field: `topbar-label-${part.id}`,
         input,
-        onChange: isChecked => {
-            if (mode === 'mobile') {
-                setMobileTopbarLabelPart(part.id, isChecked);
-            } else {
-                setDesktopTopbarLabelPart(part.id, isChecked);
-            }
-        },
+        onChange: isChecked => setTopbarLabelPart(part.id, isChecked),
     });
 }
 
@@ -9662,13 +9642,14 @@ function createShortcutSettingsGroup() {
             updateShortcutButton(side);
         });
 
-        rows.push(createSelectRow({
+        const shortcutRow = createSelectRow({
             select,
             label: SB_SHORTCUT_LABELS[side] || side,
             field: `shortcut-${side}`,
             searchLabel: t`Search`,
             emptyText: t`No results`,
-        }));
+        });
+        rows.push(shortcutRow);
     }
 
     const group = appearanceModule.createAppearanceGroup({
@@ -9678,6 +9659,8 @@ function createShortcutSettingsGroup() {
         description: 'Assign a shell tab or universal search to each shortcut button in the top bar. Choose None to hide a button.',
     });
     group.append(...rows);
+    // Every Quick Access button carries `sb-desktop-setting`, so the phone bar has none and the group is offered on the desktop page only.
+    group.section.classList.add('sb-desktop-setting');
     return group.section;
 }
 
@@ -9893,57 +9876,67 @@ function syncShortcutButtonActiveStates() {
 }
 
 /**
- * The Top Bar Label groups, for the desktop label (any mix of parts) and the mobile label (one part). Each device
- * shows its own pair, and each pair has its own custom text field, because the field depends on the device's own
- * Custom Text part. Both fields write the one stored text.
+ * The Top Bar Label group and the Custom Text group under it. Both show at every width and read one stored list of parts
+ * and one stored text.
  * @returns {HTMLElement[]}
  */
 function createTopbarLabelSettingsGroups() {
-    const groups = [];
-    for (const [mode, deviceClass] of [['desktop', 'sb-desktop-setting'], ['mobile', 'sb-mobile-setting']]) {
-        const suffix = mode === 'mobile' ? '-mobile' : '';
-        const labelGroup = appearanceModule.createAppearanceGroup({
-            id: `topbar-label${suffix}`,
-            elementId: mode === 'mobile' ? 'sb-topbar-label-mobile-group' : 'sb-topbar-label-drawer',
-            title: 'Top Bar Label',
-            description: 'Choose what the center label shows. Desktop can mix multiple parts with a middle dot, while mobile keeps one selection at a time.',
-        });
-        labelGroup.append(...SB_TOPBAR_LABEL_PARTS.map(part => createTopbarLabelPartRow(mode, part)));
+    const labelGroup = appearanceModule.createAppearanceGroup({
+        id: 'topbar-label',
+        elementId: 'sb-topbar-label-drawer',
+        title: 'Top Bar Label',
+        description: 'Choose what the center label shows.',
+    });
+    labelGroup.append(...SB_TOPBAR_LABEL_PARTS.map(part => createTopbarLabelPartRow(part)));
 
-        const customTextInput = createElement('input', {
-            id: mode === 'mobile' ? 'sb-topbar-custom-text-input-mobile' : 'sb-topbar-custom-text-input',
-            className: 'sb-topbar-custom-text-input',
-            attrs: {
-                type: 'text',
-                maxlength: String(SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH),
-                placeholder: 'SillyBunny',
-                'aria-label': 'Top bar custom text',
-            },
-        });
-        const customTextRow = createEntryRow({
-            label: 'Custom Text Value',
-            field: `topbar-custom-text${suffix}`,
-            input: customTextInput,
-            floating: true,
-            onInput: value => setTopbarCustomText(value),
-        });
-        const customTextGroup = appearanceModule.createAppearanceGroup({
-            id: `topbar-custom-text${suffix}`,
-            title: 'Custom Text',
-            description: 'This only appears in the top bar when the Custom Text checkbox is enabled above.',
-        });
-        customTextGroup.append(customTextRow);
-        customTextGroup.group.dataset.sbEnabledBy = `#sb-topbar-label-${mode}-custom`;
+    const customTextInput = createElement('input', {
+        id: 'sb-topbar-custom-text-input',
+        className: 'sb-topbar-custom-text-input',
+        attrs: {
+            type: 'text',
+            maxlength: String(SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH),
+            placeholder: 'SillyBunny',
+            'aria-label': 'Top bar custom text',
+        },
+    });
+    const customTextRow = createEntryRow({
+        label: 'Custom Text Value',
+        field: 'topbar-custom-text',
+        input: customTextInput,
+        floating: true,
+        onInput: value => setTopbarCustomText(value),
+    });
+    const customTextGroup = appearanceModule.createAppearanceGroup({
+        id: 'topbar-custom-text',
+        title: 'Custom Text',
+        description: 'This only appears in the top bar when the Custom Text switch is enabled above.',
+    });
+    customTextGroup.append(customTextRow);
+    customTextGroup.group.dataset.sbEnabledBy = '#sb-topbar-label-desktop-custom';
 
-        for (const group of [labelGroup, customTextGroup]) {
-            group.section.classList.add(deviceClass);
-            groups.push(group.section);
-        }
+    return [labelGroup.section, customTextGroup.section];
+}
+
+/**
+ * Zen Sliders and Mad Lab Mode exclude each other, so one three-way row stands in their place. Their upstream inputs stay,
+ * hidden, as the transport the row writes through.
+ */
+function presentSliderModeRow() {
+    const zen = document.getElementById('enableZenSliders');
+    const lab = document.getElementById('enableLabMode');
+    if (!(zen instanceof HTMLInputElement && lab instanceof HTMLInputElement) || document.getElementById('sb-slider-mode')) return;
+    const labels = [zen, lab].map(input => input.closest('.checkbox_label')).filter(label => label instanceof HTMLElement);
+    if (labels.length !== 2) return;
+    labels[0].before(appearanceModule.createSliderModeRow({ zen, lab }));
+    for (const label of labels) {
+        // `[hidden]` alone loses to the `display` of the flex classes these labels carry, so the order pass's own marker hides them too.
+        label.hidden = true;
+        label.dataset.sbEmptiedByOrder = 'true';
     }
-    return groups;
 }
 
 function injectThemePicker() {
+    presentSliderModeRow();
     if (document.getElementById('sb-theme-card')) {
         updateThemePickerUi();
         return;
@@ -10097,18 +10090,12 @@ function updateThemePickerUi() {
         mobileButtonScaleValue.textContent = formatTopbarScale(sbState.mobileButtonScale);
     }
 
-    for (const input of document.querySelectorAll('[data-sb-topbar-label-mode][data-sb-topbar-label-part]')) {
+    for (const input of document.querySelectorAll('[data-sb-topbar-label-part]')) {
         if (!(input instanceof HTMLInputElement)) {
             continue;
         }
 
-        const mode = input.getAttribute('data-sb-topbar-label-mode');
-        const partId = normalizeTopbarLabelPart(input.getAttribute('data-sb-topbar-label-part'));
-        const isChecked = mode === 'mobile'
-            ? sbState.topbarLabel.mobilePart === partId
-            : sbState.topbarLabel.desktopParts.includes(partId);
-
-        input.checked = isChecked;
+        input.checked = sbState.topbarLabel.desktopParts.includes(normalizeTopbarLabelPart(input.getAttribute('data-sb-topbar-label-part')));
     }
 
     for (const customTextInput of customTextInputs) {
@@ -13038,6 +13025,7 @@ function initAll() {
     restorePersistedTopbarState();
     migrateLegacyNavigationState();
     seedTopbarScaleDefaults();
+    seedTopbarLabelParts();
     hideHostToggles();
     buildShell('left');
     buildShell('right');

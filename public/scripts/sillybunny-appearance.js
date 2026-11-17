@@ -2,6 +2,7 @@ import { t } from './i18n.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { createButtonRow, createEntryRow, createPrefGroup, createRow, createSwitchRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
+import { createToggleRow } from './sillybunny-editor/toggle-row.js';
 
 /**
  * Customize > Appearance groups that SillyBunny builds. Upstream rows are moved into them, never recreated, because
@@ -368,4 +369,87 @@ export function presentAppearance(container) {
     presentCustomAccent(container);
     presentFont(container);
     presentCustomCss(container);
+}
+
+/**
+ * Zen Sliders and Mad Lab Mode as one exclusive choice of three (neither, Zen Sliders, Mad Lab Mode).
+ *
+ * Upstream keeps the two as separate checkboxes, `#enableZenSliders` and `#enableLabMode`, and stores them as the booleans
+ * `power_user.enableZenSliders` and `power_user.enableLabMode`. Those inputs stay in the document as the transport: their
+ * `input` handlers write the booleans, run the switch functions and save. This control only drives them.
+ */
+/**
+ * The switch functions in `power-user.js` wait 100 ms before they change the page. Turning one mode off and the other on
+ * without a gap would let the second pass start before the first one has reset the sliders.
+ */
+const SWITCH_SETTLE_MS = 150;
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * @param {boolean} zen
+ * @param {boolean} lab
+ * @returns {'none'|'zen'|'lab'}
+ */
+export function readSliderMode(zen, lab) {
+    if (zen) return 'zen';
+    return lab ? 'lab' : 'none';
+}
+
+/**
+ * Writes the choice through the two upstream inputs: the mode that is not chosen goes off first, so the upstream rule that
+ * rejects one mode while the other is on never fires.
+ * @param {'none'|'zen'|'lab'} mode
+ * @param {{ zen: HTMLInputElement, lab: HTMLInputElement }} inputs
+ * @param {(ms: number) => Promise<void>} [settle]
+ */
+export async function chooseSliderMode(mode, { zen, lab }, settle = wait) {
+    const write = (input, on) => {
+        if (input.checked === on) return false;
+        input.checked = on;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+    };
+    const switchedOff = [mode !== 'zen' && write(zen, false), mode !== 'lab' && write(lab, false)].some(Boolean);
+    if (switchedOff && mode !== 'none') await settle(SWITCH_SETTLE_MS);
+    if (mode === 'zen') write(zen, true);
+    if (mode === 'lab') write(lab, true);
+}
+
+/**
+ * Builds the row over the two inputs and keeps it in step with them: the upstream settings load and the switch functions
+ * set the inputs and fire `input`, so the row follows those events.
+ * @param {{ zen: HTMLInputElement, lab: HTMLInputElement }} inputs
+ * @returns {HTMLElement}
+ */
+export function createSliderModeRow(inputs) {
+    const choices = [
+        ['none', t`None`],
+        ['zen', t`Zen Sliders`],
+        ['lab', t`Mad Lab Mode`],
+    ];
+    const current = () => readSliderMode(inputs.zen.checked, inputs.lab.checked);
+    let queue = Promise.resolve();
+    const toggle = createToggleRow({
+        label: t`Slider Mode`,
+        field: 'slider-mode',
+        id: 'sb-slider-mode',
+        choices,
+        value: current(),
+        onChange: mode => {
+            queue = queue.then(() => chooseSliderMode(mode, inputs)).catch(error => console.warn('Could not change the slider mode.', error));
+        },
+    });
+    const titles = {
+        zen: t`Alternative UI for numeric sampling parameters with fewer steps.`,
+        lab: t`Entirely unrestrict all numeric sampling parameters.`,
+    };
+    toggle.group.querySelectorAll('.sb-boolean-radio-option').forEach((option, index) => {
+        const title = titles[choices[index][0]];
+        if (title) option.title = title;
+    });
+    const follow = () => toggle.setValue(current());
+    inputs.zen.addEventListener('input', follow);
+    inputs.lab.addEventListener('input', follow);
+    return toggle.row;
 }

@@ -43,8 +43,29 @@ describe('Backend shortcut routes', () => {
 describe('topbar label title', () => {
     test('flushes configured label settings immediately after storage writes', () => {
         expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(sbState.topbarLabel.desktopParts));\n    flushSbStorageWrites();');
-        expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelMobilePart, nextPart);\n    flushSbStorageWrites();');
         expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelCustomText, nextText);\n    flushSbStorageWrites();');
+    });
+
+    test('has no phone-only label path: one list, one group, one custom text field', () => {
+        expect(normalizedTabsSource).not.toContain('setMobileTopbarLabelPart');
+        expect(normalizedTabsSource).not.toContain('topbarLabel.mobilePart');
+        expect(normalizedTabsSource).not.toContain('sb-topbar-label-mobile-group');
+        expect(normalizedTabsSource).not.toContain('sb-topbar-custom-text-input-mobile');
+        expect(getFunctionSource('getConfiguredTopbarLabelParts')).not.toContain('isMobileViewport');
+        expect(getFunctionSource('isTopbarContextLabelEnabled')).not.toContain('mobile');
+        const groupsSource = getFunctionSource('createTopbarLabelSettingsGroups');
+        expect(groupsSource).not.toContain('sb-desktop-setting');
+        expect(groupsSource).not.toContain('sb-mobile-setting');
+        expect(groupsSource).toContain('description: \'Choose what the center label shows.\',');
+        expect(groupsSource).toContain('description: \'This only appears in the top bar when the Custom Text switch is enabled above.\',');
+        expect(getFunctionSource('createTopbarLabelPartRow')).toContain('createSwitchRow({');
+        expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(readTopbarLabelParts()));');
+    });
+
+    test('offers Quick Access on the desktop page alone, as its buttons are desktop-only', () => {
+        const source = getFunctionSource('createShortcutSettingsGroup');
+        expect(source).toContain('group.section.classList.add(\'sb-desktop-setting\');');
+        expect(source).not.toContain('SB_SHORTCUT_DESKTOP_SLOTS');
     });
 
     test('binds accessible pointer and keyboard activation on the title', () => {
@@ -357,14 +378,15 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource.match(/'Icons only top bar'/g)).toHaveLength(1);
     });
 
-    test('stores the toggle per device and applies only the active viewport\'s setting', () => {
-        // A phone value stored by an earlier build is still read and kept; no control writes it.
+    test('stores the toggle for the desktop and puts no value in force on the phone', () => {
+        // A phone value stored by an earlier build stays in storage, and nothing reads it.
         expect(normalizedTabsSource).toContain('desktopTopbarIconsOnly: \'sb-desktop-topbar-icons-only\',');
-        expect(normalizedTabsSource).toContain('mobileTopbarIconsOnly: \'sb-mobile-topbar-icons-only\',');
+        expect(normalizedTabsSource).not.toContain('mobileTopbarIconsOnly');
+        expect(normalizedTabsSource).not.toContain('topbarIconsOnly.mobile');
         expect(normalizedTabsSource).toContain('function setTopbarIconsOnly(mode, enabled');
 
         const activeSource = getFunctionSource('isTopbarIconsOnlyActive');
-        expect(activeSource).toContain('isMobileViewport() ? sbState.topbarIconsOnly.mobile : sbState.topbarIconsOnly.desktop');
+        expect(activeSource).toContain('!isMobileViewport() && sbState.topbarIconsOnly.desktop');
 
         // Crossing the breakpoint can change which device's setting is in force.
         const listenerMatch = normalizedTabsSource.match(/window\.matchMedia\(SB_MOBILE_MEDIA_QUERY\)\.addEventListener\('change', \(\) => \{[\s\S]*?\}\);/);
@@ -376,12 +398,11 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).toContain('topbarIconsOnlyInput.checked = sbState.topbarIconsOnly.desktop;');
     });
 
-    test('seeds both devices from the legacy single toggle key', () => {
+    test('seeds the desktop value from the legacy single toggle key', () => {
         // The pre-split key stays as a read-only fallback so an existing choice carries over.
         const readSource = getFunctionSource('readTopbarIconsOnlySetting');
         expect(readSource).toContain('safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly)');
         expect(normalizedTabsSource).toContain('desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),');
-        expect(normalizedTabsSource).toContain('mobile: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.mobileTopbarIconsOnly),');
         // But nothing writes it back; the per-device keys are the live state.
         expect(normalizedTabsSource).not.toContain('safeSetItem(SB_STORAGE_KEYS.topbarIconsOnly,');
     });
@@ -423,10 +444,10 @@ describe('icons only top bar', () => {
     test('toggles state without rebuilding the top bar, and writes no value for the setting\'s other keys', () => {
         const setterSource = getFunctionSource('setTopbarIconsOnly');
         expect(setterSource).not.toContain('buildTopBar(');
-        expect(setterSource).toContain('isDesktop ? SB_STORAGE_KEYS.desktopTopbarIconsOnly : SB_STORAGE_KEYS.mobileTopbarIconsOnly');
+        expect(setterSource).toContain('safeSetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly, String(nextEnabled));');
+        expect(setterSource).toContain('if (mode !== \'desktop\') return;');
         expect(setterSource).toContain('updateThemePickerUi();');
         expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);');
-        expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly.mobile = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.mobileTopbarIconsOnly), sbState.topbarIconsOnly.mobile);');
 
         // The fit never writes a stored setting: it only sets attributes of the root.
         const fitSource = [getFunctionSource('fitTopbar'), getFunctionSource('setTopbarFitState'), getFunctionSource('resolveTopbarFit')].join('\n');

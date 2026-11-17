@@ -14,6 +14,7 @@ function createStorage(entries = []) {
 }
 
 function openShell(storage) {
+    let phone = false;
     const timers = new Map();
     const events = new Map();
     let nextTimer = 0;
@@ -26,6 +27,7 @@ function openShell(storage) {
         },
         document: { addEventListener: (name, listener) => events.set(name, listener) },
         normalizeText: value => String(value ?? '').trim(),
+        isMobileViewport: () => phone,
         updateThemePickerUi: jest.fn(),
         updateTopBarBrand: jest.fn(),
         scheduleTopbarContextRefresh: jest.fn(),
@@ -34,7 +36,7 @@ function openShell(storage) {
         'isSillyBunnyStorageKey', 'scheduleSbStorageFlush', 'flushSbStorageWrites', 'bindSbStorageFlushEvents',
         'safeGetItem', 'safeSetItem',
         'normalizeTopbarLabelPart', 'normalizeTopbarLabelParts', 'normalizeTopbarCustomText',
-        'setDesktopTopbarLabelPart', 'setMobileTopbarLabelPart', 'setTopbarCustomText',
+        'readTopbarLabelParts', 'seedTopbarLabelParts', 'getConfiguredTopbarLabelParts', 'setTopbarLabelPart', 'setTopbarCustomText',
     ].map(name => source.match(new RegExp(`^function ${name}\\([\\s\\S]*?^}`, 'm'))[0]);
     vm.runInContext([
         source.match(/const SB_STORAGE_KEYS = Object.freeze\(\{[\s\S]*?\n\}\);/)[0],
@@ -53,22 +55,86 @@ function openShell(storage) {
         label() { return JSON.parse(vm.runInContext('JSON.stringify(sbState.topbarLabel)', context)); },
         hide() { events.get('pagehide')(); },
         setCustomText(value) { vm.runInContext(`setTopbarCustomText(${JSON.stringify(value)})`, context); },
-        setDesktopLabel(value, enabled) { vm.runInContext(`setDesktopTopbarLabelPart(${JSON.stringify(value)}, ${Boolean(enabled)})`, context); },
-        setMobileLabel(value) { vm.runInContext(`setMobileTopbarLabelPart(${JSON.stringify(value)}, true)`, context); },
+        setLabelPart(value, enabled) { vm.runInContext(`setTopbarLabelPart(${JSON.stringify(value)}, ${Boolean(enabled)})`, context); },
+        configured(isPhone) {
+            phone = isPhone;
+            return JSON.parse(vm.runInContext('JSON.stringify(getConfiguredTopbarLabelParts())', context));
+        },
+        seed() { vm.runInContext('seedTopbarLabelParts()', context); },
     };
 }
 
 describe('top bar label preference persistence', () => {
-    test('retains desktop, mobile, and custom text choices across reloads', () => {
+    test('retains the label parts and the custom text across reloads', () => {
         const storage = createStorage();
         const shell = openShell(storage);
-        shell.setDesktopLabel('ctx', true);
-        shell.setMobileLabel('custom');
+        shell.setLabelPart('ctx', true);
+        shell.setLabelPart('custom', true);
         shell.setCustomText('My label');
         expect(openShell(storage).label()).toMatchObject({
-            desktopParts: ['ctx', 'char'],
-            mobilePart: 'custom',
+            desktopParts: ['ctx', 'char', 'custom'],
             customText: 'My label',
+        });
+    });
+
+    test('reads the one stored list at every width, with ["char"] as the default', () => {
+        expect(openShell(createStorage()).label().desktopParts).toEqual(['char']);
+        const storage = createStorage([['sb-topbar-label-desktop-parts', '["ctx","custom"]']]);
+        expect(openShell(storage).label().desktopParts).toEqual(['ctx', 'custom']);
+    });
+
+    test('shows the same list in the bar at 390 and at 1440', () => {
+        const storage = createStorage([['sb-topbar-label-desktop-parts', '["char","custom"]'], ['sb-topbar-label-mobile-part', 'ctx']]);
+        const shell = openShell(storage);
+        expect(shell.configured(true)).toEqual(['char', 'custom']);
+        expect(shell.configured(false)).toEqual(['char', 'custom']);
+        shell.setLabelPart('ctx', true);
+        expect(shell.configured(true)).toEqual(['ctx', 'char', 'custom']);
+        expect(shell.configured(false)).toEqual(['ctx', 'char', 'custom']);
+    });
+
+    describe('migration from the phone value', () => {
+        test.each([
+            ['a part', 'ctx', ['ctx']],
+            ['an empty value', '', []],
+            ['an unknown value', 'nonsense', []],
+        ])('seeds the list from %s when only the phone key exists', (_name, phone, expected) => {
+            const storage = createStorage([['sb-topbar-label-mobile-part', phone]]);
+            const shell = openShell(storage);
+            expect(shell.label().desktopParts).toEqual(expected);
+            shell.seed();
+            expect(storage.getItem('sb-topbar-label-desktop-parts')).toBe(JSON.stringify(expected));
+            shell.hide();
+            expect(storage.getItem('sb-topbar-label-mobile-part')).toBe(phone);
+        });
+
+        test('keeps the list when both keys exist, and does not touch the phone key', () => {
+            const storage = createStorage([
+                ['sb-topbar-label-desktop-parts', '["char","ctx"]'],
+                ['sb-topbar-label-mobile-part', 'custom'],
+            ]);
+            const shell = openShell(storage);
+            shell.seed();
+            expect(shell.label().desktopParts).toEqual(['ctx', 'char']);
+            expect(storage.getItem('sb-topbar-label-desktop-parts')).toBe('["char","ctx"]');
+            expect(storage.getItem('sb-topbar-label-mobile-part')).toBe('custom');
+        });
+
+        test('writes nothing when neither key exists', () => {
+            const storage = createStorage();
+            const shell = openShell(storage);
+            shell.seed();
+            expect(storage.setItem).not.toHaveBeenCalled();
+            expect(shell.label().desktopParts).toEqual(['char']);
+        });
+
+        test('never writes the phone key, and a later change to the list wins over the phone value', () => {
+            const storage = createStorage([['sb-topbar-label-mobile-part', 'ctx']]);
+            const shell = openShell(storage);
+            shell.seed();
+            shell.setLabelPart('char', true);
+            expect(storage.setItem.mock.calls.map(([key]) => key)).not.toContain('sb-topbar-label-mobile-part');
+            expect(openShell(storage).label().desktopParts).toEqual(['ctx', 'char']);
         });
     });
 
@@ -95,9 +161,9 @@ describe('top bar label preference persistence', () => {
         });
         const shell = openShell(storage);
         shell.setCustomText('First label');
-        shell.setMobileLabel('ctx');
+        shell.setLabelPart('ctx', true);
         shell.setCustomText('Second label');
-        expect(storage.getItem('sb-topbar-label-mobile-part')).toBe('ctx');
+        expect(storage.getItem('sb-topbar-label-desktop-parts')).toBe('["ctx","char"]');
         expect(storage.getItem('sb-topbar-label-custom-text')).toBeNull();
         writable = true;
         shell.hide();

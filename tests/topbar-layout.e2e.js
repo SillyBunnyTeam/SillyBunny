@@ -49,7 +49,7 @@ async function bootBar(page, { longTitle = false, slots = null, iconsOnly = fals
     }, { longTitle, slots, iconsOnly, title: LONG_TITLE });
     await openQuietChatForSmoke(page, { selectCharacter: false });
     await expect(page.locator('#sb-topbar-inner')).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(iconsOnly));
+    await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(iconsOnly && page.viewportSize().width > 768));
 }
 
 async function setIconsOnly(page, iconsOnly) {
@@ -57,7 +57,8 @@ async function setIconsOnly(page, iconsOnly) {
         window.SillyBunnyShell.setTopbarIconsOnly('desktop', value);
         window.SillyBunnyShell.setTopbarIconsOnly('mobile', value);
     }, iconsOnly);
-    await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(iconsOnly));
+    // The phone layout has no icons-only value in force: its bar never shows labels.
+    await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(iconsOnly && page.viewportSize().width > 768));
 }
 
 /** Everything the bar must not do, as a list of sentences; empty when the bar is sound. */
@@ -556,6 +557,28 @@ test.describe('top bar on a phone', () => {
             expect(bar.title).toBe(true);
         });
     }
+
+    test('draws the same bar whichever icons-only value an earlier build stored for phones', async ({ page }) => {
+        const readBar = () => page.evaluate(() => ({
+            title: document.getElementById('sb-topbar-title').getBoundingClientRect().toJSON(),
+            buttons: [...document.querySelectorAll('#sb-topbar-inner .sb-proxy-button')]
+                .filter(button => button.getClientRects().length > 0)
+                .map(button => ({ id: button.id, box: button.getBoundingClientRect().toJSON() })),
+        }));
+        await bootBar(page, {});
+        // The first load of a page measures the title before the fonts settle, so each reading follows a reload.
+        const readAfterReload = async () => {
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await expect(page.locator('#sb-topbar-inner')).toBeVisible();
+            await settleFit(page);
+            return readBar();
+        };
+        const withoutStoredValue = await readAfterReload();
+        await page.evaluate(() => localStorage.setItem('sb-mobile-topbar-icons-only', 'true'));
+        expect(await readAfterReload()).toEqual(withoutStoredValue);
+        await page.evaluate(() => localStorage.setItem('sb-mobile-topbar-icons-only', 'false'));
+        expect(await readAfterReload()).toEqual(withoutStoredValue);
+    });
 
     test('has no rail of page icons and keeps Backend on the bar with the icons-only setting on', async ({ page }) => {
         await bootBar(page, { iconsOnly: true });

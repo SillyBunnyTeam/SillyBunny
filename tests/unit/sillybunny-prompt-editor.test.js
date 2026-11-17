@@ -442,12 +442,27 @@ describe('Prompt list', () => {
         const popover = openPopover.mock.calls.at(-1)[0];
         expect(popover.trigger).toBe(triggers);
         expect(popover.title).toBe('Generation triggers');
-        expect([...popover.content.querySelectorAll('input[type="checkbox"]')].map(box => box.checked)).toEqual([false, false, false, false, false, false]);
+        // Select All comes first, then the six triggers.
+        const boxes = () => [...popover.content.querySelectorAll('input[type="checkbox"]')];
+        expect(boxes().map(box => box.checked)).toEqual([false, false, false, false, false, false, false]);
+        expect(boxes()[0].dataset.sbSelectAll).toBe('true');
         expect(popover.content.querySelector('button')).toBeNull();
-        const second = popover.content.querySelectorAll('input[type="checkbox"]')[1];
+        const second = boxes()[2];
         second.checked = true;
         second.dispatchEvent(new Event('change', { bubbles: true }));
         expect(triggers.textContent).toBe('Continue');
+        expect(boxes()[0]).toMatchObject({ checked: false, indeterminate: true });
+
+        boxes()[0].checked = true;
+        boxes()[0].dispatchEvent(new Event('change', { bubbles: true }));
+        expect(boxes().map(box => box.checked)).toEqual(Array(7).fill(true));
+        expect(boxes()[0].indeterminate).toBe(false);
+        expect(triggers.textContent).toBe('Normal, Continue, Impersonate, Swipe, Regenerate, Quiet');
+
+        boxes()[0].checked = false;
+        boxes()[0].dispatchEvent(new Event('change', { bubbles: true }));
+        expect(boxes().map(box => box.checked)).toEqual(Array(7).fill(false));
+        expect(triggers.textContent).toBe('All triggers');
     });
 
     test('Select in the list menu starts selection mode; Turn Off switches the chosen prompts off', async () => {

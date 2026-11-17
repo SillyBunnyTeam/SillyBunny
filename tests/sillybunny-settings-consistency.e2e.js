@@ -271,7 +271,9 @@ async function expectSwitchGeometry(panel) {
 function getPromptingGroupTitles(prompting) {
     return prompting.locator('.sb-prompting-group:visible').evaluateAll(groups => groups.map(group => {
         const heading = group.querySelector(':scope > .sb-settings-flat-header .sb-settings-category-title, :scope > .sb-settings-flat-header b, :scope > .inline-drawer-header b');
-        return heading?.textContent.replace(/\s+/g, ' ').trim() ?? '';
+        // A group whose one row carries the title has no heading; its box is named by a label.
+        const label = group.querySelector(':scope > [role="group"][aria-label]')?.getAttribute('aria-label');
+        return heading?.textContent.replace(/\s+/g, ' ').trim() ?? label ?? '';
     }));
 }
 
@@ -285,12 +287,17 @@ async function readBackendCategorySpacing(panel, groupSelector, expectedBetween)
             const header = group.querySelector(':scope > .sb-settings-category-header, :scope > .sb-settings-flat-header');
             const body = group.querySelector(':scope > .ds-pref-group');
             const name = group.id || group.dataset.sbSamplingGroup;
-            if (!header || !body) {
+            // A group with no heading is named by a label on its box and starts at the box.
+            const headless = !header && body?.matches('[role="group"][aria-label]');
+            if ((!header && !headless) || !body) {
                 failures.push(`${name}: missing category header or body`);
                 continue;
             }
-            const insideGap = body.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
-            if (Math.abs(insideGap - 6) > 1) failures.push(`${name}: header-to-body gap ${insideGap}px`);
+            const top = header ?? body;
+            if (header) {
+                const insideGap = body.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
+                if (Math.abs(insideGap - 6) > 1) failures.push(`${name}: header-to-body gap ${insideGap}px`);
+            }
             let previous = group.previousElementSibling;
             while (previous && !visible(previous)) previous = previous.previousElementSibling;
             // Navigation actions and wrapper boundaries are not consecutive categories.
@@ -301,7 +308,7 @@ async function readBackendCategorySpacing(panel, groupSelector, expectedBetween)
                     continue;
                 }
                 boundaries++;
-                const betweenGap = header.getBoundingClientRect().top - previousBody.getBoundingClientRect().bottom;
+                const betweenGap = top.getBoundingClientRect().top - previousBody.getBoundingClientRect().bottom;
                 if (Math.abs(betweenGap - expectedBetween) > 1) failures.push(`${name}: between-category gap ${betweenGap}px`);
             } else if (parseFloat(getComputedStyle(group).marginTop) !== 0) {
                 failures.push(`${name}: first or separated category has a leading margin`);
@@ -550,13 +557,15 @@ test.describe('Settings header consistency', () => {
 
         await page.setViewportSize({ width: 390, height: 844 });
         const mobileAppearance = await openSettingsTab(page, 'appearance', 'right');
-        const mobileTopbar = mobileAppearance.locator('#sb-topbar-label-mobile-group:visible');
+        const mobileTopbar = mobileAppearance.locator('#sb-topbar-label-drawer:visible');
         const mobileTitleMetrics = await mobileTopbar.locator('.ds-pref-group-heading').evaluate(title => ({
             visible: title.getBoundingClientRect().height > 0,
             fits: title.scrollWidth <= title.clientWidth,
         }));
         expect(mobileTitleMetrics).toEqual({ visible: true, fits: true });
-        await expect(mobileTopbar.locator('.ds-row-check')).toHaveCount(3);
+        await expect(mobileTopbar.locator('.ds-row-switch')).toHaveCount(3);
+        await expect(mobileTopbar.locator('.ds-row-check')).toHaveCount(0);
+        await expect(mobileAppearance.locator('#sb-topbar-label-mobile-group, #sb-topbar-custom-text-input-mobile')).toHaveCount(0);
 
         await page.setViewportSize({ width: 1280, height: 720 });
         const messages = await openSettingsTab(page, 'messages', 'right');
@@ -924,8 +933,10 @@ test.describe('Customize consistency', () => {
         expect(colorRows).toEqual([10]);
         await expect(appearance.locator('[data-sb-category="page-size"] .ds-row-slider')).toHaveCount(7);
         await expect(appearance.locator('#sb-background-settings-controls #background-blur-block, #sb-background-settings-controls #background-opacity-block')).toHaveCount(2);
-        // 21 since Tags as Folders was retired for full folder support; #bogus_folders stays as a hidden transport.
-        await expect(appearance.locator('[data-sb-category="visual-toggles"] .ds-row-switch')).toHaveCount(21);
+        // 19: Tags as Folders was retired for full folder support (#bogus_folders stays as a hidden transport), and Zen Sliders and
+        // Mad Lab Mode are one Slider Mode choice of three, a toggle row.
+        await expect(appearance.locator('[data-sb-category="visual-toggles"] .ds-row-switch')).toHaveCount(19);
+        await expect(appearance.locator('[data-sb-category="visual-toggles"] #sb-slider-mode .sb-boolean-radio-option')).toHaveCount(3);
         await expect(appearance.locator('#bogus_folders')).toBeHidden();
         const themeMenu = appearance.locator('[data-sb-category="ui-theme"] .ds-select-row__menu');
         await expect(themeMenu).toHaveAccessibleName('Theme Actions');

@@ -23,7 +23,7 @@ const legacyNavigationAttributes = [
     'data-sb-desktop-nav-replacement',
 ];
 
-async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly, mobileIconsOnly }) {
+async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly }) {
     const settingsResponses = [];
     page.on('response', response => {
         const pathname = new URL(response.url()).pathname;
@@ -93,7 +93,8 @@ async function exerciseUpgrade({ page, baseURL, settings, desktopIconsOnly, mobi
         expect(settingsResponses).toContainEqual({ pathname: `/scripts/${name}`, status: 200 });
     }
 
-    const iconsOnly = page.viewportSize().width <= 768 ? mobileIconsOnly : desktopIconsOnly;
+    // A value stored for phones is not read: the phone bar has no labels, so no icons-only value is in force there.
+    const iconsOnly = page.viewportSize().width <= 768 ? false : desktopIconsOnly;
     await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(iconsOnly));
     // The same two buttons open the settings in both modes: the icons-only bar is the labelled bar without labels.
     const entryPoints = [
@@ -132,7 +133,6 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
                 baseURL,
                 settings: {},
                 desktopIconsOnly: false,
-                mobileIconsOnly: false,
             });
             await expect(page.locator('#sb-topbar-inner')).toBeVisible();
         });
@@ -143,12 +143,11 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
                 baseURL,
                 settings: { 'sb-topbar-icons-only': 'true' },
                 desktopIconsOnly: true,
-                mobileIconsOnly: true,
             });
             await expect(page.locator('#sb-topbar-inner')).toBeVisible();
         });
 
-        test('keeps device-specific topbar preferences independent', async ({ page, baseURL }) => {
+        test('keeps the desktop preference and ignores a value stored for phones', async ({ page, baseURL }) => {
             await exerciseUpgrade({
                 page,
                 baseURL,
@@ -158,7 +157,6 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
                     'sb-mobile-topbar-icons-only': 'true',
                 },
                 desktopIconsOnly: false,
-                mobileIconsOnly: true,
             });
             await expect(page.locator('#sb-topbar-inner')).toBeVisible();
         });
