@@ -97,6 +97,11 @@ input.enable_scoped {
     display: block;
 }
 
+/* SillyBunny: the group labels of the editor take the Label size of the field labels above them; the footer's reduced size was applied to them twice (9.75px). */
+.regex_editor .wi-enter-footer-text small {
+    font-size: var(--sb-type-caption);
+}
+
 #regex_info_block_wrapper {
     position: relative;
 }

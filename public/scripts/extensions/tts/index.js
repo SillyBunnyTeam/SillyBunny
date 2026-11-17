@@ -611,6 +611,7 @@ async function onTtsVoicesClick() {
             const row = createButtonRow({
                 label: voice.name || voice.voice_id || String(index + 1),
                 icon: 'play',
+                start: true, // SillyBunny: a voice is one choice of the list, so its name starts the row.
                 field: `tts-voice-${index}`,
                 onActivate: () => globalThis.tts_preview?.(voice.voice_id),
             });

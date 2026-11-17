@@ -609,6 +609,51 @@ test.describe('mobile shell smoke at iPhone 390x844', () => {
         await checkpoint('Legacy popup · closed');
     });
 
+    test('the legacy popup is a bottom sheet with the affirmative action above Cancel, and a swipe down closes it', async ({ page }) => {
+        const open = () => page.evaluate(async () => {
+            const { callPopup } = await import('/script.js');
+            window.__legacySheetResult = callPopup('<h3>Delete this chat?</h3><p>Legacy sheet.</p>', 'confirm');
+        });
+        const popup = page.locator('#dialogue_popup');
+        await open();
+        await expect(popup).toBeVisible();
+
+        const sheet = await popup.boundingBox();
+        expect(sheet.x).toBeLessThanOrEqual(1);
+        expect(sheet.width).toBeGreaterThanOrEqual(389);
+        expect(sheet.y + sheet.height).toBeGreaterThanOrEqual(843);
+        const ok = await page.locator('#dialogue_popup_ok').boundingBox();
+        const cancel = await page.locator('#dialogue_popup_cancel').boundingBox();
+        expect(ok.y + ok.height).toBeLessThanOrEqual(cancel.y);
+        for (const box of [ok, cancel]) expect(box.height).toBeGreaterThanOrEqual(32);
+        // Both labels sit in the middle of their buttons: Cancel once had an inline display that put its label at the top.
+        const labelOffsets = await page.locator('#dialogue_popup_controls > .menu_button').evaluateAll(buttons => buttons.map(button => {
+            const range = document.createRange();
+            range.selectNodeContents(button);
+            const label = range.getBoundingClientRect();
+            const box = button.getBoundingClientRect();
+            return Math.abs((label.top + label.bottom) / 2 - (box.top + box.bottom) / 2);
+        }));
+        for (const offset of labelOffsets) expect(offset).toBeLessThanOrEqual(2);
+
+        const handle = await popup.locator(':scope > .sb-dialog__handle').boundingBox();
+        const x = handle.x + handle.width / 2;
+        await page.mouse.move(x, handle.y + handle.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(x, handle.y + 260, { steps: 8 });
+        await page.mouse.up();
+        await expect(page.locator('#shadow_popup')).toBeHidden();
+        expect(await page.evaluate(() => window.__legacySheetResult)).toBe(false);
+        expect(await popup.evaluate(node => node.style.transform)).toBe('');
+
+        await open();
+        await expect(popup).toBeVisible();
+        const reopened = await popup.boundingBox();
+        expect(reopened.y + reopened.height).toBeGreaterThanOrEqual(843);
+        await page.locator('#dialogue_popup_cancel').click();
+        await expect(page.locator('#shadow_popup')).toBeHidden();
+    });
+
     test('nested Quick Reply menus stay reachable through viewport changes', async ({ page }) => {
         await page.evaluate(async () => {
             const { ContextMenu } = await import('/scripts/extensions/quick-reply/src/ui/ctx/ContextMenu.js');

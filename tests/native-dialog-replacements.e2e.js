@@ -291,7 +291,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'interface'));
             await page.locator('#debug_menu').click();
             const debugMenu = page.getByRole('dialog').filter({ has: page.locator('#debug_table') });
-            const purgeAction = debugMenu.locator('[data-debug-function="purge-everything"]');
+            // The row runs the hidden source action `purge-everything` that shares its cell.
+            const purgeAction = debugMenu.locator('#debug_table td', { has: page.locator('[data-debug-function="purge-everything"]') }).locator('.ds-row-debug');
             await expect(purgeAction).toBeVisible();
             await purgeAction.dispatchEvent('click');
 

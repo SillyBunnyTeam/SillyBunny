@@ -108,17 +108,20 @@ async function navigateExpandedResult(page, parent, viewport, view, exit, result
 async function addSecretAndDismiss(page, manager, viewport, state, exit) {
     const parent = await manager.elementHandle();
     await manager.locator('[data-action="add-secret"]').click();
-    const alert = await currentPopup(page, '#newSecretLabel');
-    await expect(alert).toHaveClass(/sb-dialog--alert/);
-    await expect(alert).not.toHaveClass(/sb-dialog--page/);
-    await expect(alert).toHaveAttribute('role', 'alertdialog');
+    const addPage = await currentPopup(page, '#newSecretLabel');
+    await expect(addPage).toHaveClass(/sb-dialog--dialog/);
+    await expect(addPage).not.toHaveClass(/sb-dialog--alert/);
+    await expectPushedPage(addPage, manager);
     await expect(page.locator('dialog.popup[open]')).toHaveCount(2);
-    await alert.locator('textarea.popup-input').fill(SECRET_SENTINEL);
-    await alert.locator('#newSecretLabel').fill('  Added fixture  ');
+    // A floating Dialog page follows its content; only a Window page, or a page over a sheet, keeps the height of what it covers.
+    const [addHeight, managerHeight] = await Promise.all([addPage, manager].map(node => node.evaluate(element => element.offsetHeight)));
+    expect(Math.abs(addHeight - managerHeight) <= 1).toBe(viewport.presentation === 'sheet');
+    await addPage.locator('textarea.popup-input').fill(SECRET_SENTINEL);
+    await addPage.locator('#newSecretLabel').fill('  Added fixture  ');
     await expectNoSecretLeaks(page, state);
-    await captureWindowSurface(page, viewport, 'api-keys-add-alert');
-    await dismissPopup(page, alert, exit);
-    await expectParentRestored(page, alert, manager);
+    await captureWindowSurface(page, viewport, 'api-keys-add-page');
+    await dismissPopup(page, addPage, exit);
+    await expectParentRestored(page, addPage, manager);
     expect(await manager.evaluate((node, original) => node === original, parent)).toBe(true);
     await parent.dispose();
     await expectNoSecretLeaks(page, state);
@@ -460,6 +463,23 @@ for (const viewport of WINDOW_VIEWPORTS) {
         await expect.poll(() => state.uploads.length).toBe(1);
         expect(Buffer.from(state.uploads[0].data, 'base64').toString()).toBe('scraper file result\n');
         await expect(manager.locator('.globalAttachmentsList')).toContainText('Notepad - scraper-window-note.txt');
+    });
+
+    test(`a scraper Dialog over Data Bank is a page that follows its content, not the Window it covers at ${size}`, async ({ page }) => {
+        await bootWindowDialogs(page, viewport);
+        const manager = await openDataBank(page);
+        await page.evaluate(async () => {
+            const { ScraperManager } = await import('/scripts/scrapers.js');
+            void ScraperManager.runDataBankScraper('web');
+        });
+        const scraper = await currentPopup(page, 'textarea.popup-input');
+        await expect(scraper).toHaveClass(/sb-dialog--dialog/);
+        await expectPushedPage(scraper, manager);
+        const [scraperHeight, managerHeight] = await Promise.all([scraper, manager].map(node => node.evaluate(element => element.offsetHeight)));
+        expect(Math.abs(scraperHeight - managerHeight) <= 1).toBe(viewport.presentation === 'sheet');
+        await captureWindowSurface(page, viewport, 'scraper-web-page');
+        await dismissPopup(page, scraper, 'cancel');
+        await expectParentRestored(page, scraper, manager);
     });
 
     test(`Regex editor Window reaches trailing switches and saves exact script values, not Cancel at ${size}`, async ({ page }) => {

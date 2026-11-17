@@ -10,7 +10,7 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () =
     stopMotion: jest.fn(),
 }));
 
-const { bindSheetGestures, bindSheetSwipeClose, createSheetHandle } = await import('../../public/scripts/sillybunny-editor/sheet-gestures.js');
+const { adoptLegacyPopup, bindSheetGestures, bindSheetSwipeClose, createSheetHandle } = await import('../../public/scripts/sillybunny-editor/sheet-gestures.js');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -176,6 +176,100 @@ describe('bindSheetGestures with the translate property', () => {
         expect(removeProperty).toHaveBeenCalledWith('translate');
         expect(removeProperty).not.toHaveBeenCalledWith('transform');
         expect(play).toHaveBeenCalledWith(sheet, [{ translate: '0 30px' }, { translate: '0 0' }], {});
+    });
+});
+
+describe('adoptLegacyPopup', () => {
+    function legacyPopup({ sheet = true, cancelShown = true } = {}) {
+        window.matchMedia = () => ({ matches: sheet, addEventListener() {}, removeEventListener() {} });
+        const scrim = document.createElement('div');
+        scrim.id = 'shadow_popup';
+        scrim.style.display = 'block';
+        const popup = document.createElement('div');
+        popup.id = 'dialogue_popup';
+        popup.getBoundingClientRect = () => ({ height: 400 });
+        const ok = document.createElement('div');
+        ok.id = 'dialogue_popup_ok';
+        const cancel = document.createElement('div');
+        cancel.id = 'dialogue_popup_cancel';
+        if (!cancelShown) cancel.style.display = 'none';
+        const onOk = jest.fn();
+        const onCancel = jest.fn();
+        ok.addEventListener('click', onOk);
+        cancel.addEventListener('click', onCancel);
+        popup.append(ok, cancel);
+        scrim.append(popup);
+        document.body.append(scrim);
+        return { scrim, popup, onOk, onCancel, stop: adoptLegacyPopup() };
+    }
+
+    function swipeDown(handle) {
+        pointer(handle, 'pointerdown', 100, 0);
+        pointer(handle, 'pointermove', 220, 100);
+        pointer(handle, 'pointerup', 220, 100);
+    }
+
+    test('adds a handle that a swipe down turns into a click on Cancel', () => {
+        const { popup, onOk, onCancel } = legacyPopup();
+        const handle = popup.querySelector(':scope > .sb-dialog__handle');
+
+        expect(handle).not.toBeNull();
+        swipeDown(handle);
+
+        expect(onCancel).toHaveBeenCalledTimes(1);
+        expect(onOk).not.toHaveBeenCalled();
+    });
+
+    test('a swipe clicks OK when Cancel is hidden, as Escape does', () => {
+        const { popup, onOk, onCancel } = legacyPopup({ cancelShown: false });
+
+        swipeDown(popup.querySelector('.sb-dialog__handle'));
+
+        expect(onOk).toHaveBeenCalledTimes(1);
+        expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    test('a swipe does nothing outside the sheet layout', () => {
+        const { popup, onOk, onCancel } = legacyPopup({ sheet: false });
+
+        swipeDown(popup.querySelector('.sb-dialog__handle'));
+
+        expect(onOk).not.toHaveBeenCalled();
+        expect(onCancel).not.toHaveBeenCalled();
+        expect(popup.style.transform).toBe('');
+    });
+
+    test('the dragged offset and the scrim opacity are cleared when the scrim hides', async () => {
+        const { scrim, popup } = legacyPopup();
+        const handle = popup.querySelector('.sb-dialog__handle');
+
+        pointer(handle, 'pointerdown', 100, 0);
+        pointer(handle, 'pointermove', 220, 100);
+        expect(popup.style.transform).toBe('translateY(120px)');
+        expect(scrim.style.opacity).toBe('0.7');
+        pointer(handle, 'pointerup', 220, 100);
+        scrim.style.display = 'none';
+        await Promise.resolve();
+
+        expect(popup.style.transform).toBe('');
+        expect(scrim.style.opacity).toBe('');
+    });
+
+    test('the returned function removes the handle and the listeners', () => {
+        const { popup, onCancel, stop } = legacyPopup();
+        const handle = popup.querySelector('.sb-dialog__handle');
+
+        stop();
+        expect(handle.isConnected).toBe(false);
+        swipeDown(handle);
+
+        expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    test('a page without the popup markup gets nothing', () => {
+        window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+
+        expect(() => adoptLegacyPopup()()).not.toThrow();
     });
 });
 

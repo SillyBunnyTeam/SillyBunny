@@ -407,25 +407,24 @@ for (const viewport of WINDOW_TOOLS_VIEWPORTS) {
         await body.evaluate(node => { node.scrollTop = node.scrollHeight; });
         await expect(rows.last()).toBeInViewport();
         await expect(popup.locator('.sb-dialog__close')).toBeInViewport();
+        // The row is the control. The source action keeps its node and its delegated handler, hidden in the same cell, and the row clicks it.
         const action = actions.last();
         await expect(action).toHaveAttribute('data-debug-function', WINDOW_TOOLS_SAFE_DEBUG_FUNCTION);
-        const row = action.locator('xpath=ancestor::tr[1]');
-        await expect(row).toContainText(await action.evaluate(node => node.closest('.ds-row-debug').querySelector('.ds-row-label').textContent));
-        await expect(action).toBeInViewport();
-        expect(await action.evaluate(node => {
-            const rowNode = node.closest('.ds-row-debug');
-            const labelBox = rowNode.querySelector('.ds-row-text').getBoundingClientRect();
-            const actionBox = node.getBoundingClientRect();
-            return actionBox.left >= labelBox.right && rowNode.lastElementChild.contains(node);
-        })).toBe(true);
+        await expect(action).toBeHidden();
+        const rowOf = functionId => popup.locator('#debug_table td', { has: page.locator(`[data-debug-function="${functionId}"]`) }).locator('.ds-row-debug');
+        const actionRow = rowOf(WINDOW_TOOLS_SAFE_DEBUG_FUNCTION);
+        await expect(actionRow).toHaveRole('button');
+        await expect(actionRow).toContainText(await action.evaluate(node => node.closest('td').querySelector('.ds-row-label').textContent));
+        await expect(actionRow).toBeInViewport();
+        await expect(actionRow.locator('.ds-row-suffix')).toHaveCount(0);
         await captureWindowToolsSurface(page, viewport, 'debug-menu-scrolled');
 
         const blockedAction = popup.locator('#debug_table [data-debug-function]:not([data-debug-function="window-tools-safe-action"])').first();
         const blockedFunctionId = await blockedAction.getAttribute('data-debug-function');
-        await blockedAction.click();
+        await rowOf(blockedFunctionId).click();
         expect(await page.evaluate(() => window.__windowToolsBlockedDebugActions)).toEqual([blockedFunctionId]);
         expect(await page.evaluate(() => window.__windowToolsDebugRuns)).toBe(0);
-        await action.click();
+        await actionRow.click();
         expect(await page.evaluate(() => window.__windowToolsDebugRuns)).toBe(1);
         expect(await page.evaluate(() => window.__windowToolsBlockedDebugActions)).toEqual([blockedFunctionId]);
         await popup.locator('.sb-dialog__close').click();

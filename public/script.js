@@ -15821,7 +15821,8 @@ export function callPopup(text, type, inputValue = '', { okButton, rows, wide, w
         .toggleClass('horizontal_scrolling_dialogue_popup', !!allowHorizontalScrolling)
         .toggleClass('vertical_scrolling_dialogue_popup', !!allowVerticalScrolling);
 
-    $dialoguePopupCancel.css('display', 'inline-block');
+    // SillyBunny: clear the inline display instead of forcing inline-block, which made Cancel a block box whose label sat at the top while OK (a flex box) centred its label.
+    $dialoguePopupCancel.css('display', '');
     $dialoguePopupOk.text(getOkButtonText());
     $dialoguePopupInput.toggle(popup_type === 'input').val(inputValue).attr('rows', rows ?? 1);
     $dialoguePopupText.empty().append(text);
@@ -19298,10 +19299,10 @@ jQuery(async function () {
         resetMovableStyles(drawerId);
     });
 
-    // SillyBunny: the Close controls of zoomed avatars and gallery windows are divs with a button role, so Enter and Space click them as they would a button.
+    // SillyBunny: the Close controls of zoomed avatars, gallery windows and the summary, group member and Quick Reply popouts are divs with a button role, so Enter and Space click them as they would a button.
     document.addEventListener('keydown', (event) => {
         if ((event.key !== 'Enter' && event.key !== ' ') || event.altKey || event.ctrlKey || event.metaKey) return;
-        const control = event.target instanceof Element ? event.target.closest('.dragClose[role="button"]') : null;
+        const control = event.target instanceof Element ? event.target.closest('[role="button"]:is(.dragClose, #groupMemberListPopoutClose, .qr--close)') : null;
         if (!control) return;
         event.preventDefault();
         /** @type {HTMLElement} */ (control).click();

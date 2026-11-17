@@ -1276,83 +1276,6 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
-/* The mode toggle is absolutely positioned, so header text lays out underneath it.
-   The header is a start-aligned flex column, so cap the fit-content width instead
-   of using margin: reserve the toggle footprint (~215px + 66px right offset) so
-   long text ellipsizes instead of running under the pill. */
-
-.sb-character-shell-mode-button {
-    border: 0;
-    border-radius: var(--sb-shell-control-radius);
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: transparent;
-    color: var(--sb-shell-text-secondary);
-    font-size: var(--sb-type-meta);
-    font-weight: 700;
-    line-height: 1;
-    min-height: 32px;
-    padding: 8px 13px;
-    cursor: pointer;
-    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
-}
-
-.sb-character-shell-mode-button .fa-solid {
-    font-size: 13px;
-    width: 14px;
-    text-align: center;
-}
-
-@media (hover: hover) {
-    .sb-character-shell-mode-button:hover {
-        background: var(--sb-flat-hover-bg);
-        color: var(--sb-shell-text);
-    }
-}
-
-.sb-character-shell-mode-button:active {
-    background: var(--sb-flat-active-bg);
-}
-
-.sb-character-shell-mode-button:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sb-character-shell-mode-button.is-active {
-    color: var(--sb-shell-text);
-    background: var(--sb-flat-selected-bg);
-}
-
-@media (hover: hover) {
-    .sb-character-shell-mode-button.is-active:hover {
-        background: var(--sb-flat-selected-hover-bg);
-    }
-}
-
-.sb-character-shell-mode-button.is-active .fa-solid {
-    color: var(--color-primary, var(--sb-accent));
-}
-
-@media (max-width: 900px) {
-
-    .sb-character-shell-mode-button {
-        min-width: 34px;
-        min-height: 34px;
-        padding: 9px;
-        justify-content: center;
-    }
-
-    .sb-character-shell-mode-button span {
-        display: none;
-    }
-
-    .sb-character-shell-mode-button .fa-solid {
-        width: auto;
-    }
-}
-
 .sb-character-shell-nav .sb-shell-tab {
     flex: 0 0 auto;
 }
@@ -1457,49 +1380,6 @@ body:not(.movingUI) .drawer-content.maximized {
     line-height: var(--sb-line-body);
     opacity: 0.66;
     max-width: 72ch;
-}
-
-.sb-agent-state-label {
-    font-size: var(--sb-type-caption);
-    opacity: 0.68;
-}
-
-.sb-agent-state-entry-title,
-.sb-agent-state-empty {
-    overflow-wrap: anywhere;
-}
-
-.sb-agent-state-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.sb-agent-action-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.sb-agent-action-button {
-    width: 100%;
-    justify-content: flex-start;
-    text-align: left;
-}
-
-.sb-agent-state-entry-title {
-    font-size: var(--sb-type-control);
-}
-
-.sb-agent-state-empty {
-    line-height: 1.4;
-    opacity: 0.82;
-}
-
-#agent_apply_lore_review.disabled,
-#agent_discard_lore_review.disabled {
-    opacity: 0.5;
-    pointer-events: none;
 }
 
 .sb-search-results {
@@ -2090,21 +1970,6 @@ body:not(.movingUI) .drawer-content.maximized {
         font-size: calc(var(--mainFontSize) * 0.72);
         line-height: 1.45;
     }
-}
-
-.sb-agent-card-title {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    min-width: 0;
-}
-
-.sb-agent-card-title strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
 }
 
 .sb-theme-card {
@@ -8199,7 +8064,6 @@ body.reduced-motion #sb-settings-page .sb-connections-panel .sb-connections-expa
         flex-basis: 44px;
     }
 
-    .sb-character-shell-mode-button,
     .sb-search-show-all,
     .sb-shell-search,
     .sb-theme-slider-value,

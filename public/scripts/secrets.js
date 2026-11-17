@@ -671,10 +671,9 @@ async function openKeyManagerDialog(key) {
         let result = POPUP_RESULT.CANCELLED;
         // SillyBunny: preserve the source textarea and collection without mirroring its value.
         const dialogOptions = utilityFormOptions({ mainLabel: t`Secret value (can be empty):`, clearContent: true });
-        // SillyBunny: Add Secret is an Alert above the key-manager Window, not another page.
+        // SillyBunny: Add Secret holds two fields, so it is a Dialog (a page of the key-manager Window), not an Alert.
         const value = await Popup.show.input(t`Add Secret`, t`Secret value (can be empty):`, '', {
             ...dialogOptions,
-            tier: 'alert',
             customInputs: [{
                 id: 'newSecretLabel',
                 type: 'text',

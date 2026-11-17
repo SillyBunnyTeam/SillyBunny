@@ -282,6 +282,45 @@ describe('Popup frame adapter', () => {
         frame.dispose();
     });
 
+    test('a confirm that is one short question gets the question as its heading and no description', () => {
+        setupDialogMedia();
+        const popupValue = popupDom({ contentHtml: 'Delete the Chat File?' });
+        const frame = framePopup(popupValue);
+        popupValue.dlg.showModal();
+        frame.opened();
+        const heading = popupValue.content.querySelector('h2.sb-dialog__heading');
+        expect(heading?.textContent).toBe('Delete the Chat File?');
+        expect(popupValue.dlg.getAttribute('aria-labelledby')).toBe(heading.id);
+        expect(popupValue.dlg.hasAttribute('aria-describedby')).toBe(false);
+        frame.dispose();
+    });
+
+    test.each([
+        ['a statement', 'Delete the Chat File.'],
+        ['two sentences', 'Delete this? It cannot be undone.'],
+        ['a long question', `${'Are you sure you want to delete every file in this folder '.repeat(3)}?`],
+        ['markup beside the question', 'Delete the Chat File?<br><small>Permanent.</small>'],
+    ])('a confirm with %s keeps its body and gets no promoted heading', (_name, contentHtml) => {
+        setupDialogMedia();
+        const popupValue = popupDom({ contentHtml });
+        const frame = framePopup(popupValue);
+        popupValue.dlg.showModal();
+        frame.opened();
+        expect(popupValue.content.querySelector('.sb-dialog__heading')).toBeNull();
+        expect(popupValue.dlg.getAttribute('aria-describedby')).toBe(popupValue.content.id);
+        frame.dispose();
+    });
+
+    test('a question is promoted only in a confirm', () => {
+        setupDialogMedia();
+        const popupValue = popupDom({ type: POPUP_TYPE.TEXT, contentHtml: 'Delete the Chat File?' });
+        const frame = framePopup(popupValue, { tier: 'alert' });
+        popupValue.dlg.showModal();
+        frame.opened();
+        expect(popupValue.content.querySelector('.sb-dialog__heading')).toBeNull();
+        frame.dispose();
+    });
+
     test('Dialog moves the first heading itself to its header, keeps i18n and puts Cancel before Save', () => {
         setupDialogMedia();
         const popupValue = popupDom({ contentHtml: '<h3 data-i18n="Install Extension">Install Extension</h3><p>Details</p>' });

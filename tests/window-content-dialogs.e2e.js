@@ -279,7 +279,10 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await admin.locator('.sb-dialog__header .newUserButton').click();
         const formPage = page.locator('dialog.popup[open]').last();
         await expect(formPage).toHaveClass(/sb-dialog--page/);
-        await expect(formPage.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+        // Create and Cancel are the page's own responses, in its header; the page has no Back or Close beside them.
+        await expect(formPage.getByRole('button', { name: 'Create', exact: true })).toBeVisible();
+        await expect(formPage.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+        await expect(formPage.getByRole('button', { name: /^(Back|Close)$/ })).toHaveCount(0);
         const form = formPage.locator('.userCreateForm');
         const fields = form.locator('input[name]');
         await expect(fields).toHaveCount(4);
@@ -292,20 +295,27 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         await expect(form.locator('input[name="_name"]')).toHaveAttribute('autocomplete', 'username');
         await expect(form.locator('input[name="handle"]')).toHaveAttribute('pattern', '[a-z0-9-]+');
         await expectTrailingEntryRows(form);
-        await formPage.locator('.popup-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
-        await expect(form.locator('.newUserRegisterFinalizeButton')).toBeInViewport();
+        await expect(form.locator('.newUserRegisterFinalizeButton')).toBeHidden();
         await form.locator('input[name="_name"]').fill('Window QA User');
         await expect(form.locator('input[name="handle"]')).toHaveValue('Window QA User');
         await form.locator('input[name="handle"]').fill('window-qa-user');
         await form.locator('input[name="password"]').fill('qa-password');
         await form.locator('input[name="confirm"]').fill('qa-password');
-        await form.locator('.newUserRegisterFinalizeButton').click();
+        await formPage.getByRole('button', { name: 'Create', exact: true }).click();
         await expect.poll(() => state.users.findLast(user => user.endpoint === 'create')).toMatchObject({
             name: 'Window QA User',
             handle: 'window-qa-user',
             password: 'qa-password',
         });
-        // The form page can still be open here. Then its Back button also has the close class, so pick Close only.
+        // The write is blocked here, so the page stays open with its values, as a refused creation always left the form. Enter in a field submits too.
+        await expect(form.locator('input[name="handle"]')).toHaveValue('window-qa-user');
+        await expect(formPage).toBeVisible();
+        await form.locator('input[name="confirm"]').press('Enter');
+        await expect.poll(() => state.users.filter(user => user.endpoint === 'create')).toHaveLength(2);
+        // A creation that the server accepts closes the page through its Cancel response.
+        await page.route('**/api/users/create', route => route.fulfill({ json: { handle: 'window-qa-user' } }));
+        await formPage.getByRole('button', { name: 'Create', exact: true }).click();
+        await expect(page.locator('dialog.popup[open]')).toHaveCount(1);
         await admin.locator('.sb-dialog__close:not(.sb-dialog__back)').click();
         await expect(page.locator('dialog.popup')).toHaveCount(0);
         expect(state.users.filter(user => user.endpoint === 'delete')).toEqual([]);
@@ -324,7 +334,7 @@ for (const viewport of WINDOW_CONTENT_VIEWPORTS) {
         const formPage = await openWindow(page, '.userCreateForm');
         await expectWindowFrame(formPage, viewport);
         await expectFrameFollowsContent(formPage);
-        await formPage.getByRole('button', { name: 'Back', exact: true }).click();
+        await formPage.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(formPage).toHaveCount(0);
         expect(await admin.evaluate(node => node.offsetHeight)).toBe(adminHeight);
 

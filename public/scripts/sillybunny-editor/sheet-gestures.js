@@ -1,5 +1,5 @@
 import { MOTION_FAST, SPRING_SHEET, play, stopMotion } from '../sillybunny-motion.js';
-import { MENU_SHEET_QUERY } from './breakpoints.js';
+import { MENU_SHEET_QUERY, OVERLAY_SHEET_QUERY } from './breakpoints.js';
 
 const SWIPE_DISTANCE_RATIO = 0.3;
 const SWIPE_VELOCITY = 0.5;
@@ -441,6 +441,47 @@ export function presentMenuAsSheet({ node, getTrigger = () => null, close = null
             media.removeEventListener('change', onLayoutChange);
             if (open) onHidden();
         },
+    };
+}
+
+/**
+ * Adds the grab handle and the swipe-down close to the legacy `callPopup` dialog, which the sheet rules of
+ * `sillybunny-theme.css` show as a bottom sheet under `OVERLAY_SHEET_QUERY`. Upstream shows and hides `#shadow_popup`
+ * itself, so the swipe closes through the same buttons that Escape clicks (Cancel, or OK when Cancel is hidden),
+ * and the dragged offset is cleared when the scrim hides.
+ * @returns {() => void} Removes the handle and the listeners.
+ */
+export function adoptLegacyPopup() {
+    const scrim = document.getElementById('shadow_popup');
+    const popup = document.getElementById('dialogue_popup');
+    if (!scrim || !popup) return () => {};
+    const media = window.matchMedia(OVERLAY_SHEET_QUERY);
+    const isShown = () => getComputedStyle(scrim).display !== 'none';
+    const handle = createSheetHandle();
+    popup.prepend(handle);
+    const unbind = bindSheetGestures({
+        surface: popup,
+        scrim,
+        targets: [popup],
+        startSelector: '.sb-dialog__handle',
+        isActive: () => media.matches && isShown(),
+        requestClose: () => {
+            const cancel = document.getElementById('dialogue_popup_cancel');
+            const button = cancel && getComputedStyle(cancel).display !== 'none' ? cancel : document.getElementById('dialogue_popup_ok');
+            button?.click();
+            return true;
+        },
+    });
+    const observer = new MutationObserver(() => {
+        if (isShown()) return;
+        popup.style.removeProperty('transform');
+        scrim.style.removeProperty('opacity');
+    });
+    observer.observe(scrim, { attributes: true, attributeFilter: ['style'] });
+    return () => {
+        observer.disconnect();
+        unbind();
+        handle.remove();
     };
 }
 

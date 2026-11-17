@@ -110,8 +110,9 @@ export async function stubAccounts(page, { admin }) {
             }
             return route.fulfill({ status: 400, json: { error: 'Refused by the dialog audit' } });
         });
-        await page.evaluate(async () => (await import('/scripts/user.js')).setUserControls(true));
     });
+    // A reload keeps the routes but drops the module state, so the controls and the current user are set on every call.
+    await page.evaluate(async () => (await import('/scripts/user.js')).setUserControls(true));
 }
 
 /** Opens the Data & Security tab, where the account buttons are, and waits until the button is built. */

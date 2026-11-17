@@ -151,11 +151,12 @@ function appendRows(container, rows) {
  * @param {Node} [options.prefix]
  * @param {Node|Node[]} [options.suffix]
  * @param {boolean} [options.activatable=false]
+ * @param {boolean} [options.chevron=true]  The trailing arrow of an activatable row; a row that runs an action instead of opening a view leaves it out.
  * @param {boolean} [options.stacked=false]  Label above a full-width suffix (chip entries, wide controls).
  * @param {(event: MouseEvent) => void} [options.onActivate]
  * @returns {object}
  */
-export function createRow({ label, subtitle, field, id, prefix, suffix, activatable = false, stacked = false, onActivate }) {
+export function createRow({ label, subtitle, field, id, prefix, suffix, activatable = false, chevron = true, stacked = false, onActivate }) {
     const row = element(activatable ? 'button' : 'div', 'ds-row');
     markField(row, field, id);
     if (stacked) row.classList.add('ds-row--stacked');
@@ -171,10 +172,10 @@ export function createRow({ label, subtitle, field, id, prefix, suffix, activata
         tail.append(...(Array.isArray(suffix) ? suffix : [suffix]));
         row.append(tail);
     }
-    if (activatable) {
-        const chevron = element('i', 'fa-solid fa-chevron-right ds-row__chevron');
-        chevron.setAttribute('aria-hidden', 'true');
-        row.append(chevron);
+    if (activatable && chevron) {
+        const arrow = element('i', 'fa-solid fa-chevron-right ds-row__chevron');
+        arrow.setAttribute('aria-hidden', 'true');
+        row.append(arrow);
     }
     return rowController(row, activatable ? row : null);
 }
@@ -995,11 +996,12 @@ function adoptButtonNode(node) {
  * @param {string} [options.icon] Font Awesome icon name without the fa- prefix.
  * @param {boolean} [options.danger=false]
  * @param {boolean} [options.arrow=false]  A trailing arrow, for a row that opens a window or a new view.
+ * @param {boolean} [options.start=false]  The title at the start of the row, for a row that is one choice of a list.
  * @param {HTMLElement} [options.button]  An upstream button that becomes the row, with its id, handlers and visibility.
  * @param {(event: MouseEvent) => void} [options.onActivate]
  * @returns {object}
  */
-export function createButtonRow({ label, icon, field, id, danger = false, arrow = false, button, onActivate }) {
+export function createButtonRow({ label, icon, field, id, danger = false, arrow = false, start = false, button, onActivate }) {
     const row = button ?? element('button', 'ds-row ds-button-row');
     const adopted = button ? adoptButtonNode(row) : null;
     markField(row, field, id);
@@ -1007,6 +1009,7 @@ export function createButtonRow({ label, icon, field, id, danger = false, arrow 
     if (!button) row.type = 'button';
     row.classList.toggle('is-destructive', Boolean(danger));
     row.classList.toggle('ds-button-row--arrow', Boolean(arrow));
+    row.classList.toggle('ds-button-row--start', Boolean(start));
     if (icon) {
         const glyph = element('i', `fa-solid fa-${icon}`);
         glyph.setAttribute('aria-hidden', 'true');

@@ -80,6 +80,8 @@ test('admin adopts four new-user fields without changing types, attributes, list
     fields[0].dispatchEvent(new Event('input', { bubbles: true }));
     expect(inputListener).toHaveBeenCalledTimes(1);
     expect(form.querySelector('.newUserRegisterFinalizeButton')).toBe(submit);
+    // The page's Create response submits the form, so the form's own button stays only as its hidden default button.
+    expect(submit.parentElement.style.display).toBe('none');
     options.onClose();
 });
 

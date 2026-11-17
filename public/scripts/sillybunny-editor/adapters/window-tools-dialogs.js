@@ -155,14 +155,19 @@ export function adaptDebugMenu(source) {
             throw new TypeError('A debug menu action needs a name, description, and action control.');
         }
 
+        // The row is the control. The source action keeps its node and its delegated handler, so the row clicks it, and it
+        // leaves the layout (one identical "Execute" on every row said nothing the title did not).
         const row = createRow({
             label: name.textContent.trim(),
             subtitle: description.textContent.trim(),
             field: `debug-${action.dataset.debugFunction}`,
-            suffix: action,
+            activatable: true,
+            chevron: false,
+            onActivate: () => action.click(),
         });
         row.row.classList.add('ds-row-debug');
-        cell.replaceChildren(row.row);
+        action.style.display = 'none';
+        cell.replaceChildren(row.row, action);
     }
 
     return table;

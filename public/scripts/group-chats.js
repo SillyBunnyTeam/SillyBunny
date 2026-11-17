@@ -4470,9 +4470,10 @@ function doCurMemberListPopout() {
         console.debug('did not see popout yet, creating');
         const memberListClone = $('#currentGroupMembers').clone();
         const template = $('#zoomed_avatar_template').html();
+        // SillyBunny: Close is a named button that the keyboard reaches.
         const controlBarHtml = `<div class="panelControlBar flex-container">
         <div id="groupMemberListPopoutheader" class="fa-solid fa-grip drag-grabber hoverglow"></div>
-        <div id="groupMemberListPopoutClose" class="fa-solid fa-circle-xmark hoverglow"></div>
+        <div id="groupMemberListPopoutClose" class="fa-solid fa-circle-xmark hoverglow" role="button" tabindex="0" title="${t`Close`}" aria-label="${t`Close`}"></div>
     </div>`;
         const newElement = $(template);
 

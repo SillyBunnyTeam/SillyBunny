@@ -105,7 +105,7 @@ for (const pointer of ['fine', 'coarse']) {
     });
 }
 
-test.describe('Close controls of the picture overlays', () => {
+test.describe('Close controls of the moving windows', () => {
     test('the zoomed avatar Close is a named button that Enter, Space and Escape operate', async ({ page }) => {
         await boot(page, { width: 390, height: 844 });
         const zoomed = page.locator('.zoomed_avatar[forChar]');
@@ -172,6 +172,44 @@ test.describe('Close controls of the picture overlays', () => {
         await page.evaluate(() => document.activeElement?.blur());
         await page.keyboard.press('Escape');
         await expect(gallery).toHaveCount(0);
+    });
+
+    test('the gallery Close keeps the target floor', async ({ page }) => {
+        await page.route('**/api/images/list', route => route.fulfill({ json: ['picture-overlays-1.png'] }));
+        await page.route('**/user/images/**', route => route.fulfill({ contentType: 'image/png', body: AVATAR_IMAGE }));
+        await boot(page, { width: 1440, height: 900 });
+        await page.evaluate(() => document.getElementById('show_gallery_wand_button').click());
+        await page.locator('#gallery .nGY2GThumbnail').first().waitFor({ state: 'visible' });
+        const box = await page.locator('#gallery .dragClose').boundingBox();
+        expect(box.height).toBeGreaterThanOrEqual(32);
+        expect(box.width).toBeGreaterThanOrEqual(32);
+    });
+
+    test('the summary popout Close is a named button that Enter and Space operate, at the target floor', async ({ page }) => {
+        await boot(page, { width: 1440, height: 900 });
+        const root = page.locator('#summaryExtensionPopout');
+        const close = page.locator('#summaryExtensionPopoutClose');
+        const openPopout = async () => {
+            await page.evaluate(() => document.getElementById('summaryExtensionPopoutButton').click());
+            await expect(root).toBeVisible();
+            await expect(root).toHaveCSS('opacity', '1');
+        };
+
+        await openPopout();
+        await expect(close).toHaveAttribute('role', 'button');
+        await expect(close).toHaveAttribute('tabindex', '0');
+        await expect(close).toHaveAccessibleName('Close');
+        const box = await close.boundingBox();
+        expect(box.height).toBeGreaterThanOrEqual(32);
+
+        await close.focus();
+        await page.keyboard.press('Enter');
+        await expect(root).toHaveCount(0);
+
+        await openPopout();
+        await close.focus();
+        await page.keyboard.press('Space');
+        await expect(root).toHaveCount(0);
     });
 });
 

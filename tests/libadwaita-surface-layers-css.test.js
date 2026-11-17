@@ -64,6 +64,25 @@ describe('libadwaita surface and layer foundations', () => {
         expect(tabsCss).toMatch(/\.ds-row-entry__field:focus-within > \.ds-row-entry__edit \{[^}]*display: none;/);
     });
 
+    test('upstream warning text follows the theme warning colour, and the selected secret row the flat selected fill', () => {
+        expect(themeCss).toMatch(/--sb-warning-fg: [^;]+;[\s\S]{0,200}--warning: var\(--sb-warning-fg\);/);
+        const secretsCss = readFileSync(path.join(repoRoot, 'public', 'css', 'secrets.css'), 'utf8');
+        expect(secretsCss).toMatch(/\.secretKeyManagerItem\.active \{[^}]*background-color: var\(--sb-flat-selected-bg, var\(--cobalt30a\)\);/);
+        expect(themeCss).toMatch(/\.sb-dialog table\.responsiveTable \{[^}]*border: 0;[^}]*border-collapse: collapse;/);
+    });
+
+    test('a Dialog page follows its content, a Window page keeps the height of the Window it covers', () => {
+        expect(themeCss).toMatch(/dialog\.popup\.sb-dialog--page\.sb-dialog--dialog:not\(\[data-covers-sheet\]\) \{[^}]*min-height: 0;/);
+        expect(themeCss).not.toMatch(/dialog\.popup\.sb-dialog--page\.sb-dialog--window \{[^}]*min-height: 0;/);
+    });
+
+    test('the legacy popup is a bottom sheet under the overlay breakpoint, with Cancel last', () => {
+        const sheet = /@media \(max-width: 450px\), \(max-height: 22\.5rem\) \{\s*#dialogue_popup \{([^}]*)\}[\s\S]*?#dialogue_popup_controls \{([^}]*)\}/.exec(themeCss);
+        expect(sheet).not.toBeNull();
+        expect(sheet[1]).toMatch(/inset: auto 0 0;[^}]*transform: none;/);
+        expect(sheet[2]).toMatch(/flex-direction: column-reverse;/);
+    });
+
     test('floating entry rows draw an error in Destructive Red and fade when disabled', () => {
         expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:has\(\.ds-row-entry__field > :is\(input, textarea\)\[aria-invalid='true'\]\) \{[^}]*outline: 2px solid var\(--sb-color-danger\);/);
         expect(tabsCss).toMatch(/\.ds-row-entry__error \{[^}]*color: var\(--sb-color-danger\);/);

@@ -20,6 +20,8 @@ const HEADING_SELECTOR = 'h2, h3, .popup-header';
 const MEDIA_SELECTOR = 'img, svg, video, canvas, iframe, input, select, textarea, button';
 /** The distance in pixels from which a pointer that moved counts as a swipe (as in `sheet-gestures.js`). */
 const SWIPE_SLOP = 4;
+/** The longest question that a confirm shows as its heading (characters). */
+const QUESTION_MAX_LENGTH = 90;
 let nextId = 0;
 
 function isShown(node) {
@@ -216,20 +218,40 @@ export function framePopup(popup, { tier = null, title = null, size = 'fill', al
         }
     }
 
+    /**
+     * A confirm whose body is one short question and nothing else ("Delete the Chat File?") has no heading, so the question is
+     * its heading. The text stays in `.popup-content`, now as an h2, and the Alert is named by it.
+     */
+    function promoteQuestion(content) {
+        if (popup.type !== TYPE_CONFIRM || !content.childNodes.length) return null;
+        if (![...content.childNodes].every(node => node.nodeType === Node.TEXT_NODE)) return null;
+        const question = content.textContent.trim();
+        if (question.length > QUESTION_MAX_LENGTH || !question.endsWith('?') || /[.!?]\s/.test(question)) return null;
+        const heading = document.createElement('h2');
+        heading.textContent = question;
+        content.replaceChildren(heading);
+        return heading;
+    }
+
     function buildAlert() {
         const { body, content, buttonControls, closeButton } = popup;
         dlg.setAttribute('role', 'alertdialog');
         let heading = findLeadingHeading(content);
+        let promoted = false;
         if (title) {
             heading = document.createElement('h2');
             heading.textContent = title;
             body.prepend(heading);
+        } else if (!heading) {
+            heading = promoteQuestion(content);
+            promoted = heading !== null;
         }
         if (heading) {
             heading.classList.add('sb-dialog__heading');
             dlg.setAttribute('aria-labelledby', ensureId(heading, 'sb-popup-heading'));
         }
-        dlg.setAttribute('aria-describedby', ensureId(content, 'sb-popup-body'));
+        // A promoted question is the whole body: describing the Alert by it as well would read it twice.
+        if (!promoted) dlg.setAttribute('aria-describedby', ensureId(content, 'sb-popup-body'));
         adoptAlertOption(popup, cleanups);
         convertCustomInputs(popup, false, cleanups);
         body.after(buttonControls);

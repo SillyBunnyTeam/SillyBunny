@@ -62,7 +62,8 @@
   position: relative;
 }
 #qr--popout > .qr--header > .qr--controls > .qr--close {
-  height: 15px;
+  /* SillyBunny: the Close keeps the target floor of the other moving windows. */
+  height: var(--sb-density-floor, 15px);
   aspect-ratio: 1 / 1;
   font-size: 20px;
   opacity: 0.5;

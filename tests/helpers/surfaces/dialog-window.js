@@ -381,15 +381,15 @@ export const surfaces = [
     }),
     windowEntry({
         id: 'debug-menu',
-        title: 'Debug menu (a list of actions, each with a description)',
-        ready: within(WINDOW_FRAME, '[data-debug-function]'),
+        title: 'Debug menu (a list of actions, each row is the control and has a description)',
+        ready: within(WINDOW_FRAME, '.ds-row-debug'),
         async open(page) {
             await closeDialogs(page);
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
             await page.locator('#debug_menu').waitFor({ state: 'attached' });
             await page.evaluate(() => window.$('#debug_menu').trigger('click'));
             await settleFrame(page, WINDOW_FRAME);
-            await page.locator(within(WINDOW_FRAME, '[data-debug-function]')).first().waitFor({ state: 'visible' });
+            await page.locator(within(WINDOW_FRAME, '.ds-row-debug')).first().waitFor({ state: 'visible' });
         },
         sources: [`${SCRIPTS}/power-user.js`, `${ADAPTERS}/window-tools-dialogs.js`],
     }),

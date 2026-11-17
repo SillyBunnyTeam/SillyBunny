@@ -1,5 +1,5 @@
 import { getContext } from './shared.js';
-import { createButtonRow, releaseRowIds } from '../../../sillybunny-editor/rows.js';
+import { createButtonRow, createPrefGroup, releaseRowIds } from '../../../sillybunny-editor/rows.js';
 
 function createCompatibleButtonRow(label, field) {
     const button = document.createElement('button');
@@ -10,7 +10,7 @@ function createCompatibleButtonRow(label, field) {
         return button;
     }
 
-    return createButtonRow({ label, field }).row;
+    return createButtonRow({ label, field, start: true }).row;
 }
 
 async function pickGroupMember() {
@@ -40,7 +40,10 @@ async function pickGroupMember() {
     if (typeof content.querySelectorAll === 'function') {
         const headingElement = document.createElement('h3');
         headingElement.textContent = heading;
-        content.append(headingElement, list);
+        // The members are the rows of one boxed list; the list keeps its class for the code that reads it.
+        const group = createPrefGroup({ field: 'group-members', rows: buttons });
+        group.group.classList.add('sb-dialog-choice-list');
+        content.append(headingElement, group.section);
     } else {
         // The command's lightweight unit-test DOM does not implement text nodes or selectors.
         content.textContent = heading;

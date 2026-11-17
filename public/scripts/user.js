@@ -891,23 +891,31 @@ async function openAdminPanel() {
 
         event.preventDefault();
         createUser(event.target, () => {
-            event.target.closest('dialog.popup')?.querySelector('.sb-dialog__back')?.click();
+            // SillyBunny: the page leaves through its Cancel (Back) button; an immediate-apply page would have a Back button.
+            event.target.closest('dialog.popup')?.querySelector('.sb-dialog__back, .popup-button-cancel')?.click();
             renderUsers();
         });
     });
 
-    // SillyBunny: the new-user form is a pushed Window page, while the existing submit handler stays on the live form.
+    // SillyBunny: the new-user form is a pushed Window page with Cancel and Create in its header; Create submits the live form, whose existing submit handler validates and creates.
     template.find('.newUserButton').on('click', function (event) {
         event.preventDefault();
         event.stopImmediatePropagation();
         const form = adminOptions.newUserForm?.();
         if (!form) return;
-        void callGenericPopup(form, POPUP_TYPE.TEXT, '', {
-            okButton: 'Close',
+        void callGenericPopup(form, POPUP_TYPE.CONFIRM, '', {
+            okButton: t`Create`,
+            cancelButton: t`Cancel`,
             tier: 'window',
             size: 'content',
             title: t`New User`,
             allowVerticalScrolling: true,
+            // A refused or failed creation keeps the page open, as the form's own button did.
+            onClosing: popup => {
+                if (popup.result !== POPUP_RESULT.AFFIRMATIVE) return true;
+                form.requestSubmit();
+                return false;
+            },
             onClose: () => adminOptions.restoreNewUserForm?.(),
         });
     });

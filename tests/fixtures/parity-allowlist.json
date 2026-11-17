@@ -2,7 +2,6 @@
     "version": 1,
     "entries": [
         {"family":"dialog","surface":"dialog.alert.legacy-dialogue-popup","viewport":"1440x900","part":"response-row-alert","property":"markup","value":"legacy","canonical":"popup","kind":"temporary","reason":"outlier at the base"},
-        {"family":"dialog","surface":"dialog.alert.legacy-dialogue-popup","viewport":"390x844","part":"response-row-alert","property":"flexDirection","value":"row","canonical":"column-reverse","kind":"temporary","reason":"outlier at the base"},
         {"family":"dialog","surface":"dialog.alert.legacy-dialogue-popup","viewport":"390x844","part":"response-row-alert","property":"markup","value":"legacy","canonical":"popup","kind":"temporary","reason":"outlier at the base"},
         {"family":"editor","surface":"editor.agent","viewport":"1440x900","part":"entry","property":"borderTopLeftRadius","value":0,"canonical":9,"kind":"temporary","reason":"outlier at the base"},
         {"family":"editor","surface":"editor.agent","viewport":"1440x900","part":"entry","property":"markup","value":"own","canonical":"text-pole","kind":"temporary","reason":"outlier at the base"},

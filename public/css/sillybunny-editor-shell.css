@@ -366,6 +366,12 @@ body.reduced-motion .sb-list-editor__divider::before {
     font-weight: 700;
 }
 
+/* One choice of a list: the title starts the row (a centred title is for a button row that stands alone). */
+.ds-row.ds-button-row--start {
+    justify-content: flex-start;
+    text-align: start;
+}
+
 /* The spacer balances the trailing arrow so the title stays centred. */
 .ds-row.ds-button-row--arrow::before {
     content: '';

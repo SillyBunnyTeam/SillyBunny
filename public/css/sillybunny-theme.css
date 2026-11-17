@@ -208,6 +208,8 @@
     --sb-selection-bg: color-mix(in srgb, var(--sb-accent) 20%, var(--SmartThemeBlurTintColor));
     --sb-selection-fg: var(--SmartThemeBodyColor);
     --sb-warning-fg: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 72%, var(--SmartThemeBodyColor) 28%);
+    /* Upstream's warning text (.warning, .neutral_warning) is a literal red; it follows the theme's danger colour instead. */
+    --warning: var(--sb-warning-fg);
     --sb-warning-bg: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 12%, var(--SmartThemeBlurTintColor) 88%);
     --sb-warning-border: color-mix(in srgb, var(--color-danger, var(--sb-color-error)) 42%, var(--SmartThemeBorderColor) 58%);
     --sb-input-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor) 90%, transparent);
@@ -430,6 +432,19 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
 }
 
 .zoomed_avatar > .panelControlBar .dragClose:focus-visible {
+    opacity: 1;
+}
+
+/* The Close of the gallery and of the summary, group member and Quick Reply popouts keeps the same target floor (the Quick Reply sheet sets its own height). */
+.draggable .panelControlBar :is(.dragClose, .qr--close, #groupMemberListPopoutClose) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--sb-density-floor);
+    height: var(--sb-density-floor);
+}
+
+.draggable .panelControlBar :is(.dragClose, .qr--close, #groupMemberListPopoutClose):focus-visible {
     opacity: 1;
 }
 
@@ -4250,25 +4265,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 .sb-accent-preset[data-accent='gray'] {
     --sb-accent-swatch: #6b7280;
 }
-.sb-message-style-button {
-    min-height: 44px;
-    padding: 10px 12px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    text-align: center;
-}
-
-.sb-message-style-button i {
-    color: var(--sb-accent);
-}
-
-.sb-message-style-button.is-selected {
-    background: var(--sb-shell-tab-active-bg);
-    border-color: color-mix(in srgb, var(--color-primary, var(--sb-accent)) 26%, var(--sb-shell-border));
-    box-shadow: var(--sb-shadow-control);
-}
 
 @media screen and (max-width: 768px) {
     #range_block_openai {
@@ -5629,6 +5625,11 @@ dialog.popup.sb-dialog--page.sb-dialog--fill {
     height: var(--sb-page-max-height) !important;
 }
 
+/* A form page follows its content, as a Dialog does; a Window page, and a page that covers a sheet, keep the height of the surface they cover. */
+dialog.popup.sb-dialog--page.sb-dialog--dialog:not([data-covers-sheet]) {
+    min-height: 0;
+}
+
 /* A covered Popup hides its own backdrop with the rest of it, so a page over a Popup keeps the dim
    itself. A page over an openDialog frame leaves the dim to that frame. */
 dialog.popup.sb-dialog--page:not([data-covers-popup])::backdrop,
@@ -5817,6 +5818,7 @@ dialog.popup.sb-dialog--page[data-covers-sheet] {
     background: none;
     font-size: var(--sb-type-headline);
     font-weight: 800;
+    text-wrap: balance;
 }
 
 #dialogue_popup_controls {
@@ -5848,6 +5850,57 @@ dialog.popup.sb-dialog--page[data-covers-sheet] {
     box-shadow: none;
 }
 
+/* The legacy popup is a bottom sheet where Popup alerts are: the affirmative action on top, Cancel last. */
+@media (max-width: 450px), (max-height: 22.5rem) {
+    #dialogue_popup {
+        inset: auto 0 0;
+        width: auto;
+        min-width: 0;
+        max-width: none;
+        max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
+        margin: 0;
+        border-width: 1px 0 0;
+        border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
+        transform: none;
+    }
+
+    #dialogue_popup_holder {
+        padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    }
+
+    #dialogue_popup_controls {
+        flex-direction: column-reverse;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    #dialogue_popup_controls > .menu_button {
+        flex: none;
+        width: auto;
+        min-height: var(--sb-density-floor);
+    }
+
+    #dialogue_popup > .sb-dialog__handle {
+        display: block;
+        position: absolute;
+        z-index: 2;
+        inset: 0 50% auto auto;
+        width: 80px;
+        height: 20px;
+        translate: 50% 0;
+        touch-action: none;
+    }
+
+    #dialogue_popup > .sb-dialog__handle::before {
+        content: '';
+        position: absolute;
+        inset: 8px 19px auto;
+        height: 4px;
+        border-radius: var(--sb-radius-pill);
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 36%, transparent);
+    }
+}
+
 /* Extensions manager (Window tier). */
 dialog.popup.sb-dialog .extensions_info {
     width: 100%;
@@ -5872,6 +5925,18 @@ dialog.popup.sb-dialog .extensions_toolbar {
 }
 
 /* SillyBunny: lay the debug menu's preserved table/action contract out as shared preference rows. */
+/* A table in a Dialog or Window (the hidden API keys) is a list with one line between rows, not a grid of 2px white borders. */
+.sb-dialog table.responsiveTable {
+    margin: 0;
+    border: 0;
+    border-collapse: collapse;
+}
+
+.sb-dialog table.responsiveTable :is(th, td) {
+    border: 0;
+    border-bottom: 1px solid var(--sb-shell-border);
+}
+
 dialog.popup.sb-dialog--window .sb-debug-menu {
     display: block;
     margin: 0;
@@ -5899,13 +5964,6 @@ dialog.popup.sb-dialog--window .sb-debug-menu td {
 dialog.popup.sb-dialog--window .sb-debug-menu .ds-row-debug {
     word-break: normal;
     border-bottom: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-}
-
-dialog.popup.sb-dialog--window .sb-debug-menu .ds-row-suffix > [data-debug-function] {
-    flex: 0 0 auto;
-    width: auto;
-    margin: 0;
-    white-space: nowrap;
 }
 
 /* Fallback for content no adapter has converted (third-party included): checkbox labels become
@@ -6522,6 +6580,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     font-size: var(--sb-type-headline);
     font-weight: 800;
     line-height: var(--sb-line-title, 1.18);
+    text-wrap: balance;
 }
 
 .sb-dialog__message {

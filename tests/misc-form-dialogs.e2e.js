@@ -17,7 +17,9 @@ async function expectFrame(popup, viewport, immediate = false) {
         const aligned = node.hasAttribute('data-covers-sheet')
             ? Math.abs(rect.bottom - inherited.bottom) <= 1
             : Math.abs(rect.top + rect.bottom - inherited.top - inherited.bottom) <= 2;
-        return aligned && Math.abs(rect.x - inherited.x) <= 1 && Math.abs(rect.width - inherited.width) <= 1 && rect.height >= inherited.height - 1;
+        // A Dialog page follows its content in a floating layout, centred on the parent, and may be shorter or taller than it; over a sheet it covers the sheet.
+        const sized = node.hasAttribute('data-covers-sheet') ? rect.height >= inherited.height - 1 : true;
+        return aligned && Math.abs(rect.x - inherited.x) <= 1 && Math.abs(rect.width - inherited.width) <= 1 && sized;
     })).toBe(true);
     const content = popup.locator('.popup-content');
     await content.evaluate(node => { node.scrollTop = node.scrollHeight; });

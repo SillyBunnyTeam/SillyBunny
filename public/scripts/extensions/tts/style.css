@@ -19,6 +19,15 @@
     text-align: left;
 }
 
+/* SillyBunny: in the voices Dialog a voice is a boxed-list row that starts with its name, with the language set apart from it. */
+.sb-dialog .voice_preview {
+    margin: 0;
+}
+
+.sb-dialog .voice_preview .voice_lang {
+    margin-inline-end: 6px;
+}
+
 .voice_preview .fa-play {
     cursor: pointer;
 }

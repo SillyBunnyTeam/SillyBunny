@@ -2041,6 +2041,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-17, UI polish sweep (task 7.9). |
 | Owner | `TODO(copy)` |
 
+### `public/script.js`, `public/scripts/secrets.js`, `public/scripts/user.js`, `public/scripts/group-chats.js`, `public/css/secrets.css` and the Summarize, Quick Reply, Regex and TTS extensions - upstream windows and dialogs
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` (`callPopup` leaves the Cancel button's display to CSS instead of setting `inline-block`; the delegated Close keydown also matches `#groupMemberListPopoutClose` and `.qr--close`); `public/scripts/secrets.js` (Add Secret no longer forces `tier: 'alert'`); `public/scripts/user.js` (New User is a confirm page whose `onClosing` veto submits the form; the creation callback closes it through its Back or Cancel button); `public/scripts/group-chats.js` (the member popout's Close carries `role`, `tabindex`, `title` and `aria-label`); `public/css/secrets.css` (the selected secret row uses `--sb-flat-selected-bg`); `public/scripts/extensions/memory/index.js` (the summary popout's Close, with `import { t }`); `public/scripts/extensions/quick-reply/src/ui/ButtonUi.js` and `public/scripts/extensions/quick-reply/style.css` (the popout's Close: role, tab stop, name, and the density-floor height); `public/scripts/extensions/regex/editor.html` and `public/scripts/extensions/regex/style.css` (Test Mode moves into the body so the header is one row; the group labels take the Caption size); `public/scripts/extensions/tts/index.js` and `public/scripts/extensions/tts/style.css` (the voice rows use the `start` option of `createButtonRow`; the row margins). `public/index.html` and `public/style.css` change cache keys only. |
+| Area | Upstream dialogs and windows: the legacy `#dialogue_popup`, Add Secret, New User, the Regex editor, the TTS voices, the debug actions, and the Close controls of the summary, group members and Quick Reply popouts. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `adoptLegacyPopup()` in `public/scripts/sillybunny-editor/sheet-gestures.js` (the legacy popup as a bottom sheet under the overlay breakpoint); `promoteQuestion()` in `public/scripts/sillybunny-editor/popup-frame.js` (a one-question confirm takes the question as its heading); the `chevron` option of `createRow` and the `start` option of `createButtonRow` in `public/scripts/sillybunny-editor/rows.js`; the Dialog-page rule in `public/css/sillybunny-theme.css` (a Dialog page follows its content's height). |
+| Adapter shape | Since 2026-11-17 (UI polish sweep, task 9.3c): the marked one-line hunks and attribute changes above; the behaviour lives in the SillyBunny modules named as the target seam. |
+| Protecting tests | `tests/window-dialogs.e2e.js`; `tests/utility-dialogs.e2e.js`; `tests/window-content-dialogs.e2e.js`; `tests/window-tools-dialogs.e2e.js`; `tests/native-dialog-replacements.e2e.js`; `tests/misc-form-dialogs.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/picture-overlays.e2e.js`; `tests/unit/sillybunny-popup-frame.test.js`; `tests/unit/sillybunny-sheet-gestures.test.js`; `tests/unit/window-content-dialogs.test.js`; `tests/unit/window-tools-dialogs.test.js`; `tests/libadwaita-surface-layers-css.test.js`; `tests/quick-reply-button-ui.test.js`; the audit surfaces of these dialogs and popouts (`tests/audit/surface-audit.e2e.js`). |
+| Validation | 2026-11-17: root and tests lint, the full unit run, budgets, contracts and design rules, the coder's related e2e run (42 specs) and the merge's (`e2e-related --since d1519c7d4`, 16 specs), and the audit of 20 dialog surfaces (smoke, parity, axe). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-17, UI polish sweep (task 9.3c). |
+| Owner | `TODO(copy)` |
+
 ### `public/index.html`, `public/script.js`, `public/style.css`, `public/css/mobile-styles.css`, `public/css/popup.css` and the Gallery, Expressions and Summarize extensions - picture overlays
 | Field | Value |
 | --- | --- |

@@ -13,7 +13,7 @@
 /* SillyBunny: Home rules live in their own sheet */
 @import url(css/sillybunny-home.css?v=20261114e);
 @import url(css/data-maid.css);
-@import url(css/secrets.css);
+@import url(css/secrets.css?v=20261117ze);
 @import url(css/backgrounds.css?v=20261113x);
 @import url(css/chat-backups.css);
 @import url(css/spacing-system.css?v=20261112l);

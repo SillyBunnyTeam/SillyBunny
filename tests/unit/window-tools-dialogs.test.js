@@ -94,7 +94,7 @@ test('sampler lists with five or fewer choices do not add Select All', () => {
     adapter.destroy();
 });
 
-test('debug rows preserve action node identity and place the delegated action after its description', () => {
+test('debug rows are activatable rows that click the hidden source action, which keeps its node identity', () => {
     const node = root(`<div>
         <h3>Debug Menu</h3>
         <div>Advanced diagnostics</div>
@@ -112,6 +112,15 @@ test('debug rows preserve action node identity and place the delegated action af
     expect(table.classList.contains('sb-debug-menu')).toBe(true);
     expect(row.querySelector('.ds-row-label').textContent).toBe('Diagnostic name');
     expect(row.querySelector('.ds-row-subtitle').textContent).toBe('Diagnostic description');
-    expect(row.querySelector('.ds-row-suffix [data-debug-function]')).toBe(action);
+    expect(row.tagName).toBe('BUTTON');
+    expect(row.querySelector('.ds-row__chevron')).toBeNull();
+    expect(row.querySelector('[data-debug-function]')).toBeNull();
+    expect(action.parentElement).toBe(row.parentElement);
+    expect(action.style.display).toBe('none');
     expect(action.dataset.debugFunction).toBe('diagnostic');
+
+    const clicked = jest.fn();
+    action.addEventListener('click', clicked);
+    row.click();
+    expect(clicked).toHaveBeenCalledTimes(1);
 });

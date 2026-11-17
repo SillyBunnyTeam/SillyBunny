@@ -110,6 +110,8 @@ function adaptNewUserForm(root) {
     const group = createPrefGroup({ field: 'admin-new-user-fields', rows });
     const note = form.querySelector(':scope > span');
     const submit = form.querySelector(':scope > .justifyCenter');
+    // The page's own Create response submits the form. This button stays as the form's default button, so Enter in a field still submits it.
+    if (submit instanceof HTMLElement) submit.style.display = 'none';
     form.replaceChildren(...[group.section, note, submit].filter(Boolean));
     form.classList.add('sb-dialog-rows');
 }
