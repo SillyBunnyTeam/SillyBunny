@@ -18,16 +18,10 @@ describe('libadwaita swipe styling', () => {
         expect(themeCss).toMatch(/\.swipe_picker_block\[highlight\]:hover\s*\{[^}]*var\(--sb-flat-selected-hover-bg\)/);
     });
 
-    test('swipe picker row actions are circular flat icon buttons', () => {
-        expect(themeCss).toMatch(/\.swipe_picker_block :is\(\.swipe_picker_expand_label[^{]*\{[^}]*border-radius:\s*var\(--sb-radius-pill\)/);
-        expect(themeCss).toMatch(/\.swipe_picker_block :is\(\.swipe_picker_expand_label[^{]*:hover\s*\{[^}]*var\(--sb-flat-hover-bg\)/);
-    });
-
-    test('the delete button takes the upstream hover spin back with a rule of equal weight that loads later', () => {
-        expect(themeCss).toMatch(/\.swipe_picker_block \.swipe_picker_delete:not\(\.disabled\)\s*\{\s*animation:\s*none;\s*\}/);
-        const index = readFileSync(path.join(repoRoot, 'public/index.html'), 'utf8');
-        expect(index.indexOf('href="style.css')).toBeGreaterThan(-1);
-        expect(index.indexOf('href="css/sillybunny-theme.css')).toBeGreaterThan(index.indexOf('href="style.css'));
-        expect(readFileSync(path.join(repoRoot, 'public/style.css'), 'utf8')).toContain('.PastChat_cross:not(.disabled):hover {');
+    test('swipe picker rows end in one circular flat menu button and hide the four forwarded controls', () => {
+        expect(themeCss).toMatch(/\.swipe_picker_block \[data-sb-forwarded\]\s*\{\s*display:\s*none;\s*\}/);
+        expect(themeCss).toMatch(/\.swipe_picker_block \.swipe_picker_menu\s*\{[^}]*border-radius:\s*var\(--sb-radius-pill\)/);
+        expect(themeCss).toMatch(/\.swipe_picker_block \.swipe_picker_menu:hover\s*\{[^}]*var\(--sb-flat-hover-bg\)/);
+        expect(themeCss).toMatch(/@media \(pointer: coarse\)\s*\{\s*\.swipe_picker_block \.swipe_picker_menu\s*\{[^}]*inline-size:\s*44px/);
     });
 });

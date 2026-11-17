@@ -98,7 +98,7 @@ import { setLastConversationPreview } from './typing.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117zn';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117zp';
 const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261117zn';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 

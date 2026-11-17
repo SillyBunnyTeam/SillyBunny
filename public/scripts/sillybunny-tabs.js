@@ -764,7 +764,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
         { href: 'css/sillybunny-editor-shell.css?v=20261117zn', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261117zg', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-world-info-editor.css?v=20261117l', id: 'deferred-world-info-editor-css' },
+        { href: 'css/sillybunny-world-info-editor.css?v=20261117zp', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
@@ -772,7 +772,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-character-editor.css?v=20261117zg', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
-        { href: 'css/sillybunny-persona-detail.css?v=20261117a', id: 'deferred-persona-detail-css' },
+        { href: 'css/sillybunny-persona-detail.css?v=20261117zp', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
@@ -14277,6 +14277,23 @@ function initSettingsKeyboardShortcuts() {
 }
 
 initInstallNotice();
+
+// jQuery UI places an autocomplete list with no collision handling, so Bulk Edit tags, World Info, server history and the
+// gallery folder can open past the window edge. The clamp loads when the first list opens, to keep a module out of startup.
+window.jQuery?.(document).one('autocompleteopen', event => {
+    import('./sillybunny-autocomplete-clamp.js').then(module => module.installAutocompleteClamp(event.target)).catch(() => {});
+});
+
+// CFG Scale and Token Probabilities leave the Options menu for a backend that does not use them. The rules load when the
+// menu first opens, to keep a module out of startup; the menu fades in, so the first open does not show them for a moment.
+{
+    const optionsMenu = document.getElementById('options');
+    const syncOptionsMenu = () => {
+        if (optionsMenu.style.display === 'none') return;
+        import('./sillybunny-options-menu.js').then(module => module.syncOptionsMenu(document, getSillyTavernContext())).catch(() => {});
+    };
+    if (optionsMenu) new MutationObserver(syncOptionsMenu).observe(optionsMenu, { attributes: true, attributeFilter: ['style'] });
+}
 
 // Init shell UI as soon as DOM is ready.
 // Also re-trigger on APP_READY as a safety net for slow-loading environments.

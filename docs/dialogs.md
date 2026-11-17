@@ -40,6 +40,7 @@ Examples import from a file in `public/scripts/`. `openDialog(options)` returns 
 | `className` | `''` | Added to the surface, or to the page when pushed. |
 | `responses` | `null` | `null` is immediate apply, with Close at the header end. |
 | `swipeToDismiss` | `true` | `false` removes the sheet's grab handle, so a drag neither closes the frame nor goes back a page. Read only by the call that opens the frame; a pushed page ignores it. |
+| `sheetQuery` | `OVERLAY_SHEET_QUERY` | The media query under which the frame is a bottom sheet. A picker opened as a dialog passes `MENU_SHEET_QUERY`, so it is a sheet in the whole mobile layout, as menus and pickers are (the colour picker does). |
 
 `responses` is an object; any non-null value shows Cancel, even `{}`:
 

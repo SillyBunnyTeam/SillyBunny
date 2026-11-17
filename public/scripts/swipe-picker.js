@@ -5,6 +5,8 @@ import { Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
 // SillyBunny: committed swipe deletion uses the shared alert contract.
 import { openAlert } from './sillybunny-editor/dialog.js';
 import { power_user } from './power-user.js';
+// SillyBunny: the row's actions are one menu, so a row holds a single trailing control.
+import { openActionMenu } from './sillybunny-action-menu.js';
 import { isMobile } from './RossAscends-mods.js';
 import { getTokenCountAsync } from './tokenizers.js';
 import { addLongPressEvent, clamp, copyText, timestampToMoment } from './utils.js';
@@ -292,6 +294,49 @@ async function openSwipePicker(messageId) {
             // Insert new buttons before the branch button
             branchButton.before(expandLabel, copyButton);
 
+            // SillyBunny: a boxed-list row holds at most two trailing controls, so the four actions fold into one menu. The
+            // original controls stay in the row, hidden, and the menu clicks them, so their handlers (and any extension's) still run.
+            const forwarded = [expandLabel, copyButton, branchButton[0], deleteButton[0]];
+            forwarded.forEach(node => {
+                node.setAttribute('data-sb-forwarded', '');
+                node.setAttribute('tabindex', '-1');
+                node.setAttribute('aria-hidden', 'true');
+            });
+            const menuButton = document.createElement('button');
+            menuButton.type = 'button';
+            menuButton.className = 'swipe_picker_menu';
+            menuButton.title = t`Menu`;
+            menuButton.setAttribute('aria-label', t`Menu`);
+            menuButton.setAttribute('aria-haspopup', 'menu');
+            menuButton.innerHTML = '<i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>';
+            const openSwipeMenu = (keyboard) => {
+                const sections = [{
+                    items: [
+                        { label: t`Expand/Collapse`, icon: 'fa-solid fa-chevron-down', onSelect: () => expandLabel.click() },
+                        { label: t`Copy`, icon: 'fa-solid fa-copy', onSelect: () => copyButton.click() },
+                        { label: t`Create Branch`, icon: 'fa-regular fa-code-branch', onSelect: () => branchButton[0].click() },
+                    ],
+                }];
+                // A swipe that cannot be deleted leaves the menu, as an item that does not apply does.
+                if (canDeleteSwipe) {
+                    sections.push({ items: [{ label: t`Delete Swipe`, icon: 'fa-solid fa-trash-can', danger: true, onSelect: () => deleteButton[0].click() }] });
+                }
+                openActionMenu({ trigger: menuButton, title: `#${index + 1}`, sections, keyboard, bounds: popup.dlg });
+            };
+            menuButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openSwipeMenu(event.detail === 0);
+            });
+            // The Menu key and Shift+F10 open the same menu from the row, as a secondary click does elsewhere.
+            block[0].addEventListener('keydown', (event) => {
+                if (event.target !== block[0] || !(event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) return;
+                event.preventDefault();
+                event.stopPropagation();
+                openSwipeMenu(true);
+            });
+            branchButton[0].parentElement.append(menuButton);
+
             const swipeTitle = block.find('.select_chat_block_filename').first()[0];
             swipeTitle.textContent = `#${index + 1}`;
             if (index === Number(message.swipe_id ?? 0)) {
@@ -308,13 +353,13 @@ async function openSwipePicker(messageId) {
             // SillyBunny: keyboard activation must use the same selection and commit path as a row double click.
             block.attr({ role: 'button', tabindex: '0' });
             block.on('click', async (event) => {
-                if (event.target instanceof Element && event.target.closest('.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete, .swipe_picker_expand_toggle')) return;
+                if (event.target instanceof Element && event.target.closest('.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete, .swipe_picker_expand_toggle, .swipe_picker_menu')) return;
                 setSelectedSwipe(index);
                 if (canJumpToSwipe) await popup.completeAffirmative();
             });
             block.on('keydown', async (event) => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
-                if (event.target instanceof Element && event.target !== block[0] && event.target.closest('.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete, .swipe_picker_expand_toggle')) return;
+                if (event.target instanceof Element && event.target !== block[0] && event.target.closest('.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete, .swipe_picker_expand_toggle, .swipe_picker_menu')) return;
                 event.preventDefault();
                 setSelectedSwipe(index);
                 if (canJumpToSwipe) await popup.completeAffirmative();

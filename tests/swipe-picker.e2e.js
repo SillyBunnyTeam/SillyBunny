@@ -72,14 +72,24 @@ async function assertPickerLayout(page, messageId, screenshotPath) {
     await expect(title).toHaveCSS('color', /rgb\(/);
     await expect(title).toHaveCSS('font-weight', '400');
     await expect(metadata).toHaveCSS('color', /rgb\(/);
-    await expect(row.locator('.swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete')).toHaveCount(3);
+    // One trailing control: the four actions are in its menu, and their original controls stay in the row, hidden.
+    await expect(row.locator('.swipe_picker_menu, [data-sb-forwarded]:visible')).toHaveCount(1);
+    await expect(row.getByRole('button', { name: 'Menu' })).toBeVisible();
+    await expect(row.locator('[data-sb-forwarded]')).toHaveCount(4);
+    for (const node of await row.locator('[data-sb-forwarded]').all()) await expect(node).toBeHidden();
     const geometry = await row.evaluate(node => {
         const rowBounds = node.getBoundingClientRect();
-        const buttonBounds = node.querySelector('.swipe_picker_delete').getBoundingClientRect();
+        const buttonBounds = node.querySelector('.swipe_picker_menu').getBoundingClientRect();
         return { rowRight: rowBounds.right, actionRight: buttonBounds.right };
     });
     expect(geometry.actionRight).toBeLessThanOrEqual(geometry.rowRight);
     await page.screenshot({ path: screenshotPath, fullPage: false });
+}
+
+/** Opens a row's ⋮ menu and chooses an item from it. */
+async function chooseFromRowMenu(page, row, name) {
+    await row.locator('.swipe_picker_menu').click();
+    await page.getByRole('menuitem', { name, exact: true }).click();
 }
 
 async function assertSwipeIdNavigation(page, messageId) {
@@ -122,10 +132,10 @@ test.describe('swipe picker shared Window', () => {
             });
         }
 
-        test('hovering the delete button takes the hover fill and does not spin the icon', async ({ page }) => {
+        test('hovering the row menu button takes the hover fill and does not spin the icon', async ({ page }) => {
             await page.setViewportSize({ width: 1440, height: 900 });
             await createSwipeFixture(page, 6, 1);
-            const deleteButton = page.locator('dialog[open] .swipe_picker_block .swipe_picker_delete:not(.disabled)').first();
+            const deleteButton = page.locator('dialog[open] .swipe_picker_block .swipe_picker_menu').first();
             await deleteButton.hover();
             await expect.poll(() => deleteButton.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
             expect(await deleteButton.evaluate(node => ({ name: getComputedStyle(node).animationName, running: node.getAnimations().filter(animation => animation.animationName).length })))
@@ -143,21 +153,20 @@ test.describe('swipe picker shared Window', () => {
         await page.evaluate(() => {
             Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: text => window.__swipeCopied = text } });
         });
-        await dialog.locator('.swipe_picker_block').first().getByRole('button', { name: 'Copy' }).click();
+        await chooseFromRowMenu(page, dialog.locator('.swipe_picker_block').first(), 'Copy');
         await expect.poll(() => page.evaluate(() => window.__swipeCopied)).toBe('Swipe 1 preview text');
 
         const lastRow = dialog.locator('.swipe_picker_block').last();
         await lastRow.scrollIntoViewIfNeeded();
         await expect(lastRow).toBeInViewport();
-        const deleteButton = lastRow.getByRole('button', { name: 'Delete Swipe' });
-        await deleteButton.click();
+        await chooseFromRowMenu(page, lastRow, 'Delete Swipe');
         const alert = page.locator('dialog[open][role="alertdialog"]');
         await expect(alert).toBeVisible();
         await expect(alert.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
         await page.keyboard.press('Enter');
         await expect(alert).toHaveCount(0, { timeout: 15000 });
         await expect.poll(() => getSwipeState(page, messageId)).toMatchObject({ count: 52 });
-        await deleteButton.click();
+        await chooseFromRowMenu(page, lastRow, 'Delete Swipe');
         await page.locator('dialog[open][role="alertdialog"]').getByRole('button', { name: 'Delete Swipe', exact: true }).click();
         await expect.poll(() => getSwipeState(page, messageId)).toMatchObject({ count: 51 });
 
@@ -169,10 +178,62 @@ test.describe('swipe picker shared Window', () => {
         await page.locator(`.mes[mesid="${messageId}"] .swipes-counter.swipe-picker-enabled`).click();
         await page.route('**/api/chats/get', route => route.fulfill({ json: [{}] }));
         const saveCount = saves.length;
-        await page.locator('dialog[open].sb-dialog--window .swipe_picker_branch').first().click();
+        await chooseFromRowMenu(page, page.locator('dialog[open].sb-dialog--window .swipe_picker_block').first(), 'Create Branch');
         await expect.poll(() => saves.length).toBeGreaterThan(saveCount);
         await page.keyboard.press('Escape');
         await expect(page.locator('dialog[open].sb-dialog--window')).toBeHidden();
+    });
+
+    test('the row menu lists the actions, ends with Delete Swipe alone in red, and opens from the keyboard', async ({ page }) => {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        const messageId = await createSwipeFixture(page, 6, 1);
+        const dialog = page.locator('dialog[open].sb-dialog--window');
+        const row = dialog.locator('.swipe_picker_block').nth(2);
+        const menuButton = row.locator('.swipe_picker_menu');
+
+        // The menu button is reachable by Tab from the row.
+        await row.focus();
+        await page.keyboard.press('Tab');
+        await expect(menuButton).toBeFocused();
+        await page.keyboard.press('Enter');
+        const menu = page.locator('[role="menu"].sb-action-menu');
+        await expect(menu).toBeVisible();
+        // A separator starts each section after the first.
+        const sections = await menu.evaluate(node => {
+            let section = 0;
+            const items = [];
+            for (const child of node.children) {
+                if (child.getAttribute('role') === 'separator') section += 1;
+                else items.push({ name: child.textContent.trim(), danger: child.classList.contains('is-danger'), section });
+            }
+            return items;
+        });
+        expect(sections.map(item => item.name)).toEqual(['Expand/Collapse', 'Copy', 'Create Branch', 'Delete Swipe']);
+        expect(sections.filter(item => item.danger).map(item => item.name)).toEqual(['Delete Swipe']);
+        expect(new Set(sections.slice(0, 3).map(item => item.section)).size).toBe(1);
+        expect(sections[3].section).not.toBe(sections[0].section);
+        // Opened with Enter, the menu takes the first row's focus, and Escape closes it without closing the picker.
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
+        await expect(dialog).toBeVisible();
+        await expect(menuButton).toBeFocused();
+
+        // Shift+F10 and the Menu key on a row open it too.
+        await row.focus();
+        await page.keyboard.press('Shift+F10');
+        await expect(menu).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
+        await row.focus();
+        await page.keyboard.press('ContextMenu');
+        await expect(menu).toBeVisible();
+
+        // Expand/Collapse forwards to the original control.
+        await page.getByRole('menuitem', { name: 'Expand/Collapse', exact: true }).click();
+        await expect(row.locator('.swipe_picker_expand_toggle')).toBeChecked();
+        // Choosing never selects the swipe or closes the picker.
+        await expect(dialog).toBeVisible();
+        expect((await getSwipeState(page, messageId)).swipeId).toBe(1);
     });
 
     test('phone is a bottom sheet with reachable rows and keyboard activation', async ({ page }, testInfo) => {

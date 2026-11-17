@@ -268,7 +268,8 @@ export const surfaces = [
             const picker = 'dialog[open].sb-dialog--window:has(.swipe_picker_div)';
             await page.locator(`${picker} .swipe_picker_footer`).waitFor({ state: 'visible' });
             await page.waitForFunction(() => !document.querySelector('dialog[open].sb-dialog--window[opening]'));
-            await page.locator(`${picker} .swipe_picker_delete:not(.disabled)`).first().click();
+            await page.locator(`${picker} .swipe_picker_menu`).first().click();
+            await page.getByRole('menuitem', { name: 'Delete Swipe', exact: true }).click();
             await settleFrame(page, ALERT_FRAME);
         },
         sources: [`${SCRIPTS}/swipe-picker.js`, `${SCRIPTS}/sillybunny-editor/dialog.js`],

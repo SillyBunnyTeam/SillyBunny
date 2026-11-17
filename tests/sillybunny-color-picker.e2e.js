@@ -136,6 +136,31 @@ for (const width of [1440, 768, 390, 320]) {
     });
 }
 
+// A picker is a sheet in the whole mobile layout (MENU_SHEET_QUERY: up to 768px wide, or 360px high), not only under the dialog breakpoint.
+for (const [width, height] of [[768, 800], [451, 800], [1024, 360]]) {
+    test(`opens as a bottom sheet at ${width}x${height}`, async ({ page }) => {
+        await page.setViewportSize({ width, height });
+        await mountPicker(page);
+        await page.locator('toolcool-color-picker .button').click();
+        await expect(page.locator('.sb-color-picker-menu')).toBeVisible();
+        await expect(page.locator('.sb-dialog-host')).toHaveAttribute('data-presentation', 'sheet');
+        const box = await page.locator('.sb-dialog.sb-color-picker-dialog').boundingBox();
+        expect(box.x).toBe(0);
+        expect(box.width).toBe(width);
+        expect(Math.round(box.y + box.height)).toBe(height);
+    });
+}
+
+test('opens as a popover at 769x800', async ({ page }) => {
+    await page.setViewportSize({ width: 769, height: 800 });
+    await mountPicker(page);
+    await page.locator('toolcool-color-picker .button').click();
+    const menu = page.locator('.sb-color-picker-menu');
+    await expect(menu).toBeVisible();
+    await expect(page.locator('.sb-dialog-host')).toHaveCount(0);
+    expect(await menu.evaluate(node => node.closest('.sb-dialog') === null)).toBe(true);
+});
+
 test('keeps the complete RGB/RGBA event contract and rejects incomplete edits', async ({ page }) => {
     await mountPicker(page);
     await page.locator('toolcool-color-picker').evaluate(picker => {

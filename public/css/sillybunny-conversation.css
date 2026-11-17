@@ -984,7 +984,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     gap: 2px;
     padding: 6px;
     overflow-y: auto;
-    border: 1px solid var(--sb-shell-border);
+    border: 0;
     border-radius: var(--sb-radius-overlay);
     background: var(--sb-layer-popover);
     color: var(--SmartThemeBodyColor);
@@ -2854,8 +2854,6 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
         inline-size: 100%;
         max-block-size: min(80%, 560px);
         padding: 24px max(12px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-        border-inline: 0;
-        border-block-end: 0;
         border-radius: var(--sb-radius-overlay) var(--sb-radius-overlay) 0 0;
         background: var(--sb-layer-drawer);
         box-shadow: var(--sb-shadow-dialog);

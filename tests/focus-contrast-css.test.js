@@ -201,3 +201,17 @@ describe('the focus ring inside the toast layer', () => {
         expect(declarationsOf(read('public', 'css', 'sillybunny-home.css'), '.sbHomeToastAction:focus-visible')).toBe('outline: none; box-shadow: var(--sb-focus-ring-inset);');
     });
 });
+
+describe('popover edges', () => {
+    // --sb-shadow-popover draws the edge as a ring, so a popover that also keeps a border draws it twice.
+    test.each([
+        ['sillybunny-persona-detail.css', '.sb-persona-property-popover'],
+        ['sillybunny-world-info-editor.css', '.sb-wi-property-popover'],
+        ['sillybunny-conversation.css', '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-picker:not([hidden])'],
+    ])('%s: %s has no border under the ring', (file, selector) => {
+        const css = read('public', 'css', file);
+        const rule = blockAt(css, css.indexOf(`${selector} {`));
+        expect(rule).toContain('box-shadow: var(--sb-shadow-popover)');
+        expect(rule).toMatch(/\n\s*border:\s*0;/);
+    });
+});

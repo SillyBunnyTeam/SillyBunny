@@ -579,7 +579,7 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     max-height: min(440px, calc(100dvh - 16px));
     overflow: auto;
     padding: 4px;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 0;
     border-radius: var(--sb-radius-overlay);
     background: var(--sb-layer-popover);
     color: var(--SmartThemeBodyColor);

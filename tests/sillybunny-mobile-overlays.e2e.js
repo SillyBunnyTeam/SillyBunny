@@ -96,10 +96,11 @@ async function openWorldInfoEntry(page) {
     return entryView;
 }
 
-async function expectDialogPresentation(page, className, width, height) {
+/** `menuRule` is for a picker, which is a sheet in the whole mobile layout (up to 768px wide); dialogs are sheets up to 450px. */
+async function expectDialogPresentation(page, className, width, height, { menuRule = false } = {}) {
     const host = page.locator(`.sb-dialog-host:has(.${className})`);
     await expect(host).toBeVisible();
-    const shouldBeSheet = width <= 450 || height <= 360;
+    const shouldBeSheet = width <= (menuRule ? 768 : 450) || height <= 360;
     await expect(host).toHaveAttribute('data-presentation', shouldBeSheet ? 'sheet' : 'floating');
     return host.locator(`.sb-dialog.${className}`);
 }
@@ -248,12 +249,13 @@ for (const layout of layouts) {
     test.describe(`colour picker parity: ${layout.name}`, () => {
         test.use({ viewport: { width: layout.width, height: layout.height }, contextOptions: { reducedMotion: 'reduce' } });
 
-        test('uses the Dialog tier only at the overlay sheet breakpoint', async ({ page }) => {
+        test('is a bottom sheet in the whole mobile layout and a popover above it', async ({ page }) => {
             await mountColorPicker(page);
             await page.locator('toolcool-color-picker .button').click();
-            const shouldBeSheet = layout.width <= 450 || layout.height <= 360;
+            // A picker follows the menu rule (MENU_SHEET_QUERY), not the dialog breakpoint.
+            const shouldBeSheet = layout.width <= 768 || layout.height <= 360;
             if (shouldBeSheet) {
-                const surface = await expectDialogPresentation(page, 'sb-color-picker-dialog', layout.width, layout.height);
+                const surface = await expectDialogPresentation(page, 'sb-color-picker-dialog', layout.width, layout.height, { menuRule: true });
                 await expect(surface.locator('input[data-color-field="hex"]')).toBeVisible();
                 await surface.locator('input[data-color-field="hex"]').fill('#123456');
                 await expect(page.locator('toolcool-color-picker')).toHaveJSProperty('rgb', 'rgba(18, 52, 86, 0.5)');

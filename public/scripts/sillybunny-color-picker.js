@@ -1,6 +1,6 @@
 import { animateIn, MOTION_FAST } from './sillybunny-motion.js';
 import { blockUpstreamDrawerClose } from './sillybunny-sheet.js';
-import { OVERLAY_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
+import { MENU_SHEET_QUERY } from './sillybunny-editor/breakpoints.js';
 import { hostOverlayLayer } from './sillybunny-editor/overlay-host.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
 
@@ -297,7 +297,7 @@ function syncPlacement() {
     if (!active) return;
     const state = active;
     if (!state.picker.isConnected || !state.button.getClientRects().length
-        || Boolean(state.dialog) !== window.matchMedia(OVERLAY_SHEET_QUERY).matches) {
+        || Boolean(state.dialog) !== window.matchMedia(MENU_SHEET_QUERY).matches) {
         closeColorMenu();
         return;
     }
@@ -328,7 +328,7 @@ function openColorMenu(picker, button) {
     bindControls(state);
     render(state);
     button.setAttribute('aria-expanded', 'true');
-    if (window.matchMedia(OVERLAY_SHEET_QUERY).matches) {
+    if (window.matchMedia(MENU_SHEET_QUERY).matches) {
         const header = state.menu.querySelector('.sb-color-picker-header');
         const closeButton = state.menu.querySelector('.sb-color-picker-close');
         state.menu.removeAttribute('role');
@@ -338,6 +338,7 @@ function openColorMenu(picker, button) {
             title: state.title.textContent,
             content: state.menu,
             className: 'sb-color-picker-dialog',
+            sheetQuery: MENU_SHEET_QUERY,
             initialFocus: () => state.inputs.hex,
         });
         state.title.classList.add('sb-dialog__title');

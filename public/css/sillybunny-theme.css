@@ -2577,37 +2577,42 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     box-shadow: var(--sb-composer-focus-ring);
 }
 
-/* libadwaita circular icon buttons for the row actions. */
-.swipe_picker_block :is(.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete) {
+/* One menu button ends the row (Boxed Lists and Rows: at most two trailing controls). The four action controls stay in the row, hidden, because the menu clicks them. */
+.swipe_picker_block [data-sb-forwarded] {
+    display: none;
+}
+
+.swipe_picker_block .swipe_picker_menu {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     inline-size: 40px;
     block-size: 40px;
+    margin: 0;
     padding: 0;
+    border: 0;
     border-radius: var(--sb-radius-pill);
+    background: transparent;
+    color: inherit;
     cursor: pointer;
-    transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast), transform var(--sb-transition-fast);
+    opacity: 0.7;
+    transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
 
-.swipe_picker_block .swipe_picker_delete:not(.disabled) {
-    animation: none;
-}
-
-.swipe_picker_block :is([role="button"], .swipe_picker_expand_label):focus-visible {
+.swipe_picker_block :is([role="button"], .swipe_picker_menu):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
 @media (pointer: coarse) {
-    .swipe_picker_block :is(.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete) {
+    .swipe_picker_block .swipe_picker_menu {
         inline-size: 44px;
         block-size: 44px;
     }
 }
 
 @media (hover: hover) {
-    .swipe_picker_block :is(.swipe_picker_expand_label, .swipe_picker_copy, .swipe_picker_branch, .swipe_picker_delete:not(.disabled)):hover {
+    .swipe_picker_block .swipe_picker_menu:hover {
         opacity: 1;
         background: var(--sb-flat-hover-bg);
     }
@@ -6834,7 +6839,7 @@ body.reduced-motion .sb-dialog-host * {
 
 /* Upstream type-ahead lists stay lists and take the popover surface of DESIGN.md Menus and Popovers. Only the theme style of the slash list takes the popover layer. */
 .select2-container--default .select2-dropdown,
-.ui-autocomplete,
+.ui-autocomplete.ui-widget-content,
 .list-group.ctx-menu,
 .autoComplete-wrap > .autoComplete,
 .autoComplete-detailsWrap:not(.commandContainer > *) > .autoComplete-details {
@@ -6913,6 +6918,7 @@ body.reduced-motion .sb-dialog-host * {
 .ui-autocomplete .ui-menu-item {
     display: flex;
     align-items: center;
+    column-gap: 6px;
     min-height: 32px;
     padding: 0 12px;
     border-radius: var(--sb-radius-control);

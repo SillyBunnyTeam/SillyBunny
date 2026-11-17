@@ -389,8 +389,10 @@ export function bindWindowHeightLock(surface, { isFill = () => false } = {}) {
  * @param {'content'|'fill'} [options.size='fill']
  * @param {boolean} [options.page=false] Presents the surface as a page over a framed Popup: it never
  *     becomes a sheet, and the host backdrop carries the dim instead of the scrim.
+ * @param {string} [options.sheetQuery] The media query under which the frame is a bottom sheet. A picker that
+ *     follows the menu rule passes MENU_SHEET_QUERY; alerts, dialogs and windows keep OVERLAY_SHEET_QUERY.
  */
-export function createDialogFrame({ tier, className = '', size = 'fill', page = false }) {
+export function createDialogFrame({ tier, className = '', size = 'fill', page = false, sheetQuery = OVERLAY_SHEET_QUERY }) {
     const host = /** @type {HTMLDialogElement} */ (element('dialog', 'sb-dialog-host'));
     host.setAttribute(MODAL_ATTRIBUTE, '');
     host.dataset.tier = tier;
@@ -409,7 +411,7 @@ export function createDialogFrame({ tier, className = '', size = 'fill', page = 
     surface.append(handle);
     host.append(scrim, surface);
     blockUpstreamDrawerClose(host);
-    const query = window.matchMedia?.(OVERLAY_SHEET_QUERY) ?? { matches: false, addEventListener() {}, removeEventListener() {} };
+    const query = window.matchMedia?.(sheetQuery) ?? { matches: false, addEventListener() {}, removeEventListener() {} };
     const isSheet = () => query.matches && !page;
     const syncPresentation = () => {
         host.dataset.presentation = isSheet() ? 'sheet' : 'floating';
@@ -670,10 +672,12 @@ function createPage({ title, subtitle = '', content = null, search = null, menu 
  *     page. When false the sheet has no grab handle and a drag on the sheet or its header does nothing. A frame
  *     that must not end on a swipe sets this; `canClose` can still refuse 'swipe' to make a drag spring back, but the
  *     handle then still invites a drag. Only the call that opens the frame sets it, and a call that pushes a page ignores it.
+ * @param {string} [o.sheetQuery] Overrides the media query under which the frame is a bottom sheet (see `createDialogFrame`).
+ *     Only the call that opens the frame sets it.
  */
 export function openDialog({
     tier = 'dialog', title, subtitle = '', content = null, search = null, menu = null, menuLabel,
-    responses = null, canClose = null, initialFocus = null, className = '', size = 'fill', swipeToDismiss = true,
+    responses = null, canClose = null, initialFocus = null, className = '', size = 'fill', swipeToDismiss = true, sheetQuery = OVERLAY_SHEET_QUERY,
 }) {
     const parentHost = getTopmostDialog();
     const parent = parentHost ? frames.get(/** @type {HTMLDialogElement} */ (parentHost)) : null;
@@ -682,7 +686,7 @@ export function openDialog({
     // A framed Popup is not an openDialog host, so it is covered here instead of through `frames`.
     const coveredSurface = findCoveredSurface();
     const isPage = Boolean(coveredSurface);
-    const frame = createDialogFrame({ tier: tier === 'window' ? 'window' : 'dialog', className, size, page: isPage });
+    const frame = createDialogFrame({ tier: tier === 'window' ? 'window' : 'dialog', className, size, page: isPage, sheetQuery });
     const { host, scrim, surface, query, isSheet, syncPresentation } = frame;
     frame.handle.hidden = !swipeToDismiss;
     const pagesNode = element('div', 'sb-dialog__pages');
