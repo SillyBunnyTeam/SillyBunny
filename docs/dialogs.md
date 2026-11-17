@@ -336,8 +336,8 @@ From `sillybunny-editor/breakpoints.js`:
   Menus, pickers and popovers are sheets up to 768px wide, so check them at 768px and 769px too.
 - The last content is reachable: scroll the body to the end, with and without the keyboard inset, and
   confirm the bottom bar does not cover the last row.
-- Switches and checks sit at the row end. Cancel is at the header start and the affirmative response
-  at the end, with no Close.
+- A switch sits at the row end and a check at the row start (`DESIGN.md`, Boxed Lists and Rows).
+  Cancel is at the header start and the affirmative response at the end, with no Close.
 - Destructive defaults: Cancel has focus, Return does not confirm, and Escape, scrim and swipe
   resolve Cancel. Focus returns to the opener, and Escape pops a page before it closes the frame.
 - Existing suites: `tests/unit/` has `sillybunny-dialog`, `sillybunny-popup-frame`, `popup-contract`,
