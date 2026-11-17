@@ -1003,6 +1003,17 @@ This is the largest class by a wide margin.
   - `sillybunny-chat-styles.css` is injected for every chat style (`ensureNativeChatStyleStylesheet()` in `power-user.js`), so it is outside the blocking budget: the Document, Whisper, delete-mode and counter hit-area rules are there.
 - **Tests:** `tests/foundation/message-actions.e2e.js`; `tests/message-actions-contrast.test.js`; `tests/chat-scroll-regressions.e2e.js` (`redisplay keeps render follow-up hooks applied after batched render` expects Move Up enabled on the first rendered message of a longer chat); the audit spec for `chat.roleplay.*` and `menu.message.roleplay`.
 
+### Conversation timeline (message toolbar, start pickers, composer focus)
+
+- **Breaks:**
+  - The toolbar and the trigger beside the bubble followed `max-width: 768px`, so a touch tablet at 1024px got a two-row toolbar of 44px buttons over the message text, and a mouse at 390px got the trigger. They follow `(pointer: coarse)` now: `COARSE_POINTER_QUERY` in `public/scripts/sillybunny-conversation/message-menu.js` and the coarse block of `public/css/sillybunny-conversation.css`. A Conversation test that needs the trigger at 390px runs with `hasTouch: true, isMobile: true`; a default context at that width has the toolbar.
+  - The toolbar shares the bubble's grid cell (`grid-area: 1 / 1`), so its box, though translated away and transparent, sets the minimum height of every single-line bubble (38px). A change to the toolbar's padding or button size moves every bubble in the timeline.
+  - `--sb-focus-ring-inset` is resolved at `:root`, so setting `--sb-focus-ring-color` on the toolbar changes nothing; the toolbar writes its own `box-shadow` ring (`--sb-osd-focus-ring`).
+  - The solo and group start pickers (`toggleAddDmPicker`, `toggleConversationGroupPicker` in `pickers.js`) are the shared `openPicker`, which toggles shut when it is opened again from its own trigger. Both close the open start picker first, or a switch between solo and group would close instead of switch.
+  - The composer was focused after 100ms, which is neither the render flush that enables it nor the lazy sheet that shows it. `afterConversationRender()` in `render-scheduler.js` runs a callback after each flush until it returns true, and `focusConversationInputAfterRender()` in `chrome.js` waits on `isConversationStylesheetLoading()`. A new timer for this brings the race back.
+- **Guards:** a footer item of the shared picker takes `disabled` as a boolean or a function; the function is read again after each selection (`syncFooter()` in `picker.js`), which is how Create Group stays off until two members are chosen.
+- **Tests:** `tests/sillybunny-conversation-mobile-controls.test.js`; `tests/sillybunny-conversation-render-scheduler.test.js`; `tests/conversation-start-picker.e2e.js`; `tests/conversation-message-actions.e2e.js`; `tests/conversation-action-sheet-focus.e2e.js`; `tests/foundation/conversation-mode.e2e.js`; the audit spec for `chat.conversation.timeline`, `menu.message.conversation` and `status.conversation.*`.
+
 ### Target size, accessible names and roles (cross-cutting)
 
 - **Breaks:**

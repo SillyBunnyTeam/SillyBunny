@@ -940,36 +940,6 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     animation: sb-conversation-popover-in var(--sb-transition-fast);
 }
 
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-add-dm-picker:not([hidden]) {
-    padding: 10px;
-    gap: 0;
-}
-
-.sb-conversation-add-dm-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-block-start: 8px;
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-add-dm-option {
-    box-sizing: border-box;
-    inline-size: 100%;
-    min-block-size: 40px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 0;
-    padding: 4px 8px;
-    border: 0;
-    border-radius: var(--sb-radius-control);
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    text-align: start;
-    -webkit-tap-highlight-color: transparent;
-}
-
 #sheld[data-sb-conversation-mode='on'] .sb-conversation-picker-backdrop[data-open='true'] {
     display: none;
 }
@@ -1100,46 +1070,8 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     line-height: var(--sb-line-body);
 }
 
-.sb-conversation-thread-empty {
-    max-inline-size: 620px;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 10px;
-    align-items: start;
-    margin: auto;
-    padding: 12px;
-    border: 0;
-    border-radius: var(--sb-radius-card);
-    /* libadwaita card: tonal fill, no border. */
-    background: var(--sb-raised-bg);
-    color: var(--sb-muted-fg);
-    line-height: var(--sb-line-body);
-}
-
-.sb-conversation-thread-empty strong {
-    display: block;
-    color: var(--SmartThemeBodyColor);
-    font-size: var(--sb-type-title);
-    line-height: var(--sb-line-title);
-}
-
-.sb-conversation-thread-empty p {
-    margin: 5px 0 0;
-}
-
-.sb-conversation-thread-empty-icon {
-    inline-size: 40px;
-    block-size: 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid color-mix(in srgb, var(--sb-accent) 28%, var(--sb-shell-border));
-    border-radius: var(--sb-radius-button);
-    background: color-mix(in srgb, var(--sb-accent) 12%, transparent);
-    color: color-mix(in srgb, var(--sb-accent) 84%, var(--SmartThemeBodyColor));
-}
-
 .sb-conversation-drop-hint {
+    --sb-drop-hint-ring: inset 0 0 0 2px color-mix(in srgb, var(--sb-accent) 40%, transparent);
     position: absolute;
     inset-inline: 14px;
     inset-block-end: 76px;
@@ -1147,13 +1079,13 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     display: grid;
     place-items: center;
     min-block-size: 72px;
-    border: 1px dashed color-mix(in srgb, var(--sb-accent) 54%, var(--sb-shell-border));
-    border-radius: var(--sb-radius-lg);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 92%, var(--sb-accent-soft));
+    border-radius: var(--sb-radius-card);
+    /* A ring inside a solid tonal fill: the hint stays legible over the timeline without a border or a lifted shadow. */
+    background: color-mix(in srgb, var(--sb-accent) 10%, var(--sb-layer-window));
+    box-shadow: var(--sb-drop-hint-ring);
     color: var(--SmartThemeBodyColor);
     font-weight: var(--sb-weight-title);
     pointer-events: none;
-    box-shadow: var(--sb-shadow-popover);
 }
 
 .sb-conversation-drop-hint[hidden] {
@@ -1413,46 +1345,13 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     white-space: nowrap;
 }
 
-.sb-conversation-message-edit {
-    inline-size: 32px;
-    block-size: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    border-radius: var(--sb-radius-pill);
-    background: transparent;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 58%, transparent);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity var(--sb-transition-fast), background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-}
-
-.sb-conversation-message:focus-within .sb-conversation-message-edit {
-    opacity: 1;
-}
-
-@media (hover: hover) {
-    .sb-conversation-message:hover .sb-conversation-message-edit {
-        opacity: 1;
-    }
-}
-
-@media (hover: hover) {
-    .sb-conversation-message-edit:hover {
-        background: var(--sb-flat-hover-bg);
-        color: var(--SmartThemeBodyColor);
-    }
-}
-
-.sb-conversation-message-edit:focus-visible {
-    outline: none;
-    color: var(--SmartThemeBodyColor);
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-/* Overlap the bubble's top-end corner, reserving enough inline space for short messages. */
+/* The message toolbar is an overlaid control (DESIGN.md, Avatars and Overlaid Controls): the OSD fill and ink over the bubble's
+   top-end corner. It rests above the bubble and reaches 6px into the bubble's padding, so it covers none of the text of its own
+   message. A fine pointer shows it on hover or focus; a coarse pointer has the gutter trigger instead (below). */
 .sb-conversation-message-actions {
+    --sb-osd-focus-color: color-mix(in srgb, var(--sb-accent) 50%, white);
+    --sb-osd-focus-ring: inset 0 0 0 2px var(--sb-osd-focus-color);
+    --sb-osd-contrast-ring: 0 0 0 1px var(--sb-osd-ink);
     grid-area: 1 / 1;
     align-self: start;
     justify-self: end;
@@ -1461,27 +1360,28 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     display: inline-flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     padding: 3px;
-    /* libadwaita osd-style toolbar: opaque so body.no-blur never shows text through it; flat buttons inside. */
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 84%, transparent);
-    border-radius: var(--sb-radius-pill);
-    background:
-        linear-gradient(var(--sb-surface-raised) 0 0),
-        linear-gradient(var(--sb-surface-raised) 0 0),
-        var(--sb-surface-raised);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--SmartThemeShadowColor) 22%, transparent);
+    border-radius: var(--sb-radius-control);
+    background: var(--sb-osd-bg);
+    color: var(--sb-osd-ink);
     opacity: 0;
     pointer-events: none;
-    /* Overlap this bubble only; a -100% lift sat on the previous message. */
-    transform: translate(0, -8px);
+    transform: translate(0, calc(6px - 100%));
     transition: opacity var(--sb-transition-fast);
     z-index: var(--sb-z-raised, 10);
 }
 
-@supports (color: rgb(from black r g b / 1)) {
+/* With the chat beside the rail, every action fits one row even past a short bubble; a narrower window keeps the cap and wraps. */
+@media (min-width: 769px) {
     .sb-conversation-message-actions {
-        background: rgb(from var(--sb-surface-raised) r g b / 1);
+        max-inline-size: max(100%, 30rem);
+    }
+}
+
+@media (prefers-contrast: more) {
+    .sb-conversation-message-actions {
+        box-shadow: var(--sb-osd-contrast-ring);
     }
 }
 
@@ -1497,7 +1397,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     pointer-events: auto;
 }
 
-/* libadwaita flat buttons: transparent at rest, neutral fills, no hover lift. */
+/* Flat buttons on the OSD fill: neutral white fills, no hover lift. */
 .sb-conversation-message-action,
 .sb-conversation-reaction-button {
     min-block-size: var(--sb-density-floor);
@@ -1505,11 +1405,11 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 8px;
+    padding: 0;
     border: 0;
-    border-radius: var(--sb-radius-pill);
+    border-radius: var(--sb-radius-inner);
     background: transparent;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, transparent);
+    color: inherit;
     cursor: pointer;
     font-size: 12px;
     line-height: 1;
@@ -1517,53 +1417,26 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
 }
 
-.sb-conversation-message-action {
-    padding: 0;
+.sb-conversation-reaction-button {
+    padding-inline: 8px;
 }
 
 @media (hover: hover) {
     .sb-conversation-message-action:hover,
     .sb-conversation-reaction-button:hover {
-        background: var(--sb-flat-hover-bg);
-        color: var(--SmartThemeBodyColor);
+        background: color-mix(in srgb, white 15%, transparent);
     }
 }
 
 .sb-conversation-message-action:active,
 .sb-conversation-reaction-button:active {
-    background: var(--sb-flat-active-bg);
+    background: color-mix(in srgb, white 25%, transparent);
 }
 
 .sb-conversation-message-action:focus-visible,
 .sb-conversation-reaction-button:focus-visible {
     outline: none;
-    color: var(--SmartThemeBodyColor);
-    box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sb-conversation-message-action.sb-conversation-message-edit,
-.sb-conversation-message-action.sb-conversation-message-polish {
-    opacity: 1 !important;
-    inline-size: auto;
-    block-size: auto;
-    background: transparent;
-    color: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, transparent);
-    border: 0;
-    border-radius: var(--sb-radius-pill);
-    padding: 0;
-}
-
-@media (hover: hover) {
-    .sb-conversation-message-action.sb-conversation-message-edit:hover,
-    .sb-conversation-message-action.sb-conversation-message-polish:hover {
-        background: var(--sb-flat-hover-bg);
-        color: var(--SmartThemeBodyColor);
-    }
-}
-
-/* Mobile: 44px touch target through ::after, transparent fill. */
-.sb-conversation-mobile-menu-trigger {
-    display: none;
+    box-shadow: var(--sb-osd-focus-ring);
 }
 
 /* Message actions: reactions | Reply, Edit, Copy, menu at rest; Shift (data-sb-actions-expanded)
@@ -1573,7 +1446,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
     inline-size: 1px;
     block-size: 16px;
     margin-inline: 2px;
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
+    background: color-mix(in srgb, white 25%, transparent);
 }
 
 body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-expanded]) .sb-conversation-message-actions > [data-sb-secondary] {
@@ -1587,11 +1460,10 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-message-action.sb-conversation-message-menu[aria-expanded='true'] {
-    background: var(--sb-flat-selected-bg);
-    color: var(--SmartThemeBodyColor);
+    background: color-mix(in srgb, white 20%, transparent);
 }
 
-@media (min-width: 769px) {
+@media not all and (pointer: coarse) {
     :root[data-sb-compact-mode='true'] .sb-conversation-message-action {
         font-size: 11px;
     }
@@ -1601,21 +1473,13 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     }
 }
 
+/* The delete icon is the danger colour lightened for the dark OSD fill, which sits over a light theme's bubble too. */
 .sb-conversation-message-action.fa-trash-can {
-    color: var(--sb-color-danger);
+    color: color-mix(in srgb, var(--sb-color-danger) 45%, white);
 }
 
-@media (hover: hover) {
-    .sb-conversation-message-action.fa-trash-can:hover {
-        background: color-mix(in srgb, var(--sb-color-danger) 12%, transparent);
-        color: var(--sb-color-danger);
-    }
-}
-
-.sb-conversation-message-action.fa-trash-can:focus-visible {
-    background: transparent;
-    color: var(--sb-color-danger);
-    box-shadow: var(--sb-focus-ring-inset);
+.sb-conversation-mobile-menu-trigger {
+    display: none;
 }
 
 .sb-conversation-message-reactions {
@@ -2704,150 +2568,14 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     40% { transform: scale(1); opacity: 1; }
 }
 
-/* Character message polish button */
-.sb-conversation-message-polish {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--SmartThemeBodyColor);
-    opacity: 0;
-    cursor: pointer;
-    font-size: var(--sb-type-meta);
-    transition: opacity var(--sb-transition-fast), color var(--sb-transition-fast);
-}
-
-.sb-conversation-message:focus-within .sb-conversation-message-polish {
-    opacity: 0.6;
-}
-
-@media (hover: hover) {
-    .sb-conversation-message:hover .sb-conversation-message-polish {
-        opacity: 0.6;
-    }
-}
-
-.sb-conversation-message-polish:focus-visible {
-    opacity: 1;
-    color: var(--sb-accent);
-    outline: none;
-}
-
-@media (hover: hover) {
-    .sb-conversation-message-polish:hover {
-        opacity: 1;
-        color: var(--sb-accent);
-        outline: none;
-    }
-}
-
-/* Style Add DM picker popover options */
-.sb-conversation-add-dm-title {
-    display: block;
-    font-size: var(--sb-type-meta);
-    font-weight: var(--sb-weight-title);
-}
-
-.sb-conversation-add-dm-description {
-    margin-top: 4px;
-}
-
-.sb-conversation-add-dm-search {
-    inline-size: 100%;
-    margin-top: 8px;
-}
-
-.sb-conversation-group-list {
-    margin-top: 8px;
-    max-block-size: 220px;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.sb-conversation-group-picker-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-top: 10px;
-    min-inline-size: 0;
-}
-
-.sb-conversation-group-selected-count {
-    min-inline-size: 0;
-    flex: 1 1 auto;
-}
-
-.sb-conversation-group-picker-buttons {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 6px;
-    min-inline-size: 0;
-    max-inline-size: 100%;
-}
-
-.sb-conversation-group-picker-buttons > .menu_button {
-    min-inline-size: 0;
-    max-inline-size: 100%;
-    white-space: nowrap;
-}
-
-.sb-conversation-group-member-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    inline-size: 100%;
-    padding: 6px;
-    border-radius: var(--sb-radius-sm);
-    text-align: left;
-    cursor: pointer;
-    color: inherit;
-    background: none;
-    border: none;
-}
-
-.sb-conversation-group-member-avatar {
-    inline-size: 24px;
-    block-size: 24px;
+/* The character avatar leads a start-a-conversation picker row; the shared row sizes its leading icon smaller and dimmer. */
+.sb-picker__option > img.sb-conversation-picker-avatar:first-child {
+    inline-size: 28px;
+    block-size: 28px;
+    flex: none;
     border-radius: 50%;
     object-fit: cover;
-}
-
-.sb-conversation-group-member-name {
-    font-size: var(--sb-type-caption);
-}
-
-.sb-conversation-group-empty {
-    padding: 8px;
-    font-size: var(--sb-type-meta);
-    opacity: 0.7;
-}
-
-.sb-conversation-add-dm-option {
-    transition: background-color var(--sb-transition-fast);
-}
-
-@media (hover: hover) {
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-add-dm-option:hover {
-        background-color: var(--sb-flat-hover-bg);
-    }
-}
-
-#sheld[data-sb-conversation-mode='on'] .sb-conversation-add-dm-option:active {
-    background-color: var(--sb-flat-active-bg);
-}
-
-.sb-conversation-add-dm-option:focus-visible {
-    outline: none;
-    box-shadow: var(--sb-focus-ring-inset);
+    opacity: 1;
 }
 
 /* Generated image messages */
@@ -2878,12 +2606,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     color: var(--sb-muted-fg);
     font-size: var(--sb-type-meta);
     text-align: center;
-}
-
-/* System rows hide the name row, so the pill's usual lift lands on the single note line.
-   Lift it clear of the bubble; while shown it overlaps the previous row instead of the note. */
-.sb-conversation-message[data-role='system'] .sb-conversation-message-actions {
-    transform: translate(0, -100%);
 }
 
 .sb-conversation-image-preview img {
@@ -2935,22 +2657,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     }
 }
 
-@media (max-width: 700px) {
-    .sb-conversation-group-picker-actions {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .sb-conversation-group-picker-buttons {
-        inline-size: 100%;
-        justify-content: stretch;
-    }
-
-    .sb-conversation-group-picker-buttons > .menu_button {
-        flex: 1 1 0;
-    }
-}
-
 /* Touch targets follow the pointer, not the layout width. */
 @media (pointer: coarse) {
     .sb-conversation-selfie-action {
@@ -2969,7 +2675,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
 
-    #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-add-dm-option, .sb-conversation-group-member-option, .sb-conversation-persona-option, .sb-conversation-status-option, .sb-conversation-persona-note-option) {
+    #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-persona-option, .sb-conversation-status-option, .sb-conversation-persona-note-option) {
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
 
@@ -2982,13 +2688,67 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         min-block-size: var(--sb-mobile-touch-target, 44px);
     }
 
-    :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-day-pill, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger, .sb-conversation-schedule-display, .sb-conv-weekly-enabled) {
+    :is(.sb-conversation-message-action, .sb-conversation-reaction-button, .sb-conversation-message-edit-control, .sb-conversation-message-edit-delete, .sb-conversation-day-pill, .sb-conversation-stop-image, .sb-conversation-mobile-menu-trigger, .sb-conversation-schedule-display, .sb-conv-weekly-enabled) {
         min-block-size: var(--sb-mobile-touch-target, 44px);
         min-inline-size: var(--sb-mobile-touch-target, 44px);
     }
 
     #sb_conversation_schedule_modal .sb-schedule-modal-row :is(input, select) {
         height: var(--sb-mobile-touch-target, 44px);
+    }
+
+    /* A touch screen has no hover: the toolbar gives way to a trigger beside the bubble that opens the message's actions. */
+    .sb-conversation-message-actions {
+        display: none;
+    }
+
+    .sb-conversation-mobile-menu-trigger {
+        display: inline-flex;
+        position: relative;
+        inset: auto;
+        align-self: flex-start;
+        flex: 0 0 var(--sb-mobile-touch-target, 44px);
+        inline-size: var(--sb-mobile-touch-target, 44px);
+        block-size: var(--sb-mobile-touch-target, 44px);
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        padding: 0;
+        border: none;
+        border-radius: var(--sb-radius-control);
+        background: transparent;
+        color: var(--sb-muted-fg);
+        font-size: 14px;
+        cursor: pointer;
+        transform: none;
+        z-index: 1;
+        -webkit-tap-highlight-color: transparent;
+        transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+    }
+
+    /* Match the avatar offset so the trigger sits beside the bubble, not the name. */
+    .sb-conversation-message[data-show-header='true'] .sb-conversation-mobile-menu-trigger {
+        margin-block-start: 1.4em;
+    }
+
+    /* System rows hide the name row, so that offset would drop the trigger a line below the note. */
+    .sb-conversation-message[data-role='system'] .sb-conversation-mobile-menu-trigger {
+        margin-block-start: 0;
+    }
+
+    .sb-conversation-mobile-menu-trigger:active {
+        color: var(--SmartThemeBodyColor);
+        background: var(--sb-flat-active-bg);
+    }
+
+    .sb-conversation-mobile-menu-trigger[aria-expanded='true'] {
+        color: var(--SmartThemeBodyColor);
+        background: var(--sb-flat-selected-bg);
+    }
+
+    .sb-conversation-mobile-menu-trigger:focus-visible {
+        outline: none;
+        box-shadow: var(--sb-focus-ring-inset);
     }
 }
 
@@ -3157,78 +2917,12 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
         align-items: center;
     }
 
-    /* Messages: the hover pill is desktop-only; a trailing gutter trigger opens the message menu as a sheet. */
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-message {
         max-inline-size: 100%;
     }
 
     #sheld[data-sb-conversation-mode='on'] .sb-conversation-message-body {
         max-inline-size: min(82%, calc(100% - 80px));
-    }
-
-    #sheld[data-sb-conversation-mode='on'] .sb-conversation-message-actions {
-        display: none;
-    }
-
-    .sb-conversation-mobile-menu-trigger {
-        display: inline-flex;
-        position: relative;
-        inset: auto;
-        align-self: flex-start;
-        flex: 0 0 28px;
-        inline-size: 28px;
-        block-size: 28px;
-        align-items: center;
-        justify-content: center;
-        margin: 0;
-        padding: 0;
-        border: none;
-        border-radius: var(--sb-radius-pill);
-        background: transparent;
-        color: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
-        font-size: 14px;
-        cursor: pointer;
-        transform: none;
-        z-index: 1;
-        -webkit-tap-highlight-color: transparent;
-        transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-    }
-
-    /* Match the avatar offset so the trigger sits beside the bubble, not the name. */
-    .sb-conversation-message[data-show-header='true'] .sb-conversation-mobile-menu-trigger {
-        margin-block-start: 1.4em;
-    }
-
-    /* System rows hide the name row, so that offset would drop the trigger a line below the note. */
-    .sb-conversation-message[data-role='system'] .sb-conversation-mobile-menu-trigger {
-        margin-block-start: 0;
-    }
-
-    /* ::before is the Font Awesome glyph; ::after widens the hit area to 44px without moving the icon. */
-    .sb-conversation-mobile-menu-trigger::after {
-        content: '';
-        position: absolute;
-        inset: -8px;
-        border-radius: var(--sb-radius-pill);
-    }
-
-    .sb-conversation-mobile-menu-trigger:active {
-        color: var(--SmartThemeBodyColor);
-        background: var(--sb-flat-active-bg);
-    }
-
-    .sb-conversation-mobile-menu-trigger[aria-expanded='true'] {
-        color: var(--SmartThemeBodyColor);
-        background: var(--sb-flat-selected-bg);
-    }
-
-    .sb-conversation-mobile-menu-trigger:focus-visible {
-        outline: none;
-        box-shadow: var(--sb-focus-ring-inset);
-    }
-
-    :root[data-sb-compact-mode='true'] .sb-conversation-mobile-menu-trigger::after {
-        inset: -6px;
     }
 
     .sb-conversation-message-meta {

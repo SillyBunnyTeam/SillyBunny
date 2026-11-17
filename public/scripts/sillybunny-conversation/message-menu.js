@@ -1,22 +1,23 @@
 /*
  * Conversation message menu.
- * The pill's menu button (desktop) and the mobile trigger open the shared action menu, built from
- * the pill's own buttons; rows forward clicks to them so chrome.js keeps handling every action.
+ * The toolbar's menu button (a fine pointer) and the gutter trigger (a coarse pointer) open the shared action menu,
+ * built from the toolbar's own buttons; rows forward clicks to them so chrome.js keeps handling every action.
  */
 
 import { translate } from '../i18n.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
-import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 
+/** Which control opens a message's actions follows the pointer, never the width (DESIGN.md, Layout and Chat Transcript). */
+const COARSE_POINTER_QUERY = '(pointer: coarse)';
 const MESSAGE_SELECTOR = '.sb-conversation-message';
 const TRIGGER_SELECTOR = `${MESSAGE_SELECTOR} [data-sb-conversation-menu]`;
 const OPEN_CLASS = 'has-open-menu';
 
 let initialized = false;
-let mobileQuery = null;
+let coarseQuery = null;
 
-function isMobileLayout() {
-    return mobileQuery?.matches === true;
+function isCoarsePointer() {
+    return coarseQuery?.matches === true;
 }
 
 function asElement(target) {
@@ -78,7 +79,7 @@ function getSubtitle(item) {
 }
 
 function getTrigger(item) {
-    const selector = isMobileLayout() ? '.sb-conversation-mobile-menu-trigger' : '.sb-conversation-message-menu';
+    const selector = isCoarsePointer() ? '.sb-conversation-mobile-menu-trigger' : '.sb-conversation-message-menu';
     return item.querySelector(`:scope ${selector}`);
 }
 
@@ -107,7 +108,7 @@ function syncMenuTitle(target) {
         return;
     }
     const label = translate('Message Actions');
-    const expanded = isMobileLayout() || document.body.classList.contains('expandMessageActions');
+    const expanded = isCoarsePointer() || document.body.classList.contains('expandMessageActions');
     const title = expanded || trigger.classList.contains('sb-conversation-mobile-menu-trigger')
         ? label
         : `${label}\n${translate('Hold shift to expand.')}`;
@@ -130,7 +131,7 @@ function handleClickCapture(event) {
 }
 
 function handleContextMenu(event) {
-    if (isMobileLayout() || event.shiftKey) {
+    if (isCoarsePointer() || event.shiftKey) {
         return;
     }
     const target = asElement(event.target);
@@ -166,7 +167,7 @@ export function initializeConversationMessageMenu() {
         return;
     }
     initialized = true;
-    mobileQuery = window.matchMedia(LAYOUT_MOBILE_QUERY);
+    coarseQuery = window.matchMedia(COARSE_POINTER_QUERY);
     window.addEventListener('click', handleClickCapture, true);
     window.addEventListener('keydown', handleMenuKey, true);
     document.addEventListener('contextmenu', handleContextMenu);

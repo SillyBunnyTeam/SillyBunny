@@ -33,7 +33,7 @@ import {
     THREAD_INDEX, addConversationBranches, branchMessage, closeConversationSettingsPane, conversationMessage, conversationMessageId, editConversationMessageById, openConversation,
     openConversationPicker, openConversationSettings, setConversationConnection, showConversationPage,
 } from './chat-conversation-steps.js';
-import { openLegacyToggle } from './menu-steps.js';
+import { openLegacyToggle, PICKER_ROOT } from './menu-steps.js';
 import { settle } from './steps.js';
 import { viewportById, viewportsFor } from '../surface-matrix.js';
 
@@ -574,9 +574,9 @@ export const surfaces = [
             {
                 id: 'new-conversation-picker',
                 async open(page) {
-                    await openConversationPicker(page, { toggle: 'toggleAddDmPicker', root: '#sb_conversation_add_dm_picker:not([hidden])' });
+                    await openConversationPicker(page, { toggle: 'toggleAddDmPicker', root: PICKER_ROOT });
                 },
-                ready: ['#sb_conversation_add_dm_picker:not([hidden])'],
+                ready: [PICKER_ROOT, '.sb-picker__option'],
             },
             {
                 id: 'settings-open',

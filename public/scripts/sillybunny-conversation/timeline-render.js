@@ -58,6 +58,7 @@ import {
 } from './thread-store.js';
 import { getActiveTypingParticipants, getPrimaryTypingParticipant, updateLastPreviewFromConversation, withTypingParticipant } from './typing.js';
 import { getConversationWorldInfo } from './world-info.js';
+import { createStatusPage } from '../sillybunny-editor/status-page.js';
 
 export { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 export { getConversationTimelineMessages } from './timeline-search.js';
@@ -725,6 +726,13 @@ function createConversationTransientRow({ role, avatarSrc, nameHtml, textHtml, e
     return item;
 }
 
+/** The timeline's empty and unavailable states are the shared status page; the class marks it for `removeTimelineTransientNodes`. */
+function createConversationStatusPage(values) {
+    const { element } = createStatusPage(values);
+    element.classList.add('sb-conversation-thread-empty');
+    return element;
+}
+
 function removeTimelineTransientNodes(timeline) {
     timeline.querySelectorAll('.sb-conversation-thread-empty, .sb-conversation-typing-indicator, .sb-conversation-image-pending').forEach(node => node.remove());
 }
@@ -842,17 +850,14 @@ export function renderConversationTimeline() {
 
         conversationState.lastTimelineFingerprint = fingerprint;
         timeline.dataset.sbConversationFingerprint = fingerprint;
-        timeline.innerHTML = `
-            <div class="sb-conversation-thread-empty">
-                <div class="sb-conversation-thread-empty-icon fa-solid ${unavailableGroup ? 'fa-user-group' : 'fa-comments'}" aria-hidden="true"></div>
-                <div>
-                    <strong>${unavailableGroup ? 'No Conversation members available' : 'Choose a DM to begin'}</strong>
-                    <p>${unavailableGroup
-        ? `${escapeHtmlText(unavailableGroup.name || 'This group')} does not currently have any eligible Conversation members. Add or enable a member, then try again.`
-        : 'Use the Pals rail plus button to start messaging a character without opening the character drawer.'}</p>
-                </div>
-            </div>
-        `;
+        timeline.replaceChildren(createConversationStatusPage(unavailableGroup
+            ? {
+                state: 'unavailable',
+                icon: 'user-group',
+                title: 'No Conversation members available',
+                description: `${unavailableGroup.name || 'This group'} does not currently have any eligible Conversation members. Add or enable a member, then try again.`,
+            }
+            : { state: 'empty', icon: 'comments', title: 'Choose a DM to begin' }));
         conversationState.lastRenderedAvatar = null;
         conversationState.lastRenderedThreadKey = '';
         conversationState.lastRenderedMessageCount = 0;
@@ -891,17 +896,12 @@ export function renderConversationTimeline() {
     }
 
     if (!allMessages.length) {
-        timeline.textContent = '';
-        const empty = document.createElement('div');
-        empty.className = 'sb-conversation-thread-empty';
-        empty.innerHTML = `
-            <div class="sb-conversation-thread-empty-icon fa-solid fa-message" aria-hidden="true"></div>
-            <div>
-                <strong>No DM messages yet</strong>
-                <p>Type a message to begin chatting with this character!</p>
-            </div>
-        `;
-        timeline.appendChild(empty);
+        timeline.replaceChildren(createConversationStatusPage({
+            state: 'empty',
+            icon: 'message',
+            title: 'No DM messages yet',
+            description: 'Type a message to begin chatting with this character!',
+        }));
         conversationState.lastRenderedAvatar = avatar;
         conversationState.lastRenderedThreadKey = renderThreadKey;
         conversationState.lastRenderedMessageCount = allMessages.length;
@@ -916,17 +916,11 @@ export function renderConversationTimeline() {
     }
 
     if (!messages.length) {
-        timeline.textContent = '';
-        const empty = document.createElement('div');
-        empty.className = 'sb-conversation-thread-empty';
-        empty.innerHTML = `
-            <div class="sb-conversation-thread-empty-icon fa-solid fa-filter" aria-hidden="true"></div>
-            <div>
-                <strong>No matching messages</strong>
-                <p>Clear search or switch back to Main to see the full Conversation.</p>
-            </div>
-        `;
-        timeline.appendChild(empty);
+        timeline.replaceChildren(createConversationStatusPage({
+            state: 'no-results',
+            title: 'No matching messages',
+            description: 'Clear search or switch back to Main to see the full Conversation.',
+        }));
         conversationState.lastRenderedAvatar = avatar;
         conversationState.lastRenderedThreadKey = renderThreadKey;
         conversationState.lastRenderedMessageCount = allMessages.length;
@@ -2024,16 +2018,6 @@ export function ensureConversationChrome() {
         pickerBackdrop.className = 'sb-conversation-picker-backdrop';
         pickerBackdrop.setAttribute('aria-hidden', 'true');
         sheld.appendChild(pickerBackdrop);
-    }
-
-    if (!(document.getElementById(CHROME_IDS.addDmPicker) instanceof HTMLElement)) {
-        const addDmPicker = document.createElement('div');
-        addDmPicker.id = CHROME_IDS.addDmPicker;
-        addDmPicker.className = 'sb-conversation-picker sb-conversation-add-dm-picker';
-        addDmPicker.setAttribute('role', 'dialog');
-        addDmPicker.setAttribute('aria-label', 'Start a conversation');
-        addDmPicker.hidden = true;
-        sheld.appendChild(addDmPicker);
     }
 
     if (!(document.getElementById(CHROME_IDS.personaPicker) instanceof HTMLElement)) {

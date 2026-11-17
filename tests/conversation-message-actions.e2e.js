@@ -128,23 +128,28 @@ async function editThenDeleteFromMenu(page, message, trigger, menu) {
     await expect(message).toBeVisible();
 }
 
-test('OOC notes retain Edit and Delete through their message menu at 390px', async ({ page, baseURL }, testInfo) => {
-    test.setTimeout(60000);
-    const message = await openOocNote(page, baseURL, 390);
-    const trigger = message.locator('.sb-conversation-mobile-menu-trigger');
-    await expect(trigger).toBeVisible();
-    await expect(message.locator('.sb-conversation-message-actions')).toBeHidden();
-    // The mobile trigger belongs beside the note line, not a header row below it.
-    const triggerRect = await getRect(trigger);
-    const noteRect = await getRect(message.locator('.sb-conversation-message-text'));
-    const bubbleRect = await getRect(message.locator('.sb-conversation-message-bubble'));
-    expect(triggerRect.top).toBeGreaterThanOrEqual(bubbleRect.top - 1);
-    expect(triggerRect.top).toBeLessThan(noteRect.bottom);
-    expect(triggerRect.bottom).toBeGreaterThan(noteRect.top);
-    await page.screenshot({ path: testInfo.outputPath('ooc-row.png') });
-    const menu = await openMessageMenu(page, trigger);
-    await page.screenshot({ path: testInfo.outputPath('ooc-menu.png') });
-    await editThenDeleteFromMenu(page, message, trigger, menu);
+// A touch screen gets the trigger beside the bubble; a narrow window with a mouse keeps the hover toolbar.
+test.describe('with a touch screen', () => {
+    test.use({ hasTouch: true, isMobile: true });
+
+    test('OOC notes retain Edit and Delete through their message menu at 390px', async ({ page, baseURL }, testInfo) => {
+        test.setTimeout(60000);
+        const message = await openOocNote(page, baseURL, 390);
+        const trigger = message.locator('.sb-conversation-mobile-menu-trigger');
+        await expect(trigger).toBeVisible();
+        await expect(message.locator('.sb-conversation-message-actions')).toBeHidden();
+        // The mobile trigger belongs beside the note line, not a header row below it.
+        const triggerRect = await getRect(trigger);
+        const noteRect = await getRect(message.locator('.sb-conversation-message-text'));
+        const bubbleRect = await getRect(message.locator('.sb-conversation-message-bubble'));
+        expect(triggerRect.top).toBeGreaterThanOrEqual(bubbleRect.top - 1);
+        expect(triggerRect.top).toBeLessThan(noteRect.bottom);
+        expect(triggerRect.bottom).toBeGreaterThan(noteRect.top);
+        await page.screenshot({ path: testInfo.outputPath('ooc-row.png') });
+        const menu = await openMessageMenu(page, trigger);
+        await page.screenshot({ path: testInfo.outputPath('ooc-menu.png') });
+        await editThenDeleteFromMenu(page, message, trigger, menu);
+    });
 });
 
 test('OOC notes retain Edit and Delete through their message menu at 1440px', async ({ page, baseURL }, testInfo) => {
@@ -165,31 +170,35 @@ test('OOC notes retain Edit and Delete through their message menu at 1440px', as
     await editThenDeleteFromMenu(page, message, trigger, menu);
 });
 
-for (const reducedMotion of ['reduce', 'no-preference']) {
-    test(`mobile action sheet Close restores its message trigger focus with motion ${reducedMotion}`, async ({ page, baseURL }) => {
-        test.setTimeout(60000);
-        await page.setViewportSize({ width: 390, height: 844 });
-        await page.emulateMedia({ reducedMotion });
-        const message = await openConversation(page, baseURL);
-        expect(await page.evaluate(async () => {
-            const { prefersReducedMotion } = await import('/scripts/sillybunny-motion.js');
-            return prefersReducedMotion();
-        })).toBe(reducedMotion === 'reduce');
-        const trigger = message.locator('.sb-conversation-mobile-menu-trigger');
-        await trigger.focus();
-        await trigger.press('Enter');
-        const sheet = page.locator(OPEN_ACTION_SHEET);
-        await expect(sheet).toBeVisible();
-        await sheet.getByRole('button', { name: 'Close', exact: true }).click();
-        await expect(sheet).toBeHidden();
-        await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-        await expect(trigger).toBeFocused();
-        await trigger.press('Enter');
-        await expect(sheet).toBeVisible();
-        // The sheet takes the keyboard focus a frame after it shows, and an Escape that arrives before that goes to the trigger behind it.
-        await expect(sheet.locator(':focus')).toHaveCount(1);
-        await page.keyboard.press('Escape');
-        await expect(sheet).toBeHidden();
-        await expect(trigger).toBeFocused();
-    });
-}
+test.describe('with a touch screen, motion variants', () => {
+    test.use({ hasTouch: true, isMobile: true });
+
+    for (const reducedMotion of ['reduce', 'no-preference']) {
+        test(`mobile action sheet Close restores its message trigger focus with motion ${reducedMotion}`, async ({ page, baseURL }) => {
+            test.setTimeout(60000);
+            await page.setViewportSize({ width: 390, height: 844 });
+            await page.emulateMedia({ reducedMotion });
+            const message = await openConversation(page, baseURL);
+            expect(await page.evaluate(async () => {
+                const { prefersReducedMotion } = await import('/scripts/sillybunny-motion.js');
+                return prefersReducedMotion();
+            })).toBe(reducedMotion === 'reduce');
+            const trigger = message.locator('.sb-conversation-mobile-menu-trigger');
+            await trigger.focus();
+            await trigger.press('Enter');
+            const sheet = page.locator(OPEN_ACTION_SHEET);
+            await expect(sheet).toBeVisible();
+            await sheet.getByRole('button', { name: 'Close', exact: true }).click();
+            await expect(sheet).toBeHidden();
+            await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+            await expect(trigger).toBeFocused();
+            await trigger.press('Enter');
+            await expect(sheet).toBeVisible();
+            // The sheet takes the keyboard focus a frame after it shows, and an Escape that arrives before that goes to the trigger behind it.
+            await expect(sheet.locator(':focus')).toHaveCount(1);
+            await page.keyboard.press('Escape');
+            await expect(sheet).toBeHidden();
+            await expect(trigger).toBeFocused();
+        });
+    }
+});

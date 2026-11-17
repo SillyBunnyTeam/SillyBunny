@@ -43,9 +43,7 @@ import { switchConversationPersona } from './persona-switch.js';
 import { editUserPersonaStatus, getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
     addWeeklyScheduleRow,
-    handleCreateConversationGroupFromPicker,
     hideConversationPickers,
-    hideConversationStartPicker,
     openAddMemberPicker,
     renderConversationPersonaPicker,
     toggleAddDmPicker,
@@ -54,7 +52,7 @@ import {
     toggleUserStatusPicker,
     updateUserFooter,
 } from './pickers.js';
-import { scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
+import { afterConversationRender, scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
 import { generateCharacterSchedule, saveStoredSchedule } from './schedule.js';
 import {
     clearConversationMemoryFromPanel,
@@ -99,7 +97,7 @@ import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 import { LAYOUT_MOBILE_QUERY } from '../sillybunny-editor/breakpoints.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117s';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261117v';
 
 /**
  * Sizes the composer entry to its content. Border-box height must include the border that
@@ -151,8 +149,8 @@ export function isConversationStylesheetLoading() {
     return conversationStylesheetStatus === 'loading';
 }
 
-// The open path focuses the composer after 100ms; a slower first sheet load reveals the
-// chrome after that, so focus it again on the reveal frame (queued after the refresh flush).
+// The composer focus requested by the open path waits for this refresh: the chrome stays hidden
+// while the first sheet loads, and the composer is only enabled by the render flush.
 function revealConversationWorkspaceAfterStylesheet() {
     if (!conversationState.conversationWorkspaceOpen) {
         return;
@@ -160,9 +158,6 @@ function revealConversationWorkspaceAfterStylesheet() {
 
     conversationState.timelineBottomScrollPending = true;
     scheduleInterfaceRefresh({ syncControls: false });
-    requestAnimationFrame(() => {
-        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-    });
 }
 
 function ensureConversationStylesheet() {
@@ -258,6 +253,27 @@ function focusConversationInput({ skipIOS = false } = {}) {
     if (input instanceof HTMLTextAreaElement) {
         input.focus({ preventScroll: true });
     }
+}
+
+// The composer is disabled until the render flush picks a thread and hidden until the lazy sheet
+// applies, so focus follows those instead of a fixed delay.
+function focusConversationInputAfterRender() {
+    afterConversationRender(() => {
+        if (!conversationState.conversationWorkspaceOpen || !conversationState.conversationSelectedAvatar) {
+            return true;
+        }
+        if (isConversationStylesheetLoading()) {
+            return false;
+        }
+
+        const input = document.getElementById(CHROME_IDS.input);
+        if (!(input instanceof HTMLTextAreaElement) || input.disabled) {
+            return false;
+        }
+
+        input.focus({ preventScroll: true });
+        return true;
+    });
 }
 
 function getConversationFullAvatarUrl(file, type) {
@@ -616,12 +632,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
             }
             break;
         }
-        case 'create-conversation-group':
-            await handleCreateConversationGroupFromPicker();
-            break;
-        case 'cancel-conversation-group':
-            hideConversationStartPicker();
-            break;
         case 'attach-file': {
             const fileInput = document.getElementById(CHROME_IDS.fileInput);
             if (fileInput instanceof HTMLInputElement) {
@@ -670,9 +680,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
                         showToast: false,
                     });
                     schedulePalsRailRender();
-                    setTimeout(() => {
-                        focusConversationInput({ skipIOS: true });
-                    }, 100);
                 }
             }
             break;
@@ -1277,9 +1284,6 @@ export function openConversationWorkspaceForAvatar(avatar, { branchId = '', grou
 
     if (!targetAvatar) {
         scheduleInterfaceRefresh({ syncControls: false });
-        setTimeout(() => {
-            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-        }, 100);
         return false;
     }
 
@@ -1302,9 +1306,7 @@ export function openConversationWorkspaceForAvatar(avatar, { branchId = '', grou
     if (showToast && enable && !wasEnabled) {
         toastr.info(`Conversation Mode activated for ${character.name || 'Character'}.`);
     }
-    setTimeout(() => {
-        document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-    }, 100);
+    focusConversationInputAfterRender();
     return true;
 }
 

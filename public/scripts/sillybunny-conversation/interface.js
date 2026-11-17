@@ -35,6 +35,7 @@ import { renderConversationTimeline, updateConversationNotificationSettingsVisib
 import { getActiveTypingParticipants, getLastConversationPreview, updateLastPreviewFromConversation } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
 import { hashConversationRenderFingerprint } from './render-utils.js';
+import { createStatusPage } from '../sillybunny-editor/status-page.js';
 
 function buildBranchListFingerprint(characterStore, activeBranchId) {
     return Object.entries(characterStore?.branches || {})
@@ -138,10 +139,7 @@ export function renderPalsRail() {
     list.textContent = '';
 
     if (!pals.length) {
-        const empty = document.createElement('div');
-        empty.className = 'sb-conversation-empty';
-        empty.textContent = 'Use + to start a DM with a character.';
-        list.appendChild(empty);
+        list.appendChild(createStatusPage({ state: 'empty', icon: 'comments', title: 'Use + to start a DM with a character.', compact: true }).element);
         updateConversationNotificationIndicators();
         return;
     }

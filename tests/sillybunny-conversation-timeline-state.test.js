@@ -130,6 +130,9 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
     withTypingParticipant: (_participant, task) => task(),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/world-info.js', () => ({ getConversationWorldInfo }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/status-page.js', () => ({
+    createStatusPage: values => ({ element: { classList: { add: jest.fn() }, values } }),
+}));
 
 const stateModule = await import('../public/scripts/sillybunny-conversation/state.js');
 const {
@@ -346,6 +349,10 @@ describe('conversation timeline operation identity', () => {
             appendChild(child) {
                 this.children.push(child);
                 return child;
+            }
+
+            replaceChildren(...children) {
+                this.children = children;
             }
 
             querySelectorAll() {

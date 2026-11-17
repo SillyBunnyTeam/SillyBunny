@@ -227,14 +227,28 @@ function buildPickerContent(state, body) {
         button.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
+            if (button.disabled) return;
             closePicker({ restoreFocus: true });
             item.onSelect?.();
         });
         footer.append(button);
+        state.footerButtons.push(button);
     });
     if (state.footer.length) {
         body.append(footer);
     }
+    syncFooter(state);
+}
+
+/** A footer action can be unavailable while the picker's own selection says so, such as a group that is too small. */
+function syncFooter(state) {
+    state.footer.forEach((item, index) => {
+        const button = state.footerButtons[index];
+        if (!button) return;
+        const disabled = typeof item.disabled === 'function' ? Boolean(item.disabled()) : Boolean(item.disabled);
+        button.disabled = disabled;
+        button.setAttribute('aria-disabled', String(disabled));
+    });
 }
 
 /** Groups items by their `group` label in first-appearance order; ungrouped items form their own bucket. */
@@ -289,6 +303,7 @@ function renderOptions(state) {
         ? Math.max(0, Math.min(state.activeIndex, state.filtered.length - 1))
         : -1;
     state.list.replaceChildren();
+    syncFooter(state);
 
     if (!state.filtered.length) {
         const empty = document.createElement('li');
@@ -520,7 +535,8 @@ function finishClose() {
  * @param {boolean} [options.multiple=false] Toggle values without closing or changing search focus.
  * @param {(value: unknown) => 'selected'|'excluded'|null} [options.getItemState=null]
  * @param {(value: unknown) => void} options.onSelect
- * @param {{ label: string, icon?: string|Element, onSelect: () => void }[]} [options.footer=[]]
+ * @param {{ label: string, icon?: string|Element, onSelect: () => void, disabled?: boolean|(() => boolean) }[]} [options.footer=[]]
+ *     A `disabled` function is read again after every selection change.
  * @param {string} [options.searchLabel]
  * @param {string} [options.emptyText]
  * @param {Element|null} [options.bounds=null]
@@ -571,6 +587,7 @@ export function openPicker({
         getItemState,
         onSelect,
         footer: [...footer],
+        footerButtons: [],
         searchLabel,
         emptyText,
         bounds,

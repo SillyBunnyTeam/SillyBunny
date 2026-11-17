@@ -1214,7 +1214,7 @@ const personaPickerNoNotes = status({
 
 const CONVERSATION_ON = '#sheld[data-sb-conversation-mode="on"]';
 const THREAD_EMPTY = '#sb_conversation_timeline .sb-conversation-thread-empty';
-const PALS_EMPTY = '#sb_conversation_pals_list .sb-conversation-empty';
+const PALS_EMPTY = '#sb_conversation_pals_list .sb-status-page';
 
 /** Opens the Conversation workspace, on the audit character's thread or on none. */
 async function openConversation(page, { thread = false, messages = null } = {}) {
@@ -1245,14 +1245,14 @@ async function leaveConversation(page) {
     await page.locator(CONVERSATION_ON).waitFor({ state: 'detached' });
 }
 
-const CONVERSATION_SOURCES = [`${SCRIPTS}/sillybunny-conversation/timeline-render.js`, `${SCRIPTS}/sillybunny-conversation/chrome.js`];
+const CONVERSATION_SOURCES = [`${SCRIPTS}/sillybunny-conversation/timeline-render.js`, `${SCRIPTS}/sillybunny-conversation/chrome.js`, STATUS_PAGE_SOURCE];
 
 const conversationChooseDm = status({
     id: 'conversation.choose-dm',
     title: 'Conversation: no DM chosen yet',
-    component: 'own',
+    component: 'shared',
     root: THREAD_EMPTY,
-    ready: `${THREAD_EMPTY} strong:has-text("Choose a DM to begin")`,
+    ready: titled(THREAD_EMPTY, 'Choose a DM to begin'),
     async open(page) {
         await openConversation(page);
         await reveal(page, THREAD_EMPTY);
@@ -1268,9 +1268,9 @@ const conversationChooseDm = status({
 const conversationNoMessages = status({
     id: 'conversation.no-messages',
     title: 'Conversation: a DM without messages',
-    component: 'own',
+    component: 'shared',
     root: THREAD_EMPTY,
-    ready: `${THREAD_EMPTY} strong:has-text("No DM messages yet")`,
+    ready: titled(THREAD_EMPTY, 'No DM messages yet'),
     async open(page) {
         await openConversation(page, { thread: true });
         await reveal(page, THREAD_EMPTY);
@@ -1284,9 +1284,9 @@ const conversationNoMessages = status({
 const conversationNoMatches = status({
     id: 'conversation.no-matches',
     title: 'Conversation: no message matches the search',
-    component: 'own',
+    component: 'shared',
     root: THREAD_EMPTY,
-    ready: [`${THREAD_EMPTY} strong:has-text("No matching messages")`, '#sb_conversation_search'],
+    ready: [titled(THREAD_EMPTY, 'No matching messages'), '#sb_conversation_search'],
     async open(page) {
         await openConversation(page, { thread: true, messages: FIXTURES.chat.messages });
         await page.locator('#sb_conversation_timeline .sb-conversation-message').first().waitFor({ state: 'visible' });
@@ -1302,19 +1302,20 @@ const conversationNoMatches = status({
     sources: CONVERSATION_SOURCES,
 });
 
-const ADD_DM_EMPTY = '#sb_conversation_add_dm_picker .sb-conversation-group-empty';
+const ADD_DM_EMPTY = '.sb-picker .sb-picker__empty .sb-status-page, .sb-picker-sheet:not([hidden]) .sb-picker__empty .sb-status-page';
+const PICKER_SEARCH = '.sb-picker__search:visible';
 const NEW_MENU = '[data-sb-conversation-action="open-new-menu"]';
 
 const conversationAddDmNoMatches = status({
     id: 'conversation.add-dm-no-matches',
     title: 'Conversation: the New DM list finds no character, and the New group list as a state',
-    component: 'own',
+    component: 'shared',
     root: ADD_DM_EMPTY,
-    ready: `${ADD_DM_EMPTY}:has-text("No matching characters found.")`,
+    ready: titled(ADD_DM_EMPTY, 'No matching characters found.'),
     async open(page) {
         await openConversation(page);
         await chooseMenuItem(page, NEW_MENU, 'New DM');
-        await page.locator('#sb_conversation_add_dm_search').fill(NO_MATCH);
+        await page.locator(PICKER_SEARCH).fill(NO_MATCH);
         await reveal(page, ADD_DM_EMPTY);
         await settle(page);
     },
@@ -1323,7 +1324,7 @@ const conversationAddDmNoMatches = status({
         async open(page) {
             await page.keyboard.press('Escape');
             await chooseMenuItem(page, NEW_MENU, 'New group');
-            await page.locator('#sb_conversation_group_search').fill(NO_MATCH);
+            await page.locator(PICKER_SEARCH).fill(NO_MATCH);
             await reveal(page, ADD_DM_EMPTY);
             await settle(page);
         },
@@ -1333,12 +1334,12 @@ const conversationAddDmNoMatches = status({
     sources: [`${SCRIPTS}/sillybunny-conversation/pickers.js`, ...CONVERSATION_SOURCES],
 });
 
-const CONVERSATION_PERSONAS_EMPTY = '#sb_conversation_persona_picker .sb-conversation-empty';
+const CONVERSATION_PERSONAS_EMPTY = '#sb_conversation_persona_picker .sb-status-page';
 
 const conversationPersonasEmpty = status({
     id: 'conversation.personas-empty',
     title: 'Conversation: the persona list with no personas defined',
-    component: 'own',
+    component: 'shared',
     root: CONVERSATION_PERSONAS_EMPTY,
     async open(page) {
         await openConversation(page, { thread: true });
@@ -1366,7 +1367,7 @@ const conversationPersonasEmpty = status({
 const conversationPalsEmpty = status({
     id: 'conversation.pals-empty',
     title: 'Conversation: the Pals list without a DM',
-    component: 'own',
+    component: 'shared',
     root: PALS_EMPTY,
     async open(page) {
         await openConversation(page);

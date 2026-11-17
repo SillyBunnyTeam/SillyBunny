@@ -359,7 +359,6 @@ test.describe('Conversation pickers at 390×844', () => {
     const PICKERS = [
         { name: 'status picker', id: 'sb_conversation_user_status_picker' },
         { name: 'persona picker', id: 'sb_conversation_persona_picker' },
-        { name: 'add-DM picker', id: 'sb_conversation_add_dm_picker' },
     ];
 
     // Each opener fills the picker through the renderer that replaces its children.
@@ -370,7 +369,6 @@ test.describe('Conversation pickers at 390×844', () => {
             const trigger = document.getElementById('qa-sheet-trigger');
             if (pickerId === 'sb_conversation_user_status_picker') pickers.toggleUserStatusPicker(trigger);
             if (pickerId === 'sb_conversation_persona_picker') pickers.togglePersonaPicker(trigger);
-            if (pickerId === 'sb_conversation_add_dm_picker') pickers.toggleConversationGroupPicker({ anchor: trigger });
             // Counts how often the picker becomes hidden, so a double close shows.
             const picker = document.getElementById(pickerId);
             window.qaHides = 0;
@@ -403,18 +401,21 @@ test.describe('Conversation pickers at 390×844', () => {
         await swipeClosed(page, picker);
     });
 
-    test('the add-DM picker keeps one handle across both wipe paths while open, and one swipe closes it once', async ({ page, baseURL }) => {
+    test('the New DM and New group pickers share one sheet, and switching between them leaves one open', async ({ page, baseURL }) => {
         await bootConversation(page, baseURL);
-        const picker = await openPicker(page, 'sb_conversation_add_dm_picker');
-        await expect(picker.locator(':scope > .sb-dialog__handle')).toHaveCount(1);
-        // Opening the solo form while the group form is open rewrites the picker again.
+        await addTrigger(page);
+        const title = page.locator('.sb-picker-sheet .sb-action-sheet-title');
+        await page.evaluate(async () => {
+            const { toggleConversationGroupPicker } = await import('/scripts/sillybunny-conversation/pickers.js');
+            toggleConversationGroupPicker({ anchor: document.getElementById('qa-sheet-trigger') });
+        });
+        await expect(title).toHaveText('Create a group DM');
         await page.evaluate(async () => {
             const { toggleAddDmPicker } = await import('/scripts/sillybunny-conversation/pickers.js');
             toggleAddDmPicker(document.getElementById('qa-sheet-trigger'));
         });
-        await expect(picker.locator('.sb-conversation-add-dm-title')).toHaveText('Create a solo DM');
-        await expect(picker.locator(':scope > .sb-dialog__handle')).toHaveCount(1);
-        await swipeClosed(page, picker);
+        await expect(title).toHaveText('Create a solo DM');
+        await expect(page.locator('.sb-picker-sheet:not([hidden])')).toHaveCount(1);
     });
 
     for (const { name, id } of PICKERS) {
@@ -443,7 +444,6 @@ test.describe('Conversation pickers at 390×844', () => {
                 const trigger = document.getElementById('qa-sheet-trigger');
                 if (pickerId === 'sb_conversation_user_status_picker') pickers.toggleUserStatusPicker(trigger);
                 if (pickerId === 'sb_conversation_persona_picker') pickers.togglePersonaPicker(trigger);
-                if (pickerId === 'sb_conversation_add_dm_picker') pickers.toggleConversationGroupPicker({ anchor: trigger });
             }, id);
             await expect(picker).toBeVisible();
             await expect.poll(() => picker.evaluate(node => node.getAnimations().length)).toBe(0);

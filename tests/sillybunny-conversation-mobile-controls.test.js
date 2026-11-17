@@ -28,13 +28,22 @@ function getRuleDeclarations(selector) {
 
 describe('Conversation mobile controls', () => {
     test('44px touch targets follow the pointer, not a width', () => {
-        const media = findMediaRule(query => query.includes('pointer: coarse') && !query.includes('max-width'));
+        const media = findMediaRule(query => query === '(pointer: coarse)');
         expect(media).toBeDefined();
-        expect(media.media).toMatch(/^\(pointer: coarse\)$/);
 
         expect(getDeclarations(media, '.sb-conversation-selfie-action')).toMatchObject({
             'min-block-size': 'var(--sb-mobile-touch-target, 44px)',
         });
+        // A coarse pointer has no hover, so the toolbar gives way to the trigger whatever the width.
+        expect(getDeclarations(media, '.sb-conversation-message-actions')).toMatchObject({ display: 'none' });
+        expect(getDeclarations(media, '.sb-conversation-mobile-menu-trigger')).toMatchObject({
+            display: 'inline-flex',
+            position: 'relative',
+            inset: 'auto',
+            transform: 'none',
+        });
+        expect(findMediaRule(query => query === '(max-width: 768px)').rules.flatMap(rule => rule.selectors ?? []))
+            .not.toContain('.sb-conversation-mobile-menu-trigger');
         expect(getDeclarations(media, '.sb-conversation-reply-cancel')).toMatchObject({
             'inline-size': 'var(--sb-mobile-touch-target, 44px)',
             'block-size': 'var(--sb-mobile-touch-target, 44px)',
@@ -92,11 +101,6 @@ describe('Conversation mobile controls', () => {
         expect(getDeclarations(overlayMedia, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-picker:not([hidden])')).toMatchObject({
             inset: 'auto 0 0',
         });
-        expect(getDeclarations(media, '.sb-conversation-mobile-menu-trigger')).toMatchObject({
-            position: 'relative',
-            inset: 'auto',
-            transform: 'none',
-        });
         expect(getDeclarations(media, '#sheld[data-sb-conversation-mode=\'on\']')).toMatchObject({
             border: '0',
             height: 'calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important',
@@ -130,7 +134,7 @@ describe('Conversation mobile controls', () => {
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['border-radius']).toBe('0');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']').height).toBe('calc(100dvh - var(--sb-topbar-layout-offset, var(--topBarBlockSize)))');
         expect(css).not.toMatch(/\.sb-conversation-message\[data-role='user'\] \.sb-conversation-message-actions/);
-        expect(getRuleDeclarations('.sb-conversation-message-actions').transform).toBe('translate(0, -8px)');
+        expect(getRuleDeclarations('.sb-conversation-message-actions').transform).toBe('translate(0, calc(6px - 100%))');
         expect(getRuleDeclarations('.sb-conversation-message-actions')).toMatchObject({
             'grid-area': '1 / 1',
             'align-self': 'start',
@@ -204,6 +208,35 @@ describe('Conversation mobile controls', () => {
             display: 'none !important',
         });
         expect(css).not.toMatch(/\.sb-conversation-idle-actions/);
+    });
+
+    test('the message toolbar is an OSD overlay above the bubble, with no border or shadow of its own', () => {
+        const toolbar = getRuleDeclarations('.sb-conversation-message-actions');
+        expect(toolbar).toMatchObject({
+            background: 'var(--sb-osd-bg)',
+            color: 'var(--sb-osd-ink)',
+            'border-radius': 'var(--sb-radius-control)',
+        });
+        expect(toolbar).not.toHaveProperty('border');
+        expect(toolbar).not.toHaveProperty('box-shadow');
+        expect(getRuleDeclarations('.sb-conversation-message-action')['border-radius']).toBe('var(--sb-radius-inner)');
+        const wide = findMediaRule(query => query === '(min-width: 769px)');
+        expect(getDeclarations(wide, '.sb-conversation-message-actions')).toEqual({ 'max-inline-size': 'max(100%, 30rem)' });
+        expect(toolbar['--sb-osd-contrast-ring']).toBe('0 0 0 1px var(--sb-osd-ink)');
+        const contrast = ast.stylesheet.rules.find(rule => rule.type === 'media' && rule.media === '(prefers-contrast: more)'
+            && rule.rules.some(inner => inner.selectors?.includes('.sb-conversation-message-actions')));
+        expect(getDeclarations(contrast, '.sb-conversation-message-actions')).toEqual({ 'box-shadow': 'var(--sb-osd-contrast-ring)' });
+    });
+
+    test('the drop hint is an accent ring inside a tonal fill, without a dashed border or an outer shadow', () => {
+        const hint = getRuleDeclarations('.sb-conversation-drop-hint');
+        expect(hint).toMatchObject({
+            'border-radius': 'var(--sb-radius-card)',
+            background: 'color-mix(in srgb, var(--sb-accent) 10%, var(--sb-layer-window))',
+            'box-shadow': 'var(--sb-drop-hint-ring)',
+            '--sb-drop-hint-ring': 'inset 0 0 0 2px color-mix(in srgb, var(--sb-accent) 40%, transparent)',
+        });
+        expect(hint).not.toHaveProperty('border');
     });
 
     test('desktop pickers use auto inset so JS can park them on the trigger', () => {

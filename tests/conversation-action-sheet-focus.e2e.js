@@ -4,7 +4,8 @@ import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { waitForAppReady } from './helpers/app-ready.js';
 
-test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
+// The message trigger these tests press exists for a touch screen; a mouse at the same width gets the hover toolbar.
+test.use({ serviceWorkers: 'block', hasTouch: true, isMobile: true, contextOptions: { reducedMotion: 'reduce' } });
 
 const MESSAGE_TEXT = 'A disposable message for sheet focus checks.';
 
@@ -168,20 +169,24 @@ test('mobile action sheet reaction chip leaves the re-rendered message trigger f
     await expect(trigger).toBeFocused();
 });
 
-test('desktop reaction menu leaves the re-rendered message trigger focused', async ({ page, baseURL }) => {
-    test.setTimeout(60000);
-    await page.setViewportSize({ width: 1440, height: 900 });
-    const message = await openConversation(page, baseURL);
-    const trigger = message.locator('.sb-conversation-message-menu');
-    await trigger.focus();
-    await trigger.press('Enter');
-    const menu = getMenu(page);
-    await expect(menu).toBeVisible();
-    await menu.getByRole('menuitemcheckbox').first().click();
-    await expect(menu).toBeHidden();
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
-    await expect(trigger).toBeFocused();
+test.describe('with a mouse', () => {
+    test.use({ hasTouch: false, isMobile: false });
+
+    test('desktop reaction menu leaves the re-rendered message trigger focused', async ({ page, baseURL }) => {
+        test.setTimeout(60000);
+        await page.setViewportSize({ width: 1440, height: 900 });
+        const message = await openConversation(page, baseURL);
+        const trigger = message.locator('.sb-conversation-message-menu');
+        await trigger.focus();
+        await trigger.press('Enter');
+        const menu = getMenu(page);
+        await expect(menu).toBeVisible();
+        await menu.getByRole('menuitemcheckbox').first().click();
+        await expect(menu).toBeHidden();
+        await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
+        await expect(trigger).toBeFocused();
+    });
 });
 
 test('a delayed reaction render preserves focus moved to the composer', async ({ page, baseURL }) => {
