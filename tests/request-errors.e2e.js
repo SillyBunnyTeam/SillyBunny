@@ -101,8 +101,16 @@ async function openChatWithToastRecorder(page) {
     await testSetup.waitForAppReady({ page });
     const card = page.locator('#chat > .welcomePanel .sbHomeCard[data-sb-home-key="assistant-reisen"]');
     await expect(card.locator('.sbHomeCardOpen')).toBeEnabled({ timeout: 30000 });
+    // The card selects the character and then starts a new chat, and each of the two loads the chat once. The greeting
+    // of the first load is on screen before the second chat replaces it, which would end a generation started in between.
+    await page.evaluate(async () => {
+        const { eventSource, event_types } = await import('/scripts/events.js');
+        window.homeChatLoads = 0;
+        eventSource.on(event_types.CHAT_LOADED, () => { window.homeChatLoads += 1; });
+    });
     await card.locator('.sbHomeFootButton').first().click();
     await expect(page.locator('#chat .mes[mesid="0"]')).toBeVisible({ timeout: 30000 });
+    await expect.poll(() => page.evaluate(() => window.homeChatLoads), { timeout: 30000 }).toBeGreaterThanOrEqual(2);
 }
 
 /** Points the chat at the failing provider through the API path of the row, so that the next message gets the failure. */

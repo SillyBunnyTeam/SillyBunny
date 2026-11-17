@@ -808,7 +808,8 @@ test('when the host cannot load the chat, Open chat reports it and leaves the ar
     await waitForDetail(page);
     await page.route('**/api/chats/get', route => route.abort());
     await page.locator('.sbca-viewer-content .sbca-open-chat').click();
-    await expect(page.getByText('Could not open this chat. The archive is still available.')).toBeVisible();
+    // The failed load raises a toast of the page first, and a second toast shows once the first has gone, after its 5 seconds.
+    await expect(page.getByText('Could not open this chat. The archive is still available.')).toBeVisible({ timeout: 12000 });
     await expect(page.locator('.sbca-viewer-content .sbca-open-chat')).toBeEnabled();
     await expect(page.locator('.sbca-viewer-content .sbca-open-chat')).not.toHaveAttribute('aria-disabled', 'true');
     await expect(dialog(page)).toBeVisible();

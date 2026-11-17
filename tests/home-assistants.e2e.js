@@ -1157,7 +1157,8 @@ for (const { name, portrait, options } of VIEWPORTS) {
                         await setAsAssistant(page, 'Bob.png');
 
                         const toast = actionErrorToast(page);
-                        await expect(toast).toBeVisible();
+                        // The "Set ... as your assistant" toast is in front, and the error toast shows after its 5 seconds.
+                        await expect(toast).toBeVisible({ timeout: 12000 });
                         await expect(toast).toHaveText(HOME_COPY.assistantActionError);
                         expect(await stored(page, 'assistant')).toBe(after);
                         expect(unhandled).toEqual([]);
