@@ -2677,20 +2677,17 @@ body.bubblechat .mes::before {
     z-index: -1;
     border-radius: inherit;
     pointer-events: none;
-    /* The theme message tints often equal the chat view colour, so a neutral lift keeps each card
-       visible; user turns take a stronger lift to tell the speakers apart. */
-    background:
-        linear-gradient(var(--sb-bubble-lift), var(--sb-bubble-lift)),
-        var(--SmartThemeBotMesBlurTintColor);
+    /* The theme message tints often equal the chat view colour, so a ring in the text colour keeps each card visible, and a
+       user turn takes a stronger ring. A fill mixed toward the text colour would lower the contrast of every text colour on it. */
+    background: var(--SmartThemeBotMesBlurTintColor);
+    box-shadow: var(--sb-bubble-ring-shadow);
     opacity: var(--sb-page-card-opacity);
-    --sb-bubble-lift: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    --sb-bubble-ring-shadow: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
 }
 
 body.bubblechat .mes[is_user='true']::before {
-    background:
-        linear-gradient(var(--sb-bubble-lift), var(--sb-bubble-lift)),
-        var(--SmartThemeUserMesBlurTintColor);
-    --sb-bubble-lift: color-mix(in srgb, var(--SmartThemeBodyColor) 11%, transparent);
+    background: var(--SmartThemeUserMesBlurTintColor);
+    --sb-bubble-ring-shadow: inset 0 0 0 1px color-mix(in srgb, var(--SmartThemeBodyColor) 18%, transparent);
 }
 
 /* libadwaita card: toggle-dependent.css outlines Bubbles cards; they separate by tone instead. */

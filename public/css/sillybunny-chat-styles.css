@@ -438,7 +438,6 @@ body.whisperstyle #chat {
             &::before {
                 top: 0;
                 width: 55%;
-                min-height: 125px !important;
             }
         }
 
@@ -928,7 +927,9 @@ body.tidestyle #chat {
             padding-bottom: 0 !important;
             max-width: 74%;
 
-            p {
+            /* A list, quote or heading directly in the message text gets the bubble too; without it, it sits on the bare background picture. */
+            p,
+            & > :is(ol, ul, blockquote, h1, h2, h3, h4, h5, h6) {
                 display: block;
                 width: fit-content;
                 margin: 0;
@@ -936,6 +937,10 @@ body.tidestyle #chat {
                 background: var(--moonlit-sb-bot-message-bg);
                 padding: 6px 12px !important;
                 border-radius: var(--moonlit-sb-bubble-radius);
+            }
+
+            & > :is(ol, ul) {
+                padding-inline-start: calc(12px + 2em) !important;
             }
 
             @media screen and (max-width: 768px) {
@@ -992,7 +997,8 @@ body.tidestyle #chat {
                 text-align: right;
             }
 
-            p {
+            p,
+            .mes_text > :is(ol, ul, blockquote, h1, h2, h3, h4, h5, h6) {
                 background: var(--moonlit-sb-user-message-bg);
                 border-radius: var(--moonlit-sb-bubble-radius);
             }
@@ -1097,7 +1103,8 @@ body.tidestyle #chat .mes_text p {
     box-shadow: none;
 }
 
-body.tidestyle #chat .mes_text p {
+body.tidestyle #chat .mes_text p,
+body.tidestyle #chat .mes_text > :is(ol, ul, blockquote, h1, h2, h3, h4, h5, h6) {
     box-shadow: inset 0 0 0 1px var(--moonlit-sb-hairline);
 }
 

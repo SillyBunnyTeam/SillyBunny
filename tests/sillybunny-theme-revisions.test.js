@@ -34,6 +34,9 @@ function managedThemeNames() {
     return [...listedNames, ...contrastNames];
 }
 
+/** The colors under a message: the chat column tint and both message tints. */
+const MESSAGE_SURFACE_KEYS = Object.freeze(['chat_tint_color', 'user_mes_blur_tint_color', 'bot_mes_blur_tint_color']);
+
 const paletteOf = theme => Object.fromEntries(THEME_COLOR_KEYS.map(key => [key, theme[key]]));
 
 /** What a user has saved after selecting the previous Everforest Dark. */
@@ -131,10 +134,20 @@ describe('revised theme text colors: the data', () => {
 
         expect(revision.text).toEqual(Object.fromEntries(THEME_TEXT_KEYS.map(key => [key, theme[key]])));
         expect(hashThemeCss(theme.custom_css)).toBe(revision.newCss);
-        // The six colors a revision does not touch are the ones the file still has.
-        for (const key of THEME_COLOR_KEYS.slice(THEME_TEXT_KEYS.length)) {
+        // The six colors a revision does not touch are the ones the file still has, except the chat and message tints, which the
+        // file may have moved after the revision to keep message text at 4.5:1 over a background picture (see below).
+        for (const key of THEME_COLOR_KEYS.slice(THEME_TEXT_KEYS.length).filter(key => !MESSAGE_SURFACE_KEYS.includes(key))) {
             expect([key, revision.old[key]]).toEqual([key, theme[key]]);
         }
+    });
+
+    test('a saved palette keeps the message tints that the bundled file moved after the revision, because the repair replaces text colors only', () => {
+        const dracula = bundled('Dracula');
+        const old = REVISED_THEMES.Dracula.old;
+        const plan = planThemeTextRepair({ themeName: 'Dracula', palette: old, customCss: dracula.custom_css, themes: [dracula] });
+
+        expect(Object.keys(plan.text)).toEqual([...THEME_TEXT_KEYS]);
+        expect(old.user_mes_blur_tint_color).not.toBe(dracula.user_mes_blur_tint_color);
     });
 
     test.each(Object.keys(REVISED_THEMES))('%s changed a text color or its CSS', (name) => {
