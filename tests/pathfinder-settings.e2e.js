@@ -134,7 +134,7 @@ test('Pathfinder uses native keyboard disclosures, labelled controls and narrow 
     await expect(page.getByRole('checkbox', { name: ATTACHED_BOOK, exact: true })).toBeChecked();
     await expect(page.getByRole('checkbox', { name: `${ATTACHED_BOOK} Read`, exact: true })).toBeChecked();
     await expect(page.getByRole('checkbox', { name: `${ATTACHED_BOOK} Write`, exact: true })).toBeChecked();
-    await expect(page.getByRole('checkbox', { name: 'Automatically include attached lorebooks, aside from excluded lorebooks', exact: true })).toBeChecked();
+    await expect(page.getByRole('switch', { name: 'Automatically include attached lorebooks, aside from excluded lorebooks', exact: true })).toBeChecked();
     await expect(page.getByLabel('Pipeline Type', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Allow summary memory tool', { exact: true })).not.toBeChecked();
     await expect(page.locator('#pf--permission-matrix')).toBeVisible();
@@ -184,6 +184,95 @@ test('Pathfinder\'s Ask Before Executing list has Select All, mixed while some t
     await selectAll.uncheck();
     await expect(tools.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(6).fill(false));
     await expect.poll(() => Object.values(state.saves.at(-1)?.settings?.confirmTools ?? {})).toEqual(Array(6).fill(false));
+});
+
+test('Pathfinder\'s apply-at-once options are switch rows and its pick-several lists stay check boxes', async ({ page, baseURL }) => {
+    await openSettings(page, baseURL);
+    await page.locator('#pf--enable-tools').check();
+    const ids = ['master-enable', 'auto-use-attached', 'auto-sync-lorebooks', 'include-contextual-lorebooks', 'enable-tools', 'enable-pipeline', 'dedupe-natural-activation', 'enable-summarize-tool', 'auto-summary', 'mandatory-tools'];
+    for (const id of ids) {
+        const input = page.locator(`#pf--${id}`);
+        await expect(input).toHaveAttribute('role', 'switch');
+        await expect(page.locator(`label.ds-row-switch:has(#pf--${id})`)).toHaveCount(1);
+    }
+    await expect(page.locator('#pf--master-enable')).toHaveAccessibleName('Enable Pathfinder for this chat');
+    // The help line moved into the row as its subtitle, without being recreated.
+    await expect(page.locator('label.ds-row-switch:has(#pf--auto-use-attached) .ds-row-subtitle.pf--setting-help')).toHaveCount(1);
+    await expect(page.locator('#pf--confirm-tool-list input[role="switch"], #pf--lorebook-list input[role="switch"], #pf--permission-matrix input[role="switch"], .pf--tool-list input[role="switch"]')).toHaveCount(0);
+    // Both tool lists are check rows with the box leading, and the theme does not draw their boxes as switches.
+    for (const list of ['#pf--confirm-tool-list', '.pf--tool-list:not(#pf--confirm-tool-list)', '#pf--lorebook-list']) {
+        const items = page.locator(`${list} > label`);
+        await expect(items).toHaveCount(await items.count());
+        expect(await items.count()).toBeGreaterThan(list === '#pf--lorebook-list' ? 1 : 5);
+        await expect(page.locator(`${list} > label.ds-row.ds-row-check`)).toHaveCount(await items.count());
+        await expect(page.locator(`${list} > label.checkbox_label`)).toHaveCount(0);
+        await expect(page.locator(`${list} input[role="switch"]`)).toHaveCount(0);
+        const boxes = await page.locator(`${list} > label > input[type="checkbox"]`).evaluateAll(inputs => inputs.map(input => {
+            const label = input.closest('label').getBoundingClientRect();
+            const box = input.getBoundingClientRect();
+            return { width: Math.round(box.width), leading: box.left - label.left < label.width / 2 };
+        }));
+        expect(boxes).toHaveLength(await items.count());
+        for (const box of boxes) {
+            expect(box.width).toBeLessThan(30);
+            expect(box.leading).toBe(true);
+        }
+    }
+});
+
+test('Pathfinder\'s permission matrix keeps check boxes, each named by its lorebook and permission', async ({ page, baseURL }) => {
+    await openSettings(page, baseURL);
+    const boxes = page.locator('#pf--permission-matrix input[data-permission]');
+    await expect(boxes).toHaveCount(3 * await page.locator('#pf--permission-matrix .pf--permission-row').count());
+    expect(await boxes.count()).toBeGreaterThan(0);
+    await expect(page.locator('#pf--permission-matrix input[role="switch"], #pf--permission-matrix .checkbox_label')).toHaveCount(0);
+    await expect(page.locator('#pf--permission-matrix label.ds-row-check > input[type="checkbox"]')).toHaveCount(await boxes.count());
+    const names = await boxes.evaluateAll(inputs => inputs.map(input => ({ width: input.getBoundingClientRect().width, name: input.getAttribute('data-permission') })));
+    for (const box of names) expect(box.width).toBeLessThan(30);
+    await expect(page.getByRole('checkbox', { name: `${MANUAL_BOOK} Read`, exact: true })).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: `${MANUAL_BOOK} Write`, exact: true })).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: `${MANUAL_BOOK} Delete`, exact: true })).toBeVisible();
+});
+
+test('Pathfinder\'s lorebook list shows Select All only above five lorebooks, and it picks every one', async ({ page, baseURL }) => {
+    const state = await openSettings(page, baseURL);
+    const list = page.locator('#pf--lorebook-list');
+    await expect(list.locator('input[data-lorebook-select-all]')).toHaveCount(0);
+    await page.evaluate(async () => {
+        const world = await import('/scripts/world-info.js');
+        world.world_names.push('Extra book 1', 'Extra book 2', 'Extra book 3', 'Extra book 4');
+        document.getElementById('pf--refresh-lorebooks').click();
+    });
+    const selectAll = list.getByRole('checkbox', { name: 'Select All', exact: true });
+    const books = list.locator('.pf--lorebook-item input');
+    await expect(books).toHaveCount(6);
+    await expect(list.getByRole('checkbox').first()).toHaveAccessibleName('Select All');
+    await selectAll.check();
+    await expect(books.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(6).fill(true));
+    await expect.poll(() => state.saves.at(-1)?.settings?.enabledLorebooks?.length).toBe(6);
+    await selectAll.uncheck();
+    await expect(books.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(6).fill(false));
+    await books.first().check();
+    await expect.poll(() => selectAll.evaluate(input => ({ checked: input.checked, mixed: input.indeterminate }))).toEqual({ checked: false, mixed: true });
+});
+
+test('Pathfinder\'s Enabled Tools list has Select All that checks and unchecks every tool', async ({ page, baseURL }) => {
+    const state = await openSettings(page, baseURL);
+    await page.locator('#pf--enable-tools').check();
+    const list = page.locator('.pf--tool-list:not(#pf--confirm-tool-list)');
+    const selectAll = list.getByRole('checkbox', { name: 'Select All', exact: true });
+    const tools = list.locator('input[data-tool]');
+    await expect(tools).toHaveCount(7);
+    await expect(list.getByRole('checkbox').first()).toHaveAccessibleName('Select All');
+    // The fixture enables Search only, so the box starts mixed.
+    await expect.poll(() => selectAll.evaluate(input => ({ checked: input.checked, mixed: input.indeterminate }))).toEqual({ checked: false, mixed: true });
+    await selectAll.check();
+    await expect(tools.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(7).fill(true));
+    await expect.poll(() => Object.values(state.saves.at(-1)?.settings?.toolStates ?? {}).filter(Boolean).length).toBeGreaterThanOrEqual(7);
+    await selectAll.uncheck();
+    await expect(tools.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(7).fill(false));
+    await tools.first().check();
+    await expect.poll(() => selectAll.evaluate(input => ({ checked: input.checked, mixed: input.indeterminate }))).toEqual({ checked: false, mixed: true });
 });
 
 test('Pathfinder saves rapid toggles in order and an unticked attached book stays excluded', async ({ page, baseURL }) => {
