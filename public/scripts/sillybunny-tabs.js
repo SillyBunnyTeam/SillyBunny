@@ -12141,7 +12141,12 @@ function buildBottomChatBar() {
     navCluster.append(topBtn, bottomBtn);
     managementCluster.append(chatManagerBtn, newBtn, massDeleteBtn, autoNameBtn, renameBtn, searchToggleBtn, hideBtn, deleteBtn);
     secondaryRow.append(managementCluster);
-    container.append(personaBubble, chatSelect, search.field, navCluster, collapseToggleBtn, secondaryRow);
+    const overflowBtn = createBottomChatButton({ icon: 'fa-ellipsis-vertical', title: getBottomChatOverflowLabel(), className: 'sb-bottom-chat-overflow' }, () => {});
+    overflowBtn.hidden = true;
+    overflowBtn.setAttribute('aria-haspopup', 'menu');
+    // A click with no detail comes from the keyboard, which the menu needs to know to take focus.
+    overflowBtn.addEventListener('click', event => openBottomChatOverflowMenu(overflowBtn, event.detail === 0));
+    container.append(personaBubble, chatSelect, search.field, navCluster, collapseToggleBtn, secondaryRow, overflowBtn);
 
     // Store references for refresh and late context binding retries.
     Object.assign(getBottomChatBarState(), {
@@ -12159,7 +12164,9 @@ function buildBottomChatBar() {
         massDeleteButton: massDeleteBtn,
         autoNameButton: autoNameBtn,
         hideButton: hideBtn,
+        overflowButton: overflowBtn,
     });
+    observeBottomChatBarFit(container);
     syncBottomChatBarSecondaryState();
     syncBottomChatBarSearchState();
     setBottomChatBarVisible(sbState.bottomChatBar.visible, { persist: false });
@@ -12182,6 +12189,91 @@ function buildBottomChatBar() {
 
     bindBottomChatBarEvents();
     scheduleBottomChatBarRefresh(0);
+}
+
+function getBottomChatOverflowLabel() {
+    return t`Chat actions`;
+}
+
+function getBottomChatFoldableButtons() {
+    // DOM order is the order the hand learns, and the last button leaves first. The clusters are looked up in the whole
+    // document because the phone layout moves them into the chat sheet.
+    return [...document.querySelectorAll('.sb-bottom-chat-nav-actions > .sb-bottom-chat-btn, .sb-bottom-chat-management-actions > .sb-bottom-chat-btn')];
+}
+
+// SillyBunny: the bottom bar keeps one row (DESIGN.md, Header Bars and Toolbars). CSS shrinks the picker to its floor; this
+// decides the next two steps from what overflows: first the search field folds into its icon, then the trailing buttons
+// move into the overflow menu one at a time. Every pass starts from the unfolded form and ends within the same task, so a
+// verdict never depends on the last one and a wider bar gets its controls back.
+function fitBottomChatBar() {
+    const bar = document.getElementById('sb-bottom-chat-bar');
+    const overflow = getBottomChatBarState().overflowButton;
+    if (!(bar instanceof HTMLElement) || !(overflow instanceof HTMLElement)) {
+        return;
+    }
+
+    const buttons = getBottomChatFoldableButtons();
+    let searchFolded = false;
+    let keep = buttons.length;
+    const apply = () => {
+        bar.classList.toggle('sb-bottom-chat-search-folded', searchFolded);
+        buttons.forEach((button, index) => {
+            button.hidden = index >= keep;
+        });
+        overflow.hidden = keep >= buttons.length;
+    };
+    const overflows = () => bar.scrollWidth > bar.clientWidth;
+
+    if (document.documentElement.dataset.sbMobileUiMode === 'mobile') {
+        apply();
+        return;
+    }
+
+    if (bar.clientWidth <= 0) {
+        return;
+    }
+
+    apply();
+    if (overflows()) {
+        searchFolded = true;
+        apply();
+    }
+    while (overflows() && keep > 0) {
+        keep -= 1;
+        apply();
+    }
+}
+
+function observeBottomChatBarFit(bar) {
+    const fitState = getBottomChatBarState();
+    if (fitState.fitObserver) {
+        return;
+    }
+
+    const schedule = () => {
+        if (fitState.fitFrame) {
+            return;
+        }
+        fitState.fitFrame = window.requestAnimationFrame(() => {
+            fitState.fitFrame = 0;
+            fitBottomChatBar();
+        });
+    };
+    fitState.fitObserver = new ResizeObserver(schedule);
+    fitState.fitObserver.observe(bar);
+    new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ['data-sb-mobile-ui-mode', 'style'] });
+    schedule();
+}
+
+function openBottomChatOverflowMenu(trigger, keyboard) {
+    const items = getBottomChatFoldableButtons().filter(button => button.hidden).map(button => ({
+        label: button.getAttribute('aria-label') || button.title,
+        icon: button.querySelector('i')?.className ?? '',
+        disabled: button.disabled || button.classList.contains('is-disabled'),
+        danger: Boolean(button.querySelector('.fa-trash')),
+        onSelect: () => button.click(),
+    }));
+    openActionMenu({ trigger, title: getBottomChatOverflowLabel(), keyboard, alignment: 'end', sections: [{ items }] });
 }
 
 function scheduleBottomChatBarRefresh(delay = 0) {

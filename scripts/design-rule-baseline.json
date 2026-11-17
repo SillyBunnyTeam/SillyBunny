@@ -113,8 +113,7 @@
             "shadow-literal": 7,
             "duration-literal": 1,
             "important": 269,
-            "breakpoint-off-set": 11,
-            "breakpoint-1000": 2,
+            "breakpoint-off-set": 10,
             "focus-outline": 1,
             "spacing-off-scale": 144,
             "spacing-off-scale-fallback": 2

@@ -28,7 +28,7 @@
     justify-content: flex-end;
     gap: 5px;
     flex: 0 0 auto;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     max-width: 100%;
 }
 
@@ -42,6 +42,24 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 var(--gg-action-size);
+}
+
+/* The theme sets a display on the composer's .menu_button with an id in its selector; this one has to outrank it for a button that was folded into the overflow menu. */
+#send_form #gg-action-button-container .gg-action-button[hidden] {
+    display: none;
+}
+
+/* An empty Quick Reply host would hold back 260px of the row and push the buttons onto a row of their own. */
+.gg-qr-container:not(:has(.qr--button)) {
+    display: none;
+}
+
+/* The composer's width (see sillybunny-tabs.css) is that of the chat column, so the buttons keep their row and the Quick Replies take theirs. */
+@container sb-composer (max-width: 680px) {
+    .gg-qr-container {
+        order: 2;
+        flex-basis: 100%;
+    }
 }
 
 /*

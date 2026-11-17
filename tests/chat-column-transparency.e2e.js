@@ -18,7 +18,7 @@ const READ_ONLY_POST_ENDPOINTS = new Set([
     '/api/backgrounds/all', '/api/avatars/get', '/api/stats/get', '/api/secrets/read', '/api/users/me',
     '/api/settings/get', '/api/themes/get',
 ]);
-const CHAT_DISPLAY = { default: 0, bubbles: 1 };
+const CHAT_DISPLAY = { flat: 0, bubbles: 1, document: 2 };
 const BOT_BLOCK = '#chat .mes:not(.smallSysMes):not([is_user="true"]) .mes_block';
 const USER_BLOCK = '#chat .mes[is_user="true"]:not(.smallSysMes) .mes_block';
 // The bundled Libadwaita tints store 0.9 as their opaque level; the desktop column maps alpha through it.
@@ -165,6 +165,14 @@ async function readChatColor(page) {
     return parseColor(await page.locator('#chat').evaluate(chat => getComputedStyle(chat).backgroundColor));
 }
 
+/** The tint layer that Flat paints over the column, in place of a fill per message. */
+async function readColumnTint(page) {
+    const image = await page.locator('#chat').evaluate(chat => getComputedStyle(chat).backgroundImage);
+    const layer = image.match(/linear-gradient\((rgba?\([^)]*\)|color\([^)]*\))/);
+    if (!layer) throw new Error(`The column has no tint layer: ${image}`);
+    return parseColor(layer[1]);
+}
+
 async function readBlockColor(page, selector) {
     return parseColor(await page.locator(selector).first().evaluate(block => getComputedStyle(block).backgroundColor));
 }
@@ -176,7 +184,7 @@ test.describe('desktop chat column transparency', () => {
         await page.getByRole('button', { name: 'Close dialog', exact: true }).click({ timeout: 1000 }).catch(() => {});
         await openCharacterChat(page);
         await appendUserMessage(page);
-        await setChatDisplay(page, CHAT_DISPLAY.default);
+        await setChatDisplay(page, CHAT_DISPLAY.document);
         await setBackgroundVisibility(page, 0);
     });
 
@@ -228,7 +236,7 @@ test.describe('desktop chat column transparency', () => {
         expect((await readChatColor(page)).a).toBeCloseTo(0.35 / 0.9, 1);
     });
 
-    test('fades the column together with the AI and user cards as Background Visibility rises', async ({ page }) => {
+    test('fades the column together with the Flat card tint as Background Visibility rises', async ({ page }) => {
         await importTheme(page, mismatchedTheme);
         await setChatDisplay(page, CHAT_DISPLAY.bubbles);
         const at0 = (await readChatColor(page)).a;
@@ -240,21 +248,46 @@ test.describe('desktop chat column transparency', () => {
         expect(at100).toBeLessThan(at50);
         expect(at100).toBeLessThan(0.1);
 
-        // Default cards paint their tint on the text block; on desktop both card rules follow the slider.
-        await setChatDisplay(page, CHAT_DISPLAY.default);
+        // Flat paints the card tint over the column, and on desktop that layer follows the slider too.
+        await setChatDisplay(page, CHAT_DISPLAY.flat);
         const cardOpacity = await readRootOpacity(page, '--sb-page-card-opacity');
         expect(cardOpacity).toBeLessThan(0.2);
         const botAlpha = await readResolvedTintAlpha(page, mismatchedTheme.bot_mes_blur_tint_color);
-        const userAlpha = await readResolvedTintAlpha(page, mismatchedTheme.user_mes_blur_tint_color);
-        expect((await readBlockColor(page, BOT_BLOCK)).a).toBeCloseTo(botAlpha * cardOpacity, 2);
-        expect((await readBlockColor(page, USER_BLOCK)).a).toBeCloseTo(userAlpha * cardOpacity, 2);
+        expect((await readColumnTint(page)).a).toBeCloseTo(botAlpha * cardOpacity, 2);
 
         // The bundled theme follows the slider and returns to the opaque view at the default value.
         await selectTheme(page, bundledThemes[0].name);
         expect((await readChatColor(page)).a).toBeLessThan(0.2);
         await setBackgroundVisibility(page, 0);
         expect((await readChatColor(page)).a).toBe(1);
-        expect((await readBlockColor(page, BOT_BLOCK)).a).toBeCloseTo(0.9, 1);
-        expect((await readBlockColor(page, USER_BLOCK)).a).toBeCloseTo(0.9, 1);
+        expect((await readColumnTint(page)).a).toBeCloseTo(0.9, 1);
+    });
+
+    test('paints Flat as one tint over the column and leaves each message without a fill', async ({ page }) => {
+        await importTheme(page, mismatchedTheme);
+        await setChatDisplay(page, CHAT_DISPLAY.flat);
+        await expect(page.locator('body')).toHaveClass(/flatchat/);
+        const botTint = parseColor(mismatchedTheme.bot_mes_blur_tint_color);
+        const botAlpha = await readResolvedTintAlpha(page, mismatchedTheme.bot_mes_blur_tint_color);
+
+        for (const selector of [BOT_BLOCK, USER_BLOCK]) {
+            expect((await readBlockColor(page, selector)).a, selector).toBe(0);
+        }
+        const tint = await readColumnTint(page);
+        expect([tint.r, tint.g, tint.b]).toEqual([botTint.r, botTint.g, botTint.b]);
+        expect(tint.a).toBeCloseTo(botAlpha * await readRootOpacity(page, '--sb-page-card-opacity'), 2);
+
+        await setBackgroundVisibility(page, 100);
+        const faded = await readColumnTint(page);
+        expect(faded.a).toBeLessThan(tint.a);
+        expect(faded.a).toBeCloseTo(botAlpha * await readRootOpacity(page, '--sb-page-card-opacity'), 2);
+
+        // A style that follows Flat has no column tint, and its messages have their own fill back.
+        for (const style of [CHAT_DISPLAY.document, CHAT_DISPLAY.bubbles]) {
+            await setChatDisplay(page, style);
+            expect(await page.locator('#chat').evaluate(chat => getComputedStyle(chat).backgroundImage)).toBe('none');
+        }
+        await setChatDisplay(page, CHAT_DISPLAY.document);
+        expect((await readBlockColor(page, BOT_BLOCK)).a).toBeGreaterThan(0);
     });
 });

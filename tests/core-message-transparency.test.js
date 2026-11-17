@@ -26,14 +26,14 @@ describe('core message transparency wiring', () => {
 
     test('loads the native chat stylesheet during chat-display setup so default chat styles get core transparency', () => {
         expect(indexSource).not.toContain('id="sillybunny-native-chat-styles"');
-        expect(powerUserSource).toContain('const NATIVE_CHAT_STYLE_STYLESHEET_HREF = \'css/sillybunny-chat-styles.css?v=20261117d\';');
+        expect(powerUserSource).toContain('const NATIVE_CHAT_STYLE_STYLESHEET_HREF = \'css/sillybunny-chat-styles.css?v=20261117x\';');
         expect(powerUserSource).toContain('ensureNativeChatStyleStylesheet();');
     });
 
-    test('paints default and document message blocks without double-painting bubble or native styles', () => {
-        expect(chatStylesSource).toContain('body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle) #chat .mes:not(.smallSysMes) .mes_block');
+    test('paints document message blocks without double-painting bubble, native or flat styles', () => {
+        expect(chatStylesSource).toContain('body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle):not(.flatchat) #chat .mes:not(.smallSysMes) .mes_block');
         expect(chatStylesSource).toContain('background-color: var(--SmartThemeBotMesBlurTintColor);');
-        expect(chatStylesSource).toContain('body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle) #chat .mes[is_user="true"]:not(.smallSysMes) .mes_block');
+        expect(chatStylesSource).toContain('body:not(.bubblechat):not(.echostyle):not(.whisperstyle):not(.hushstyle):not(.ripplestyle):not(.tidestyle):not(.flatchat) #chat .mes[is_user="true"]:not(.smallSysMes) .mes_block');
         expect(chatStylesSource).toContain('background-color: var(--SmartThemeUserMesBlurTintColor);');
     });
 

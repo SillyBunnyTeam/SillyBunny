@@ -328,6 +328,107 @@ function getFlushGuideButtonLabel(activeCount) {
     return `Flush guides (${activeCount} active)`;
 }
 
+const OVERFLOW_LABEL = 'Guided Generations';
+let fitScheduled = false;
+let fitWatching = false;
+
+async function openOverflowMenu(trigger, keyboard) {
+    const hidden = [...trigger.parentElement.querySelectorAll('.gg-action-button[hidden]:not(.gg-overflow-button)')];
+    // The shared menu is already loaded by the shell; it is imported when the menu opens so this extension does not depend on it at start.
+    const { openActionMenu } = await import('../../sillybunny-action-menu.js');
+    openActionMenu({
+        trigger,
+        title: OVERFLOW_LABEL,
+        keyboard,
+        alignment: 'end',
+        sections: [{
+            items: hidden.map(button => ({
+                label: button.getAttribute('aria-label') || button.title,
+                icon: [...button.classList].filter(name => name.startsWith('fa-')).join(' '),
+                disabled: button.getAttribute('aria-disabled') === 'true',
+                onSelect: () => button.click(),
+            })),
+        }],
+    });
+}
+
+function createOverflowButton() {
+    const button = document.createElement('button');
+    button.id = 'gg_overflow_button';
+    button.type = 'button';
+    button.className = 'gg-action-button gg-overflow-button menu_button menu_button_icon fa-solid fa-ellipsis-vertical';
+    button.title = OVERFLOW_LABEL;
+    button.setAttribute('aria-label', OVERFLOW_LABEL);
+    button.setAttribute('aria-haspopup', 'menu');
+    button.hidden = true;
+    button.addEventListener('click', event => {
+        event.preventDefault();
+        void openOverflowMenu(button, event.detail === 0);
+    });
+    return button;
+}
+
+/**
+ * Keeps the input-history and Guided Generations buttons on one row: the buttons that do not fit go behind the overflow button,
+ * last first. The phone tray folds the same way, with 44px buttons.
+ */
+function fitActionButtons() {
+    fitScheduled = false;
+    const container = document.getElementById('gg-action-button-container');
+    const actions = container?.querySelector('.gg-regular-buttons-container');
+    const overflow = actions?.querySelector('.gg-overflow-button');
+    if (!container || !actions || !overflow) {
+        return;
+    }
+
+    const buttons = [...actions.querySelectorAll('.gg-action-button:not(.gg-overflow-button)')];
+    let keep = buttons.length;
+    if (!container.hidden) {
+        const containerStyle = getComputedStyle(container);
+        // Every action button has the same size; a folded one has no box, so the size comes from one that shows (the overflow button when some are folded).
+        const size = [...buttons, overflow].find(button => button.offsetWidth > 0)?.offsetWidth ?? 0;
+        const gap = parseFloat(getComputedStyle(actions).columnGap) || 0;
+        const history = container.querySelector(':scope > .stih--buttons');
+        const historyWidth = history?.offsetWidth ? history.offsetWidth + (parseFloat(containerStyle.columnGap) || 0) : 0;
+        const room = container.clientWidth - parseFloat(containerStyle.paddingLeft) - parseFloat(containerStyle.paddingRight) - historyWidth;
+        const widthOf = count => count * size + Math.max(0, count - 1) * gap;
+        if (size > 0 && widthOf(buttons.length) > room) {
+            keep = buttons.length - 1;
+            while (keep > 0 && widthOf(keep + 1) > room) {
+                keep -= 1;
+            }
+        }
+    }
+
+    // Only a changed attribute is written, so the observers that call this do not see their own work.
+    buttons.forEach((button, index) => {
+        if (button.hidden !== index >= keep) {
+            button.hidden = index >= keep;
+        }
+    });
+    if (overflow.hidden !== keep >= buttons.length) {
+        overflow.hidden = keep >= buttons.length;
+    }
+}
+
+function scheduleFit() {
+    if (!fitScheduled && typeof requestAnimationFrame === 'function') {
+        fitScheduled = true;
+        requestAnimationFrame(fitActionButtons);
+    }
+}
+
+function watchActionButtonFit(container) {
+    if (fitWatching || typeof ResizeObserver !== 'function' || typeof MutationObserver !== 'function') {
+        return;
+    }
+
+    fitWatching = true;
+    new ResizeObserver(scheduleFit).observe(container);
+    new MutationObserver(scheduleFit).observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    new MutationObserver(scheduleFit).observe(document.documentElement, { attributes: true, attributeFilter: ['data-sb-mobile-ui-mode', 'data-sb-mobile-tray-open', 'data-sb-compact-mode', 'style'] });
+}
+
 function updateFlushGuideButton() {
     const button = document.getElementById('gg_flush_guides_button');
     if (!(button instanceof HTMLButtonElement)) {
@@ -434,8 +535,10 @@ function updateExtensionButtons() {
         settings.showGuidedResponse && createActionButton('gg_response_button', 'Guided Response', 'fa-solid fa-compass', guidedResponse),
     ].filter(Boolean);
 
-    actionsContainer.append(...buttons);
+    actionsContainer.append(...buttons, createOverflowButton());
     updateFlushGuideButton();
+    watchActionButtonFit(container);
+    scheduleFit();
 }
 
 function integrateQrBar() {

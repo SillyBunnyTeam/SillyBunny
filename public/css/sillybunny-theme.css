@@ -2677,19 +2677,6 @@ body.bubblechat #chat .mes {
     box-shadow: none;
 }
 
-/* Desktop Default cards follow Background Visibility; #sheld outranks the later chat-style rule. */
-@supports (color: rgb(from black r g b / 1)) {
-    @media screen and (min-width: 769px) {
-        body.flatchat #sheld #chat .mes:not(.smallSysMes) .mes_block {
-            background-color: rgb(from var(--SmartThemeBotMesBlurTintColor) r g b / calc(alpha * var(--sb-page-card-opacity)));
-        }
-
-        body.flatchat #sheld #chat .mes[is_user='true']:not(.smallSysMes) .mes_block {
-            background-color: rgb(from var(--SmartThemeUserMesBlurTintColor) r g b / calc(alpha * var(--sb-page-card-opacity)));
-        }
-    }
-}
-
 /* Documents has no avatars or cards, so user turns sit on a tonal card. Scoped to Documents:
    unscoped, it boxed user turns a second time inside the Moonlit Echoes cards. */
 body.documentstyle .mes[is_user='true'] .mes_block {

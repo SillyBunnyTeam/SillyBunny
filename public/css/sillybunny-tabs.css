@@ -2150,8 +2150,9 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
 }
 
 #sb-bottom-chat-select {
-    flex: 0 1 clamp(120px, 22vw, 260px);
-    min-width: 0;
+    flex: 7 1 160px;
+    min-width: 160px;
+    max-width: 260px;
     height: max(var(--sb-bottom-chat-min-touch), calc(23px * var(--sb-bottom-bar-scale)));
     min-height: max(var(--sb-bottom-chat-min-touch), calc(23px * var(--sb-bottom-bar-scale)));
     margin: 0;
@@ -2181,8 +2182,8 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     display: flex;
     align-items: center;
     gap: calc(4px * var(--sb-bottom-bar-scale));
-    flex: 1 1 180px;
-    min-width: 110px;
+    flex: 2 1 140px;
+    min-width: 140px;
     height: max(var(--sb-bottom-chat-min-touch), calc(23px * var(--sb-bottom-bar-scale)));
     min-height: max(var(--sb-bottom-chat-min-touch), calc(23px * var(--sb-bottom-bar-scale)));
     margin: 0;
@@ -2358,9 +2359,37 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     pointer-events: none;
 }
 
-/* This breakpoint is not folded into 768px: the bar sits in the chat column, whose width follows the Page Width
-   setting. Between 769px and 1000px the one-row desktop layout of the bar clips its buttons in that column. */
-@media screen and (max-width: 1000px) {
+/* The bar keeps one row. As it narrows, the picker shrinks to 160px, then the search field (140px) folds into its icon, and last the
+   buttons that do not fit move into the overflow menu (fitBottomChatBar in sillybunny-tabs.js). A search that is open takes the
+   picker's place, so no control changes rows. The Guided Generations row reads the composer's width from this container. */
+html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
+    container: sb-composer / inline-size;
+}
+
+#sb-bottom-chat-bar .sb-bottom-chat-btn[hidden],
+.sb-bottom-chat-nav-actions:not(:has(> .sb-bottom-chat-btn:not([hidden]))) {
+    display: none;
+}
+
+.sb-bottom-chat-search-folded:not(.sb-bottom-chat-search-open) .sb-bottom-chat-search-field,
+.sb-bottom-chat-search-folded.sb-bottom-chat-search-open #sb-bottom-chat-select {
+    display: none;
+}
+
+.sb-bottom-chat-search-folded .sb-bottom-chat-search-toggle {
+    display: inline-flex;
+}
+
+.sb-bottom-chat-search-folded.sb-bottom-chat-search-open .sb-bottom-chat-search-field {
+    flex: 1 1 160px;
+}
+
+.sb-bottom-chat-search-folded .sb-bottom-chat-nav-actions {
+    padding-inline-end: 0;
+    border-inline-end: 0;
+}
+
+@media screen and (max-width: 768px), screen and (pointer: coarse) and (max-height: 450px) {
     #sb-bottom-chat-bar {
         --sb-bottom-chat-mobile-gutter: max(14px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
         --sb-bottom-chat-mobile-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
@@ -2371,8 +2400,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         --sb-bottom-chat-mobile-select-height: clamp(32px, calc(30px * var(--sb-bottom-bar-scale)), 34px);
         --sb-bottom-chat-mobile-persona-size: clamp(32px, calc(30px * var(--sb-bottom-bar-scale)), 34px);
         --sb-bottom-chat-mobile-radius: clamp(9px, calc(11px * var(--sb-bottom-bar-scale)), 14px);
-        width: min(var(--sb-bottom-chat-mobile-width), calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2)));
-        max-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
+        width: var(--sb-bottom-chat-mobile-width);
         display: grid;
         line-height: 1;
     }
@@ -2400,6 +2428,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         grid-row: 1;
         width: 100%;
         min-width: 0;
+        max-width: none;
         height: var(--sb-bottom-chat-mobile-select-height);
         min-height: var(--sb-bottom-chat-mobile-select-height);
         max-height: var(--sb-bottom-chat-mobile-select-height);
@@ -2527,7 +2556,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     }
 
     #sb-bottom-chat-select {
-        flex-basis: 48px;
         padding-inline: clamp(5px, calc(6px * var(--sb-bottom-bar-scale)), 8px);
         font-size: clamp(calc(var(--mainFontSize) * 0.64), calc(var(--mainFontSize) * 0.72 * var(--sb-bottom-bar-scale)), calc(var(--mainFontSize) * 0.82));
     }
@@ -2797,7 +2825,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
     box-shadow: 0 0 0 2px var(--sb-focus-ring);
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 768px), screen and (pointer: coarse) and (max-height: 450px) {
     #sb-persona-bubble {
         flex: 0 0 var(--sb-bottom-chat-mobile-persona-size, 36px);
         width: var(--sb-bottom-chat-mobile-persona-size, 44px);
@@ -2807,15 +2835,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld:not(:has(> #group_speake
         max-width: var(--sb-bottom-chat-mobile-persona-size, 44px);
         max-height: var(--sb-bottom-chat-mobile-persona-size, 44px);
         border-width: 1px;
-    }
-}
-
-@media screen and (max-width: 420px) {
-    #sb-persona-bubble {
-        width: var(--sb-bottom-chat-mobile-persona-size, 44px);
-        height: var(--sb-bottom-chat-mobile-persona-size, 44px);
-        min-width: var(--sb-bottom-chat-mobile-persona-size, 44px);
-        min-height: var(--sb-bottom-chat-mobile-persona-size, 44px);
     }
 }
 
