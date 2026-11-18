@@ -70,14 +70,14 @@ describe('core message transparency wiring', () => {
 
     test('persists and applies the three core visual sliders', () => {
         expect(indexSource).toContain('id="background_blur"');
-        expect(indexSource).toContain('aria-label="Background blur"');
-        expect(indexSource).toContain('aria-label="Background blur value"');
+        expect(indexSource).toContain('aria-label="Background Blur"');
+        expect(indexSource).toContain('aria-label="Background Blur Value"');
         expect(indexSource).toContain('id="background_opacity"');
-        expect(indexSource).toContain('aria-label="Background opacity"');
-        expect(indexSource).toContain('aria-label="Background opacity value"');
+        expect(indexSource).toContain('aria-label="Background Opacity"');
+        expect(indexSource).toContain('aria-label="Background Opacity Value"');
         expect(indexSource).toContain('id="sheld_blur_strength"');
-        expect(indexSource).toContain('aria-label="Chat field blur"');
-        expect(indexSource).toContain('aria-label="Chat field blur value"');
+        expect(indexSource).toContain('aria-label="Chat Field Blur"');
+        expect(indexSource).toContain('aria-label="Chat Field Blur Value"');
         expect(powerUserSource).toContain('const THEME_EFFECT_PROPERTIES = Object.freeze([');
         expect(powerUserSource).toContain('{ key: \'customCSS-bg-blur\', selector: \'#background_blur\'');
         expect(powerUserSource).toContain('{ key: \'customCSS-bg-opacity\', selector: \'#background_opacity\'');

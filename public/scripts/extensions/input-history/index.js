@@ -201,7 +201,7 @@ const updateButtons = () => {
                     prev.classList.add('menu_button_icon');
                     prev.classList.add('fa-solid');
                     prev.classList.add('fa-chevron-up');
-                    prev.title = 'Previous input';
+                    prev.title = 'Previous Input';
                     prev.addEventListener('click', () => inputHistoryBack());
                     arrows.append(prev);
                 }
@@ -211,7 +211,7 @@ const updateButtons = () => {
                     next.classList.add('menu_button_icon');
                     next.classList.add('fa-solid');
                     next.classList.add('fa-chevron-down');
-                    next.title = 'Next input';
+                    next.title = 'Next Input';
                     next.addEventListener('click', () => inputHistoryForward());
                     arrows.append(next);
                 }

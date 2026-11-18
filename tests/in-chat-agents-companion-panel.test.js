@@ -981,7 +981,7 @@ describe('companion tracker panel', () => {
         const html = panel.buildPanelHtml();
         expect(html).toContain('data-role="chat-only-input"');
         expect(html).toContain('data-action="panel-chat-only-send"');
-        expect(html).toContain('Private side chat');
+        expect(html).toContain('Private Side Chat');
 
         panel.initCompanionPanel();
         const actionHandler = panelElement.on.mock.calls.find(([, selector]) => selector === '[data-action]')[2];

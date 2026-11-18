@@ -14,7 +14,7 @@ export async function openCompanionDashboard() {
 export function initCompanionWandMenuItem() {
     if ($('#ica_companions_wand_item').length) return;
     const menuItem = $(`
-        <div id="ica_companions_wand_item" class="list-group-item flex-container flexGap5 interactable" title="Open the Companion Agents dashboard" tabindex="0">
+        <div id="ica_companions_wand_item" class="list-group-item flex-container flexGap5 interactable" title="Open the Companion Agents Dashboard" tabindex="0">
             <div class="fa-solid fa-user-astronaut extensionsMenuExtensionButton"></div>
             <span>Companion Agents</span>
         </div>

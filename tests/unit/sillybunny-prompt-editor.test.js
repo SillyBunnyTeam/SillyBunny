@@ -206,7 +206,7 @@ describe('Prompt editor header', () => {
         expect(toggle.title).toBe('Preview');
         expect(toggle.getAttribute('aria-pressed')).toBe('false');
         expect(header.querySelector('.sb-prompt-modes').getAttribute('aria-label')).toBe('Edit / Preview');
-        expect(header.querySelector('.sb-prompt-dirty').getAttribute('aria-label')).toBe('Unsaved changes');
+        expect(header.querySelector('.sb-prompt-dirty').getAttribute('aria-label')).toBe('Unsaved Changes');
         expect(header.querySelector('.sb-prompt-dirty .sb-editor-dirty-dot')).not.toBeNull();
         expect(detail.querySelector('.sb-prompt-actions')).toBeNull();
     });

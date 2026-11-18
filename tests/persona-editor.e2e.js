@@ -281,13 +281,13 @@ test.describe('Persona editor', () => {
         const description = entry.getByRole('textbox', { name: 'Persona Description', exact: true });
         const baseline = await description.inputValue();
         await description.fill('Persona editor cancelled description');
-        await expect(entry.getByLabel('Unsaved changes', { exact: true })).toBeVisible();
+        await expect(entry.getByLabel('Unsaved Changes', { exact: true })).toBeVisible();
         await expect(save).toBeEnabled();
         expect(await page.evaluate(async id => (await import('./scripts/power-user.js')).power_user.persona_descriptions[id].description, persona.avatarId)).toBe(persona.descriptor.description);
         await header.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(description).toHaveValue(baseline);
         await expect(save).toBeDisabled();
-        await expect(entry.getByLabel('Unsaved changes', { exact: true })).toBeHidden();
+        await expect(entry.getByLabel('Unsaved Changes', { exact: true })).toBeHidden();
         const edited = 'Persona editor explicitly saved description';
         const firstSave = savedSettings(page).length;
         await description.fill(edited);
@@ -296,7 +296,7 @@ test.describe('Persona editor', () => {
         expect(savedSettings(page).length).toBeGreaterThan(firstSave);
         expect(payload.power_user.persona_descriptions[persona.avatarId].e2e_unknown_descriptor_key).toEqual(unknown);
         await expect(save).toBeDisabled();
-        await expect(entry.getByLabel('Unsaved changes', { exact: true })).toBeHidden();
+        await expect(entry.getByLabel('Unsaved Changes', { exact: true })).toBeHidden();
     });
 
     test('guards dirty Back navigation with Cancel/Discard/Save and Escape in a field keeps Settings open', async ({ page }) => {
@@ -386,7 +386,7 @@ test.describe('Persona editor', () => {
         await expect(reopened.getByRole('textbox', { name: 'Persona Description', exact: true })).toHaveValue(persona.descriptor.description || '');
         await restore.click();
         await expect(reopened.getByRole('textbox', { name: 'Persona Description', exact: true })).toHaveValue(draftText);
-        await expect(reopened.getByLabel('Unsaved changes', { exact: true })).toBeVisible();
+        await expect(reopened.getByLabel('Unsaved Changes', { exact: true })).toBeVisible();
         await expect(reopened.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
         expect(savedSettings(page).some(payload => payload.power_user.persona_descriptions[persona.avatarId]?.description === draftText)).toBe(false);
     });
@@ -423,7 +423,7 @@ test.describe('Persona editor', () => {
         await expect.poll(() => savedSettings(page).length).toBeGreaterThan(firstSave);
         await expect.poll(() => savedSettings(page).at(-1)?.power_user.default_persona ?? null).toBe(expected);
         await expect(entry.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
-        await expect(entry.getByLabel('Unsaved changes', { exact: true })).toBeHidden();
+        await expect(entry.getByLabel('Unsaved Changes', { exact: true })).toBeHidden();
         const savesBeforeRestore = savedSettings(page).length;
         await restoreDefault(page, persona.avatarId, previous);
         await expect.poll(() => page.evaluate(async () => (await import('./scripts/power-user.js')).power_user.default_persona ?? null)).toBe(previous);

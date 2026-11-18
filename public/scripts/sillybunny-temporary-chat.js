@@ -251,7 +251,7 @@ export async function leaveTemporaryChat() {
  */
 async function askToLeave(reservedName) {
     const answer = openAlert({
-        heading: t`Keep This Chat?`,
+        heading: t`Keep this chat?`,
         body: t`This temporary chat hasn't been saved. It will be deleted if you leave without saving.`,
         responses: [
             { id: 'cancel', label: t`Cancel` },

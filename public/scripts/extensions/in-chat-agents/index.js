@@ -1057,7 +1057,7 @@ async function pickManualAgentRunTargets(agent) {
 
     const picker = $(`
         <div class="ica--run-target-picker">
-            <h4>Apply "${escapeHtml(agent.name)}" to…</h4>
+            <h4>Apply "${escapeHtml(agent.name)}" To…</h4>
         </div>
     `);
 
@@ -2175,14 +2175,14 @@ async function createCustomGroup(selectedKeys = null) {
         <div style="display:flex;flex-direction:column;gap:12px;">
             <label style="display:flex;flex-direction:column;gap:4px;">
                 <strong>Group Name</strong>
-                <input type="text" id="ica--grp-name" class="text_pole" placeholder="My Custom Group" />
+                <input type="text" id="ica--grp-name" class="text_pole" placeholder="My custom group" />
             </label>
             <label style="display:flex;flex-direction:column;gap:4px;">
                 <strong>Description</strong>
                 <input type="text" id="ica--grp-desc" class="text_pole" placeholder="What this group is for" />
             </label>
             <div>
-                <strong>Select agents to include:</strong>
+                <strong>Select Agents to Include:</strong>
                 <div id="ica--grp-agents" style="max-height:300px;overflow-y:auto;margin-top:6px;display:flex;flex-direction:column;gap:2px;"></div>
             </div>
         </div>
@@ -2592,7 +2592,7 @@ function buildTrackerPreviewPopupContent(generatedKit, sampleText, extraInstruct
                 <ul style="margin:0;padding-left:18px">${regexItems || '<li>No regex scripts generated.</li>'}</ul>
             </div>
             <div class="ica--editor-section ica--regex-subsection">
-                <label>Extra instructions for regeneration <small>(optional)</small>
+                <label>Extra Instructions for Regeneration <small>(optional)</small>
                     <textarea id="ica--tracker-builder-extra-instructions" class="text_pole textarea_compact" rows="4" placeholder="Example: Make the card denser, use warmer colors, and put note text first."></textarea>
                 </label>
                 <div class="ica--regex-note">Use Regenerate to update the tracker kit and preview before applying it.</div>
@@ -2893,7 +2893,7 @@ function buildPreGenerationInterceptSummaryMarkup(entry) {
 
     if (entry.contextFormat !== 'chat') {
         return `
-            <div class="ica-transform-output-title">Prompt diff</div>
+            <div class="ica-transform-output-title">Prompt Diff</div>
             <div class="ica-transform-diff">${buildPromptTransformDiffMarkup(beforeText, afterText)}</div>
         `;
     }
@@ -2903,7 +2903,7 @@ function buildPreGenerationInterceptSummaryMarkup(entry) {
         if (!summary.ok) {
             return `
                 <div class="ica-preintercept-fallback-notice">Could not summarize chat messages; showing raw diff.</div>
-                <div class="ica-transform-output-title">Context diff</div>
+                <div class="ica-transform-output-title">Context Diff</div>
                 <div class="ica-transform-diff">${buildPromptTransformDiffMarkup(beforeText, afterText)}</div>
             `;
         }
@@ -2913,14 +2913,14 @@ function buildPreGenerationInterceptSummaryMarkup(entry) {
             : '<div class="ica-preintercept-empty">No effective change.</div>';
 
         return `
-            <div class="ica-transform-output-title">Chat changes</div>
+            <div class="ica-transform-output-title">Chat Changes</div>
             ${changesMarkup}
         `;
     } catch (error) {
         console.warn('[InChatAgents] Failed to summarize pre-generation intercept history entry:', error);
         return `
             <div class="ica-preintercept-fallback-notice">Could not summarize chat messages; showing raw diff.</div>
-            <div class="ica-transform-output-title">Context diff</div>
+            <div class="ica-transform-output-title">Context Diff</div>
             <div class="ica-transform-diff">${buildPromptTransformDiffMarkup(beforeText, afterText)}</div>
         `;
     }
@@ -3003,7 +3003,7 @@ async function openPromptTransformHistoryPopup(messageIndex) {
 
     await new Popup(html, POPUP_TYPE.TEXT, '', {
         tier: 'window',
-        title: t`View agent changes`,
+        title: t`View Agent Changes`,
         wide: true,
         large: true,
         allowVerticalScrolling: true,
@@ -3459,7 +3459,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
             <p>Choose how to refine this prompt:</p>
             ${modeHtml}
             <label class="checkbox_label"><input type="radio" name="ica-refine-mode" value="custom" /><span>Custom instruction:</span></label>
-            <input type="text" id="ica--refine-custom" class="text_pole" placeholder="Your custom refinement instruction..." />
+            <input type="text" id="ica--refine-custom" class="text_pole" placeholder="Your custom refinement instruction…" />
         </div>
     `);
 
@@ -3490,7 +3490,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
 
     const userText = `Here is my current prompt:\n---\n${currentPrompt}\n---\nCategory: ${category}\nPhase: ${phase}\n\nRequest: ${instruction}`;
 
-    toastr.info('Refining prompt...', '', { timeOut: 0, extendedTimeOut: 0 });
+    toastr.info('Refining prompt…', '', { timeOut: 0, extendedTimeOut: 0 });
 
     try {
         const refined = await refineLLMCall(systemPrompt, userText, connectionProfile);

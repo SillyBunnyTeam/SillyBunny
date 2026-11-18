@@ -183,7 +183,7 @@ export function createAgentEditorDialogs({
             goal.rows = 8;
             goal.setAttribute('aria-label', t`AI Maker`);
             const goalRow = createEntryRow({
-                label: t`Describe the side note this companion should produce`,
+                label: t`Describe the Side Note This Companion Should Produce`,
                 field: goal.id,
                 input: goal,
             });

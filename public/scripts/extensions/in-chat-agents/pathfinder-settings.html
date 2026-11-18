@@ -30,7 +30,7 @@
                 <i class="fa-solid fa-route"></i>
                 <strong>What is Pathfinder?</strong>
             </div>
-            <button type="button" id="pf--quickstart-dismiss" class="pf--quickstart-close" aria-label="Hide Pathfinder explanation" title="Hide Pathfinder explanation">
+            <button type="button" id="pf--quickstart-dismiss" class="pf--quickstart-close" aria-label="Hide Pathfinder Explanation" title="Hide Pathfinder Explanation">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
@@ -124,7 +124,7 @@
                         </ul>
                         <div class="pf--mode-requirement">
                             <i class="fa-solid fa-triangle-exclamation"></i>
-                            Requires an API that supports tool/function calling (OpenAI, Claude, etc.)
+                            Requires an API that supports tool/function calling (OpenAI, Claude, and so on)
                         </div>
                     </div>
                 </div>
@@ -199,7 +199,7 @@
                 <select id="pf--pipeline-profile" class="text_pole" data-pf-setting="connectionProfile">
                     <option value="">Use main model</option>
                 </select>
-                <div class="pf--setting-help">Use a faster/cheaper model for the pipeline (e.g., Haiku, GPT-4o-mini)</div>
+                <div class="pf--setting-help">Use a faster/cheaper model for the pipeline (for example, Haiku, GPT-4o-mini)</div>
             </div>
 
             <div class="pf--setting-group">
@@ -223,9 +223,9 @@
             <div class="pf--setting-group">
                 <label class="pf--setting-label" for="pf--prompt-selector">Select Prompt to Edit</label>
                 <select id="pf--prompt-selector" class="text_pole">
-                    <option value="">Choose a prompt...</option>
-                    <option value="candidate-selector">Stage 1: Candidate Selector</option>
-                    <option value="relevance-filter">Stage 2: Relevance Filter</option>
+                    <option value="">Choose a prompt…</option>
+                    <option value="candidate-selector">Stage 1: candidate selector</option>
+                    <option value="relevance-filter">Stage 2: relevance filter</option>
                 </select>
             </div>
 
@@ -290,7 +290,7 @@
             </div>
             <div class="pf--setting-group pf--summary-editor">
                 <div class="pf--summary-editor-header">
-                    <label class="pf--setting-label" for="pf--summary-content">Latest memory summary</label>
+                    <label class="pf--setting-label" for="pf--summary-content">Latest Memory Summary</label>
                     <span id="pf--summary-injection-indicator" class="pf--summary-indicator pf--summary-indicator-missing" role="status" aria-live="polite">No summary</span>
                 </div>
                 <textarea id="pf--summary-content" class="text_pole" rows="7" placeholder="When Pathfinder creates a memory summary, it will appear here for review and editing."></textarea>
@@ -322,7 +322,7 @@
             <div class="pf--setting-group pf--tool-mode-only">
                 <div class="pf--setting-label" id="pf--enabled-tools-label">Enabled Tools</div>
                 <div class="pf--tool-list" role="group" aria-labelledby="pf--enabled-tools-label">
-                    <div class="pf--empty-state pf--tool-loading"><i class="fa-solid fa-wrench"></i><span>Loading tool toggles...</span></div>
+                    <div class="pf--empty-state pf--tool-loading"><i class="fa-solid fa-wrench"></i><span>Loading tool toggles…</span></div>
                 </div>
             </div>
 
@@ -377,7 +377,7 @@
             <div class="pf--section-desc">Shows what Pathfinder actually selected or injected, including selected lore entries, stage results, and the prompt payload Pathfinder added before generation.</div>
             <div class="pf--log-mode-row">
                 <label class="pf--log-mode-control" for="pf--log-mode">
-                    <span>Log detail</span>
+                    <span>Log Detail</span>
                     <select id="pf--log-mode" class="text_pole">
                         <option value="summary">Summarized</option>
                         <option value="detailed">Detailed</option>

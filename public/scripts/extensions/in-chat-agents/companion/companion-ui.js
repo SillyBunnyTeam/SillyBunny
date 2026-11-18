@@ -329,10 +329,10 @@ function buildChatOnlyCardComposer(agentId) {
     return `
         <div class="ica--chatonly-composer ica--companion-chatonly-composer">
             <label>
-                <span class="ica--chatonly-live ica--companion-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></span>
-                <input type="text" class="text_pole ica--chatonly-input ica--companion-chatonly-input" data-role="chat-only-input" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..." aria-label="Private side chat">
+                <span class="ica--chatonly-live ica--companion-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private Side Chat</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--companion-chatonly-input" data-role="chat-only-input" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside…" aria-label="Private Side Chat">
             </label>
-            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--companion-control-action" data-action="chat-only-send" title="Send this aside to Chat Only" aria-label="Send aside">
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--companion-control-action" data-action="chat-only-send" title="Send This Aside to Chat Only" aria-label="Send Aside">
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
         </div>
@@ -348,10 +348,10 @@ function buildChatroomReplyComposer(agentId) {
     return `
         <div class="ica--chatonly-composer ica--companion-chatroom-reply">
             <label>
-                <span class="ica--chatonly-live ica--companion-chatonly-live"><i class="fa-solid fa-comment"></i><span>Respond to the chatroom</span></span>
-                <input type="text" class="text_pole ica--chatonly-input ica--companion-chatroom-reply-input" data-role="chatroom-reply-input" maxlength="${CHATROOM_REPLY_MAX_CHARS}" placeholder="Respond to the chatroom..." aria-label="Respond to the chatroom">
+                <span class="ica--chatonly-live ica--companion-chatonly-live"><i class="fa-solid fa-comment"></i><span>Respond to the Chatroom</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--companion-chatroom-reply-input" data-role="chatroom-reply-input" maxlength="${CHATROOM_REPLY_MAX_CHARS}" placeholder="Respond to the chatroom…" aria-label="Respond to the Chatroom">
             </label>
-            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--companion-control-action" data-action="chatroom-reply-send" title="Send your reply to the chatroom" aria-label="Send reply">
+            <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--companion-control-action" data-action="chatroom-reply-send" title="Send Your Reply to the Chatroom" aria-label="Send Reply">
                 <i class="fa-solid fa-paper-plane"></i>
             </button>
         </div>
@@ -371,7 +371,7 @@ function buildPlotCompassObjectiveComposer(agentId) {
                 <span>Plot Objective</span>
                 <input type="text" class="text_pole ica--plot-objective-input" data-role="plot-compass-objective" maxlength="${PLOT_COMPASS_OBJECTIVE_MAX_CHARS}" placeholder="Where should the story go?" value="${escapeHtml(objective)}" aria-label="Plot Objective">
             </label>
-            <button type="button" class="menu_button menu_button_icon ica--plot-objective-save ica--companion-control-action" data-action="plot-compass-save" title="Save objective and rerun Plot Compass" aria-label="Save Plot Objective">
+            <button type="button" class="menu_button menu_button_icon ica--plot-objective-save ica--companion-control-action" data-action="plot-compass-save" title="Save Objective and Rerun Plot Compass" aria-label="Save Plot Objective">
                 <i class="fa-solid fa-compass"></i>
             </button>
         </div>
@@ -520,7 +520,7 @@ function buildCompanionCard(agentId, result, message) {
     const openAttribute = result.collapsed ? '' : ' open';
     const editNoteLabel = escapeHtml(t`Edit Companion Note`);
     const lorebookButton = isLorebookAgent(getAgentById(agentId)) && status === 'done'
-        ? '<button type="button" class="ica--companion-action" data-action="send-to-lorebook" title="Send companion note to lorebook" aria-label="Send companion note to lorebook"><i class="fa-solid fa-book-medical"></i></button>'
+        ? '<button type="button" class="ica--companion-action" data-action="send-to-lorebook" title="Send Companion Note to Lorebook" aria-label="Send Companion Note to Lorebook"><i class="fa-solid fa-book-medical"></i></button>'
         : '';
 
     return `
@@ -534,11 +534,11 @@ function buildCompanionCard(agentId, result, message) {
                 ${meta ? `<span class="ica--companion-meta">${escapeHtml(meta)}</span>` : ''}
                 <span class="ica--companion-status">${escapeHtml(getStatusLabel(status))}</span>
                 <span class="ica--companion-actions">
-                    <button type="button" class="ica--companion-action" data-action="regenerate" title="Regenerate companion note" aria-label="Regenerate companion note"><i class="fa-solid fa-rotate-right"></i></button>
+                    <button type="button" class="ica--companion-action" data-action="regenerate" title="Regenerate Companion Note" aria-label="Regenerate Companion Note"><i class="fa-solid fa-rotate-right"></i></button>
                     <button type="button" class="ica--companion-action" data-action="edit" title="${editNoteLabel}" aria-label="${editNoteLabel}"><i class="fa-solid fa-pen-to-square"></i></button>
                     ${lorebookButton}
-                    <button type="button" class="ica--companion-action" data-action="copy" title="Copy companion note" aria-label="Copy companion note"><i class="fa-solid fa-copy"></i></button>
-                    <button type="button" class="ica--companion-action caution" data-action="delete" title="Delete companion note" aria-label="Delete companion note"><i class="fa-solid fa-trash"></i></button>
+                    <button type="button" class="ica--companion-action" data-action="copy" title="Copy Companion Note" aria-label="Copy Companion Note"><i class="fa-solid fa-copy"></i></button>
+                    <button type="button" class="ica--companion-action caution" data-action="delete" title="Delete Companion Note" aria-label="Delete Companion Note"><i class="fa-solid fa-trash"></i></button>
                 </span>
             </summary>
             <div class="ica--companion-body">${buildCompanionBody(agentId, result, message)}</div>
@@ -564,7 +564,7 @@ export function renderCompanionResultsForMessage(messageIndex) {
     }
 
     if (!ledger.length) {
-        ledger = $('<div class="ica--companion-ledger" aria-label="Companion notes"></div>');
+        ledger = $('<div class="ica--companion-ledger" aria-label="Companion Notes"></div>');
         const textElement = messageElement.find('.mes_text').first();
         if (textElement.length) {
             textElement.after(ledger);

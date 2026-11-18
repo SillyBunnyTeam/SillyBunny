@@ -132,16 +132,17 @@
     <!-- SillyBunny: full-screen settings page — replaces drawer overlays (feat/v1.9.0-ui-overhaul) -->
     <div id="sb-settings-page" hidden aria-modal="true" role="dialog" aria-label="Settings">
         <div id="sb-settings-inner">
-            <aside id="sb-settings-sidebar" aria-label="Settings navigation">
+            <aside id="sb-settings-sidebar" aria-label="Settings Navigation">
                 <div id="sb-settings-sidebar-header">
                     <span id="sb-settings-sidebar-title"></span>
-                    <button id="sb-settings-search-toggle" type="button" class="sb-settings-search-toggle-btn" aria-label="Search settings" aria-expanded="false">
+                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                    <button id="sb-settings-search-toggle" type="button" class="sb-settings-search-toggle-btn" aria-label="Search Settings" aria-expanded="false">
                         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                     </button>
                 </div>
                 <div id="sb-settings-search-row" aria-hidden="true">
                     <!-- SillyBunny: the search entry component wraps this input at startup (sillybunny-editor/search-entry.js). -->
-                    <input id="sb-settings-search-input" type="search" placeholder="Search..." aria-label="Search settings" autocomplete="off" spellcheck="false">
+                    <input id="sb-settings-search-input" type="search" placeholder="Search..." aria-label="Search Settings" autocomplete="off" spellcheck="false">
                 </div>
                 <nav id="sb-settings-tab-list" role="tablist" aria-orientation="vertical"></nav>
             </aside>
@@ -155,7 +156,8 @@
                         <h2 id="sb-settings-content-title" class="sb-settings-title"></h2>
                         <p id="sb-settings-content-subtitle" class="sb-settings-subtitle"></p>
                     </div>
-                    <button id="sb-settings-close" type="button" class="sb-settings-close-button" aria-label="Close settings">
+                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                    <button id="sb-settings-close" type="button" class="sb-settings-close-button" aria-label="Close Settings">
                         <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                     </button>
                 </header>
@@ -256,7 +258,8 @@
                                             <div id="delete_oai_preset" class="margin0 menu_button menu_button_icon" title="Delete the preset" data-i18n="[title]Delete the preset">
                                                 <i class="fa-fw fa-solid fa-trash-can"></i>
                                             </div>
-                                            <div data-preset-manager-delete-all="openai" class="margin0 menu_button menu_button_icon" title="Delete presets in bulk" data-i18n="[title]Delete presets in bulk">
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <div data-preset-manager-delete-all="openai" class="margin0 menu_button menu_button_icon" title="Delete Presets in Bulk" data-i18n="[title]Delete Presets in Bulk">
                                                 <i class="fa-fw fa-solid fa-trash-arrow-up"></i>
                                             </div>
                                         </div>
@@ -299,7 +302,8 @@
                                                 </strong>
                                             </div>
                                             <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
-                                                <label for="bind_preset_to_sampling" title="Bind presets to Sampling settings" data-i18n="[title]Bind presets to Sampling settings" class="checkbox_label widthFreeExpand">
+                                                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                                <label for="bind_preset_to_sampling" title="Bind Presets to Sampling Settings" data-i18n="[title]Bind Presets to Sampling Settings" class="checkbox_label widthFreeExpand">
                                                     <input id="bind_preset_to_sampling" type="checkbox" checked />
                                                     <span data-i18n="Keep Sampling Settings Linked to Preset">Keep Sampling Settings Linked to Preset</span>
                                                 </label>
@@ -311,7 +315,8 @@
                                                 </strong>
                                             </div>
                                             <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
-                                                <label for="model_sampling_profiles_enabled" title="Enable per-model sampling profiles" data-i18n="[title]Enable per-model sampling profiles" class="checkbox_label widthFreeExpand">
+                                                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                                <label for="model_sampling_profiles_enabled" title="Enable Per-Model Sampling Profiles" data-i18n="[title]Enable Per-Model Sampling Profiles" class="checkbox_label widthFreeExpand">
                                                     <input id="model_sampling_profiles_enabled" type="checkbox" />
                                                     <span data-i18n="Remember Sampling Settings per Model">Remember Sampling Settings per Model</span>
                                                 </label>
@@ -320,10 +325,11 @@
                                                         When enabled, sampling settings are automatically saved and restored for each model. Use the buttons below to manage profiles for the current model.
                                                     </div>
                                                     <div class="flex-container gap3px">
-                                                        <button id="model_sampling_profile_save" class="menu_button" title="Save current sampling for this model" data-i18n="[title]Save current sampling for this model">
+                                                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                                        <button id="model_sampling_profile_save" class="menu_button" title="Save Current Sampling for This Model" data-i18n="[title]Save Current Sampling for This Model">
                                                             <span data-i18n="Save Profile">Save Profile</span>
                                                         </button>
-                                                        <button id="model_sampling_profile_clear" class="menu_button" title="Clear saved profile for this model" data-i18n="[title]Clear saved profile for this model">
+                                                        <button id="model_sampling_profile_clear" class="menu_button" title="Clear Saved Profile for This Model" data-i18n="[title]Clear Saved Profile for This Model">
                                                             <span data-i18n="Clear Profile">Clear Profile</span>
                                                         </button>
                                                     </div>
@@ -361,7 +367,8 @@
                                             <div data-preset-manager-delete="textgenerationwebui" class="margin0 menu_button menu_button_icon" title="Delete the preset" data-i18n="[title]Delete the preset">
                                                 <i class="fa-fw fa-solid fa-trash-can"></i>
                                             </div>
-                                            <div data-preset-manager-delete-all="textgenerationwebui" class="margin0 menu_button menu_button_icon" title="Delete presets in bulk" data-i18n="[title]Delete presets in bulk">
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <div data-preset-manager-delete-all="textgenerationwebui" class="margin0 menu_button menu_button_icon" title="Delete Presets in Bulk" data-i18n="[title]Delete Presets in Bulk">
                                                 <i class="fa-fw fa-solid fa-trash-arrow-up"></i>
                                             </div>
                                         </div>
@@ -1119,7 +1126,8 @@
                                         <hr class="wide100p">
                                         <div class="range-block-title">
                                             <span data-i18n="Samplers Order">Samplers Order</span>
-                                            <div data-sampler-order-lock="kobold_order" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler reordering locked" title="Unlock sampler reordering" data-i18n="[title]Unlock sampler reordering"></div>
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <div data-sampler-order-lock="kobold_order" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler Reordering Locked" title="Unlock Sampler Reordering" data-i18n="[title]Unlock Sampler Reordering"></div>
                                         </div>
                                         <div class="toggle-description widthUnset" data-i18n="Samplers will be applied in a top-down order. Use with caution.">
                                             Samplers will be applied in a top-down order.
@@ -1165,7 +1173,8 @@
                                 <div class="range-block flexFlowColumn">
                                     <div class="range-block-title">
                                         <span data-i18n="Samplers Order">Samplers Order</span>
-                                        <div data-sampler-order-lock="novel_order" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler reordering locked" title="Unlock sampler reordering" data-i18n="[title]Unlock sampler reordering"></div>
+                                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                        <div data-sampler-order-lock="novel_order" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler Reordering Locked" title="Unlock Sampler Reordering" data-i18n="[title]Unlock Sampler Reordering"></div>
                                     </div>
                                     <div class="toggle-description widthUnset" data-i18n="Samplers will be applied in a top-down order. Use with caution.">
                                         Samplers will be applied in a top-down order. Use with caution.
@@ -1778,7 +1787,8 @@
                                         <hr class="wide100p">
                                         <div class="range-block-title">
                                             <span data-i18n="Samplers Order">Samplers Order</span>
-                                            <div data-sampler-order-lock="koboldcpp_order" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler reordering locked" title="Unlock sampler reordering" data-i18n="[title]Unlock sampler reordering"></div>
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <div data-sampler-order-lock="koboldcpp_order" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler Reordering Locked" title="Unlock Sampler Reordering" data-i18n="[title]Unlock Sampler Reordering"></div>
                                         </div>
                                         <div class="toggle-description widthUnset" data-i18n="Samplers will be applied in a top-down order. Use with caution.">
                                             kcpp only. Samplers will be applied in a top-down order.
@@ -1823,7 +1833,8 @@
                                         <h4 class="range-block-title justifyCenter">
                                             <span data-i18n="Sampler Order">Sampler Order</span>
                                             <div class="margin5 fa-solid fa-circle-info opacity50p" data-i18n="[title]llama.cpp only. Determines the order of samplers. If Mirostat mode is not 0, sampler order is ignored." title="llama.cpp only. Determines the order of samplers. If Mirostat mode is not 0, sampler order is ignored."></div>
-                                            <div data-sampler-order-lock="llamacpp_samplers_sortable" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler reordering locked" title="Unlock sampler reordering" data-i18n="[title]Unlock sampler reordering"></div>
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <div data-sampler-order-lock="llamacpp_samplers_sortable" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler Reordering Locked" title="Unlock Sampler Reordering" data-i18n="[title]Unlock Sampler Reordering"></div>
                                         </h4>
                                         <div class="toggle-description widthUnset" data-i18n="llama.cpp only. Determines the order of samplers. If Mirostat mode is not 0, sampler order is ignored.">
                                             llama.cpp only. Determines the order of samplers. If Mirostat mode is not 0, sampler order is ignored.
@@ -1848,7 +1859,8 @@
                                         <h4 class="range-block-title justifyCenter">
                                             <span data-i18n="Sampler Priority">Sampler Priority</span>
                                             <div class="margin5 fa-solid fa-circle-info opacity50p" title="Ooba only. Determines the order of samplers." data-i18n="[title]Ooba only. Determines the order of samplers."></div>
-                                            <div data-sampler-order-lock="sampler_priority_container" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler reordering locked" title="Unlock sampler reordering" data-i18n="[title]Unlock sampler reordering"></div>
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <div data-sampler-order-lock="sampler_priority_container" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler Reordering Locked" title="Unlock Sampler Reordering" data-i18n="[title]Unlock Sampler Reordering"></div>
                                         </h4>
                                         <div class="toggle-description widthUnset" data-i18n="Ooba only. Determines the order of samplers.">
                                             Ooba only. Determines the order of samplers.
@@ -1884,7 +1896,8 @@
                                         <h4 class="range-block-title justifyCenter">
                                             <span data-i18n="Sampler Order">Sampler Order</span>
                                             <div class="margin5 fa-solid fa-circle-info opacity50p" title="Aphrodite only. Determines the order of samplers. Skew is always applied post-softmax, so it's not included here." data-i18n="[title]Aphrodite only. Determines the order of samplers. Skew is always applied post-softmax, so it's not included here."></div>
-                                            <div data-sampler-order-lock="sampler_priority_container_aphrodite" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler reordering locked" title="Unlock sampler reordering" data-i18n="[title]Unlock sampler reordering"></div>
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <div data-sampler-order-lock="sampler_priority_container_aphrodite" class="sampler-order-lock menu_button menu_button_icon fa-solid fa-lock" role="button" tabindex="0" aria-pressed="true" aria-label="Sampler Reordering Locked" title="Unlock Sampler Reordering" data-i18n="[title]Unlock Sampler Reordering"></div>
                                         </h4>
                                         <div class="toggle-description widthUnset" data-i18n="Aphrodite only. Determines the order of samplers.">
                                             Aphrodite only. Determines the order of samplers.
@@ -2200,7 +2213,8 @@
                                             <div class="note-block marginTop5">
                                                 <small>
                                                     <strong>For Custom OpenAI-compatible providers:</strong> This toggle sends <code>include_reasoning</code> to the backend.
-                                                    The <code>reasoning_effort</code> parameter is only added if your model is recognized as a reasoning model (e.g., o1, o3).
+                                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                                    The <code>reasoning_effort</code> parameter is only added if your model is recognized as a reasoning model (for example, o1, o3).
                                                     If your custom provider supports reasoning but uses a different model name, it may not receive the <code>reasoning_effort</code> parameter.
                                                 </small>
                                             </div>
@@ -3309,7 +3323,8 @@
                                         <optgroup id="openai_external_category" label="External">
                                         </optgroup>
                                     </select>
-                                    <button id="model_openai_favorite_toggle" type="button" class="menu_button menu_button_icon" title="Add current model to favorites" aria-label="Add current model to favorites" aria-pressed="false">
+                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                    <button id="model_openai_favorite_toggle" type="button" class="menu_button menu_button_icon" title="Add Current Model to Favorites" aria-label="Add Current Model to Favorites" aria-pressed="false">
                                         <i class="fa-solid fa-star"></i>
                                     </button>
                                 </div>
@@ -3891,11 +3906,12 @@
                                     <span data-i18n="Model Providers">Model Providers</span>
                                     <i id="nanogpt_provider_warning" class="fa-solid fa-triangle-exclamation neutral_warning displayNone" title="Deselect inapplicable provider(s) or select an applicable provider to avoid a 404 error." data-i18n="[title]Deselect inapplicable provider(s) or select an applicable provider to avoid a 404 error."></i>
                                 </h4>
-                                <label for="nanogpt_allowed_providers" data-i18n="Allowed providers">Allowed providers</label>
-                                <button id="nanogpt_allowed_providers_picker" type="button" class="text_pole sb-nanogpt-provider-picker sb-inline-select-picker-control sb-mobile-only-setting" aria-label="Allowed providers" aria-haspopup="listbox" aria-expanded="false" aria-controls="nanogpt_allowed_providers_menu" aria-describedby="nanogpt_billing_warning" data-i18n="[aria-label]Allowed providers"></button>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                <label for="nanogpt_allowed_providers" data-i18n="Allowed Providers">Allowed Providers</label>
+                                <button id="nanogpt_allowed_providers_picker" type="button" class="text_pole sb-nanogpt-provider-picker sb-inline-select-picker-control sb-mobile-only-setting" aria-label="Allowed Providers" aria-haspopup="listbox" aria-expanded="false" aria-controls="nanogpt_allowed_providers_menu" aria-describedby="nanogpt_billing_warning" data-i18n="[aria-label]Allowed Providers"></button>
                                 <select id="nanogpt_allowed_providers" multiple aria-describedby="nanogpt_billing_warning"></select>
-                                <label for="nanogpt_ignored_providers" data-i18n="Ignored providers">Ignored providers</label>
-                                <button id="nanogpt_ignored_providers_picker" type="button" class="text_pole sb-nanogpt-provider-picker sb-inline-select-picker-control sb-mobile-only-setting" aria-label="Ignored providers" aria-haspopup="listbox" aria-expanded="false" aria-controls="nanogpt_ignored_providers_menu" aria-describedby="nanogpt_billing_warning" data-i18n="[aria-label]Ignored providers"></button>
+                                <label for="nanogpt_ignored_providers" data-i18n="Ignored Providers">Ignored Providers</label>
+                                <button id="nanogpt_ignored_providers_picker" type="button" class="text_pole sb-nanogpt-provider-picker sb-inline-select-picker-control sb-mobile-only-setting" aria-label="Ignored Providers" aria-haspopup="listbox" aria-expanded="false" aria-controls="nanogpt_ignored_providers_menu" aria-describedby="nanogpt_billing_warning" data-i18n="[aria-label]Ignored Providers"></button>
                                 <select id="nanogpt_ignored_providers" multiple aria-describedby="nanogpt_billing_warning"></select>
                                 <div id="nanogpt_billing_warning" class="neutral_warning displayNone" role="status" data-i18n="Using allowed and/or ignored providers forces PAYG and adds a 5% markup.">
                                     Using allowed and/or ignored providers forces PAYG and adds a 5% markup.
@@ -5199,7 +5215,8 @@
                         <div id="world_apply_current_sorting" class="menu_button fa-solid fa-solid fa-arrow-down-9-1" title="Apply current sorting as Order" data-i18n="[title]Apply current sorting as Order"></div>
                         <div id="world_refresh" class="menu_button fa-solid fa-arrows-rotate" title="Refresh" data-i18n="[title]Refresh"></div>
                         <div id="world_info_results_summary">0 entries</div>
-                        <div id="world_info_view_filters" role="group" aria-label="Entry filters">
+                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                        <div id="world_info_view_filters" role="group" aria-label="Entry Filters">
                             <button type="button" class="world_info_view_filter is-active" data-filter="all">All</button>
                             <button type="button" class="world_info_view_filter" data-filter="active">Active</button>
                             <button type="button" class="world_info_view_filter" data-filter="disabled">Disabled</button>
@@ -5311,15 +5328,17 @@
                 <div id="user-settings-utility-actions">
                     <div class="ds-row ds-row-actions">
                     <div class="ds-row-text">
-                        <span class="ds-row-label">Clear all cache</span>
+                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                        <span class="ds-row-label">Clear All Cache</span>
                         <small class="ds-row-subtitle">Clear browser cache and temporary UI data without resetting your saved settings.</small>
                     </div>
                     <div class="ds-row-suffix">
                     <button id="clear_all_cache_button" type="button" class="menu_button menu_button_icon sb-settings-utility-action">
-                        <span>Clear all cache</span>
+                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                        <span>Clear All Cache</span>
                     </button>
                     <button id="clear_cookies_cache_button" type="button" class="menu_button menu_button_icon sb-settings-utility-action">
-                        <span>Clear cookies &amp; cache</span>
+                        <span>Clear Cookies &amp; Cache</span>
                     </button>
                     </div>
                     </div>
@@ -5384,7 +5403,8 @@
                             <div class="sb-theme-presets">
                                 <small class="sb-theme-presets-label">SillyBunny palettes</small>
                                 <div class="sb-theme-preset-buttons">
-                                    <button type="button" class="menu_button menu_button_icon sb-theme-preset-reset" title="Reset colors to Libadwaita">
+                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                    <button type="button" class="menu_button menu_button_icon sb-theme-preset-reset" title="Reset Colors to Libadwaita">
                                         <i class="fa-solid fa-rotate-left"></i>
                                         <span>Reset</span>
                                     </button>
@@ -5392,16 +5412,17 @@
                                 <div class="sb-accent-color-controls">
                                     <div class="sb-accent-preset-row">
                                         <span class="sb-accent-color-label">Accent Colors:</span>
-                                        <div class="sb-accent-presets" role="group" aria-label="Accent colors">
-                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="blue" title="Blue" aria-label="Blue accent"></button>
-                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="cyan" title="Cyan" aria-label="Cyan accent"></button>
-                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="green" title="Green" aria-label="Green accent"></button>
-                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="yellow" title="Yellow" aria-label="Yellow accent"></button>
-                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="orange" title="Orange" aria-label="Orange accent"></button>
-                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="red" title="Red" aria-label="Red accent"></button>
-                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="pink" title="Pink" aria-label="Pink accent"></button>
-                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="purple" title="Purple" aria-label="Purple accent"></button>
-                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="gray" title="Gray" aria-label="Gray accent"></button>
+                                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                        <div class="sb-accent-presets" role="group" aria-label="Accent Colors">
+                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="blue" title="Blue" aria-label="Blue Accent"></button>
+                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="cyan" title="Cyan" aria-label="Cyan Accent"></button>
+                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="green" title="Green" aria-label="Green Accent"></button>
+                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="yellow" title="Yellow" aria-label="Yellow Accent"></button>
+                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="orange" title="Orange" aria-label="Orange Accent"></button>
+                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="red" title="Red" aria-label="Red Accent"></button>
+                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="pink" title="Pink" aria-label="Pink Accent"></button>
+                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="purple" title="Purple" aria-label="Purple Accent"></button>
+                                            <button type="button" class="menu_button menu_button_icon sb-accent-preset" data-accent="gray" title="Gray" aria-label="Gray Accent"></button>
                                         </div>
                                     </div>
                                     <label class="checkbox_label flexBasis100p sb-custom-accent-toggle">
@@ -5476,14 +5497,15 @@
                                 <div class="inline-drawer-content" style="display:none">
                                     <!-- SillyBunny: keep upstream picker IDs while presenting two flat preference lists. -->
                                     <div id="color-picker-block" data-sb-presentation="manual">
-                                        <div class="ds-pref-group" role="group" aria-label="Text colors">
+                                        <div class="ds-pref-group" role="group" aria-label="Text Colors">
                                             <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Main Text">Main Text</span><small class="ds-row-subtitle" data-i18n="Set the default text color for chats and menus.">Set the default text color for chats and menus.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="main-text-color-picker" aria-label="Main Text"></toolcool-color-picker></div></div>
                                             <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Italics Text">Italics Text</span><small class="ds-row-subtitle" data-i18n="Set the color of italic chat text and some interface descriptions.">Set the color of italic chat text and some interface descriptions.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="italics-color-picker" aria-label="Italics Text"></toolcool-color-picker></div></div>
                                             <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Underlined Text">Underlined Text</span><small class="ds-row-subtitle" data-i18n="Set the color of underlined text in chat.">Set the color of underlined text in chat.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="underline-color-picker" aria-label="Underlined Text"></toolcool-color-picker></div></div>
                                             <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Quote Text">Quote Text</span><small class="ds-row-subtitle" data-i18n="Set the color of quoted text in chat.">Set the color of quoted text in chat.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="quote-color-picker" aria-label="Quote Text"></toolcool-color-picker></div></div>
                                             <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Shadow Color">Text Shadow</span><small class="ds-row-subtitle" data-i18n="Set the color of shadows behind text.">Set the color of shadows behind text.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="shadow-color-picker" aria-label="Text Shadow"></toolcool-color-picker></div></div>
                                         </div>
-                                        <div class="ds-pref-group" role="group" aria-label="UI colors">
+                                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                        <div class="ds-pref-group" role="group" aria-label="UI Colors">
                                             <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Chat Background">Chat Background</span><small class="ds-row-subtitle" data-i18n="Set the background color of the chat area.">Set the background color of the chat area.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="chat-tint-color-picker" aria-label="Chat Background"></toolcool-color-picker></div></div>
                                             <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="UI Background">UI Background</span><small class="ds-row-subtitle" data-i18n="Set the base color for toolbars, panels, and pop-up windows.">Set the base color for toolbars, panels, and pop-up windows.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="blur-tint-color-picker" aria-label="UI Background"></toolcool-color-picker></div></div>
                                             <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="UI Border">UI Border</span><small class="ds-row-subtitle" data-i18n="Set the border color for panels and pop-up windows.">Set the border color for panels and pop-up windows.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="border-color-picker" aria-label="UI Border"></toolcool-color-picker></div></div>
@@ -5570,8 +5592,9 @@
                                                 <small class="ds-row-subtitle">Blur strength for the page background image.</small>
                                             </div>
                                             <div class="ds-row-suffix">
-                                            <input class="neo-range-slider" type="range" id="background_blur" name="background_blur" min="0" max="10" step="1" aria-label="Background blur">
-                                            <input class="neo-range-input" type="number" min="0" max="10" step="1" data-for="background_blur" id="background_blur_counter" aria-label="Background blur value">
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <input class="neo-range-slider" type="range" id="background_blur" name="background_blur" min="0" max="10" step="1" aria-label="Background Blur">
+                                            <input class="neo-range-input" type="number" min="0" max="10" step="1" data-for="background_blur" id="background_blur_counter" aria-label="Background Blur Value">
                                             </div>
                                         </div>
                                         <div id="background-opacity-block" class="ds-row ds-row-slider">
@@ -5580,8 +5603,9 @@
                                                 <small class="ds-row-subtitle">Opacity for the page background image.</small>
                                             </div>
                                             <div class="ds-row-suffix">
-                                            <input class="neo-range-slider" type="range" id="background_opacity" name="background_opacity" min="0" max="1" step="0.05" aria-label="Background opacity">
-                                            <input class="neo-range-input" type="number" min="0" max="1" step="0.05" data-for="background_opacity" id="background_opacity_counter" aria-label="Background opacity value">
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <input class="neo-range-slider" type="range" id="background_opacity" name="background_opacity" min="0" max="1" step="0.05" aria-label="Background Opacity">
+                                            <input class="neo-range-input" type="number" min="0" max="1" step="0.05" data-for="background_opacity" id="background_opacity_counter" aria-label="Background Opacity Value">
                                             </div>
                                         </div>
                                         <div id="sheld-blur-strength-block" class="ds-row ds-row-slider">
@@ -5590,8 +5614,9 @@
                                                 <small class="ds-row-subtitle">Blur strength behind the chat field.</small>
                                             </div>
                                             <div class="ds-row-suffix">
-                                            <input class="neo-range-slider" type="range" id="sheld_blur_strength" name="sheld_blur_strength" min="0" max="10" step="1" aria-label="Chat field blur">
-                                            <input class="neo-range-input" type="number" min="0" max="10" step="1" data-for="sheld_blur_strength" id="sheld_blur_strength_counter" aria-label="Chat field blur value">
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <input class="neo-range-slider" type="range" id="sheld_blur_strength" name="sheld_blur_strength" min="0" max="10" step="1" aria-label="Chat Field Blur">
+                                            <input class="neo-range-input" type="number" min="0" max="10" step="1" data-for="sheld_blur_strength" id="sheld_blur_strength_counter" aria-label="Chat Field Blur Value">
                                             </div>
                                         </div>
                                     </div>
@@ -5926,7 +5951,8 @@
                                 <i class="fa-solid fa-triangle-exclamation margin-r5"></i>
                                 <span data-i18n="A saved MovingUI panel position appears to be off-screen.">A saved MovingUI panel position appears to be off-screen.</span>
                                 <div id="movingUIOffscreenReset" title="Reset MovingUI panel sizes/locations." class="menu_button margin0" data-i18n="[title]Reset MovingUI panel sizes/locations.">
-                                    <span data-i18n="Reset panels">Reset panels</span>
+                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                    <span data-i18n="Reset Panels">Reset Panels</span>
                                 </div>
                             </div>
                             <div id="MovingUI-presets-block" class="flex-container alignitemscenter">
@@ -6209,7 +6235,7 @@
                                                 <span class="custom_css_save_state_label"></span>
                                             </div>
                                             <!-- SillyBunny: AI shortcut for Custom CSS generation. -->
-                                            <div id="custom_css_ai_wand" class="menu_button menu_button_icon margin0" role="button" tabindex="0" title="Generate CSS with AI" aria-label="Generate CSS with AI" data-i18n="[title]Generate CSS with AI">
+                                            <div id="custom_css_ai_wand" class="menu_button menu_button_icon margin0" role="button" tabindex="0" title="Generate CSS With AI" aria-label="Generate CSS With AI" data-i18n="[title]Generate CSS With AI">
                                                 <i class="fa-solid fa-wand-magic-sparkles"></i>
                                             </div>
                                             <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="customCSS" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
@@ -6414,7 +6440,8 @@
                     </div>
                     <div class="bg-header-row-2 ds-row">
                         <div class="ds-row-text">
-                        <input id="bg-filter" class="text_pole" type="search" aria-label="Search backgrounds" data-i18n="[placeholder]Search..." placeholder="Search..." />
+                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                        <input id="bg-filter" class="text_pole" type="search" aria-label="Search Backgrounds" data-i18n="[placeholder]Search..." placeholder="Search..." />
                         </div>
                         <div class="ds-row-suffix">
                         <select id="bg-sort" class="text_pole margin0" aria-label="Sort backgrounds" title="Sort backgrounds" data-i18n="[title]Sort backgrounds">
@@ -6706,7 +6733,8 @@
                      buttons stay as the state markers that syncCharacterShellTabs, the
                      universal search index, and helper targets address by data attribute. -->
                 <div class="sb-character-shell-nav-markers" hidden aria-hidden="true">
-                    <div class="sb-shell-nav sb-character-shell-nav" role="tablist" aria-label="Character sections" aria-orientation="horizontal">
+                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                    <div class="sb-shell-nav sb-character-shell-nav" role="tablist" aria-label="Character Sections" aria-orientation="horizontal">
                         <button id="sb_character_tab_characters" class="sb-shell-tab is-active" type="button" role="tab" aria-selected="true" data-sb-character-tab="characters">
                             <i class="fa-solid fa-address-book" aria-hidden="true"></i>
                             <span class="sb-shell-tab-copy"><strong data-i18n="Characters">Characters</strong></span>
@@ -6785,7 +6813,8 @@
                     <div id="sb_character_editor_empty" class="sb-character-editor-empty" hidden>
                         <div class="sb-character-editor-empty-icon fa-solid fa-address-card" aria-hidden="true"></div>
                         <div class="sb-character-editor-empty-copy">
-                            <h3 data-i18n="No character selected">No character selected</h3>
+                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                            <h3 data-i18n="No Character Selected">No Character Selected</h3>
                             <p data-i18n="Please pick a character card from the character menu, or create a new character.">Please pick a character card from the character menu, or create a new character.</p>
                         </div>
                         <div class="sb-character-editor-empty-actions">
@@ -6809,21 +6838,21 @@
                             <header class="sb-editor-header" id="sb_character_editor_header">
                                 <!-- SillyBunny: shared header-icon-button state styling keeps editor controls consistent with list and settings headers. -->
                                 <!-- SillyBunny: the header order, icons and tooltips are shared by every explicit-save editor (sillybunny-editor/chrome.js); the Back and item menu tooltips are set there. -->
-                                <button class="sb-editor-icon-button sb-header-icon-button sb-editor-back" id="sb_character_editor_back" type="button" aria-label="Back to character list" data-i18n="[aria-label]Back to character list">
+                                <button class="sb-editor-icon-button sb-header-icon-button sb-editor-back" id="sb_character_editor_back" type="button" aria-label="Back to Character List" data-i18n="[aria-label]Back to Character List">
                                     <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                                 </button>
                                 <!-- SillyBunny: the title doubles as the rename affordance (the legacy
                                      #rm_button_selected_ch h2 click target is inside the hidden
                                      #rm_PinAndTabs). It is a real button so keyboard users get the
                                      same entry point; the controller focuses #character_name_pole. -->
-                                <button class="sb-editor-title-button" id="sb_character_editor_title_button" type="button" title="Rename character" data-i18n="[title]Rename character">
+                                <button class="sb-editor-title-button" id="sb_character_editor_title_button" type="button" title="Rename Character" data-i18n="[title]Rename Character">
                                     <!-- SillyBunny: the title takes the shared dialog title role; the pencil is the rename cue, not a title — see docs/ui-migration.md -->
                                     <span class="sb-editor-title sb-dialog__title" id="sb_character_editor_title"></span>
                                     <i class="fa-solid fa-pencil sb-editor-pencil" aria-hidden="true"></i>
                                 </button>
                                 <span class="sb-editor-dirty" id="sb_character_editor_dirty" role="status" aria-live="polite" hidden>
                                     <span class="sb-editor-dirty-dot" aria-hidden="true"></span>
-                                    <span class="sr-only" data-i18n="Unsaved changes">Unsaved changes</span>
+                                    <span class="sr-only" data-i18n="Unsaved Changes">Unsaved Changes</span>
                                 </span>
                                 <!-- SillyBunny: mirrors the legacy #result_info token counter, which
                                      lives inside the hidden #rm_PinAndTabs. Populated by the controller
@@ -6854,7 +6883,7 @@
                                 <div id="export_button" class="sb-editor-icon-button sb-header-icon-button menu_button fa-solid fa-file-export" title="Export and Download" data-i18n="[title]Export and Download"></div>
                                 <div id="dupe_button" class="sb-editor-icon-button sb-header-icon-button menu_button fa-solid fa-clone" title="Duplicate Character" data-i18n="[title]Duplicate Character"></div>
                                 <span class="sb-editor-toolbar-spacer" aria-hidden="true"></span>
-                                <button id="sb_character_editor_quick_edit" class="sb-editor-icon-button sb-header-icon-button" type="button" aria-pressed="false" title="Quick edit mode" aria-label="Quick edit mode" data-i18n="[title]Quick edit mode;[aria-label]Quick edit mode">
+                                <button id="sb_character_editor_quick_edit" class="sb-editor-icon-button sb-header-icon-button" type="button" aria-pressed="false" title="Quick Edit Mode" aria-label="Quick Edit Mode" data-i18n="[title]Quick Edit Mode;[aria-label]Quick Edit Mode">
                                     <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
                                 </button>
                                 <!-- SillyBunny: #char-management-dropdown is kept as a hidden transport,
@@ -7143,7 +7172,8 @@
                                             <div class="ds-row ds-row-expander__header">
                                                 <button type="button" class="ds-row-expander__toggle">
                                                     <span class="ds-row-text">
-                                                        <span class="ds-row-label" data-i18n="Group-only greetings">Group-only greetings</span>
+                                                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                                        <span class="ds-row-label" data-i18n="Group-Only Greetings">Group-Only Greetings</span>
                                                     </span>
                                                 </button>
                                                 <span class="ds-row-suffix">
@@ -7165,7 +7195,8 @@
                                                             </button>
                                                         </span>
                                                     </div>
-                                                    <div class="group_only_greetings_list sb-greetings-list" role="list" aria-label="Group-only greetings" data-i18n="[aria-label]Group-only greetings"></div>
+                                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                                    <div class="group_only_greetings_list sb-greetings-list" role="list" aria-label="Group-Only Greetings" data-i18n="[aria-label]Group-Only Greetings"></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -7256,20 +7287,21 @@
                          sillybunny-character-editor.css; only the group-specific row layout lives here. -->
                     <div name="Group Chat Edit Panel" id="rm_group_chats_block" class="right_menu sb-editor-sheet">
                         <header class="sb-editor-header" id="sb_group_editor_header">
-                            <button class="sb-editor-icon-button sb-header-icon-button sb-editor-back" id="sb_group_editor_back" type="button" aria-label="Back to groups" data-i18n="[aria-label]Back to groups">
+                            <button class="sb-editor-icon-button sb-header-icon-button sb-editor-back" id="sb_group_editor_back" type="button" aria-label="Back to Groups" data-i18n="[aria-label]Back to Groups">
                                 <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                             </button>
                             <!-- SillyBunny: the title doubles as the rename affordance, matching the
                                  character editor's header (the legacy #rm_button_selected_ch h2 click
                                  target is inside the hidden #rm_PinAndTabs). -->
-                            <button class="sb-editor-title-button" id="sb_group_editor_title_button" type="button" title="Rename group" data-i18n="[title]Rename group">
+                            <button class="sb-editor-title-button" id="sb_group_editor_title_button" type="button" title="Rename Group" data-i18n="[title]Rename Group">
                                 <!-- SillyBunny: the title takes the shared dialog title role; the pencil is the rename cue, not a title — see docs/ui-migration.md -->
                                 <span class="sb-editor-title sb-dialog__title" id="sb_group_editor_title"></span>
                                 <i class="fa-solid fa-pencil sb-editor-pencil" aria-hidden="true"></i>
                             </button>
                             <span class="sb-editor-dirty" id="sb_group_editor_dirty" role="status" aria-live="polite" hidden>
                                 <span class="sb-editor-dirty-dot" aria-hidden="true"></span>
-                                <span class="sr-only" data-i18n="Unsaved changes">Unsaved changes</span>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                <span class="sr-only" data-i18n="Unsaved Changes">Unsaved Changes</span>
                             </span>
                             <button id="sb_group_editor_more" class="sb-editor-icon-button sb-header-icon-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Group Actions" data-i18n="[aria-label]Group Actions">
                                 <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
@@ -7355,10 +7387,11 @@
                                     <p class="ds-pref-group-subtitle" data-i18n="group_members_subtitle">lorum ipsum</p>
                                     <div class="ds-row-suffix">
                                         <!-- SillyBunny: both heading buttons take the shared flat header-icon style — see docs/ui-migration.md -->
-                                        <a href="https://docs.sillytavern.app/usage/core-concepts/groupchats/" class="sb-editor-icon-button sb-header-icon-button" target="_blank" rel="noopener noreferrer" aria-label="Open the group chats documentation" data-i18n="[aria-label]Open the group chats documentation">
+                                        <a href="https://docs.sillytavern.app/usage/core-concepts/groupchats/" class="sb-editor-icon-button sb-header-icon-button" target="_blank" rel="noopener noreferrer" aria-label="Open the Group Chats Documentation" data-i18n="[aria-label]Open the Group Chats Documentation">
                                             <span class="fa-solid fa-circle-question" aria-hidden="true"></span>
                                         </a>
-                                        <button id="groupCurrentMemberPopoutButton" class="sb-editor-icon-button sb-header-icon-button" type="button" title="Pop out member list" aria-label="Pop out member list" data-i18n="[title]Pop out member list;[aria-label]Pop out member list">
+                                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                        <button id="groupCurrentMemberPopoutButton" class="sb-editor-icon-button sb-header-icon-button" type="button" title="Pop out Member List" aria-label="Pop out Member List" data-i18n="[title]Pop out Member List;[aria-label]Pop out Member List">
                                             <i class="fa-solid fa-window-restore" aria-hidden="true"></i>
                                         </button>
                                     </div>
@@ -7473,7 +7506,8 @@
                                 <div class="ds-pref-group sb-editor-section__body">
                                     <button type="button" class="ds-row ds-row-button" id="rm_group_scenario" title="Set group chat character settings overrides" data-i18n="[title]Set group chat character settings overrides">
                                         <span class="ds-row-text">
-                                            <span class="ds-row-label" data-i18n="Character settings">Character settings</span>
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <span class="ds-row-label" data-i18n="Character Settings">Character Settings</span>
                                             <small class="ds-row-subtitle" data-i18n="group_scenario_subtitle">lorum ipsum</small>
                                         </span>
                                         <span class="ds-row-suffix" aria-hidden="true">
@@ -7485,7 +7519,8 @@
                                          the same class for the ⋯ menu. -->
                                     <button type="button" class="ds-row ds-row-button open_media_overrides" id="group_media_overrides_row" title="Click to allow/forbid the use of external media for this group." data-i18n="[title]Click to allow/forbid the use of external media for this group.">
                                         <span class="ds-row-text">
-                                            <span class="ds-row-label" data-i18n="External media">External media</span>
+                                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                            <span class="ds-row-label" data-i18n="External Media">External Media</span>
                                             <small class="ds-row-subtitle" data-i18n="group_media_overrides_subtitle">lorum ipsum</small>
                                         </span>
                                         <span class="ds-row-suffix" aria-hidden="true">
@@ -7688,34 +7723,36 @@
                     <div id="select_chat_cross" class="opacity50p hoverglow fa-solid fa-circle-xmark fontsize120p" alt="Close Past Chat Popup"></div>
                 </div>
                 <div id="chat_management_tools" class="chat_management_tools">
-                    <div class="chat_management_group chat_label_group" aria-label="Chat labeling tools">
+                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                    <div class="chat_management_group chat_label_group" aria-label="Chat Labeling Tools">
                         <button type="button" id="chat_auto_label_current" class="menu_button menu_button_icon" title="Ask the LLM to rename the current chat" data-i18n="[title]Ask the LLM to rename the current chat">
                             <i class="fa-solid fa-wand-magic-sparkles"></i>
-                            <span data-i18n="Label current">Label current</span>
+                            <span data-i18n="Label Current">Label Current</span>
                         </button>
                         <button type="button" id="chat_auto_label_dated" class="menu_button menu_button_icon" title="Ask the LLM to rename timestamp-named chats" data-i18n="[title]Ask the LLM to rename timestamp-named chats">
                             <i class="fa-solid fa-tags"></i>
-                            <span data-i18n="Label dated">Label dated</span>
+                            <span data-i18n="Label Dated">Label Dated</span>
                         </button>
-                        <button type="button" id="chat_tools_cancel" class="menu_button menu_button_icon displayNone" title="Cancel the running chat tool" data-i18n="[title]Cancel the running chat tool">
+                        <button type="button" id="chat_tools_cancel" class="menu_button menu_button_icon displayNone" title="Cancel the Running Chat Tool" data-i18n="[title]Cancel the Running Chat Tool">
                             <span data-i18n="Cancel">Cancel</span>
                         </button>
                     </div>
                     <div class="chat_management_group chat_cleanup_group" aria-label="Chat Cleanup Tools">
                         <label class="chat_cleanup_field" for="chat_cleanup_age">
-                            <span data-i18n="Older than">Older than</span>
+                            <span data-i18n="Older Than">Older Than</span>
                             <input type="number" id="chat_cleanup_age" class="text_pole" min="0" max="9999" step="1" value="90" inputmode="numeric">
                         </label>
-                        <select id="chat_cleanup_unit" class="text_pole" aria-label="Cleanup age unit" data-i18n="[aria-label]Cleanup age unit">
+                        <select id="chat_cleanup_unit" class="text_pole" aria-label="Cleanup Age Unit" data-i18n="[aria-label]Cleanup Age Unit">
                             <option value="days" data-i18n="days">days</option>
                             <option value="weeks" data-i18n="weeks">weeks</option>
                             <option value="months" data-i18n="months">months</option>
                         </select>
                         <label class="chat_cleanup_field" for="chat_cleanup_keep">
-                            <span data-i18n="Keep newest">Keep newest</span>
+                            <!-- SillyBunny: capitalisation by DESIGN.md -->
+                            <span data-i18n="Keep Newest">Keep Newest</span>
                             <input type="number" id="chat_cleanup_keep" class="text_pole" min="0" max="9999" step="1" value="25" inputmode="numeric">
                         </label>
-                        <label class="checkbox_label chat_cleanup_checkbox" for="chat_cleanup_only_dated" title="Only clean timestamp-named chats" data-i18n="[title]Only clean timestamp-named chats">
+                        <label class="checkbox_label chat_cleanup_checkbox" for="chat_cleanup_only_dated" title="Only Clean Timestamp-Named Chats" data-i18n="[title]Only Clean Timestamp-Named Chats">
                             <input type="checkbox" id="chat_cleanup_only_dated" checked>
                             <span data-i18n="Dated only">Dated only</span>
                         </label>
@@ -8357,7 +8394,8 @@
                                     <option data-i18n="Regenerate" value="regenerate">Regenerate</option>
                                     <option data-i18n="Quiet" value="quiet">Quiet</option>
                                 </select>
-                                <div id="completion_prompt_manager_popup_trigger_chips" class="pm-trigger-chips" role="group" aria-label="Trigger types">
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                <div id="completion_prompt_manager_popup_trigger_chips" class="pm-trigger-chips" role="group" aria-label="Trigger Types">
                                     <button type="button" class="pm-trigger-chip" data-trigger-value="normal" role="checkbox" aria-checked="false" data-i18n="Normal">Normal</button>
                                     <button type="button" class="pm-trigger-chip" data-trigger-value="continue" role="checkbox" aria-checked="false" data-i18n="Continue">Continue</button>
                                     <button type="button" class="pm-trigger-chip" data-trigger-value="impersonate" role="checkbox" aria-checked="false" data-i18n="Impersonate">Impersonate</button>
@@ -8499,17 +8537,19 @@
                                 <div title="Narrate" class="mes_button mes_narrate fa-solid fa-bullhorn" data-i18n="[title]Narrate" data-requires-extension="tts"></div>
                                 <div title="Translate message" class="mes_button mes_translate fa-solid fa-language" data-i18n="[title]Translate message" data-requires-extension="translate"></div>
                                 <div title="Generate Image" class="mes_button sd_message_gen fa-solid fa-paintbrush" data-i18n="[title]Generate Image" data-requires-extension="stable-diffusion"></div>
-                                <div title="Screenshot messages to clipboard" class="mes_button mes_screenshot fa-solid fa-camera" data-i18n="[title]Screenshot messages to clipboard"></div>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                <div title="Screenshot Messages to Clipboard" class="mes_button mes_screenshot fa-solid fa-camera" data-i18n="[title]Screenshot Messages to Clipboard"></div>
                                 <div title="Create branch" class="mes_button mes_create_branch fa-regular fa-code-branch" data-i18n="[title]Create Branch"></div>
                                 <div title="Create checkpoint" class="mes_button mes_create_bookmark fa-regular fa-solid fa-flag-checkered" data-i18n="[title]Create checkpoint"></div>
                                 <div data-tooltip="Click to open checkpoint chat&#10;Shift+Click to replace the existing checkpoint with a new one" class="mes_button mes_bookmark fa-solid fa-flag" data-i18n="[data-tooltip]Open checkpoint chat&#10;Shift+Click to replace the existing checkpoint with a new one"></div>
                                 <div title="Exclude message from prompts" class="mes_button mes_hide fa-solid fa-eye" data-i18n="[title]Exclude message from prompts"></div>
                                 <div title="Include message in prompts" class="mes_button mes_unhide fa-solid fa-eye-slash" data-i18n="[title]Include message in prompts"></div>
                                 <div title="Prompt" class="mes_button mes_prompt fa-solid fa-square-poll-horizontal " data-i18n="[title]Prompt" style="display: none;"></div>
-                                <div title="View agent changes" class="mes_button mes_view_agent_changes fa-solid fa-file-lines" data-i18n="[title]View agent changes" style="display: none;"></div>
-                                <div title="Fix trackers" class="mes_button mes_fix_trackers fa-solid fa-wrench" data-i18n="[title]Fix trackers" style="display: none;"></div>
-                                <div title="Run companions" class="mes_button mes_run_companions fa-solid fa-user-astronaut" data-i18n="[title]Run companions" style="display: none;"></div>
-                                <div title="Run card scripts" class="mes_button mes_run_card_scripts fa-solid fa-play" data-i18n="[title]Run card scripts" style="display: none;"></div>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                <div title="View Agent Changes" class="mes_button mes_view_agent_changes fa-solid fa-file-lines" data-i18n="[title]View Agent Changes" style="display: none;"></div>
+                                <div title="Fix Trackers" class="mes_button mes_fix_trackers fa-solid fa-wrench" data-i18n="[title]Fix Trackers" style="display: none;"></div>
+                                <div title="Run Companions" class="mes_button mes_run_companions fa-solid fa-user-astronaut" data-i18n="[title]Run Companions" style="display: none;"></div>
+                                <div title="Run Card Scripts" class="mes_button mes_run_card_scripts fa-solid fa-play" data-i18n="[title]Run Card Scripts" style="display: none;"></div>
                                 <div title="Embed file or image" class="mes_button mes_embed fa-solid fa-paperclip" data-i18n="[title]Embed file or image"></div>
                                 <div title="Toggle media display style" class="mes_button mes_media_gallery fa-solid fa-photo-film" data-i18n="[title]Toggle media display style"></div>
                                 <div title="Toggle media display style" class="mes_button mes_media_list fa-solid fa-table-cells-large" data-i18n="[title]Toggle media display style"></div>
@@ -8657,7 +8697,8 @@
                     <label class="sb-group-member-replies">
                         <input class="sb-switch sb-group-member-switch" type="checkbox" role="switch" checked />
                     </label>
-                    <button class="sb-group-member-menu ds-entity-row__button" type="button" aria-haspopup="menu" aria-label="Member actions" data-i18n="[aria-label]Member actions">
+                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                    <button class="sb-group-member-menu ds-entity-row__button" type="button" aria-haspopup="menu" aria-label="Member Actions" data-i18n="[aria-label]Member Actions">
                         <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
                     </button>
                     <button class="right_menu_button ds-entity-row__button" type="button" data-action="add" aria-label="Add to group" data-i18n="[aria-label]Add to group">
@@ -9197,7 +9238,8 @@
                 <button type="button" id="group_add_greeting" class="menu_button menu_button_icon" title="Add New Greeting" data-i18n="[title]Add New Greeting">
                     <span data-i18n="Add New Greeting">Add New Greeting</span>
                 </button>
-                <button type="button" id="group_speaker_now" class="menu_button menu_button_icon" title="Make selected character speak now" data-i18n="[title]Make selected character speak now">
+                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                <button type="button" id="group_speaker_now" class="menu_button menu_button_icon" title="Make Selected Character Speak Now" data-i18n="[title]Make Selected Character Speak Now">
                     <span data-i18n="Speak Now">Speak Now</span>
                 </button>
                 <button type="button" id="group_speaker_hide" class="menu_button menu_button_icon" title="Hide this bar (restore it from the wand menu)" data-i18n="[title]Hide this bar (restore it from the wand menu)">

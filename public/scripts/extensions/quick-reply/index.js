@@ -272,7 +272,7 @@ const finalizeInit = async () => {
 // case where event handlers fire before init completes.
 init().catch(err => {
     console.error('[QR2] init failed:', err);
-    try { toastr?.error(err?.message ?? String(err), 'Quick Reply init failed'); } catch { /* noop */ }
+    try { toastr?.error(err?.message ?? String(err), 'Quick Reply Init Failed'); } catch { /* noop */ } // SillyBunny: capitalisation by DESIGN.md
 });
 
 const purgeCharacterQuickReplySets = ({ character }) => {

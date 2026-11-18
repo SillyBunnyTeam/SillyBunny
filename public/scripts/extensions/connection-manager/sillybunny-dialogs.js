@@ -90,7 +90,7 @@ export function adaptProfileDeletion(root) {
     root.replaceChildren(group.section);
     return {
         tier: 'dialog',
-        title: t`Delete selected connection profiles?`,
+        title: t`Delete Selected Connection Profiles?`,
         onOpening(popup) { popup.okButton.classList.add('is-destructive'); },
         onClose() { releaseRowIds(root); },
     };

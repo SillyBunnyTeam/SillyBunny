@@ -317,7 +317,7 @@ test('Pathfinder preserves failed prompt and summary drafts, including an empty 
     await page.locator('#pf--settings-retry').click();
     await expect(page.locator('#pf--settings-save-status')).toHaveText('Saved!');
 
-    const editor = page.getByLabel('Latest memory summary', { exact: true });
+    const editor = page.getByLabel('Latest Memory Summary', { exact: true });
     await editor.fill('An unsaved summary draft');
     await page.locator('#pf--summary-save').focus();
     await page.evaluate(async () => (await import('/scripts/extensions/in-chat-agents/pathfinder/summary-memory-store.js')).markSummaryMemoryInjected({ mode: 'pipeline' }));

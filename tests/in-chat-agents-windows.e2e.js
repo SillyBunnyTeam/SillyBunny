@@ -99,13 +99,13 @@ for (const width of [1440, 390]) {
 
             const dialog = page.locator('dialog[open]');
             await expect(dialog).toHaveClass(/sb-dialog--window/);
-            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Review the main output before it is shown in chat.');
+            await expect(dialog.locator('.sb-dialog__title')).toHaveText('Review the main output before it is shown in chat');
             await expect(dialog.locator('.popup-button-close')).toBeHidden();
-            await expect(dialog.getByText('Skip intercept', { exact: true })).toBeVisible();
-            await expect(dialog.getByText('Continue intercept', { exact: true })).toBeVisible();
+            await expect(dialog.getByText('Skip Intercept', { exact: true })).toBeVisible();
+            await expect(dialog.getByText('Continue Intercept', { exact: true })).toBeVisible();
             await expect(dialog.locator('.ica--post-main-intercept-review-output')).toContainText('last review sentinel');
             await expectWindowScroll(dialog, '.ica--post-main-intercept-review-output');
-            await dialog.getByText('Skip intercept', { exact: true }).click();
+            await dialog.getByText('Skip Intercept', { exact: true }).click();
             await expect(dialog).toHaveCount(0);
             expect(await page.evaluate(() => window.__postMainReviewEvent.text)).toContain('last review sentinel');
             expect(driver.writes.filter(write => /generate|completion/i.test(write.path))).toEqual([]);

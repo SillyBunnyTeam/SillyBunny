@@ -30,11 +30,11 @@ const fields = [
         title: 'Keep enabled In-Chat Agents separate between Individual chats and Group chats.',
     },
     {
-        id: 'promptTransformShowNotifications', label: 'Allow prompt pass toast notifications',
+        id: 'promptTransformShowNotifications', label: 'Allow Prompt Pass Toast Notifications',
         title: 'Master switch for prompt pass toasts. Per-agent notification checkboxes still decide which agents can show them.',
     },
     {
-        id: 'postMainInterceptShowMessageFirst', label: 'View main LLM output before pre-generation intercept',
+        id: 'postMainInterceptShowMessageFirst', label: 'View Main LLM Output Before Pre-Generation Intercept',
         title: 'View main LLM output before pre-generation intercept',
     },
     {
@@ -43,7 +43,7 @@ const fields = [
         placeholder: '[assistant] Start of helper response\n\n[system] Extra instruction',
     },
     {
-        id: 'pathfinderSubmoduleEnabled', label: 'Enable Pathfinder submodule',
+        id: 'pathfinderSubmoduleEnabled', label: 'Enable Pathfinder Submodule',
         title: 'Enable or disable the built-in Pathfinder submodule without disabling shared In-Chat Agents.',
     },
 ];

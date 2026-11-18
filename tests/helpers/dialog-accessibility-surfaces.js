@@ -958,7 +958,7 @@ SURFACES.push(
         frameSelector: 'dialog[open] .sb-dialog',
         isOpen: page => page.locator(OPEN_DIALOG),
         boot: bootMiscWithChat,
-        structure: { name: 'Keep This Chat?', role: 'alertdialog' },
+        structure: { name: 'Keep this chat?', role: 'alertdialog' },
         // The temporary chat starts through the module, because the Characters list has no single key to Temporary Chat.
         open: openLeavePrompt,
         destructive: true,

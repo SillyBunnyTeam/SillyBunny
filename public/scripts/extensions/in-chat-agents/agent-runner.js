@@ -357,7 +357,7 @@ export function cancelAgentGeneration() {
     notifyAgentGenerationStateChanged();
 
     if (stopped || wasActive || queuedCount > 0) {
-        toastr.info(queuedCount > 0 ? `Stopping agent generation and clearing ${queuedCount} queued run${queuedCount === 1 ? '' : 's'}...` : 'Stopping agent generation...');
+        toastr.info(queuedCount > 0 ? `Stopping agent generation and clearing ${queuedCount} queued run${queuedCount === 1 ? '' : 's'}…` : 'Stopping agent generation…');
         return true;
     }
 
@@ -408,7 +408,7 @@ function showPathfinderRetrievalToast() {
         return;
     }
 
-    activePathfinderRetrievalToast = toastr.info('Pathfinder is processing lore for this reply...', 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
+    activePathfinderRetrievalToast = toastr.info('Pathfinder is processing lore for this reply…', 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
 }
 
 function clearPathfinderRetrievalToast() {
@@ -2447,11 +2447,11 @@ function showPromptTransformRunningToast(agent, mode, profileId = '', options = 
     const runningLabel = skipChanges
         ? 'Generating main output for pre-generation intercept'
         : kind === 'preIntercept'
-            ? `Running pre-generation ${applyMode} intercept...`
+            ? `Running pre-generation ${applyMode} intercept…`
             : kind === 'postMainIntercept'
-                ? `Running post-main ${applyMode} intercept...`
-                : `Running ${modeLabel} via ${targetLabel}...`;
-    const cancelLabel = skipChanges ? 'Skip changes' : 'Cancel Agent';
+                ? `Running post-main ${applyMode} intercept…`
+                : `Running ${modeLabel} via ${targetLabel}…`;
+    const cancelLabel = skipChanges ? 'Skip Changes' : 'Cancel Agent';
     const messageHtml = `
         <div>${escapeToastHtml(runningLabel)}</div>
         <div>${escapeToastHtml(`Order ${metadata.order} | Model: ${metadata.modelLabel}`)}</div>
@@ -4943,7 +4943,7 @@ async function showPostMainInterceptReviewPopup(text) {
     const popupContent = buildPostMainInterceptReviewPopupContent(text);
     const result = await callGenericPopup(popupContent, POPUP_TYPE.TEXT, '', {
         tier: 'window',
-        title: t`Review the main output before it is shown in chat.`,
+        title: t`Review the main output before it is shown in chat`,
         wide: true,
         large: true,
         allowVerticalScrolling: true,
@@ -4951,12 +4951,12 @@ async function showPostMainInterceptReviewPopup(text) {
         cancelButton: false,
         customButtons: [
             {
-                text: 'Skip intercept',
+                text: 'Skip Intercept',
                 result: POPUP_RESULT.CUSTOM1,
                 classes: ['menu_button_primary'],
             },
             {
-                text: 'Continue intercept',
+                text: 'Continue Intercept',
                 result: POPUP_RESULT.CUSTOM2,
                 classes: ['menu_button_primary'],
             },
@@ -5931,8 +5931,8 @@ export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = ag
     if (errorRuns > 0) parts.push(`${errorRuns} error${errorRuns > 1 ? 's' : ''}`);
 
     if (parts.length > 0) {
-        toastr.success(parts.join(', '), 'Trackers fixed');
+        toastr.success(parts.join(', '), 'Trackers Fixed');
     } else {
-        toastr.info('No changes made.', 'Trackers fixed');
+        toastr.info('No changes made.', 'Trackers Fixed');
     }
 }

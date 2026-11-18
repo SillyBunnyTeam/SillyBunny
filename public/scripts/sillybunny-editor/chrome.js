@@ -43,7 +43,7 @@ export function createDirtyMark(className = '') {
     mark.className = `sb-editor-dirty ${className}`.trim();
     mark.setAttribute('role', 'status');
     mark.setAttribute('aria-live', 'polite');
-    mark.setAttribute('aria-label', t`Unsaved changes`);
+    mark.setAttribute('aria-label', t`Unsaved Changes`);
     mark.hidden = true;
     const dot = document.createElement('span');
     dot.className = 'sb-editor-dirty-dot';

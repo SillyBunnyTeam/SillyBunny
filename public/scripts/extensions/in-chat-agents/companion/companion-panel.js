@@ -556,8 +556,8 @@ function buildCompanionTokenUsagePillsHtml(result = {}) {
     const outputTokens = normalizeTokenCount(result?.tokenUsage?.outputTokens);
 
     const pills = [
-        inputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated input tokens" aria-label="Input tokens ${escapeHtml(formatTokenCount(inputTokens))}"><span>Input</span><strong>${escapeHtml(formatTokenCount(inputTokens))}</strong></span>` : '',
-        outputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated output tokens" aria-label="Output tokens ${escapeHtml(formatTokenCount(outputTokens))}"><span>Output</span><strong>${escapeHtml(formatTokenCount(outputTokens))}</strong></span>` : '',
+        inputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated Input Tokens" aria-label="Input Tokens ${escapeHtml(formatTokenCount(inputTokens))}"><span>Input</span><strong>${escapeHtml(formatTokenCount(inputTokens))}</strong></span>` : '',
+        outputTokens ? `<span class="ica--card-pill ica--card-pill--tokens" title="Estimated Output Tokens" aria-label="Output Tokens ${escapeHtml(formatTokenCount(outputTokens))}"><span>Output</span><strong>${escapeHtml(formatTokenCount(outputTokens))}</strong></span>` : '',
     ].filter(Boolean).join('');
 
     return pills ? `<span class="ica--tpanel-agent-token-pills">${pills}</span>` : '';
@@ -584,8 +584,8 @@ function buildChatOnlyComposer(state) {
     return `
         <div class="ica--chatonly-composer ica--tpanel-chatonly-composer">
             <label>
-                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private side chat</span></span>
-                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatonly-input" data-role="chat-only-input" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside..." aria-label="Private side chat">
+                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-circle"></i><span>Private Side Chat</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatonly-input" data-role="chat-only-input" maxlength="${CHAT_ONLY_INPUT_MAX_CHARS}" placeholder="Type an aside…" aria-label="Private Side Chat">
             </label>
             <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatonly-send" data-action="panel-chat-only-send" title="Send This Aside to Chat Only" aria-label="Send Aside">
                 <i class="fa-solid fa-paper-plane"></i>
@@ -621,8 +621,8 @@ function buildChatroomReplyComposer(state) {
     return `
         <div class="ica--chatonly-composer ica--tpanel-chatroom-reply">
             <label>
-                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-comment"></i><span>Respond to the chatroom</span></span>
-                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatroom-reply-input" data-role="chatroom-reply-input" maxlength="${CHATROOM_REPLY_MAX_CHARS}" placeholder="Respond to the chatroom..." aria-label="Respond to the chatroom">
+                <span class="ica--chatonly-live ica--tpanel-chatonly-live"><i class="fa-solid fa-comment"></i><span>Respond to the Chatroom</span></span>
+                <input type="text" class="text_pole ica--chatonly-input ica--tpanel-chatroom-reply-input" data-role="chatroom-reply-input" maxlength="${CHATROOM_REPLY_MAX_CHARS}" placeholder="Respond to the chatroom…" aria-label="Respond to the Chatroom">
             </label>
             <button type="button" class="menu_button menu_button_icon ica--chatonly-send ica--tpanel-chatroom-reply-send" data-action="panel-chatroom-reply-send" title="Send Your Reply to the Chatroom" aria-label="Send Reply">
                 <i class="fa-solid fa-paper-plane"></i>
@@ -756,7 +756,7 @@ function buildCompactionButton(state) {
 
     return `
         <button type="button" class="menu_button menu_button_icon ica--tpanel-compact" data-action="panel-hide-before" title="Exclude every message above this shard from prompts — the shard carries the history from here on">
-            <span>Hide story above this shard</span>
+            <span>Hide Story Above This Shard</span>
         </button>
     `;
 }
@@ -1301,7 +1301,7 @@ export function initCompanionPanel() {
 
     if (!$('#ica_tracker_panel_wand_item').length) {
         const menuItem = $(`
-            <div id="ica_tracker_panel_wand_item" class="list-group-item flex-container flexGap5 interactable" title="Open the companion panel" tabindex="0">
+            <div id="ica_tracker_panel_wand_item" class="list-group-item flex-container flexGap5 interactable" title="Open the Companion Panel" tabindex="0">
                 <div class="fa-solid fa-user-astronaut extensionsMenuExtensionButton"></div>
                 <span>Companion Panel</span>
             </div>

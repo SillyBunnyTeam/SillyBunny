@@ -2495,7 +2495,7 @@
       "gates": [
         "data-source=openai"
       ],
-      "label": "Add current model to favorites"
+      "label": "Add Current Model to Favorites"
     },
     "#openai_bypass_status_check": {
       "id": "openai_bypass_status_check",
@@ -3891,7 +3891,7 @@
       "gates": [
         "data-source=nanogpt"
       ],
-      "label": "Allowed providers"
+      "label": "Allowed Providers"
     },
     "#nanogpt_allowed_providers": {
       "id": "nanogpt_allowed_providers",
@@ -3908,7 +3908,7 @@
       "gates": [
         "data-source=nanogpt"
       ],
-      "label": "Allowed providers"
+      "label": "Allowed Providers"
     },
     "nanogpt_form>textarea[Search]": {
       "id": null,
@@ -3942,7 +3942,7 @@
       "gates": [
         "data-source=nanogpt"
       ],
-      "label": "Ignored providers"
+      "label": "Ignored Providers"
     },
     "#nanogpt_ignored_providers": {
       "id": "nanogpt_ignored_providers",
@@ -3959,7 +3959,7 @@
       "gates": [
         "data-source=nanogpt"
       ],
-      "label": "Ignored providers"
+      "label": "Ignored Providers"
     },
     "nanogpt_form>textarea[Search]#1": {
       "id": null,

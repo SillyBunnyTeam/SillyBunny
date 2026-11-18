@@ -4102,7 +4102,7 @@ describe('in-chat agent post-processing runner', () => {
         const generationPromise = eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
         await Promise.resolve();
 
-        expect(globalThis.toastr.info).toHaveBeenCalledWith('Pathfinder is processing lore for this reply...', 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
+        expect(globalThis.toastr.info).toHaveBeenCalledWith('Pathfinder is processing lore for this reply…', 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
         expect(globalThis.toastr.clear).not.toHaveBeenCalled();
 
         resolveRetrieval();
@@ -4879,12 +4879,12 @@ describe('in-chat agent post-processing runner', () => {
         const outputReadyPromise = eventSource.emit(eventTypes.MAIN_GENERATION_OUTPUT_READY, outputData);
 
         await waitFor(() => callGenericPopup.mock.calls.length === 1);
-        expect(callGenericPopup.mock.calls[0][0]).toContain('Review the main output before it is shown in chat.');
+        expect(callGenericPopup.mock.calls[0][0]).toContain('Review the main output before it is shown in chat');
         expect(callGenericPopup.mock.calls[0][0]).toContain('raw assistant reply');
         expect(callGenericPopup.mock.calls[0][3]).toEqual(expect.objectContaining({
             customButtons: expect.arrayContaining([
-                expect.objectContaining({ text: 'Skip intercept' }),
-                expect.objectContaining({ text: 'Continue intercept' }),
+                expect.objectContaining({ text: 'Skip Intercept' }),
+                expect.objectContaining({ text: 'Continue Intercept' }),
             ]),
         }));
         expect(generateQuietPrompt).not.toHaveBeenCalled();
@@ -5493,7 +5493,7 @@ describe('in-chat agent post-processing runner', () => {
         expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
         expect(generateQuietPrompt).not.toHaveBeenCalled();
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run', 'Trackers fixed');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run', 'Trackers Fixed');
     });
 
     test('manual tracker fix regenerates missing extract tracker blocks', async () => {
@@ -5515,7 +5515,7 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[0].mes).toBe('Fresh reply without an inline tracker block.\n\n[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 tracker regenerated, 1 post-process run', 'Trackers fixed');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 tracker regenerated, 1 post-process run', 'Trackers Fixed');
 
         await new Promise(resolve => setTimeout(resolve, 5));
     });
@@ -5630,7 +5630,7 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[0].mes).toBe('Fresh reply without a tracker.');
         expect(chatMetadata.agent_status_data).toBeUndefined();
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run, 1 error', 'Trackers fixed');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run, 1 error', 'Trackers Fixed');
     });
 
     test('manual tracker fix keeps metadata from the newest valid tracker state', async () => {

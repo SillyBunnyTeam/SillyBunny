@@ -358,7 +358,7 @@ describe('mountEditorChrome shared header', () => {
         expect(mark.hidden).toBe(true);
         expect(mark.className).toBe('sb-editor-dirty sb-test-dirty');
         expect(mark.querySelector('.sb-editor-dirty-dot').getAttribute('aria-hidden')).toBe('true');
-        expect(mark.getAttribute('aria-label')).toBe('Unsaved changes');
+        expect(mark.getAttribute('aria-label')).toBe('Unsaved Changes');
 
         const host = document.createElement('div');
         const summary = document.createElement('button');

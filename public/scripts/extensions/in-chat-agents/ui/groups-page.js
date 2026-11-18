@@ -22,7 +22,7 @@ export function mountAgentGroups({ host, services, onClose, preparePopup }) {
         const present = new Set();
         for (const section of state.sections) {
             if (!groups.has(section.id)) {
-                const group = createPrefGroup({ title: section.id === 'builtin' ? t`Built-in Groups` : t`Custom Groups`, subtitle: t`lorum ipsum`, field: section.id, rows: [] });
+                const group = createPrefGroup({ title: section.id === 'builtin' ? t`Built-In Groups` : t`Custom Groups`, subtitle: t`lorum ipsum`, field: section.id, rows: [] });
                 group.section.querySelector('.ds-pref-group-subtitle').dataset.sbCopyPlaceholder = 'true';
                 groups.set(section.id, group);
                 page.body.append(group.section);
