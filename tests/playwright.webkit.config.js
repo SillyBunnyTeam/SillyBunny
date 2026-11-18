@@ -7,6 +7,7 @@ export const DIALOG_SPECS = [
     'sillybunny-dialog-frame',
     'sillybunny-dialog-tiers',
     'popup-scroll',
+    'popup-animation-none',
     'window-dialogs',
     'window-content-dialogs',
     'window-media-dialogs',

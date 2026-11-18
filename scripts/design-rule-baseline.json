@@ -79,8 +79,8 @@
         "public/css/sillybunny-mobile-shell.css": {
             "radius-literal": 1,
             "shadow-literal": 2,
-            "important": 299,
-            "spacing-off-scale": 59,
+            "important": 295,
+            "spacing-off-scale": 58,
             "spacing-off-scale-fallback": 3
         },
         "public/css/sillybunny-paper-theme.css": {

@@ -464,22 +464,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     padding-bottom: max(24px, calc(var(--sb-mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + var(--sb-ios-keyboard-bottom-inset, 0px)));
 }
 
-/* =========================================================================
-   Mobile fixes for the new character editor (PR #153)
-   ========================================================================= */
-@media screen and (max-width: 768px) {
-    /* Alternate Greetings - icon-only Delete button */
-    #right-nav-panel .alternate_greeting_actions {
-        gap: 4px !important;
-    }
-
-    #right-nav-panel .alternate_greeting_actions :is(.menu_button, .right_menu_button) {
-        min-width: 40px !important;
-        min-height: 40px !important;
-        touch-action: manipulation;
-    }
-}
-
 @media screen and (max-width: 768px) {
     /* SillyBunny: descendant combinators, because the Connections panel wraps each provider's
        content (connect row included) in .sb-connections-provider-body. */
@@ -978,10 +962,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         flex-wrap: nowrap;
         align-items: center;
         min-width: max-content;
-    }
-
-    #right-nav-panel.openDrawer .sb-character-editor-side-actions #favorite_button {
-        min-width: 0 !important;
     }
 
     .sb-model-id-picker-menu {

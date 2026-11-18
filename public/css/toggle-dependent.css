@@ -525,24 +525,9 @@ label[for="trim_spaces"]:not(:has(input:checked)) small {
     filter: brightness(0.5);
 }
 
-#bind_preset_to_connection:checked~.toggleOff {
-    display: none;
-}
-
-#bind_preset_to_connection:not(:checked)~.toggleOn {
-    display: none;
-}
-
+/* SillyBunny: the .toggleOn and .toggleOff rules are removed, no markup has those icons. */
 label[for="bind_preset_to_connection"]:has(input:checked) {
     color: var(--active);
-}
-
-#bind_preset_to_sampling:checked~.toggleOff {
-    display: none;
-}
-
-#bind_preset_to_sampling:not(:checked)~.toggleOn {
-    display: none;
 }
 
 label[for="bind_preset_to_sampling"]:has(input:checked) {

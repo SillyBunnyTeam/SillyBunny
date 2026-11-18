@@ -870,7 +870,10 @@ export class Popup {
         fixToastrForDialogs();
 
         // After the dialog is actually completely closed, remove it from the DOM
-        runAfterAnimation(this.dlg, async () => {
+        // SillyBunny: the theme's exit animation ignores `popup--animation-none`, and WebKit does not report the end
+        // of that popup's 0ms backdrop animation, so the popup waited out the 200ms exit. It is removed at once instead.
+        const afterExit = this.dlg.classList.contains('popup--animation-none') ? (_dlg, callback) => callback() : runAfterAnimation;
+        afterExit(this.dlg, async () => {
             // Call the close on the dialog
             this.dlg.close();
 

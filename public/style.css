@@ -1504,13 +1504,6 @@ body .panelControlBar {
     opacity: 0.7;
 }
 
-.swipe_picker_header {
-    position: -webkit-sticky;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-}
-
 .swipe_picker_popup .popup-body,
 .swipe_picker_popup .popup-content {
     display: flex;
@@ -3687,24 +3680,6 @@ grammarly-extension {
     margin: 10px;
 }
 
-#avatar_controls {
-    height: 100%;
-    width: 100%;
-    flex-grow: 1;
-    align-items: flex-start;
-    flex-flow: row wrap;
-    justify-content: center;
-    gap: 8px;
-    padding: 5px 5px 10px 0;
-}
-
-#avatar_controls>label {
-    flex: 0 1 220px;
-    min-width: min(220px, 100%);
-    height: auto !important;
-    margin: 0;
-}
-
 #description_div,
 #first_message_div {
     display: flex;
@@ -3803,64 +3778,6 @@ grammarly-extension {
     margin: 0;
 }
 
-/* Character button groups */
-.char-button-group {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    padding: 4px;
-    border-radius: 1rem;
-}
-
-.char-button-group-primary {
-    background: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 20%, transparent);
-}
-
-.char-button-group-secondary {
-    background: color-mix(in srgb, var(--color-surface, var(--SmartThemeBlurTintColor)) 50%, transparent);
-    border: 1px solid var(--color-border, var(--SmartThemeBorderColor));
-}
-
-.char-button-group-manage {
-    background: color-mix(in srgb, var(--color-surface, var(--SmartThemeBlurTintColor)) 50%, transparent);
-    border: 1px solid var(--color-border, var(--SmartThemeBorderColor));
-}
-
-.char-button-toolbar {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
-    min-width: 0;
-    align-items: center;
-}
-
-.char-button-group-icons {
-    flex-wrap: nowrap;
-    justify-content: center;
-    overflow-x: auto;
-    scrollbar-width: thin;
-}
-
-.char-button-group-utility {
-    align-self: center;
-    justify-content: center;
-}
-
-.char-button-group-icons .menu_button,
-.char-button-group-utility .menu_button {
-    flex: 0 0 auto;
-}
-
-/* Labels on primary character buttons */
-.char-button-group-primary .menu_button[data-label]::after {
-    content: attr(data-label);
-    font-size: calc(var(--mainFontSize) * 0.75);
-    font-weight: 600;
-    margin-left: 2px;
-}
-
 .form_create_bottom_buttons_block {
     display: flex;
     flex-direction: column;
@@ -3871,27 +3788,7 @@ grammarly-extension {
     min-width: 0;
 }
 
-#avatar_controls > label[for="char-management-dropdown"] {
-    align-self: center;
-    margin-inline: auto;
-}
-
-.greetings-editor-shell {
-    gap: 10px;
-}
-
-/* SillyBunny: the .character-greetings-* rules are removed, nothing uses them. */
-.character-greeting-label-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    justify-content: space-between;
-}
-
-.character-greeting-label-row {
-    font-weight: 600;
-}
-
+/* SillyBunny: the rules of the removed character editor action block (#avatar_controls, .char-button-*, .sb-character-editor-side-actions), .greetings-editor-shell and .character-greeting-label-row are removed, nothing uses them. */
 #character_greetings_editor .alternate_greetings_list {
     overflow-y: auto;
     max-height: 45dvh;
@@ -5248,10 +5145,6 @@ body:is([data-generating="true"], [data-swiping="true"]) :is(
     text-align: left;
 }
 
-.swipe_picker_block .select_chat_actions {
-    align-items: baseline;
-}
-
 .swipe_picker_expand_toggle {
     display: none !important;
 }
@@ -6263,18 +6156,6 @@ body:not(.movingUI) .drawer-content.maximized {
     flex: 1;
 }
 
-.editable-slider-notification {
-    position: absolute;
-    right: 0px;
-    left: 0px;
-    margin: 0 auto;
-    width: 70%;
-    top: 5px;
-    padding: 0;
-    display: block;
-    text-align: center;
-}
-
 .openai_logit_bias_form,
 .logit_bias_form {
     display: flex;
@@ -7165,28 +7046,7 @@ body:not(.movingUI) .drawer-content.maximized {
     }
 }
 
-/* SillyBunny: .nanogpt_info_btn rule removed, nothing uses it. */
-.nanogpt-credits-popup {
-    display: grid;
-    gap: 0.25em 1em;
-    grid-template-columns: max-content minmax(0, 1fr);
-    text-align: left;
-}
-
-.nanogpt-credits-popup h3 {
-    grid-column: 1 / -1;
-    margin: 0 0 0.25em;
-}
-
-.nanogpt-credits-popup div:nth-of-type(odd) {
-    opacity: 0.8;
-    white-space: nowrap;
-}
-
-.nanogpt-credits-popup div:nth-of-type(even) {
-    font-weight: 600;
-    overflow-wrap: anywhere;
-}
+/* SillyBunny: the .nanogpt-credits-popup, .swipe_picker_header, .select_chat_actions and .editable-slider-notification rules are removed, nothing builds them. */
 
 @media (prefers-contrast: more) {
     :root {
@@ -7591,61 +7451,5 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
     #send_form.sb-generating-controls #mes_stop {
         margin: 0 !important;
         opacity: 1;
-    }
-}
-
-@media screen and (max-width: 768px) {
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-side-actions {
-        width: 100%;
-        max-width: 100%;
-        align-self: start;
-        justify-self: stretch;
-        justify-content: flex-start;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-side-actions #favorite_button {
-        flex: 0 0 auto;
-        width: auto;
-        min-width: max(var(--sb-mobile-touch-target, 44px), 4.5rem);
-        overflow: visible;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls {
-        grid-column: 1 / -1;
-        width: 100%;
-        min-width: 0;
-        height: auto;
-        flex-direction: column;
-        flex-wrap: nowrap;
-        align-items: stretch;
-        justify-content: flex-start;
-        padding: 0;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > .form_create_bottom_buttons_block,
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-toolbar {
-        flex: 0 0 auto;
-        width: 100%;
-        min-width: 0;
-        align-items: stretch;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-group-icons {
-        width: 100%;
-        max-width: 100%;
-        box-sizing: border-box;
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        overflow-x: visible;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-group-icons .menu_button {
-        flex: 0 0 40px;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div {
-        width: 100%;
-        min-width: 0;
-        max-width: 100%;
     }
 }

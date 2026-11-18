@@ -27,32 +27,22 @@ describe('mobile character editor css', () => {
             'tags tags';`);
     });
 
-    test('stretches the mobile editor action rows before wrapping', () => {
-        const avatarControlsRule = getRuleBody(styleCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls');
-        const formButtonsRule = getRuleBody(styleCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > .form_create_bottom_buttons_block,\n    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-toolbar');
-        const sideActionsRule = getRuleBody(styleCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) .sb-character-editor-side-actions');
-        const iconActionsRule = getRuleBody(styleCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-group-icons');
-
-        expect(avatarControlsRule).toContain('grid-column: 1 / -1;');
-        expect(avatarControlsRule).toContain('align-items: stretch;');
-        expect(formButtonsRule).toContain('flex: 0 0 auto;');
-        expect(sideActionsRule).toContain('max-width: 100%;');
-        expect(sideActionsRule).toContain('justify-self: stretch;');
-        expect(iconActionsRule).toContain('width: 100%;');
-        expect(iconActionsRule).toContain('flex-wrap: wrap;');
-        expect(iconActionsRule).toContain('overflow-x: visible;');
+    test('leaves the removed character editor action block out of the base stylesheet', () => {
+        // The editor rebuild removed #avatar_controls and the button groups inside it; no markup builds them.
+        for (const name of ['#avatar_controls', '.char-button-group', '.char-button-toolbar', '.sb-character-editor-side-actions', '.alternate_greeting_actions']) {
+            expect(mobileShellCss).not.toContain(name);
+        }
+        // A SillyBunny marker comment names the removed selectors, so compare the rules only.
+        const styleRules = styleCss.replace(/\/\*[\s\S]*?\*\//g, '');
+        for (const name of ['#avatar_controls', '.char-button-group', '.char-button-toolbar', '.sb-character-editor-side-actions']) {
+            expect(styleRules).not.toContain(name);
+        }
     });
 
     test('keeps the mobile editor action wrapper flattened in the late mobile shell', () => {
         const flattenedActionWrapperRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #character-editor-pinned-actions');
 
         expect(flattenedActionWrapperRule).toContain('display: contents !important;');
-    });
-
-    test('leaves the removed action block and its tag row out of the late mobile shell', () => {
-        // The editor rebuild removed #avatar_controls; rules for it and its children would match nothing.
-        expect(mobileShellCss).not.toContain('#avatar_controls');
-        expect(mobileShellCss).not.toContain('.char-button-group-icons');
     });
 
     test('keeps the retired hotswap band hidden instead of reserving editor space', () => {

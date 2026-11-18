@@ -1451,6 +1451,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05, PR #870 (stand-in expression packs). |
 | Owner | Defaults and release integrator. |
 
+### `public/style.css`, `public/css/toggle-dependent.css` and `public/scripts/popup.js` - rules of removed markup, and a popup without an exit animation
+| Field | Value |
+| --- | --- |
+| File | `public/style.css` (rules removed for markup SillyBunny deleted or the editor rebuild replaced: `#avatar_controls` and the `.char-button-*` family with its phone `@media` block, `.sb-character-editor-side-actions`, `.greetings-editor-shell`, `.character-greeting-label-row`, `.nanogpt-credits-popup`, `.editable-slider-notification`, `.swipe_picker_header`, `.select_chat_actions`); `public/css/toggle-dependent.css` (the `.toggleOn` and `.toggleOff` sibling rules of the two bind-preset check boxes, whose icons no markup has); `public/scripts/popup.js` (`#hide()`: a popup with `popup--animation-none` is removed at once instead of waiting for an exit animation). |
+| Area | Blocking stylesheet size; Popup close. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | None for the stylesheets: each removal site carries a marker. `Popup.#hide()` for the popup. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 10.4c): a rule is removed only with proof that nothing in markup or scripts creates what it names. The theme gives every closing popup a 200ms exit; a popup opened with `animation: 'none'` skips it, because WebKit does not report the end of that popup's 0ms backdrop animation and the dialog otherwise stays in the document for the 200ms. |
+| Protecting tests | `tests/mobile-character-editor-css.test.js` (the removed rules stay absent); `tests/popup-animation-none.e2e.js` (Chromium, Firefox and WebKit). |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the popup spec in Chromium and WebKit, the character editor, dialog and backend settings specs, the audit of a sample of surfaces from every family. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 10.4c). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |
