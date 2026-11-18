@@ -91,7 +91,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expect(manager).toBeHidden();
             const folder = (await storedFolders(page)).personas.folders[0];
             expect(folder).toMatchObject({ name: 'Cast', expanded: true });
-            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast, 0 personas');
+            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast 0 personas');
 
             await editor.getByRole('listitem', { name: persona.name, exact: true }).click();
             const folderRow = editor.locator('.sb-persona-entry [data-sb-editor-field="folder"]');
@@ -99,7 +99,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await folderRow.locator('.ds-select-row__trigger').click();
             await page.getByRole('option', { name: 'Cast', exact: true }).click();
             await expect(folderRow.locator('.ds-select-row__trigger')).toHaveText('Cast');
-            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast, 1 persona');
+            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast 1 persona');
             await expect.poll(() => savedFolders(page)?.personas?.members).toEqual({ [persona.avatarId]: folder.id });
             expect(savedFolders(page).characters.members).toEqual((await storedFolders(page)).characters.members);
             // The persona is filed under its header, so it is not dirty and Save stays off.
@@ -119,6 +119,8 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await header.click();
             await expect(row).toHaveCount(0);
             await expect(header).toHaveAttribute('aria-expanded', 'false');
+            await expect(header).toHaveAccessibleName('Cast 1 persona');
+            await expect(header).toMatchAriaSnapshot('- button "Cast 1 persona"');
             expect((await storedFolders(page)).personas.folders[0].expanded).toBe(false);
 
             await editor.getByRole('button', { name: 'Search', exact: true }).click();
@@ -191,12 +193,12 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             expect(copyId).toBeTruthy();
             await expect.poll(async () => (await storedFolders(page)).personas.members[copyId]).toBe(folderId);
             await expect.poll(() => savedFolders(page)?.personas?.members?.[copyId]).toBe(folderId);
-            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast, 2 personas');
+            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast 2 personas');
 
             const removed = await page.evaluate(async avatarId => (await import('./scripts/personas.js')).deletePersonaRecord(avatarId, { silent: true }), copyId);
             expect(removed).toBeTruthy();
             await expect.poll(async () => (await storedFolders(page)).personas.members).toEqual({ [persona.avatarId]: folderId });
-            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast, 1 persona');
+            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast 1 persona');
         });
 
         test('the manager\'s members page adds a persona to the folder and removes it again', async ({ page }) => {
@@ -232,7 +234,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
                 return folder.id;
             }, { avatarId: persona.avatarId });
             const editor = await openList(page);
-            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast, 1 persona');
+            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast 1 persona');
             await editor.getByRole('button', { name: 'Persona Management', exact: true }).click();
             await page.getByRole('menuitem', { name: 'Manage Folders', exact: true }).click();
             const manager = page.locator('.sb-dialog-host[open]:has(> .sb-folder-manager)');

@@ -469,15 +469,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
    ========================================================================= */
 @media screen and (max-width: 768px) {
     /* Alternate Greetings - icon-only Delete button */
-    #right-nav-panel .delete_alternate_greeting > span,
-    #right-nav-panel .delete_alternate_greeting [data-i18n="Delete"] {
-        display: none !important;
-    }
-
-    #right-nav-panel .delete_alternate_greeting {
-        padding-inline: 8px !important;
-    }
-
     #right-nav-panel .alternate_greeting_actions {
         gap: 4px !important;
     }
@@ -612,7 +603,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     #top-bar,
 .sb-shell-root,
 .sb-shell-main,
-.sb-shell-header,
 .sb-shell-panel-scroller,
 .sb-shell-root button,
 .sb-shell-root input,
@@ -645,30 +635,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
             minmax(var(--sb-chatbar-height), auto);
         gap: var(--sb-topbar-stack-gap);
         width: 100%;
-    }
-
-    #sb-chatbar {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        grid-template-areas: 'leading search actions';
-        align-items: center;
-        gap: var(--sb-chatbar-gap);
-        min-height: var(--sb-chatbar-height);
-        padding: var(--sb-chatbar-padding-y) var(--sb-chatbar-padding-x);
-        border-radius: var(--sb-chatbar-radius);
-    }
-
-    #sb-chatbar-select-field {
-        display: none;
-    }
-
-    #sb-chatbar-search-field {
-        grid-area: search;
-        min-width: 0;
-    }
-
-    #sb-chatbar .sb-chatbar-search-status {
-        display: none;
     }
 
     /* Adopted third-party buttons keep the same minimum target size as the rest of the bar.
@@ -844,28 +810,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         line-height: 1.24;
     }
 
-    .sb-shell-header {
-        gap: 8px;
-        padding: 14px 56px 10px 16px;
-    }
-
-    .sb-shell-kicker {
-        font-size: calc(var(--mainFontSize) * 0.6);
-        font-weight: 700;
-        letter-spacing: 0;
-        text-transform: none;
-        color: var(--sb-muted-fg);
-    }
-
-    .sb-shell-title {
-        font-size: calc(var(--mainFontSize) * 1.06);
-        line-height: 1.08;
-    }
-
-    .sb-shell-description {
-        display: none;
-    }
-
     .sb-shell-panel-scroller {
         padding-bottom: var(--sb-mobile-safe-area-bottom, max(34px, env(safe-area-inset-bottom, 0px)));
     }
@@ -898,11 +842,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     .sb-shell-main::before {
         background: var(--sb-layer-drawer);
-        opacity: 1;
-    }
-
-    .sb-shell-header::before {
-        background: var(--sb-layer-headerbar);
         opacity: 1;
     }
 
@@ -986,51 +925,12 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         gap: 6px;
     }
 
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #character-editor-pinned-actions,
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls,
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > .form_create_bottom_buttons_block,
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-toolbar {
+    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #character-editor-pinned-actions {
         display: contents !important;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls {
-        flex-basis: 100%;
     }
 
     #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar-and-name-block .sb-character-editor-controls-row > #name_div {
         width: 100%;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div {
-        max-width: 100%;
-    }
-
-    /* SillyBunny: #avatar_controls was removed in the Step 3 editor rebuild and
-       #char-management-dropdown is now a hidden transport, so the four rules
-       below that target them are dead. Left in place because they are harmless
-       and this block is shared with other menu types. */
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div .tag_controls {
-        grid-template-columns: minmax(0, 1fr) auto;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div .tag_controls > label[for="char-management-dropdown"] {
-        grid-column: 1 / -1;
-        justify-self: stretch;
-        width: 100%;
-        max-width: 100%;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls #char-management-dropdown {
-        width: 100%;
-        max-width: 100%;
-    }
-
-    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-group-icons {
-        flex-wrap: wrap;
-        justify-self: start;
-        justify-content: flex-start;
-        max-width: 100%;
-        overflow: visible;
     }
 
     #right-nav-panel.openDrawer > .scrollableInner,

@@ -6058,7 +6058,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     gap: 4px;
 }
 
-#sb-settings-page #Backgrounds :is(#bg_thumb_zoom_out, #bg_thumb_zoom_in, #bg-scroll-top, #bg_selection_mode_button:not(:has(#bg_group_select_count:not(:empty)))) {
+#sb-settings-page #Backgrounds :is(#bg_thumb_zoom_out, #bg_thumb_zoom_in, #bg-scroll-top) {
     width: var(--sb-bg-icon-size);
     height: var(--sb-bg-icon-size);
     min-width: var(--sb-bg-icon-size);
@@ -6071,11 +6071,11 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     padding: 0;
 }
 
-#sb-settings-page #Backgrounds :is(#bg_menu_content, #bg_custom_content, #bg_folder_grid) {
+#sb-settings-page #Backgrounds :is(#bg_menu_content, #bg_custom_content) {
     gap: 8px;
 }
 
-#sb-settings-page #Backgrounds :is(.bg_example, .bg_folder_tile) {
+#sb-settings-page #Backgrounds .bg_example {
     border-radius: var(--sb-radius-card);
     box-shadow: none;
 }
@@ -6124,10 +6124,6 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 }
 
 @media screen and (max-width: 620px) {
-    #sb-settings-page #Backgrounds :is(#auto_background, #bg_add_folder_button, #add_background_button_top, #bg_group_add_to_folder_button, #bg_folder_remove_selected_button) > span {
-        display: inline;
-    }
-
     #sb-settings-page #Backgrounds #bg_tabs {
         grid-template-columns: minmax(0, 1fr);
     }

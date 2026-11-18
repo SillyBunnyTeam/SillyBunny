@@ -905,16 +905,6 @@
         appearance: none;
     }
 
-    /* Reduce Import Folder and Sync Extensions button sizes on mobile */
-    .sb-server-action {
-        padding: 8px 12px !important;
-        font-size: 13px !important;
-    }
-
-    .sb-server-action i {
-        font-size: 14px !important;
-    }
-
     .select2-dropdown {
         z-index: var(--sb-z-critical) !important;
     }

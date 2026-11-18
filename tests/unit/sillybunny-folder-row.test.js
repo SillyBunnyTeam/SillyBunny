@@ -44,6 +44,31 @@ describe('folder row chevron', () => {
     });
 });
 
+describe('folder row accessible name', () => {
+    // The name is computed from the content (WCAG 2.5.3 Label in Name), so it holds the visible title, then the count, and no more.
+    const visibleText = row => [...row.querySelectorAll('.ds-entity-row__title, .ds-entity-row__subtitle')].map(node => node.textContent).join(' ');
+    const contentOutsideName = row => [...row.querySelectorAll('.ds-entity-row__chevron, .sb-folder-row__dot')].map(node => node.getAttribute('aria-hidden'));
+
+    test('has no aria-label, so the name is the visible name and count', () => {
+        expect(header.hasAttribute('aria-label')).toBe(false);
+        expect(header.getAttribute('role')).toBe('button');
+        expect(visibleText(header)).toBe('A 2 personas');
+    });
+
+    test('keeps the chevron and the colour dot out of the name', () => {
+        expect(contentOutsideName(header)).toEqual(['true', 'true']);
+        expect(header.querySelector('img, [aria-label], [title]')).toBeNull();
+    });
+
+    test('an update renames the row without adding an aria-label', () => {
+        const factory = createFolderRow({ key: 'folder:b', folder: { id: 'b', name: 'B', scope: 'groups' }, count: 1, countLabel: '1 group', expanded: false });
+        factory.update({ folder: { id: 'b', name: 'Bee', scope: 'groups', color: '#ff0000' }, countLabel: '3 groups', scope: 'groups', expanded: true });
+        expect(factory.row.hasAttribute('aria-label')).toBe(false);
+        expect(visibleText(factory.row)).toBe('Bee 3 groups');
+        expect(factory.row.querySelector('.sb-folder-row__dot').style.getPropertyValue('--sb-folder-color')).toBe('#ff0000');
+    });
+});
+
 describe('folder motion', () => {
     test('closing animates the folder\'s own rows out, then commits once the last has ended', () => {
         const motion = createFolderMotion();

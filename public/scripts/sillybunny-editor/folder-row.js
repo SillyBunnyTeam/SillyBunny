@@ -135,7 +135,8 @@ export function createFolderRow({ key, folder, count, countLabel, expanded }) {
     const { row } = rowFactory;
     row.classList.add('ds-row-expander', 'sb-folder-row');
     row.setAttribute('role', 'button');
-    row.setAttribute('aria-label', `${folder.name}, ${countLabel}`);
+    // The button's name comes from its text: the title, then the count. An aria-label with a comma between them would not contain the visible text (WCAG 2.5.3).
+    row.removeAttribute('aria-label');
     row.dataset.folderId = folder.id;
     row.dataset.folderScope = folder.scope;
     setExpanded(row, expanded);
@@ -148,7 +149,8 @@ export function createFolderRow({ key, folder, count, countLabel, expanded }) {
                 title: entry.folder.name,
                 subtitle: entry.countLabel,
             });
-            row.setAttribute('aria-label', `${entry.folder.name}, ${entry.countLabel}`);
+            // The entity row sets its label on every rename; the name stays the content's.
+            row.removeAttribute('aria-label');
             row.dataset.folderId = entry.folder.id;
             row.dataset.folderScope = entry.scope;
             setColor(dot, entry.folder.color);

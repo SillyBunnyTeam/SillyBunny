@@ -135,8 +135,10 @@ for (const { label, width, height, touch } of [
             await expect(page.locator('.sb-bg-unfiled__heading')).toHaveText('No Folder');
             await expect(page.locator('.sb-bg-unfiled .bg_example[bgfile^="p13e-"]')).toHaveCount(4);
 
+            await expect(folderRow(page, `${PREFIX}One`)).toMatchAriaSnapshot(`- button "${PREFIX}One 2 backgrounds" [expanded]`);
             await folderRow(page, `${PREFIX}One`).click();
             await expect(section(page, `${PREFIX}One`).locator('.bg_example')).toHaveCount(0);
+            await expect(folderRow(page, `${PREFIX}One`)).toMatchAriaSnapshot(`- button "${PREFIX}One 2 backgrounds"`);
             await expect.poll(async () => (await stored(page))?.folders.find(folder => folder.name === `${PREFIX}One`)?.expanded).toBe(false);
             await folderRow(page, `${PREFIX}One`).click();
             await expect(section(page, `${PREFIX}One`).locator('.bg_example')).toHaveCount(2);

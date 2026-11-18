@@ -871,6 +871,32 @@ test.describe('folder headers in list and grid view', () => {
         await page.mouse.up();
     });
 
+    // The header's name is its own text, a title then a count with a space between: a name with a comma that the text lacks fails WCAG 2.5.3.
+    for (const [scope, view, title, count] of [['characters', 'characters', 'QA Folder', '2 characters'], ['groups', 'groups', 'QA Group Folder', '2 groups']]) {
+        test(`a ${scope} folder header is named by its visible title and count, open and closed`, async ({ page }) => {
+            await prepareList(page, { width: 1440, height: 900 });
+            await page.evaluate(async ({ scope, title }) => {
+                const app = await import('/script.js');
+                const groupChats = await import('/scripts/group-chats.js');
+                const folders = await import('/scripts/sillybunny-folders.js');
+                const folder = folders.createFolder(scope, title, { expanded: true });
+                const members = scope === 'groups' ? groupChats.groups.slice(0, 2).map(group => group.id) : app.characters.slice(0, 2).map(character => character.avatar);
+                folders.setFolder(scope, members, folder.id);
+            }, { scope, title });
+            await showView(page, view);
+            const header = list(page).locator('.sb-folder-row').first();
+            await expect(header).toBeVisible();
+            await expect(header).toHaveAttribute('aria-expanded', 'true');
+            await expect(header).not.toHaveAttribute('aria-label', /.*/);
+            await expect(header).toHaveAccessibleName(`${title} ${count}`);
+            await expect(header).toMatchAriaSnapshot(`- button "${title} ${count}" [expanded]`);
+            await header.click();
+            await expect(header).toHaveAttribute('aria-expanded', 'false');
+            await expect(header).toHaveAccessibleName(`${title} ${count}`);
+            await expect(header).toMatchAriaSnapshot(`- button "${title} ${count}"`);
+        });
+    }
+
     test('a folder header in grid view stays one list-view row across the grid', async ({ page }) => {
         const header = await addFolder(page);
         await page.evaluate(async () => {

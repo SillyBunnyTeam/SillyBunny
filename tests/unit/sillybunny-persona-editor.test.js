@@ -1045,6 +1045,11 @@ describe('Persona editor shell', () => {
 
     describe('folders', () => {
         const headers = () => [...container.querySelectorAll('.sb-folder-row')];
+        // A folder header has no aria-label: its name is its title, then its count, as the content reads.
+        const headerNames = () => headers().map(header => {
+            expect(header.hasAttribute('aria-label')).toBe(false);
+            return [...header.querySelectorAll('.ds-entity-row__title, .ds-entity-row__subtitle')].map(node => node.textContent).join(' ');
+        });
         const order = () => [...container.querySelectorAll('.sb-persona-list-rows > *')]
             .map(row => row.classList.contains('sb-folder-row') ? `folder:${row.dataset.folderId}` : row.dataset.avatarId);
 
@@ -1053,7 +1058,7 @@ describe('Persona editor shell', () => {
             folderStore.setFolder('personas', ['avatar-2.png', 'avatar-1.png'], folder.id);
             await mount(4);
             expect(order()).toEqual([`folder:${folder.id}`, 'avatar-1.png', 'avatar-2.png', 'avatar-0.png', 'avatar-3.png']);
-            expect(headers()[0].getAttribute('aria-label')).toBe('Cast, 2 personas');
+            expect(headerNames()).toEqual(['Cast 2 personas']);
             expect(headers()[0].getAttribute('aria-expanded')).toBe('true');
             const classes = [...container.querySelectorAll('.sb-persona-list-rows > *')].map(row => [
                 row.classList.contains('is-folder-section-start'), row.classList.contains('is-folder-member'), row.classList.contains('is-folder-section-end'),
@@ -1067,7 +1072,7 @@ describe('Persona editor shell', () => {
             folderStore.createFolder('personas', 'Empty');
             folderStore.setFolder('personas', ['avatar-0.png'], one.id);
             await mount(2);
-            expect(headers().map(header => header.getAttribute('aria-label'))).toEqual(['One, 1 persona', 'Empty, 0 personas']);
+            expect(headerNames()).toEqual(['One 1 persona', 'Empty 0 personas']);
         });
 
         test('a header toggles its folder from a click and from Enter, and the choice is stored', async () => {

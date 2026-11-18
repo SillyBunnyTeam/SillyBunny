@@ -298,8 +298,6 @@ function buildSection({ folder, files, total, expanded }, searching) {
         expanded,
     });
     row.tabIndex = 0;
-    // The button's name comes from its own text (name, then count). The shared row's aria-label has a comma that the visible text lacks, which axe reports.
-    row.removeAttribute('aria-label');
     const head = el('div', 'sb-bg-section__head ds-entity-list');
     const rows = el('div', 'ds-entity-list__rows');
     rows.append(row);

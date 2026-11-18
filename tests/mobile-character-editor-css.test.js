@@ -43,24 +43,16 @@ describe('mobile character editor css', () => {
         expect(iconActionsRule).toContain('overflow-x: visible;');
     });
 
-    test('keeps the mobile editor action wrappers flattened in the late mobile shell', () => {
-        const flattenedActionWrappersRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #character-editor-pinned-actions,\n    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls,\n    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > .form_create_bottom_buttons_block,\n    #right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls .char-button-toolbar');
+    test('keeps the mobile editor action wrapper flattened in the late mobile shell', () => {
+        const flattenedActionWrapperRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #character-editor-pinned-actions');
 
-        expect(flattenedActionWrappersRule).toContain('display: contents !important;');
+        expect(flattenedActionWrapperRule).toContain('display: contents !important;');
     });
 
-    test('gives the tag input the full first row on mobile', () => {
-        const tagControlsRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div .tag_controls');
-        const tagDropdownRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls > #tags_div .tag_controls > label[for="char-management-dropdown"]');
-        const tagDropdownSelectRule = getRuleBody(mobileShellCss, '#right-nav-panel.openDrawer:is([data-menu-type="character_edit"], [data-menu-type="create"]) #avatar_controls #char-management-dropdown');
-
-        expect(tagControlsRule).toContain('grid-template-columns: minmax(0, 1fr) auto;');
-        expect(tagDropdownRule).toContain('grid-column: 1 / -1;');
-        expect(tagDropdownRule).toContain('justify-self: stretch;');
-        expect(tagDropdownRule).toContain('width: 100%;');
-        expect(tagDropdownRule).toContain('max-width: 100%;');
-        expect(tagDropdownSelectRule).toContain('width: 100%;');
-        expect(tagDropdownSelectRule).toContain('max-width: 100%;');
+    test('leaves the removed action block and its tag row out of the late mobile shell', () => {
+        // The editor rebuild removed #avatar_controls; rules for it and its children would match nothing.
+        expect(mobileShellCss).not.toContain('#avatar_controls');
+        expect(mobileShellCss).not.toContain('.char-button-group-icons');
     });
 
     test('keeps the retired hotswap band hidden instead of reserving editor space', () => {
