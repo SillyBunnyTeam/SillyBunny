@@ -4820,7 +4820,7 @@ export async function saveWorldInfo(name, data, immediately = false) {
         // Another writer's draft must reach disk even if this replacement snapshot fails.
         _save(name, pending.data, { snapshot: pending.snapshot }).catch(error => {
             console.error(`Failed to save World Info ${name}:`, error);
-            toastr.error(String(error), t`World Info Save Failed`);
+            toastr.error(String(error), t`World Info save failed`); // SillyBunny: capitalisation by DESIGN.md
         });
     } else if (pending) {
         pending.snapshot.cancelled = true;
@@ -4842,7 +4842,7 @@ export async function saveWorldInfo(name, data, immediately = false) {
         pendingWorldInfoSaves.delete(name);
         _save(name, data, { snapshot }).catch(error => {
             console.error(`Failed to save World Info ${name}:`, error);
-            toastr.error(String(error), t`World Info Save Failed`);
+            toastr.error(String(error), t`World Info save failed`); // SillyBunny: capitalisation by DESIGN.md
         });
     }, debounce_timeout.relaxed);
     pendingWorldInfoSaves.set(name, { timer, data, snapshot });
@@ -4887,7 +4887,7 @@ async function renameWorldInfo(name, data) {
         return;
     }
     if (world_names.some(worldName => equalsIgnoreCaseAndAccents(worldName, newName))) {
-        toastr.warning(t`Name not accepted, as a World Info with that name already exists.`, t`Rename World Info`);
+        toastr.warning(t`Name not accepted, as a World Info with that name already exists`, t`Rename World Info`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
@@ -4906,7 +4906,7 @@ async function renameWorldInfo(name, data) {
             body: JSON.stringify({ oldName, newName, data }),
         });
         if (!response.ok) {
-            toastr.error(t`World Info could not be renamed.`, t`Rename World Info`);
+            toastr.error(t`World Info could not be renamed`, t`Rename World Info`); // SillyBunny: no trailing period, by DESIGN.md
             return;
         }
         saveTarget = newName;
@@ -6626,7 +6626,7 @@ export async function importEmbeddedWorldInfoBatch() {
     const candidates = detectEmbeddedLorebookCandidates(visibleCharList, world_names, canonicalNames);
 
     if (candidates.length === 0) {
-        toastr.info(t`No visible character cards have embedded lorebooks.`, t`Batch Import`);
+        toastr.info(t`No visible character cards have embedded lorebooks`, t`Batch import`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -6704,7 +6704,7 @@ export async function importEmbeddedWorldInfoBatch() {
     const selected = candidates.filter(c => selectedChids.has(String(c.chid)));
 
     if (selected.length === 0) {
-        toastr.info(t`No characters selected.`, t`Batch Import`);
+        toastr.info(t`No characters selected`, t`Batch import`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -6773,7 +6773,7 @@ export async function importEmbeddedWorldInfoBatch() {
     }
 
     await callGenericPopup(summary, POPUP_TYPE.TEXT, '', { okButton: t`Close` });
-    toastr.success(t`Imported ${imported.length} lorebook(s) from ${selected.length} character(s).`, t`Batch Import Complete`);
+    toastr.success(t`Imported ${imported.length} lorebook(s) from ${selected.length} character(s)`, t`Batch import complete`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
 }
 
 export function onWorldInfoChange(args, text) {

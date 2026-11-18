@@ -323,7 +323,7 @@ test.describe('when the archive code cannot be fetched', () => {
         await page.route(ARCHIVE_UI, route => (failing ? route.abort() : route.fallback()));
         await showCharacterList(page);
         await drawerButton(page).click();
-        await expect(page.getByText('Could not open Chat Archive.')).toBeVisible();
+        await expect(page.getByText('Could not open Chat Archive')).toBeVisible();
         await expect(dialog(page)).toHaveCount(0);
         await expect(drawerButton(page)).toBeEnabled();
 

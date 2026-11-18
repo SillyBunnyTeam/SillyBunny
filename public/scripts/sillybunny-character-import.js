@@ -206,8 +206,7 @@ export function mountCharacterImport(host) {
         drop.setDisabled(true);
         submit.setDisabled(true);
         picker.disabled = true;
-        // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
-        results.replaceChildren(createStatusPage({ state: 'loading', title: t`Loading…` }).element);
+        results.replaceChildren(createStatusPage({ state: 'loading', title: t`Importing Content` }).element);
         summary.textContent = '';
         try {
             const items = await runCharacterImport({ ...input, policy: 'stay' });

@@ -1704,13 +1704,13 @@ function applySillyBunnyPalettePreset(presetId) {
     applyBlurStrength();
     applyShadowWidth();
     saveSettingsDebounced();
-    toastr.success(`${preset.label} applied.`, 'SillyBunny Palette');
+    toastr.success(`${preset.label} applied`, 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
 
     if (power_user.fast_ui_mode && preset.values.blur_strength !== undefined) {
-        toastr.warning('Blur effects are disabled while Fast UI Mode is on.', 'SillyBunny Palette', { timeOut: 4000 });
+        toastr.warning('Blur effects are disabled while Fast UI Mode is on', 'SillyBunny palette', { timeOut: 4000 }); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     }
     if (power_user.noShadows && preset.values.shadow_width !== undefined) {
-        toastr.warning('Text shadows are disabled while No Shadows mode is on.', 'SillyBunny Palette', { timeOut: 4000 });
+        toastr.warning('Text shadows are disabled while No Shadows mode is on', 'SillyBunny palette', { timeOut: 4000 }); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     }
 }
 
@@ -1850,7 +1850,7 @@ async function handleCustomCssAiWandClick() {
             }
 
             if (!String(content.find('#custom_css_ai_instruction').val() ?? '').trim()) {
-                globalThis.toastr?.warning?.('Describe the CSS change first.');
+                globalThis.toastr?.warning?.('Describe the CSS change first'); // SillyBunny: no trailing period, by DESIGN.md
                 return false;
             }
 
@@ -1868,7 +1868,7 @@ async function handleCustomCssAiWandClick() {
     const applyMode = String(content.find('input[name="custom_css_ai_apply_mode"]:checked').val() ?? 'replace');
 
     if (!effectiveProfileId && online_status === 'no_connection') {
-        globalThis.toastr?.warning?.('Connect to an API or select a usable connection profile first.');
+        globalThis.toastr?.warning?.('Connect to an API or select a usable connection profile first'); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
@@ -1887,7 +1887,7 @@ async function handleCustomCssAiWandClick() {
         globalThis.toastr?.clear?.();
 
         if (!generatedCss.trim()) {
-            globalThis.toastr?.error?.('AI returned an empty CSS response.');
+            globalThis.toastr?.error?.('AI returned an empty CSS response'); // SillyBunny: no trailing period, by DESIGN.md
             return;
         }
 
@@ -1901,7 +1901,7 @@ async function handleCustomCssAiWandClick() {
         power_user.custom_css = nextCss;
         applyCustomCSS();
         saveSettingsDebounced();
-        globalThis.toastr?.success?.('Generated custom CSS.');
+        globalThis.toastr?.success?.('Generated custom CSS'); // SillyBunny: no trailing period, by DESIGN.md
     } catch (error) {
         globalThis.toastr?.clear?.();
         if (!String(error?.message ?? error ?? '').match(/abort|cancel/i)) {
@@ -5367,7 +5367,7 @@ jQuery(async () => {
         // SillyBunny: Reset restores colors only and leaves Custom CSS alone.
         applyTheme('Libadwaita', { applyCss: false });
         saveSettingsDebounced();
-        toastr.info('Theme colors reset to Libadwaita.', 'SillyBunny Palette');
+        toastr.info('Theme colors reset to Libadwaita', 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     });
 
     // Accent color presets
@@ -5416,7 +5416,7 @@ jQuery(async () => {
 
         if (quoteColor && underlineColor) {
             applyAccentColors(quoteColor, underlineColor);
-            toastr.info('Accent colors applied.', 'SillyBunny Palette');
+            toastr.info('Accent colors applied', 'SillyBunny palette'); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         }
     });
 

@@ -31,7 +31,7 @@ export async function generateConversationImage(prompt, negative = '', { avatar 
 
     if (conversationState.imageGenerationActive) {
         if (notify) {
-            globalThis.toastr?.warning?.('Image generation is already running.');
+            globalThis.toastr?.warning?.('Image generation is already running');
         }
         return null;
     }
@@ -65,7 +65,7 @@ export async function generateConversationImage(prompt, negative = '', { avatar 
         });
 
         if (!entry?.url && notify) {
-            globalThis.toastr?.warning?.(`${generatorName} did not return an image.`);
+            globalThis.toastr?.warning?.(`${generatorName} did not return an image`);
         }
         return entry?.url ?? null;
     } catch (error) {

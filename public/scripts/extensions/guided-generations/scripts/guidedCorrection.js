@@ -154,7 +154,7 @@ async function generateCorrection(target) {
 
 async function guidedCorrection() {
     if (is_send_press || is_group_generating) {
-        toastr.warning('Please wait for the current generation to complete.', 'Guided Correction');
+        toastr.warning('Please wait for the current generation to complete', 'Guided Correction');
         return;
     }
 
@@ -166,13 +166,13 @@ async function guidedCorrection() {
 
     const originalInput = textarea.value;
     if (!originalInput.trim()) {
-        toastr.warning('Please enter a correction instruction.', 'Guided Correction');
+        toastr.warning('Please enter a correction instruction', 'Guided Correction');
         return;
     }
 
     const target = getLastAiMessage();
     if (!target) {
-        toastr.error('No AI message found to correct.', 'Guided Correction');
+        toastr.error('No AI message found to correct', 'Guided Correction');
         return;
     }
 
@@ -193,7 +193,7 @@ async function guidedCorrection() {
         debugLog('[Correction] Executed command:', stscriptCommand);
 
         if (!await waitForInjection(guidedCorrectionInjectId)) {
-            toastr.error('Could not verify correction instruction injection.', 'Guided Correction');
+            toastr.error('Could not verify correction instruction injection', 'Guided Correction');
             return;
         }
 
@@ -212,7 +212,7 @@ async function guidedCorrection() {
         if (!targetWasRegenerated && !targetWasUpdatedInPlace) {
             await restoreChatSnapshot(context, chatSnapshot, target.index);
             didRestoreSnapshot = true;
-            toastr.error('Guided Correction did not produce a replacement message.', 'Guided Correction');
+            toastr.error('Guided Correction did not produce a replacement message', 'Guided Correction');
             return;
         }
 

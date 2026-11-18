@@ -361,7 +361,7 @@ export function cancelAgentGeneration() {
         return true;
     }
 
-    toastr.info('No agent generation is currently running.');
+    toastr.info('No agent generation is currently running');
     return false;
 }
 
@@ -524,7 +524,7 @@ function enqueueManualAgentRun(agentId, target) {
 
     if (executionMode === 'parallel') {
         if (wasAlreadyActive) {
-            toastr.info('Running agent in parallel.');
+            toastr.info('Running agent in parallel');
         }
 
         parallelManualRunCount++;
@@ -550,7 +550,7 @@ function enqueueManualAgentRun(agentId, target) {
         });
 
         if (wasAlreadyActive) {
-            toastr.info('Queued agent run.');
+            toastr.info('Queued agent run');
         }
 
         notifyAgentGenerationStateChanged();
@@ -2586,7 +2586,7 @@ function showPromptTransformResultToast(agent, result) {
         case 'empty-response': {
             const targetLabel = describePromptTransformTarget(result?.profileId, result?.runner);
             const modeLabel = describePromptTransformMode(result?.mode);
-            toastr.warning(`${modeLabel} ran via ${targetLabel} but returned an empty response.`, agentName, {
+            toastr.warning(`${modeLabel} ran via ${targetLabel} but returned an empty response`, agentName, {
                 timeOut: 7000,
                 extendedTimeOut: 10000,
             });
@@ -2598,7 +2598,7 @@ function showPromptTransformResultToast(agent, result) {
             toastr.error(
                 result?.error
                     ? `${modeLabel} failed via ${targetLabel}: ${result.error}`
-                    : `${modeLabel} failed via ${targetLabel}.`,
+                    : `${modeLabel} failed via ${targetLabel}`,
                 agentName,
                 {
                     timeOut: 10000,
@@ -5129,7 +5129,7 @@ async function onImpersonateReady(text = '') {
     }
 
     if (normalizeContentText(textarea.value) !== textareaTextAtStart) {
-        toastr.warning('Skipped applying the impersonation post passes because the input changed while they were running.', 'In-Chat Agents');
+        toastr.warning('Skipped applying the impersonation post passes because the input changed while they were running', 'In-Chat Agents');
         return;
     }
 
@@ -5476,19 +5476,19 @@ export async function runSingleAgentPostPassesOnText(agent, text, generationType
 
 async function executeManualComposerAgentRun(agent, cancelRevision) {
     if (isCompanionAgent(agent)) {
-        toastr.warning('Companion agents attach notes to messages and cannot rewrite the composer text.');
+        toastr.warning('Companion agents attach notes to messages and cannot rewrite the composer text');
         return null;
     }
 
     const textarea = document.querySelector('#send_textarea');
     if (!textarea) {
-        toastr.error('Composer text box not found.');
+        toastr.error('Composer text box not found');
         return null;
     }
 
     const initialText = normalizeContentText(textarea.value);
     if (!initialText.trim()) {
-        toastr.warning('The composer text box is empty.');
+        toastr.warning('The composer text box is empty');
         return null;
     }
 
@@ -5501,12 +5501,12 @@ async function executeManualComposerAgentRun(agent, cancelRevision) {
     }
 
     if (!result.changed) {
-        toastr.info(`"${agent.name}" made no changes to the composer text.`, 'In-Chat Agents');
+        toastr.info(`"${agent.name}" made no changes to the composer text`, 'In-Chat Agents');
         return result;
     }
 
     if (normalizeContentText(textarea.value) !== initialText) {
-        toastr.warning('Skipped applying the agent because the composer text changed while it was running.', 'In-Chat Agents');
+        toastr.warning('Skipped applying the agent because the composer text changed while it was running', 'In-Chat Agents');
         return null;
     }
 
@@ -5519,7 +5519,7 @@ async function executeManualAgentRun(agentId, target, cancelRevision = agentGene
     const runTarget = normalizeManualRunTarget(target);
     const agent = getAgentById(agentId);
     if (!agent) {
-        toastr.error('Agent not found.');
+        toastr.error('Agent not found');
         return null;
     }
     if (!isAgentRuntimeAllowed(agent)) {
@@ -5532,12 +5532,12 @@ async function executeManualAgentRun(agentId, target, cancelRevision = agentGene
 
     if (runTarget.kind === 'companion') {
         if (isCompanionAgent(agent)) {
-            toastr.warning('Companion agents cannot post-process other companion notes.');
+            toastr.warning('Companion agents cannot post-process other companion notes');
             return null;
         }
 
         if (!companionRuntime?.applyAgentPostPassesToCompanionResult) {
-            toastr.error('Companion runtime is unavailable.');
+            toastr.error('Companion runtime is unavailable');
             return null;
         }
 
@@ -5557,7 +5557,7 @@ async function executeManualAgentRun(agentId, target, cancelRevision = agentGene
 
     if (isCompanionAgent(agent)) {
         if (!companionRuntime?.runCompanionAgentOnMessage) {
-            toastr.error('Companion runtime is unavailable.');
+            toastr.error('Companion runtime is unavailable');
             return null;
         }
 
@@ -5621,7 +5621,7 @@ export async function runAgentOnMessage(agentId, messageIndex) {
  */
 export async function runAgentOnTarget(agentId, target) {
     if (!areAgentsGloballyEnabled()) {
-        toastr.warning('In-Chat Agents are disabled.');
+        toastr.warning('In-Chat Agents are disabled');
         return null;
     }
 
@@ -5631,7 +5631,7 @@ export async function runAgentOnTarget(agentId, target) {
 export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = agentGenerationCancelRevision } = {}) {
     resetChatBackupSequence();
     if (!areAgentsGloballyEnabled()) {
-        toastr.warning('In-Chat Agents are disabled.');
+        toastr.warning('In-Chat Agents are disabled');
         return;
     }
 
@@ -5651,7 +5651,7 @@ export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = ag
     const trackerAgents = enabledAgents.filter(agent => !isCompanionAgent(agent) && isTrackerFixAgent(agent));
 
     if (trackerAgents.length === 0) {
-        toastr.info('No enabled tracker agents found.');
+        toastr.info('No enabled tracker agents found');
         return;
     }
 
@@ -5931,8 +5931,8 @@ export async function runTrackerFixOnMessage(messageIndex, { cancelRevision = ag
     if (errorRuns > 0) parts.push(`${errorRuns} error${errorRuns > 1 ? 's' : ''}`);
 
     if (parts.length > 0) {
-        toastr.success(parts.join(', '), 'Trackers Fixed');
+        toastr.success(parts.join(', '), 'Trackers fixed');
     } else {
-        toastr.info('No changes made.', 'Trackers Fixed');
+        toastr.info('No changes made', 'Trackers fixed');
     }
 }

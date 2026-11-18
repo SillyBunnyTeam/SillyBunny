@@ -2806,6 +2806,7 @@
     "Delete Chat": "刪除聊天",
     "Deleting chat…": "正在刪除聊天…",
     "Loading chat…": "正在載入聊天…",
+    "Loading Chat": "正在載入聊天…",
     "Bulk Delete": "批次刪除",
     "Deleting ${0} character(s)…": "正在刪除 ${0} 個角色…",
     "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "OpenAI 風格選項：low、medium、high、xhigh。每個等級都會依所選內容原樣送出，只有「最小」會以 'minimal' 送出。None 會原樣送給 GPT-5.1 及更新的模型；其他模型不會收到等級。",

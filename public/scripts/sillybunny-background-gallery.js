@@ -478,7 +478,7 @@ async function deleteSelected(keys) {
         if (!await confirmDestructiveAction({ text, confirmLabel: t`Delete`, copyPlaceholder: true })) return;
         const { failed } = await hooks.deleteBackgrounds(keys);
         selection.exit();
-        if (failed.length) globalThis.toastr?.error(failed.join(', '), t`Delete Failed`);
+        if (failed.length) globalThis.toastr?.error(failed.join(', '), t`Delete failed`);
     } finally {
         bulkBusy = false;
     }

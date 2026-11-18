@@ -1494,6 +1494,7 @@
     "Delete Chat": "ลบแชท",
     "Deleting chat…": "กำลังลบแชท…",
     "Loading chat…": "กำลังโหลดแชท…",
+    "Loading Chat": "กำลังโหลดแชท…",
     "Bulk Delete": "ลบจำนวนมาก",
     "Deleting ${0} character(s)…": "กำลังลบ ${0} ตัวละคร…",
   "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "ตัวเลือกแบบ OpenAI: low, medium, high, xhigh ทุกระดับจะถูกส่งตามที่เลือกไว้ทุกประการ ยกเว้น Minimum ที่จะถูกส่งเป็น 'minimal' ส่วน None จะถูกส่งตรงตัวไปยัง GPT-5.1 และรุ่นใหม่กว่า โมเดลอื่นจะไม่ได้รับระดับใด ๆ",

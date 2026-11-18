@@ -1483,6 +1483,7 @@
     "Delete Chat": "チャットを削除",
     "Deleting chat…": "チャットを削除中…",
     "Loading chat…": "チャットを読み込み中…",
+    "Loading Chat": "チャットを読み込み中…",
     "Bulk Delete": "一括削除",
     "Deleting ${0} character(s)…": "${0}人のキャラクターを削除中…",
     "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "OpenAI 形式のオプション: low、medium、high、xhigh。各レベルは選択したとおりに送信されます。ただし Minimum は 'minimal' として送信されます。None は GPT-5.1 以降にはそのまま送信され、それ以外のモデルにはレベルが送信されません。",

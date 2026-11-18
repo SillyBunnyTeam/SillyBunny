@@ -267,7 +267,7 @@ function upsertLorebook(lorebooksByName, name, data = {}) {
  */
 export async function openPathfinderSettings(agent) {
     if (!isPathfinderSubmoduleEnabled()) {
-        toastr.warning('Pathfinder is disabled in In-Chat Agents settings.');
+        toastr.warning('Pathfinder is disabled in In-Chat Agents settings');
         return null;
     }
 
@@ -276,7 +276,7 @@ export async function openPathfinderSettings(agent) {
     const html = await renderExtensionTemplateAsync(MODULE_NAME, 'pathfinder-settings');
     if (openRevision !== settingsOpenRevision || !isPathfinderSubmoduleEnabled()) return null;
     if (!html) {
-        toastr.error('Could not load Pathfinder settings.');
+        toastr.error('Could not load Pathfinder settings');
         return null;
     }
 
@@ -1122,14 +1122,14 @@ function bindEvents() {
         const text = settingsEl.find('#pf--diagnostics-output').text() || '';
         try {
             await navigator.clipboard.writeText(text);
-            toastr.success('Pathfinder diagnostics copied.');
+            toastr.success('Pathfinder diagnostics copied');
         } catch {
             const textarea = $('<textarea>').val(text).css({ position: 'fixed', left: '-9999px', top: '0' });
             $('body').append(textarea);
             textarea[0].select();
             document.execCommand('copy');
             textarea.remove();
-            toastr.success('Pathfinder diagnostics copied.');
+            toastr.success('Pathfinder diagnostics copied');
         }
     });
 

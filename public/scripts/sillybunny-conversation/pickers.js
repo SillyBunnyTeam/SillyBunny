@@ -693,7 +693,7 @@ export function copyConversationThreadToGroup(sourceAvatar, targetGroupId, { sou
 export async function createConversationGroup(memberAvatars, { sourceAvatar = '', copySourceGroupId = null } = {}) {
     const members = getUniqueConversationGroupMembers(memberAvatars);
     if (members.length < 2) {
-        toastr.warning('Pick at least two characters for a group Conversation.');
+        toastr.warning('Pick at least two characters for a group Conversation');
         return null;
     }
 
@@ -703,7 +703,7 @@ export async function createConversationGroup(memberAvatars, { sourceAvatar = ''
         settings: getDefaultGroupConversationSettings(),
     });
     if (!group?.id) {
-        toastr.error('Could not create group Conversation.');
+        toastr.error('Could not create group Conversation');
         return null;
     }
 
@@ -724,7 +724,7 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
         ? sourceAvatar
         : group.members.find(avatar => getCharacterForAvatar(avatar));
     if (!targetAvatar) {
-        toastr.warning('This group does not have any available character cards for Conversation Mode.');
+        toastr.warning('This group does not have any available character cards for Conversation Mode');
         return false;
     }
 
@@ -736,7 +736,7 @@ export async function createAndOpenConversationGroup(memberAvatars, { sourceAvat
     });
     if (opened) {
         schedulePalsRailRender();
-        toastr.success(`Opened group Conversation for ${group.name || 'this group'}.`);
+        toastr.success(`Opened group Conversation for ${group.name || 'this group'}`);
     }
 
     return opened;
@@ -792,7 +792,7 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
 export function openAddMemberPicker() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
-        toastr.warning('Open a Conversation before adding members.');
+        toastr.warning('Open a Conversation before adding members');
         return;
     }
 

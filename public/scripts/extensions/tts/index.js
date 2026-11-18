@@ -365,7 +365,7 @@ export async function narrateTtsMessage(message, { messageId = null, manual = fa
         return false;
     }
     if (!String(message.mes || '').trim() && !message.extra?.display_text) {
-        if (isManual) toastr.info('No text to narrate.');
+        if (isManual) toastr.info('No text to narrate'); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 

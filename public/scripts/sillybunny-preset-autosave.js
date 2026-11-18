@@ -236,7 +236,7 @@ function enqueueWrite(kind, name, preset, options = {}) {
         .then(() => writePreset(kind, name, preset, options))
         .catch(error => {
             console.error(`[SillyBunny] Could not autosave ${kind} preset "${name}"`, error);
-            toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Preset could not be saved`);
+            toastr.error(t`Check the server connection and reload the page to prevent data loss`, t`Preset could not be saved`);
         })
         .finally(() => { activeWrites--; });
     writeQueues.set(kind, next);

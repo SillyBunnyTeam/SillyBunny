@@ -496,7 +496,7 @@ export function insertChoiceIntoMessageInput(rawText) {
 
     const textarea = document.getElementById('send_textarea');
     if (!textarea) {
-        toastr.warning('Could not find the message box.');
+        toastr.warning('Could not find the message box');
         return false;
     }
 
@@ -505,7 +505,7 @@ export function insertChoiceIntoMessageInput(rawText) {
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     globalThis.$?.(textarea).trigger('input');
     textarea.focus({ preventScroll: true });
-    toastr.success('Added to the message box.');
+    toastr.success('Added to the message box');
     return true;
 }
 
@@ -616,12 +616,12 @@ async function copyText(text) {
 
 async function runCompanionsFromMessageButton(messageIndex, button) {
     if (!isValidCompanionMessage(chat[messageIndex])) {
-        toastr.warning('Companions cannot run on this message.');
+        toastr.warning('Companions cannot run on this message');
         return;
     }
 
     if (!hasRunnableCompanionAgents()) {
-        toastr.info('No enabled companion agents are ready to run.');
+        toastr.info('No enabled companion agents are ready to run');
         updateCompanionButtonVisibility();
         return;
     }
@@ -639,7 +639,7 @@ async function runCompanionsFromMessageButton(messageIndex, button) {
         const results = await runCompanionsOnMessage(messageIndex);
         renderCompanionResultsForMessage(messageIndex);
         if (!Object.keys(results ?? {}).length) {
-            toastr.info('No companion agents ran for this reply.');
+            toastr.info('No companion agents ran for this reply');
         }
     } finally {
         companionMessageRuns.delete(runKey);
@@ -651,18 +651,18 @@ async function runCompanionsFromMessageButton(messageIndex, button) {
 async function sendChatOnlyAside({ agentId, messageIndex, transcript = '', userInput = '', button = null, inputField = null } = {}) {
     const agent = getAgentById(agentId);
     if (!agent || !isChatOnlyAgent(agent)) {
-        toastr.warning('Chat Only is not available.');
+        toastr.warning('Chat Only is not available');
         return;
     }
 
     const normalizedInput = normalizeChatOnlyInput(userInput);
     if (!normalizedInput) {
-        toastr.warning('Type an aside first.');
+        toastr.warning('Type an aside first');
         return;
     }
 
     if (!isAssistantMessage(chat[messageIndex])) {
-        toastr.warning('No assistant reply yet to chat beside.');
+        toastr.warning('No assistant reply yet to chat beside');
         return;
     }
 
@@ -688,18 +688,18 @@ async function sendChatOnlyAside({ agentId, messageIndex, transcript = '', userI
 async function sendChatroomUserReply({ agentId, messageIndex, userInput = '', button = null, inputField = null } = {}) {
     const agent = getAgentById(agentId);
     if (!agent || !isChatroomAgent(agent)) {
-        toastr.warning('Chatroom reply is not available.');
+        toastr.warning('Chatroom reply is not available');
         return;
     }
 
     const normalizedInput = normalizeChatroomReply(userInput);
     if (!normalizedInput) {
-        toastr.warning('Type a reply first.');
+        toastr.warning('Type a reply first');
         return;
     }
 
     if (!isAssistantMessage(chat[messageIndex])) {
-        toastr.warning('No assistant reply yet to respond to.');
+        toastr.warning('No assistant reply yet to respond to');
         return;
     }
 
@@ -723,12 +723,12 @@ async function sendChatroomUserReply({ agentId, messageIndex, userInput = '', bu
 async function savePlotCompassObjective({ agentId, messageIndex, objective = '', button = null, inputField = null } = {}) {
     const agent = getAgentById(agentId);
     if (!agent || !isPlotCompassAgent(agent)) {
-        toastr.warning('Plot Compass is not available.');
+        toastr.warning('Plot Compass is not available');
         return;
     }
 
     if (!isAssistantMessage(chat[messageIndex])) {
-        toastr.warning('No assistant reply yet to plan from.');
+        toastr.warning('No assistant reply yet to plan from');
         return;
     }
 
@@ -739,7 +739,7 @@ async function savePlotCompassObjective({ agentId, messageIndex, objective = '',
         await setAgentSetting(agent, 'plotCompassObjective', nextObjective);
         await runCompanionAgentOnMessage(agentId, messageIndex);
         renderCompanionResultsForMessage(messageIndex);
-        toastr.success(nextObjective ? 'Plot Objective saved.' : 'Plot Objective cleared.');
+        toastr.success(nextObjective ? 'Plot Objective saved' : 'Plot Objective cleared');
     } finally {
         button?.prop?.('disabled', false);
         inputField?.prop?.('disabled', false);
@@ -809,7 +809,7 @@ async function handleCompanionAction(event) {
     const action = $(event.currentTarget).attr('data-action');
     const { messageIndex, agentId, message, result } = getCompanionActionContext(event.currentTarget);
     if (!isValidCompanionMessage(message) || !agentId) {
-        toastr.warning('Invalid companion note.');
+        toastr.warning('Invalid companion note');
         return;
     }
 
@@ -866,7 +866,7 @@ async function handleCompanionAction(event) {
 
     if (action === 'copy') {
         await copyText(String(result?.content ?? ''));
-        toastr.success('Companion note copied.');
+        toastr.success('Companion note copied');
         return;
     }
 
@@ -913,7 +913,7 @@ export function initCompanionCardUi() {
     $(document).on('click', '.mes_run_companions', async function () {
         const messageIndex = getMessageIndexFromElement(this);
         if (messageIndex < 0) {
-            toastr.warning('Invalid message.');
+            toastr.warning('Invalid message');
             return;
         }
         await runCompanionsFromMessageButton(messageIndex, this);

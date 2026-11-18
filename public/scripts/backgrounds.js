@@ -1113,7 +1113,7 @@ async function convertFileIfVideo(formData) {
         return;
     }
     if (typeof globalThis.convertVideoToAnimatedWebp !== 'function') {
-        toastr.info(t`Native video backgrounds work best with MP4, WebM, OGV, or M4V files.`);
+        toastr.info(t`Native video backgrounds work best with MP4, WebM, OGV, or M4V files`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 

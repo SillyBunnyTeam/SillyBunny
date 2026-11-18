@@ -18,8 +18,10 @@ const PROTECTED_PHRASES = [
     'Guided Swipe', 'Guided Generations', 'Guided Response', 'Guided Correction', 'Guided Impersonate', 'Simple Send', 'Flush Guides',
 ];
 
-export const HEADER_ROLES = new Set(['heading', 'button', 'menu item', 'tooltip', 'accessible name', 'tab', 'row title', 'field label', 'dialog response', 'toast title']);
-export const SENTENCE_ROLES = new Set(['row subtitle', 'caption', 'placeholder', 'check or radio label', 'drop-down item', 'body']);
+export const HEADER_ROLES = new Set(['heading', 'button', 'menu item', 'tooltip', 'accessible name', 'tab', 'row title', 'field label', 'dialog response']);
+// A toast title is an informal heading (HIG Toasts): a short sentence in sentence capitalisation, so it is read strictly: every word
+// after the first that is not a protected name or code is lower case.
+export const SENTENCE_ROLES = new Set(['row subtitle', 'caption', 'placeholder', 'check or radio label', 'drop-down item', 'body', 'toast title']);
 
 const norm = text => text.replace(/\s+/g, ' ').trim();
 const wordCount = text => text.split(/\s+/).filter(token => /\p{L}/u.test(token)).length;
@@ -74,7 +76,8 @@ export function headerCase(text) {
 function maskProtected(text) {
     const masks = [];
     let out = text;
-    for (const phrase of PROTECTED_PHRASES) {
+    // The longest phrase first, so "In-Chat Agents" is masked whole before "Agents" is.
+    for (const phrase of [...PROTECTED_PHRASES].sort((a, b) => b.length - a.length)) {
         const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu');
         out = out.replace(pattern, match => {
             masks.push(match);
@@ -222,7 +225,7 @@ export function checkLabel(role, text, { style = true } = {}) {
     let family = header ? 'header' : 'sentence';
     if (header && role === 'heading' && isFullSentence(styled)) family = 'sentence-heading';
     // Text with two sentences, or a heading, tooltip or toast title as long as a sentence, needs new wording rather than a recase.
-    if (header && family === 'header') {
+    if ((header && family === 'header') || role === 'toast title') {
         const count = wordCount(styled);
         const longPhrase = LONG_PHRASE_ROLES.has(role) && (count >= SENTENCE_LENGTH_WORDS || (count >= 4 && /[,;]/.test(styled)));
         // A label that ends like a sentence and has four words or more is a sentence in a label's place.
@@ -242,7 +245,7 @@ export function checkLabel(role, text, { style = true } = {}) {
             const cased = sentenceCase(styled);
             if (cased !== styled) [expected, rule] = [cased, 'sentence capitalisation'];
         }
-    } else if (looksHeaderCased(styled)) {
+    } else if (role === 'toast title' ? sentenceCase(styled) !== styled : looksHeaderCased(styled)) {
         const cased = sentenceCase(styled);
         if (cased !== styled) [expected, rule] = [cased, 'sentence capitalisation'];
     }

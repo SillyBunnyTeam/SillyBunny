@@ -343,7 +343,7 @@ test('while the first load has no rows, one loading page holds the message and t
     });
     await openArchive(page);
     const loading = page.locator('.sbca-list-scroll .sb-status-page');
-    await expect(loading).toContainText('Loading chats…');
+    await expect(loading).toContainText('Loading Chats');
     await expect(loading.getByRole('button', { name: 'Cancel' })).toBeVisible();
     await expect(page.locator('.sbca-banner')).toBeHidden();
     release();
@@ -618,7 +618,7 @@ test('a chat opens as a page with its actions, summary, organizer and messages, 
     await rows(page).first().click();
     await expect(rows(page).first()).toHaveAttribute('aria-current', 'true');
     const content = page.locator('.sbca-viewer-content');
-    await expect(content).toContainText('Loading chat…');
+    await expect(content).toContainText('Loading Chat');
     await expect(content).toHaveAttribute('aria-busy', 'true');
     const order = await content.evaluate(node => [...node.children].map(child => child.className));
     expect(order[0]).toContain('sbca-detail-actions');

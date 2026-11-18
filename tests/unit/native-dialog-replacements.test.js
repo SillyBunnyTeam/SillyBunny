@@ -121,7 +121,7 @@ test('server admin reload and thumbnail cache actions wait for Alert responses',
     expect(requestServerAdmin).toHaveBeenCalledWith('/api/server-admin/thumbnails/clear-cache');
     expect(openAlert).toHaveBeenLastCalledWith(expect.objectContaining({
         heading: 'Clear cached thumbnails for this user?',
-        body: 'They will be rebuilt as images are loaded.',
+        body: 'They will be rebuilt as images are loaded',
         responses: [
             { id: 'cancel', label: 'Cancel' },
             { id: 'clear', label: 'Clear Cache', appearance: 'suggested' },

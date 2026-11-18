@@ -200,7 +200,7 @@ function requestConversationRuntimeStart() {
 async function openGroundedDialogueRulesEditor() {
     const backingInput = document.getElementById('sb_conv_grounded_dialogue_rules');
     if (!(backingInput instanceof HTMLTextAreaElement)) {
-        toastr.warning('Open Conversation settings before editing Grounded Dialogue Rules.');
+        toastr.warning('Open Conversation settings before editing Grounded Dialogue Rules');
         return;
     }
 
@@ -248,7 +248,7 @@ async function openGroundedDialogueRulesEditor() {
     backingInput.value = editor.value;
     backingInput.dispatchEvent(new Event('input', { bubbles: true }));
     saveCurrentPanelSettings();
-    toastr.success('Grounded Dialogue Rules updated.');
+    toastr.success('Grounded Dialogue Rules updated');
 }
 
 function focusConversationInput({ skipIOS = false } = {}) {
@@ -626,9 +626,9 @@ export async function runConversationAction(action, data = {}, target = null, ev
             const { cleared, removedLegacy } = clearAllConversationUnreadCounts();
             schedulePalsRailRender();
             if (cleared > 0 || removedLegacy > 0) {
-                toastr.success('Marked all Conversation pings as read.');
+                toastr.success('Marked all Conversation pings as read');
             } else {
-                toastr.info('No Conversation pings to clear.');
+                toastr.info('No Conversation pings to clear');
             }
             break;
         }
@@ -659,7 +659,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             conversationState.imageGenerationActive = false;
             conversationState.imageGenerationAbortController = null;
             scheduleTimelineRender();
-            toastr.info('Image generation stopped.');
+            toastr.info('Image generation stopped');
             break;
         case 'add-character-dm': {
             const index = parsePositiveInt(data.characterIndex, -1, 0);
@@ -710,7 +710,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             const fallbackName = `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`;
             const enteredName = await promptConversationText({
                 title: 'New Branch',
-                text: `Name this Conversation branch for ${character?.name || 'this character'}.`,
+                text: `Name this Conversation branch for ${character?.name || 'this character'}`,
                 defaultValue: fallbackName,
                 confirmLabel: 'Create',
             });
@@ -758,7 +758,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             if (avatar && branchId && branch) {
                 const confirmed = await confirmConversationAction({
                     title: `Delete the "${branch.name || 'Conversation'}" branch?`,
-                    text: 'This cannot be undone.',
+                    text: 'This cannot be undone',
                 });
                 if (confirmed) {
                     deleteConversationBranch(avatar, branchId, { groupId });
@@ -783,7 +783,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             const historyLabel = groupId ? `group Conversation history with ${name}` : `solo DM history with ${name}`;
             const confirmed = await confirmConversationAction({
                 title: `Delete your previous ${historyLabel}?`,
-                text: 'This cannot be undone.',
+                text: 'This cannot be undone',
             });
             if (confirmed) {
                 resetCharacterConversationBranches(avatar, { groupId });
@@ -812,14 +812,14 @@ export async function runConversationAction(action, data = {}, target = null, ev
                 } else {
                     schedulePalsRailRender();
                 }
-                toastr.success(`Deleted ${historyLabel}.`);
+                toastr.success(`Deleted ${historyLabel}`);
             }
             break;
         }
         case 'new-chat': {
             const avatar = getCurrentCharAvatar();
             if (!avatar) {
-                toastr.warning('Pick a DM first.');
+                toastr.warning('Pick a DM first');
                 break;
             }
             const groupId = getConversationGroupIdForAvatar(avatar);
@@ -827,7 +827,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             updateLastUserActivity(avatar, { groupId });
             scheduleInterfaceRefresh({ syncControls: false });
             renderConversationMemoryPanel();
-            toastr.success('New Conversation branch started.');
+            toastr.success('New Conversation branch started');
             break;
         }
         case 'edit-message':
@@ -911,7 +911,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             if (area instanceof HTMLTextAreaElement) {
                 area.value = GEECHAN_DEFAULT_PROMPT;
                 area.dispatchEvent(new Event('input', { bubbles: true }));
-                toastr.success('System prompt reset to default Geechan preset.');
+                toastr.success('System prompt reset to default Geechan preset');
             }
             break;
         }
@@ -965,7 +965,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             const character = getCurrentCharacter();
             const genAvatar = getCurrentCharAvatar();
             if (!character || !genAvatar) {
-                toastr.warning('No character selected.');
+                toastr.warning('No character selected');
                 break;
             }
             conversationState.scheduleGenerationBusy = true;
@@ -992,13 +992,13 @@ export async function runConversationAction(action, data = {}, target = null, ev
                         renderScheduleDisplay();
                         updateConversationChrome(genSettings);
                     }
-                    toastr.success(`Schedule generated for ${character.name}.`);
+                    toastr.success(`Schedule generated for ${character.name}`);
                 } else {
                     toastr.warning('Schedule generation returned no data. Try again.');
                 }
             } catch (err) {
                 console.error('Schedule generation error:', err);
-                toastr.error('Schedule generation failed.');
+                toastr.error('Schedule generation failed');
             } finally {
                 conversationState.scheduleGenerationBusy = false;
                 genBtn.removeAttribute('disabled');
@@ -1303,7 +1303,7 @@ export function openConversationWorkspaceForAvatar(avatar, { branchId = '', grou
     applySettingsToPanel(settings);
     scheduleInterfaceRefresh({ syncControls: true });
     if (showToast && enable && !wasEnabled) {
-        toastr.info(`Conversation Mode activated for ${character.name || 'Character'}.`);
+        toastr.info(`Conversation Mode activated for ${character.name || 'Character'}`);
     }
     focusConversationInputAfterRender();
     return true;
@@ -1314,7 +1314,7 @@ export function openConversationWorkspaceFromWelcome() {
     const selectedGroupId = conversationState.conversationSelectedGroupId || '';
     const groupId = selectedGroupId && avatar && isAvatarInConversationGroup(avatar, selectedGroupId) ? selectedGroupId : null;
     if (!avatar || !openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
-        toastr.warning('Pick or import a character before opening Conversation Mode.');
+        toastr.warning('Pick or import a character before opening Conversation Mode');
         return false;
     }
 

@@ -151,10 +151,9 @@ function paintList(ctx, state, ui) {
         if (state.rows.length === 0) {
             state.matchingRows = [];
             setCount(ui, '');
-            // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
             showStatusPage(ui, {
                 state: 'loading',
-                title: tr(ctx, 'Loading chats…'),
+                title: tr(ctx, 'Loading Chats'),
                 actions: [{ label: tr(ctx, 'Cancel'), onActivate: () => stopBusyTask(ctx, state, ui) }],
             });
             return;

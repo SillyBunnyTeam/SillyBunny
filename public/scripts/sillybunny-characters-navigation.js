@@ -109,9 +109,9 @@ objectNavigation.register('group-editor', {
 
 objectNavigation.setNotify((reason, target) => {
     if (reason === 'missing') {
-        toastr.warning(t`This item is no longer available.`);
+        toastr.warning(t`This item is no longer available`);
     } else if (reason === 'failed') {
-        toastr.error(t`This item could not be opened.`);
+        toastr.error(t`This item could not be opened`);
     }
 });
 

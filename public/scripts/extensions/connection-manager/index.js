@@ -389,7 +389,7 @@ function getFolderManagerTemplateData() {
 function createFolder(name) {
     const folderName = normalizeFolderName(name);
     if (!folderName) {
-        toastr.error(t`Folder name cannot be empty.`);
+        toastr.error(t`Folder name cannot be empty`); // SillyBunny: no trailing period, by DESIGN.md
         return null;
     }
 
@@ -414,13 +414,13 @@ function createFolder(name) {
 function renameFolder(folderId, newName) {
     const folder = getConnectionProfileFolders().find(x => x.id === folderId);
     if (!folder) {
-        toastr.error(t`Folder not found.`);
+        toastr.error(t`Folder not found`); // SillyBunny: no trailing period, by DESIGN.md
         return null;
     }
 
     const folderName = normalizeFolderName(newName);
     if (!folderName) {
-        toastr.error(t`Folder name cannot be empty.`);
+        toastr.error(t`Folder name cannot be empty`); // SillyBunny: no trailing period, by DESIGN.md
         return null;
     }
 
@@ -437,7 +437,7 @@ function deleteFolder(folderId) {
     const folders = getConnectionProfileFolders();
     const index = folders.findIndex(x => x.id === folderId);
     if (index === -1) {
-        toastr.error(t`Folder not found.`);
+        toastr.error(t`Folder not found`); // SillyBunny: no trailing period, by DESIGN.md
         return null;
     }
 
@@ -462,13 +462,13 @@ function deleteFolder(folderId) {
 function moveProfileToFolder(profileId, folderId) {
     const profile = extension_settings.connectionManager.profiles.find(x => x.id === profileId);
     if (!profile) {
-        toastr.error(t`Profile not found.`);
+        toastr.error(t`Profile not found`); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 
     const normalizedFolderId = normalizeFolderId(folderId);
     if (normalizedFolderId && !getConnectionProfileFolders().some(folder => folder.id === normalizedFolderId)) {
-        toastr.error(t`Folder not found.`);
+        toastr.error(t`Folder not found`); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 
@@ -488,7 +488,7 @@ function moveProfileToFolder(profileId, folderId) {
 function toggleProfileFavorite(profileId) {
     const profile = extension_settings.connectionManager.profiles.find(x => x.id === profileId);
     if (!profile) {
-        toastr.error(t`Profile not found.`);
+        toastr.error(t`Profile not found`); // SillyBunny: no trailing period, by DESIGN.md
         return null;
     }
 
@@ -893,7 +893,7 @@ async function deleteConnectionProfile() {
 async function selectConnectionProfilesForDeletion() {
     const profiles = extension_settings.connectionManager.profiles;
     if (!Array.isArray(profiles) || profiles.length === 0) {
-        toastr.info(t`No connection profiles to delete.`);
+        toastr.info(t`No connection profiles to delete`); // SillyBunny: no trailing period, by DESIGN.md
         return [];
     }
 
@@ -947,7 +947,7 @@ async function deleteAllConnectionProfiles() {
     const confirm = await Popup.show.confirm(
         // SillyBunny: capitalisation by DESIGN.md
         t`Delete Selected Connection Profiles?`,
-        t`This will permanently delete ${profilesToDelete.length} saved connection profile(s).`,
+        t`This will permanently delete ${profilesToDelete.length} saved connection profile(s)`,
         {
             // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action, with a verb (confirmVerb).
             ...confirmVerb(t`Delete`, { destructive: true }),
@@ -969,7 +969,7 @@ async function deleteAllConnectionProfiles() {
         await eventSource.emit(event_types.CONNECTION_PROFILE_DELETED, profile);
     }
 
-    toastr.success(t`Deleted ${profilesToDelete.length} connection profile(s).`);
+    toastr.success(t`Deleted ${profilesToDelete.length} connection profile(s)`); // SillyBunny: no trailing period, by DESIGN.md
 }
 
 // SillyBunny: makeFancyProfile was replaced by formatProfileCommandValue (id-keyed rows).
@@ -1114,7 +1114,7 @@ async function applyConnectionProfile(profile) {
                 .join(', ');
             toastr.warning(
                 t`Some profile settings could not be applied: ${commandList}`,
-                t`Profile Application Incomplete`, // SillyBunny: capitalisation by DESIGN.md
+                t`Profile application incomplete`, // SillyBunny: capitalisation by DESIGN.md
                 { timeOut: 8000 },
             );
         }
@@ -1582,7 +1582,7 @@ export async function init() {
                 await saveSettings();
                 await refreshProfileOrganizationUi();
                 await refreshFolderManagerContent();
-                toastr.success(t`Profile folder created.`);
+                toastr.success(t`Profile folder created`); // SillyBunny: no trailing period, by DESIGN.md
             });
             template.find('#new_profile_folder_name').on('keydown', function (event) {
                 if (event.key !== 'Enter') {
@@ -1613,14 +1613,14 @@ export async function init() {
                 await saveSettings();
                 await refreshProfileOrganizationUi();
                 await refreshFolderManagerContent();
-                toastr.success(t`Profile folder renamed.`);
+                toastr.success(t`Profile folder renamed`); // SillyBunny: no trailing period, by DESIGN.md
             });
 
             template.find('.folder-delete-btn').on('click', async function () {
                 const folderId = String($(this).closest('.folder-item').data('folderId') ?? '');
                 const folder = getConnectionProfileFolders().find(x => x.id === folderId);
                 if (!folder) {
-                    toastr.error(t`Folder not found.`);
+                    toastr.error(t`Folder not found`); // SillyBunny: no trailing period, by DESIGN.md
                     return;
                 }
 
@@ -1648,7 +1648,7 @@ export async function init() {
                 await emitProfileUpdatePairs(result.affectedProfiles);
                 await refreshProfileOrganizationUi();
                 await refreshFolderManagerContent();
-                toastr.success(t`Profile folder deleted.`);
+                toastr.success(t`Profile folder deleted`); // SillyBunny: no trailing period, by DESIGN.md
             });
 
             // SillyBunny: retain folder-item ancestry and every live input/action handler.

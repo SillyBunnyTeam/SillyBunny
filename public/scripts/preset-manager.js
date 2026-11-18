@@ -1291,7 +1291,7 @@ class PresetManager {
         const presetNames = this.getAllPresets().filter(name => name !== 'gui');
 
         if (presetNames.length === 0) {
-            toastr.info(t`No deletable presets found.`);
+            toastr.info(t`No deletable presets found`); // SillyBunny: no trailing period, by DESIGN.md
             return [];
         }
 
@@ -1756,14 +1756,14 @@ export async function initPresetManager() {
         const { deleted, failed } = await presetManager.deletePresets(presetNames);
 
         if (deleted.length) {
-            toastr.success(t`Deleted ${deleted.length} ${deleted.length === 1 ? noun : pluralNoun}.`);
+            toastr.success(t`Deleted ${deleted.length} ${deleted.length === 1 ? noun : pluralNoun}`); // SillyBunny: no trailing period, by DESIGN.md
             for (const name of deleted) {
                 await eventSource.emit(event_types.PRESET_DELETED, { apiId, name });
             }
         }
 
         if (failed.length) {
-            toastr.warning(t`Failed to delete ${failed.length} ${failed.length === 1 ? noun : pluralNoun} from the server.`);
+            toastr.warning(t`Failed to delete ${failed.length} ${failed.length === 1 ? noun : pluralNoun} from the server`); // SillyBunny: no trailing period, by DESIGN.md
         }
 
         saveSettingsDebounced();
@@ -1856,7 +1856,7 @@ export async function initPresetManager() {
         }
 
         await presetManager.refreshRestoredDefaultOptions(result.restored);
-        toastr.success(t`Restored ${result.restored.length} default ${noun}.`);
+        toastr.success(t`Restored ${result.restored.length} default ${noun}`); // SillyBunny: no trailing period, by DESIGN.md
         saveSettingsDebounced();
     });
 

@@ -34,7 +34,7 @@ async function generateNewSwipe() {
 
     try {
         if (!Array.isArray(context.chat) || context.chat.length === 0) {
-            globalThis.toastr?.error?.('Guided Swipe error: Cannot access chat context.');
+            globalThis.toastr?.error?.('Guided Swipe error: Cannot access chat context');
             return false;
         }
 
@@ -72,7 +72,7 @@ async function generateNewSwipe() {
 
         context = getContext();
         if (typeof context?.swipe?.right !== 'function') {
-            globalThis.toastr?.error?.('Guided Swipe error: SillyTavern swipe generation API is not available.');
+            globalThis.toastr?.error?.('Guided Swipe error: SillyTavern swipe generation API is not available');
             return false;
         }
 
@@ -97,7 +97,7 @@ async function guidedSwipe() {
         const textarea = document.getElementById('send_textarea');
         if (!(textarea instanceof HTMLTextAreaElement)) {
             console.error('[GuidedGenerations][Swipe] Textarea #send_textarea not found.');
-            globalThis.toastr?.error?.('Guided Swipe error: Textarea not found.');
+            globalThis.toastr?.error?.('Guided Swipe error: Textarea not found');
             return;
         }
 

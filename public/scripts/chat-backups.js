@@ -331,7 +331,7 @@ class BackupsBrowser {
     async previewCleanup() {
         const candidates = this.getCleanupCandidates();
         if (!candidates.length) {
-            toastr.info(t`No backups match those cleanup settings.`);
+            toastr.info(t`No backups match those cleanup settings`); // SillyBunny: no trailing period, by DESIGN.md
             this.setCleanupStatus(t`No backups match those cleanup settings.`);
             return;
         }
@@ -354,7 +354,7 @@ class BackupsBrowser {
     async cleanupOldBackups() {
         const candidates = this.getCleanupCandidates();
         if (!candidates.length) {
-            toastr.info(t`No backups match those cleanup settings.`);
+            toastr.info(t`No backups match those cleanup settings`); // SillyBunny: no trailing period, by DESIGN.md
             this.setCleanupStatus(t`No backups match those cleanup settings.`);
             return;
         }

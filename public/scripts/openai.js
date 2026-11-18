@@ -2072,7 +2072,7 @@ export async function prepareOpenAIMessages({
     if (!dryRun && shouldCheckPostInterceptChatBudget(eventData)) {
         const { promptTokens, promptTokenBudget, exceeded } = await checkPostInterceptChatBudget(chat, userSettings, countChatCompletionPayloadTokensOpenAIAsync);
         if (exceeded) {
-            toastr.error(t`Pre-generation intercepts exceed the context size.`);
+            toastr.error(t`Pre-generation intercepts exceed the context size`); // SillyBunny: no trailing period, by DESIGN.md
             chatCompletion.log(`Pre-generation intercepts exceed the context size. Tokens: ${promptTokens}. Budget: ${promptTokenBudget}.`);
             promptManager.error = t`Pre-generation intercepts made the prompt too large. Reduce intercept output, raise your token limit, or disable the intercept agent.`;
             promptManager.render(false);
@@ -4273,7 +4273,7 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
         serverChatCompletionConfigState.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || serverChatCompletionConfigState.lastModifiedMs;
         setServerChatCompletionConfigMessage(result?.message || 'Chat completion server config saved.');
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.success(result?.message || 'Chat completion server config saved.', 'Server Config');
+        toastr.success(result?.message || 'Chat completion server config saved', 'Server config');
 
         if (restart) {
             serverChatCompletionConfigState.busy = false;
@@ -4285,14 +4285,14 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
                 serverChatCompletionConfigState.restarting = false;
                 setServerChatCompletionConfigMessage('Restart is taking longer than expected. Refresh the page once the server is back.');
                 // SillyBunny: capitalisation by DESIGN.md
-                toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
+                toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
             }
         }
     } catch (error) {
         console.error('Failed to save chat completion server config.', error);
         setServerChatCompletionConfigMessage(error.message || 'Failed to save chat completion server config.');
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.error(error.message || 'Failed to save chat completion server config.', 'Server Config');
+        toastr.error(error.message || 'Failed to save chat completion server config', 'Server config');
     } finally {
         if (!serverChatCompletionConfigState.restarting) {
             serverChatCompletionConfigState.busy = false;
@@ -7584,7 +7584,7 @@ function saveSamplingProfileForCurrentModel() {
     const profileKey = getModelSamplingProfileKey();
     if (!profileKey) {
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.warning(t`No model is currently selected.`, t`Cannot Save Sampling Profile`);
+        toastr.warning(t`No model is currently selected`, t`Cannot save sampling profile`);
         return;
     }
     oai_settings.model_sampling_profiles ??= {};
@@ -7605,14 +7605,14 @@ function saveSamplingProfileForCurrentModel() {
     }, 1200);
 
     // SillyBunny: capitalisation by DESIGN.md
-    toastr.success(t`Saved sampling settings for ${modelLabel}.`, t`Model Sampling Profile Saved`);
+    toastr.success(t`Saved sampling settings for ${modelLabel}`, t`Model sampling profile saved`);
 }
 
 function clearSamplingProfileForCurrentModel() {
     const profileKeys = getModelSamplingProfileKeys();
     if (!profileKeys.length) {
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.warning(t`No model is currently selected.`, t`Cannot Clear Sampling Profile`);
+        toastr.warning(t`No model is currently selected`, t`Cannot clear sampling profile`);
         return;
     }
     const profiles = oai_settings.model_sampling_profiles;
@@ -7625,10 +7625,10 @@ function clearSamplingProfileForCurrentModel() {
         saveSettingsDebounced();
         const modelLabel = getChatCompletionModel();
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.info(t`Cleared sampling profile for ${modelLabel}.`, t`Model Sampling Profile Removed`);
+        toastr.info(t`Cleared sampling profile for ${modelLabel}`, t`Model sampling profile removed`);
     } else {
         const modelLabel = getChatCompletionModel();
-        toastr.info(t`No saved sampling profile exists for ${modelLabel}.`, t`No Sampling Profile to Clear`);
+        toastr.info(t`No saved sampling profile exists for ${modelLabel}`, t`No sampling profile to clear`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     }
 }
 
@@ -10483,7 +10483,7 @@ $('#save_custom_endpoint').on('click', async function () {
     const keyInputValue = String($('#api_key_custom').val()).trim();
 
     if (!presetName || presetName === 'None') {
-        toastr.error(t`Please enter a name for the endpoint profile.`);
+        toastr.error(t`Please enter a name for the endpoint profile`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 

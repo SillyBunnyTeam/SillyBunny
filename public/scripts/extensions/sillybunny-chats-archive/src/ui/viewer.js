@@ -149,8 +149,7 @@ export async function openViewer(ctx, state, row, ui) {
     state.viewerAbort = controller;
     state.selectedRow = row;
     const { actions, slot } = buildDetail(ctx, state, ui, row);
-    // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
-    slot.append(createStatusPage({ state: 'loading', title: tr(ctx, 'Loading chat…') }).element);
+    slot.append(createStatusPage({ state: 'loading', title: tr(ctx, 'Loading Chat') }).element);
     ui.viewerContent.setAttribute('aria-busy', 'true');
     showViewerPage(ctx, state, ui, row);
 

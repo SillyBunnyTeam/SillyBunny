@@ -952,7 +952,7 @@ async function handlePanelAction(event) {
     if (action === 'panel-regenerate-all') {
         const lastValidIndex = getLatestValidCompanionIndex();
         if (lastValidIndex < 0) {
-            toastr.warning('No message yet to run companions on.');
+            toastr.warning('No message yet to run companions on');
             return;
         }
         button.prop('disabled', true);
@@ -972,7 +972,7 @@ async function handlePanelAction(event) {
 
     if (action === 'panel-hide') {
         if (!agentId) {
-            toastr.warning('No companion selected.');
+            toastr.warning('No companion selected');
             return;
         }
 
@@ -994,12 +994,12 @@ async function handlePanelAction(event) {
 
     if (action === 'panel-run-latest') {
         if (!agentId) {
-            toastr.warning('No companion selected.');
+            toastr.warning('No companion selected');
             return;
         }
         const lastValidIndex = getLatestValidCompanionIndex();
         if (lastValidIndex < 0) {
-            toastr.warning('No message yet to run this companion on.');
+            toastr.warning('No message yet to run this companion on');
             return;
         }
         button.prop('disabled', true);
@@ -1017,20 +1017,20 @@ async function handlePanelAction(event) {
     if (action === 'panel-chat-only-send') {
         const agent = getPanelAgents().find(candidate => candidate.id === agentId);
         if (!agent || !isChatOnlyAgent(agent)) {
-            toastr.warning('Chat Only is not available.');
+            toastr.warning('Chat Only is not available');
             return;
         }
 
         const inputField = section.find('[data-role="chat-only-input"]');
         const userInput = normalizeChatOnlyInput(inputField.val());
         if (!userInput) {
-            toastr.warning('Type an aside first.');
+            toastr.warning('Type an aside first');
             return;
         }
 
         const lastAssistantIndex = getLatestAssistantIndex();
         if (lastAssistantIndex < 0) {
-            toastr.warning('No assistant reply yet to chat beside.');
+            toastr.warning('No assistant reply yet to chat beside');
             return;
         }
 
@@ -1059,20 +1059,20 @@ async function handlePanelAction(event) {
     if (action === 'panel-chatroom-reply-send') {
         const agent = getPanelAgents().find(candidate => candidate.id === agentId);
         if (!agent || !isChatroomAgent(agent)) {
-            toastr.warning('Chatroom reply is not available.');
+            toastr.warning('Chatroom reply is not available');
             return;
         }
 
         const inputField = section.find('[data-role="chatroom-reply-input"]');
         const userInput = normalizeChatroomReply(inputField.val());
         if (!userInput) {
-            toastr.warning('Type a reply first.');
+            toastr.warning('Type a reply first');
             return;
         }
 
         const lastAssistantIndex = getLatestAssistantIndex();
         if (lastAssistantIndex < 0) {
-            toastr.warning('No assistant reply yet to respond to.');
+            toastr.warning('No assistant reply yet to respond to');
             return;
         }
 
@@ -1098,7 +1098,7 @@ async function handlePanelAction(event) {
     if (action === 'panel-plot-compass-save') {
         const agent = getPanelAgents().find(candidate => candidate.id === agentId);
         if (!agent || !isPlotCompassAgent(agent)) {
-            toastr.warning('Plot Compass is not available.');
+            toastr.warning('Plot Compass is not available');
             return;
         }
 
@@ -1109,7 +1109,7 @@ async function handlePanelAction(event) {
         const canRunOnSection = Number.isInteger(messageIndex) && !chat[messageIndex]?.is_system;
         const runIndex = canRunOnSection ? messageIndex : getLatestAssistantIndex();
         if (runIndex < 0) {
-            toastr.warning('No assistant reply yet to plan from.');
+            toastr.warning('No assistant reply yet to plan from');
             return;
         }
 
@@ -1118,7 +1118,7 @@ async function handlePanelAction(event) {
         try {
             await savePlotCompassObjective(agent, objective);
             await runCompanionAgentOnMessage(agentId, runIndex);
-            toastr.success(objective ? 'Plot Objective saved.' : 'Plot Objective cleared.');
+            toastr.success(objective ? 'Plot Objective saved' : 'Plot Objective cleared');
         } finally {
             button.prop('disabled', false);
             inputField.prop('disabled', false);
@@ -1132,7 +1132,7 @@ async function handlePanelAction(event) {
     if (action === 'panel-hide-before' && Number.isInteger(messageIndex) && messageIndex > 0) {
         const hideCount = countVisibleStoryAbove(messageIndex);
         if (hideCount === 0) {
-            toastr.info('Everything above this shard is already hidden from prompts.');
+            toastr.info('Everything above this shard is already hidden from prompts');
             return;
         }
 
@@ -1152,7 +1152,7 @@ async function handlePanelAction(event) {
         }
 
         await hideChatMessageRange(0, messageIndex - 1, false);
-        toastr.success(`Hid ${hideCount} message(s) from prompts.`);
+        toastr.success(`Hid ${hideCount} message(s) from prompts`);
         if (panelOpen) {
             renderPanel();
         }
@@ -1163,7 +1163,7 @@ async function handlePanelAction(event) {
         const message = chat[messageIndex];
         const result = getCompanionResults(message)[agentId];
         if (!result) {
-            toastr.warning('No stored state to edit.');
+            toastr.warning('No stored state to edit');
             return;
         }
         await editCompanionResult(messageIndex, agentId, message, result);
@@ -1176,7 +1176,7 @@ async function handlePanelAction(event) {
     if (action === 'panel-send-to-lorebook' && agentId && Number.isInteger(messageIndex)) {
         const result = getCompanionResults(chat[messageIndex])[agentId];
         if (!result) {
-            toastr.warning('No stored state to send.');
+            toastr.warning('No stored state to send');
             return;
         }
 
@@ -1191,7 +1191,7 @@ async function handlePanelAction(event) {
 
     if (action === 'panel-edit') {
         if (!agentId || typeof panelHooks?.openEditor !== 'function') {
-            toastr.warning('The agent editor is not available.');
+            toastr.warning('The agent editor is not available');
             return;
         }
         // The editor is its own popup; close the panel so they do not overlap on sheet edges.

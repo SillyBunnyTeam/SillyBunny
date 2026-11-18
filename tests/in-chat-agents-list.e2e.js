@@ -714,7 +714,7 @@ test('saved bulk no-ops do not write; a changed role saves once and keeps canoni
     await root.getByRole('button', { name: 'Edit Properties…', exact: true }).click();
     await page.locator('dialog[open] .popup-button-ok').click();
     await expect(root.getByRole('button', { name: 'Edit Properties…', exact: true })).toBeEnabled();
-    await expect(page.locator('#toast-container')).toContainText('No properties selected to change.');
+    await expect(page.locator('#toast-container')).toContainText('No properties selected to change');
     expect(saves()).toHaveLength(0);
     await menu(page, root, 'Selection Menu');
     await page.getByRole('menuitem', { name: 'Role: User', exact: true }).click();

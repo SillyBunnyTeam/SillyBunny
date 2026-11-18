@@ -3471,12 +3471,12 @@ async function handleClearCookiesAndCacheClick(event) {
 
         const serverCookieResult = await clearServerCookies();
         const clearedCookieCount = clearAllBrowserCookies();
-        globalThis.toastr?.success?.('Cookies and cache cleared. Reloading SillyBunny…', 'Cookies Cleared');
+        globalThis.toastr?.success?.('Cookies and cache cleared. Reloading SillyBunny…', 'Cookies cleared');
         console.info(`[Cache] Expired ${clearedCookieCount} browser cookies and queued ${serverCookieResult?.expirationAttempts ?? 0} server cookie expirations before reload`);
         window.setTimeout(() => window.location.reload(), 1000);
     } catch (error) {
         console.error('Failed to clear cookies and cache', error);
-        globalThis.toastr?.error?.(String(error?.message || error), 'Clear Failed');
+        globalThis.toastr?.error?.(String(error?.message || error), 'Clear failed');
         button.disabled = false;
         button.classList.remove('disabled');
         button.removeAttribute('aria-busy');
@@ -4587,7 +4587,7 @@ async function handleDeleteChat() {
 
     const confirmed = await openAlert({
         heading: t`Delete Chat?`,
-        body: t`This action cannot be undone.`,
+        body: t`This action cannot be undone`,
         responses: [
             { id: 'cancel', label: t`Cancel` },
             { id: 'delete', label: t`Delete`, appearance: 'destructive' },
@@ -4629,7 +4629,7 @@ async function handleAutoNameChat() {
         scheduleBottomChatBarRefresh(160);
     } catch (error) {
         console.error('[SillyBunny] Failed to auto-name current chat.', error);
-        globalThis.toastr?.error?.(String(error?.message || error), 'Auto-Name Chat');
+        globalThis.toastr?.error?.(String(error?.message || error), 'Auto-name chat');
     } finally {
         setBottomChatActionBusy(button, false);
     }
@@ -4679,7 +4679,7 @@ async function handleMassDeleteChats() {
         const files = await getChatFilesForContext(chatContext);
         const deletableFiles = files.filter(chatFile => chatFile.fileName !== chatContext.chatId);
         if (!deletableFiles.length) {
-            globalThis.toastr?.info?.('No saved chats can be deleted for this character or group.', 'Mass Delete Chats');
+            globalThis.toastr?.info?.('No saved chats can be deleted for this character or group', 'Mass delete chats');
             return;
         }
 
@@ -4713,13 +4713,13 @@ async function handleMassDeleteChats() {
             await deleteChatFileForContext(chatContext, fileName, chatModule);
         }
 
-        globalThis.toastr?.success?.(`Deleted ${names.length} chat(s).`, 'Mass Delete Chats');
+        globalThis.toastr?.success?.(`Deleted ${names.length} chat(s)`, 'Mass delete chats');
         scheduleBottomChatBarRefresh(160);
         scheduleChatbarRefresh(160);
         await chatModule.displayPastChats?.();
     } catch (error) {
         console.error('[SillyBunny] Failed to mass delete chats.', error);
-        globalThis.toastr?.error?.(String(error?.message || error), 'Mass Delete Chats');
+        globalThis.toastr?.error?.(String(error?.message || error), 'Mass delete chats');
     } finally {
         setBottomChatActionBusy(button, false);
     }
@@ -6156,7 +6156,16 @@ function dismissCharacterPanelStatus(state) {
     state.status = null;
 }
 
-function revealDeferredCharacterPanel(host, content, mount) {
+// A whole string for each panel, never one built from parts, so a translation keeps its word order.
+function getDeferredPanelLoadingTitle(panelId) {
+    const titles = {
+        'world-info': t`Loading World Info`,
+        persona: t`Loading Personas`,
+    };
+    return titles[panelId] ?? t`Loading Page`;
+}
+
+function revealDeferredCharacterPanel(host, content, mount, panelId) {
     if (!(host instanceof HTMLElement)) return Promise.resolve(false);
     let state = deferredCharacterPanels.get(host);
     if (!state) {
@@ -6169,8 +6178,7 @@ function revealDeferredCharacterPanel(host, content, mount) {
     const revision = ++state.revision;
     // A fast load shows no loading page, because the page waits like any other. This one keeps its place meanwhile, so that
     // no frame between the old panel and the new one is empty.
-    // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
-    const status = createStatusPage({ state: 'loading', title: t`Loading…`, reserveSpace: true, busy: host });
+    const status = createStatusPage({ state: 'loading', title: getDeferredPanelLoadingTitle(panelId), reserveSpace: true, busy: host });
     status.element.classList.add('sb-character-panel-loading');
     host.after(status.element);
     state.status = status;
@@ -6229,7 +6237,7 @@ function setCharacterPersonaPanelVisible(visible) {
             throw error;
         });
         return personaEditorMountPromise;
-    });
+    }, 'persona');
     return characterPanelRevealPromise;
 }
 
@@ -6270,7 +6278,7 @@ function setCharacterWorldInfoPanelVisible(visible, { preserveLayout = false } =
             throw error;
         });
         return worldInfoEditorMountPromise;
-    });
+    }, 'world-info');
     return characterPanelRevealPromise;
 }
 
@@ -7673,16 +7681,14 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
         console.error('[SillyBunny] Could not load panel:', tabConfig.id, error);
         showStatus({
             state: 'error',
-            // HUMAN: replace — a title that names what failed to load, in header capitalisation.
-            title: t`Error`,
+            title: t`Settings Not Loaded`,
             description: String(error.message || error),
             actions: [{ label: 'Retry', primary: true, onActivate: () => void lifecycle.activate().catch(showError) }],
         });
     };
     const lifecycle = createDeferredPanel(async () => {
         panel.setAttribute('aria-busy', 'true');
-        // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
-        showStatus({ state: 'loading', title: 'Loading…' });
+        showStatus({ state: 'loading', title: t`Loading Settings` });
         try {
             const loaded = await build();
             panel.replaceChildren(...loaded.panel.childNodes);
@@ -9313,7 +9319,7 @@ async function handleSillyTavernFolderImport() {
 
     if (!sourcePath) {
         setServerAdminMessage(refs.note, 'Paste the path to your SillyTavern folder or user data folder first.', 'warn');
-        toastr.warning('Paste a SillyTavern folder path first.', 'Import SillyTavern');
+        toastr.warning('Paste a SillyTavern folder path first', 'Import SillyTavern');
         refs.pathInput.focus({ preventScroll: true });
         return;
     }
@@ -9346,7 +9352,7 @@ async function handleSillyTavernFolderImport() {
     } catch (error) {
         console.error('Failed to import SillyTavern folder.', error);
         setServerAdminMessage(refs.note, error.message || 'Failed to import from that folder path.', 'danger');
-        toastr.error(error.message || 'Failed to import from that folder path.', 'Import SillyTavern');
+        toastr.error(error.message || 'Failed to import from that folder path', 'Import SillyTavern');
     } finally {
         setSillyTavernImportBusy(false);
     }
@@ -9363,7 +9369,7 @@ async function handleSillyTavernExtensionSync() {
 
     if (!sourcePath) {
         setServerAdminMessage(refs.note, 'Paste the path to your existing SillyTavern folder before syncing extensions.', 'warn');
-        toastr.warning('Paste a SillyTavern folder path first.', 'Sync Extensions');
+        toastr.warning('Paste a SillyTavern folder path first', 'Sync Extensions');
         refs.pathInput.focus({ preventScroll: true });
         return;
     }
@@ -9402,16 +9408,16 @@ async function handleSillyTavernExtensionSync() {
         setServerAdminMessage(refs.note, message, tone);
 
         if (failedCount > 0) {
-            toastr.error(result?.message || 'Some extensions could not be synced.', 'Sync Extensions');
+            toastr.error(result?.message || 'Some extensions could not be synced', 'Sync Extensions');
         } else if (warningCount > 0) {
-            toastr.warning(result?.message || 'Extension sync finished with warnings.', 'Sync Extensions');
+            toastr.warning(result?.message || 'Extension sync finished with warnings', 'Sync Extensions');
         } else {
-            toastr.success(result?.message || 'Extension sync finished.', 'Sync Extensions');
+            toastr.success(result?.message || 'Extension sync finished', 'Sync Extensions');
         }
     } catch (error) {
         console.error('Failed to sync SillyTavern third-party extensions.', error);
         setServerAdminMessage(refs.note, error.message || 'Failed to sync third-party extensions from that folder.', 'danger');
-        toastr.error(error.message || 'Failed to sync third-party extensions from that folder.', 'Sync Extensions');
+        toastr.error(error.message || 'Failed to sync third-party extensions from that folder', 'Sync Extensions');
     } finally {
         setSillyTavernImportBusy(false);
     }
@@ -9460,7 +9466,7 @@ async function handleSillyTavernZipImport(file) {
     } catch (error) {
         console.error('Failed to import SillyTavern backup ZIP.', error);
         setServerAdminMessage(refs.note, error.message || 'Failed to import that backup ZIP.', 'danger');
-        toastr.error(error.message || 'Failed to import that backup ZIP.', 'Import SillyTavern');
+        toastr.error(error.message || 'Failed to import that backup ZIP', 'Import SillyTavern');
     } finally {
         if (refs.zipFileInput instanceof HTMLInputElement) {
             refs.zipFileInput.value = '';

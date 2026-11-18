@@ -212,7 +212,7 @@ export async function editConversationMessage(messageId) {
     const requestClose = async () => {
         if (textarea.value !== message.mes && !(await confirmConversationAction({
             title: 'Discard Unsaved Changes?',
-            text: 'The message being edited has changes that have not been saved.',
+            text: 'The message being edited has changes that have not been saved',
             confirmLabel: 'Discard',
         }))) {
             return false;

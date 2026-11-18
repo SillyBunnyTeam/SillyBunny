@@ -277,7 +277,7 @@ const importLoading = status({
     title: 'Import: results while an import is running',
     component: 'shared',
     root: '#sb_character_import_results .sb-status-page',
-    ready: titled('#sb_character_import_results .sb-status-page', 'Loading…'),
+    ready: titled('#sb_character_import_results .sb-status-page', 'Importing Content'),
     masks: ['#sb_character_import_results .sb-status-page__icon'],
     async open(page) {
         // A held answer keeps the import running, which is when the results show their loading page.

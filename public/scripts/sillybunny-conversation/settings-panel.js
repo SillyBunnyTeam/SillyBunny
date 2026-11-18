@@ -231,7 +231,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
     const targets = getScheduleEditorTargets(initialAvatar);
     let editAvatar = targets.some(target => target.avatar === initialAvatar) ? initialAvatar : targets[0]?.avatar;
     if (!editAvatar) {
-        toastr.warning('No character available for schedule editing.');
+        toastr.warning('No character available for schedule editing');
         return;
     }
 
@@ -512,7 +512,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
         updateConversationChrome(getSettings(currentAvatar, { groupId: currentGroupId, personaId: currentPersonaId }));
     }
     const targetName = targets.find(target => target.avatar === editAvatar)?.name || 'character';
-    toastr.success(`Schedule saved for ${targetName}.`);
+    toastr.success(`Schedule saved for ${targetName}`);
 }
 
 export function renderScheduleDisplay() {
@@ -600,7 +600,7 @@ export function renderConversationMemoryPanel() {
 export async function forceCreateMemoryFromPanel() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
-        toastr.warning('Pick a DM first.');
+        toastr.warning('Pick a DM first');
         return;
     }
 
@@ -608,7 +608,7 @@ export async function forceCreateMemoryFromPanel() {
     const currentMemory = getConversationMemorySummary(avatar, { groupId }) || '';
     const newMemory = await promptConversationText({
         title: 'Memory Summary',
-        text: 'Enter or override the memory summary for this Conversation.',
+        text: 'Enter or override the memory summary for this Conversation',
         defaultValue: currentMemory,
         rows: 6,
     });
@@ -619,14 +619,14 @@ export async function forceCreateMemoryFromPanel() {
     const trimmedMemory = newMemory.trim();
     const messages = getConversationThread(avatar, { groupId });
     saveConversationMemorySummary(avatar, trimmedMemory, messages.length, { groupId });
-    toastr.success('Conversation memory updated.');
+    toastr.success('Conversation memory updated');
     renderConversationMemoryPanel();
 }
 
 export async function refreshConversationMemoryFromPanel() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
-        toastr.warning('Pick a DM first.');
+        toastr.warning('Pick a DM first');
         return;
     }
 
@@ -640,13 +640,13 @@ export async function refreshConversationMemoryFromPanel() {
 export async function clearConversationMemoryFromPanel() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
-        toastr.warning('Pick a DM first.');
+        toastr.warning('Pick a DM first');
         return;
     }
 
     const confirmed = await confirmConversationAction({
         title: 'Clear the memory summary?',
-        text: 'This does not delete chat messages.',
+        text: 'This does not delete chat messages',
         confirmLabel: 'Clear',
     });
     if (!confirmed) {
@@ -655,7 +655,7 @@ export async function clearConversationMemoryFromPanel() {
 
     const groupId = getConversationGroupIdForAvatar(avatar);
     if (clearConversationMemorySummary(avatar, { groupId })) {
-        toastr.success('Conversation memory cleared.');
+        toastr.success('Conversation memory cleared');
     }
 }
 

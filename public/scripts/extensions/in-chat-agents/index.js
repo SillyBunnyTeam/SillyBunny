@@ -563,7 +563,7 @@ async function performAgentListAction(entry, action) {
     } else if (action === 'apply-last' || action === 'run-last') {
         const messageIndex = getLastAssistantMessageIndex();
         if (messageIndex < 0) {
-            toastr.warning('No assistant reply yet to manually apply this agent to.');
+            toastr.warning('No assistant reply yet to manually apply this agent to');
             return;
         }
         targets = [{ kind: 'message', messageIndex }];
@@ -603,7 +603,7 @@ async function fixTrackersFromList() {
     const companionMessageIndex = getLatestValidCompanionMessageIndex();
     const messageIndex = Math.max(inlineMessageIndex, companionMessageIndex);
     if (messageIndex < 0) {
-        toastr.warning('No assistant reply yet to fix trackers on.');
+        toastr.warning('No assistant reply yet to fix trackers on');
         return;
     }
     await runTrackerFixFromButton(messageIndex, null, { inlineMessageIndex, companionMessageIndex });
@@ -612,7 +612,7 @@ async function fixTrackersFromList() {
 async function convertTrackersFromList() {
     const inlineTrackers = getAgents().filter(agent => agent.category === 'tracker' && !isCompanionAgent(agent) && !isPathfinderAgent(agent));
     if (!inlineTrackers.length) {
-        toastr.info('Every tracker already runs as a companion.');
+        toastr.info('Every tracker already runs as a companion');
         return;
     }
     // SillyBunny: confirmation labels identify the tracker conversion action.
@@ -712,8 +712,8 @@ async function registerAgentListUi(settingsStore, settingsFields) {
                 });
             },
             notify(code) {
-                if (code === 'no-message') toastr.warning('No message yet to run companions on.');
-                else if (code === 'no-companions-ran') toastr.info('No companion agents ran for this message.');
+                if (code === 'no-message') toastr.warning('No message yet to run companions on');
+                else if (code === 'no-companions-ran') toastr.info('No companion agents ran for this message');
             },
         },
         groups: {
@@ -931,9 +931,9 @@ async function performAgentBulkAction(keys, action, { properties = {}, onSaved =
             onSaved(key, saved);
         }
         if (action === 'companion-outputs') {
-            if (changed) toastr.success(`Enabled ${changed} selected post-generation agent(s) on companion outputs.`);
-            else if (eligible) toastr.info('Selected post-generation agents are already enabled on companion outputs.');
-            else toastr.warning('No selected post-generation agents can run on companion outputs.');
+            if (changed) toastr.success(`Enabled ${changed} selected post-generation agent(s) on companion outputs`);
+            else if (eligible) toastr.info('Selected post-generation agents are already enabled on companion outputs');
+            else toastr.warning('No selected post-generation agents can run on companion outputs');
         }
         return changed;
     } finally {
@@ -960,12 +960,12 @@ async function editAgentListProperties(keys, options) {
         if (result !== POPUP_RESULT.AFFIRMATIVE) return false;
         const properties = Object.fromEntries(fields.map(field => [field, content.querySelector(`#ica--bulkEdit-${field}`).value]));
         if (fields.every(field => properties[field] === '')) {
-            toastr.info('No properties selected to change.');
+            toastr.info('No properties selected to change');
             return false;
         }
         const changed = await performAgentBulkAction(keys, 'properties', { ...options, properties });
-        if (changed) toastr.success(`Updated ${changed} agent(s).`);
-        else toastr.info('No agents needed updating.');
+        if (changed) toastr.success(`Updated ${changed} agent(s)`);
+        else toastr.info('No agents needed updating');
         return true;
     } finally {
         content.style.display = 'none';
@@ -1051,7 +1051,7 @@ async function pickManualAgentRunTargets(agent) {
     }
 
     if (options.length === 0) {
-        toastr.warning('No targets available: no assistant reply yet and the composer is empty.');
+        toastr.warning('No targets available: no assistant reply yet and the composer is empty');
         return null;
     }
 
@@ -1089,7 +1089,7 @@ async function pickManualAgentRunTargets(agent) {
 
     const selected = picker.find('input[name="ica--run-target"]:checked').map((_, input) => String(input.value)).get();
     if (selected.length === 0) {
-        toastr.warning('Select at least one target.');
+        toastr.warning('Select at least one target');
         return null;
     }
 
@@ -1097,7 +1097,7 @@ async function pickManualAgentRunTargets(agent) {
         ? getManualAgentRunMessageIndices(picker.find('#ica--run-target-message-range').val(), lastAssistantIndex)
         : [];
     if (messageIndices === null || (selected.includes('message') && messageIndices.length === 0)) {
-        toastr.warning('Select at least one target.');
+        toastr.warning('Select at least one target');
         return null;
     }
 
@@ -1320,8 +1320,8 @@ async function applyAgentExecutionConversion(agent, targetExecution) {
         ? 'its state now appears in the slide-out Tracker panel'
         : 'it now runs as a note card under assistant replies';
     toastr.success(targetExecution === 'companion'
-        ? `"${agent.name}" converted to companion — ${companionDestination}.`
-        : `"${agent.name}" now runs inline again${movesToCustom ? ' (moved to the Custom category)' : ''}.`);
+        ? `"${agent.name}" converted to companion — ${companionDestination}`
+        : `"${agent.name}" now runs inline again${movesToCustom ? ' (moved to the Custom category)' : ''}`);
     return true;
 }
 
@@ -1419,7 +1419,7 @@ async function previewCompanionFeedbackPrompt(agent) {
 async function previewPreGenerationPrompt(agent, promptOverride = null) {
     const prompt = String(promptOverride ?? agent?.prompt ?? '');
     if (!prompt.trim()) {
-        toastr.warning('Enter a prompt before previewing it.');
+        toastr.warning('Enter a prompt before previewing it');
         return;
     }
 
@@ -1478,13 +1478,13 @@ async function updateAgentFromSourceTemplate(agent) {
 
     await saveAgent(buildUpdatedAgentFromTemplate(agent, template));
     renderAgentList();
-    toastr.success(`Updated "${template.name}" to v${templateVersion}.`);
+    toastr.success(`Updated "${template.name}" to v${templateVersion}`);
 }
 
 async function updateAllAgentsFromSourceTemplates() {
     const outdatedAgents = getAgentsWithTemplateUpdates();
     if (outdatedAgents.length === 0) {
-        toastr.info('Every bundled agent is already on its latest template.');
+        toastr.info('Every bundled agent is already on its latest template');
         return;
     }
 
@@ -1518,7 +1518,7 @@ async function updateAllAgentsFromSourceTemplates() {
 
     syncToolAgentRegistrations();
     renderAgentList();
-    toastr.success(`Updated ${updated} agent(s) to their latest templates.`);
+    toastr.success(`Updated ${updated} agent(s) to their latest templates`);
 }
 
 globalThis.SillyBunnyAgents = Object.assign(globalThis.SillyBunnyAgents || {}, {
@@ -2022,7 +2022,7 @@ async function runTrackerFixFromButton(messageIndex, button, { inlineMessageInde
         const hasInlineTrackers = hasRunnableInlineTrackerAgents();
         const hasCompanionTrackers = hasRunnableCompanionTrackerAgents();
         if (!hasInlineTrackers && !hasCompanionTrackers) {
-            toastr.info('No enabled tracker or connected companion agents found.');
+            toastr.info('No enabled tracker or connected companion agents found');
             return;
         }
 
@@ -2038,12 +2038,12 @@ async function runTrackerFixFromButton(messageIndex, button, { inlineMessageInde
         if (hasInlineTrackers && canRunInlineTrackers) {
             await runTrackerFixOnMessage(inlineMessageIndex, { cancelRevision });
         } else if (hasInlineTrackers) {
-            toastr.warning('No assistant reply selected to fix trackers on.');
+            toastr.warning('No assistant reply selected to fix trackers on');
         }
         if (hasCompanionTrackers && canRunCompanionTrackers && isFixContextCurrent()) {
             await runTrackerCompanionsOnMessage(companionMessageIndex, { cancelRevision });
         } else if (hasCompanionTrackers && isFixContextCurrent()) {
-            toastr.warning('No message selected to run connected companions on.');
+            toastr.warning('No message selected to run connected companions on');
         }
     } finally {
         fixTrackersRunning = false;
@@ -2213,7 +2213,7 @@ async function createCustomGroup(selectedKeys = null) {
 
     const name = html.find('#ica--grp-name').val()?.toString().trim();
     if (!name) {
-        toastr.warning('Please enter a group name.');
+        toastr.warning('Please enter a group name');
         return;
     }
 
@@ -2223,7 +2223,7 @@ async function createCustomGroup(selectedKeys = null) {
     });
 
     if (selectedIds.length === 0) {
-        toastr.warning('Select at least one agent.');
+        toastr.warning('Select at least one agent');
         return;
     }
 
@@ -2244,13 +2244,13 @@ async function createCustomGroup(selectedKeys = null) {
     group.builtin = false;
 
     if (group.agentTemplateIds.length === 0 && group.customAgents.length === 0) {
-        toastr.warning('Unable to build a reusable group from the selected agents.');
+        toastr.warning('Unable to build a reusable group from the selected agents');
         return;
     }
 
     await saveGroup(group);
 
-    toastr.success(`Created group "${name}" with ${selectedIds.length} agent(s).`);
+    toastr.success(`Created group "${name}" with ${selectedIds.length} agent(s)`);
 }
 
 // ===================== Import / Export =====================
@@ -2268,7 +2268,7 @@ async function handleImport(event) {
         const data = JSON.parse(text);
         const imported = await importAgents(data);
         renderAgentList();
-        toastr.success(`Imported ${imported.length} agent(s).`);
+        toastr.success(`Imported ${imported.length} agent(s)`);
     } catch (e) {
         toastr.error('Failed to import: ' + e.message);
     }
@@ -2283,7 +2283,7 @@ async function handleImport(event) {
 function handleExportAll() {
     const agents = getVisibleInChatAgents();
     if (agents.length === 0) {
-        toastr.info('No agents to export.');
+        toastr.info('No agents to export');
         return;
     }
     const data = {
@@ -2957,7 +2957,7 @@ async function openPromptTransformHistoryPopup(messageIndex) {
     const preGenerationHistory = getPreGenerationInterceptHistoryForMessage(message);
     const history = getPromptTransformHistoryForMessage(message);
     if ((!Array.isArray(preGenerationHistory) || preGenerationHistory.length === 0) && (!Array.isArray(history) || history.length === 0)) {
-        toastr.info('No agent document history available.');
+        toastr.info('No agent document history available');
         return;
     }
 
@@ -2986,18 +2986,18 @@ async function openPromptTransformHistoryPopup(messageIndex) {
     html.find('.ica-undo-btn').on('click', async function () {
         const idx = Number($(this).data('mesid'));
         if (await undoPromptTransform(idx)) {
-            toastr.success('Transform undone.');
+            toastr.success('Transform undone');
         } else {
-            toastr.warning('Could not undo transform.');
+            toastr.warning('Could not undo transform');
         }
     });
 
     html.find('.ica-redo-btn').on('click', async function () {
         const idx = Number($(this).data('mesid'));
         if (await redoPromptTransform(idx)) {
-            toastr.success('Transform redone.');
+            toastr.success('Transform redone');
         } else {
-            toastr.warning('Could not redo transform.');
+            toastr.warning('Could not redo transform');
         }
     });
 
@@ -3185,7 +3185,7 @@ function openPathfinderExtensionsDrawer(host) {
  */
 async function openPathfinderEditor(agent) {
     if (!isPathfinderSubmoduleEnabled()) {
-        toastr.warning('Pathfinder is disabled in In-Chat Agents settings.');
+        toastr.warning('Pathfinder is disabled in In-Chat Agents settings');
         return;
     }
 
@@ -3195,7 +3195,7 @@ async function openPathfinderEditor(agent) {
             ? (pathfinderExtensionsMountPromise ?? schedulePathfinderExtensionsMount(agent))
             : schedulePathfinderExtensionsMount(agent));
         openPathfinderExtensionsDrawer(host ?? existingHost);
-        toastr.info('Pathfinder settings are in the Extensions drawer.');
+        toastr.info('Pathfinder settings are in the Extensions drawer');
         return;
     }
 
@@ -3439,7 +3439,7 @@ Requirements:
 async function refinePromptWithAI(currentPrompt, category, phase, connectionProfile = '', isCurrent = () => true) {
     if (!isCurrent()) return null;
     if (!currentPrompt.trim()) {
-        toastr.warning('Write a prompt first before refining.');
+        toastr.warning('Write a prompt first before refining');
         return null;
     }
 
@@ -3479,7 +3479,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
     if (selectedVal === 'custom') {
         instruction = html.find('#ica--refine-custom').val()?.toString().trim();
         if (!instruction) {
-            toastr.warning('Please enter a custom instruction.');
+            toastr.warning('Please enter a custom instruction');
             return null;
         }
     } else {
@@ -3498,7 +3498,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
         if (!isCurrent()) return null;
 
         if (!refined || !refined.trim()) {
-            toastr.error('AI returned an empty response.');
+            toastr.error('AI returned an empty response');
             return null;
         }
 
@@ -3541,7 +3541,7 @@ async function resetBundledAgentsFromSettings() {
         .filter(template => !hasMatchingAgentSnapshot(buildAgentFromTemplate(template), agents));
     const bundledCount = agents.filter(a => findTemplateForAgent(a)).length + missingDefaultBundledTemplates.length;
     if (bundledCount === 0) {
-        toastr.info('No bundled agents found to reset.');
+        toastr.info('No bundled agents found to reset');
         return;
     }
     if (!await confirmDestructiveAction({
@@ -3553,8 +3553,8 @@ async function resetBundledAgentsFromSettings() {
     const result = await resetBundledAgents(getCatalogueContext());
     const resetCount = result.reset + result.added;
     toastr.success(resetCount === 1
-        ? t`Reset 1 bundled agent to defaults.`
-        : t`Reset ${resetCount} bundled agents to defaults.`);
+        ? t`Reset 1 bundled agent to defaults`
+        : t`Reset ${resetCount} bundled agents to defaults`);
     renderAgentList();
     return result;
 }
@@ -3608,7 +3608,7 @@ async function resetBundledAgentsFromSettings() {
         try {
             const migratedCount = await migrateLegacyGroups(legacyGroups);
             if (migratedCount > 0) {
-                toastr.success(`Migrated ${migratedCount} custom group(s) to backend storage.`);
+                toastr.success(`Migrated ${migratedCount} custom group(s) to backend storage`);
             }
         } catch (error) {
             console.warn('[InChatAgents] Failed to migrate legacy groups:', error);
@@ -3622,63 +3622,63 @@ async function resetBundledAgentsFromSettings() {
     await ensureDefaultBundledAgents();
     const latestBundledAgentMigration = await refreshBundledAgentsFromLatestTemplates();
     if (latestBundledAgentMigration.updatedCount > 0) {
-        toastr.success(`Updated ${latestBundledAgentMigration.updatedCount} bundled agent${latestBundledAgentMigration.updatedCount !== 1 ? 's' : ''} to the latest template defaults.`);
+        toastr.success(`Updated ${latestBundledAgentMigration.updatedCount} bundled agent${latestBundledAgentMigration.updatedCount !== 1 ? 's' : ''} to the latest template defaults`);
     }
     if (latestBundledAgentMigration.removedCount > 0) {
-        toastr.success(`Removed ${latestBundledAgentMigration.removedCount} redundant bundled agent duplicate${latestBundledAgentMigration.removedCount !== 1 ? 's' : ''}.`);
+        toastr.success(`Removed ${latestBundledAgentMigration.removedCount} redundant bundled agent duplicate${latestBundledAgentMigration.removedCount !== 1 ? 's' : ''}`);
     }
 
     await migrateBundledRegexScriptsToSavedAgents();
     const migratedCyoaChoiceRegexCount = await migrateCyoaChoiceRegexCleanupToSavedAgents();
     if (migratedCyoaChoiceRegexCount > 0) {
-        toastr.success(`Updated ${migratedCyoaChoiceRegexCount} bundled CYOA choice regex script${migratedCyoaChoiceRegexCount !== 1 ? 's' : ''}.`);
+        toastr.success(`Updated ${migratedCyoaChoiceRegexCount} bundled CYOA choice regex script${migratedCyoaChoiceRegexCount !== 1 ? 's' : ''}`);
     }
 
     const migratedTemplateMetadataCount = await migrateBundledTemplateMetadataToSavedAgents();
     if (migratedTemplateMetadataCount > 0) {
-        toastr.success(`Updated ${migratedTemplateMetadataCount} bundled agent credit${migratedTemplateMetadataCount !== 1 ? 's' : ''}.`);
+        toastr.success(`Updated ${migratedTemplateMetadataCount} bundled agent credit${migratedTemplateMetadataCount !== 1 ? 's' : ''}`);
     }
 
     const migratedTrackerPromptPassCount = await migrateBundledTrackerPromptPassesToSavedAgents();
     if (migratedTrackerPromptPassCount > 0) {
-        toastr.success(`Updated ${migratedTrackerPromptPassCount} bundled tracker agent(s) to pre-generation defaults.`);
+        toastr.success(`Updated ${migratedTrackerPromptPassCount} bundled tracker agent(s) to pre-generation defaults`);
     }
 
     const migratedRegexPostDefaultsCount = await migrateBundledRegexPostDefaultsToSavedAgents();
     if (migratedRegexPostDefaultsCount > 0) {
-        toastr.success(`Updated ${migratedRegexPostDefaultsCount} bundled regex agent(s) to post-generation defaults.`);
+        toastr.success(`Updated ${migratedRegexPostDefaultsCount} bundled regex agent(s) to post-generation defaults`);
     }
 
     if (isPathfinderSubmoduleEnabled()) {
         const migratedPathfinderToolCount = await migratePathfinderAgentToolsFromTemplate();
         if (migratedPathfinderToolCount > 0) {
-            toastr.success(`Updated ${migratedPathfinderToolCount} Pathfinder agent(s) with default tool toggles.`);
+            toastr.success(`Updated ${migratedPathfinderToolCount} Pathfinder agent(s) with default tool toggles`);
         }
     }
 
     const migratedPromptTransformImpersonateCount = await migrateBundledPromptTransformImpersonateToSavedAgents();
     if (migratedPromptTransformImpersonateCount > 0) {
-        toastr.success(`Updated ${migratedPromptTransformImpersonateCount} bundled prompt pass agent(s) for impersonations.`);
+        toastr.success(`Updated ${migratedPromptTransformImpersonateCount} bundled prompt pass agent(s) for impersonations`);
     }
 
     const migratedPromptTransformTokenCount = await migrateLegacyPromptTransformMaxTokens();
     if (migratedPromptTransformTokenCount > 0) {
-        toastr.success(`Updated ${migratedPromptTransformTokenCount} agent(s) to the new 8192 prompt transform token default.`);
+        toastr.success(`Updated ${migratedPromptTransformTokenCount} agent(s) to the new 8192 prompt transform token default`);
     }
 
     const removedBundledAgentCount = await purgeRemovedBundledAgents();
     if (removedBundledAgentCount > 0) {
-        toastr.success(`Removed ${removedBundledAgentCount} bundled agent(s) from the default catalog.`);
+        toastr.success(`Removed ${removedBundledAgentCount} bundled agent(s) from the default catalog`);
     }
 
     const removedDuplicateCount = await removeRedundantBundledAgentDuplicates();
     if (removedDuplicateCount > 0) {
-        toastr.success(`Removed ${removedDuplicateCount} redundant bundled agent duplicate(s).`);
+        toastr.success(`Removed ${removedDuplicateCount} redundant bundled agent duplicate(s)`);
     }
 
     const migratedTrackerCompanionCount = await migrateTrackerCompanionsToAutoLoop();
     if (migratedTrackerCompanionCount > 0) {
-        toastr.success(`${migratedTrackerCompanionCount} tracker companion(s) now run automatically with their own prompt, feed state back into context, and show in the Tracker panel.`);
+        toastr.success(`${migratedTrackerCompanionCount} tracker companion(s) now run automatically with their own prompt, feed state back into context, and show in the Tracker panel`);
     }
 
     await migrateLevelUpStatsContextLinks();
@@ -3766,7 +3766,7 @@ async function resetBundledAgentsFromSettings() {
         syncToolAgentRegistrations();
         toastr.info(separated
             ? `Agent toggles are now scoped to ${getAgentChatScopeLabel().toLowerCase()}. Switch chat types to configure the other scope.`
-            : 'Agent toggles are shared across Individual and Group chats again.');
+            : 'Agent toggles are shared across Individual and Group chats again');
     });
     $('#ica--promptTransformShowNotifications').on('change', function () {
         setGlobalSettings({ promptTransformShowNotifications: $(this).prop('checked') });
@@ -3786,15 +3786,15 @@ async function resetBundledAgentsFromSettings() {
             try {
                 const migratedPathfinderToolCount = await migratePathfinderAgentToolsFromTemplate();
                 if (migratedPathfinderToolCount > 0) {
-                    toastr.success(`Updated ${migratedPathfinderToolCount} Pathfinder agent(s) with default tool toggles.`);
+                    toastr.success(`Updated ${migratedPathfinderToolCount} Pathfinder agent(s) with default tool toggles`);
                 }
                 initPathfinder(getContext());
                 schedulePathfinderExtensionsMount();
                 syncToolAgentRegistrations();
-                toastr.info('Pathfinder submodule enabled.');
+                toastr.info('Pathfinder submodule enabled');
             } catch (err) {
                 console.warn('[InChatAgents] Failed to enable Pathfinder submodule:', err);
-                toastr.error('Could not enable Pathfinder.');
+                toastr.error('Could not enable Pathfinder');
             }
             return;
         }
@@ -3802,7 +3802,7 @@ async function resetBundledAgentsFromSettings() {
         teardownPathfinder();
         deactivatePathfinderRuntime();
         removePathfinderExtensionsHost();
-        toastr.info('Pathfinder submodule disabled.');
+        toastr.info('Pathfinder submodule disabled');
     });
     $('#ica--appendAgentsExecutionMode').on('change', function () {
         setGlobalSettings({ appendAgentsExecutionMode: this.value });
@@ -3887,7 +3887,7 @@ async function resetBundledAgentsFromSettings() {
 
         await saveAgent(agent);
         renderAgentList();
-        toastr.success(`Created agent "${agent.name}" from prompt.`);
+        toastr.success(`Created agent "${agent.name}" from prompt`);
     });
     // Sync tool agents when API settings change
     const apiSettingsEvents = [
@@ -3925,7 +3925,7 @@ async function resetBundledAgentsFromSettings() {
         const mesId = $(this).closest('.mes').attr('mesid');
         const messageIndex = Number(mesId);
         if (isNaN(messageIndex) || messageIndex < 0) {
-            toastr.warning('Invalid message.');
+            toastr.warning('Invalid message');
             return;
         }
         await runTrackerFixFromButton(messageIndex, this);

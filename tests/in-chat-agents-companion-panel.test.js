@@ -1071,7 +1071,7 @@ describe('companion tracker panel', () => {
         expect(inputField.prop).toHaveBeenCalledWith('disabled', false);
         expect(button.prop).toHaveBeenCalledWith('disabled', true);
         expect(button.prop).toHaveBeenCalledWith('disabled', false);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved.');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved');
     });
 
     test('closes after a panel choice inserts into the message box', async () => {

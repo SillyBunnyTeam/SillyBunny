@@ -499,8 +499,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     if (!(rowsContainer instanceof HTMLElement)) throw new Error('Character list rows container is missing.');
     const section = node('section', 'sb-character-list');
     section.dataset.view = 'characters';
-    // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
-    const loading = createStatusPage({ state: 'loading', title: t`Loading…`, busy: section });
+    const loading = createStatusPage({ state: 'loading', title: t`Loading Characters`, busy: section });
     const status = node('div', 'sb-character-list__status');
     status.append(loading.element);
 
@@ -1423,8 +1422,7 @@ export async function mountCharacterList(container = document.getElementById('rm
         };
         for (const { element } of originalChildren) element.style.setProperty('display', 'none', 'important');
         const section = node('section', 'sb-character-list sb-character-list--loading');
-        // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
-        section.append(createStatusPage({ state: 'loading', title: t`Loading…` }).element);
+        section.append(createStatusPage({ state: 'loading', title: t`Loading Characters` }).element);
         container.append(section);
         let mounted;
         try {

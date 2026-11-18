@@ -233,7 +233,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 refs.verboseLoggingStatus.textContent = result?.message || 'Logging config saved.';
                 refs.verboseLoggingStatus.dataset.state = 'saved';
             }
-            globalThis.toastr?.success?.('Logging config saved. Restart SillyBunny to apply it.', 'Console Logs');
+            globalThis.toastr?.success?.('Logging config saved. Restart SillyBunny to apply it.', 'Console logs');
         } catch (error) {
             setConsoleLogsVerboseLoggingUI(state.verboseLoggingEnabled ? 0 : 1);
             console.error('Failed to save logging config for Console Logs.', error);
@@ -241,7 +241,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 refs.verboseLoggingStatus.textContent = error?.message || 'Failed to save logging config.';
                 refs.verboseLoggingStatus.dataset.state = 'danger';
             }
-            globalThis.toastr?.error?.(error?.message || 'Failed to save logging config.', 'Console Logs');
+            globalThis.toastr?.error?.(error?.message || 'Failed to save logging config', 'Console logs');
         } finally {
             state.configBusy = false;
             updateConsoleLogsInteractivity();
@@ -1088,7 +1088,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             syncSavedAutoStash(normalizedContent);
             updateServerConfigDirtyState();
             setServerAdminMessage(refs.configNote, result?.message || 'Config saved.', restart ? 'warn' : 'good');
-            toastr.success(result?.message || 'Config saved.', 'Server Config');
+            toastr.success(result?.message || 'Config saved', 'Server config');
 
             if (restart) {
                 state.busy = false;
@@ -1099,13 +1099,13 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 if (!restarted) {
                     state.restarting = false;
                     setServerAdminMessage(refs.configNote, 'Restart is taking longer than expected. Refresh the page once the server is back.', 'warn');
-                    toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
+                    toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
                 }
             }
         } catch (error) {
             console.error('Failed to save config.yaml.', error);
             setServerAdminMessage(refs.configNote, error.message || 'Failed to save config.yaml.', 'danger');
-            toastr.error(error.message || 'Failed to save config.yaml.', 'Server Config');
+            toastr.error(error.message || 'Failed to save config.yaml.', 'Server config');
         } finally {
             if (!state.restarting) {
                 state.busy = false;
@@ -1124,7 +1124,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
         if (updateServerConfigDirtyState()) {
             setServerAdminMessage(refs.thumbnailNote, 'Save or reload the config.yaml editor before changing thumbnail settings.', 'warn');
-            toastr.warning('Save or reload the config.yaml editor before changing thumbnail settings.', 'Thumbnails');
+            toastr.warning('Save or reload the config.yaml editor before changing thumbnail settings', 'Thumbnails');
             return;
         }
 
@@ -1144,12 +1144,12 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             renderServerThumbnailSettings(result);
             state.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || state.lastModifiedMs;
             setServerAdminMessage(refs.thumbnailNote, result?.message || 'Thumbnail settings saved.', 'good');
-            toastr.success(result?.message || 'Thumbnail settings saved.', 'Thumbnails');
+            toastr.success(result?.message || 'Thumbnail settings saved', 'Thumbnails');
             renderServerAdminConfig(await requestServerAdmin('/api/server-admin/config/get'), { overwrite: true });
         } catch (error) {
             console.error('Failed to save thumbnail settings.', error);
             setServerAdminMessage(refs.thumbnailNote, error.message || 'Failed to save thumbnail settings.', 'danger');
-            toastr.error(error.message || 'Failed to save thumbnail settings.', 'Thumbnails');
+            toastr.error(error.message || 'Failed to save thumbnail settings', 'Thumbnails');
         } finally {
             state.busy = false;
             updateServerAdminInteractivity();
@@ -1166,7 +1166,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
         const response = await openAlert({
             heading: 'Clear cached thumbnails for this user?',
-            body: 'They will be rebuilt as images are loaded.',
+            body: 'They will be rebuilt as images are loaded',
             responses: [
                 { id: 'cancel', label: t`Cancel` },
                 { id: 'clear', label: t`Clear Cache`, appearance: 'suggested' },
@@ -1184,11 +1184,11 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         try {
             const result = await requestServerAdmin('/api/server-admin/thumbnails/clear-cache');
             setServerAdminMessage(refs.thumbnailNote, result?.message || 'Thumbnail cache cleared.', 'good');
-            toastr.success(result?.message || 'Thumbnail cache cleared.', 'Thumbnails');
+            toastr.success(result?.message || 'Thumbnail cache cleared', 'Thumbnails');
         } catch (error) {
             console.error('Failed to clear thumbnail cache.', error);
             setServerAdminMessage(refs.thumbnailNote, error.message || 'Failed to clear thumbnail cache.', 'danger');
-            toastr.error(error.message || 'Failed to clear thumbnail cache.', 'Thumbnails');
+            toastr.error(error.message || 'Failed to clear thumbnail cache', 'Thumbnails');
         } finally {
             state.busy = false;
             updateServerAdminInteractivity();
@@ -1320,14 +1320,14 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             if (!restarted) {
                 state.restarting = false;
                 setServerAdminMessage(refs.updateNote, 'Restart is taking longer than expected. Refresh the page once the server is back.', 'warn');
-                toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
+                toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
             }
         } catch (error) {
             console.error('Failed to restart SillyBunny.', error);
             state.busy = false;
             updateServerAdminInteractivity();
             setServerAdminMessage(refs.updateNote, error.message || 'Failed to restart SillyBunny.', 'danger');
-            toastr.error(error.message || 'Failed to restart SillyBunny.', 'Server');
+            toastr.error(error.message || 'Failed to restart SillyBunny', 'Server');
         }
     }
 
@@ -1364,9 +1364,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 const stashMessage = describeAutoStashState(result);
                 setServerAdminMessage(refs.updateNote, [result?.message || 'Already up to date.', stashMessage].filter(Boolean).join('\n'), stashMessage ? 'warn' : 'good');
                 if (stashMessage) {
-                    toastr.info(stashMessage, 'Auto-Stash');
+                    toastr.info(stashMessage, 'Auto-stash');
                 }
-                toastr.success(result?.message || 'Already up to date.', 'Server Update');
+                toastr.success(result?.message || 'Already up to date', 'Server update');
                 return;
             }
 
@@ -1374,9 +1374,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
             const stashMessage = describeAutoStashState(result);
             if (result?.stashPopWarning) {
-                toastr.warning(stashMessage, 'Auto-Stash Warning', { timeOut: 10000 });
+                toastr.warning(stashMessage, 'Auto-stash warning', { timeOut: 10000 });
             } else if (stashMessage) {
-                toastr.info(stashMessage, 'Auto-Stash');
+                toastr.info(stashMessage, 'Auto-stash');
             }
 
             if (result?.install?.stdout || result?.install?.stderr) {
@@ -1390,7 +1390,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             state.restarting = true;
             updateServerAdminInteractivity();
             setServerAdminMessage(refs.updateNote, result?.message || 'Update applied. Restarting SillyBunny…', 'warn');
-            toastr.info(result?.message || 'Update applied. Restarting SillyBunny…', 'Server Update');
+            toastr.info(result?.message || 'Update applied. Restarting SillyBunny…', 'Server update');
 
             const expectedRevision = String(result?.version?.gitRevision ?? result?.repository?.currentCommit ?? '').trim();
             const autoClearCacheEnabled = Boolean(document.getElementById('auto_clear_cache_on_update')?.checked);
@@ -1399,17 +1399,17 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             if (!restarted) {
                 state.restarting = false;
                 setServerAdminMessage(refs.updateNote, 'Update completed, but restart is taking longer than expected. Refresh manually once the server is back.', 'warn');
-                toastr.warning('Update finished, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
+                toastr.warning('Update finished, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
             }
         } catch (error) {
             console.error('Failed to update SillyBunny.', error);
             state.busy = false;
             const stashMessage = describeAutoStashState(error?.data);
             if (stashMessage) {
-                toastr.warning(stashMessage, 'Auto-Stash Warning', { timeOut: 10000 });
+                toastr.warning(stashMessage, 'Auto-stash warning', { timeOut: 10000 });
             }
             setServerAdminMessage(refs.updateNote, [error.message || 'Failed to update SillyBunny.', stashMessage].filter(Boolean).join('\n'), 'danger');
-            toastr.error(error.message || 'Failed to update SillyBunny.', 'Server Update');
+            toastr.error(error.message || 'Failed to update SillyBunny', 'Server update');
         } finally {
             setServerAdminButtonLabel(refs.updateButton, false, 'Updating…');
 
@@ -1510,17 +1510,17 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
             const message = result?.message || `Switched to branch "${targetBranch}". Restarting…`;
             setServerAdminMessage(refs.updateNote, message, 'warn');
-            toastr.info(message, 'Branch Switch');
+            toastr.info(message, 'Branch switch');
 
             if (result?.stashed && !result?.stashRestored) {
-                toastr.warning('Your changes were stashed but could not be automatically restored. Use "git stash pop" after restart.', 'Stash Warning', { timeOut: 10000 });
+                toastr.warning('Your changes were stashed but could not be automatically restored. Use "git stash pop" after restart.', 'Stash warning', { timeOut: 10000 });
             }
 
             const restarted = await waitForServerReturn();
             if (!restarted) {
                 state.restarting = false;
                 setServerAdminMessage(refs.updateNote, 'Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'warn');
-                toastr.warning('Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
+                toastr.warning('Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
             }
         } catch (error) {
             clearTimeout(abortTimeout);
@@ -1535,13 +1535,13 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             if (error.name === 'AbortError') {
                 const timeoutMessage = 'Branch switch is taking longer than expected. The server may still be working; refresh in a moment to see the result.';
                 setServerAdminMessage(refs.updateNote, timeoutMessage, 'warn');
-                toastr.warning(timeoutMessage, 'Branch Switch', { timeOut: 10000 });
+                toastr.warning(timeoutMessage, 'Branch switch', { timeOut: 10000 });
                 return;
             }
 
             const errorMessage = error.message || 'Failed to switch branch.';
             setServerAdminMessage(refs.updateNote, errorMessage, 'danger');
-            toastr.error(errorMessage, 'Branch Switch');
+            toastr.error(errorMessage, 'Branch switch');
         }
     }
 

@@ -1475,6 +1475,7 @@
     "Delete Chat": "Xóa cuộc trò chuyện",
     "Deleting chat…": "Đang xóa cuộc trò chuyện…",
     "Loading chat…": "Đang tải cuộc trò chuyện…",
+    "Loading Chat": "Đang tải cuộc trò chuyện…",
     "Bulk Delete": "Xóa hàng loạt",
     "Deleting ${0} character(s)…": "Đang xóa ${0} nhân vật…",
     "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "Tùy chọn kiểu OpenAI: low, medium, high, xhigh. Mỗi mức được gửi đúng như đã chọn, ngoại trừ Minimum được gửi dưới dạng 'minimal'. None được gửi nguyên văn tới GPT-5.1 trở lên; các mô hình khác không nhận mức nào.",

@@ -350,10 +350,10 @@ export function mountPersonaEditor(container) {
             if (await deletePersonaRecord(avatarId, { silent: true })) deleted.push(avatarId);
         }
         if (states.some((state, index) => state.default && deleted.includes(avatarIds[index]))) {
-            globalThis.toastr?.warning(t`The default persona was deleted. You will need to set a new default persona.`, t`Default Persona Deleted`);
+            globalThis.toastr?.warning(t`The default persona was deleted. You will need to set a new default persona.`, t`Default persona deleted`);
         }
         if (states.some((state, index) => state.locked.chat && deleted.includes(avatarIds[index]))) {
-            globalThis.toastr?.warning(t`The locked persona was deleted. You will need to set a new persona for this chat.`, t`Persona Deleted`);
+            globalThis.toastr?.warning(t`The locked persona was deleted. You will need to set a new persona for this chat.`, t`Persona deleted`);
         }
         if (deleted.includes(selectedAvatarId())) {
             destroyDetail();

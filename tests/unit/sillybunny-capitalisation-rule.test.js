@@ -106,6 +106,25 @@ describe('checkLabel', () => {
         expect(checkLabel('check or radio label', 'Keep Sampling Settings Linked to Preset').expected).toBe('Keep sampling settings linked to preset');
     });
 
+    test.each([
+        ['Delete Failed', 'Delete failed'],
+        ['Screenshot Ready', 'Screenshot ready'],
+        ['Reload Cancelled', 'Reload cancelled'],
+        ['Auto-Label Chat', 'Auto-label chat'],
+        ['Quick Reply Init Failed', 'Quick Reply init failed'],
+        ['World Info Save Failed', 'World Info save failed'],
+        ['SillyBunny Palette', 'SillyBunny palette'],
+    ])('a toast title is an informal heading in sentence capitalisation: %s -> %s', (input, expected) => {
+        expect(checkLabel('toast title', input)).toEqual({ ok: false, expected, why: 'sentence capitalisation' });
+        expect(checkLabel('toast title', expected)).toEqual({ ok: true });
+    });
+
+    test('a toast title keeps a product name, an acronym and an inner capital as written', () => {
+        for (const title of ['API error', 'ST server cannot be reached', 'SillyBunny could not start', 'Pathfinder is not configured', 'Guided Generations fork deprecated', 'Reply in progress']) {
+            expect(checkLabel('toast title', title)).toEqual({ ok: true });
+        }
+    });
+
     test('a heading that is a full sentence or a long question keeps sentence capitalisation', () => {
         expect(checkLabel('heading', 'Pathfinder is not configured')).toEqual({ ok: true });
         expect(checkLabel('heading', 'Document Cannot Be Found')).toEqual({ ok: true });

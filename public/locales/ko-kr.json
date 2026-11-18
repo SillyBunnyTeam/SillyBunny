@@ -1656,6 +1656,7 @@
     "Delete Chat": "채팅 삭제",
     "Deleting chat…": "채팅 삭제 중…",
     "Loading chat…": "채팅 불러오는 중…",
+    "Loading Chat": "채팅 불러오는 중…",
     "Bulk Delete": "대량 삭제",
     "Deleting ${0} character(s)…": "${0}개 캐릭터 삭제 중…",
     "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "OpenAI 방식 옵션: low, medium, high, xhigh. 각 단계는 선택한 그대로 전송되며, Minimum만 'minimal'로 전송됩니다. None은 GPT-5.1 이상에 그대로 전송되고, 그 외 모델에는 단계가 전송되지 않습니다.",

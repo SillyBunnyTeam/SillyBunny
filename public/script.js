@@ -1278,7 +1278,7 @@ async function firstLoadInit() {
         window.addEventListener('pagehide', rememberBootSurface);
     } catch (error) {
         console.error('Application initialization failed.', error);
-        toastr.error(t`SillyBunny couldn't finish starting. Please refresh the page.`, t`Startup Error`, { timeOut: 0, extendedTimeOut: 0, preventDuplicates: true });
+        toastr.error(t`SillyBunny couldn't finish starting. Please refresh the page.`, t`Startup error`, { timeOut: 0, extendedTimeOut: 0, preventDuplicates: true }); // SillyBunny: capitalisation by DESIGN.md
         throw error;
     } finally {
         await dismissPreloader();
@@ -4007,7 +4007,7 @@ export async function reloadCurrentChatUnsafe() {
                 toastr.warning(
                     t`Generation still active. Reload cancelled to protect chat data.`,
                     // SillyBunny: capitalisation by DESIGN.md
-                    t`Reload Cancelled`,
+                    t`Reload cancelled`,
                 );
                 return;
             }
@@ -4032,7 +4032,7 @@ export async function reloadCurrentChatUnsafe() {
                 toastr.error(
                     t`Could not save pending edits before reload. Reload cancelled.`,
                     // SillyBunny: capitalisation by DESIGN.md
-                    t`Reload Cancelled`,
+                    t`Reload cancelled`,
                 );
                 return;
             }
@@ -4041,7 +4041,7 @@ export async function reloadCurrentChatUnsafe() {
             toastr.error(
                 t`Could not safely abort generation. Reload cancelled to protect chat data.`,
                 // SillyBunny: capitalisation by DESIGN.md
-                t`Reload Cancelled`,
+                t`Reload cancelled`,
             );
             return;
         }
@@ -4066,7 +4066,7 @@ export async function reloadCurrentChatUnsafe() {
         toastr.error(
             t`Could not save pending edits before reload. Reload cancelled.`,
             // SillyBunny: capitalisation by DESIGN.md
-            t`Reload Cancelled`,
+            t`Reload cancelled`,
         );
         return;
     }
@@ -4075,7 +4075,7 @@ export async function reloadCurrentChatUnsafe() {
         toastr.error(
             t`Could not save pending edits before reload. Reload cancelled.`,
             // SillyBunny: capitalisation by DESIGN.md
-            t`Reload Cancelled`,
+            t`Reload cancelled`,
         );
         return;
     }
@@ -4104,7 +4104,7 @@ export async function reloadCurrentChatUnsafe() {
                 toastr.error(
                     t`Character not found. Reload cancelled.`,
                     // SillyBunny: capitalisation by DESIGN.md
-                    t`Reload Failed`,
+                    t`Reload failed`,
                 );
                 return;
             }
@@ -4140,7 +4140,7 @@ export async function reloadCurrentChatUnsafe() {
         toastr.error(
             t`Could not reload chat data from server. Existing chat preserved.`,
             // SillyBunny: capitalisation by DESIGN.md
-            t`Reload Failed`,
+            t`Reload failed`,
         );
         return;
     }
@@ -4159,7 +4159,7 @@ export async function reloadCurrentChatUnsafe() {
         toastr.error(
             t`Invalid chat data received from server. Existing chat preserved.`,
             // SillyBunny: capitalisation by DESIGN.md
-            t`Reload Failed`,
+            t`Reload failed`,
         );
         return;
     }
@@ -4173,7 +4173,7 @@ export async function reloadCurrentChatUnsafe() {
         toastr.error(
             t`Live chat state is invalid. Reload cancelled to protect data.`,
             // SillyBunny: capitalisation by DESIGN.md
-            t`Reload Failed`,
+            t`Reload failed`,
         );
         return;
     }
@@ -4191,7 +4191,7 @@ export async function reloadCurrentChatUnsafe() {
         toastr.error(
             t`Failed to commit reloaded chat data. Existing chat preserved.`,
             // SillyBunny: capitalisation by DESIGN.md
-            t`Reload Failed`,
+            t`Reload failed`,
         );
         return;
     }
@@ -4542,7 +4542,7 @@ function notifyCardScriptStripped(messageElement, messageId) {
     }
 
     markCardScriptToastShown(toastKey);
-    toastr.warning(t`This message contains card scripts. SillyBunny does not run them by default.`, t`Card Scripts Blocked`, { timeOut: 6000, preventDuplicates: true });
+    toastr.warning(t`This message contains card scripts. SillyBunny does not run them by default.`, t`Card scripts blocked`, { timeOut: 6000, preventDuplicates: true }); // SillyBunny: capitalisation by DESIGN.md
 }
 
 /**
@@ -9280,7 +9280,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                     if (isStreamFinished && !isStreamWithToolCalls && activeStreamingProcessor.providerLengthFinish && warnsOnGenerationLengthFinish(main_api, oai_settings.chat_completion_source)) {
                         toastr.warning(t`Gemini stopped before finishing this reply. Try a lower Reasoning Effort or a higher Max Response Length.`);
                     } else if (isStreamFinished && !isStreamWithToolCalls && isReasoningOnlyStream) {
-                        toastr.warning(t`The model finished reasoning but returned no reply text.`);
+                        toastr.warning(t`The model finished reasoning but returned no reply text`); // SillyBunny: no trailing period, by DESIGN.md
                     }
                     if (canPerformToolCalls && isStreamFinished && isStreamWithToolCalls) {
                         const hasToolCalls = ToolManager.hasToolCalls(activeStreamingProcessor.toolCalls);
@@ -9487,7 +9487,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             if (type !== 'quiet' && isGenerationLengthFinish(data) && warnsOnGenerationLengthFinish(main_api, oai_settings.chat_completion_source)) {
                 toastr.warning(t`Gemini stopped before finishing this reply. Try a lower Reasoning Effort or a higher Max Response Length.`);
             } else if (!getMessage.trim() && reasoning && type !== 'quiet') {
-                toastr.warning(t`The model finished reasoning but returned no reply text.`);
+                toastr.warning(t`The model finished reasoning but returned no reply text`); // SillyBunny: no trailing period, by DESIGN.md
             }
 
             if (isContinue) {
@@ -11802,7 +11802,7 @@ export async function flushPendingChatSavesForNavigation({ staying = false } = {
         // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
         const didFlush = await flushPendingChatSaves({ silent: true });
         if (!didFlush) {
-            toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat Save Failed`);
+            toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat save failed`); // SillyBunny: capitalisation by DESIGN.md
             return false;
         }
     }
@@ -11843,7 +11843,7 @@ export async function flushPendingChatSaves({ silent = false } = {}) {
 
     if (!silent) {
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.info(t`Saving chat…`, t`Saving Chat`);
+        toastr.info(t`Saving chat…`, t`Saving chat`);
     }
 
     try {
@@ -11860,7 +11860,7 @@ export async function flushPendingChatSaves({ silent = false } = {}) {
         saveTokenCache();
         await saveItemizedPrompts(chatId);
         if (!silent) {
-            toastr.success(t`Chat saved successfully.`, t`Chat saved`);
+            toastr.success(t`Chat saved successfully`, t`Chat saved`); // SillyBunny: no trailing period, by DESIGN.md
         }
         return true;
     } catch (error) {
@@ -12060,7 +12060,7 @@ async function saveChatImmediately(...args) {
         if (errorData?.error === 'destructive') {
             console.error(`Chat save refused as destructive (${errorData?.reason}). The file on disk was left unchanged.`);
             // SillyBunny: capitalisation by DESIGN.md
-            toastr.error(t`This save would have wiped messages, so the chat file was left unchanged. Reload the page to resync.`, t`Chat Not Saved`);
+            toastr.error(t`This save would have wiped messages, so the chat file was left unchanged. Reload the page to resync.`, t`Chat not saved`);
             if (throwOnError) {
                 throw new Error('destructive');
             }
@@ -12836,7 +12836,7 @@ async function promptSettingsConflictReload() {
     }
 
     if (settingsConflictPromptDismissed) {
-        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings Save Blocked`, { preventDuplicates: true });
+        toastr.warning(t`Settings saves are blocked until you reload SillyBunny`, t`Settings save blocked`, { preventDuplicates: true }); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -12858,7 +12858,7 @@ async function promptSettingsConflictReload() {
         }
 
         settingsConflictPromptDismissed = true;
-        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings Save Blocked`, { preventDuplicates: true });
+        toastr.warning(t`Settings saves are blocked until you reload SillyBunny`, t`Settings save blocked`, { preventDuplicates: true }); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     } finally {
         settingsConflictPromptOpen = false;
     }
@@ -13265,7 +13265,7 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
     }
 
     if (cacheErrors.length > 0) {
-        toastr.error(t`Some cache data could not be cleared. Check the browser console for details.`, t`Cache Clear Incomplete`);
+        toastr.error(t`Some cache data could not be cleared. Check the browser console for details.`, t`Cache clear incomplete`); // SillyBunny: capitalisation by DESIGN.md
         return false;
     }
 
@@ -13284,7 +13284,7 @@ async function clearAllCacheAndReload() {
         return false;
     }
 
-    toastr.success(t`Cache cleared. Reloading SillyBunny…`, t`Cache Cleared`);
+    toastr.success(t`Cache cleared. Reloading SillyBunny…`, t`Cache cleared`); // SillyBunny: capitalisation by DESIGN.md
     window.setTimeout(() => window.location.reload(), 1000);
     return true;
 }
@@ -13310,7 +13310,7 @@ async function maybeAutoClearCacheOnVersionChange(isVersionChanged) {
         return false;
     }
 
-    toastr.info(t`SillyBunny updated. Clearing cached UI data and reloading…`, t`Update Detected`);
+    toastr.info(t`SillyBunny updated. Clearing cached UI data and reloading…`, t`Update detected`); // SillyBunny: capitalisation by DESIGN.md
     window.setTimeout(() => window.location.reload(true), 1000);
     return true;
 }
@@ -13335,7 +13335,7 @@ async function handleClearAllCacheButtonClick(event) {
     } catch (error) {
         console.error('Failed to clear cache', error);
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.error(t`Cache could not be cleared. Check the browser console for details.`, t`Cache Clear Failed`);
+        toastr.error(t`Cache could not be cleared. Check the browser console for details.`, t`Cache clear failed`);
         button.disabled = false;
         button.classList.remove('disabled');
         button.removeAttribute('aria-busy');
@@ -13870,10 +13870,10 @@ async function downloadMessageScreenshot(startId, endId) {
             ? t`Message screenshot downloaded.`
             : t`Message range screenshot downloaded.`;
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.success(copied ? `${successText} ${t`Copied!`}` : successText, t`Screenshot Ready`);
+        toastr.success(copied ? `${successText} ${t`Copied!`}` : successText, t`Screenshot ready`);
     } catch (error) {
         console.error('Failed to create message screenshot', error);
-        toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot Failed`);
+        toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot failed`); // SillyBunny: capitalisation by DESIGN.md
     }
 }
 
@@ -13952,7 +13952,7 @@ async function showMessageScreenshotRangePopup(messageId) {
 
             if (!range) {
                 // SillyBunny: capitalisation by DESIGN.md
-                toastr.warning(t`Enter message IDs between 0 and ${maximumMessageId}.`, t`Screenshot Messages`);
+                toastr.warning(t`Enter message IDs between 0 and ${maximumMessageId}`, t`Screenshot messages`);
                 if (startInput instanceof HTMLInputElement) {
                     startInput.focus({ preventScroll: true });
                     startInput.select();
@@ -13974,7 +13974,7 @@ async function showMessageScreenshotRangePopup(messageId) {
 async function openMessageScreenshotDialog(messageId) {
     if (!Number.isInteger(messageId) || chat.length === 0) {
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.warning(t`No messages are available to capture yet.`, t`Screenshot Messages`);
+        toastr.warning(t`No messages are available to capture yet`, t`Screenshot messages`);
         return;
     }
 
@@ -14812,7 +14812,7 @@ export async function autoLabelCurrentChat() {
     const currentChat = getChatBaseName(chatDetails.sessionName);
 
     if (!currentChat) {
-        toastr.warning(t`No current chat is open.`);
+        toastr.warning(t`No current chat is open`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
@@ -14832,7 +14832,7 @@ export async function autoLabelCurrentChat() {
 
         if (result.status === 'renamed') {
             // SillyBunny: capitalisation by DESIGN.md
-            toastr.success(t`Chat renamed to ${result.newFileName}.`, t`Auto-Label Chat`);
+            toastr.success(t`Chat renamed to ${result.newFileName}`, t`Auto-label chat`);
             await displayPastChats([result.newFileName]);
             endChatHistoryTool(t`Renamed current chat to ${result.newFileName}.`);
             return;
@@ -14847,7 +14847,7 @@ export async function autoLabelCurrentChat() {
 
         console.error('Could not auto-label current chat:', error);
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.error(String(error?.message || error), t`Auto-Label Chat`);
+        toastr.error(String(error?.message || error), t`Auto-label chat`);
         endChatHistoryTool(t`Could not auto-label the current chat.`);
     }
 }
@@ -14859,7 +14859,7 @@ async function autoLabelDatedChats() {
     } catch (error) {
         console.error('Could not load chats for auto-labeling:', error);
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.error(String(error?.message || error), t`Auto-Label Chat`);
+        toastr.error(String(error?.message || error), t`Auto-label chat`);
         return;
     }
 
@@ -14871,7 +14871,7 @@ async function autoLabelDatedChats() {
         .filter(chat => isDatedChatFileName(chat.file_name, chatDetails.characterName, isGroupChat));
 
     if (!dirtyChats.length) {
-        toastr.info(t`No timestamp-named chats were found.`);
+        toastr.info(t`No timestamp-named chats were found`); // SillyBunny: no trailing period, by DESIGN.md
         setChatHistoryStatus(t`No timestamp-named chats found.`);
         return;
     }
@@ -14927,7 +14927,7 @@ async function autoLabelDatedChats() {
         await displayPastChats(renamed.slice(-1));
         const message = `${t`Auto-labeled`} ${renamed.length}/${dirtyChats.length} ${t`chat(s).`}${skipped ? ` ${skipped} ${t`skipped.`}` : ''}`;
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.success(message, t`Auto-Label Chat`);
+        toastr.success(message, t`Auto-label chat`);
         endChatHistoryTool(message);
     } catch (error) {
         if (isChatHistoryToolAbort(error)) {
@@ -14938,7 +14938,7 @@ async function autoLabelDatedChats() {
 
         console.error('Could not auto-label dated chats:', error);
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.error(String(error?.message || error), t`Auto-Label Chat`);
+        toastr.error(String(error?.message || error), t`Auto-label chat`);
         endChatHistoryTool(t`Could not finish auto-labeling chats.`);
     }
 }
@@ -15001,7 +15001,7 @@ async function previewChatCleanup() {
     try {
         const candidates = await getChatCleanupCandidates();
         if (!candidates.length) {
-            toastr.info(t`No chats match those cleanup settings.`);
+            toastr.info(t`No chats match those cleanup settings`); // SillyBunny: no trailing period, by DESIGN.md
             setChatHistoryStatus(t`No chats match those cleanup settings.`);
             return;
         }
@@ -15017,7 +15017,7 @@ async function previewChatCleanup() {
         setChatHistoryStatus(`${candidates.length} ${t`chat(s) match the cleanup settings.`}`);
     } catch (error) {
         console.error('Could not preview chat cleanup:', error);
-        toastr.error(String(error?.message || error), t`Chat Cleanup`);
+        toastr.error(String(error?.message || error), t`Chat cleanup`); // SillyBunny: capitalisation by DESIGN.md
     }
 }
 
@@ -15027,12 +15027,12 @@ async function runChatCleanup() {
         candidates = await getChatCleanupCandidates();
     } catch (error) {
         console.error('Could not prepare chat cleanup:', error);
-        toastr.error(String(error?.message || error), t`Chat Cleanup`);
+        toastr.error(String(error?.message || error), t`Chat cleanup`); // SillyBunny: capitalisation by DESIGN.md
         return;
     }
 
     if (!candidates.length) {
-        toastr.info(t`No chats match those cleanup settings.`);
+        toastr.info(t`No chats match those cleanup settings`); // SillyBunny: no trailing period, by DESIGN.md
         setChatHistoryStatus(t`No chats match those cleanup settings.`);
         return;
     }
@@ -15079,7 +15079,7 @@ async function runChatCleanup() {
 
         await displayPastChats();
         const message = `${t`Deleted`} ${deletedNames.length} ${t`old chat(s).`}`;
-        toastr.success(message, t`Chat Cleanup`);
+        toastr.success(message, t`Chat cleanup`); // SillyBunny: capitalisation by DESIGN.md
         endChatHistoryTool(message);
     } catch (error) {
         if (isChatHistoryToolAbort(error)) {
@@ -15089,7 +15089,7 @@ async function runChatCleanup() {
         }
 
         console.error('Could not clean old chats:', error);
-        toastr.error(String(error?.message || error), t`Chat Cleanup`);
+        toastr.error(String(error?.message || error), t`Chat cleanup`); // SillyBunny: capitalisation by DESIGN.md
         endChatHistoryTool(t`Could not finish chat cleanup.`);
     }
 }
@@ -16650,7 +16650,7 @@ export async function createOrEditCharacter(e, saveReceipt) {
                 );
 
                 if (confirmation !== POPUP_RESULT.AFFIRMATIVE) {
-                    toastr.warning(t`Character save cancelled to protect existing definitions. Reload the page before editing this character again.`, t`Character Save Blocked`);
+                    toastr.warning(t`Character save cancelled to protect existing definitions. Reload the page before editing this character again.`, t`Character save blocked`); // SillyBunny: capitalisation by DESIGN.md
                     return;
                 }
 
@@ -17985,7 +17985,7 @@ function addDebugFunctions() {
             localStorage.setItem('eventTracing', nextEventTracing);
             toastr.info('Event tracing is now ' + (nextEventTracing === 'true' ? 'enabled' : 'disabled'));
         } catch {
-            toastr.warning('Event tracing could not be persisted in this browser session.');
+            toastr.warning('Event tracing could not be persisted in this browser session'); // SillyBunny: no trailing period, by DESIGN.md
         }
     });
 
@@ -19528,7 +19528,7 @@ jQuery(async function () {
                 }
                 const avatarKey = characters[this_chid].avatar;
                 if (!avatarKey || avatarKey === 'none') {
-                    toastr.warning(t`This character has no avatar to regenerate a thumbnail from.`);
+                    toastr.warning(t`This character has no avatar to regenerate a thumbnail from`); // SillyBunny: no trailing period, by DESIGN.md
                     break;
                 }
                 try {
@@ -19543,10 +19543,10 @@ jQuery(async function () {
                         break;
                     }
                     await refreshCharacterAvatar(avatarKey);
-                    toastr.success(t`Thumbnail regenerated successfully.`, t`Thumbnail Refreshed`);
+                    toastr.success(t`Thumbnail regenerated successfully`, t`Thumbnail refreshed`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
                 } catch (error) {
                     console.error('Failed to regenerate thumbnail:', error);
-                    toastr.error(t`An error occurred while regenerating the thumbnail.`);
+                    toastr.error(t`An error occurred while regenerating the thumbnail`); // SillyBunny: no trailing period, by DESIGN.md
                 }
             } break;
             case 'character_source': {

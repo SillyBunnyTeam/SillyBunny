@@ -496,7 +496,7 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
         }
     } catch (error) {
         console.error('Character prose polishing error:', error);
-        globalThis.toastr?.error?.('Error polishing character reply.');
+        globalThis.toastr?.error?.('Error polishing character reply');
     } finally {
         if (buttonElement instanceof HTMLElement) {
             buttonElement.classList.remove('fa-spinner', 'fa-spin');

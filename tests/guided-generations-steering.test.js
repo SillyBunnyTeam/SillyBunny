@@ -183,8 +183,8 @@ describe('Guided Generations steering commands', () => {
 
     test.each([
         ['missing chat context', () => { context.chat = undefined; }, 'Guided Swipe error: Could not get required context properties: chat'],
-        ['empty chat', () => { context.chat = []; }, 'Guided Swipe error: Cannot access chat context.'],
-        ['missing swipe API', () => { context.swipe.right = undefined; }, 'Guided Swipe error: SillyTavern swipe generation API is not available.'],
+        ['empty chat', () => { context.chat = []; }, 'Guided Swipe error: Cannot access chat context'],
+        ['missing swipe API', () => { context.swipe.right = undefined; }, 'Guided Swipe error: SillyTavern swipe generation API is not available'],
     ])('reports %s through a toast', async (_caseName, prepare, message) => {
         prepare();
         const { generateNewSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
@@ -200,7 +200,7 @@ describe('Guided Generations steering commands', () => {
 
         await guidedSwipe();
 
-        expect(globalThis.toastr.error).toHaveBeenCalledWith('Guided Swipe error: Textarea not found.');
+        expect(globalThis.toastr.error).toHaveBeenCalledWith('Guided Swipe error: Textarea not found');
     });
 
     test('guided response cancels before injecting or generating when the group picker is dismissed', async () => {

@@ -263,7 +263,7 @@ function showRunningToast(ids) {
                 post(CANCEL_URL, { id, commitPartial: true }).catch(() => undefined);
             }
         }));
-    runningToast = toastr.info(content, t`Reply in Progress`, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false, escapeHtml: false });
+    runningToast = toastr.info(content, t`Reply in progress`, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false, escapeHtml: false });
 }
 
 /**
@@ -318,13 +318,13 @@ function showLostToast(item) {
                 toastr.clear(toast);
             }
             if (isGenerating()) {
-                toastr.warning(t`Wait for the current reply to finish, then regenerate.`);
+                toastr.warning(t`Wait for the current reply to finish, then regenerate`);
                 return;
             }
             retry();
         }));
     }
-    toast = toastr.warning(content, t`Reply Lost`, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: !retry, closeButton: true, escapeHtml: false });
+    toast = toastr.warning(content, t`Reply lost`, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: !retry, closeButton: true, escapeHtml: false });
 }
 
 /**
@@ -432,9 +432,9 @@ function onPendingGenerations(chatKey, pending) {
         if (item.state === 'lost') {
             showLostToast(item);
         } else if (CHAT_CHANGED_REASONS.has(item.reason)) {
-            toastr.warning(t`A reply generated while this chat was closed was not added, because the chat changed in the meantime.`, t`Reply Discarded`);
+            toastr.warning(t`A reply generated while this chat was closed was not added, because the chat changed in the meantime`, t`Reply discarded`);
         } else {
-            toastr.error(t`A reply generated while this chat was closed failed and was not added.`, t`Reply Failed`);
+            toastr.error(t`A reply generated while this chat was closed failed and was not added`, t`Reply failed`);
         }
     }
     acknowledge(outcomes.map(item => item.id));
@@ -533,7 +533,7 @@ async function onChatChanged() {
     watchedTarget = target;
     syncChatEvents();
     if (round.length && selected_group && !isGenerating()) {
-        toastr.info(t`Continuing the group round that was interrupted.`);
+        toastr.info(t`Continuing the group round that was interrupted`);
         resumeGroupRound(round).catch(error => console.warn('Could not continue the group round:', error));
     }
 }

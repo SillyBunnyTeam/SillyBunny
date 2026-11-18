@@ -5129,7 +5129,7 @@ describe('in-chat agent post-processing runner', () => {
         await waitFor(() => quietResolvers.length === 1);
 
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
-        expect(globalThis.toastr.info).toHaveBeenCalledWith('Queued agent run.');
+        expect(globalThis.toastr.info).toHaveBeenCalledWith('Queued agent run');
 
         quietResolvers.shift()('First rewrite');
         const firstResult = await firstRun;
@@ -5172,8 +5172,8 @@ describe('in-chat agent post-processing runner', () => {
         await waitFor(() => generateQuietPrompt.mock.calls.length === 2);
 
         expect(quietResolvers).toHaveLength(2);
-        expect(globalThis.toastr.info).toHaveBeenCalledWith('Running agent in parallel.');
-        expect(globalThis.toastr.info).not.toHaveBeenCalledWith('Queued agent run.');
+        expect(globalThis.toastr.info).toHaveBeenCalledWith('Running agent in parallel');
+        expect(globalThis.toastr.info).not.toHaveBeenCalledWith('Queued agent run');
         expect(isAgentGenerationActive()).toBe(true);
 
         quietResolvers.shift()('First rewrite');
@@ -5493,7 +5493,7 @@ describe('in-chat agent post-processing runner', () => {
         expect(chatMetadata.agent_status_data).toBe('[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
         expect(generateQuietPrompt).not.toHaveBeenCalled();
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run', 'Trackers Fixed');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run', 'Trackers fixed');
     });
 
     test('manual tracker fix regenerates missing extract tracker blocks', async () => {
@@ -5515,7 +5515,7 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[0].mes).toBe('Fresh reply without an inline tracker block.\n\n[STATUS|Alice|Tired|Moderate]\nresting\n[/STATUS]');
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 tracker regenerated, 1 post-process run', 'Trackers Fixed');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 tracker regenerated, 1 post-process run', 'Trackers fixed');
 
         await new Promise(resolve => setTimeout(resolve, 5));
     });
@@ -5630,7 +5630,7 @@ describe('in-chat agent post-processing runner', () => {
         expect(chat[0].mes).toBe('Fresh reply without a tracker.');
         expect(chatMetadata.agent_status_data).toBeUndefined();
         expect(generateQuietPrompt).toHaveBeenCalledTimes(1);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run, 1 error', 'Trackers Fixed');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('1 post-process run, 1 error', 'Trackers fixed');
     });
 
     test('manual tracker fix keeps metadata from the newest valid tracker state', async () => {

@@ -1477,6 +1477,7 @@
     "Delete Chat": "Elimina chat",
     "Deleting chat…": "Eliminazione chat…",
     "Loading chat…": "Caricamento chat…",
+    "Loading Chat": "Caricamento chat…",
     "Bulk Delete": "Eliminazione multipla",
     "Deleting ${0} character(s)…": "Eliminazione di ${0} personaggio/i…",
     "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "Opzioni in stile OpenAI: low, medium, high, xhigh. Ogni livello viene inviato esattamente come è stato scelto, tranne Minimum, che viene inviato come 'minimal'. None viene inviato letteralmente a GPT-5.1 e successivi; gli altri modelli non ricevono alcun livello.",

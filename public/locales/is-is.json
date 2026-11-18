@@ -1475,6 +1475,7 @@
     "Delete Chat": "Eyða spjalli",
     "Deleting chat…": "Eyði spjalli…",
     "Loading chat…": "Hleð spjalli…",
+    "Loading Chat": "Hleð spjalli…",
     "Bulk Delete": "Fjöldaeyðing",
     "Deleting ${0} character(s)…": "Eyði ${0} persónu(m)…",
     "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "Valkostir í OpenAI-stíl: low, medium, high, xhigh. Hvert stig er sent nákvæmlega eins og það var valið, nema Minimum sem er sent sem 'minimal'. None er sent orðrétt til GPT-5.1 og nýrri; önnur líkön fá ekkert stig.",

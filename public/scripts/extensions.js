@@ -1742,14 +1742,14 @@ async function onSyncClick() {
         if (!response.ok) {
             const text = await response.text();
             // SillyBunny: capitalisation by DESIGN.md
-            toastr.error(text || response.statusText, t`Extension Sync Failed`, { timeOut: 5000 });
+            toastr.error(text || response.statusText, t`Extension sync failed`, { timeOut: 5000 });
             return;
         }
 
         const data = await response.json();
         const versionText = data.version ? ` v${data.version}` : '';
         const commitText = data.shortCommitHash ? ` (${data.shortCommitHash})` : '';
-        toastr.success(t`Extension ${extensionName} synced${versionText}${commitText}.`, t`Reload the page to apply updates`);
+        toastr.success(t`Extension ${extensionName} synced${versionText}${commitText}`, t`Reload the page to apply updates`); // SillyBunny: no trailing period, by DESIGN.md
         requiresReload = true;
         await showExtensionsDetails();
     } catch (error) {
@@ -1879,7 +1879,7 @@ async function onReinstallClick() {
     const isCurrentUserAdmin = isAdmin();
     const isGlobal = getExtensionType(extensionName) === 'global';
     if (isGlobal && !isCurrentUserAdmin) {
-        toastr.error(t`You don't have permission to reinstall global extensions.`);
+        toastr.error(t`You don't have permission to reinstall global extensions`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
@@ -1912,7 +1912,7 @@ async function onReinstallClick() {
     try {
         // Delete the extension
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.info(t`Deleting ${extensionName}…`, t`Reinstalling Extension`);
+        toastr.info(t`Deleting ${extensionName}…`, t`Reinstalling extension`);
         await callExtensionHook(extensionName, 'delete');
 
         const deleteResponse = await fetch('/api/extensions/delete', {
@@ -1931,7 +1931,7 @@ async function onReinstallClick() {
 
         // Reinstall the extension
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.info(t`Installing ${extensionName}…`, t`Reinstalling Extension`);
+        toastr.info(t`Installing ${extensionName}…`, t`Reinstalling extension`);
         await installExtension(repoUrl, isGlobal);
 
         toastr.success(t`Extension ${extensionName} reinstalled successfully`);
@@ -1939,7 +1939,7 @@ async function onReinstallClick() {
     } catch (error) {
         console.error('Reinstall failed:', error);
         // SillyBunny: capitalisation by DESIGN.md
-        toastr.error(t`Failed to reinstall ${extensionName}: ${error.message}`, t`Reinstall Failed`);
+        toastr.error(t`Failed to reinstall ${extensionName}: ${error.message}`, t`Reinstall failed`);
     }
 }
 
@@ -2075,7 +2075,7 @@ export async function deleteExtension(extensionName, shouldClean = false) {
         }
     } catch (error) {
         console.error('Extension deletion failed:', error);
-        toastr.error(t`Failed to delete extension ${extensionName}.`);
+        toastr.error(t`Failed to delete extension ${extensionName}`); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 

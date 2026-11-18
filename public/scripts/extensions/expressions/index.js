@@ -1072,13 +1072,13 @@ function throwIfExpressionGenerationStopped() {
 
 async function requestExpressionGenerationStop() {
     if (!inSpriteGeneration) {
-        toastr.info(t`No sprite generation is running.`, t`Sprite Generation`);
+        toastr.info(t`No sprite generation is running`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     expressionGenerationCancelRequested = true;
     const stopped = await stopExpressionSpriteGeneration();
-    toastr.info(stopped ? t`Stopping sprite generation...` : t`Stopping after the current step...`, t`Sprite Generation`);
+    toastr.info(stopped ? t`Stopping sprite generation...` : t`Stopping after the current step...`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
 }
 
 function getExpressionSpriteGenerationMode() {
@@ -1106,13 +1106,13 @@ function getExpressionGenerationTarget(spriteFolderName) {
 
 async function generateAndUploadExpressionSprite(expression, spriteFolderName, { showToast = true, spriteName = null, replaceExisting = false } = {}) {
     if (!expression || !spriteFolderName) {
-        toastr.warning(t`Open a chat before generating expression sprites.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before generating expression sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return false;
     }
 
     const existingFiles = spriteCache[spriteFolderName]?.find(x => x.label === expression)?.files || [];
     if (!replaceExisting && existingFiles.length > 0 && !extension_settings.expressions.allowMultiple) {
-        toastr.warning(t`Enable multiple sprites per expression before generating another sprite for ${expression}.`, t`Sprite Generation`);
+        toastr.warning(t`Enable multiple sprites per expression before generating another sprite for ${expression}`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return false;
     }
 
@@ -1125,7 +1125,7 @@ async function generateAndUploadExpressionSprite(expression, spriteFolderName, {
     throwIfExpressionGenerationStopped();
 
     if (!imageUrl) {
-        if (showToast) toastr.warning(t`Quick Image Gen did not return an image.`, t`Sprite Generation`);
+        if (showToast) toastr.warning(t`Quick Image Gen did not return an image`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return false;
     }
 
@@ -1156,7 +1156,7 @@ async function generateAndUploadExpressionSprite(expression, spriteFolderName, {
         if (!uploadedSpriteName) return false;
         if (showToast) {
             const message = replaceExisting ? t`Regenerated sprite for ${expression}.` : t`Generated sprite for ${expression}.`;
-            toastr.success(message, t`Sprite Generation`);
+            toastr.success(message, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
         }
         return true;
     } finally {
@@ -1568,7 +1568,7 @@ async function splitAndUploadExpressionSpriteSheet(imageUrl, grid, expressions, 
     } catch (error) {
         if (isExpressionGenerationAbortError(error)) throw error;
         console.error('[Expressions] Failed to split sprite sheet:', error);
-        toastr.warning(splitErrorMessage, t`Sprite Generation`);
+        toastr.warning(splitErrorMessage, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
         return { generatedCount: 0, failedCount: labels.length };
     }
 
@@ -1617,7 +1617,7 @@ async function generateAndUploadExpressionSpriteSheet(expressions, spriteFolderN
 
 async function withExpressionGenerationLock(task) {
     if (inSpriteGeneration) {
-        toastr.info(t`Sprite generation is already running.`, t`Sprite Generation`);
+        toastr.info(t`Sprite generation is already running`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return null;
     }
 
@@ -1626,7 +1626,7 @@ async function withExpressionGenerationLock(task) {
         return await task();
     } catch (error) {
         if (isExpressionGenerationAbortError(error)) {
-            toastr.info(t`Sprite generation stopped.`, t`Sprite Generation`);
+            toastr.info(t`Sprite generation stopped`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
             return null;
         }
         throw error;
@@ -1710,7 +1710,7 @@ async function onClickExpressionRegenerate(event) {
     const spriteName = withoutExtension(fileName);
 
     if (!spriteName) {
-        toastr.warning(t`Choose an existing sprite before regenerating.`, t`Sprite Generation`);
+        toastr.warning(t`Choose an existing sprite before regenerating`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -1738,20 +1738,20 @@ async function onClickRemoveAllSprites(event) {
     event.stopPropagation();
 
     if (inSpriteGeneration) {
-        toastr.info(t`Stop sprite generation before removing sprites.`, t`Sprite Generation`);
+        toastr.info(t`Stop sprite generation before removing sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     const name = $('#image_list').data('name');
     if (!name) {
-        toastr.warning(t`Open a chat before removing expression sprites.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before removing expression sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     await validateImages(name);
     const spriteFiles = getSpriteFilesForFolder(name);
     if (spriteFiles.length === 0) {
-        toastr.info(t`This sprite set has no images to remove.`, t`Sprite Generation`);
+        toastr.info(t`This sprite set has no images to remove`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -1764,7 +1764,7 @@ async function onClickRemoveAllSprites(event) {
 
     if (!confirmed) return;
 
-    const deleteToast = toastr.info(t`Removing expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+    const deleteToast = toastr.info(t`Removing expression sprites…`, t`Sprite generation`, { timeOut: 0, extendedTimeOut: 0 }); // SillyBunny: capitalisation and ellipsis by DESIGN.md
     let deletedCount = 0;
     let failedCount = 0;
 
@@ -1786,11 +1786,11 @@ async function onClickRemoveAllSprites(event) {
     }
 
     if (deletedCount > 0) {
-        toastr.success(t`Removed ${deletedCount} expression sprite(s).`, t`Sprite Generation`);
+        toastr.success(t`Removed ${deletedCount} expression sprite(s)`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
     }
 
     if (failedCount > 0) {
-        toastr.warning(t`${failedCount} expression sprite(s) could not be removed. Check the console.`, t`Sprite Generation`);
+        toastr.warning(t`${failedCount} expression sprite(s) could not be removed. Check the console.`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
     }
 }
 
@@ -1799,14 +1799,14 @@ async function onClickRedoSpriteCleanup(event) {
 
     const name = $('#image_list').data('name');
     if (!name) {
-        toastr.warning(t`Open a chat before cleaning expression sprites.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before cleaning expression sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     await validateImages(name);
     const spriteFiles = getSpriteFilesForFolder(name);
     if (spriteFiles.length === 0) {
-        toastr.info(t`This sprite set has no images to clean.`, t`Sprite Generation`);
+        toastr.info(t`This sprite set has no images to clean`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -1820,7 +1820,7 @@ async function onClickRedoSpriteCleanup(event) {
     if (!confirmed) return;
 
     await withExpressionGenerationLock(async () => {
-        const cleanupToast = toastr.info(t`Cleaning expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+        const cleanupToast = toastr.info(t`Cleaning expression sprites…`, t`Sprite generation`, { timeOut: 0, extendedTimeOut: 0 }); // SillyBunny: capitalisation and ellipsis by DESIGN.md
         const { uploadName } = getExpressionGenerationTarget(name);
         let cleanedCount = 0;
         let failedCount = 0;
@@ -1846,11 +1846,11 @@ async function onClickRedoSpriteCleanup(event) {
         }
 
         if (cleanedCount > 0) {
-            toastr.success(t`Cleaned ${cleanedCount} expression sprite(s).`, t`Sprite Generation`);
+            toastr.success(t`Cleaned ${cleanedCount} expression sprite(s)`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         }
 
         if (failedCount > 0) {
-            toastr.warning(t`${failedCount} expression sprite(s) could not be cleaned. Check the console.`, t`Sprite Generation`);
+            toastr.warning(t`${failedCount} expression sprite(s) could not be cleaned. Check the console.`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
         }
     });
 }
@@ -1860,13 +1860,13 @@ async function onClickUploadSpriteSheet(event) {
 
     const spriteFolderName = $('#image_list').data('name');
     if (!spriteFolderName) {
-        toastr.warning(t`Open a chat before uploading a character sheet.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before uploading a character sheet`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     const missingLabels = await getMissingSpriteLabels(spriteFolderName);
     if (missingLabels.length === 0) {
-        toastr.success(t`This sprite set already has images for every expression.`, t`Sprite Generation`);
+        toastr.success(t`This sprite set already has images for every expression`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -1888,7 +1888,7 @@ async function onClickUploadSpriteSheet(event) {
             if (!file) return;
 
             await withExpressionGenerationLock(async () => {
-                const uploadToast = toastr.info(t`Splitting uploaded character sheet...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+                const uploadToast = toastr.info(t`Splitting uploaded character sheet…`, t`Sprite generation`, { timeOut: 0, extendedTimeOut: 0 }); // SillyBunny: capitalisation and ellipsis by DESIGN.md
                 const sourceUrl = URL.createObjectURL(file);
                 let generatedCount = 0;
                 let failedCount = 0;
@@ -1905,11 +1905,11 @@ async function onClickUploadSpriteSheet(event) {
                 }
 
                 if (generatedCount > 0) {
-                    toastr.success(t`Uploaded ${generatedCount} expression sprite(s).`, t`Sprite Generation`);
+                    toastr.success(t`Uploaded ${generatedCount} expression sprite(s)`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
                 }
 
                 if (failedCount > 0) {
-                    toastr.warning(t`${failedCount} expression sprite(s) could not be uploaded from the sheet. Check the image layout and the console.`, t`Sprite Generation`);
+                    toastr.warning(t`${failedCount} expression sprite(s) could not be uploaded from the sheet. Check the image layout and the console.`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
                 }
             });
         } finally {
@@ -1928,13 +1928,13 @@ async function onClickGenerateMissingSprites(event) {
 
     const spriteFolderName = $('#image_list').data('name');
     if (!spriteFolderName) {
-        toastr.warning(t`Open a chat before generating expression sprites.`, t`Sprite Generation`);
+        toastr.warning(t`Open a chat before generating expression sprites`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
     const missingLabels = await getMissingSpriteLabels(spriteFolderName);
     if (missingLabels.length === 0) {
-        toastr.success(t`This sprite set already has images for every expression.`, t`Sprite Generation`);
+        toastr.success(t`This sprite set already has images for every expression`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         return;
     }
 
@@ -1950,7 +1950,7 @@ async function onClickGenerateMissingSprites(event) {
     if (!confirmed) return;
 
     await withExpressionGenerationLock(async () => {
-        const generationToast = toastr.info(t`Generating missing expression sprites...`, t`Sprite Generation`, { timeOut: 0, extendedTimeOut: 0 });
+        const generationToast = toastr.info(t`Generating missing expression sprites…`, t`Sprite generation`, { timeOut: 0, extendedTimeOut: 0 }); // SillyBunny: capitalisation and ellipsis by DESIGN.md
         let generatedCount = 0;
         let failedCount = 0;
 
@@ -1971,11 +1971,11 @@ async function onClickGenerateMissingSprites(event) {
         }
 
         if (generatedCount > 0) {
-            toastr.success(t`Generated ${generatedCount} expression sprite(s).`, t`Sprite Generation`);
+            toastr.success(t`Generated ${generatedCount} expression sprite(s)`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
         }
 
         if (failedCount > 0) {
-            toastr.warning(t`${failedCount} expression sprite(s) could not be generated. Check Quick Image Gen settings and the console.`, t`Sprite Generation`);
+            toastr.warning(t`${failedCount} expression sprite(s) could not be generated. Check Quick Image Gen settings and the console.`, t`Sprite generation`); // SillyBunny: capitalisation by DESIGN.md
         }
     });
 }
@@ -3424,7 +3424,7 @@ export async function init() {
                 extension_settings.expressions.agentAutoGenerateSprites = !!$(this).prop('checked');
                 if (extension_settings.expressions.agentAutoGenerateSprites && extension_settings.expressions.api !== EXPRESSION_API.agent) {
                     $('#expression_api').val(EXPRESSION_API.agent).trigger('change');
-                    toastr.info(t`Classifier API switched to In-Chat Agent for expression auto-generation.`, t`Expressions Agent`);
+                    toastr.info(t`Classifier API switched to In-Chat Agent for expression auto-generation`, t`Expressions agent`); // SillyBunny: capitalisation by DESIGN.md; no trailing period, by DESIGN.md
                     return;
                 }
                 saveSettingsDebounced();

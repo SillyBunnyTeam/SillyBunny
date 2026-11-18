@@ -37,7 +37,7 @@ function onOpen(event) {
         .then(module => (generation === lifecycleGeneration ? module.openArchive(ctx, opener) : undefined))
         .catch(error => {
             console.error('[Chat Archive] failed to open:', error);
-            globalThis.toastr?.error(ctx.translate?.('Could not open Chat Archive.') ?? 'Could not open Chat Archive.');
+            globalThis.toastr?.error(ctx.translate?.('Could not open Chat Archive.') ?? 'Could not open Chat Archive');
         });
 }
 

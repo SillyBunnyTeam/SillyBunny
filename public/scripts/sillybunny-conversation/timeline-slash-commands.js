@@ -89,7 +89,7 @@ export async function handleConversationSlashAction(text, { avatar = getCurrentC
         case 'remind': {
             const reminder = parseConversationReminderArgs(parsed.args);
             if (!reminder) {
-                globalThis.toastr?.warning?.('Use /remind 1h | message to schedule a reminder.', '', SAFE_TOAST_OPTIONS);
+                globalThis.toastr?.warning?.('Use /remind 1h | message to schedule a reminder', '', SAFE_TOAST_OPTIONS);
                 return true;
             }
 
@@ -104,7 +104,7 @@ export async function handleConversationSlashAction(text, { avatar = getCurrentC
             return true;
         case 'ooc':
             if (!parsed.args) {
-                globalThis.toastr?.warning?.('Use /ooc followed by a note for the OOC channel.', '', SAFE_TOAST_OPTIONS);
+                globalThis.toastr?.warning?.('Use /ooc followed by a note for the OOC channel', '', SAFE_TOAST_OPTIONS);
                 return true;
             }
             appendConversationOocNote(parsed.args, { avatar, branchId: capturedBranchId, groupId, personaId });

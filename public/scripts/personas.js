@@ -844,7 +844,7 @@ async function uploadCharacterAvatarFromPersona(personaAvatarId, characterAvatar
         await fetch(`/characters/${characterAvatarId}`, { cache: 'reload' });
     } catch (error) {
         console.warn('Could not copy persona avatar to character card', error);
-        toastr.warning(t`Character card was created, but the persona avatar could not be copied.`);
+        toastr.warning(t`Character card was created, but the persona avatar could not be copied`); // SillyBunny: no trailing period, by DESIGN.md
     }
 }
 
@@ -878,7 +878,7 @@ function copyPersonaLorebookToCharacter(characterAvatarId, primaryLorebook) {
 export async function convertPersonaToCharacter(avatarId = user_avatar) {
     const personaName = power_user.personas?.[avatarId];
     if (!personaName) {
-        toastr.warning(t`Choose a persona first.`, t`Persona Management`);
+        toastr.warning(t`Choose a persona first`, t`Persona Management`); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 
@@ -923,13 +923,13 @@ export async function convertPersonaToCharacter(avatarId = user_avatar) {
     });
 
     if (!response.ok) {
-        toastr.error(t`Could not create character card from persona.`, t`Persona Management`);
+        toastr.error(t`Could not create character card from persona`, t`Persona Management`); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 
     const characterAvatarId = (await response.text()).trim();
     if (!characterAvatarId) {
-        toastr.error(t`Character card was created, but SillyBunny could not find its avatar id.`, t`Persona Management`);
+        toastr.error(t`Character card was created, but SillyBunny could not find its avatar id`, t`Persona Management`); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 

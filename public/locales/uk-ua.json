@@ -1475,6 +1475,7 @@
     "Delete Chat": "Видалити чат",
     "Deleting chat…": "Видалення чату…",
     "Loading chat…": "Завантаження чату…",
+    "Loading Chat": "Завантаження чату…",
     "Bulk Delete": "Масове видалення",
     "Deleting ${0} character(s)…": "Видалення ${0} персонажа(ів)…",
     "OpenAI-style options: low, medium, high, xhigh. Every effort is sent exactly as picked, aside from Minimum which is sent as 'minimal'. None is sent verbatim to GPT-5.1 and newer; other models get no effort level.": "Параметри у стилі OpenAI: low, medium, high, xhigh. Кожен рівень надсилається саме таким, яким його обрано, окрім Minimum, який надсилається як 'minimal'. None надсилається дослівно до GPT-5.1 і новіших; інші моделі рівня не отримують.",

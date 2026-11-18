@@ -991,7 +991,7 @@ async function openRecentConversationChat(avatarId, groupId = '', branchId = '',
         });
         if (!opened) {
             setConversationWelcomeOpeningSuppressed(false);
-            toastr.warning(t`Failed to open Conversation Mode for this chat.`);
+            toastr.warning(t`Failed to open Conversation Mode for this chat`); // SillyBunny: no trailing period, by DESIGN.md
             return;
         }
         clearConversationWelcomeOpeningSuppressionAfterRender();
@@ -1021,7 +1021,7 @@ async function renameRecentConversationChat(avatarId, groupId, branchId, branchN
         const conversationModule = await import('./sillybunny-conversation.js');
         const renamed = conversationModule.renameConversationBranch?.(avatarId, branchId, newName, { groupId });
         if (!renamed) {
-            toastr.warning(t`Failed to rename Conversation chat.`);
+            toastr.warning(t`Failed to rename Conversation chat`); // SillyBunny: no trailing period, by DESIGN.md
             return;
         }
 
@@ -1055,7 +1055,7 @@ async function deleteRecentConversationChat(avatarId, groupId, branchId, recentC
         const result = conversationModule.deleteConversationWelcomeBranch?.(avatarId, branchId, { groupId });
         const deleted = Boolean(result?.deleted);
         if (!deleted) {
-            toastr.warning(t`Failed to delete Conversation chat.`);
+            toastr.warning(t`Failed to delete Conversation chat`); // SillyBunny: no trailing period, by DESIGN.md
             return;
         }
 

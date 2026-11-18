@@ -1026,7 +1026,7 @@ describe('Persona editor shell', () => {
                 expect(confirmDestructiveAction).toHaveBeenCalledWith({ text: 'Delete 2 personas? This cannot be undone.', confirmLabel: 'Delete' });
                 expect(remove.mock.calls).toEqual([['avatar-0.png', { silent: true }], ['avatar-1.png', { silent: true }]]);
                 expect(globalThis.toastr.warning).toHaveBeenCalledTimes(1);
-                expect(globalThis.toastr.warning).toHaveBeenCalledWith('The default persona was deleted. You will need to set a new default persona.', 'Default Persona Deleted');
+                expect(globalThis.toastr.warning).toHaveBeenCalledWith('The default persona was deleted. You will need to set a new default persona.', 'Default persona deleted');
             } finally {
                 delete globalThis.toastr;
             }

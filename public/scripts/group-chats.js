@@ -677,7 +677,7 @@ function addFreshGroupGreeting(group) {
 
 async function addSelectedGroupGreeting() {
     if (!selected_group || !selectedGroupSpeakerAvatar) {
-        toastr.warning(t`Pick a group member first.`);
+        toastr.warning(t`Pick a group member first`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
@@ -685,13 +685,13 @@ async function addSelectedGroupGreeting() {
     if (!getGroupEnabledMembers(group).includes(selectedGroupSpeakerAvatar)) {
         changeSelectedGroupSpeaker('');
         updateGroupSpeakerControls();
-        toastr.warning(t`Pick a group member first.`);
+        toastr.warning(t`Pick a group member first`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
     const message = buildGroupGreetingMessage(selectedGroupSpeakerAvatar);
     if (!message) {
-        toastr.warning(t`Selected group member has no greeting.`);
+        toastr.warning(t`Selected group member has no greeting`); // SillyBunny: no trailing period, by DESIGN.md
         return;
     }
 
@@ -861,7 +861,7 @@ function initGroupSpeakerControls() {
 
     container.on('click', '#group_speaker_now', async function () {
         if (!selected_group || !selectedGroupSpeakerAvatar) {
-            toastr.warning(t`Pick a group member first.`);
+            toastr.warning(t`Pick a group member first`); // SillyBunny: no trailing period, by DESIGN.md
             return;
         }
 
@@ -4099,7 +4099,7 @@ async function createGroup(receipt = captureGroupEditorSave()) {
     const existingGroup = findGroupByMembers(members);
     if (existingGroup) {
         await createNewGroupChat(existingGroup.id);
-        toastr.info(t`Opened a new chat branch for the existing group.`);
+        toastr.info(t`Opened a new chat branch for the existing group`); // SillyBunny: no trailing period, by DESIGN.md
         return false;
     }
 

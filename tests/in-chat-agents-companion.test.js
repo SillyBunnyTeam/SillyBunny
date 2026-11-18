@@ -606,7 +606,7 @@ describe('companion card ui', () => {
             settings: expect.objectContaining({ plotCompassObjective: 'Reach the tower' }),
         }));
         expect(runner.runCompanionAgentOnMessage).toHaveBeenCalledWith('plot-compass', 0);
-        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved.');
+        expect(globalThis.toastr.success).toHaveBeenCalledWith('Plot Objective saved');
     });
 
     test('registers re-render listeners for lazy loads, edits, and deletions', async () => {

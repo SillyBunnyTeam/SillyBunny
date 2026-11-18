@@ -1202,9 +1202,9 @@ export async function copyConversationMessage(messageId) {
 
     try {
         await navigator.clipboard.writeText(payload);
-        globalThis.toastr?.success?.('Message copied.');
+        globalThis.toastr?.success?.('Message copied');
     } catch {
-        globalThis.toastr?.warning?.('Could not copy message text.');
+        globalThis.toastr?.warning?.('Could not copy message text');
     }
 }
 
@@ -1307,7 +1307,7 @@ export async function regenerateConversationMessage(messageId) {
         );
 
         if (!String(response || '').trim()) {
-            globalThis.toastr?.warning?.('Regenerate returned no message.');
+            globalThis.toastr?.warning?.('Regenerate returned no message');
             return;
         }
 
@@ -1324,7 +1324,7 @@ export async function regenerateConversationMessage(messageId) {
 
         const commandParts = extractCharacterReplyCommands(response, settings);
         if (!commandParts.text) {
-            globalThis.toastr?.warning?.('Regenerate returned no message.');
+            globalThis.toastr?.warning?.('Regenerate returned no message');
             return;
         }
         const extra = { ...targetContext.message.extra };
@@ -1342,7 +1342,7 @@ export async function regenerateConversationMessage(messageId) {
             personaId: context.personaId,
             reminderAvatar: context.avatar,
         });
-        globalThis.toastr?.success?.('Message regenerated.');
+        globalThis.toastr?.success?.('Message regenerated');
     } catch (error) {
         reportConversationGenerationError('regenerate', error, { level: 'warning' });
     } finally {
@@ -1427,7 +1427,7 @@ export function branchConversationFromMessage(messageId) {
 export async function quickConversationSelfie() {
     const avatar = getCurrentCharAvatar();
     if (!avatar) {
-        globalThis.toastr?.warning?.('Pick a DM first.');
+        globalThis.toastr?.warning?.('Pick a DM first');
         return;
     }
 
@@ -1437,7 +1437,7 @@ export async function quickConversationSelfie() {
     const settings = getSettings(avatar, { groupId, personaId });
     const context = await promptConversationText({
         title: 'Send a Selfie',
-        text: 'Describe the selfie context.',
+        text: 'Describe the selfie context',
         defaultValue: 'a casual selfie in the current DM conversation',
         confirmLabel: 'Generate',
     });
@@ -1457,7 +1457,7 @@ export async function generateConversationSelfieFromMessageCommand(messageId, se
     const requests = getConversationSelfieCommandRequests(context.message);
     const request = requests[Number(selfieIndex) || 0];
     if (!request) {
-        globalThis.toastr?.warning?.('No selfie request found on this message.');
+        globalThis.toastr?.warning?.('No selfie request found on this message');
         return;
     }
 
