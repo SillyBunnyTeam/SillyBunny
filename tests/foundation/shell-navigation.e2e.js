@@ -72,10 +72,17 @@ test('preserves Layer 2 controls, labels, settings tabs, and settings focus', as
         expect(await tabs.evaluateAll(buttons => buttons.map(button => button.dataset.sbSettingsTab))).toEqual(expectedShellTabs[shellKey]);
         await expect(settingsTabList.locator('.sb-settings-tab[aria-selected="true"]')).toHaveCount(1);
 
+        // The top-bar toggle restores the last page, which a phone shows in its content view, so the focus starts on Close there too.
+        if (isMobile) await expect(settingsPage).toHaveClass(/sb-settings-page--content/);
+        await expect(settingsClose).toBeFocused();
         if (isMobile) {
+            // The sidebar is off screen and inert behind the content, and Back returns the focus to the selected tab.
+            await page.locator('#sb-settings-back').click();
+            await expect(settingsPage).not.toHaveClass(/sb-settings-page--content/);
             await expect(settingsTabList.locator('.sb-settings-tab[aria-selected="true"]')).toBeFocused();
-        } else {
-            await expect(settingsClose).toBeFocused();
+            // Close lives in the content header, so a phone closes from the content view.
+            await settingsTabList.locator('.sb-settings-tab[aria-selected="true"]').click();
+            await expect(settingsPage).toHaveClass(/sb-settings-page--content/);
         }
 
         await settingsClose.click();
@@ -220,14 +227,19 @@ test('settings page opens with sidebar tabs and switches content', async ({ page
     const settingsPage = page.locator('#sb-settings-page');
     const sidebar = page.locator('#sb-settings-sidebar');
 
-    // An explicit tab route opens the mobile sidebar; the top-bar toggle intentionally restores
-    // the last selected tab directly in content view.
+    // A named page is the page to show: openTab() with a tab id opens that page in the content view, as the top-bar toggle
+    // restores the last one, and Back reaches the navigation list.
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'connections'));
     await expect(settingsPage).not.toHaveAttribute('hidden');
-    await expect(sidebar).toBeVisible();
+    await expect(settingsPage).toHaveClass(/sb-settings-page--content/);
+    await expect(page.locator('#sb-settings-content-title')).toContainText('Connections');
+    await expect(page.locator('#sb-settings-close')).toBeFocused();
+    // The sidebar is slid off screen and inert.
+    await expect(sidebar).toHaveAttribute('inert', '');
 
-    // Mobile starts in sidebar view
+    await page.locator('#sb-settings-back').click();
     await expect(settingsPage).not.toHaveClass(/sb-settings-page--content/);
+    await expect(sidebar).toBeVisible();
 
     const tabButtons = sidebar.locator('.sb-settings-tab');
     await expect(tabButtons).toHaveCount(expectedShellTabs.left.length);
@@ -253,14 +265,15 @@ test('settings page opens with sidebar tabs and switches content', async ({ page
     await expect(settingsPage).not.toHaveClass(/sb-settings-page--content/);
     await expect(sidebar).toBeVisible();
 
-    // Close and reopen
+    // Close lives in the content header, so a phone closes from the content view, and a named page reopens in it.
+    await sidebar.locator('.sb-settings-tab[aria-selected="true"]').click();
+    await expect(settingsPage).toHaveClass(/sb-settings-page--content/);
     await page.locator('#sb-settings-close').click();
     await expect(settingsPage).toHaveAttribute('hidden');
     await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'connections'));
     await expect(settingsPage).not.toHaveAttribute('hidden');
-
-    // Should be back in sidebar view after reopen
-    await expect(settingsPage).not.toHaveClass(/sb-settings-page--content/);
+    await expect(settingsPage).toHaveClass(/sb-settings-page--content/);
+    await expect(page.locator('#sb-settings-content-title')).toContainText('Connections');
 
     await page.reload();
     await page.waitForFunction(() => typeof window.SillyBunnyShell?.openTab === 'function' && !document.querySelector('#preloader'));

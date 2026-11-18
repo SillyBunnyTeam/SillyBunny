@@ -81,9 +81,12 @@ test.afterEach(async ({ page }) => {
 /**
  * Clicks a folder row in the page and records its section body on every frame: the running animations, the box height,
  * the opacity and the chevron's transform. `clickAgainAt` clicks a second time that many milliseconds after the first.
+ * `seekStep` pauses every animation after the first frame and steps it by that many milliseconds instead: a headless engine that
+ * draws in software (Firefox) delivers a frame only every 50 to 100 ms, which leaves too few frames inside a 250 ms motion and lets a
+ * motion move a long way between the frames on each side of a second click.
  */
-async function traceFolder(page, name, { clickAgainAt = 0, duration = 450 } = {}) {
-    return page.evaluate(({ name: folderName, clickAgainAt: again, duration: span }) => new Promise(resolve => {
+async function traceFolder(page, name, { clickAgainAt = 0, duration = 450, seekStep = 0 } = {}) {
+    return page.evaluate(({ name: folderName, clickAgainAt: again, duration: span, seekStep: step }) => new Promise(resolve => {
         const row = [...document.querySelectorAll('#bg_menu_content .sb-folder-row')].find(node => node.textContent.includes(folderName));
         const bodyOf = () => row.closest('.sb-bg-section').querySelector('.sb-bg-section__body');
         const frames = [];
@@ -98,12 +101,44 @@ async function traceFolder(page, name, { clickAgainAt = 0, duration = 450 } = {}
                 thumbs: body.querySelectorAll('.bg_example').length,
                 expanded: row.getAttribute('aria-expanded'),
                 chevron: getComputedStyle(chevron).transform,
-                animations: body.getAnimations().map(animation => ({ duration: animation.effect.getTiming().duration, easing: animation.effect.getTiming().easing })),
+                // WebKit reports the curve of `ease`, which is this one, by its keyword.
+                animations: body.getAnimations().map(animation => ({ duration: animation.effect.getTiming().duration, easing: animation.effect.getTiming().easing === 'ease' ? 'cubic-bezier(0.25, 0.1, 0.25, 1)' : animation.effect.getTiming().easing })),
             });
         };
         const start = performance.now();
         row.click();
         sample(0);
+        if (step) {
+            // Steps every running animation through its whole length, then lets the ends run (`finish` is delivered asynchronously).
+            const stepThrough = (offset, until) => {
+                const running = document.getAnimations();
+                for (const animation of running) animation.pause();
+                const longest = Math.max(...running.map(animation => Number(animation.effect.getComputedTiming().endTime)));
+                for (let at = step; at < Math.min(longest, until); at += step) {
+                    for (const animation of running) animation.currentTime = at;
+                    sample(offset + at);
+                }
+                return { running, longest };
+            };
+            const first = stepThrough(0, again || Infinity);
+            let finishing = first;
+            let offset = 0;
+            if (again) {
+                // The second click comes at `again`, with the first motion held at that time.
+                for (const animation of first.running) animation.currentTime = again;
+                sample(again);
+                row.click();
+                sample(again + 1);
+                offset = again;
+                finishing = stepThrough(offset, Infinity);
+            }
+            for (const animation of finishing.running) animation.finish();
+            setTimeout(() => {
+                sample(offset + finishing.longest);
+                resolve(frames);
+            }, 150);
+            return;
+        }
         let clickedAgain = !again;
         const tick = now => {
             const at = now - start;
@@ -116,7 +151,7 @@ async function traceFolder(page, name, { clickAgainAt = 0, duration = 450 } = {}
             else resolve(frames);
         };
         requestAnimationFrame(tick);
-    }), { name, clickAgainAt, duration });
+    }), { name, clickAgainAt, duration, seekStep });
 }
 
 async function endsOf(page) {
@@ -276,7 +311,7 @@ for (const { label, width, height, touch } of [
             const chevronRest = await folderRow(page, folderName).locator('.ds-entity-row__chevron').evaluate(node => getComputedStyle(node).transform);
             expect(chevronRest).toBe('matrix(-1, 0, 0, -1, 0, 0)');
 
-            const closing = await traceFolder(page, folderName);
+            const closing = await traceFolder(page, folderName, { seekStep: 25 });
             // The first frame already has the running animation, with the duration and easing of every other folder.
             expect(closing[0].animations).toEqual([{ duration: 250, easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)' }]);
             expect(closing[0].expanded).toBe('false');
@@ -294,7 +329,7 @@ for (const { label, width, height, touch } of [
             await expect(thumbs).toHaveCount(0);
             await expect.poll(async () => (await stored(page))?.folders.find(folder => folder.name === folderName)?.expanded).toBe(false);
 
-            const opening = await traceFolder(page, folderName);
+            const opening = await traceFolder(page, folderName, { seekStep: 25 });
             expect(opening[0].animations).toEqual([{ duration: 250, easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)' }]);
             expect(opening[0].height).toBeLessThan(1);
             const growing = opening.filter(frame => frame.animations.length).map(frame => frame.height);
@@ -320,7 +355,7 @@ for (const { label, width, height, touch } of [
             // Closed after 120ms of the opening: the body turns round from its own height, with no jump to the full height or to nothing.
             await traceFolder(page, folderName);
             await expect(section(page, folderName).locator('.sb-bg-section__body')).toBeHidden();
-            const turned = await traceFolder(page, folderName, { clickAgainAt: 120, duration: 600 });
+            const turned = await traceFolder(page, folderName, { clickAgainAt: 120, seekStep: 25 });
             const before = turned.findLast(frame => frame.at < 120);
             const after = turned.find(frame => frame.at > 120 && frame.expanded === 'false');
             expect(before.height).toBeGreaterThan(5);
@@ -331,7 +366,7 @@ for (const { label, width, height, touch } of [
             // And the other way round: closing, then opening again in the middle of it.
             const reopened = await traceFolder(page, folderName);
             expect(reopened.at(-1)).toMatchObject({ hidden: false, thumbs: 4, expanded: 'true' });
-            const midway = await traceFolder(page, folderName, { clickAgainAt: 120, duration: 600 });
+            const midway = await traceFolder(page, folderName, { clickAgainAt: 120, seekStep: 25 });
             const closingFrame = midway.findLast(frame => frame.at < 120);
             const openingFrame = midway.find(frame => frame.at > 120 && frame.expanded === 'true');
             expect(Math.abs(openingFrame.height - closingFrame.height)).toBeLessThan(settled * 0.35);

@@ -115,7 +115,10 @@ async function openMenu(page, row) {
 }
 
 const importFile = (page, buffer, name) => page.locator('#sb_font_import_input').setInputFiles({ name, mimeType: 'application/octet-stream', buffer });
-const familyOf = page => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--mainFontFamily'));
+// Chromium and Gecko serialise a custom property with the quotes as written, WebKit with double quotes, and a computed family list
+// drops the quotes of a one-word family, so families are compared without quotes.
+const unquoted = value => value.replaceAll(/['"]/g, '');
+const familyOf = async page => unquoted(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--mainFontFamily')));
 const fontLoads = (page, family) => page.evaluate(async name => {
     await document.fonts.load(`16px '${name}'`, 'abc');
     return { check: document.fonts.check(`16px '${name}'`), faces: [...document.fonts].filter(face => face.family.replace(/['"]/g, '') === name).map(face => face.status) };
@@ -154,7 +157,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await page.keyboard.press('Escape');
 
             await choose(page, row, 'Sweep Test Face');
-            await expect.poll(() => familyOf(page)).toBe('\'Sweep Test Face\', \'Adwaita Sans\', system-ui, sans-serif');
+            await expect.poll(() => familyOf(page)).toBe(unquoted('\'Sweep Test Face\', \'Adwaita Sans\', system-ui, sans-serif'));
             await expect.poll(async () => (await fontLoads(page, 'Sweep Test Face')).check).toBe(true);
             expect((await fontLoads(page, 'Sweep Test Face')).faces).toEqual(['loaded']);
             expect((await page.request.get(stored.file)).status()).toBe(200);
@@ -276,7 +279,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             // A name that is not a preset still asks Google for its stylesheet, and nothing else.
             await expect.poll(() => googleRequests.length).toBeGreaterThan(0);
             expect(googleRequests.every(url => /^https:\/\/fonts\.googleapis\.com\/css2\?family=Lobster%20Two[:&]/.test(url))).toBe(true);
-            expect(await familyOf(page)).toBe('\'Lobster Two\', \'Adwaita Sans\', system-ui, sans-serif');
+            expect(await familyOf(page)).toBe(unquoted('\'Lobster Two\', \'Adwaita Sans\', system-ui, sans-serif'));
             await expect(page.locator('#google-font-style')).toHaveAttribute('href', /family=Lobster%20Two/);
             const row = await openFontRow(page);
             await expect(trigger(row)).toHaveText('Lobster Two');
@@ -319,7 +322,7 @@ function definePresetTest(viewport, preset) {
     test.describe(`Preset ${preset.name} at ${viewport.width}px`, () => {
         test.use({ viewport, hasTouch: viewport.width === 390, isMobile: viewport.width === 390 });
 
-        test('is requested from the app only when chosen, applied with its stack and kept over a reload', async ({ page }) => {
+        test('is requested from the app only when chosen, applied with its stack and kept over a reload', async ({ page, browserName }) => {
             await protectMaintainerServer(page);
             const files = presetFiles(preset.directory);
             expect(files.upright).toBeTruthy();
@@ -341,16 +344,14 @@ function definePresetTest(viewport, preset) {
 
             await choose(page, row, preset.name);
             const stack = `'${preset.name}', ${STACK_TAIL}`;
-            await expect.poll(() => familyOf(page)).toBe(stack);
-            // The browser drops the quotes of a one-word family when it serialises the list, so the quotes are not compared.
-            const unquoted = value => value.replaceAll(/['"]/g, '');
+            await expect.poll(() => familyOf(page)).toBe(unquoted(stack));
             expect(unquoted(await page.evaluate(() => getComputedStyle(document.body).fontFamily))).toBe(unquoted(stack));
             await expect.poll(() => asked(requests, stylesheet)).toBe(true);
             await expect.poll(() => asked(requests, files.upright)).toBe(true);
             expect(await page.evaluate(name => document.fonts.load(`16px '${name}'`, 'abc').then(() => document.fonts.check(`16px '${name}'`)), preset.name)).toBe(true);
 
-            // Italic text is what asks for the italic file.
-            expect(asked(requests, files.italic)).toBe(false);
+            // Italic text is what asks for the italic file. WebKit asks for it as soon as the family is chosen, with no italic text on screen.
+            if (browserName !== 'webkit') expect(asked(requests, files.italic)).toBe(false);
             expect(await page.evaluate(name => document.fonts.load(`italic 16px '${name}'`, 'abc').then(() => document.fonts.check(`italic 16px '${name}'`)), preset.name)).toBe(true);
             await expect.poll(() => asked(requests, files.italic)).toBe(true);
 
@@ -364,7 +365,7 @@ function definePresetTest(viewport, preset) {
 
             await page.reload();
             await waitForAppReady(page);
-            await expect.poll(() => familyOf(page)).toBe(stack);
+            await expect.poll(() => familyOf(page)).toBe(unquoted(stack));
             await expect.poll(() => page.evaluate(name => document.fonts.load(`16px '${name}'`, 'abc').then(() => document.fonts.check(`16px '${name}'`)), preset.name)).toBe(true);
             await expect(trigger(await openFontRow(page))).toHaveText(preset.name);
             expect(rejected).toEqual([]);

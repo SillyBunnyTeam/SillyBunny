@@ -13388,7 +13388,8 @@ function openSettingsPage(shellKey, tabId = null) {
     syncSettingsPaneInert();
     animateSettingsPage(page, 'in', () => page.classList.remove('sb-settings-page--opening'));
 
-    if (isMobileViewport()) {
+    // The pane that is off screen on a phone is inert and cannot take focus, so a restored page shows content and focuses Close.
+    if (isMobileViewport() && !sbSettingsState.mobileContentView) {
         document.querySelector('.sb-settings-tab')?.focus({ preventScroll: true });
     } else {
         document.getElementById('sb-settings-close')?.focus({ preventScroll: true });

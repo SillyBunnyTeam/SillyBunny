@@ -410,9 +410,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     });
 }
 
-// The 44px floor follows the pointer, so the phone is emulated with touch.
+// The 44px floor follows the pointer, so the phone is emulated with touch. `isMobile` is left out: a Firefox context with it never
+// settles the `setViewportSize()` call that `prepare()` makes before the first navigation, and a coarse pointer needs only `hasTouch`.
 test.describe('on a touch phone', () => {
-    test.use({ hasTouch: true, isMobile: true });
+    test.use({ hasTouch: true });
 
     test('narrow selection actions stay on one row with accessible names', async ({ page }) => {
         await prepare(page, { width: 390, height: 844 });

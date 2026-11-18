@@ -60,6 +60,8 @@ test.describe('frontend performance smoke', () => {
     test.use({ extraHTTPHeaders: { 'Accept-Encoding': 'gzip, deflate, br' } });
 
     test('mobile shell exposes core performance marks and bounded assets', async ({ page, browser, baseURL }) => {
+        // Two starts (the first stores the daily notice stamp), each allowed 60s to load under a busy machine.
+        test.setTimeout(150_000);
         await storeFirstStartState(browser, baseURL);
         await page.setViewportSize({ width: 390, height: 844 });
         await page.addInitScript(() => globalThis.performance.setResourceTimingBufferSize(1000));

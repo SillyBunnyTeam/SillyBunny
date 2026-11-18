@@ -327,8 +327,14 @@ for (const width of [1440, 390]) {
             await expect(cleanup).toHaveCount(0);
 
             const lastRow = frame.locator('#select_chat_div .select_chat_block_wrapper').last();
+            const historyBody = frame.locator('.sb-dialog__body');
+            const heightBeforeScroll = await historyBody.evaluate(body => body.scrollHeight);
             await lastRow.scrollIntoViewIfNeeded();
             await expect(lastRow).toBeInViewport();
+            // A row estimated shorter than it is grows when it is first drawn, and the rows below it, the last row included, move
+            // after the pointer was aimed at them (WebKit has no scroll anchoring to hide it).
+            await page.waitForTimeout(250);
+            expect(await historyBody.evaluate(body => body.scrollHeight)).toBe(heightBeforeScroll);
             await expect(frame.locator('#select_chat_search')).toBeAttached();
             await expect(frame.locator('#shadow_select_chat_popup')).toHaveCount(0);
 

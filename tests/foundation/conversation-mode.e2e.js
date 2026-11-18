@@ -17,6 +17,13 @@ test.beforeEach(async ({ page, baseURL }) => {
     });
 });
 
+// The foundation server has no account identity, so Quick Image Gen cannot open its gallery storage and raises a warning toast
+// at boot. A toast is centred at the top, over the header, and takes a click aimed at what lies beneath it.
+async function clearToasts(page) {
+    await page.evaluate(() => window.toastr?.clear());
+    await expect(page.locator('#toast-container > div')).toHaveCount(0);
+}
+
 async function seedConversation(page, { messageOverrides = [] } = {}) {
     await page.goto('/');
     await page.waitForFunction(() => document.getElementById('preloader') === null, null, { timeout: 60000 });
@@ -205,6 +212,7 @@ test('an overlay pane shades everything outside it, hides on a press anywhere th
         await expect(shade).toBeVisible();
         // Opening the pane is itself a click on the header, so the count starts here.
         await page.evaluate(() => { window.__underClicks = 0; });
+        await clearToasts(page);
         await page.mouse.click(x, y);
         await expect(drawer, `a press on ${place}`).toBeHidden();
         await expect(shade).toBeHidden();

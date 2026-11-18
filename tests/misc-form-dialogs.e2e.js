@@ -108,7 +108,7 @@ for (const viewport of MISC_VIEWPORTS) {
             // A phone is a touch device, so its toggles stand 44px tall; the desktop floor is 32px.
             const floor = viewport.width < 450 ? 44 : 32;
             test.use({ hasTouch: floor === 44 });
-            test('is a tray with a raised selected toggle, and gains rings under more contrast', async ({ page }) => {
+            test('is a tray with a raised selected toggle, and gains rings under more contrast', async ({ page, browserName }) => {
                 await bootMiscDialogs(page, viewport);
                 const popup = await openMiscDialog(page, 'styles');
                 await selectTheme(page, theme);
@@ -120,6 +120,8 @@ for (const viewport of MISC_VIEWPORTS) {
                 await expectToggleGroupForm(page, group, { tone, floor });
                 await popup.locator('#global_styles_allowed').check();
                 await expectToggleGroupForm(page, group, { tone, floor });
+                // Playwright's Firefox makes `matchMedia('(prefers-contrast: more)')` true but does not restyle the page for it.
+                test.skip(browserName === 'firefox', 'Firefox applies no styles for an emulated prefers-contrast: more');
                 await page.emulateMedia({ contrast: 'more' });
                 await expectToggleGroupForm(page, group, { tone, floor, more: true });
                 await popup.locator('#global_styles_allowed').focus();
