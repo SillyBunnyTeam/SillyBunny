@@ -612,13 +612,13 @@ test('The Reasoning groups of Formatting and Presets open each other and carry t
         await selectBackend(page, api, api === 'openai' ? 'openrouter' : 'ooba');
         const formatting = await openPanel(page, 'context');
         const reasoning = formatting.locator('#sb-af-reasoning');
-        await expect(reasoning.locator('.sb-settings-category-heading > small')).toHaveText('These settings apply to every chat, whichever template is chosen.');
+        await expect(reasoning.locator('.sb-settings-category-heading > small')).toHaveText('These settings apply to every chat, whichever template is chosen');
         await expect(reasoning.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
         await reasoning.getByRole('button', { name: 'Reasoning Template', exact: true }).click();
         const prompting = page.locator('[data-sb-panel="prompting"]');
         const template = prompting.locator('#sb-reasoning-template');
         await expect(template.locator('.sb-settings-category-title')).toBeInViewport();
-        await expect(template.locator('.sb-settings-category-heading > small')).toHaveText('Saves the reasoning prefix, suffix and separator under a name.');
+        await expect(template.locator('.sb-settings-category-heading > small')).toHaveText('Saves the reasoning prefix, suffix and separator under a name');
         await expect(template.locator('[data-sb-copy-placeholder]')).toHaveCount(0);
         await template.getByRole('button', { name: 'Reasoning', exact: true }).click();
         await expect(reasoning.locator('.sb-settings-category-title')).toBeInViewport();

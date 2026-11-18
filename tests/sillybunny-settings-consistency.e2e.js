@@ -580,12 +580,12 @@ test.describe('Settings header consistency', () => {
             'Tokenizer & Padding', 'Stopping Strings', 'Reply Prefix', 'Text Cleanup', 'Reasoning', 'Add to Prompts', 'Rendering', 'Advanced Formatting',
         ]);
         await expect(groups.locator(':scope > .sb-settings-category-header .sb-settings-category-heading > small')).toHaveText([
-            'Choose a tokenizer and adjust prompt token counts with padding.',
-            'Choose text that stops generation, with optional macro replacement.',
-            'Set how replies begin and whether that text appears in chat.',
-            'Control line breaks, extra spaces, and unfinished sentences in replies.',
-            'These settings apply to every chat, whichever template is chosen.',
-            'Keep specified standalone text from being treated as Markdown.',
+            'Choose a tokenizer and adjust prompt token counts with padding',
+            'Choose text that stops generation, with optional macro replacement',
+            'Set how replies begin and whether that text appears in chat',
+            'Control line breaks, extra spaces, and unfinished sentences in replies',
+            'These settings apply to every chat, whichever template is chosen',
+            'Keep specified standalone text from being treated as Markdown',
         ]);
         const failures = await groups.evaluateAll((groups, expectedTitle) => groups.flatMap(group => {
             const header = group.querySelector(':scope > .sb-settings-category-header');
@@ -855,6 +855,8 @@ test.describe('Customize consistency', () => {
                 } else {
                     await openSettingsTab(page, id, shell);
                     await page.waitForTimeout(300);
+                    // Some pages build their groups after the tab opens; under load Data & Security had none yet at 300ms.
+                    await expect.poll(async () => (await readFrame(`[data-sb-panel="${id}"]`)).error ?? '', { timeout: 10_000 }).not.toMatch(/has no group/);
                     frames[id] = await readFrame(`[data-sb-panel="${id}"]`);
                 }
             }
@@ -1177,6 +1179,10 @@ test.describe('Backgrounds settings consistency', () => {
         await page.setViewportSize({ width: 390, height: 844 });
         const appearance = await openSettingsTab(page, 'appearance', 'right');
         await ensureAnimatedBackgroundPanel(page);
+        await expectAnimatedBackgroundStructure(appearance, { geometry: false });
+        // The section order moves the panel out of the Backgrounds gallery at a time that depends on load, and the gallery's
+        // button rules (`#sb-settings-page #Backgrounds .menu_button`) stop matching its buttons when it does. Measure where it ends up.
+        await page.evaluate(() => document.getElementById('sb-appearance-content').append(document.getElementById('bpt-animated-bg-panel')));
         const sources = appearance.locator('#bpt-animated-bg-sources');
         await sources.evaluate(container => {
             for (const source of ['https://example.invalid/loop.mp4', `https://example.invalid/${'long-source-'.repeat(20)}.mp4`]) {

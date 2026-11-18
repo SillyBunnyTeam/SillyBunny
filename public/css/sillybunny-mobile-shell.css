@@ -522,7 +522,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         --sb-topbar-inline-gap-base: 6px;
         --sb-topbar-search-row-height-base: 36px;
         --sb-topbar-group-gap-base: 4px;
-        --sb-chatbar-height-base: 38px;
         --sb-chatbar-button-size-base: 26px;
         --sb-mobile-toggle-size-base: 44px;
         --sb-home-toggle-min-width-base: 44px;
@@ -536,7 +535,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         --sb-topbar-inline-gap-base: 5px;
         --sb-topbar-search-row-height-base: 32px;
         --sb-topbar-group-gap-base: 3px;
-        --sb-chatbar-height-base: 34px;
         --sb-chatbar-button-size-base: 24px;
         --sb-mobile-toggle-size-base: 44px;
         --sb-home-toggle-min-width-base: 34px;
@@ -614,9 +612,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     }
 
     #sb-topbar-stack {
-        grid-template-rows:
-            var(--sb-topbar-primary-height)
-            minmax(var(--sb-chatbar-height), auto);
+        grid-template-rows: var(--sb-topbar-primary-height);
         gap: var(--sb-topbar-stack-gap);
         width: 100%;
     }
@@ -1013,7 +1009,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         --sb-topbar-inline-gap-base: 4px;
         --sb-topbar-search-row-height-base: 28px;
         --sb-topbar-group-gap-base: 3px;
-        --sb-chatbar-height-base: 32px;
         --sb-chatbar-gap-base: 4px;
         --sb-chatbar-padding-y-base: 2px;
         --sb-chatbar-padding-x-base: 4px;
@@ -1030,7 +1025,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
         --sb-topbar-padding-x-base: 5px;
         --sb-topbar-inline-gap-base: 3px;
         --sb-topbar-search-row-height-base: 28px;
-        --sb-chatbar-height-base: 30px;
         --sb-chatbar-button-size-base: 21px;
         --sb-mobile-toggle-size-base: 32px;
         --sb-home-toggle-min-width-base: 32px;

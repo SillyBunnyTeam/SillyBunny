@@ -132,7 +132,8 @@ test.describe('a first run', () => {
             const { name1 } = await import('/script.js');
             return { name1, persona: power_user.personas[user_avatar], description: power_user.persona_descriptions[user_avatar] };
         });
-        expect(written).toEqual({ name1: 'Ada Lovelace', persona: 'Ada Lovelace', description: { description: '', position: 0 } });
+        // Welcome writes the two fields; getPersonaRecord() and the persona editor add `appendices` and `activeAppendices` on first read, at a time that depends on load.
+        expect(written).toMatchObject({ name1: 'Ada Lovelace', persona: 'Ada Lovelace', description: { description: '', position: 0 } });
         await expect(shownPage(host).getByRole('switch', { name: 'Show at Startup' })).toBeChecked();
         await shownPage(host).getByRole('button', { name: 'Start', exact: true }).click();
         await expect(hosts(page)).toHaveCount(0);

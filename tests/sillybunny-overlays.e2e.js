@@ -438,6 +438,29 @@ for (const width of [1440, 390]) {
             await expect(frame.locator('#chat_backups_list')).toBeVisible();
         });
 
+        test('Backups cleanup controls reach the target floor of the pointer', async ({ page }) => {
+            await page.route('**/api/backups/chat/get', route => route.fulfill({ json: [] }));
+            await prepareChat(page);
+            const actions = await openChatActions(page, width);
+            await actions.getByRole('button', { name: 'View chat files', exact: true }).click();
+            const frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
+            await expect(frame).toBeVisible();
+            await frame.locator('.sb-chat-history-menu').click();
+            await frame.getByRole('menuitem', { name: 'Backups', exact: true }).click();
+            const tools = frame.locator('.chatBackupsCleanupTools');
+            await expect(tools).toBeVisible();
+
+            const floor = width === 390 ? 44 : 32;
+            expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(width === 390);
+            const controls = await tools.locator('button, input, select').evaluateAll(nodes => nodes
+                .filter(node => node.getClientRects().length > 0)
+                .map(node => ({ name: node.textContent.trim() || node.className, height: node.getBoundingClientRect().height })));
+            expect(controls.map(control => control.name)).toEqual(expect.arrayContaining(['Preview', 'Clean']));
+            for (const control of controls) {
+                expect(control.height, control.name).toBeGreaterThanOrEqual(floor);
+            }
+        });
+
         test('Chat History covers its navigation, labeling, cleanup, import, and cancel handlers', async ({ page }) => {
             const { fixtures, chatLoadRequests } = await prepareChat(page);
             let releaseGeneration;

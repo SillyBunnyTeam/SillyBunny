@@ -324,7 +324,7 @@ test.describe('third-party top-bar button adoption', () => {
         await expect(page.locator('#sb-e2e-ext-setting')).toBeVisible();
     });
 
-    test('anchors a fixed extension panel below the whole bar, chat bar row included', async ({ page }) => {
+    test('anchors a fixed extension panel below the whole bar', async ({ page }) => {
         await openBarForTest(page);
 
         const measure = () => page.evaluate(() => {
@@ -345,17 +345,8 @@ test.describe('third-party top-bar button adoption', () => {
             return { barBottom: document.getElementById('top-bar').getBoundingClientRect().bottom, containerTop };
         });
 
-        const compact = await measure();
-        expect(compact.containerTop).toBeCloseTo(compact.barBottom, 0);
-
-        // The regression case: with the chat bar row showing, the bar is taller than
-        // --topBarBlockSize and the panel used to paint over the bottom of it.
-        await page.evaluate(() => document.body.classList.remove('sb-topbar-compact'));
-        await waitForAnimationFrames(page, 2);
-
-        const withChatBar = await measure();
-        expect(withChatBar.barBottom).toBeGreaterThan(compact.barBottom);
-        expect(withChatBar.containerTop).toBeCloseTo(withChatBar.barBottom, 0);
+        const bar = await measure();
+        expect(bar.containerTop).toBeCloseTo(bar.barBottom, 0);
     });
 
     test('holds the same contract on a phone viewport with the icons-only bar', async ({ page }) => {

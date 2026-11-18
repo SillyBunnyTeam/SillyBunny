@@ -152,6 +152,9 @@ const showPopupHelper = {
     },
 };
 
+// SillyBunny: the longest `show()` waits for a closing popup that holds the same ids. The exit animation takes 200ms and `runAfterAnimation` falls back at 500ms.
+const POPUP_CLOSING_TWIN_WAIT_MS = 1000;
+
 export class Popup {
     /** @readonly @type {POPUP_TYPE} */ type;
 
@@ -718,6 +721,16 @@ export class Popup {
      * @returns {Promise<string|number|boolean?>} A promise that resolves with the value of the popup when it is completed.
      */
     async show() {
+        // SillyBunny: a closing popup stays in the document until its exit animation ends. Content with the same ids would then exist twice, so wait for it.
+        // The wait is bounded: a closing popup whose `onClose` handler awaits this popup would otherwise never finish.
+        const closingTwins = this.#closingPopupsSharingIds();
+        if (closingTwins.length > 0) {
+            await Promise.race([
+                Promise.all(closingTwins.map(popup => popup.#promise)),
+                new Promise(resolve => setTimeout(resolve, POPUP_CLOSING_TWIN_WAIT_MS)),
+            ]);
+        }
+
         document.body.append(this.dlg);
 
         // Run opening animation
@@ -743,6 +756,19 @@ export class Popup {
             this.#resolver = resolve;
         });
         return this.#promise;
+    }
+
+    /**
+     * SillyBunny: the popups that are closing and whose content holds an id that this popup's content also holds.
+     * @returns {Popup[]}
+     */
+    #closingPopupsSharingIds() {
+        const ids = Array.from(this.dlg.querySelectorAll('[id]'), element => element.id).filter(Boolean);
+        if (ids.length === 0) return [];
+        return Popup.util.popups.filter(popup => popup !== this
+            && popup.dlg.hasAttribute('closing')
+            && popup.#promise
+            && ids.some(id => popup.dlg.querySelector(`[id="${CSS.escape(id)}"]`)));
     }
 
     setAutoFocus({ applyAutoFocus = false } = {}) {

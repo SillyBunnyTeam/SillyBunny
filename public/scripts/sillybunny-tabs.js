@@ -1761,17 +1761,7 @@ function getRenderedTopbarOffset() {
 }
 
 function applyTopbarOffset() {
-    const dragSurface = document.getElementById('sb-chatbar-layer');
-    const renderedOffset = getRenderedTopbarOffset();
-
-    getChatbarState().renderedTopbarOffset = renderedOffset;
-
-    if (!(dragSurface instanceof HTMLElement)) {
-        return;
-    }
-
-    dragSurface.style.setProperty('--sb-topbar-offset-x', `${renderedOffset.x}px`);
-    dragSurface.style.setProperty('--sb-topbar-offset-y', `${renderedOffset.y}px`);
+    getChatbarState().renderedTopbarOffset = getRenderedTopbarOffset();
 }
 
 function setTopbarOffset(offset, { persist = true } = {}) {
@@ -4102,11 +4092,7 @@ function updateTopbarUtilityButtons() {
 }
 
 function syncTopbarLayoutState() {
-    const stack = document.getElementById('sb-topbar-stack');
-    const hasVisibleChatbar = stack?.querySelector('#sb-chatbar-layer') instanceof HTMLElement
-        && getChatbarState().visible;
-
-    document.body.classList.toggle('sb-topbar-compact', !hasVisibleChatbar);
+    document.body.classList.add('sb-topbar-compact');
 }
 
 function setChatbarVisible(shouldShow, { persist = true } = {}) {
@@ -4212,7 +4198,6 @@ function endTopbarDrag(event) {
         return;
     }
 
-    document.getElementById('sb-chatbar-layer')?.classList.remove('is-dragging');
     document.body.classList.remove('sb-topbar-dragging');
 
     const finalOffset = clampTopbarOffset(getChatbarState().renderedTopbarOffset);
@@ -8729,11 +8714,11 @@ function preparePromptingPanel(root) {
     };
 
     for (const [id, title, description] of [
-        ['sb-tc-sysprompt', 'System Prompt', 'Choose and manage system prompt presets.'],
-        ['sb-tc-instruct', 'Instruct Template', 'Choose an instruct template and adjust how it formats messages for the AI.'],
-        ['sb-tc-context', 'Context Template', 'Choose a context template and adjust its stopping rules.'],
-        ['sb-tc-names', 'Character Names', 'Choose whether to add the character\'s name outside Instruct Mode.'],
-        ['sb-reasoning-template', 'Reasoning Template', 'Saves the reasoning prefix, suffix and separator under a name.'],
+        ['sb-tc-sysprompt', 'System Prompt', 'Choose and manage system prompt presets'],
+        ['sb-tc-instruct', 'Instruct Template', 'Choose an instruct template and adjust how it formats messages for the AI'],
+        ['sb-tc-context', 'Context Template', 'Choose a context template and adjust its stopping rules'],
+        ['sb-tc-names', 'Character Names', 'Choose whether to add the character\'s name outside Instruct Mode'],
+        ['sb-reasoning-template', 'Reasoning Template', 'Saves the reasoning prefix, suffix and separator under a name'],
     ]) createPromptingGroup(id, title, description);
 
     // SillyBunny: keep range_block_openai around its groups for provider visibility and preset lookups.
@@ -8997,14 +8982,14 @@ function groupAdvancedFormattingIntoDrawers() {
         return group.querySelector('.sb-prompting-group-body');
     };
     const bodies = new Map([
-        ['tokenizer', createGroup('sb-af-tokenizer', 'Tokenizer & Padding', 'Choose a tokenizer and adjust prompt token counts with padding.')],
-        ['stopping', createGroup('sb-af-stopping', 'Stopping Strings', 'Choose text that stops generation, with optional macro replacement.')],
-        ['reply-prefix', createGroup('sb-af-reply-prefix', 'Reply Prefix', 'Set how replies begin and whether that text appears in chat.')],
-        ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup', 'Control line breaks, extra spaces, and unfinished sentences in replies.')],
+        ['tokenizer', createGroup('sb-af-tokenizer', 'Tokenizer & Padding', 'Choose a tokenizer and adjust prompt token counts with padding')],
+        ['stopping', createGroup('sb-af-stopping', 'Stopping Strings', 'Choose text that stops generation, with optional macro replacement')],
+        ['reply-prefix', createGroup('sb-af-reply-prefix', 'Reply Prefix', 'Set how replies begin and whether that text appears in chat')],
+        ['cleanup', createGroup('sb-af-cleanup', 'Text Cleanup', 'Control line breaks, extra spaces, and unfinished sentences in replies')],
         // SillyBunny: the caption of the Reasoning group says that its settings are global (placeholder P4).
-        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'These settings apply to every chat, whichever template is chosen.')],
+        ['reasoning', createGroup('sb-af-reasoning', 'Reasoning', 'These settings apply to every chat, whichever template is chosen')],
         ['reasoning-prompts', createGroup('sb-af-reasoning-prompts', 'Add to Prompts')],
-        ['rendering', createGroup('sb-af-rendering', 'Rendering', 'Keep specified standalone text from being treated as Markdown.')],
+        ['rendering', createGroup('sb-af-rendering', 'Rendering', 'Keep specified standalone text from being treated as Markdown')],
         // SillyBunny: the upstream page heading, its documentation link and Master Import/Export are this group (filled by sillybunny-backend-pages.js).
         ['advanced', createGroup('sb-af-advanced', 'Advanced Formatting')],
     ]);

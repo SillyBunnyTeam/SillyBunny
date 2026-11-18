@@ -24,7 +24,6 @@
     --sb-topbar-search-row-height-base: 42px;
     --sb-topbar-search-panel-gap-base: 8px;
     --sb-topbar-group-gap-base: 8px;
-    --sb-chatbar-height-base: 40px;
     --sb-chatbar-gap-base: 6px;
     --sb-chatbar-padding-y-base: 4px;
     --sb-chatbar-padding-x-base: 6px;
@@ -52,7 +51,6 @@
     /* Seam around a divider between two sets of controls. A multiple of the group gap rather than a fixed value, so
        it tracks the user's top bar scale and compact mode instead of fighting them. */
     --sb-topbar-cluster-gap: calc(var(--sb-topbar-group-gap) * 2.5);
-    --sb-chatbar-height: calc(var(--sb-chatbar-height-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-gap: calc(var(--sb-chatbar-gap-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-padding-y: calc(var(--sb-chatbar-padding-y-base) * var(--sb-chatbar-scale-active));
     --sb-chatbar-padding-x: calc(var(--sb-chatbar-padding-x-base) * var(--sb-chatbar-scale-active));
@@ -75,7 +73,6 @@
     --sb-topbar-primary-height: max(calc(var(--sb-topbar-primary-height-base) * var(--sb-topbar-scale-active)), var(--sb-topbar-primary-min-height));
     --sb-topbar-stack-height: calc(
         var(--sb-topbar-primary-height)
-        + var(--sb-chatbar-height)
         + var(--sb-topbar-stack-gap)
     );
     --sb-topbar-layout-offset: var(--sb-topbar-stack-height);
@@ -101,7 +98,6 @@
     --sb-topbar-inline-gap-base: 7px;
     --sb-topbar-search-row-height-base: 36px;
     --sb-topbar-group-gap-base: 6px;
-    --sb-chatbar-height-base: 34px;
     --sb-chatbar-gap-base: 4px;
     --sb-chatbar-padding-y-base: 3px;
     --sb-chatbar-padding-x-base: 5px;
@@ -234,9 +230,7 @@ body.sb-topbar-dragging {
     width: min(100%, var(--sb-topbar-max-width));
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows:
-        var(--sb-topbar-primary-height)
-        minmax(var(--sb-chatbar-height), auto);
+    grid-template-rows: var(--sb-topbar-primary-height);
     gap: var(--sb-topbar-stack-gap);
     overflow: visible;
     contain: layout style;
@@ -5996,7 +5990,9 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     font-size: var(--sb-type-control);
 }
 
+/* The panel leaves #Backgrounds when the section order places it, so the gallery's flat button edge (`border: 0`) no longer reaches the remove button; the source button beside it has none either. */
 #sb-settings-page #bpt-animated-bg-panel .bpt-animated-source-card > .menu_button {
+    border: 0;
     color: var(--sb-color-danger);
 }
 

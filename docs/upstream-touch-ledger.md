@@ -1416,11 +1416,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Chat recovery, character assets, thumbnails, and media metadata. |
 | Divergence reason | SillyBunny adds backup recovery presentation and mobile-aware character/media handling without changing upstream chat or image formats. |
 | Target seam | `public/scripts/sillybunny-tabs.js`, `src/endpoints/conversation-utils.js`, and the thumbnail/image-metadata helpers. |
-| Adapter shape | Keep upstream archive and image routes stable; limit fork behavior to recovery UI, mobile presets, and metadata helpers. Treat disconnected backup controls as stale so the browser can recreate them after Chat History restores its legacy tree. |
-| Protecting tests | `tests/backups-hardening.test.js`, `tests/character-save-guard.test.js`, `tests/thumbnails-endpoint.test.js`, `tests/mobile-thumbnail-preset.test.js`, `tests/chat-avatar-thumbnail-urls.test.js`, `tests/sillybunny-overlays.e2e.js`. |
+| Adapter shape | Keep upstream archive and image routes stable; limit fork behavior to recovery UI, mobile presets, and metadata helpers. Treat disconnected backup controls as stale so the browser can recreate them after Chat History restores its legacy tree. Since 2026-11-18 (UI polish sweep, task 14.7a): the cleanup row's age, keep and unit fields take `--sb-control-min-height`, and its buttons keep the shared `.menu_button` floor instead of a fixed `34px`. |
+| Protecting tests | `tests/backups-hardening.test.js`, `tests/character-save-guard.test.js`, `tests/thumbnails-endpoint.test.js`, `tests/mobile-thumbnail-preset.test.js`, `tests/chat-avatar-thumbnail-urls.test.js`, `tests/sillybunny-overlays.e2e.js` (since 2026-11-18 also "Backups cleanup controls reach the target floor of the pointer"). |
 | Validation | Focused unit tests, Chat History overlay E2E, `node --check` on endpoint/client files, `npm run lint`. |
 | Rollback path | Revert backup UI and mobile/media adapters without deleting user chat or character data. |
-| Last reviewed | 2026-07-28 pre-release audit. |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.7a). |
 | Owner | Chat and media integrator. |
 
 ### Repository policy, launchers, packaging, and build infrastructure
@@ -1463,6 +1463,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the popup spec in Chromium and WebKit, the character editor, dialog and backend settings specs, the audit of a sample of surfaces from every family. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-18, UI polish sweep (task 10.4c). |
+| Owner | `TODO(copy)` |
+
+### `public/scripts/popup.js` - a Popup waits for a closing Popup that holds its ids
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/popup.js` (`POPUP_CLOSING_TWIN_WAIT_MS`, the wait at the start of `Popup#show()`, and `#closingPopupsSharingIds()`). |
+| Area | Popup open and close. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `Popup#show()`, before the dialog is appended; `Popup.util.popups` and each popup's `#promise`. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.7a): a closing popup stays in the document for its exit animation, so `show()` first collects the closing popups whose content holds one of its ids and waits for their promises, for at most 1000ms, so that an `onClose` handler that awaits the new popup cannot hold it for ever. A popup whose ids no closing popup holds opens at once. |
+| Protecting tests | `tests/popup-closing-ids.e2e.js` (the overlap, the bounded wait, a popup with other ids, and a closing dialog that stays modal). |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the related e2e specs including the 17 that use `popup.js`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.7a). |
 | Owner | `TODO(copy)` |
 
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
