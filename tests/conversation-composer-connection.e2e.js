@@ -104,7 +104,7 @@ for (const width of [390, 1440]) {
             setOnlineStatus('Connected');
         });
         await expect(input).toBeEnabled();
-        await expect(input).toHaveAttribute('placeholder', 'Type your message...');
+        await expect(input).toHaveAttribute('placeholder', 'Type your message…');
         await expect(send).toBeEnabled();
         await expect(input).toHaveValue('Unsent offline draft');
         const connectedColors = await send.evaluate(element => {

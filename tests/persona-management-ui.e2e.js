@@ -87,7 +87,7 @@ for (const width of [320, 390, 1280]) {
             await expect(firstToggle).toHaveAttribute('aria-expanded', 'false');
             await expect(secondToggle).toHaveAttribute('aria-expanded', 'false');
             await firstToggle.click();
-            await expect(first.getByRole('textbox', { name: 'Scenario Note text', exact: true })).toBeVisible();
+            await expect(first.getByRole('textbox', { name: 'Scenario Note Text', exact: true })).toBeVisible();
             await expect(secondToggle).toHaveAttribute('aria-expanded', 'false');
             await second.getByRole('switch', { name: 'Enabled', exact: true }).click();
             await expect(second.getByRole('switch', { name: 'Enabled', exact: true })).toBeChecked();
@@ -123,7 +123,7 @@ for (const width of [320, 390, 1280]) {
             const note = notes.locator('[data-appendix-id]').last();
             const noteId = await note.getAttribute('data-appendix-id');
             await note.getByRole('textbox', { name: 'Label', exact: true }).fill('Saved e2e note');
-            await note.getByRole('textbox', { name: 'Scenario Note text', exact: true }).fill('Saved e2e scenario text.');
+            await note.getByRole('textbox', { name: 'Scenario Note Text', exact: true }).fill('Saved e2e scenario text.');
             await expect(note.getByRole('switch', { name: 'Enabled', exact: true })).toBeDisabled();
             expect(await page.evaluate(async ({ avatarId, noteId }) => (await import('./scripts/power-user.js')).power_user.persona_descriptions[avatarId].appendices.some(note => note.id === noteId), { avatarId, noteId })).toBe(false);
             await expect(entry.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();

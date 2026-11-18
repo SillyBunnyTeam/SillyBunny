@@ -85,7 +85,7 @@ export async function setConversationConnection(page, connected) {
         const { setOnlineStatus } = await import('/script.js');
         setOnlineStatus(connected ? 'Connected' : 'no_connection');
     }, connected);
-    await page.waitForFunction(connected => document.getElementById('sb_conversation_input').placeholder === (connected ? 'Type your message...' : 'Not connected to API!')
+    await page.waitForFunction(connected => document.getElementById('sb_conversation_input').placeholder === (connected ? 'Type your message…' : 'Not connected to API!')
         && document.getElementById('sb_conversation_send').disabled === !connected, connected);
 }
 

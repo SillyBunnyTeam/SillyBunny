@@ -57,13 +57,13 @@ export function createWeeklyScheduleRow(entry = {}) {
     row.innerHTML = `
         <div class="sb-conversation-day-pills">${dayPills}</div>
         <div class="sb-conversation-weekly-row-meta">
-            <input type="time" class="text_pole textarea_compact sb-conv-weekly-time" value="${escapeHtmlAttribute(entry.time || '08:00')}" aria-label="Schedule time" />
-            <input type="text" class="text_pole textarea_compact sb-conv-weekly-message" value="${escapeHtmlAttribute(entry.message || '')}" placeholder="Good morning selfie!" aria-label="Schedule message" />
+            <input type="time" class="text_pole textarea_compact sb-conv-weekly-time" value="${escapeHtmlAttribute(entry.time || '08:00')}" aria-label="Schedule Time" />
+            <input type="text" class="text_pole textarea_compact sb-conv-weekly-message" value="${escapeHtmlAttribute(entry.message || '')}" placeholder="Good morning selfie!" aria-label="Schedule Message" />
             <label class="sb-conv-weekly-enabled">
                 <span>On</span>
                 <input type="checkbox" role="switch" class="sb-switch sb-conv-weekly-enabled-check"${entry.enabled !== false ? ' checked' : ''} />
             </label>
-            <button type="button" class="menu_button menu_button_icon sb-conv-weekly-remove" data-sb-conversation-action="weekly-remove" title="Remove slot" aria-label="Remove slot">
+            <button type="button" class="menu_button menu_button_icon sb-conv-weekly-remove" data-sb-conversation-action="weekly-remove" title="Remove Slot" aria-label="Remove Slot">
                 <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
             </button>
         </div>
@@ -433,7 +433,7 @@ function renderPersonaOptions(picker) {
     const threadAvatar = getCurrentCharAvatar();
     const groupId = getConversationGroupIdForAvatar(threadAvatar);
     if (!personas.length) {
-        picker.append(createStatusPage({ state: 'empty', title: 'No personas configured.', compact: true }).element);
+        picker.append(createStatusPage({ state: 'empty', title: 'No Personas Configured', compact: true }).element);
         return;
     }
 
@@ -591,7 +591,7 @@ function openStartPicker(key, anchor, options) {
     state.handle = openPicker({
         trigger,
         bounds: document.getElementById('sheld'),
-        searchLabel: 'Search characters...',
+        searchLabel: 'Search Characters…',
         emptyText: 'No matching characters found.',
         ...options,
         onClose: () => {
@@ -621,7 +621,7 @@ function getCharacterPickerItems() {
 
 export function toggleAddDmPicker(anchor = getPickerAnchor(START_PICKER_ANCHOR)) {
     openStartPicker('solo', anchor, {
-        title: 'Create a solo DM',
+        title: 'Create a Solo DM',
         items: getCharacterPickerItems(),
         onSelect: index => void runConversationAction('add-character-dm', { characterIndex: String(index) }),
     });
@@ -760,8 +760,8 @@ export function toggleConversationGroupPicker({ sourceAvatar = '', sourceGroupId
     const items = getCharacterPickerItems().map(item => ({ ...item, muted: lockedMembers.has(avatarOf(item.value)) }));
 
     const title = sourceAvatar
-        ? (normalizedSourceGroupId ? 'Add members to this group' : 'Add members to this DM')
-        : 'Create a group DM';
+        ? (normalizedSourceGroupId ? 'Add Members to This Group' : 'Add Members to This DM')
+        : 'Create a Group DM';
 
     openStartPicker(`group:${sourceAvatar || ''}:${normalizedSourceGroupId}`, anchor, {
         title,

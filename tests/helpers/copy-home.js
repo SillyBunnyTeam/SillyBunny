@@ -7,7 +7,7 @@ export const HOME_COPY = Object.freeze({
     tileGettingStarted: 'Are you new? Did you need a refresher? We\'ve prepared a checklist for you to follow.',
     tileGettingStartedDone: 'All done! Open me once more to check off your list.',
     tileHelp: 'Want some extra help? Consult our help handbook at any time.',
-    helpIntro: 'Welcome to our handbook. ...I know I\'m not the greatest at explaining things in simple terms, but I\'ll try my best to make this as easy as possible for you! Please select a category.',
+    helpIntro: 'Welcome to our handbook. …I know I\'m not the greatest at explaining things in simple terms, but I\'ll try my best to make this as easy as possible for you! Please select a category.',
     tileExtras: 'Goodies I found just for you!',
     windowLoadError: 'This window couldn\'t open. Try again, or reload SillyBunny.',
     gettingStartedIntro: 'Just follow these four small steps, and you\'ll be ready for your first chat! I\'ll show you where everything is.',

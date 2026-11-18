@@ -435,7 +435,7 @@ describe('Scenario notes and immediate state', () => {
         const expand = row.querySelector(':scope > .sb-editor-label-row > .editor_maximize');
         expect(textarea.classList.contains('sb-persona-note-textarea')).toBe(true);
         expect(row.querySelector('label').htmlFor).toBe(textarea.id);
-        expect(row.querySelector('label').textContent).toBe('Scenario Note text');
+        expect(row.querySelector('label').textContent).toBe('Scenario Note Text');
         expect(expand.dataset.for).toBe(textarea.id);
         expect(expand.title).toBe('Expand the editor');
         $(textarea).val('Written in the expanded editor').trigger('input');
@@ -719,7 +719,7 @@ describe('Scenario notes and immediate state', () => {
         edit(host, 'description', 'Unsaved');
         host.querySelector('.sb-persona-entry-more').click();
         const items = openActionMenu.mock.calls.at(-1)[0].sections[0].items;
-        expect(items.map(item => item.label)).toEqual(['Use this persona', 'Change Persona Image', 'Create Character Card from Persona', 'Click to set user name for all messages', 'Duplicate Persona', 'Delete Persona']);
+        expect(items.map(item => item.label)).toEqual(['Use This Persona', 'Change Persona Image', 'Create Character Card From Persona', 'Click to set user name for all messages', 'Duplicate Persona', 'Delete Persona']);
         expect(items[0].disabled).toBe(true);
         expect(items.at(-1).danger).toBe(true);
         items[1].onSelect();

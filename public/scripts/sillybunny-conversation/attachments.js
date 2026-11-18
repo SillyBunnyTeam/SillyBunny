@@ -162,7 +162,7 @@ export function updateConversationAttachmentPreview() {
 
     preview.innerHTML = `
         <div class="sb-conversation-attachment-list">${fileRows.join('')}</div>
-        <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="clear-attachments" title="Clear attachments" aria-label="Clear attachments">
+        <button type="button" class="menu_button menu_button_icon" data-sb-conversation-action="clear-attachments" title="Clear Attachments" aria-label="Clear Attachments">
             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
         </button>
     `;

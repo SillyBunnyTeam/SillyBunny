@@ -230,7 +230,7 @@ async function openGroundedDialogueRulesEditor() {
         leftAlign: true,
         allowVerticalScrolling: true,
         customButtons: [{
-            text: 'Reset to default',
+            text: 'Reset to Default',
             classes: ['sb-conversation-dialog-reset'],
             action: () => {
                 editor.value = DEFAULT_GROUNDED_DIALOGUE_RULES;
@@ -420,7 +420,7 @@ export async function selectConversationThread(avatar, { branchId = '', groupId 
 const USER_STATUS_MENU_ITEMS = Object.freeze([
     { status: 'online', label: 'Online' },
     { status: 'idle', label: 'Idle' },
-    { status: 'dnd', label: 'Do not disturb' },
+    { status: 'dnd', label: 'Do Not Disturb' },
     { status: 'offline', label: 'Invisible' },
 ]);
 
@@ -458,13 +458,13 @@ function openConversationBranchMenu(trigger) {
             },
             {
                 items: [
-                    { label: 'New branch…', icon: 'fa-solid fa-plus', onSelect: runFromMenu('new-branch', identity) },
-                    { label: 'Rename branch…', icon: 'fa-solid fa-pen', disabled: !activeBranch, onSelect: runFromMenu('rename-branch', { ...identity, branchId: activeBranchId }) },
+                    { label: 'New Branch…', icon: 'fa-solid fa-plus', onSelect: runFromMenu('new-branch', identity) },
+                    { label: 'Rename Branch…', icon: 'fa-solid fa-pen', disabled: !activeBranch, onSelect: runFromMenu('rename-branch', { ...identity, branchId: activeBranchId }) },
                 ],
             },
             {
                 items: [
-                    { label: 'Delete branch…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeBranch, onSelect: runFromMenu('delete-branch', { ...identity, branchId: activeBranchId }) },
+                    { label: 'Delete Branch…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeBranch, onSelect: runFromMenu('delete-branch', { ...identity, branchId: activeBranchId }) },
                 ],
             },
         ],
@@ -474,7 +474,7 @@ function openConversationBranchMenu(trigger) {
 function openConversationOverflowMenu(trigger) {
     const { avatar, groupId } = getActiveThreadIdentity();
     const canEditSchedule = Boolean(avatar) || getCurrentGroupConversationMembers().length > 0;
-    const addMemberLabel = groupId ? 'Add member to group…' : 'Add member…';
+    const addMemberLabel = groupId ? 'Add Member to Group…' : 'Add Member…';
     openActionMenu({
         trigger,
         title: 'Conversation',
@@ -483,17 +483,17 @@ function openConversationOverflowMenu(trigger) {
                 items: [
                     ...(avatar ? [{ label: addMemberLabel, icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-member', {}, trigger) }] : []),
                     { label: 'New chat', icon: 'fa-solid fa-message', disabled: !avatar, onSelect: runFromMenu('new-chat') },
-                    { label: 'Edit schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
-                    { label: 'Mark all as read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
+                    { label: 'Edit Schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
+                    { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
                     // The header gear covers settings in the split and overlay layouts; the pages layout hides the gear, so the menu keeps it there.
                     ...(isConversationPagesLayout()
-                        ? [{ label: 'Conversation settings', icon: 'fa-solid fa-gear', onSelect: runFromMenu('open-settings') }]
+                        ? [{ label: 'Conversation Settings', icon: 'fa-solid fa-gear', onSelect: runFromMenu('open-settings') }]
                         : []),
                 ],
             },
             {
                 items: avatar
-                    ? [{ label: 'Delete conversation history…', icon: 'fa-solid fa-trash-can', danger: true, onSelect: runFromMenu('delete-dm', { avatar, groupId }) }]
+                    ? [{ label: 'Delete Conversation History…', icon: 'fa-solid fa-trash-can', danger: true, onSelect: runFromMenu('delete-dm', { avatar, groupId }) }]
                     : [],
             },
         ],
@@ -504,15 +504,15 @@ function openConversationComposerMenu(trigger) {
     const hasThread = Boolean(getCurrentCharAvatar());
     openActionMenu({
         trigger,
-        title: 'Add to message',
+        title: 'Add to Message',
         sections: [
             {
                 items: [
-                    { label: 'Attach files', icon: 'fa-solid fa-paperclip', disabled: !hasThread, onSelect: runFromMenu('attach-file') },
-                    { label: 'Send a selfie', icon: 'fa-solid fa-camera', disabled: !hasThread, onSelect: runFromMenu('quick-selfie') },
-                    { label: 'Remind me', icon: 'fa-solid fa-bell', disabled: !hasThread, onSelect: runFromMenu('quick-remind') },
-                    { label: 'Summarize memory', icon: 'fa-solid fa-book-open', disabled: !hasThread, onSelect: runFromMenu('quick-summarize') },
-                    { label: 'Force a reply', icon: 'fa-solid fa-bolt', disabled: !hasThread, onSelect: runFromMenu('force-response') },
+                    { label: 'Attach Files', icon: 'fa-solid fa-paperclip', disabled: !hasThread, onSelect: runFromMenu('attach-file') },
+                    { label: 'Send a Selfie', icon: 'fa-solid fa-camera', disabled: !hasThread, onSelect: runFromMenu('quick-selfie') },
+                    { label: 'Remind Me', icon: 'fa-solid fa-bell', disabled: !hasThread, onSelect: runFromMenu('quick-remind') },
+                    { label: 'Summarize Memory', icon: 'fa-solid fa-book-open', disabled: !hasThread, onSelect: runFromMenu('quick-summarize') },
+                    { label: 'Force a Reply', icon: 'fa-solid fa-bolt', disabled: !hasThread, onSelect: runFromMenu('force-response') },
                 ],
             },
         ],
@@ -523,7 +523,7 @@ function openConversationPersonaMenu(trigger) {
     const current = getUserStatus();
     openActionMenu({
         trigger,
-        title: 'Your status',
+        title: 'Your Status',
         sections: [
             {
                 items: USER_STATUS_MENU_ITEMS.map(({ status, label }) => ({
@@ -535,8 +535,8 @@ function openConversationPersonaMenu(trigger) {
             },
             {
                 items: [
-                    { label: 'Set status message…', icon: 'fa-solid fa-user-pen', onSelect: runFromMenu('edit-user-persona-status') },
-                    { label: 'Switch persona…', icon: 'fa-solid fa-users', onSelect: runFromMenu('open-persona-picker', {}, trigger) },
+                    { label: 'Set Status Message…', icon: 'fa-solid fa-user-pen', onSelect: runFromMenu('edit-user-persona-status') },
+                    { label: 'Switch Persona…', icon: 'fa-solid fa-users', onSelect: runFromMenu('open-persona-picker', {}, trigger) },
                 ],
             },
         ],
@@ -546,17 +546,17 @@ function openConversationPersonaMenu(trigger) {
 function openConversationNewMenu(trigger) {
     openActionMenu({
         trigger,
-        title: 'New conversation',
+        title: 'New Conversation',
         sections: [
             {
                 items: [
                     { label: 'New DM', icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-dm', {}, trigger) },
-                    { label: 'New group', icon: 'fa-solid fa-user-group', onSelect: runFromMenu('open-new-group-chat', {}, trigger) },
+                    { label: 'New Group', icon: 'fa-solid fa-user-group', onSelect: runFromMenu('open-new-group-chat', {}, trigger) },
                 ],
             },
             {
                 items: [
-                    { label: 'Mark all as read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
+                    { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
                 ],
             },
         ],
@@ -709,7 +709,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             }
             const fallbackName = `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`;
             const enteredName = await promptConversationText({
-                title: 'New branch',
+                title: 'New Branch',
                 text: `Name this Conversation branch for ${character?.name || 'this character'}.`,
                 defaultValue: fallbackName,
                 confirmLabel: 'Create',
@@ -735,7 +735,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
             if (avatar && branchId && branch) {
                 const name = await promptConversationText({
-                    title: 'Rename branch',
+                    title: 'Rename Branch',
                     defaultValue: branch.name || 'Conversation',
                     confirmLabel: 'Rename',
                 });

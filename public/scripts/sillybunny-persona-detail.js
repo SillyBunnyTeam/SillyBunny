@@ -217,7 +217,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     });
     const inUse = createPropertyRow({ label: t`Current Persona`, field: 'inUse', value: draft.name });
     // HUMAN: replace — Use this persona (also used by the detail action menu).
-    const useLabel = t`Use this persona`;
+    const useLabel = t`Use This Persona`;
     const use = createButtonRow({ label: useLabel, field: 'use', icon: 'circle-check', onActivate: () => { void runImmediate(() => usePersona(currentId)); } });
     const defaultPersona = createSwitchRow({ label: t`Default Persona`, field: 'default', onChange: enabled => { void runImmediate(() => setPersonaDefault(currentId, enabled)); } });
     const identitySection = createPrefGroup({ title: t`Identity`, field: 'section-identity', rows: [identityAvatar, title, folder, inUse, use, defaultPersona] });
@@ -249,7 +249,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     body.append(descriptionSection.section);
 
     const addNote = createButtonRow({ label: t`Add Scenario Note`, field: 'appendix-add', icon: 'plus', onActivate: () => addAppendix() });
-    const importNote = createButtonRow({ label: t`Import another persona as a scenario note`, field: 'appendix-import', icon: 'file-import', onActivate: () => openImportPicker() });
+    const importNote = createButtonRow({ label: t`Import Another Persona as a Scenario Note`, field: 'appendix-import', icon: 'file-import', onActivate: () => openImportPicker() });
     // HUMAN: replace — scenario-note activation scope / inactive-persona explanation.
     const notesSection = createPrefGroup({ title: t`Scenario Notes`, subtitle: t`lorum ipsum`, field: 'section-notes', rows: [addNote, importNote] });
     notesSection.section.dataset.sbSection = 'notes';
@@ -416,7 +416,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             session.changed();
             refreshPreview();
         });
-        const noteBody = createTextAreaField({ label: t`Scenario Note text`, field: 'appendix-description', input: textarea, rows: 6, expandLabel: t`Expand the editor` });
+        const noteBody = createTextAreaField({ label: t`Scenario Note Text`, field: 'appendix-description', input: textarea, rows: 6, expandLabel: t`Expand the editor` });
         const active = createSwitchRow({ label: t`Enabled`, field: 'appendix-active', onChange: enabled => {
             void runImmediate(() => {
                 const ids = new Set(getPersonaActiveAppendixIds(currentId));
@@ -620,7 +620,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         return [{ items: [
             { label: useLabel, icon: 'fa-solid fa-circle-check', disabled: states.inUse, onSelect: () => { void runImmediate(() => usePersona(currentId)); } },
             { label: t`Change Persona Image`, icon: 'fa-solid fa-image', onSelect: () => changePersonaImage(currentId) },
-            { label: t`Create Character Card from Persona`, icon: 'fa-solid fa-address-card', onSelect: () => { void runImmediate(() => convertPersonaToCharacter(currentId)); } },
+            { label: t`Create Character Card From Persona`, icon: 'fa-solid fa-address-card', onSelect: () => { void runImmediate(() => convertPersonaToCharacter(currentId)); } },
             ...(states.inUse ? [{ label: t`Click to set user name for all messages`, icon: 'fa-solid fa-sync', onSelect: () => document.getElementById('sync_name_button')?.click() }] : []),
             { label: t`Duplicate Persona`, icon: 'fa-solid fa-clone', onSelect: () => { void runImmediate(() => duplicatePersonaRecord(currentId)); } },
             { label: t`Delete Persona`, icon: 'fa-solid fa-trash', danger: true, onSelect: () => {

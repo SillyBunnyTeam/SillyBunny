@@ -55,7 +55,7 @@ export function setUserPersonaStatus(statusText) {
 
 export async function editUserPersonaStatus() {
     const nextStatus = await promptConversationText({
-        title: 'Status message',
+        title: 'Status Message',
         text: 'Leave blank to clear it.',
         defaultValue: getUserPersonaStatus(),
     });

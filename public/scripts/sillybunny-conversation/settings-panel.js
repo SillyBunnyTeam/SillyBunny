@@ -297,7 +297,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
                 timeInput.type = 'text';
                 timeInput.className = 'text_pole textarea_compact sb-schedule-modal-time';
                 timeInput.placeholder = '08:00-12:00';
-                timeInput.setAttribute('aria-label', 'Time range');
+                timeInput.setAttribute('aria-label', 'Time Range');
                 timeInput.value = block.time || '';
                 timeInput.addEventListener('input', () => {
                     block.time = timeInput.value;
@@ -306,7 +306,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
                 const activityInput = document.createElement('input');
                 activityInput.type = 'text';
                 activityInput.className = 'text_pole textarea_compact sb-schedule-modal-activity';
-                activityInput.placeholder = 'e.g. working, sleeping';
+                activityInput.placeholder = 'For example working, sleeping';
                 activityInput.setAttribute('aria-label', 'Activity');
                 activityInput.value = block.activity || '';
                 activityInput.addEventListener('input', () => {
@@ -330,8 +330,8 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
                 const delBtn = document.createElement('button');
                 delBtn.type = 'button';
                 delBtn.className = 'menu_button menu_button_icon sb-schedule-modal-delete';
-                delBtn.title = 'Remove time block';
-                delBtn.setAttribute('aria-label', 'Remove time block');
+                delBtn.title = 'Remove Time Block';
+                delBtn.setAttribute('aria-label', 'Remove Time Block');
                 delBtn.innerHTML = '<i class="fa-solid fa-trash-can" aria-hidden="true"></i>';
                 delBtn.addEventListener('click', () => {
                     editedSchedule.days[String(currentTabDay)].splice(idx, 1);
@@ -353,15 +353,15 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
     }).join('');
 
     modal.innerHTML = `
-        <h3 id="sb_schedule_modal_title" class="sb-schedule-modal-title">Weekly routine</h3>
+        <h3 id="sb_schedule_modal_title" class="sb-schedule-modal-title">Weekly Routine</h3>
         <div class="sb-schedule-modal-target">
-            <label for="sb_schedule_modal_target">Editing schedule for</label>
+            <label for="sb_schedule_modal_target">Editing Schedule For</label>
             <select id="sb_schedule_modal_target" class="text_pole textarea_compact wide100p"${targets.length <= 1 ? ' disabled' : ''}>
                 ${targetOptionsHtml}
             </select>
             <p class="sb-conversation-field-hint">Conversation members and current group-chat members use their own character-card schedules.</p>
         </div>
-        <div class="sb-conversation-schedule-modal-tabs" role="toolbar" aria-label="Day of the week">
+        <div class="sb-conversation-schedule-modal-tabs" role="toolbar" aria-label="Day of the Week">
             ${WEEKDAY_LABELS.map((day, idx) => `
                 <button type="button" class="menu_button sb-schedule-modal-tab" data-day="${idx}">${day}</button>
             `).join('')}
@@ -369,7 +369,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
         <div class="sb-schedule-modal-body">
             <div class="sb-schedule-modal-blocks-list"></div>
             <button type="button" class="menu_button sb-schedule-modal-add">
-                <span>Add time block</span>
+                <span>Add Time Block</span>
             </button>
         </div>
         <div class="sb-schedule-modal-meta">
@@ -378,7 +378,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
                 <input type="number" class="text_pole sb-schedule-modal-talkativeness" min="0" max="100" step="5" value="${editedSchedule.talkativeness}" />
             </label>
             <label class="sb-conversation-field-stack">
-                <span>Inactivity threshold (minutes)</span>
+                <span>Inactivity Threshold (Minutes)</span>
                 <input type="number" class="text_pole sb-schedule-modal-patience" min="15" max="360" step="5" value="${editedSchedule.inactivityThresholdMinutes}" />
             </label>
         </div>
@@ -557,7 +557,7 @@ export function renderScheduleDisplay() {
                 + `<span class="sb-conversation-schedule-status" data-status="${escapeHtmlAttribute(block.status)}">${escapeHtmlText(block.status)}</span>`
                 + '</li>';
         }).join('');
-        blocksHtml = `<p class="sb-conversation-schedule-label">${escapeHtmlText(WEEKDAY_LABELS[todayIndex])} today</p><ul class="sb-conversation-schedule-blocks">${rows}</ul>`;
+        blocksHtml = `<p class="sb-conversation-schedule-label">${escapeHtmlText(WEEKDAY_LABELS[todayIndex])} Today</p><ul class="sb-conversation-schedule-blocks">${rows}</ul>`;
     } else {
         blocksHtml = `<p class="sb-conversation-schedule-empty">No blocks scheduled for ${escapeHtmlText(WEEKDAY_LABELS[todayIndex])}.</p>`;
     }
@@ -607,7 +607,7 @@ export async function forceCreateMemoryFromPanel() {
     const groupId = getConversationGroupIdForAvatar(avatar);
     const currentMemory = getConversationMemorySummary(avatar, { groupId }) || '';
     const newMemory = await promptConversationText({
-        title: 'Memory summary',
+        title: 'Memory Summary',
         text: 'Enter or override the memory summary for this Conversation.',
         defaultValue: currentMemory,
         rows: 6,

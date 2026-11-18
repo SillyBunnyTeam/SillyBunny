@@ -44,6 +44,6 @@ describe('buttons of the changed surfaces show an icon or a label, not both', ()
         expect(selfie).not.toBeNull();
         const content = new DOMParser().parseFromString(`<body><button>${selfie[1]}</button></body>`, 'text/html');
         expect(iconAndLabelButtons(content)).toHaveLength(0);
-        expect(content.body.textContent).toBe('Generate selfie');
+        expect(content.body.textContent).toBe('Generate Selfie');
     });
 });

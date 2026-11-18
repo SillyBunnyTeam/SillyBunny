@@ -409,12 +409,12 @@ test.describe('Conversation pickers at 390×844', () => {
             const { toggleConversationGroupPicker } = await import('/scripts/sillybunny-conversation/pickers.js');
             toggleConversationGroupPicker({ anchor: document.getElementById('qa-sheet-trigger') });
         });
-        await expect(title).toHaveText('Create a group DM');
+        await expect(title).toHaveText('Create a Group DM');
         await page.evaluate(async () => {
             const { toggleAddDmPicker } = await import('/scripts/sillybunny-conversation/pickers.js');
             toggleAddDmPicker(document.getElementById('qa-sheet-trigger'));
         });
-        await expect(title).toHaveText('Create a solo DM');
+        await expect(title).toHaveText('Create a Solo DM');
         await expect(page.locator('.sb-picker-sheet:not([hidden])')).toHaveCount(1);
     });
 

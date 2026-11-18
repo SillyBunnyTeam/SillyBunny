@@ -103,7 +103,7 @@ test('New group keeps Create Group off until two members are chosen, then opens 
     test.setTimeout(90000);
     await boot(page, baseURL);
     await openEmptyWorkspace(page);
-    await chooseNewMenuItem(page, 'New group');
+    await chooseNewMenuItem(page, 'New Group');
 
     const create = page.getByRole('button', { name: 'Create Group', exact: true });
     const options = page.locator(`${PICKER} .sb-picker__option`);

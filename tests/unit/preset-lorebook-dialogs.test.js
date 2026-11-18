@@ -67,7 +67,7 @@ test('Select All synchronizes mixed state, skips disabled choices and never adds
     expect(inputs.every(input => !input.checked)).toBe(true);
     inputs[2].click();
     expect(all.indeterminate).toBe(true);
-    expect(options.title).toBe('Delete selected');
+    expect(options.title).toBe('Delete Selected');
     const okButton = document.createElement('button');
     options.onOpening({ okButton });
     expect(okButton.classList.contains('is-destructive')).toBe(true);

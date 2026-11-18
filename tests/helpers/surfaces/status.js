@@ -1270,7 +1270,7 @@ const conversationChooseDm = status({
     title: 'Conversation: no DM chosen yet',
     component: 'shared',
     root: THREAD_EMPTY,
-    ready: titled(THREAD_EMPTY, 'Choose a DM to begin'),
+    ready: titled(THREAD_EMPTY, 'Choose a DM to Begin'),
     async open(page) {
         await openConversation(page);
         await reveal(page, THREAD_EMPTY);
@@ -1288,7 +1288,7 @@ const conversationNoMessages = status({
     title: 'Conversation: a DM without messages',
     component: 'shared',
     root: THREAD_EMPTY,
-    ready: titled(THREAD_EMPTY, 'No DM messages yet'),
+    ready: titled(THREAD_EMPTY, 'No DM Messages Yet'),
     async open(page) {
         await openConversation(page, { thread: true });
         await reveal(page, THREAD_EMPTY);
@@ -1304,7 +1304,7 @@ const conversationNoMatches = status({
     title: 'Conversation: no message matches the search',
     component: 'shared',
     root: THREAD_EMPTY,
-    ready: [titled(THREAD_EMPTY, 'No matching messages'), '#sb_conversation_search'],
+    ready: [titled(THREAD_EMPTY, 'No Matching Messages'), '#sb_conversation_search'],
     async open(page) {
         await openConversation(page, { thread: true, messages: FIXTURES.chat.messages });
         await page.locator('#sb_conversation_timeline .sb-conversation-message').first().waitFor({ state: 'visible' });
@@ -1341,7 +1341,7 @@ const conversationAddDmNoMatches = status({
         id: 'new-group',
         async open(page) {
             await page.keyboard.press('Escape');
-            await chooseMenuItem(page, NEW_MENU, 'New group');
+            await chooseMenuItem(page, NEW_MENU, 'New Group');
             await page.locator(PICKER_SEARCH).fill(NO_MATCH);
             await reveal(page, ADD_DM_EMPTY);
             await settle(page);
@@ -1371,7 +1371,7 @@ const conversationPersonasEmpty = status({
             // A phone keeps the user's footer on the Pals page.
             await page.locator('[data-sb-conversation-action="toggle-pals"]').first().click();
         }
-        await chooseMenuItem(page, personaMenu, 'Switch persona…');
+        await chooseMenuItem(page, personaMenu, 'Switch Persona…');
         await reveal(page, CONVERSATION_PERSONAS_EMPTY);
         await settle(page);
     },

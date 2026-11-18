@@ -10,7 +10,7 @@ export function getConversationPromptMediaAttachments(message) {
         .filter(item => String(item?.type || MEDIA_TYPE.IMAGE) === MEDIA_TYPE.IMAGE);
     const generatedImage = message?.extra?.image_url;
     if (typeof generatedImage === 'string' && generatedImage) {
-        media.push({ url: generatedImage, type: MEDIA_TYPE.IMAGE, title: 'Generated image' });
+        media.push({ url: generatedImage, type: MEDIA_TYPE.IMAGE, title: 'Generated Image' });
     }
 
     return media;

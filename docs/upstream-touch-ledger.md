@@ -1451,6 +1451,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05, PR #870 (stand-in expression packs). |
 | Owner | Defaults and release integrator. |
 
+### Capitalisation of SillyBunny-written labels in upstream-origin files
+| Field | Value |
+| --- | --- |
+| File | Batch A: `public/scripts/extensions/connection-manager/index.js`. |
+| Area | Labels, headings, tooltips, accessible names and toast titles that SillyBunny wrote on lines it had already changed in upstream-origin files. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | None: the strings are edited in place. The list of strings and the form each takes is the copy register of the UI polish sweep, built by a script from the rule in `DESIGN.md` (Capitalisation Rule). |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 12.3): header capitalisation for headings, button labels, menu items, tooltips, field labels and row titles, sentence capitalisation for the other roles, and `…` for a three-dot ellipsis. Only strings that are not verbatim upstream text change; a key that a locale file translates keeps its key. Each changed line carries `SillyBunny: capitalisation by DESIGN.md` where no marker was in reach. |
+| Protecting tests | The tests that assert each label, updated with the strings; `tests/unit/upstream-template-compatibility.test.js`. |
+| Validation | 2026-11-18, per batch: root and tests lint, the full unit run, budgets, contracts and design rules, the related e2e specs, the settings inventory of the pages changed. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 12.3, batch A). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/extensions/expressions/` - Character Expressions settings and sprite list
 | Field | Value |
 | --- | --- |

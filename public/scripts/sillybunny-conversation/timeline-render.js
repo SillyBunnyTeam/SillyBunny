@@ -215,9 +215,9 @@ function createConversationSelfieCommandActions(message) {
         button.dataset.sbConversationAction = 'generate-selfie-command';
         button.dataset.messageId = message.id;
         button.dataset.selfieIndex = String(index);
-        button.title = request.context ? `Generate selfie: ${request.context}` : 'Generate selfie with Quick Image Gen';
+        button.title = request.context ? `Generate Selfie: ${request.context}` : 'Generate Selfie With Quick Image Gen';
         button.setAttribute('aria-label', button.title);
-        button.innerHTML = '<span>Generate selfie</span>';
+        button.innerHTML = '<span>Generate Selfie</span>';
         actions.appendChild(button);
     });
 
@@ -300,8 +300,8 @@ export function renderConversationComposerReplyPreview() {
     cancel.type = 'button';
     cancel.className = 'sb-conversation-reply-cancel fa-solid fa-xmark';
     cancel.dataset.sbConversationAction = 'clear-reply-target';
-    cancel.title = 'Cancel reply';
-    cancel.setAttribute('aria-label', 'Cancel reply');
+    cancel.title = 'Cancel Reply';
+    cancel.setAttribute('aria-label', 'Cancel Reply');
 
     reference.prepend(label);
     preview.append(reference, cancel);
@@ -495,7 +495,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         avatarWrap.dataset.avatarType = 'avatar';
         avatarWrap.tabIndex = 0;
         avatarWrap.role = 'button';
-        avatarWrap.setAttribute('aria-label', `Show full picture for ${message.name || getCurrentCharName()}`);
+        avatarWrap.setAttribute('aria-label', `Show Full Picture for ${message.name || getCurrentCharName()}`);
     }
     if (message.role !== 'user') {
         const image = document.createElement('img');
@@ -561,19 +561,19 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
     const actionSections = [
         [
             { action: 'reply-message', icon: 'fa-reply', label: 'Reply' },
-            settings.editable_messages && { action: 'edit-message', icon: 'fa-pencil', label: 'Edit Conversation message', className: 'sb-conversation-message-edit' },
-            settings.prose_polisher && message.role !== 'user' && { action: 'polish-character-message', icon: 'fa-wand-magic-sparkles', label: 'Polish character message', className: 'sb-conversation-message-polish', secondary: true },
+            settings.editable_messages && { action: 'edit-message', icon: 'fa-pencil', label: 'Edit Conversation Message', className: 'sb-conversation-message-edit' },
+            settings.prose_polisher && message.role !== 'user' && { action: 'polish-character-message', icon: 'fa-wand-magic-sparkles', label: 'Polish Character Message', className: 'sb-conversation-message-polish', secondary: true },
         ],
         [
-            { action: 'copy-message', icon: 'fa-copy', label: 'Copy message' },
-            { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin message' : 'Pin message', secondary: true },
-            { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch from here', secondary: true },
+            { action: 'copy-message', icon: 'fa-copy', label: 'Copy Message' },
+            { action: 'toggle-message-pin', icon: 'fa-thumbtack', label: message.extra?.conversation_pinned ? 'Unpin Message' : 'Pin Message', secondary: true },
+            { action: 'branch-from-message', icon: 'fa-code-branch', label: 'Branch From Here', secondary: true },
         ],
         isCharacterMessage ? [
             { action: 'speak-message', icon: 'fa-volume-high', label: 'Speak', secondary: true },
-            { action: 'regenerate-message', icon: 'fa-rotate-right', label: 'Regenerate message', secondary: true },
+            { action: 'regenerate-message', icon: 'fa-rotate-right', label: 'Regenerate Message', secondary: true },
         ] : [],
-        [{ action: 'delete-message', icon: 'fa-trash-can', label: 'Delete message', secondary: true }],
+        [{ action: 'delete-message', icon: 'fa-trash-can', label: 'Delete Message', secondary: true }],
     ].map(section => section.filter(Boolean)).filter(section => section.length);
 
     const appendDivider = (secondary) => {
@@ -865,10 +865,10 @@ export function renderConversationTimeline() {
             ? {
                 state: 'unavailable',
                 icon: 'user-group',
-                title: 'No Conversation members available',
+                title: 'No Conversation Members Available',
                 description: `${unavailableGroup.name || 'This group'} does not currently have any eligible Conversation members. Add or enable a member, then try again.`,
             }
-            : { state: 'empty', icon: 'comments', title: 'Choose a DM to begin' }));
+            : { state: 'empty', icon: 'comments', title: 'Choose a DM to Begin' }));
         conversationState.lastRenderedAvatar = null;
         conversationState.lastRenderedThreadKey = '';
         conversationState.lastRenderedMessageCount = 0;
@@ -910,7 +910,7 @@ export function renderConversationTimeline() {
         timeline.replaceChildren(createConversationStatusPage({
             state: 'empty',
             icon: 'message',
-            title: 'No DM messages yet',
+            title: 'No DM Messages Yet',
             description: 'Type a message to begin chatting with this character!',
         }));
         conversationState.lastRenderedAvatar = avatar;
@@ -929,7 +929,7 @@ export function renderConversationTimeline() {
     if (!messages.length) {
         timeline.replaceChildren(createConversationStatusPage({
             state: 'no-results',
-            title: 'No matching messages',
+            title: 'No Matching Messages',
             description: 'Clear search or switch back to Main to see the full Conversation.',
         }));
         conversationState.lastRenderedAvatar = avatar;
@@ -1436,7 +1436,7 @@ export async function quickConversationSelfie() {
     const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
     const settings = getSettings(avatar, { groupId, personaId });
     const context = await promptConversationText({
-        title: 'Send a selfie',
+        title: 'Send a Selfie',
         text: 'Describe the selfie context.',
         defaultValue: 'a casual selfie in the current DM conversation',
         confirmLabel: 'Generate',
@@ -1490,7 +1490,7 @@ export async function quickConversationReminder() {
     const personaId = getConversationPersonaId();
     const branchId = getConversationThreadStore(avatar, { create: false, groupId, personaId })?.activeBranchId || '';
     const delay = await promptConversationText({
-        title: 'Remind me',
+        title: 'Remind Me',
         text: 'When should the reminder fire? For example 30m, 1h or 2d.',
         defaultValue: '1h',
         confirmLabel: 'Next',
@@ -1500,9 +1500,9 @@ export async function quickConversationReminder() {
     }
 
     const memo = await promptConversationText({
-        title: 'Reminder text',
+        title: 'Reminder Text',
         defaultValue: 'Reply to this later',
-        confirmLabel: 'Set reminder',
+        confirmLabel: 'Set Reminder',
     });
     if (typeof memo !== 'string') {
         return;
@@ -1719,7 +1719,7 @@ function createSettingsDrawerHeader(drawerTitle) {
     const header = document.createElement('div');
     header.className = 'sb-conversation-settings-header';
     header.innerHTML = `
-        <button type="button" class="sb-conversation-flat-button sb-conversation-settings-close" data-sb-conversation-action="close-settings" title="Close Conversation settings" aria-label="Close Conversation settings">
+        <button type="button" class="sb-conversation-flat-button sb-conversation-settings-close" data-sb-conversation-action="close-settings" title="Close Conversation Settings" aria-label="Close Conversation Settings">
             <i class="fa-solid fa-xmark sb-conversation-settings-close-x" aria-hidden="true"></i>
             <i class="fa-solid fa-arrow-left sb-conversation-settings-close-back" aria-hidden="true"></i>
         </button>
@@ -1735,7 +1735,7 @@ function createGroupMembersWrapper(settings, { autoChatCooldown }) {
     const search = createSettingsControl('input', 'sb_conv_multi_char_search', {
         type: 'text',
         class: 'text_pole textarea_compact sb-conversation-member-search',
-        placeholder: 'Search group members...',
+        placeholder: 'Search group members…',
     });
     const list = createSettingsControl('div', 'sb_conv_chiming_partner_list', { class: 'sb-conversation-partner-list' });
     list.innerHTML = buildChimingPartnerOptions(settings.multi_char_names);
@@ -1750,8 +1750,8 @@ function createGroupMembersWrapper(settings, { autoChatCooldown }) {
         stacked: true,
         suffix: field,
     });
-    const autoChat = createSettingsSwitch({ id: 'sb_conv_auto_character_chat', label: 'Allow characters to talk to each other', subtitle: 'Allow enabled characters to chat with each other autonomously in this thread' });
-    const cooldown = createSettingsSpin({ id: 'sb_conv_auto_chat_cooldown', label: 'Character chat cooldown (mins)', subtitle: 'Minimum time between autonomous character-to-character messages in this Conversation thread', min: 1, max: 1440, step: 1, value: autoChatCooldown });
+    const autoChat = createSettingsSwitch({ id: 'sb_conv_auto_character_chat', label: 'Allow Characters to Talk to Each Other', subtitle: 'Allow enabled characters to chat with each other autonomously in this thread' });
+    const cooldown = createSettingsSpin({ id: 'sb_conv_auto_chat_cooldown', label: 'Character Chat Cooldown (Mins)', subtitle: 'Minimum time between autonomous character-to-character messages in this Conversation thread', min: 1, max: 1440, step: 1, value: autoChatCooldown });
 
     const wrapper = createSettingsControl('div', 'sb_conv_group_members_wrapper', { class: 'sb-conversation-members-wrapper' });
     wrapper.append(members.row, autoChat.row, cooldown.row);
@@ -1770,7 +1770,7 @@ export function buildSettingsDrawerContent() {
     settingsSelectRows = [];
 
     const presence = createSettingsGroup({
-        title: 'Presence & availability',
+        title: 'Presence & Availability',
         field: 'presence',
         rows: [
             createSettingsSelect({
@@ -1778,13 +1778,13 @@ export function buildSettingsDrawerContent() {
                 label: 'Status',
                 optionsHtml: '<option value="online">Online</option><option value="idle">Idle</option><option value="dnd">Do Not Disturb</option><option value="offline">Offline</option>',
             }),
-            createSettingsSwitch({ id: 'sb_conv_idle_followup', label: 'Send auto follow-up', subtitle: 'Follow-ups react to silence in the current thread.', title: 'After the user has been quiet, send a check-in tied to the current conversation.', scope: true }),
-            createSettingsSwitch({ id: 'sb_conv_idle_spontaneous', label: 'Spontaneous ping', subtitle: 'Spontaneous pings can start a fresh thought; when both are enabled, pings wait for a longer quiet stretch.', title: 'After a longer quiet stretch, start a casual new topic or send an ambient thought.', scope: true }),
-            createSettingsSpin({ id: 'sb_conv_idle_limit', label: 'Idle Minimum (minutes)', min: 1, max: 1440, step: 1, value: 15 }),
-            createSettingsEntry({ id: 'sb_conv_offline_message', label: 'Offline/DND Auto-responder', placeholder: '[{{user}} is currently offline. Leave a message!]' }),
+            createSettingsSwitch({ id: 'sb_conv_idle_followup', label: 'Send Auto Follow-Up', subtitle: 'Follow-ups react to silence in the current thread.', title: 'After the user has been quiet, send a check-in tied to the current conversation.', scope: true }),
+            createSettingsSwitch({ id: 'sb_conv_idle_spontaneous', label: 'Spontaneous Ping', subtitle: 'Spontaneous Pings can start a fresh thought; when both are enabled, pings wait for a longer quiet stretch.', title: 'After a longer quiet stretch, start a casual new topic or send an ambient thought.', scope: true }),
+            createSettingsSpin({ id: 'sb_conv_idle_limit', label: 'Idle Minimum (Minutes)', min: 1, max: 1440, step: 1, value: 15 }),
+            createSettingsEntry({ id: 'sb_conv_offline_message', label: 'Offline/DND Auto-Responder', placeholder: '[{{user}} is currently offline. Leave a message!]' }),
             createSettingsSwitch({
                 id: 'sb_conv_notifications_muted',
-                label: 'Mute this DM',
+                label: 'Mute This DM',
                 subtitle: 'Unread badges still update while muted or inside quiet hours.',
                 title: 'Keep unread badges but suppress sounds and popups for this Conversation.',
                 onChange: updateConversationNotificationSettingsVisibility,
@@ -1794,18 +1794,18 @@ export function buildSettingsDrawerContent() {
                 label: 'Priority',
                 optionsHtml: '<option value="normal">Normal</option><option value="silent">Silent</option><option value="priority">Priority</option>',
             }),
-            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_start', label: 'Quiet start' }),
-            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_end', label: 'Quiet end' }),
+            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_start', label: 'Quiet Start' }),
+            createSettingsTimeEntry({ id: 'sb_conv_quiet_hours_end', label: 'Quiet End' }),
         ],
     });
 
     const schedule = createSettingsGroup({
-        title: 'Character schedule',
+        title: 'Character Schedule',
         subtitle: 'Auto-generate a weekly schedule using the current active connection profile and selected model. This informs when the character is available to chat.',
         field: 'schedule',
         rows: [
-            createSettingsAction({ action: 'generate-schedule', label: 'Generate schedule', icon: 'wand-magic-sparkles' }),
-            createSettingsAction({ action: 'edit-schedule', label: 'Edit schedule', icon: 'pencil' }),
+            createSettingsAction({ action: 'generate-schedule', label: 'Generate Schedule', icon: 'wand-magic-sparkles' }),
+            createSettingsAction({ action: 'edit-schedule', label: 'Edit Schedule', icon: 'pencil' }),
         ],
         hidden: [createSettingsHiddenInput('sb_conv_auto_schedule', 'hidden', settings.auto_schedule)],
     });
@@ -1815,29 +1815,29 @@ export function buildSettingsDrawerContent() {
     const proactiveRows = [
         createSettingsSwitch({
             id: 'sb_conv_proactive_messaging',
-            label: isGroupConversation ? 'Let group members message me first' : 'Let this character message me first',
+            label: isGroupConversation ? 'Let Group Members Message me First' : 'Let This Character Message me First',
             subtitle: isGroupConversation
                 ? 'Let group members message you first based on the group schedule and mood'
                 : 'Let the character message you first based on their schedule and mood',
         }),
-        createSettingsSpin({ id: 'sb_conv_inactivity_threshold', label: 'Patience (mins)', min: 15, max: 360, step: 5, value: 120 }),
-        createSettingsSpin({ id: 'sb_conv_max_followups', label: 'Max follow-ups', min: 1, max: 3, step: 1, value: 3 }),
+        createSettingsSpin({ id: 'sb_conv_inactivity_threshold', label: 'Patience (Mins)', min: 15, max: 360, step: 5, value: 120 }),
+        createSettingsSpin({ id: 'sb_conv_max_followups', label: 'Max Follow-Ups', min: 1, max: 3, step: 1, value: 3 }),
         createSettingsSpin({ id: 'sb_conv_talkativeness', label: 'Talkativeness', min: 0, max: 100, step: 5, value: 50 }),
-        createSettingsSpin({ id: 'sb_conv_reply_delay_multiplier', label: 'Reply delay', min: 0, max: 300, step: 10, value: 100 }),
+        createSettingsSpin({ id: 'sb_conv_reply_delay_multiplier', label: 'Reply Delay', min: 0, max: 300, step: 10, value: 100 }),
         createSettingsSpin({
             id: 'sb_conv_reply_max_tokens',
-            label: 'Max reply tokens',
+            label: 'Max Reply Tokens',
             subtitle: isGroupConversation ? undefined : 'Max reply tokens is the generation budget for each Conversation reply. Raise it if messages cut off mid-thought.',
             min: 64,
             max: 64000,
             step: 64,
             value: 16000,
         }),
-        createSettingsSwitch({ id: 'sb_conv_selfie_command_enabled', label: 'Selfies through Quick Image Gen ([selfie])', subtitle: 'Selfie commands are hidden from the chat and sent as image prompts.', title: 'Let the character turn [selfie: prompt] into a Quick Image Gen request' }),
-        createSettingsSwitch({ id: 'sb_conv_schedule_command_enabled', label: 'Character status updates ([schedule_update])', subtitle: 'Schedule updates let the character adjust what they are doing now.', title: 'Let the character update its current availability/activity through [schedule_update]' }),
+        createSettingsSwitch({ id: 'sb_conv_selfie_command_enabled', label: 'Selfies Through Quick Image Gen ([selfie])', subtitle: 'Selfie commands are hidden from the chat and sent as image prompts.', title: 'Let the character turn [selfie: prompt] into a Quick Image Gen request' }),
+        createSettingsSwitch({ id: 'sb_conv_schedule_command_enabled', label: 'Character Status Updates ([schedule_update])', subtitle: 'Schedule updates let the character adjust what they are doing now.', title: 'Let the character update its current availability/activity through [schedule_update]' }),
     ];
     const proactive = createSettingsGroup({
-        title: 'Proactive messaging',
+        title: 'Proactive Messaging',
         subtitle: isGroupConversation ? 'These proactive controls apply only to this group Conversation, not solo DMs.' : undefined,
         field: 'proactive',
         rows: proactiveRows,
@@ -1845,7 +1845,7 @@ export function buildSettingsDrawerContent() {
 
     const memorySummary = createSettingsTextArea({
         id: 'sb_conv_memory_summary',
-        label: 'Conversation memory',
+        label: 'Conversation Memory',
         placeholder: 'No memory summary yet. It appears after enough messages, or you can refresh it manually once this Conversation has chat history.',
         rows: 5,
         readOnly: true,
@@ -1854,17 +1854,17 @@ export function buildSettingsDrawerContent() {
     memorySummary.row.append(memoryMeta);
     memorySummary.control.setAttribute('aria-describedby', memoryMeta.id);
     const memory = createSettingsGroup({
-        title: 'Chat memories',
+        title: 'Chat Memories',
         subtitle: 'Persistent notes the LLM writes for continuity. They survive deleted chats and only clear when you use Clear memory.',
         field: 'memory',
         rows: [
             memorySummary,
-            createSettingsAction({ action: 'create-memory', label: 'Create memory', icon: 'plus' }),
-            createSettingsAction({ action: 'refresh-memory', label: 'Refresh memory', icon: 'rotate' }),
-            createSettingsAction({ action: 'clear-memory', label: 'Clear memory', icon: 'eraser', danger: true }),
+            createSettingsAction({ action: 'create-memory', label: 'Create Memory', icon: 'plus' }),
+            createSettingsAction({ action: 'refresh-memory', label: 'Refresh Memory', icon: 'rotate' }),
+            createSettingsAction({ action: 'clear-memory', label: 'Clear Memory', icon: 'eraser', danger: true }),
             createSettingsSwitch({
                 id: 'sb_conv_include_related_memory',
-                label: isGroupConversation ? 'Remember solo DMs in this group DM' : 'Remember group DMs in this solo DM',
+                label: isGroupConversation ? 'Remember Solo DMs in This Group DM' : 'Remember Group DMs in This Solo DM',
                 subtitle: isGroupConversation
                     ? 'When enabled, this group DM can reference saved memory from this character\'s solo DM.'
                     : 'When enabled, this solo DM can reference saved memory from group DMs that include this character.',
@@ -1880,25 +1880,25 @@ export function buildSettingsDrawerContent() {
 
     const weeklyEditor = createSettingsControl('div', 'sb_conv_weekly_schedule_editor', { class: 'sb-conversation-weekly-schedule' });
     const manual = createSettingsGroup({
-        title: 'Manual scheduling',
+        title: 'Manual Scheduling',
         subtitle: 'Use this for fixed-time check-ins. Weekly slots decide when messages can happen; cooldown prevents repeated sends too close together.',
         field: 'manual-scheduling',
         rows: [
             createSettingsSwitch({ id: 'sb_conv_auto_message', label: 'Enable Scheduling', subtitle: 'Enable autonomous scheduled messages' }),
-            createSettingsSpin({ id: 'sb_conv_cooldown', label: 'Cooldown (secs)', subtitle: 'Auto-message minimum delay/cooldown in seconds', min: 10, max: 9999, step: 1, value: 60 }),
+            createSettingsSpin({ id: 'sb_conv_cooldown', label: 'Cooldown (Secs)', subtitle: 'Auto-message minimum delay/cooldown in seconds', min: 10, max: 9999, step: 1, value: 60 }),
             createRow({ label: 'Weekly Schedule', field: 'weekly-schedule', stacked: true, suffix: weeklyEditor }),
-            createSettingsAction({ action: 'weekly-add', label: 'Add weekly slot', icon: 'plus' }),
+            createSettingsAction({ action: 'weekly-add', label: 'Add Weekly Slot', icon: 'plus' }),
         ],
         hidden: [createSettingsHiddenInput('sb_conv_weekly_schedule', 'hidden', settings.weekly_schedule)],
     });
 
     const prompts = createSettingsGroup({
-        title: 'Prompts & formats',
+        title: 'Prompts & Formats',
         field: 'prompts',
         rows: [
-            createSettingsTextArea({ id: 'sb_conv_geechan_chatroom_prompt', label: 'Geechan Chatroom System Prompt', placeholder: 'Type the chatroom system prompt here...', rows: 3 }),
-            createSettingsAction({ action: 'reset-prompt', label: 'Reset to default', icon: 'rotate-left' }),
-            createSettingsTextArea({ id: 'sb_conv_custom_instructions', label: 'Custom Instructions', subtitle: 'Applies to every solo and group Conversation DM.', placeholder: 'Type any custom instructions or guidelines here...', rows: 3, scope: true }),
+            createSettingsTextArea({ id: 'sb_conv_geechan_chatroom_prompt', label: 'Geechan Chatroom System Prompt', placeholder: 'Type the chatroom system prompt here…', rows: 3 }),
+            createSettingsAction({ action: 'reset-prompt', label: 'Reset to Default', icon: 'rotate-left' }),
+            createSettingsTextArea({ id: 'sb_conv_custom_instructions', label: 'Custom Instructions', subtitle: 'Applies to every solo and group Conversation DM.', placeholder: 'Type any custom instructions or guidelines here…', rows: 3, scope: true }),
             createSettingsSwitch({
                 id: 'sb_conv_grounded_dialogue_rules_enabled',
                 label: 'Grounded Dialogue Rules',
@@ -1907,9 +1907,9 @@ export function buildSettingsDrawerContent() {
                 scope: true,
             }),
             createSettingsAction({ action: 'edit-grounded-dialogue-rules', label: 'Edit Grounded Dialogue Rules', icon: 'pencil' }),
-            createSettingsSwitch({ id: 'sb_conv_multi_char', label: 'Add additional members in the chat', subtitle: 'Enable additional characters in the chat to chime in' }),
+            createSettingsSwitch({ id: 'sb_conv_multi_char', label: 'Add Additional Members in the Chat', subtitle: 'Enable additional characters in the chat to chime in' }),
             createGroupMembersWrapper(settings, { autoChatCooldown: DEFAULT_AUTO_CHAT_COOLDOWN }),
-            createSettingsSwitch({ id: 'sb_conv_roleplay_reactions', label: 'React to current roleplay', subtitle: 'Allow this character to privately react to the current roleplay or group chat' }),
+            createSettingsSwitch({ id: 'sb_conv_roleplay_reactions', label: 'React to Current Roleplay', subtitle: 'Allow this character to privately react to the current roleplay or group chat' }),
         ],
         hidden: [
             createSettingsControl('textarea', 'sb_conv_grounded_dialogue_rules', { hidden: true }),
@@ -1918,7 +1918,7 @@ export function buildSettingsDrawerContent() {
     });
 
     const context = createSettingsGroup({
-        title: 'Context overrides',
+        title: 'Context Overrides',
         field: 'context',
         rows: [
             createSettingsSwitch({ id: 'sb_conv_lorebooks_enabled', label: 'Use Character Lorebooks', subtitle: 'When off, Conversation replies use no lorebooks at all, including the override below.', scope: true }),
@@ -1929,20 +1929,20 @@ export function buildSettingsDrawerContent() {
     });
 
     const images = createSettingsGroup({
-        title: 'Image generation',
+        title: 'Image Generation',
         field: 'images',
         rows: [
-            createSettingsSwitch({ id: 'sb_conv_image_gen_enabled', label: 'Enable chatroom image generation', subtitle: 'Enable in-chat image generation' }),
+            createSettingsSwitch({ id: 'sb_conv_image_gen_enabled', label: 'Enable Chatroom Image Generation', subtitle: 'Enable in-chat image generation' }),
             createSettingsEntry({ id: 'sb_conv_image_gen_prompt_template', label: 'Image Prompt Template', placeholder: 'a photo of {{char}}, {{scene}}' }),
             createSettingsEntry({ id: 'sb_conv_image_gen_negative', label: 'Negative Prompt', placeholder: 'blurry, distorted' }),
-            createSettingsSpin({ id: 'sb_conv_image_gen_cooldown', label: 'Image Cooldown (minutes)', min: 0, max: 1440, step: 1, value: 10 }),
+            createSettingsSpin({ id: 'sb_conv_image_gen_cooldown', label: 'Image Cooldown (Minutes)', min: 0, max: 1440, step: 1, value: 10 }),
             createSettingsSwitch({ id: 'sb_conv_spontaneous_selfies', label: 'Enable Spontaneous Selfies', subtitle: 'Character spontaneously generates selfies during the conversation' }),
             createSettingsEntry({ id: 'sb_conv_selfie_prompt', label: 'Selfie Prompt Template', placeholder: 'raw photo, selfie of {{char}}' }),
         ],
     });
 
     const tweaks = createSettingsGroup({
-        title: 'DM tweaks',
+        title: 'DM Tweaks',
         field: 'tweaks',
         rows: [
             createSettingsSwitch({ id: 'sb_conv_editable_messages', label: 'Enable Quick-Edit DM Actions', subtitle: 'Add quick inline edit buttons next to messages in the Conversation thread' }),
@@ -1990,7 +1990,7 @@ export function ensureConversationChrome() {
         header.className = 'sb-conversation-headerbar';
         header.hidden = true;
         header.innerHTML = `
-            <button id="${CHROME_IDS.palsToggle}" type="button" class="sb-conversation-flat-button sb-conversation-header-back" data-sb-conversation-action="toggle-pals" title="Back to conversations" aria-label="Back to conversations">
+            <button id="${CHROME_IDS.palsToggle}" type="button" class="sb-conversation-flat-button sb-conversation-header-back" data-sb-conversation-action="toggle-pals" title="Back to Conversations" aria-label="Back to Conversations">
                 <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                 <span class="sb-conversation-pals-toggle-badge" hidden></span>
             </button>
@@ -2006,10 +2006,10 @@ export function ensureConversationChrome() {
                 <button type="button" class="sb-conversation-flat-button sb-conversation-header-search" data-sb-conversation-action="toggle-search" title="Search" aria-label="Search" aria-pressed="false" aria-controls="${CHROME_IDS.tools}">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                 </button>
-                <button type="button" class="sb-conversation-flat-button sb-conversation-header-settings" data-sb-conversation-action="open-settings" title="Conversation settings" aria-label="Conversation settings">
+                <button type="button" class="sb-conversation-flat-button sb-conversation-header-settings" data-sb-conversation-action="open-settings" title="Conversation Settings" aria-label="Conversation Settings">
                     <i class="fa-solid fa-gear" aria-hidden="true"></i>
                 </button>
-                <button type="button" class="sb-conversation-flat-button sb-conversation-header-menu" data-sb-conversation-action="open-conversation-menu" title="Conversation menu" aria-label="Conversation menu" aria-haspopup="menu">
+                <button type="button" class="sb-conversation-flat-button sb-conversation-header-menu" data-sb-conversation-action="open-conversation-menu" title="Conversation Menu" aria-label="Conversation Menu" aria-haspopup="menu">
                     <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
                 </button>
             </div>
@@ -2022,15 +2022,15 @@ export function ensureConversationChrome() {
         stage = document.createElement('section');
         stage.id = CHROME_IDS.stage;
         stage.hidden = true;
-        stage.setAttribute('aria-label', 'Conversation messages');
+        stage.setAttribute('aria-label', 'Conversation Messages');
         stage.innerHTML = `
-            <div id="${CHROME_IDS.tools}" class="sb-conversation-search-bar" role="search" aria-label="Search this conversation" data-open="false">
+            <div id="${CHROME_IDS.tools}" class="sb-conversation-search-bar" role="search" aria-label="Search This Conversation" data-open="false">
                 <label class="sb-conversation-search-wrap" for="${CHROME_IDS.search}">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                    <span class="sr-only">Search Conversation messages</span>
+                    <span class="sr-only">Search Conversation Messages</span>
                     <input id="${CHROME_IDS.search}" class="sb-conversation-search-entry" type="search" placeholder="Search this DM" autocomplete="off" />
                 </label>
-                <div class="sb-conversation-channel-tabs" role="toolbar" aria-label="Conversation filters">
+                <div class="sb-conversation-channel-tabs" role="toolbar" aria-label="Conversation Filters">
                     <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="main" aria-pressed="true">Main</button>
                     <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="pinned" aria-pressed="false">Pins</button>
                     <button type="button" class="sb-conversation-channel-tab" data-sb-conversation-action="set-channel" data-channel="selfies" aria-pressed="false">Selfies</button>
@@ -2045,30 +2045,30 @@ export function ensureConversationChrome() {
                 <div id="${CHROME_IDS.replyPreview}" class="sb-conversation-reply-preview" hidden></div>
                 <div id="${CHROME_IDS.attachmentPreview}" class="sb-conversation-attachment-preview" hidden></div>
                 <div class="sb-conversation-composer-row">
-                    <button type="button" class="sb-conversation-flat-button sb-conversation-composer-more" data-sb-conversation-action="open-composer-menu" title="Attach and more" aria-label="Attach and more" aria-haspopup="menu">
+                    <button type="button" class="sb-conversation-flat-button sb-conversation-composer-more" data-sb-conversation-action="open-composer-menu" title="Attach and More" aria-label="Attach and More" aria-haspopup="menu">
                         <i class="fa-solid fa-plus" aria-hidden="true"></i>
                     </button>
-                    <button id="${CHROME_IDS.attach}" type="button" class="sb-conversation-flat-button sb-conversation-composer-attach sb-conversation-composer-quick" data-sb-conversation-action="attach-file" title="Attach files" aria-label="Attach files">
+                    <button id="${CHROME_IDS.attach}" type="button" class="sb-conversation-flat-button sb-conversation-composer-attach sb-conversation-composer-quick" data-sb-conversation-action="attach-file" title="Attach Files" aria-label="Attach Files">
                         <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
                     </button>
-                    <input id="${CHROME_IDS.fileInput}" class="displayNone" type="file" accept="${CONVERSATION_ATTACHMENT_ACCEPT}" multiple aria-label="Conversation attachments" />
-                    <label class="sr-only" for="${CHROME_IDS.input}">Conversation message</label>
+                    <input id="${CHROME_IDS.fileInput}" class="displayNone" type="file" accept="${CONVERSATION_ATTACHMENT_ACCEPT}" multiple aria-label="Conversation Attachments" />
+                    <label class="sr-only" for="${CHROME_IDS.input}">Conversation Message</label>
                     <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Type your message..."></textarea>
-                    <div class="sb-conversation-composer-actions" role="group" aria-label="Message tools">
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-selfie" title="Send a selfie" aria-label="Send a selfie">
+                    <div class="sb-conversation-composer-actions" role="group" aria-label="Message Tools">
+                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-selfie" title="Send a Selfie" aria-label="Send a Selfie">
                             <i class="fa-solid fa-camera" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-remind" title="Remind me" aria-label="Remind me">
+                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-remind" title="Remind Me" aria-label="Remind Me">
                             <i class="fa-solid fa-bell" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-summarize" title="Summarize memory" aria-label="Summarize memory">
+                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-summarize" title="Summarize Memory" aria-label="Summarize Memory">
                             <i class="fa-solid fa-book-open" aria-hidden="true"></i>
                         </button>
-                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="force-response" title="Force a reply" aria-label="Force a reply">
+                        <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="force-response" title="Force a Reply" aria-label="Force a Reply">
                             <i class="fa-solid fa-bolt" aria-hidden="true"></i>
                         </button>
                     </div>
-                    <button id="${CHROME_IDS.send}" type="submit" class="sb-conversation-send-button" title="Send Conversation message" aria-label="Send Conversation message">
+                    <button id="${CHROME_IDS.send}" type="submit" class="sb-conversation-send-button" title="Send Conversation Message" aria-label="Send Conversation Message">
                         <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
                     </button>
                 </div>
@@ -2086,21 +2086,21 @@ export function ensureConversationChrome() {
         palsRail.innerHTML = `
             <div class="sb-conversation-headerbar sb-conversation-rail-header">
                 <div id="${CHROME_IDS.railFooter}" class="sb-conversation-rail-persona">
-                    <button type="button" class="sb-conversation-flat-button sb-conversation-persona-button" data-sb-conversation-action="open-persona-menu" aria-haspopup="menu" title="Your status and persona">
+                    <button type="button" class="sb-conversation-flat-button sb-conversation-persona-button" data-sb-conversation-action="open-persona-menu" aria-haspopup="menu" title="Your Status and Persona">
                         <img id="sb_conv_footer_persona_avatar" alt="" loading="lazy" />
                         <span class="sb-conversation-status-dot sb-conversation-rail-footer-dot" data-status="online" aria-hidden="true"></span>
                         <span class="sr-only"><span id="sb_conv_footer_persona_name"></span>, <span id="sb_conv_footer_user_status"></span></span>
                     </button>
                 </div>
                 <h2 class="sb-conversation-rail-title">Conversations</h2>
-                <button type="button" class="sb-conversation-flat-button sb-conversation-rail-new-button" data-sb-conversation-action="open-new-menu" aria-haspopup="menu" title="New conversation" aria-label="New conversation">
+                <button type="button" class="sb-conversation-flat-button sb-conversation-rail-new-button" data-sb-conversation-action="open-new-menu" aria-haspopup="menu" title="New Conversation" aria-label="New Conversation">
                     <i class="fa-solid fa-plus" aria-hidden="true"></i>
                 </button>
             </div>
             <div class="sb-conversation-rail-search">
                 <label class="sb-conversation-search-wrap" for="sb_conversation_pals_search">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                    <span class="sr-only">Search conversations</span>
+                    <span class="sr-only">Search Conversations</span>
                     <input type="search" id="sb_conversation_pals_search" class="sb-conversation-search-entry" placeholder="Search" autocomplete="off" />
                 </label>
             </div>
@@ -2125,7 +2125,7 @@ export function ensureConversationChrome() {
         personaPicker.id = CHROME_IDS.personaPicker;
         personaPicker.className = 'sb-conversation-picker sb-conversation-persona-picker';
         personaPicker.setAttribute('role', 'listbox');
-        personaPicker.setAttribute('aria-label', 'Choose persona');
+        personaPicker.setAttribute('aria-label', 'Choose Persona');
         personaPicker.hidden = true;
         sheld.appendChild(personaPicker);
     }
@@ -2135,7 +2135,7 @@ export function ensureConversationChrome() {
         statusPicker.id = CHROME_IDS.userStatusPicker;
         statusPicker.className = 'sb-conversation-picker sb-conversation-status-picker';
         statusPicker.setAttribute('role', 'listbox');
-        statusPicker.setAttribute('aria-label', 'Set your status');
+        statusPicker.setAttribute('aria-label', 'Set Your Status');
         statusPicker.hidden = true;
         statusPicker.innerHTML = `
             <button type="button" class="sb-conversation-status-option" data-status="online" data-sb-conversation-action="set-user-status" role="option">
@@ -2167,7 +2167,7 @@ export function ensureConversationChrome() {
         drawer = document.createElement('aside');
         drawer.id = CHROME_IDS.settingsDrawer;
         drawer.hidden = true;
-        drawer.setAttribute('aria-label', 'Conversation settings');
+        drawer.setAttribute('aria-label', 'Conversation Settings');
         replaceSettingsDrawerContent(drawer);
         sheld.appendChild(drawer);
     }

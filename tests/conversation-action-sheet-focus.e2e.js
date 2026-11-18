@@ -105,7 +105,7 @@ const dismissals = [
     {
         name: 'Copy message row',
         slug: 'row',
-        dismiss: (page) => getMenu(page).getByRole('menuitem', { name: 'Copy message', exact: true }).click(),
+        dismiss: (page) => getMenu(page).getByRole('menuitem', { name: 'Copy Message', exact: true }).click(),
     },
     {
         name: 'backdrop tap',

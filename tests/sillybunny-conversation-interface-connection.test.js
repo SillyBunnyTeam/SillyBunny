@@ -139,7 +139,7 @@ describe('Conversation composer connection state', () => {
         refreshConversationInterface();
 
         expect(input.disabled).toBe(false);
-        expect(input.placeholder).toBe('Type your message...');
+        expect(input.placeholder).toBe('Type your message…');
         expect(send.disabled).toBe(false);
     });
 
@@ -152,7 +152,7 @@ describe('Conversation composer connection state', () => {
         refreshConversationInterface();
 
         expect(input.disabled).toBe(true);
-        expect(input.placeholder).toBe('This group has no eligible Conversation members yet...');
+        expect(input.placeholder).toBe('This group has no eligible Conversation members yet…');
         expect(send.disabled).toBe(true);
     });
 
@@ -163,7 +163,7 @@ describe('Conversation composer connection state', () => {
         refreshConversationInterface();
 
         expect(input.disabled).toBe(false);
-        expect(input.placeholder).toBe('Type your message...');
+        expect(input.placeholder).toBe('Type your message…');
         expect(send.disabled).toBe(true);
     });
 });

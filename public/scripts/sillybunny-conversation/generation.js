@@ -167,19 +167,19 @@ export async function editConversationMessage(messageId) {
     // Delete). DOM order stays save, cancel, delete; CSS places Delete at the start.
     saveButton.className = 'sb-conversation-message-edit-control sb-conversation-message-edit-save';
     saveButton.textContent = 'Save';
-    saveButton.title = 'Save message changes (Ctrl+Enter)';
+    saveButton.title = 'Save Message Changes (Ctrl+Enter)';
 
     const cancelButton = document.createElement('button');
     cancelButton.type = 'button';
     cancelButton.className = 'sb-conversation-message-edit-control sb-conversation-message-edit-cancel';
     cancelButton.textContent = 'Cancel';
-    cancelButton.title = 'Discard message changes (Esc)';
+    cancelButton.title = 'Discard Message Changes (Esc)';
 
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
     deleteButton.className = 'sb-conversation-message-edit-control sb-conversation-message-edit-delete';
-    deleteButton.title = 'Delete message';
-    deleteButton.setAttribute('aria-label', 'Delete message');
+    deleteButton.title = 'Delete Message';
+    deleteButton.setAttribute('aria-label', 'Delete Message');
     const deleteIcon = document.createElement('i');
     deleteIcon.className = 'fa-solid fa-trash-can';
     deleteIcon.setAttribute('aria-hidden', 'true');
@@ -211,7 +211,7 @@ export async function editConversationMessage(messageId) {
     // from the stored message.
     const requestClose = async () => {
         if (textarea.value !== message.mes && !(await confirmConversationAction({
-            title: 'Discard unsaved changes?',
+            title: 'Discard Unsaved Changes?',
             text: 'The message being edited has changes that have not been saved.',
             confirmLabel: 'Discard',
         }))) {

@@ -1621,7 +1621,7 @@
       "form": null,
       "providerBlock": null,
       "gates": [],
-      "label": "Select a profile to toggle favorite"
+      "label": "Select a Profile to Toggle Favorite"
     },
     "#reload_connection_profile": {
       "id": "reload_connection_profile",

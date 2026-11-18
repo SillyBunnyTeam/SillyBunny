@@ -309,7 +309,7 @@ export function showConversationToast(avatar, message, { branchId = '', groupId 
     }
 
     const character = getCharacterForAvatar(avatar);
-    const title = `New DM from ${message.name || character?.name || 'Character'}`;
+    const title = `New DM From ${message.name || character?.name || 'Character'}`;
     const preview = stripPreviewText(message.mes) || 'New Conversation message';
     toastr.info(preview, title, {
         ...SAFE_TOAST_OPTIONS,

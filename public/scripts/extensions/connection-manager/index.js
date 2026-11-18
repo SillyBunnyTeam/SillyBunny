@@ -489,10 +489,11 @@ function updateFavoriteButtonState(isFavorite) {
     }
 
     const hasProfile = Boolean(extension_settings.connectionManager.selectedProfile);
+    // SillyBunny: capitalisation by DESIGN.md
     const title = !hasProfile
-        ? t`Select a profile to toggle favorite`
+        ? t`Select a Profile to Toggle Favorite`
         : isFavorite
-            ? t`Remove from favorites`
+            ? t`Remove From Favorites`
             : t`Add to favorites`;
 
     button.classList.toggle('is_fav', isFavorite);
@@ -899,7 +900,7 @@ async function selectConnectionProfilesForDeletion() {
     );
 
     const result = await new Popup(html, POPUP_TYPE.CONFIRM, '', {
-        okButton: t`Delete selected`,
+        okButton: t`Delete Selected`, // SillyBunny: capitalisation by DESIGN.md
         cancelButton: t`Cancel`,
         wide: true,
         // SillyBunny: pick-several rows; destructive response never receives initial focus.
@@ -1094,7 +1095,7 @@ async function applyConnectionProfile(profile) {
                 .join(', ');
             toastr.warning(
                 t`Some profile settings could not be applied: ${commandList}`,
-                t`Profile application incomplete`,
+                t`Profile Application Incomplete`, // SillyBunny: capitalisation by DESIGN.md
                 { timeOut: 8000 },
             );
         }

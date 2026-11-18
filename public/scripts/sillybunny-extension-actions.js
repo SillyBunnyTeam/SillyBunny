@@ -18,7 +18,7 @@ function visibleActions(row) {
 
 function actionMenuItems(row) {
     return visibleActions(row).map(button => ({
-        label: button.title || button.getAttribute('aria-label') || button.dataset.i18n || 'Extension action',
+        label: button.title || button.getAttribute('aria-label') || button.dataset.i18n || 'Extension Action',
         title: button.title || undefined,
         icon: button.querySelector('i, svg') || undefined,
         onSelect: () => button.click(),

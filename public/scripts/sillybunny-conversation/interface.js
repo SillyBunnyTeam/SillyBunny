@@ -195,7 +195,7 @@ export function renderPalsRail() {
             unreadBadge.hidden = unreadCount <= 0;
         }
         if (unreadCount > 0) {
-            button.setAttribute('aria-label', `${name?.textContent || 'Conversation'}, ${unreadCount} unread`);
+            button.setAttribute('aria-label', `${name?.textContent || 'Conversation'}, ${unreadCount} Unread`);
         }
 
         row.append(button);
@@ -259,11 +259,11 @@ export function updateConversationHeader(settings = getSettings()) {
         if (typingParticipants.length) {
             const typingNames = typingParticipants.map(participant => participant?.name || 'Character').filter(Boolean);
             if (typingNames.length > 2) {
-                statusText = 'Several people are typing...';
+                statusText = 'Several People Are Typing…';
             } else if (typingNames.length > 1) {
-                statusText = `${typingNames.join(', ')} are writing...`;
+                statusText = `${typingNames.join(', ')} Are Writing…`;
             } else {
-                statusText = `${typingNames[0] || 'Character'} is writing...`;
+                statusText = `${typingNames[0] || 'Character'} Is Writing…`;
             }
         } else if (current) {
             const currentCopy = getAvailabilityCopy(current.status);
@@ -322,10 +322,10 @@ export function refreshConversationInterface({ syncControls = false } = {}) {
             input.placeholder = !isConnected
                 ? 'Not connected to API!'
                 : avatar
-                    ? 'Type your message...'
+                    ? 'Type your message…'
                     : unavailableGroup
-                        ? 'This group has no eligible Conversation members yet...'
-                        : 'Pick or start a DM from the Pals rail...';
+                        ? 'This group has no eligible Conversation members yet…'
+                        : 'Pick or start a DM from the Pals rail…';
         }
         if (send instanceof HTMLButtonElement) {
             send.disabled = !avatar || !isConnected || conversationState.conversationUploadActive;

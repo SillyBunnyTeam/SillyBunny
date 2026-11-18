@@ -52,7 +52,7 @@ export function presetChoicesOptions(root, { deletion = false } = {}) {
     root.replaceChildren(...[description, group.section].filter(Boolean));
     return {
         tier: 'dialog',
-        ...(deletion ? { title: t`Delete selected` } : {}),
+        ...(deletion ? { title: t`Delete Selected` } : {}),
         onOpening(popup) {
             if (deletion) popup.okButton.classList.add('is-destructive');
         },

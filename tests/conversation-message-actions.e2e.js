@@ -108,19 +108,19 @@ function rectsIntersect(a, b) {
 async function openMessageMenu(page, trigger) {
     await trigger.click();
     const menu = page.getByRole('menu', { name: 'Message Actions' });
-    await expect(menu.getByRole('menuitem', { name: 'Edit Conversation message', exact: true })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: 'Delete message', exact: true })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'Edit Conversation Message', exact: true })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'Delete Message', exact: true })).toBeVisible();
     return menu;
 }
 
 async function editThenDeleteFromMenu(page, message, trigger, menu) {
-    await menu.getByRole('menuitem', { name: 'Edit Conversation message', exact: true }).click();
+    await menu.getByRole('menuitem', { name: 'Edit Conversation Message', exact: true }).click();
     await expect(message.locator('.sb-conversation-message-edit-textarea')).toHaveValue('A disposable note for action checks.');
     await message.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(message.locator('.sb-conversation-message-edit-textarea')).toHaveCount(0);
     await message.hover();
     await trigger.click();
-    await menu.getByRole('menuitem', { name: 'Delete message', exact: true }).click();
+    await menu.getByRole('menuitem', { name: 'Delete Message', exact: true }).click();
     const confirmation = page.locator('dialog.sb-popup-destructive-confirm');
     await expect(confirmation).toBeVisible();
     await expect(confirmation.locator('.popup-button-cancel')).toBeFocused();
