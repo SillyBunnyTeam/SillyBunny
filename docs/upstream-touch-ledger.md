@@ -1688,6 +1688,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05, PR #870. |
 | Owner | UI and localization integrator. |
 
+### `public/login.html`, `public/css/login.css`, `public/scripts/login.js` and `public/scripts/a11y.js` - login page
+| Field | Value |
+| --- | --- |
+| File | `public/css/login.css` (self-contained tokens under `body.login` copied from the Libadwaita and Libadwaita Light themes, `prefers-color-scheme` picks the tone; the Alert-tier dialog, the illustration slot, the user grid, fields, buttons, hover, coarse-pointer, reduced-motion and forced-colours rules); `public/login.html` (the `#loginArt` slot, a decorative placeholder registered as `login-both` and hidden from assistive technology; Login and Send as `menu_button_primary`; `#errorMessage` with `role="alert"`, present and empty before the first message; the `login.css` key); `public/scripts/login.js` (each `.userSelect` card is `role="button"`, `tabindex="0"`, with Enter and Space running its click handler, named by its visible text; avatars `alt=""`); `public/scripts/a11y.js` (no list roles on `#userList` and its cards, which overwrote the button role). |
+| Area | The login page. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `login.css`'s own tokens (the page loads `style.css`, not `sillybunny-theme.css`); the art slot's name follows `createArtPlaceholder()` in `public/scripts/sillybunny-home/art.js`. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 11.2): marked hunks in the four files; every upstream id, field and handler kept. |
+| Protecting tests | `tests/login-keyboard.e2e.js`; `tests/unit/login-page.test.js`; `tests/unit/density-tokens-css.test.js`; the `home.login` surface of `tests/audit/surface-audit.e2e.js`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, `frontend-performance.e2e.js`, `login-keyboard.e2e.js`, the `home.login` audit (5 of 5), and captures at 360x640, 390x844, 844x390 and 1440x900 in both tones and forced colours with no overflow. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 11.2). |
+| Owner | `TODO(copy)` |
+
 ### `public/style.css`, `public/css/login.css` and `public/login.html` - logo rendering
 | Field | Value |
 | --- | --- |
@@ -1695,7 +1709,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Frontend identity and login. |
 | Divergence reason | SillyBunny must draw its new logo files without distortion in system-message avatars and on the login page: they need `object-fit: contain` like the old pixel logo, and the vector login logo must not use `image-rendering: pixelated`. The login page also links the new files as favicons. |
 | Target seam | None yet: static markup and one CSS rule. |
-| Adapter shape | `style.css` gives the new logo files `object-fit: contain` and keeps the old `img[src*="sillybunny-pixel-logo"]` selector in the same rule, so saved narrator avatars look as before. `login.css` no longer sets `image-rendering: pixelated` on `.logo`, because the login logo is a vector. `login.html` carries the favicon block, the `login.css?v=20261104h` key (the service worker answers `/css/` stale-while-revalidate) and the logo path, each under a `<!-- SillyBunny: -->` marker. |
+| Adapter shape | `style.css` gives the new logo files `object-fit: contain` and keeps the old `img[src*="sillybunny-pixel-logo"]` selector in the same rule, so saved narrator avatars look as before. `login.css` no longer sets `image-rendering: pixelated` on `.logo`, because the login logo is a vector. `login.html` carries the favicon block, the `login.css` key (the service worker answers `/css/` stale-while-revalidate; `20261118m` since the 2026-11-18 restyle below) and the logo path, each under a `<!-- SillyBunny: -->` marker. |
 | Protecting tests | None dedicated: no test reads the `style.css` selector or the `login.css` rule; `tests/frontend-contract-audit.test.js` only checks that the files the pages name exist. |
 | Validation | 2026-11-05: Node and Bun boots serve every icon and logo URL that `index.html`, `login.html` and the manifest name, with the written bytes; the rules and the login page were not looked at in a browser. |
 | Rollback path | Remove the logo-file selector from the `object-fit` rule in `public/style.css`, which keeps the old `sillybunny-pixel-logo` selector. Put `image-rendering: pixelated` back on `body.login .logo` in `public/css/login.css`. In `public/login.html`, restore the earlier favicon block and the pixel logo path, and change the `login.css?v=` key so the service worker serves the new rule. No saved data changes, and the older logo files stay in `public/img/` for saved chats. |

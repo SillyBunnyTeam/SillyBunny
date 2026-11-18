@@ -40,6 +40,7 @@ const topBarControlSelectors = [
     '#sb-topbar-extension-slot :is(.drawer-icon, .menu_button, .right_menu_button, .interactable):not(:is(button, a, input, select, textarea))',
 ].join(', ');
 
+// SillyBunny: the login page's #userList and its cards are not listed here, because each card is a button (login.js).
 const listSelectors = [
     '.options-content',
     '.list-group',
@@ -50,7 +51,6 @@ const listSelectors = [
     '.secretKeyManagerList',
     '.recentChatList',
     '.dataMaidCategoryContent',
-    '#userList',
     '.bg_list',
 ].join(', ');
 
@@ -64,7 +64,6 @@ const listItemSelectors = [
     '.secretKeyManagerList .secretKeyManagerItem',
     '.recentChatList .recentChat',
     '.dataMaidCategoryContent .dataMaidItem',
-    '#userList .userSelect',
     '.bg_list .bg_example',
 ].join(', ');
 
