@@ -322,6 +322,18 @@ kbd.sbKeys > kbd {
     display: none;
 }
 
+/* Beside the open page the rows are a sidebar, which takes the flat fills (DESIGN.md Flat Fill Vocabulary, Sidebar rows);
+   as a page of their own they are boxed rows and keep the row fills. */
+@media (hover: hover) {
+    .sb-list-editor[data-collapsed='false'] .sbHelpNavRow:not([aria-current='page']):not(:disabled):hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.sb-list-editor[data-collapsed='false'] .sbHelpNavRow:not([aria-current='page']):not(:disabled):active {
+    background: var(--sb-flat-active-bg);
+}
+
 .sbHelpRowIcon,
 .sbWelcomeRowIcon {
     flex: none;
