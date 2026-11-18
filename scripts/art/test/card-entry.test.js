@@ -166,6 +166,23 @@ test('the card file is the one source of its text: a new text there is kept, and
     assert.equal(JSON.parse(read(bytes)).data.description, 'A new description, written in the app.', 'and the text is the one the file held');
 });
 
+test('a proof by pixels compares a card\'s text as well, so a card file that shows the right pixels with other text is stale', async (t) => {
+    const root = await cardRepo(t);
+    await runDerive({ root, write: true });
+    const { read, write } = await loadAppCardParser();
+    const path = join(root, CARD_FILE);
+    const card = JSON.parse(read(readFileSync(path)));
+    card.data.character_book = { name: 'Embedded', entries: [], extensions: {} };
+    writeFileSync(path, write(readFileSync(path), JSON.stringify(card)));
+
+    const byPixels = await runProve({ root, pixels: true });
+    assert.deepEqual(codes(byPixels), ['output-stale'], 'the derive drops the embedded book, so the text it gives differs while every pixel is the same');
+    assert.match(byPixels.result.problems[0].message, /does not show the pixels its master gives, or does not carry the card text its text source gives\.$/);
+    assert.deepEqual(codes(await runProve({ root })), ['output-stale']);
+    await runDerive({ root, write: true });
+    assert.equal((await runProve({ root, pixels: true })).exitCode, 0);
+});
+
 test('a crop that cuts the figure wrongly, a translucent master, and a card file with no card text are refused, and nothing is written', async (t) => {
     const cases = [
         [{ entry: derivedEntry({ crop: [-1, 3, 8, 9], grid: [8, 9] }) }, 'card-cut-top'],

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { sameCardText } from './card.js';
 import { unlistedFiles } from './check.js';
 import { decode, encoderMismatches, encoderVersions } from './codec.js';
 import { deriveAsset, isDerived } from './derive.js';
@@ -79,7 +80,7 @@ async function proveFile(root, id, file, recorded, pixels) {
     if (pixels && file.kind !== 'data') {
         return await showSamePixels(file.kind, shipped, file.bytes)
             ? null
-            : { code: 'output-stale', asset: id, path: file.path, message: `${file.path} does not show the pixels its master gives.` };
+            : { code: 'output-stale', asset: id, path: file.path, message: `${file.path} does not show the pixels its master gives${file.kind === 'card' ? ', or does not carry the card text its text source gives' : ''}.` };
     }
     const digest = sha256(shipped);
     if (digest !== file.sha256) {
@@ -91,10 +92,13 @@ async function proveFile(root, id, file, recorded, pixels) {
     return null;
 }
 
-/** An ICO holds PNG pictures, so two ICOs show the same pixels when their entries, taken in order, do. */
+/**
+ * An ICO holds PNG pictures, so two ICOs show the same pixels when their entries, taken in order, do. A card is a picture
+ * that carries text, so two cards are the same only when their text is too.
+ */
 async function showSamePixels(kind, one, two) {
-    if (kind === 'picture') {
-        return samePixels(await decode(one), await decode(two));
+    if (kind === 'picture' || kind === 'card') {
+        return samePixels(await decode(one), await decode(two)) && (kind === 'picture' || await sameCardText(one, two));
     }
     const [first, second] = [readIco(one), readIco(two)];
     if (first.length !== second.length) {

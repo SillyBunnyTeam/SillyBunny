@@ -23,7 +23,8 @@ Options:
   --write             derive: write the changed outputs and their sha256 in the manifest.
                       bump: write the new keys into their files and the manifest.
                       notice: write the generated region.
-  --pixels            prove: compare encoded pictures by their decoded pixels, for an encoder that gives other bytes.
+  --pixels            prove: compare encoded pictures by their decoded pixels, for an encoder that gives other bytes;
+                      a card also by its card text.
   --today <day>       bump: the day of a new key, as YYYY-MM-DD. Default: today in UTC.
   --key <key>         bump: the key every changed key takes, such as 20261114a.
   --help              Show this text.

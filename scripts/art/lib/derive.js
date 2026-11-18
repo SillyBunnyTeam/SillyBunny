@@ -13,8 +13,9 @@ import { rebuildRings } from './rings.js';
 
 /**
  * A file as the derive makes it. A `picture` or an `ico` may be compared by its decoded pixels on a platform whose
- * encoder gives other bytes; `data`, such as a motion description, is compared by its bytes everywhere.
- * @typedef {{ path: string, bytes: Buffer, sha256: string, kind: 'picture' | 'ico' | 'data' }} DerivedFile
+ * encoder gives other bytes, and a `card` by its decoded pixels and its card text; `data`, such as a motion description,
+ * is compared by its bytes everywhere.
+ * @typedef {{ path: string, bytes: Buffer, sha256: string, kind: 'picture' | 'card' | 'ico' | 'data' }} DerivedFile
  */
 
 const DERIVERS = Object.freeze({

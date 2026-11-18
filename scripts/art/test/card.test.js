@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildCard, cardOnGrid, cardPicture, differences, embedCard, gradientRow, loadAppCardParser, prepareCard, verifyCard } from '../lib/card.js';
+import { buildCard, cardOnGrid, cardPicture, differences, embedCard, gradientRow, loadAppCardParser, prepareCard, sameCardText, verifyCard } from '../lib/card.js';
 import { decode, encode } from '../lib/codec.js';
 import { isOpaque, samePixels, upscaleNearest } from '../lib/raster.js';
 import { fixtureCard } from '../test-support/cards.js';
@@ -193,6 +193,17 @@ test('a crop that cuts off the top of the figure, or whose last row misses the f
     assert.throws(() => cardOnGrid(sprite, { crop: [0, 0, 4, 6], gradient }), (error) => error.code === 'card-waist' && /row 5 of the master, does not cut the figure, which ends at row 4/.test(error.message));
     assert.throws(() => cardOnGrid(sprite, { crop: [3, 0, 4, 5], gradient }), { code: 'card-waist' }, 'a crop beside the figure');
     assert.throws(() => cardOnGrid(paint(4, 5, () => [0, 0, 0, 0]), { crop: [0, 0, 4, 5], gradient }), { code: 'card-figure' });
+});
+
+test('two card files carry the same card text only when their text chunks are equal, whatever their pictures', async () => {
+    const { card } = prepareCard(fixtureCard(), WORLD);
+    const one = await embedCard(await plainPng(), card);
+    const other = await embedCard(await encode(paint(4, 6, () => [1, 2, 3, 255], 3), 'png'), card);
+    const edited = await embedCard(await plainPng(), { ...card, data: { ...card.data, description: 'Another description.' } });
+
+    assert.equal(await sameCardText(one, other), true, 'another picture with the same text');
+    assert.equal(await sameCardText(one, edited), false);
+    assert.equal(await sameCardText(one, await plainPng()), false, 'a picture with no text');
 });
 
 test('differences compares the JSON of the values, so equal empty lists match and a changed list does not', () => {

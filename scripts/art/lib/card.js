@@ -258,7 +258,19 @@ export async function deriveCard(context, asset, { readMaster }) {
     const files = [];
     for (const output of asset.outputs) {
         const { png } = await buildCard({ master: picture, scale: output.scale ?? 1, source, world: asset.world });
-        files.push({ path: output.path, bytes: png, sha256: sha256(png), kind: 'picture' });
+        files.push({ path: output.path, bytes: png, sha256: sha256(png), kind: 'card' });
     }
     return files;
+}
+
+/**
+ * Whether two card files carry the same card text: the same text chunks, keyword for keyword and byte for byte, in the
+ * same order.
+ * @param {Buffer} one
+ * @param {Buffer} two
+ */
+export async function sameCardText(one, two) {
+    const { extract, decodeText } = await loadAppCardParser();
+    const texts = (png) => JSON.stringify(extract(new Uint8Array(png)).filter((chunk) => chunk.name === 'tEXt').map((chunk) => decodeText(chunk.data)));
+    return texts(one) === texts(two);
 }
