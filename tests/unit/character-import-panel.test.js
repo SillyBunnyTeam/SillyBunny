@@ -148,22 +148,21 @@ describe('Import tab', () => {
             expect(action.querySelector('i').getAttribute('aria-hidden')).toBe('true');
         }
     });
-    test('origin restores the shell scroller after reveal, never the legacy inner container', async () => {
-        const shellScroller = document.createElement('div');
-        shellScroller.className = 'sb-shell-panel-scroller';
+    test('origin restores the page\'s own scroller after reveal, never the legacy inner container', async () => {
         const legacyScroller = document.createElement('div');
         legacyScroller.className = 'scrollableInner';
-        document.body.append(shellScroller);
-        shellScroller.append(legacyScroller);
+        document.body.append(legacyScroller);
         legacyScroller.append(host);
         mountCharacterImport(host);
+        // The panel scrolls itself as a settings page does, so it is the shell scroller that the position belongs to.
+        expect(host.classList.contains('sb-shell-panel-scroller')).toBe(true);
         const destination = register.mock.calls[0][1];
-        shellScroller.scrollTop = 250;
+        host.scrollTop = 250;
         legacyScroller.scrollTop = 7;
         expect(destination.captureState()).toEqual({ scrollTop: 250 });
-        globalThis.SillyBunnyShell = { openTab: jest.fn(async () => { shellScroller.scrollTop = 0; }) };
+        globalThis.SillyBunnyShell = { openTab: jest.fn(async () => { host.scrollTop = 0; }) };
         expect(await destination.open({}, { restore: { scrollTop: 250 }, isCurrent: () => true })).toBe(true);
-        expect(shellScroller.scrollTop).toBe(250);
+        expect(host.scrollTop).toBe(250);
         expect(legacyScroller.scrollTop).toBe(7);
         delete globalThis.SillyBunnyShell;
     });

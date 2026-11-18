@@ -227,6 +227,9 @@ export function mountCharacterImport(host) {
         }
     }
 
+    // Import is a settings page in the Characters window: it scrolls itself with the settings scroller class, so it takes that
+    // page's padding and bottom space, and the scroll position that the object navigation restores is the page's own.
+    host.classList.add('sb-shell-panel-scroller');
     const scroller = () => host.closest('.sb-shell-panel-scroller') ?? host.closest('.scrollableInner');
     objectNavigation.register('import', {
         async open(_target, { restore, isCurrent }) {

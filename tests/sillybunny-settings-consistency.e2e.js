@@ -794,6 +794,112 @@ test.describe('Customize consistency', () => {
         await expectNoHorizontalOverflow(scroller);
     });
 
+    test('every Customize and Backend page, and Characters Import, keeps the one page frame: the same side inset and top space, and a scroller that reaches the page bottom', async ({ page }) => {
+        test.setTimeout(180000);
+        // The Prompt editor and the Agents list are list pages with their own header and scroller, so they have no group to measure.
+        const pages = [
+            { id: 'appearance', shell: 'right' }, { id: 'extensions', shell: 'right' }, { id: 'interface', shell: 'right' },
+            { id: 'messages', shell: 'right' }, { id: 'data-security', shell: 'right' }, { id: 'logs', shell: 'right' },
+            { id: 'connections', shell: 'left' }, { id: 'sampling', shell: 'left' }, { id: 'prompting', shell: 'left' }, { id: 'context', shell: 'left' },
+            { id: 'characters-import', shell: 'characters' },
+        ];
+        const readFrame = selector => page.evaluate(rootSelector => {
+            const settingsPage = document.getElementById('sb-settings-page');
+            const root = document.querySelector(rootSelector);
+            const hidden = node => node.closest('[hidden], [aria-hidden="true"]') !== null;
+            const shown = node => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden' && !hidden(node);
+            const scrollers = [root, ...root.querySelectorAll('*')].filter(node => /^(auto|scroll)$/.test(getComputedStyle(node).overflowY)
+                && !['TEXTAREA', 'INPUT', 'SELECT', 'PRE'].includes(node.tagName) && node.clientHeight > 0 && shown(node));
+            // The outermost box that scrolls, or the outermost that would when the content were longer.
+            const scroller = scrollers.find(node => node.scrollHeight > node.clientHeight + 1) ?? scrollers[0];
+            if (!scroller) return { error: `${rootSelector} has no scroller` };
+            scroller.scrollTop = 0;
+            const box = scroller.getBoundingClientRect();
+            // The page's own box, not the scroller's: a page whose scroller sits inside another box that pads it must show that padding.
+            const frame = root.getBoundingClientRect();
+            const group = [...scroller.querySelectorAll('.ds-pref-group')].find(shown);
+            if (!group) return { error: `${rootSelector} has no group` };
+            const flowing = [...scroller.querySelectorAll('*')].filter(node => shown(node) && !['absolute', 'fixed'].includes(getComputedStyle(node).position) && node.getBoundingClientRect().height > 0);
+            const contentTop = Math.min(...flowing.map(node => node.getBoundingClientRect().top));
+            const resolve = value => {
+                const probe = document.createElement('div');
+                probe.style.cssText = `position:absolute;visibility:hidden;padding-left:${value}`;
+                settingsPage.append(probe);
+                const resolved = parseFloat(getComputedStyle(probe).paddingLeft);
+                probe.remove();
+                return resolved;
+            };
+            return {
+                inset: resolve('var(--sb-settings-inset)'),
+                insetTop: resolve('var(--sb-settings-inset-top)'),
+                left: Math.round((group.getBoundingClientRect().left - frame.left) * 10) / 10,
+                right: Math.round((frame.right - group.getBoundingClientRect().right) * 10) / 10,
+                top: Math.round((contentTop - frame.top) * 10) / 10,
+                bottomGap: Math.round((settingsPage.getBoundingClientRect().bottom - box.bottom) * 10) / 10,
+                scroller: `${scroller.tagName.toLowerCase()}.${[...scroller.classList].join('.')}`,
+            };
+        }, selector);
+
+        for (const [width, height] of [[1440, 900], [390, 844]]) {
+            await page.setViewportSize({ width, height });
+            const frames = {};
+            for (const { id, shell } of pages) {
+                if (shell === 'characters') {
+                    // The Characters list is shown first: its panel keeps matching the list's `:has()` rules on the scroll box afterwards.
+                    await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'characters'));
+                    await page.waitForTimeout(600);
+                    await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'import'));
+                    await expect(page.locator('#sb_character_import_content')).toBeVisible();
+                    await page.waitForTimeout(400);
+                    frames[id] = await readFrame('#right-nav-panel');
+                } else {
+                    await openSettingsTab(page, id, shell);
+                    await page.waitForTimeout(300);
+                    frames[id] = await readFrame(`[data-sb-panel="${id}"]`);
+                }
+            }
+            const problems = [];
+            const reference = frames.interface;
+            expect(reference.error).toBeUndefined();
+            expect(reference.inset).toBe(12);
+            for (const [id, frame] of Object.entries(frames)) {
+                if (frame.error) { problems.push(`${width}: ${frame.error}`); continue; }
+                if (Math.abs(frame.left - reference.inset) > 0.5) problems.push(`${width} ${id}: left inset ${frame.left}, not ${reference.inset}`);
+                if (Math.abs(frame.right - reference.inset) > 0.5) problems.push(`${width} ${id}: right inset ${frame.right}, not ${reference.inset}`);
+                if (Math.abs(frame.top - reference.insetTop) > 1) problems.push(`${width} ${id}: top space ${frame.top}, not ${reference.insetTop}`);
+                if (Math.abs(frame.bottomGap - reference.bottomGap) > 1) problems.push(`${width} ${id}: scroller (${frame.scroller}) ends ${frame.bottomGap}px above the page's bottom, Interface ${reference.bottomGap}px`);
+            }
+            expect(problems).toEqual([]);
+
+            // An extension's own page, opened from its row, keeps the frame too, and Back returns to the list where it was.
+            const extensions = await openSettingsTab(page, 'extensions', 'right');
+            await expect.poll(() => extensions.locator('.sb-subpage-row').count()).toBeGreaterThan(0);
+            for (const label of ['Character Expressions', 'Quick Reply', 'Regex']) {
+                const scrolled = await page.evaluate(() => {
+                    const list = document.querySelector('[data-sb-panel="extensions"] .sb-subpage-list');
+                    list.scrollTop = 300;
+                    return list.scrollTop;
+                });
+                await page.evaluate(name => [...document.querySelectorAll('[data-sb-panel="extensions"] .sb-subpage-row')].find(row => row.textContent.includes(name)).click(), label);
+                const detail = extensions.locator('.sb-subpage-detail[aria-hidden="false"]');
+                await expect(detail).toBeVisible();
+                await page.waitForTimeout(300);
+                const sides = await detail.evaluate(node => {
+                    const panel = document.querySelector('[data-sb-panel="extensions"]').getBoundingClientRect();
+                    const group = [...node.querySelectorAll('.ds-pref-group')].find(candidate => candidate.getClientRects().length).getBoundingClientRect();
+                    const settingsPage = document.getElementById('sb-settings-page').getBoundingClientRect();
+                    return { left: group.left - panel.left, right: panel.right - group.right, bottomGap: settingsPage.bottom - node.getBoundingClientRect().bottom };
+                });
+                expect(sides.left, `${label} left inset at ${width}`).toBeCloseTo(reference.inset, 0);
+                expect(sides.right, `${label} right inset at ${width}`).toBeCloseTo(reference.inset, 0);
+                expect(sides.bottomGap, `${label} page bottom at ${width}`).toBeCloseTo(reference.bottomGap, 0);
+                await detail.locator('.sb-subpage-back').click();
+                await expect(extensions.locator('.sb-subpage-detail[aria-hidden="false"]')).toHaveCount(0);
+                expect(await page.evaluate(() => document.querySelector('[data-sb-panel="extensions"] .sb-subpage-list').scrollTop), `${label} list scroll at ${width}`).toBe(scrolled);
+            }
+        }
+    });
+
     test('settings have no plain checkboxes or title-only descriptions', async ({ page }) => {
         const violations = [];
         for (const { id, shell } of SETTINGS_TABS) {

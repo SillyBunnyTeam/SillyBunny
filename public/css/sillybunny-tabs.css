@@ -1461,6 +1461,17 @@ body:not(.movingUI) .drawer-content.maximized {
     padding-inline: var(--sb-settings-inset);
 }
 
+/* A stacked page scrolls in its list and detail pages, which carry the page padding above. The panel scroller around the stack
+   and the stack itself add none, or the groups sit twice the inset from the sides, twice the top space down, and the list ends
+   a bottom padding above the window's edge. */
+#sb-settings-page .sb-shell-panel-scroller.sb-subpage-host {
+    padding: 0;
+}
+
+#sb-settings-page .sb-shell-panel-scroller.sb-subpage-host > .sb-subpage {
+    padding-bottom: 0;
+}
+
 .sb-shell-column {
     display: flex;
     flex-direction: column;
@@ -6905,6 +6916,13 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     display: block !important;
     padding: 0;
     margin: 0;
+}
+
+/* An extension's drawer body that holds boxed groups sits in the detail page at the page's own inset. `#user-settings-block
+   .inline-drawer-content` (style.css) pads the body 10px at its sides, which put the groups 22px from the page's side where every
+   other settings page has 12px. */
+#sb-settings-page :is(.sb-subpage-detail-content > .inline-drawer, .sb-subpage-detail-content > * > .inline-drawer) > .inline-drawer-content:has(> .ds-pref-group) {
+    padding-inline: 0;
 }
 
 /* The card's own drawer, opened by the detail pass: the row that opened the page named it, so the

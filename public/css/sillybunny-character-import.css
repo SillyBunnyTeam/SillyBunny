@@ -1,10 +1,19 @@
+/* Import is a settings page in the Characters window and scrolls itself as one: its panel carries the settings scroller class
+   (sillybunny-character-import.js), which gives it the page's padding, and it fills the window's own box. The scroll box inside
+   the window takes its padding, its scrollbar gutter and `overflow: hidden !important` from the list, Persona and World Info
+   rules (`:has()` rules that keep matching after their panels have been shown, because the list's block keeps its active class
+   and the editors stay mounted), so the page is placed against the window and leaves that box out. */
+#sb-settings-shell-host > #right-nav-panel.openDrawer[data-menu-type='import'] {
+    position: relative;
+}
+
 #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> #sb_character_import_panel:not([hidden])) {
-    padding: calc(var(--sb-shell-panel-padding-block) - 4px) 32px 9px;
-    scrollbar-gutter: auto;
+    position: static;
 }
 
 #sb-settings-page #sb_character_import_panel {
-    padding: 14px 16px 24px;
+    position: absolute;
+    inset: 0;
     min-width: 0;
     font-family: var(--mainFontFamily);
 }
@@ -97,12 +106,6 @@
     #sb-settings-page #sb_character_import_panel .sb-import-result-action {
         min-width: var(--sb-mobile-touch-target, 44px);
         min-height: var(--sb-mobile-touch-target, 44px);
-    }
-}
-
-@media (max-width: 1439px) {
-    #sb-settings-shell-host > #right-nav-panel.openDrawer > .scrollableInner:has(> #sb_character_import_panel:not([hidden])) {
-        padding: 14px 14px 9px !important;
     }
 }
 

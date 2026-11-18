@@ -791,7 +791,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'characters:import': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118t', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-character-import.css?v=20261116i', id: 'deferred-character-import-css' },
+        { href: 'css/sillybunny-character-import.css?v=20261118zd', id: 'deferred-character-import-css' },
     ],
     'left:advanced-formatting': [
         { href: 'css/macros.css', id: 'deferred-macros-css' },

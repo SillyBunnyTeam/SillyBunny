@@ -9,9 +9,8 @@
             "spacing-off-scale": 34
         },
         "public/css/sillybunny-character-import.css": {
-            "important": 2,
-            "breakpoint-off-set": 1,
-            "spacing-off-scale": 6
+            "important": 1,
+            "spacing-off-scale": 1
         },
         "public/css/sillybunny-character-list.css": {
             "radius-literal": 2,
