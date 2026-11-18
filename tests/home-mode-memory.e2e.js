@@ -18,7 +18,7 @@ const STARTUP_TIMEOUT = 20_000;
 const STORAGE_KEY = 'WelcomePage_LastMode';
 
 const modeLabel = mode => (mode === 'conversation' ? 'Conversation' : 'Roleplay');
-const modeTitle = mode => `Chat mode: ${modeLabel(mode)} (Ctrl+M)`;
+const modeTitle = mode => `Chat Mode: ${modeLabel(mode)} (Ctrl+M)`;
 
 async function expectHome(page) {
     await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on', { timeout: STARTUP_TIMEOUT });

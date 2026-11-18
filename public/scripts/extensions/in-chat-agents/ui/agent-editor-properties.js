@@ -110,8 +110,8 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
         dialog.header.querySelector('.sb-dialog__title')?.replaceWith(heading);
         heading.classList.add('sb-dialog__title');
         const closeButton = dialog.header.querySelector('.sb-dialog__close');
-        closeButton?.setAttribute('aria-label', t`Close agent properties`);
-        closeButton?.setAttribute('title', t`Close agent properties`);
+        closeButton?.setAttribute('aria-label', t`Close Agent Properties`);
+        closeButton?.setAttribute('title', t`Close Agent Properties`);
         dialog.root.setAttribute('aria-labelledby', heading.id);
         propertyDialog = dialog;
         dialog.closed.then(() => {

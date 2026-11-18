@@ -65,7 +65,7 @@ describe('Extensions list groups', () => {
     test('draws each group as a preference group labelled by its heading, with no description on user-installed rows', () => {
         const { host, stack } = mountStack(buildExtensionsSubpage(buildPanel()).rows);
 
-        expect(groupHeadings(host)).toEqual(['System Extensions', 'User-installed Extensions']);
+        expect(groupHeadings(host)).toEqual(['System Extensions', 'User-Installed Extensions']);
         for (const group of host.querySelectorAll('.sb-subpage-group')) {
             const heading = group.querySelector('.ds-pref-group-heading');
             const box = group.querySelector(':scope > .ds-pref-group');
@@ -156,7 +156,7 @@ describe('Extensions list groups', () => {
 
         diceSlot.append(...diceContent);
         stack.sync();
-        expect(groupHeadings(host)).toEqual(['System Extensions', 'User-installed Extensions']);
+        expect(groupHeadings(host)).toEqual(['System Extensions', 'User-Installed Extensions']);
         expect(host.querySelector('[data-sb-subpage-row="dice_container"]').hidden).toBe(false);
     });
 });

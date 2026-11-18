@@ -651,8 +651,8 @@ class PromptManager {
 
         const items = [
             hasEdit && { label: 'Edit', icon: 'fa-pencil', action: () => hasEdit.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
-            hasInspect && { label: 'Inspect tokens', icon: 'fa-magnifying-glass', action: () => hasInspect.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
-            hasSend && { label: 'Send to agents', icon: 'fa-paper-plane', action: () => hasSend.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
+            hasInspect && { label: 'Inspect Tokens', icon: 'fa-magnifying-glass', action: () => hasInspect.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) }, // SillyBunny: capitalisation by DESIGN.md
+            hasSend && { label: 'Send to Agents', icon: 'fa-paper-plane', action: () => hasSend.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) }, // SillyBunny: capitalisation by DESIGN.md
             hasDetach && { label: 'Detach', icon: 'fa-chain-broken', action: () => hasDetach.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })) },
         ].filter(Boolean);
 
@@ -2706,8 +2706,9 @@ class PromptManager {
                 const countHtml = totalInGroup > 0
                     ? `<span class="pm-accordion-count">${activeInGroup}/${totalInGroup}</span>`
                     : '';
+                // SillyBunny: capitalisation by DESIGN.md
                 accordionHtml = `
-                    <span class="pm-accordion-toggle ${collapsedClass}" data-pm-accordion="${escapeHtml(prompt.identifier)}" role="button" tabindex="0" aria-expanded="${isCollapsed ? 'false' : 'true'}" aria-label="${isCollapsed ? 'Expand' : 'Collapse'} group">
+                    <span class="pm-accordion-toggle ${collapsedClass}" data-pm-accordion="${escapeHtml(prompt.identifier)}" role="button" tabindex="0" aria-expanded="${isCollapsed ? 'false' : 'true'}" aria-label="${isCollapsed ? 'Expand' : 'Collapse'} Group">
                         <i class="fa-solid ${chevronClass} pm-accordion-chevron fa-fw" aria-hidden="true"></i>
                     </span>
                     ${countHtml}${lockHtml}

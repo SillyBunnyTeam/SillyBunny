@@ -136,7 +136,7 @@ describe('createListPagination', () => {
         expect(pagination.element.querySelector('button[aria-label="Previous page"] i[aria-hidden="true"]')).not.toBeNull();
         expect(pagination.element.querySelector('button[aria-label="Next page"] i[aria-hidden="true"]')).not.toBeNull();
         expect(pagination.element.querySelector('[aria-live="polite"]').textContent).toBe('Page 1 of 1');
-        expect(pagination.element.querySelector('select[aria-label="Items per page"]')).not.toBeNull();
+        expect(pagination.element.querySelector('select[aria-label="Items per Page"]')).not.toBeNull();
     });
 
     test('uses the default page sizes and accepts stored numeric strings', () => {

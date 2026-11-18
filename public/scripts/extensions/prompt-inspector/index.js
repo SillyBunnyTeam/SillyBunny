@@ -186,7 +186,7 @@ async function showPromptInspector(input) {
 
     /** @type {import('../../popup.js').CustomPopupButton} */
     const customButton = {
-        text: 'Cancel generation',
+        text: 'Cancel Generation',
         result: POPUP_RESULT.CANCELLED,
         appendAtEnd: true,
         action: async () => {
@@ -195,7 +195,7 @@ async function showPromptInspector(input) {
         },
     };
     // SillyBunny: the prompt textarea owns scrolling in its shared Window frame.
-    const popup = new Popup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, tier: 'window', okButton: 'Save changes', cancelButton: 'Discard changes', customButtons: [customButton] });
+    const popup = new Popup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, tier: 'window', okButton: 'Save Changes', cancelButton: 'Discard Changes', customButtons: [customButton] });
     popup.dlg.classList.add('sb-prompt-inspector-window');
     // SillyBunny: the prompt text is a document, so its Window body uses the View surface.
     popup.dlg.classList.add('sb-document');

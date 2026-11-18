@@ -229,8 +229,8 @@ export function mountAgentsPanel(column) {
                     items: [
                         { label: t`New Agent`, icon: 'fa-solid fa-plus', onSelect: () => run(() => adapter.openEditor()) },
                         { label: t`New Companion`, icon: 'fa-solid fa-user-plus', onSelect: () => run(() => adapter.newCompanion(false)) },
-                        { label: t`New Agent from Template…`, icon: 'fa-solid fa-folder-open', onSelect: () => openTemplates(false) },
-                        { label: t`New Companion from Template…`, icon: 'fa-solid fa-folder-open', onSelect: () => openTemplates(true) },
+                        { label: t`New Agent From Template…`, icon: 'fa-solid fa-folder-open', onSelect: () => openTemplates(false) },
+                        { label: t`New Companion From Template…`, icon: 'fa-solid fa-folder-open', onSelect: () => openTemplates(true) },
                         { label: t`AI Maker…`, icon: 'fa-solid fa-wand-magic-sparkles', onSelect: () => run(() => adapter.newCompanion(true)) },
                         { label: t`Import…`, icon: 'fa-solid fa-file-import', onSelect: () => adapter.importFile.click() },
                     ],
@@ -273,7 +273,7 @@ export function mountAgentsPanel(column) {
         return [{
             items: [
                 {
-                    label: t`Only agents that are on`, kind: 'check', checked: filters.onlyOn, onSelect: () => {
+                    label: t`Only Agents That Are On`, kind: 'check', checked: filters.onlyOn, onSelect: () => {
                         filters.onlyOn = !filters.onlyOn;
                         accountStorage.setItem('ica--agent-list-only-on', String(filters.onlyOn));
                         refresh();
@@ -311,7 +311,7 @@ export function mountAgentsPanel(column) {
         const items = buildAgentTemplatePickerModel({ entries: adapter.getEntries(), categories, subcategories, companionTemplates });
         openPicker({
             trigger: header.button('add'),
-            title: companionTemplates ? t`New Companion from Template` : t`New Agent from Template`,
+            title: companionTemplates ? t`New Companion From Template` : t`New Agent From Template`,
             searchLabel: t`Search Templates`,
             items: items.map(item => ({
                 value: item.id, label: item.label, group: item.group,
@@ -588,7 +588,7 @@ export function mountAgentsPanel(column) {
                 title: model.savedCount ? t`No Results` : t`No Agents`, compact: true,
                 actions: model.savedCount ? [] : [
                     { label: t`New Agent`, primary: true, onActivate: () => run(() => adapter.openEditor()) },
-                    { label: t`New Agent from Template…`, onActivate: () => openTemplates(false) },
+                    { label: t`New Agent From Template…`, onActivate: () => openTemplates(false) },
                 ],
             }).element;
             empty.dataset.emptyState = emptyState;

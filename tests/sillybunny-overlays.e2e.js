@@ -625,7 +625,7 @@ for (const width of [1440, 390]) {
 
             const frame = page.locator('.sb-dialog-host[data-tier="dialog"]:has(.sb-bulk-tag-dialog)');
             await expect(frame).toBeVisible();
-            await expect(frame.locator('#bulk_tag_popup')).toContainText('Modify tags of 1 characters');
+            await expect(frame.locator('#bulk_tag_popup')).toContainText('Modify Tags of 1 characters');
             await expect(frame.locator('#bulkTagInput')).toBeVisible();
             await expect(frame.locator('#bulkTagList')).toBeVisible();
             await expect(frame.locator('#bulk_tag_popup_reset')).toBeVisible();

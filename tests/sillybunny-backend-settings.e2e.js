@@ -344,7 +344,7 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 expect(await editor.evaluate(panel => panel.querySelector('.sb-prompt-editor').getBoundingClientRect().top - panel.querySelector('.sb-backend-section-header').getBoundingClientRect().bottom)).toBeCloseTo(24, 0);
                 // A group with no rows has no heading, and no prompt is available here.
                 await expect(editor.locator('.sb-prompt-section:visible h3')).toHaveText(api === 'openai'
-                    ? ['Prompt order', 'Utility prompts'] : ['System prompt', 'Context', 'Instruct']);
+                    ? ['Prompt Order', 'Utility Prompts'] : ['System prompt', 'Context', 'Instruct']);
                 await expect(editor.locator('#completion_prompt_manager, #context_story_string')).toHaveCount(2);
                 await expect(editor.locator('#completion_prompt_manager')).toBeHidden();
                 await expect(editor.locator('#context_story_string')).toBeHidden();
@@ -901,8 +901,8 @@ test('Text Completions templates use the shared editor and guard backend and pre
 
     const editor = await openPanel(page, 'editor');
     await expect(editor.locator('.sb-prompt-section:visible h3')).toHaveText(['System prompt', 'Context', 'Instruct']);
-    await expect(editor.getByRole('button', { name: 'Add prompt', exact: true })).toBeHidden();
-    await expect(editor.getByRole('button', { name: 'Prompt list actions', exact: true })).toBeHidden();
+    await expect(editor.getByRole('button', { name: 'Add Prompt', exact: true })).toBeHidden();
+    await expect(editor.getByRole('button', { name: 'Prompt List Actions', exact: true })).toBeHidden();
     await expect(editor.locator('.sb-prompt-tc-system input[type="checkbox"], .sb-prompt-tc-instruct input[type="checkbox"]')).toHaveCount(0);
     for (const id of ['sb-editor-sysprompt', 'sb-editor-instruct', 'sb-editor-context']) {
         await expect(editor.locator(`#${id}`)).toBeHidden();
@@ -1295,7 +1295,7 @@ test('Extensions lists user-installed extensions after System Extensions, withou
         document.getElementById('extensions_settings').insertAdjacentHTML('beforeend', `<div class="qa-user-extension">${drawer('QA User Extension')}</div>`);
         document.getElementById('dice_container').insertAdjacentHTML('beforeend', drawer('QA Dice Slot'));
     });
-    const user = extensions.getByRole('group', { name: 'User-installed Extensions', exact: true });
+    const user = extensions.getByRole('group', { name: 'User-Installed Extensions', exact: true });
     await expect(user.locator('.ds-row-label')).toHaveText(['QA User Extension', 'QA Dice Slot']);
     await expect(user.locator('.ds-row-subtitle, [data-sb-copy-placeholder]')).toHaveCount(0);
     await expect(extensions.locator('.sb-subpage-list')).not.toContainText('lorum ipsum');

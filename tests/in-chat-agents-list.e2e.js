@@ -333,7 +333,7 @@ for (const width of [1440, 390]) {
         await menu(page, root, 'Filter Agents');
         await expect(page.getByRole('menuitem')).toHaveCount(0);
         await expect(page.getByRole('menuitemcheckbox')).toHaveCount(7);
-        await page.getByRole('menuitemcheckbox', { name: 'Only agents that are on', exact: true }).click();
+        await page.getByRole('menuitemcheckbox', { name: 'Only Agents That Are On', exact: true }).click();
         await expect(filter).toHaveAttribute('aria-pressed', 'true');
         await expect(trigger).toHaveAttribute('aria-pressed', 'true');
         await expect(root.locator('.sb-status-page').getByRole('heading')).toHaveText('No Results');
@@ -344,8 +344,8 @@ for (const width of [1440, 390]) {
         await expect(root.locator('.ica-agent-row')).toHaveCount(0);
         await trigger.click();
         await menu(page, root, 'Filter Agents');
-        await expect(page.getByRole('menuitemcheckbox', { name: 'Only agents that are on', exact: true })).toHaveAttribute('aria-checked', 'true');
-        await page.getByRole('menuitemcheckbox', { name: 'Only agents that are on', exact: true }).click();
+        await expect(page.getByRole('menuitemcheckbox', { name: 'Only Agents That Are On', exact: true })).toHaveAttribute('aria-checked', 'true');
+        await page.getByRole('menuitemcheckbox', { name: 'Only Agents That Are On', exact: true }).click();
         await expect(filter).toHaveAttribute('aria-pressed', 'false');
         await expect(trigger).toHaveAttribute('aria-pressed', 'false');
         expect(await trigger.evaluate(node => getComputedStyle(node).backgroundColor)).not.toBe(activeFill);
@@ -388,8 +388,8 @@ for (const width of [1440, 390]) {
     test(`${width}px template pickers group and search inline/companion templates; empty status actions remain reachable`, async ({ page, baseURL }) => {
         const { root, saves } = await openAgents(page, baseURL, width);
         for (const { companion, label } of [
-            { companion: false, label: 'New Agent from Template…' },
-            { companion: true, label: 'New Companion from Template…' },
+            { companion: false, label: 'New Agent From Template…' },
+            { companion: true, label: 'New Companion From Template…' },
         ]) {
             await menu(page, root, 'Add Agent');
             await page.getByRole('menuitem', { name: label, exact: true }).click();
@@ -421,15 +421,15 @@ for (const width of [1440, 390]) {
         const status = root.locator('.sb-status-page');
         await expect(status.getByRole('heading')).toHaveText('No Agents');
         await expect(status.locator('.sb-status-page__description')).toHaveCount(0);
-        const secondary = status.getByRole('button', { name: 'New Agent from Template…', exact: true });
+        const secondary = status.getByRole('button', { name: 'New Agent From Template…', exact: true });
         await expect(secondary).toHaveCSS('border-radius', '9px');
         await expect(secondary).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
         expect(await secondary.evaluate(button => getComputedStyle(button).border)).toMatch(/^0px none/);
         await status.getByRole('button', { name: 'New Agent', exact: true }).click();
         await expect(root.locator('.ica-agent-detail')).toBeVisible();
         await back(root);
-        await status.getByRole('button', { name: 'New Agent from Template…', exact: true }).click();
-        await expect(page.getByRole('dialog', { name: 'New Agent from Template', exact: true })).toBeVisible();
+        await status.getByRole('button', { name: 'New Agent From Template…', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'New Agent From Template', exact: true })).toBeVisible();
         await page.keyboard.press('Escape');
         expect(saves()).toHaveLength(0);
     });
@@ -522,8 +522,8 @@ for (const width of [1440, 390]) {
         const saved = root.locator(`[data-sb-list-key="agent:${id}"]`);
         await expect(saved).toHaveAttribute('data-saved', 'true');
         await menu(page, root, 'Add Agent');
-        await page.getByRole('menuitem', { name: 'New Agent from Template…', exact: true }).click();
-        const picker = page.getByRole('dialog', { name: 'New Agent from Template', exact: true });
+        await page.getByRole('menuitem', { name: 'New Agent From Template…', exact: true }).click();
+        const picker = page.getByRole('dialog', { name: 'New Agent From Template', exact: true });
         await picker.getByRole('combobox').fill(name);
         const option = picker.getByRole('option').filter({ has: page.getByText(name, { exact: true }) });
         await expect(option.locator('.sb-picker__subtitle')).toHaveText(/^Added(?: · |$)/);

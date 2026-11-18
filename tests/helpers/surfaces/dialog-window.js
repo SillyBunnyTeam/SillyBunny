@@ -439,7 +439,7 @@ export const surfaces = [
     }),
     windowEntry({
         id: 'prompt-inspector',
-        title: 'Prompt Inspector (the prompt as editable text, with Save changes, Discard changes and Cancel generation)',
+        title: 'Prompt Inspector (the prompt as editable text, with Save Changes, Discard Changes and Cancel Generation)',
         ready: [within(WINDOW_FRAME, '#inspectPrompt'), within(WINDOW_FRAME, '.popup-button-custom')],
         owner: 'C',
         upstreamMarkup: false,
@@ -474,8 +474,8 @@ export const surfaces = [
             // The loader adds the stylesheet of the manifest when it activates an extension; calling init() alone does not.
             await page.addStyleTag({ url: '/scripts/extensions/sillybunny-debugger/style.css' });
             await page.evaluate(async () => (await import('/scripts/extensions/sillybunny-debugger/index.js')).init());
-            await page.waitForFunction(() => [...document.querySelectorAll('[data-extension-name="SillyBunny-Debugger"] .ds-button-row')].some(button => button.textContent.trim() === 'Diagnostic report'));
-            await page.evaluate(() => [...document.querySelectorAll('[data-extension-name="SillyBunny-Debugger"] .ds-button-row')].find(button => button.textContent.trim() === 'Diagnostic report').click());
+            await page.waitForFunction(() => [...document.querySelectorAll('[data-extension-name="SillyBunny-Debugger"] .ds-button-row')].some(button => button.textContent.trim() === 'Diagnostic Report'));
+            await page.evaluate(() => [...document.querySelectorAll('[data-extension-name="SillyBunny-Debugger"] .ds-button-row')].find(button => button.textContent.trim() === 'Diagnostic Report').click());
             await settleFrame(page, WINDOW_FRAME);
             await page.locator(within(WINDOW_FRAME, '.sbdbg-report-text')).first().waitFor({ state: 'visible' });
         },
@@ -568,7 +568,7 @@ export const surfaces = [
     windowEntry({
         id: 'mass-delete-chats',
         upstreamMarkup: false,
-        title: 'Mass delete chats (list of chat files with checks; a Dialog page over the chat actions on a narrow window)',
+        title: 'Mass Delete Chats (list of chat files with checks; a Dialog page over the chat actions on a narrow window)',
         root: 'dialog.sb-dialog-host:not([closing]) section.sb-dialog.sb-chat-mass-delete, dialog.sb-dialog-host:not([closing]) .sb-dialog__page.sb-chat-mass-delete',
         ready: ['dialog.sb-dialog-host:not([closing]) .sb-chat-delete-row', 'dialog.sb-dialog-host:not([closing]) .sb-chat-delete-presets'],
         // The list holds every chat of the open character: those of `chat`, `chat-long`, `chat-very-long` and the three of `archived-chats`.
@@ -581,7 +581,7 @@ export const surfaces = [
                 await page.locator('.sb-bottom-chat-chip').click();
             }
             const actions = page.locator(paged ? '#sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions' : '#sb-bottom-chat-bar .sb-bottom-chat-management-actions');
-            await actions.getByRole('button', { name: 'Mass delete chats', exact: true }).click();
+            await actions.getByRole('button', { name: 'Mass Delete Chats', exact: true }).click();
             await page.locator('dialog.sb-dialog-host:not([closing]) .sb-chat-delete-row').first().waitFor({ state: 'visible' });
             // The count of chats older than the age depends on the date of the run. The seeded chats are from the first days of
             // January 2026, so with the shortest age every one of them counts, on any later day.

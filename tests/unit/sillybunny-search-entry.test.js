@@ -35,7 +35,7 @@ function press(target, key, init = {}) {
 
 describe('createSearchEntry structure', () => {
     test('builds a search input with a decorative icon, then the input, then the clear button', () => {
-        const entry = make({ id: 'find', label: 'Search prompts', placeholder: 'Search...' });
+        const entry = make({ id: 'find', label: 'Search Prompts', placeholder: 'Search...' });
         expect(entry.input.type).toBe('search');
         expect(entry.input.id).toBe('find');
         expect(entry.input.placeholder).toBe('Search...');

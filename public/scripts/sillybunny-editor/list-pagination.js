@@ -62,7 +62,7 @@ export function createListPagination({
     const following = createButton('right', t`Next page`);
     const select = document.createElement('select');
     select.className = 'sb-list-pagination__size';
-    select.setAttribute('aria-label', t`Items per page`);
+    select.setAttribute('aria-label', t`Items per Page`);
     for (const size of sizes) {
         const option = document.createElement('option');
         option.value = String(size);

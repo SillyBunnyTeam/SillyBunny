@@ -115,7 +115,7 @@ export const editorCases = [
 ];
 
 export async function chooseAgentTemplate(page, root, { name = null, companion = false } = {}) {
-    const title = companion ? 'New Companion from Template' : 'New Agent from Template';
+    const title = companion ? 'New Companion From Template' : 'New Agent From Template';
     await root.getByRole('button', { name: 'Add Agent', exact: true }).click();
     await expectAgentMenuIcons(page);
     await page.getByRole('menuitem', { name: `${title}…`, exact: true }).click();

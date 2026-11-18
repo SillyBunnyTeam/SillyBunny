@@ -1576,7 +1576,7 @@
       "form": null,
       "providerBlock": null,
       "gates": [],
-      "label": "Manage folders"
+      "label": "Manage Folders"
     },
     "#update_connection_profile": {
       "id": "update_connection_profile",
@@ -1649,7 +1649,7 @@
       "form": null,
       "providerBlock": null,
       "gates": [],
-      "label": "Delete all connection profiles"
+      "label": "Delete All Connection Profiles"
     },
     "#delete_connection_profile": {
       "id": "delete_connection_profile",

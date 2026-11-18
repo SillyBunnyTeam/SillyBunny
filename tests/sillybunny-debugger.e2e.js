@@ -106,7 +106,7 @@ test('provides a keyboard-operable 44px entry button', async ({ page }) => {
     });
     const entry = page.locator('.eruda-entry-btn');
 
-    await expect(entry).toHaveRole('button', { name: 'Open debugger' });
+    await expect(entry).toHaveRole('button', { name: 'Open Debugger' });
     await expect(entry).toHaveCSS('width', '44px');
     await expect(entry).toHaveCSS('height', '44px');
     await expect(entry).toHaveCSS('transition-property', 'none');

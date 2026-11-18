@@ -218,7 +218,7 @@ function promptEditorDriver(page) {
     const row = identifier => page.locator(`${ROW_SELECTOR}[data-prompt-id="${identifier}"]`);
     const editor = page.locator('.sb-prompt-detail');
     const listAction = async label => {
-        await page.getByRole('button', { name: 'Prompt list actions', exact: true }).click();
+        await page.getByRole('button', { name: 'Prompt List Actions', exact: true }).click();
         await page.getByRole('menuitem', { name: label, exact: true }).click();
     };
     const editorAction = async label => {
@@ -268,7 +268,7 @@ function promptEditorDriver(page) {
             await expect(menu).toBeVisible();
             const result = {
                 edit: await menu.getByRole('menuitem', { name: 'Edit', exact: true }).count() > 0,
-                remove: await menu.getByRole('menuitem', { name: 'Remove from list', exact: true }).count() > 0,
+                remove: await menu.getByRole('menuitem', { name: 'Remove From List', exact: true }).count() > 0,
                 toggle: await target.getByRole('switch').isEnabled(),
             };
             await menu.getByRole('menuitem').first().focus();
@@ -303,10 +303,10 @@ function promptEditorDriver(page) {
             if (fields.depth !== undefined) await editor.getByRole('spinbutton', { name: 'Depth', exact: true }).fill(String(fields.depth));
             if (fields.order !== undefined) await editor.getByRole('spinbutton', { name: 'Order', exact: true }).fill(String(fields.order));
             if (fields.content !== undefined) await page.locator(`${FORM}_prompt`).fill(fields.content);
-            if (fields.forbidOverrides !== undefined) await editor.getByRole('switch', { name: 'Forbid overrides', exact: true }).setChecked(fields.forbidOverrides);
+            if (fields.forbidOverrides !== undefined) await editor.getByRole('switch', { name: 'Forbid Overrides', exact: true }).setChecked(fields.forbidOverrides);
             if (fields.triggers !== undefined) {
                 await editor.getByRole('button', { name: /^Triggers:/ }).click();
-                const popover = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
+                const popover = page.getByRole('dialog', { name: 'Generation Triggers', exact: true });
                 for (const value of ['normal', 'continue', 'impersonate', 'swipe', 'regenerate', 'quiet']) {
                     await popover.getByRole('checkbox', { name: value[0].toUpperCase() + value.slice(1), exact: true }).setChecked(fields.triggers.includes(value));
                 }
@@ -341,7 +341,7 @@ function promptEditorDriver(page) {
         },
 
         async resetToDefault() {
-            await editorAction('Reset to default');
+            await editorAction('Reset to Default');
         },
 
         async rename(identifier, name) {
@@ -355,7 +355,7 @@ function promptEditorDriver(page) {
         },
 
         async createPrompt(fields) {
-            await page.getByRole('button', { name: 'Add prompt', exact: true }).click();
+            await page.getByRole('button', { name: 'Add Prompt', exact: true }).click();
             await page.getByRole('menuitem', { name: 'New prompt', exact: true }).click();
             await expect(page.locator(`${FORM}_name`)).toBeVisible();
             await driver.fill(fields);
@@ -370,7 +370,7 @@ function promptEditorDriver(page) {
         async remove(identifier) {
             const target = row(identifier);
             await target.locator('.sb-prompt-row-menu').click();
-            await page.getByRole('menuitem', { name: 'Remove from list', exact: true }).click();
+            await page.getByRole('menuitem', { name: 'Remove From List', exact: true }).click();
         },
 
         async deletePrompt(name) {
@@ -407,7 +407,7 @@ function promptEditorDriver(page) {
 
         async exportList() {
             const downloadPromise = page.waitForEvent('download');
-            await listAction('Export prompt list');
+            await listAction('Export Prompt List');
             const download = await downloadPromise;
             const stream = await download.createReadStream();
             const chunks = [];
@@ -417,14 +417,14 @@ function promptEditorDriver(page) {
 
         async importList(json) {
             const chooserPromise = page.waitForEvent('filechooser');
-            await listAction('Import prompt list');
+            await listAction('Import Prompt List');
             await confirmPopup();
             const chooser = await chooserPromise;
             await chooser.setFiles({ name: 'prompts.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(json)) });
         },
 
         async resetOrder() {
-            await listAction('Reset order');
+            await listAction('Reset Order');
             await confirmPopup();
         },
     };
@@ -512,7 +512,7 @@ test.describe('Prompt Manager characterization', () => {
         await expect(page.locator('#main_prompt_quick_edit_textarea')).toHaveValue('Edited main content');
         await ui.close();
         await ui.openEditor('main');
-        await expect(page.getByRole('switch', { name: 'Forbid overrides', exact: true })).toBeChecked();
+        await expect(page.getByRole('switch', { name: 'Forbid Overrides', exact: true })).toBeChecked();
     });
 
     test('expanded editor writes back to the draft and survives save and reopen', async ({ page }) => {
@@ -558,7 +558,7 @@ test.describe('Prompt Manager characterization', () => {
         await expect(editor.locator('.sb-prompt-token-footer')).toHaveCount(0);
         await expect(editor.locator('.sb-prompt-label-row > .editor_maximize')).toHaveCount(1);
         await editor.getByRole('button', { name: 'Prompt Actions', exact: true }).click();
-        await expect(page.getByRole('menuitem')).toHaveText(['Inspect', 'Send to agents', 'Remove from list', 'Delete']);
+        await expect(page.getByRole('menuitem')).toHaveText(['Inspect', 'Send to Agents', 'Remove From List', 'Delete']);
     });
 
     for (const { tone, theme } of SELECTION_TONES) {
@@ -677,8 +677,8 @@ test.describe('Prompt Manager characterization', () => {
         await expect(ui.row(order[0])).toBeFocused();
         await expect(page.locator('[aria-live="polite"]').filter({ hasText: /^Moved .+ to position 2 of \d+$/ })).toHaveCount(1);
 
-        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
-        await page.getByRole('searchbox', { name: 'Search prompts', exact: true }).fill('Fixture');
+        await page.getByRole('button', { name: 'Search Prompts', exact: true }).click();
+        await page.getByRole('searchbox', { name: 'Search Prompts', exact: true }).fill('Fixture');
         await ui.row('sbFixtureRelative').locator('.sb-prompt-row-menu').click();
         await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toBeVisible();
         await expect(page.getByRole('menuitem', { name: /^Move / })).toHaveCount(0);
@@ -780,8 +780,8 @@ test.describe('Prompt Manager characterization', () => {
         expect(orderFor(reordered, GLOBAL_ORDER_ID)).toEqual(orderFor(baseline, GLOBAL_ORDER_ID));
         expect(orderFor(reordered, GENERIC_ORDER_ID)).toEqual(orderFor(baseline, GENERIC_ORDER_ID));
         const downloadPromise = page.waitForEvent('download');
-        await page.getByRole('button', { name: 'Prompt list actions', exact: true }).click();
-        await page.getByRole('menuitem', { name: 'Export character prompts', exact: true }).click();
+        await page.getByRole('button', { name: 'Prompt List Actions', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Export Character Prompts', exact: true }).click();
         const download = await downloadPromise;
         const stream = await download.createReadStream();
         const chunks = [];
@@ -842,13 +842,13 @@ test.describe('Prompt Manager characterization', () => {
 
     test('Add from available clears search and scrolls only the list scroller', async ({ page }) => {
         await setup(page);
-        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
-        await page.getByRole('searchbox', { name: 'Search prompts', exact: true }).fill('Fixture Detached');
+        await page.getByRole('button', { name: 'Search Prompts', exact: true }).click();
+        await page.getByRole('searchbox', { name: 'Search Prompts', exact: true }).fill('Fixture Detached');
         const scroller = page.locator('[data-sb-panel="editor"] .sb-shell-panel-scroller');
         const before = await scroller.evaluate(node => node.scrollTop);
-        await page.getByRole('button', { name: 'Add prompt', exact: true }).click();
-        await page.getByRole('menuitem', { name: /^Add from available \(\d+\)$/ }).click();
-        await expect(page.getByRole('searchbox', { name: 'Search prompts', exact: true })).toHaveValue('');
+        await page.getByRole('button', { name: 'Add Prompt', exact: true }).click();
+        await page.getByRole('menuitem', { name: /^Add From Available \(\d+\)$/ }).click();
+        await expect(page.getByRole('searchbox', { name: 'Search Prompts', exact: true })).toHaveValue('');
         await expect.poll(() => scroller.evaluate(node => node.scrollTop)).toBe(before);
         const body = page.locator('.sb-prompt-list-body');
         await expect.poll(() => body.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
@@ -928,8 +928,8 @@ test.describe('Prompt Manager characterization', () => {
         await page.keyboard.press('Escape');
         await expect(page.locator('.sb-prompt-editor')).toHaveAttribute('data-open', 'false');
 
-        const searchButton = page.getByRole('button', { name: 'Search prompts', exact: true });
-        const search = page.getByRole('searchbox', { name: 'Search prompts', exact: true });
+        const searchButton = page.getByRole('button', { name: 'Search Prompts', exact: true });
+        const search = page.getByRole('searchbox', { name: 'Search Prompts', exact: true });
         await ui.row('main').focus();
         await page.keyboard.press('ControlOrMeta+f');
         await expect(search).toBeFocused();
@@ -962,8 +962,8 @@ test.describe('Prompt Manager characterization', () => {
             return node.scrollTop;
         });
         expect(saved).toBeGreaterThan(0);
-        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
-        const search = page.getByRole('searchbox', { name: 'Search prompts', exact: true });
+        await page.getByRole('button', { name: 'Search Prompts', exact: true }).click();
+        const search = page.getByRole('searchbox', { name: 'Search Prompts', exact: true });
         await search.fill('Fixture Relative');
         await expect.poll(() => body.evaluate(node => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
         await search.fill('');
@@ -989,7 +989,7 @@ test.describe('Prompt Manager characterization', () => {
         await expect(page.getByRole('spinbutton', { name: 'Depth', exact: true })).toBeVisible();
         await expect(page.getByRole('spinbutton', { name: 'Order', exact: true })).toBeVisible();
         await page.getByRole('button', { name: /^Triggers:/ }).click();
-        const triggers = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
+        const triggers = page.getByRole('dialog', { name: 'Generation Triggers', exact: true });
         // Six items make a pick-several list long enough for Select All, which comes first.
         await expect(triggers.getByRole('checkbox')).toHaveCount(7);
         await expect(triggers.getByRole('checkbox').first()).toHaveAccessibleName('Select All');
@@ -1037,15 +1037,15 @@ test.describe('Prompt Manager characterization', () => {
 
     test('the owned editor ignores the legacy drag lock and disables reorder only for search', async ({ page }) => {
         const { store, ui } = await setup(page, { dragLocked: true });
-        await page.getByRole('button', { name: 'Prompt list actions', exact: true }).click();
+        await page.getByRole('button', { name: 'Prompt List Actions', exact: true }).click();
         await expect(page.getByRole('menuitem', { name: /^(Lock|Unlock) prompt order$/ })).toHaveCount(0);
         await page.keyboard.press('Escape');
         await expect(ui.row('sbFixtureRelative').locator('.sb-prompt-grip')).toHaveAttribute('aria-disabled', 'false');
         await ui.moveBefore('sbFixtureRelative', 'main');
         await waitForSavedOai(store, oai => orderFor(oai, GLOBAL_ORDER_ID)[0]?.identifier === 'sbFixtureRelative');
         expect(store.settingsSaves.at(-1).power_user.prompt_manager_drag_locked).toBe(true);
-        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
-        const search = page.getByRole('searchbox', { name: 'Search prompts', exact: true });
+        await page.getByRole('button', { name: 'Search Prompts', exact: true }).click();
+        const search = page.getByRole('searchbox', { name: 'Search Prompts', exact: true });
         await search.fill('Fixture');
         await expect(ui.row('sbFixtureRelative').locator('.sb-prompt-grip')).toHaveAttribute('aria-disabled', 'true');
         const before = await ui.visibleOrder();
@@ -1065,14 +1065,14 @@ test.describe('Prompt Manager characterization', () => {
             await page.getByRole('menuitemradio', { name: label, exact: true }).click();
         };
         const sortable = () => page.evaluate(() => window.$('.sb-prompt-order .sb-prompt-box').sortable('option', 'disabled'));
-        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
+        await page.getByRole('button', { name: 'Search Prompts', exact: true }).click();
         await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveAttribute('aria-pressed', 'false');
         expect(await sortable()).toBe(false);
 
         const orderHeading = page.locator('.sb-prompt-order > h3');
-        await expect(orderHeading).toHaveText('Prompt order');
+        await expect(orderHeading).toHaveText('Prompt Order');
         await chooseSort('Title A-Z');
-        await expect(orderHeading).toHaveText('Main prompts');
+        await expect(orderHeading).toHaveText('Main Prompts');
         const byName = (left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
         const shown = await names();
         expect(shown).toEqual([...shown].sort(byName));
@@ -1080,7 +1080,7 @@ test.describe('Prompt Manager characterization', () => {
         expect([...await ui.visibleOrder()].sort()).toEqual([...storedOrder].sort());
         expect(await page.locator(ROW_SELECTOR).last().evaluate(row => row.dataset.promptId)).toBe('sillybunnyRuntimeAgents');
         await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveAttribute('aria-pressed', 'true');
-        await expect(page.getByRole('button', { name: 'Search prompts', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.getByRole('button', { name: 'Search Prompts', exact: true })).toHaveAttribute('aria-pressed', 'true');
         await expect(ui.row('sbFixtureRelative').locator('.sb-prompt-grip')).toHaveAttribute('aria-disabled', 'true');
         expect(await sortable()).toBe(true);
         await ui.row('sbFixtureRelative').locator('.sb-prompt-row-menu').click();
@@ -1098,7 +1098,7 @@ test.describe('Prompt Manager characterization', () => {
 
         // The press on the row menu closed the empty search bar, and the sort button is in it.
         await expect(page.locator('.sb-prompt-search-field')).toBeHidden();
-        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
+        await page.getByRole('button', { name: 'Search Prompts', exact: true }).click();
         await chooseSort('Tokens ↘');
         await expect.poll(async () => {
             const counts = await page.locator(`${ROW_SELECTOR} .sb-prompt-token`).allTextContents();
@@ -1106,8 +1106,8 @@ test.describe('Prompt Manager characterization', () => {
             return numeric.length > 0 && numeric.every((count, index) => index === 0 || numeric[index - 1] >= count);
         }).toBe(true);
 
-        await chooseSort('Prompt order');
-        await expect(orderHeading).toHaveText('Prompt order');
+        await chooseSort('Prompt Order');
+        await expect(orderHeading).toHaveText('Prompt Order');
         expect(await ui.visibleOrder()).toEqual(storedOrder);
         await expect(page.getByRole('button', { name: 'Sort', exact: true })).toHaveAttribute('aria-pressed', 'false');
         await expect(ui.row('sbFixtureRelative').locator('.sb-prompt-grip')).toHaveAttribute('aria-disabled', 'false');
@@ -1118,9 +1118,9 @@ test.describe('Prompt Manager characterization', () => {
 
     test('the search bar closes on a press outside it, also after the sort menu was used', async ({ page }) => {
         await setup(page);
-        const toggle = page.getByRole('button', { name: 'Search prompts', exact: true });
+        const toggle = page.getByRole('button', { name: 'Search Prompts', exact: true });
         const field = page.locator('.sb-prompt-search-field');
-        const input = page.getByRole('searchbox', { name: 'Search prompts', exact: true });
+        const input = page.getByRole('searchbox', { name: 'Search Prompts', exact: true });
         await expectSortKeepsSearchDismissable({
             page,
             reveal: () => toggle.click(),
@@ -1129,7 +1129,7 @@ test.describe('Prompt Manager characterization', () => {
             sort: field.locator('.sb-prompt-sort-button'),
             chooseSort: () => page.getByRole('menuitemradio', { name: 'Title Z-A', exact: true }).click(),
             outside: page.locator('.sb-prompt-list-header'),
-            focusable: page.getByRole('button', { name: 'Prompt list actions', exact: true }),
+            focusable: page.getByRole('button', { name: 'Prompt List Actions', exact: true }),
         });
         await expect(field).toBeHidden();
     });
@@ -1159,12 +1159,12 @@ test.describe('Prompt Manager characterization', () => {
 
     test('a search that matches nothing shows the No Results status page; one match leaves no empty group heading', async ({ page }) => {
         await setup(page);
-        await page.getByRole('button', { name: 'Search prompts', exact: true }).click();
-        const search = page.getByRole('searchbox', { name: 'Search prompts', exact: true });
+        await page.getByRole('button', { name: 'Search Prompts', exact: true }).click();
+        const search = page.getByRole('searchbox', { name: 'Search Prompts', exact: true });
         const body = page.locator('.sb-prompt-list-body');
         await search.fill('Fixture Relative');
         await expect(body.locator('.sb-prompt-row')).toHaveCount(1);
-        await expect(body.locator('.sb-prompt-section:not([hidden]) > h3')).toHaveText(['Prompt order']);
+        await expect(body.locator('.sb-prompt-section:not([hidden]) > h3')).toHaveText(['Prompt Order']);
         await expect(page.locator('.sb-prompt-list-header .sb-list-header__subtitle')).toHaveText(/^1 of \d+ results$/);
         await search.fill('zz-no-such-prompt');
         await expect(body.locator('.sb-prompt-section:not([hidden])')).toHaveCount(0);
@@ -1174,13 +1174,13 @@ test.describe('Prompt Manager characterization', () => {
         await expect(page.locator('.sb-prompt-list-header .sb-list-header__subtitle')).toHaveText('No results');
         await search.fill('');
         await expect(status).toHaveCount(0);
-        await expect(body.locator('.sb-prompt-section:not([hidden]) > h3').first()).toHaveText('Prompt order');
+        await expect(body.locator('.sb-prompt-section:not([hidden]) > h3').first()).toHaveText('Prompt Order');
     });
 
     test('selection mode turns prompts off and on and removes them from the list', async ({ page }) => {
         const { store, ui } = await setup(page);
         await ui.row('sbFixtureRelative').locator('.sb-prompt-switch-target input').check();
-        await page.getByRole('button', { name: 'Prompt list actions', exact: true }).click();
+        await page.getByRole('button', { name: 'Prompt List Actions', exact: true }).click();
         await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
         const editor = page.locator('.sb-prompt-editor');
         await expect(editor).toHaveAttribute('data-selection-mode', 'true');
@@ -1194,7 +1194,7 @@ test.describe('Prompt Manager characterization', () => {
         await expect.poll(() => ui.row('sbFixtureRelative').locator('input.sb-switch').isChecked()).toBe(false);
         await page.getByRole('button', { name: 'Turn On', exact: true }).click();
         await expect.poll(() => ui.row('sbFixtureRelative').locator('input.sb-switch').isChecked()).toBe(true);
-        await page.getByRole('button', { name: 'Remove from list', exact: true }).click();
+        await page.getByRole('button', { name: 'Remove From List', exact: true }).click();
         await waitForSavedOai(store, oai => !orderFor(oai, GLOBAL_ORDER_ID).some(entry => entry.identifier === 'sbFixtureRelative'));
         await expect(ui.row('sbFixtureRelative')).toHaveCount(0);
         await page.keyboard.press('Escape');
@@ -1212,7 +1212,7 @@ test.describe('Prompt Manager characterization', () => {
         await page.keyboard.press('Escape');
         await expect(menu).toHaveCount(0);
         await editor.getByRole('button', { name: /^Triggers:/ }).click();
-        const popover = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
+        const popover = page.getByRole('dialog', { name: 'Generation Triggers', exact: true });
         // The six triggers and the Select All row above them.
         await expect(popover.getByRole('checkbox')).toHaveCount(7);
         await expect(popover.getByRole('button')).toHaveCount(0);
@@ -1275,7 +1275,7 @@ test.describe('Prompt editor mobile interaction', () => {
         await sheet.getByRole('button', { name: /^Role:/ }).click();
         await page.getByRole('menuitemradio', { name: 'Assistant', exact: true }).click();
         await sheet.getByRole('spinbutton', { name: 'Depth', exact: true }).fill('6');
-        await sheet.getByRole('button', { name: 'Close prompt properties', exact: true }).click();
+        await sheet.getByRole('button', { name: 'Close Prompt Properties', exact: true }).click();
         await expect(sheet).toBeHidden();
         await ui.save();
         const saved = await waitForSavedOai(store, oai => promptFor(oai, 'sbFixtureInChat')?.injection_depth === 6);
@@ -1304,7 +1304,7 @@ test.describe('Prompt editor mobile interaction', () => {
         await ui.openEditor('main');
         await page.locator('.sb-prompt-detail').getByRole('button', { name: /^Prompt properties:/ }).click();
         const sheet = page.getByRole('dialog', { name: 'Prompt properties', exact: true });
-        await expect(sheet.getByRole('switch', { name: 'Forbid overrides', exact: true })).toBeVisible();
+        await expect(sheet.getByRole('switch', { name: 'Forbid Overrides', exact: true })).toBeVisible();
         const geometry = await sheet.evaluate(node => {
             const frame = node.getBoundingClientRect();
             const read = element => {
@@ -1328,7 +1328,7 @@ test.describe('Prompt editor mobile interaction', () => {
         for (const item of await menu.getByRole('menuitemradio').all()) expect((await item.boundingBox()).height).toBeGreaterThanOrEqual(44);
         await page.keyboard.press('Escape');
         await sheet.getByRole('button', { name: /^Triggers:/ }).click();
-        const triggers = page.getByRole('dialog', { name: 'Generation triggers', exact: true });
+        const triggers = page.getByRole('dialog', { name: 'Generation Triggers', exact: true });
         await expect(triggers).toBeVisible();
         for (const row of await triggers.locator('label').all()) expect((await row.boundingBox()).height).toBeGreaterThanOrEqual(44);
     });

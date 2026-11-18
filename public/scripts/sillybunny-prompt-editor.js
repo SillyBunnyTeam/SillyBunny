@@ -149,9 +149,9 @@ export function initializePromptEditor(column) {
         title: t`Prompts`,
         className: 'sb-prompt-list-header',
         actions: [
-            { id: 'search', label: t`Search prompts`, icon: 'magnifying-glass', toggle: true, onActivate: () => searchControl.toggle() },
-            { id: 'add', label: t`Add prompt`, icon: 'plus', menu: true, onActivate: trigger => openAddMenu(trigger) },
-            { id: 'more', label: t`Prompt list actions`, icon: 'ellipsis-vertical', menu: true, onActivate: trigger => openListMenu(trigger) },
+            { id: 'search', label: t`Search Prompts`, icon: 'magnifying-glass', toggle: true, onActivate: () => searchControl.toggle() },
+            { id: 'add', label: t`Add Prompt`, icon: 'plus', menu: true, onActivate: trigger => openAddMenu(trigger) },
+            { id: 'more', label: t`Prompt List Actions`, icon: 'ellipsis-vertical', menu: true, onActivate: trigger => openListMenu(trigger) },
         ],
     });
     const searchButton = listHeader.button('search');
@@ -160,7 +160,7 @@ export function initializePromptEditor(column) {
     const searchEntry = createSearchEntry({
         clearLabel: t`Clear Entry`,
         variant: 'bar', className: 'sb-prompt-search-entry', inputClassName: 'sb-prompt-search',
-        placeholder: t`Search...`, label: t`Search prompts`, clearOnEscape: false,
+        placeholder: t`Search...`, label: t`Search Prompts`, clearOnEscape: false,
     });
     // The sort button ends the search bar, as in the other list editors, so the header keeps its three buttons.
     const sortLabel = t`Sort`;
@@ -470,7 +470,7 @@ export function initializePromptEditor(column) {
         const expectedScope = state.scope;
         const input = element('input', 'sb-prompt-rename');
         input.value = prompt.name;
-        input.setAttribute('aria-label', t`Prompt name`);
+        input.setAttribute('aria-label', t`Prompt Name`);
         name.replaceWith(input);
         input.focus();
         input.select();
@@ -503,8 +503,8 @@ export function initializePromptEditor(column) {
         menu(trigger, prompt.name, [
             [permission.edit && menuItem(t`Edit`, 'pen', () => openPrompt(prompt)), permission.rename && menuItem(t`Rename`, 'i-cursor', () => rename(prompt)), menuItem(t`Preview`, 'eye', () => openPrompt(prompt, 'preview'))],
             available ? [] : moveItems(id),
-            [!prompt.marker && menuItem(t`Send to agents`, 'robot', () => model.sendToAgents(id))],
-            [!available && permission.remove && menuItem(t`Remove from list`, 'minus', () => remove(id), true), permission.delete && menuItem(t`Delete`, 'trash', () => deletePrompt(id), true)],
+            [!prompt.marker && menuItem(t`Send to Agents`, 'robot', () => model.sendToAgents(id))],
+            [!available && permission.remove && menuItem(t`Remove From List`, 'minus', () => remove(id), true), permission.delete && menuItem(t`Delete`, 'trash', () => deletePrompt(id), true)],
         ]);
     }
 
@@ -583,7 +583,7 @@ export function initializePromptEditor(column) {
             grip.classList.add('sb-prompt-grip', 'ui-sortable-handle');
             grip.removeAttribute('aria-hidden');
             grip.setAttribute('role', 'button');
-            grip.setAttribute('aria-label', t`Drag to reorder ${nameText}`);
+            grip.setAttribute('aria-label', t`Drag to Reorder ${nameText}`);
             grip.setAttribute('aria-disabled', String(reorderLocked()));
             grip.title = grip.getAttribute('aria-label');
         } else if (grip) {
@@ -732,7 +732,7 @@ export function initializePromptEditor(column) {
         // The assembled Agents row is inspection-only and never enters persisted order data; it stays last in every sort.
         if (matches(state.runtime)) rows.push({ prompt: state.runtime });
         // Sorted, the group no longer shows the order the prompts are sent in, so it stops calling itself that.
-        const orderTitle = sortOrder === DEFAULT_SORT ? t`Prompt order` : t`Main prompts`;
+        const orderTitle = sortOrder === DEFAULT_SORT ? t`Prompt Order` : t`Main Prompts`;
         const order = group(orderTitle, 'sb-prompt-order');
         if (order.heading.textContent !== orderTitle) order.heading.textContent = orderTitle;
         renderRows(order, rows);
@@ -745,7 +745,7 @@ export function initializePromptEditor(column) {
         const availableRows = sortEntries(available.filter(matches).map(prompt => ({ prompt, available: true })), sortOrder);
         const utilityRows = utilities.filter(matches).map(prompt => ({ prompt, utility: true }));
         renderRows(group(t`Available`, 'sb-prompt-available'), availableRows);
-        renderRows(group(t`Utility prompts`), utilityRows);
+        renderRows(group(t`Utility Prompts`), utilityRows);
         const ordered = state.order.filter(entry => promptFor(entry.identifier)).length;
         syncSectionVisibility(false);
         finishList(rows.length + availableRows.length + utilityRows.length, ordered + 1 + available.length + utilities.length);
@@ -854,7 +854,7 @@ export function initializePromptEditor(column) {
                 if (!(await allowLeave())) return;
                 await openDraft(model.newDraft(), 'prompt', 'edit', true);
             }),
-            { ...menuItem(t`Add from available (${count})`, 'folder-open', () => {
+            { ...menuItem(t`Add From Available (${count})`, 'folder-open', () => {
                 searchControl.setQuery('');
                 const section = listBody.querySelector('.sb-prompt-available');
                 const top = listBody.scrollTop + section.getBoundingClientRect().top - listBody.getBoundingClientRect().top;
@@ -866,15 +866,15 @@ export function initializePromptEditor(column) {
 
     function openListMenu(trigger) {
         menu(trigger, t`Prompt list`, [
-            [menuItem(t`Import prompt list`, 'file-import', async () => { if (await allowLeave()) model.importList(); }), menuItem(t`Export prompt list`, 'file-export', () => model.exportList()), state.strategy === 'character' && state.character && menuItem(t`Export character prompts`, 'file-export', () => model.exportCharacter())],
-            [menuItem(t`Select`, 'list-check', () => selection.enter(null, trigger)), menuItem(t`Reset order`, 'rotate-left', async () => { if (await allowLeave()) model.resetOrder(); })],
+            [menuItem(t`Import Prompt List`, 'file-import', async () => { if (await allowLeave()) model.importList(); }), menuItem(t`Export Prompt List`, 'file-export', () => model.exportList()), state.strategy === 'character' && state.character && menuItem(t`Export Character Prompts`, 'file-export', () => model.exportCharacter())],
+            [menuItem(t`Select`, 'list-check', () => selection.enter(null, trigger)), menuItem(t`Reset Order`, 'rotate-left', async () => { if (await allowLeave()) model.resetOrder(); })],
         ]);
     }
 
     // A sort changes what the list shows, never the order the prompts are stored and sent in.
     function openSortMenu(trigger) {
         const current = readSortOrder();
-        const labels = [[DEFAULT_SORT, t`Prompt order`], ['name-asc', t`Title A-Z`], ['name-desc', t`Title Z-A`], ['tokens-asc', t`Tokens ↗`], ['tokens-desc', t`Tokens ↘`]];
+        const labels = [[DEFAULT_SORT, t`Prompt Order`], ['name-asc', t`Title A-Z`], ['name-desc', t`Title Z-A`], ['tokens-asc', t`Tokens ↗`], ['tokens-desc', t`Tokens ↘`]];
         openActionMenu({
             trigger,
             title: sortButton.getAttribute('aria-label'),
@@ -957,7 +957,7 @@ export function initializePromptEditor(column) {
         actions: [
             { id: 'on', label: t`Turn On`, icon: 'fa-solid fa-toggle-on', onActivate: () => void bulkAction('on') },
             { id: 'off', label: t`Turn Off`, icon: 'fa-solid fa-toggle-off', onActivate: () => void bulkAction('off') },
-            { id: 'remove', label: t`Remove from list`, icon: 'fa-solid fa-minus', onActivate: () => void bulkAction('remove') },
+            { id: 'remove', label: t`Remove From List`, icon: 'fa-solid fa-minus', onActivate: () => void bulkAction('remove') },
             { id: 'delete', label: t`Delete`, icon: 'fa-solid fa-trash', danger: true, onActivate: () => void bulkAction('delete') },
         ],
         onChange: syncSelectionActions,
@@ -1145,7 +1145,7 @@ export function initializePromptEditor(column) {
         const trigger = button(t`Triggers`, null, () => {
             const content = element('div', 'sb-prompt-triggers');
             content.setAttribute('role', 'group');
-            content.setAttribute('aria-label', t`Generation triggers`);
+            content.setAttribute('aria-label', t`Generation Triggers`);
             const rows = TRIGGERS.map(value => createCheckRow({
                 label: translate(capitalized(value)),
                 field: `trigger-${value}`,
@@ -1185,7 +1185,7 @@ export function initializePromptEditor(column) {
             content.append(selectAll.row, ...rows.map(row => row.row));
             openPopover({
                 trigger,
-                title: t`Generation triggers`,
+                title: t`Generation Triggers`,
                 content,
                 initialFocus: () => content.querySelector('input'),
                 onClose: () => releaseRowIds(content),
@@ -1223,7 +1223,7 @@ export function initializePromptEditor(column) {
             }
         }
         props.append(property(t`Triggers`, triggersControl()));
-        if (['main', 'jailbreak'].includes(draft.identifier)) props.append(property(t`Forbid overrides`, switchControl(t`Forbid overrides`, draft.forbid_overrides, value => {
+        if (['main', 'jailbreak'].includes(draft.identifier)) props.append(property(t`Forbid Overrides`, switchControl(t`Forbid Overrides`, draft.forbid_overrides, value => {
             draft.forbid_overrides = value;
             markDirty();
         })));
@@ -1325,8 +1325,8 @@ export function initializePromptEditor(column) {
         dialog.header.querySelector('.sb-dialog__title')?.replaceWith(heading);
         heading.classList.add('sb-dialog__title');
         const closeButton = dialog.header.querySelector('.sb-dialog__close');
-        closeButton?.setAttribute('aria-label', t`Close prompt properties`);
-        closeButton?.setAttribute('title', t`Close prompt properties`);
+        closeButton?.setAttribute('aria-label', t`Close Prompt Properties`);
+        closeButton?.setAttribute('title', t`Close Prompt Properties`);
         dialog.root.setAttribute('aria-labelledby', heading.id);
         propertyDialog = dialog;
         dialog.closed.then(() => {
@@ -1361,14 +1361,14 @@ export function initializePromptEditor(column) {
         return [
             [
                 persisted && menuItem(t`Inspect`, 'list-check', () => setMode('inspect')),
-                persisted && !draft.marker && menuItem(t`Send to agents`, 'robot', () => model.sendToAgents(draft.identifier)),
+                persisted && !draft.marker && menuItem(t`Send to Agents`, 'robot', () => model.sendToAgents(draft.identifier)),
             ],
             [
                 kind === 'utility' && model.canRestoreUtility(draft.identifier) && menuItem(t`Restore default`, 'rotate-left', () => restoreUtility(draft.identifier)),
-                permission.reset && menuItem(t`Reset to default`, 'rotate-left', () => { draft = model.resetDraft(draft); renderEditor(); markDirty(); }),
+                permission.reset && menuItem(t`Reset to Default`, 'rotate-left', () => { draft = model.resetDraft(draft); renderEditor(); markDirty(); }),
             ],
             [
-                permission.remove && state.order.some(entry => entry.identifier === draft.identifier) && menuItem(t`Remove from list`, 'minus', () => remove(draft.identifier)),
+                permission.remove && state.order.some(entry => entry.identifier === draft.identifier) && menuItem(t`Remove From List`, 'minus', () => remove(draft.identifier)),
                 persisted && permission.delete && menuItem(t`Delete`, 'trash', () => deletePrompt(draft.identifier), true),
             ],
         ].map(items => ({ items: items.filter(Boolean) })).filter(section => section.items.length);
@@ -1412,7 +1412,7 @@ export function initializePromptEditor(column) {
         if (kind === 'prompt' && model.permissions(draft).rename) {
             title = element('input', 'sb-prompt-title');
             title.value = draft.name;
-            title.setAttribute('aria-label', t`Prompt name`);
+            title.setAttribute('aria-label', t`Prompt Name`);
             title.addEventListener('input', () => { draft.name = title.value; markDirty(); });
         } else {
             // A name that cannot change is the title of the page, not a locked field. It takes the focus when the page opens.
@@ -1508,7 +1508,7 @@ export function initializePromptEditor(column) {
             textarea.value = draft.marker ? run(() => model.preview(draft)) || '' : draft.content ?? '';
             textarea.readOnly = Boolean(draft.marker);
             if (draft.marker) textarea.placeholder = state.sources[draft.identifier] ?? t`Generation time`;
-            textarea.setAttribute('aria-label', t`Prompt content`);
+            textarea.setAttribute('aria-label', t`Prompt Content`);
             textarea.spellcheck = false;
             // The legacy expanded editor writes back with jQuery .trigger('input').
             $(textarea).on('input', () => { draft.content = textarea.value; markDirty(); });

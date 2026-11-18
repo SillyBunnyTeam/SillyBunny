@@ -135,7 +135,7 @@ describe('Text Completion template list', () => {
     test('rows are the shared entity rows with a count, one menu and no reorder or switch controls', async () => {
         const column = await mountEditor();
         expect(column.querySelector('.sb-list-header__title').textContent).toBe('Prompt templates');
-        expect([...column.querySelectorAll('.sb-prompt-list-header button')].filter(node => !node.hidden).map(node => node.getAttribute('aria-label'))).toEqual(['Search prompts']);
+        expect([...column.querySelectorAll('.sb-prompt-list-header button')].filter(node => !node.hidden).map(node => node.getAttribute('aria-label'))).toEqual(['Search Prompts']);
         const row = column.querySelector('[data-prompt-id="tc-user"]');
         expect(row.classList.contains('ds-entity-row')).toBe(true);
         expect(row.classList.contains('sb-prompt-row--template')).toBe(true);
@@ -154,7 +154,7 @@ describe('Text Completion template list', () => {
         accountItems.set('PromptList_SortOrder', 'name-desc');
         const column = await mountEditor();
         expect(column.querySelector('.sb-prompt-search-field .sb-prompt-sort-button').hidden).toBe(true);
-        expect(column.querySelector('button[aria-label="Search prompts"]').getAttribute('aria-pressed')).toBe('false');
+        expect(column.querySelector('button[aria-label="Search Prompts"]').getAttribute('aria-pressed')).toBe('false');
         expect([...column.querySelectorAll('.sb-prompt-tc-instruct .sb-prompt-row')].map(row => row.dataset.promptId)).toEqual(['tc-user', 'tc-system']);
     });
 
@@ -167,7 +167,7 @@ describe('Text Completion template list', () => {
 
     test('a search hides the groups with no match, counts the results and shows the shared No Results page when nothing matches', async () => {
         const column = await mountEditor();
-        column.querySelector('button[aria-label="Search prompts"]').click();
+        column.querySelector('button[aria-label="Search Prompts"]').click();
         const input = column.querySelector('.sb-prompt-search');
         const type = value => {
             input.value = value;

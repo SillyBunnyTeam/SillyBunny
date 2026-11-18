@@ -91,7 +91,7 @@ test('q56 dropdown sweep toggles each trigger closed on its second pointer click
         if (await editor.discard.isEnabled()) await editor.discard.click();
         await editor.back();
     }
-    for (const label of ['New Agent from Template…', 'New Companion from Template…']) {
+    for (const label of ['New Agent From Template…', 'New Companion From Template…']) {
         const trigger = editor.root.getByRole('button', { name: 'Add Agent', exact: true });
         await trigger.click();
         await page.getByRole('menuitem', { name: label, exact: true }).click();
@@ -469,8 +469,8 @@ test('round2 every ordered header popup pair replaces the previous surface', asy
         },
         category: () => activate(editor.detail.getByRole('button', { name: /^Category:/ })),
         picker: async () => {
-            if (!await page.getByRole('menuitem', { name: 'New Agent from Template…', exact: true }).isVisible()) await open.add();
-            await page.getByRole('menuitem', { name: 'New Agent from Template…', exact: true }).click();
+            if (!await page.getByRole('menuitem', { name: 'New Agent From Template…', exact: true }).isVisible()) await open.add();
+            await page.getByRole('menuitem', { name: 'New Agent From Template…', exact: true }).click();
             return page.locator('.sb-action-popover:visible').count();
         },
     };
@@ -623,7 +623,7 @@ test('390px phone property sheet matches Prompt pills, controls, title and summa
     await expect(promptSummary).toHaveAccessibleName(`Prompt properties: ${(await promptSummary.textContent()).replace(/\s*›\s*$/, '')}`);
     await promptSummary.click();
     const reference = page.locator('.sb-dialog.sb-prompt-properties-dialog');
-    const forbid = reference.getByRole('switch', { name: 'Forbid overrides', exact: true });
+    const forbid = reference.getByRole('switch', { name: 'Forbid Overrides', exact: true });
     await forbid.uncheck();
     const promptText = await promptSummary.textContent();
     const promptStyles = await sample(reference, 'Position');
@@ -655,7 +655,7 @@ test('390px phone property sheet matches Prompt pills, controls, title and summa
     expect(agent.thumb).toEqual(promptStyles.thumb);
     expect(checkedAgent.switch).toEqual(checkedPrompt.switch);
     expect(checkedAgent.thumb).toEqual(checkedPrompt.thumb);
-    expect(agentLabels).toEqual({ title: 'Agent properties', close: 'Close agent properties' });
+    expect(agentLabels).toEqual({ title: 'Agent properties', close: 'Close Agent Properties' });
 });
 
 for (const width of [1440, 768, 390, 360]) {
@@ -1547,7 +1547,7 @@ for (const width of [1440, 390]) {
             await page.locator('.sb-prompt-row[data-prompt-id="main"] .sb-prompt-row-name').click();
             const prompt = page.locator('.sb-prompt-detail');
             await expect(prompt).toBeVisible();
-            const promptGeometry = await samplePropertyGeometry(prompt, 'Role', 'Position', 'Forbid overrides');
+            const promptGeometry = await samplePropertyGeometry(prompt, 'Role', 'Position', 'Forbid Overrides');
             await testInfo.attach('Q54 property geometry', {
                 body: JSON.stringify({ width, agents: agentGeometry, prompt: promptGeometry }, null, 2),
                 contentType: 'application/json',
@@ -1599,9 +1599,9 @@ for (const width of [1440, 390]) {
             await page.locator('.sb-prompt-row[data-prompt-id="main"] .sb-prompt-row-name').click();
             const promptDetail = page.locator('.sb-prompt-detail');
             await expect(promptDetail).toBeVisible();
-            const content = await promptDetail.getByRole('textbox', { name: 'Prompt content', exact: true }).inputValue();
-            const name = await promptDetail.getByRole('textbox', { name: 'Prompt name', exact: true }).inputValue();
-            await activatePromptAction(page, promptDetail, 'Send to agents');
+            const content = await promptDetail.getByRole('textbox', { name: 'Prompt Content', exact: true }).inputValue();
+            const name = await promptDetail.getByRole('textbox', { name: 'Prompt Name', exact: true }).inputValue();
+            await activatePromptAction(page, promptDetail, 'Send to Agents');
             await expect.poll(() => editor.saves().length).toBe(2);
             expect(editor.saves()[1]).toMatchObject({ name, prompt: content, enabled: false, category: 'custom' });
             await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'agents'));

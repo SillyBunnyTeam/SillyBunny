@@ -27,7 +27,7 @@ describe('responses of SillyBunny-authored dialogs', () => {
         ['scripts/extensions/in-chat-agents/ui/agent-editor-dialogs.js'],
         ['scripts/extensions/in-chat-agents/index.js'],
     ])('%s starts an explicit-action dialog header with Cancel, never Discard', path => {
-        expect(read(path)).not.toMatch(/cancelButton: (?:t`Discard`|'Discard changes')/);
+        expect(read(path)).not.toMatch(/cancelButton: (?:t`Discard`|'Discard Changes')/);
     });
 
     test('the agent alerts that had no heading carry a title', () => {

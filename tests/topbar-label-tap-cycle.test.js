@@ -361,7 +361,7 @@ describe('icons only top bar', () => {
         // never has labels, so a phone switch would change nothing.
         const rowSource = getFunctionSource('createTopbarIconsOnlyRow');
         expect(rowSource).toContain('id: \'sb-desktop-topbar-icons-only-input\',');
-        expect(rowSource).toContain('label: \'Icons only top bar\',');
+        expect(rowSource).toContain('label: \'Icons Only Top Bar\',');
         expect(rowSource).toContain('subtitle: \'Show only icons in the desktop top bar.\',');
         expect(rowSource).toContain('onChange: checked => setTopbarIconsOnly(\'desktop\', checked),');
         expect(rowSource).not.toContain('\'mobile\'');
@@ -375,7 +375,7 @@ describe('icons only top bar', () => {
         expect(normalizedTabsSource).not.toContain('Show page icons in the');
         expect(normalizedTabsSource.match(/createTopbarIconsOnlyRow\(/g)).toHaveLength(2);
         expect(getFunctionSource('createShortcutSettingsGroup')).toContain('group.append(...rows);');
-        expect(normalizedTabsSource.match(/'Icons only top bar'/g)).toHaveLength(1);
+        expect(normalizedTabsSource.match(/'Icons Only Top Bar'/g)).toHaveLength(1);
     });
 
     test('stores the toggle for the desktop and puts no value in force on the phone', () => {

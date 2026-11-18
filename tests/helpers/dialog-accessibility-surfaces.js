@@ -554,7 +554,7 @@ export const SURFACES = [
     },
     {
         id: 'open-alert',
-        structure: { name: 'Clear cookies & cache?', role: 'alertdialog' },
+        structure: { name: 'Clear Cookies & Cache?', role: 'alertdialog' },
         title: 'openAlert (destructive confirm)',
         viewports: [DESKTOP, PHONE],
         modal: true,

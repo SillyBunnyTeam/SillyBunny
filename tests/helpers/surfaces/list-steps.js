@@ -280,7 +280,7 @@ export async function openPersonaList(page) {
 // Prompts
 // ---------------------------------------------------------------------------------------------------------------------
 
-export const promptSearch = { input: '.sb-prompt-editor .sb-prompt-search', toggle: '.sb-prompt-editor button[aria-label="Search prompts"]', rows: '.sb-prompt-editor .sb-prompt-row' };
+export const promptSearch = { input: '.sb-prompt-editor .sb-prompt-search', toggle: '.sb-prompt-editor button[aria-label="Search Prompts"]', rows: '.sb-prompt-editor .sb-prompt-row' };
 
 /**
  * Opens Backend > Editor and shows the prompt list. From `prompt-manager-characterization.e2e.js`; the text completion

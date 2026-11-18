@@ -240,7 +240,7 @@ describe('Prompt editor header', () => {
 
     test('a new prompt can be saved before its first edit', async () => {
         const column = await mountEditor();
-        column.querySelector('button[aria-label="Add prompt"]').click();
+        column.querySelector('button[aria-label="Add Prompt"]').click();
         const menuItems = openActionMenu.mock.calls.at(-1)[0].sections[0].items;
         menuItems.find(item => item.label === 'New prompt').onSelect();
         await flush();
@@ -259,10 +259,10 @@ describe('Prompt editor item menu', () => {
         expect(openActionMenu).toHaveBeenCalledTimes(1);
         expect(openActionMenu.mock.calls[0][0].trigger).toBe(detail.querySelector('.sb-prompt-more'));
         expect(openActionMenu.mock.calls[0][0].title).toBe('First');
-        expect(sectionLabels()).toEqual([['Inspect', 'Send to agents'], ['Remove from list', 'Delete']]);
+        expect(sectionLabels()).toEqual([['Inspect', 'Send to Agents'], ['Remove From List', 'Delete']]);
         const items = openActionMenu.mock.calls[0][0].sections.flatMap(section => section.items);
         expect(items.map(item => [item.label, Boolean(item.danger)])).toEqual([
-            ['Inspect', false], ['Send to agents', false], ['Remove from list', false], ['Delete', true],
+            ['Inspect', false], ['Send to Agents', false], ['Remove From List', false], ['Delete', true],
         ]);
         expect(items.every(item => item.icon.startsWith('fa-solid fa-'))).toBe(true);
     });
@@ -271,7 +271,7 @@ describe('Prompt editor item menu', () => {
         const column = await mountEditor();
         const detail = await openPrompt(column, 'main');
         detail.querySelector('.sb-prompt-more').click();
-        expect(sectionLabels()).toEqual([['Inspect', 'Send to agents'], ['Reset to default']]);
+        expect(sectionLabels()).toEqual([['Inspect', 'Send to Agents'], ['Reset to Default']]);
         openActionMenu.mock.calls[0][0].sections[1].items[0].onSelect();
         expect(column.querySelector('.sb-prompt-title').value).toBe('Main Prompt');
         expect(column.querySelector('#sb-prompt-form_prompt').value).toBe('Default main');
@@ -373,7 +373,7 @@ describe('Prompt editor token count and Expand', () => {
 });
 
 function search(column, query) {
-    if (column.querySelector('.sb-prompt-search-field').hidden) column.querySelector('button[aria-label="Search prompts"]').click();
+    if (column.querySelector('.sb-prompt-search-field').hidden) column.querySelector('button[aria-label="Search Prompts"]').click();
     const input = column.querySelector('.sb-prompt-search');
     input.value = query;
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -385,7 +385,7 @@ describe('Prompt list', () => {
         const header = column.querySelector('.sb-prompt-list-header');
         expect(header.classList.contains('sb-list-header')).toBe(true);
         expect(header.querySelector('.sb-list-header__title').textContent).toBe('Prompts');
-        expect([...header.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Search prompts', 'Add prompt', 'Prompt list actions']);
+        expect([...header.querySelectorAll('button')].map(node => node.getAttribute('aria-label'))).toEqual(['Search Prompts', 'Add Prompt', 'Prompt List Actions']);
         const box = column.querySelector('.sb-prompt-order .sb-prompt-box');
         expect(box.classList.contains('ds-entity-list')).toBe(true);
         const row = box.querySelector('[data-prompt-id="first"]');
@@ -393,7 +393,7 @@ describe('Prompt list', () => {
         expect(row.classList.contains('sb-prompt-row')).toBe(true);
         expect(row.querySelector('.ds-entity-row__title.sb-prompt-row-name').textContent).toBe('First');
         expect(row.querySelector('.ds-entity-row__subtitle.sb-prompt-row-subtitle').textContent).toBe('System · Relative');
-        expect(row.querySelector('.sb-prompt-grip').getAttribute('aria-label')).toBe('Drag to reorder First');
+        expect(row.querySelector('.sb-prompt-grip').getAttribute('aria-label')).toBe('Drag to Reorder First');
         expect(row.querySelector('.sb-prompt-switch-target input[role="switch"]').getAttribute('aria-label')).toBe('Enable First');
         const more = row.querySelector('.ds-entity-row__button.sb-prompt-row-menu');
         expect(more.getAttribute('aria-label')).toBe('Actions for First');
@@ -404,7 +404,7 @@ describe('Prompt list', () => {
         const column = await mountEditor();
         search(column, 'First');
         const sections = [...column.querySelectorAll('.sb-prompt-section')];
-        expect(sections.filter(section => !section.hidden).map(section => section.querySelector('h3').textContent)).toEqual(['Prompt order']);
+        expect(sections.filter(section => !section.hidden).map(section => section.querySelector('h3').textContent)).toEqual(['Prompt Order']);
         expect(column.querySelector('.sb-list-header__subtitle').textContent).toBe('1 of 4 results');
         expect(column.querySelector('.sb-prompt-list-body > .sb-status-page')).toBeNull();
         search(column, '');
@@ -441,7 +441,7 @@ describe('Prompt list', () => {
         triggers.click();
         const popover = openPopover.mock.calls.at(-1)[0];
         expect(popover.trigger).toBe(triggers);
-        expect(popover.title).toBe('Generation triggers');
+        expect(popover.title).toBe('Generation Triggers');
         // Select All comes first, then the six triggers.
         const boxes = () => [...popover.content.querySelectorAll('input[type="checkbox"]')];
         expect(boxes().map(box => box.checked)).toEqual([false, false, false, false, false, false, false]);
@@ -468,7 +468,7 @@ describe('Prompt list', () => {
     test('Select in the list menu starts selection mode; Turn Off switches the chosen prompts off', async () => {
         fakeModel.toggle = jest.fn();
         const column = await mountEditor();
-        column.querySelector('button[aria-label="Prompt list actions"]').click();
+        column.querySelector('button[aria-label="Prompt List Actions"]').click();
         const menu = openActionMenu.mock.calls.at(-1)[0];
         const select = menu.sections.flatMap(section => section.items).find(item => item.label === 'Select');
         expect(select).toBeDefined();
@@ -523,7 +523,7 @@ describe('Prompt list sort', () => {
         expect(column.querySelector('.sb-prompt-list-header .sb-prompt-sort-button')).toBeNull();
         const sort = sortButton(column);
         expect([sort.title, sort.getAttribute('aria-label'), sort.getAttribute('aria-haspopup'), sort.getAttribute('aria-pressed')]).toEqual(['Sort', 'Sort', 'menu', 'false']);
-        expect(column.querySelector('button[aria-label="Search prompts"]').getAttribute('aria-pressed')).toBe('false');
+        expect(column.querySelector('button[aria-label="Search Prompts"]').getAttribute('aria-pressed')).toBe('false');
     });
 
     test('opens a Sort By section of radio items with the prompt order checked first', async () => {
@@ -534,7 +534,7 @@ describe('Prompt list sort', () => {
         expect(menu.sections).toHaveLength(1);
         expect(menu.sections[0].title).toBe('Sort By');
         expect(menu.sections[0].items.map(item => [item.label, item.kind, item.checked])).toEqual([
-            ['Prompt order', 'radio', true], ['Title A-Z', 'radio', false], ['Title Z-A', 'radio', false], ['Tokens ↗', 'radio', false], ['Tokens ↘', 'radio', false],
+            ['Prompt Order', 'radio', true], ['Title A-Z', 'radio', false], ['Title Z-A', 'radio', false], ['Tokens ↗', 'radio', false], ['Tokens ↘', 'radio', false],
         ]);
     });
 
@@ -549,7 +549,7 @@ describe('Prompt list sort', () => {
         expect(fakeModel.reorder).not.toHaveBeenCalled();
         expect(accountItems.get('PromptList_SortOrder')).toBe('name-asc');
         expect(sortButton(column).getAttribute('aria-pressed')).toBe('true');
-        expect(column.querySelector('button[aria-label="Search prompts"]').getAttribute('aria-pressed')).toBe('true');
+        expect(column.querySelector('button[aria-label="Search Prompts"]').getAttribute('aria-pressed')).toBe('true');
         chooseSort(column, 'Title Z-A');
         expect(ids(column)).toEqual(['zeta', 'main', 'first', 'marker', 'alpha', 'runtimeAgents']);
     });
@@ -559,15 +559,15 @@ describe('Prompt list sort', () => {
         const column = await mountEditor();
         const heading = () => column.querySelector('.sb-prompt-order > h3');
         const headingNode = heading();
-        expect(headingNode.textContent).toBe('Prompt order');
+        expect(headingNode.textContent).toBe('Prompt Order');
         chooseSort(column, 'Tokens ↗');
         expect(heading()).toBe(headingNode);
-        expect(headingNode.textContent).toBe('Main prompts');
+        expect(headingNode.textContent).toBe('Main Prompts');
         chooseSort(column, 'Title A-Z');
-        expect(headingNode.textContent).toBe('Main prompts');
+        expect(headingNode.textContent).toBe('Main Prompts');
         expect(column.querySelector('.sb-prompt-available > h3').textContent).toBe('Available');
-        chooseSort(column, 'Prompt order');
-        expect(headingNode.textContent).toBe('Prompt order');
+        chooseSort(column, 'Prompt Order');
+        expect(headingNode.textContent).toBe('Prompt Order');
     });
 
     test('while a sort is on the grips are disabled and the row menus and Alt+Arrow offer no move', async () => {
@@ -583,12 +583,12 @@ describe('Prompt list sort', () => {
         expect(rowMenuLabels(column, 'first').filter(label => label.startsWith('Move'))).toEqual([]);
         altDown();
         expect(fakeModel.reorder).not.toHaveBeenCalled();
-        chooseSort(column, 'Prompt order');
+        chooseSort(column, 'Prompt Order');
         expect(ids(column)).toEqual(['main', 'first', 'zeta', 'marker', 'alpha', 'runtimeAgents']);
         for (const grip of column.querySelectorAll('.sb-prompt-order .sb-prompt-grip[aria-label^="Drag"]')) expect(grip.getAttribute('aria-disabled')).toBe('false');
         expect(rowMenuLabels(column, 'first')).toEqual(expect.arrayContaining(['Move Up', 'Move Down']));
         expect(sortButton(column).getAttribute('aria-pressed')).toBe('false');
-        expect(column.querySelector('button[aria-label="Search prompts"]').getAttribute('aria-pressed')).toBe('false');
+        expect(column.querySelector('button[aria-label="Search Prompts"]').getAttribute('aria-pressed')).toBe('false');
         expect(accountItems.get('PromptList_SortOrder')).toBe('order');
     });
 
@@ -798,7 +798,7 @@ describe('Prompt editor draft', () => {
 
     test('a new prompt keeps one backup under its own entity and clears it on Save', async () => {
         const first = await mountEditor();
-        first.querySelector('button[aria-label="Add prompt"]').click();
+        first.querySelector('button[aria-label="Add Prompt"]').click();
         openActionMenu.mock.calls.at(-1)[0].sections[0].items.find(item => item.label === 'New prompt').onSelect();
         await flush();
         await flush();
@@ -814,7 +814,7 @@ describe('Prompt editor draft', () => {
 
         global.toastr.info.mockClear();
         const second = await mountEditor();
-        second.querySelector('button[aria-label="Add prompt"]').click();
+        second.querySelector('button[aria-label="Add Prompt"]').click();
         openActionMenu.mock.calls.at(-1)[0].sections[0].items.find(item => item.label === 'New prompt').onSelect();
         await flush();
         await flush();

@@ -127,7 +127,7 @@ function ensureSheet() {
     title.id = SHEET_TITLE_ID;
     title.className = 'sb-bottom-chat-sheet-title';
     title.tabIndex = -1;
-    title.textContent = translate('Chat actions');
+    title.textContent = translate('Chat Actions');
     const closeButton = createBarButton('sb-bottom-chat-sheet-close', 'fa-solid fa-xmark', translate('Close chat actions'));
     closeButton.addEventListener('click', () => closeSheet());
     header.append(title, closeButton);

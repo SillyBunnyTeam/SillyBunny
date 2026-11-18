@@ -230,7 +230,7 @@ describe('Guided Generations steering commands', () => {
         await guidedResponse();
 
         const content = context.callGenericPopup.mock.calls[0][0];
-        expect(content.textContent).toBe('Select member to respond as');
+        expect(content.textContent).toBe('Select Member to Respond As');
         expect(content.children[0].children.map(button => ({ text: button.textContent, result: button.dataset.result }))).toEqual([
             { text: '2B | "Alias"', result: '3' },
             { text: '2B | "Alias"', result: '4' },

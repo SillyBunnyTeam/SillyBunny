@@ -107,7 +107,7 @@ export function createSelectionMode({
     actionBar.classList.add('sb-selection-action-bar');
     actionBar.classList.toggle('sb-selection-action-bar--icon-only-narrow', iconOnlyAtNarrow);
     actionBar.setAttribute('role', 'toolbar');
-    actionBar.setAttribute('aria-label', t`Selection actions`);
+    actionBar.setAttribute('aria-label', t`Selection Actions`);
 
     const rowFrom = target => {
         if (!(target instanceof Element)) {

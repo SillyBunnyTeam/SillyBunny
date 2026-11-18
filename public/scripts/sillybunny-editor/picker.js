@@ -179,7 +179,7 @@ function createOption(item, selected, id, onClick, { multiple = false, state = n
         minus.classList.add('sb-picker__check', 'sb-picker__excluded');
         const label = document.createElement('span');
         label.className = 'sr-only';
-        label.textContent = t`Not selected.`;
+        label.textContent = t`Not Selected`;
         option.append(minus, label);
     }
     // A press on a link in the option's details follows the link and does not choose the option.

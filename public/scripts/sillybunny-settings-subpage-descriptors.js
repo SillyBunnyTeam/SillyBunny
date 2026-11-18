@@ -101,7 +101,7 @@ export function isBuiltInExtensionContainer(containerId) {
 /** The Extensions list's groups, in the order they are shown. */
 const SB_EXTENSION_GROUPS = Object.freeze({
     system: Object.freeze({ id: 'system', title: 'System Extensions' }),
-    user: Object.freeze({ id: 'user', title: 'User-installed Extensions' }),
+    user: Object.freeze({ id: 'user', title: 'User-Installed Extensions' }),
 });
 
 /**

@@ -354,7 +354,7 @@ describe('selection mode', () => {
         expect(header.querySelector('.sb-selection-title').getAttribute('aria-live')).toBe('polite');
         expect(header.querySelector('.sb-selection-select-all').getAttribute('aria-pressed')).toBe('false');
         expect(actionBar.getAttribute('role')).toBe('toolbar');
-        expect(actionBar.getAttribute('aria-label')).toBe('Selection actions');
+        expect(actionBar.getAttribute('aria-label')).toBe('Selection Actions');
         expect(actionBar.classList.contains('sb-selection-action-bar')).toBe(true);
         expect(document.activeElement).toBe(header.querySelector('.sb-selection-cancel'));
     });

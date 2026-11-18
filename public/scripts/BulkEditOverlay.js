@@ -228,7 +228,8 @@ class BulkTagPopupHandler {
         return `<div id="bulk_tag_shadow_popup">
             <div id="bulk_tag_popup" class="wider_dialogue_popup">
                 <div id="bulk_tag_popup_holder">
-                    <h3 class="marginBot5">Modify tags of ${this.characterIds.length} ${noun}</h3>
+                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                    <h3 class="marginBot5">Modify Tags of ${this.characterIds.length} ${noun}</h3>
                     <small class="bulk_tags_desc m-b-1">Add or remove the mutual tags of all selected ${noun}.${isGroups ? '' : ' Import all or existing tags for all selected characters.'}</small>
                     <div id="bulk_tags_avatars_block" class="avatars_inline avatars_inline_small tags tags_inline"></div>
                     <br>
@@ -242,7 +243,8 @@ class BulkTagPopupHandler {
                     </div>
                     <div id="dialogue_popup_controls" class="m-t-1">
                         <!-- SillyBunny: All and Mutual are label-only buttons (an icon or a label, not both). -->
-                        <div id="bulk_tag_popup_reset" class="menu_button" title="Remove all tags from the selected ${noun}" data-i18n="[title]Remove all tags from the selected characters">
+                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                        <div id="bulk_tag_popup_reset" class="menu_button" title="Remove All Tags From the Selected ${noun}" data-i18n="[title]Remove all tags from the selected characters">
                             All
                         </div>
                         <div id="bulk_tag_popup_remove_mutual" class="menu_button" title="Remove all mutual tags from the selected ${noun}" data-i18n="[title]Remove all mutual tags from the selected characters">
@@ -887,7 +889,7 @@ class BulkEditOverlay {
      */
     updateSelectedCount = (countOverride = undefined) => {
         const count = countOverride ?? this.selectedCharacters.length;
-        $(`#${BulkEditOverlay.bulkSelectedCountId}`).text(count).attr('title', `${count} selected`);
+        $(`#${BulkEditOverlay.bulkSelectedCountId}`).text(count).attr('title', `${count} Selected`); // SillyBunny: capitalisation by DESIGN.md
     };
 
     /**

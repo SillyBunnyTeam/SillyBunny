@@ -225,11 +225,11 @@ for (const viewport of VIEWPORTS) {
                 }).map(button => button.textContent.trim()),
             };
         });
-        expect(promptResponses.suggested).toEqual(['Save changes']);
+        expect(promptResponses.suggested).toEqual(['Save Changes']);
         expect(promptResponses.discardDestructive).toBe(false);
         await expect(inspector.locator('.popup-button-cancel')).not.toHaveClass(/is-destructive|is-suggested|menu_button_primary/);
         const extraResponse = inspector.locator('.sb-dialog__bottom-bar .popup-button-custom');
-        await expect(extraResponse).toHaveText('Cancel generation');
+        await expect(extraResponse).toHaveText('Cancel Generation');
         await expect(extraResponse).not.toHaveClass(/menu_button_primary|menu_button_default|is-suggested/);
         await expect(extraResponse).toBeInViewport();
         const responseAlignment = await inspector.evaluate(node => {

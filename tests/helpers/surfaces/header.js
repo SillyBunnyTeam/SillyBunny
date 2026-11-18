@@ -520,7 +520,7 @@ export const surfaces = [
         id: 'header.dialog.bottom-chat-sheet',
         family: 'header',
         owner: 'A',
-        title: 'Dialog header (Chat actions sheet of the bottom chat bar)',
+        title: 'Dialog header (Chat Actions sheet of the bottom chat bar)',
         root: '.sb-bottom-chat-sheet .sb-dialog__header',
         ready: ['.sb-bottom-chat-sheet .sb-dialog__title', '.sb-bottom-chat-sheet-close'],
         overlay: true,

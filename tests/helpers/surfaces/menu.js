@@ -480,7 +480,7 @@ export const surfaces = [
         sources: [`${SCRIPTS}/sillybunny-prompt-editor.js`, ACTION_MENU],
         async open(page) {
             await openPromptEditor(page);
-            await openFrom(page, '.sb-prompt-editor button[aria-label="Prompt list actions"]');
+            await openFrom(page, '.sb-prompt-editor button[aria-label="Prompt List Actions"]');
         },
     }),
     menu({

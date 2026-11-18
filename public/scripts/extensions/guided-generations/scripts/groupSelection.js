@@ -27,7 +27,7 @@ async function pickGroupMember() {
 
     const content = document.createElement('div');
     content.className = 'sb-dialog-rows';
-    const heading = 'Select member to respond as';
+    const heading = 'Select Member to Respond As';
     const list = document.createElement('div');
     list.className = 'sb-dialog-choice-list';
     const buttons = members.map(member => {

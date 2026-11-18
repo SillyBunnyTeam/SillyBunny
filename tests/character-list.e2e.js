@@ -1397,7 +1397,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await expect(list(page).locator('.sb-selection-action')).toHaveCount(3);
         await listRows(page, 'groups').first().locator('.ch_name').click();
         await list(page).locator('.sb-selection-action[data-action-id="tag"]').click();
-        await expect(page.locator('#bulk_tag_popup')).toContainText('Modify tags of 1 groups');
+        await expect(page.locator('#bulk_tag_popup')).toContainText('Modify Tags of 1 groups');
         const tagEntry = page.locator('#bulkTagInput');
         await expect(tagEntry).toHaveClass(/sb-dialog__entry/);
         await expect(tagEntry).toHaveCSS('border-radius', '9px');

@@ -1107,7 +1107,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         id: 'characters',
         label: 'Characters',
         icon: 'fa-address-book',
-        tooltip: 'Open and manage character cards',
+        tooltip: 'Open and Manage Character Cards',
         description: 'View or create character cards here for your roleplays and chats!',
         searchAliases: ['character card', 'character list', 'avatars', 'cards'],
     },
@@ -1115,7 +1115,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         id: 'groups',
         label: 'Groups',
         icon: 'fa-users',
-        tooltip: 'Open and manage group conversations',
+        tooltip: 'Open and Manage Group Conversations',
         description: 'View or create group chats here for your roleplays and chats!',
         searchAliases: ['group chat', 'group chats', 'group members', 'muting'],
     },
@@ -1123,7 +1123,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         id: 'editor',
         label: 'Editor',
         icon: 'fa-pen-to-square',
-        tooltip: 'Edit character cards and groups',
+        tooltip: 'Edit Character Cards and Groups',
         description: 'Edit your character cards or group chats in great detail here!',
         searchAliases: ['character editor', 'group editor', 'edit card', 'first message', 'greetings'],
     },
@@ -1131,7 +1131,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         id: 'world-info',
         label: 'World Info',
         icon: 'fa-book-atlas',
-        tooltip: 'Manage lorebooks and world information',
+        tooltip: 'Manage Lorebooks and World Information',
         description: SB_WORLD_INFO_SUBTITLE_HTML,
         descriptionIsHtml: true,
         searchAliases: ['lorebook', 'lorebooks', 'world info book', 'world', 'entries'],
@@ -1140,7 +1140,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         id: 'persona',
         label: 'Persona',
         icon: 'fa-face-smile',
-        tooltip: 'Manage user persona/personality',
+        tooltip: 'Manage User Persona/Personality',
         description: 'Edit your own persona here for roleplay and chats!',
         searchAliases: ['personas', 'persona description', 'impersonate'],
     },
@@ -1148,7 +1148,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         id: 'import',
         label: 'Import',
         icon: 'fa-file-import',
-        tooltip: 'Add or import new character cards',
+        tooltip: 'Add or Import New Character Cards',
         description: 'Directly import character cards here from various sources.',
         searchAliases: ['import character', 'import card', 'chub', 'png', 'add character'],
     },
@@ -1167,7 +1167,7 @@ const SB_SHELLS = Object.freeze({
         proxyLabel: 'Backend',
         title: 'Backend',
         subtitle: '', // Removed redundant workspace subtext (PR #145 expansion)
-        searchPlaceholder: 'Find connections, prompts, samplers, or agents...',
+        searchPlaceholder: 'Find connections, prompts, samplers, or agents…',
         storageKey: SB_STORAGE_KEYS.leftTab,
         defaultTabId: 'connections',
         baseTab: {
@@ -1184,7 +1184,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'sampling',
                 label: 'Sampling',
                 icon: 'fa-wave-square',
-                tooltip: 'Adjust model samplers and parameters',
+                tooltip: 'Adjust Model Samplers and Parameters',
                 description: SB_SAMPLING_SUBTITLE_HTML,
                 descriptionIsHtml: true,
                 searchPlaceholder: 'Search temperature, top p, repetition penalty, or backend samplers',
@@ -1260,7 +1260,7 @@ const SB_SHELLS = Object.freeze({
                 drawerId: 'extensions-settings-button',
                 label: 'Extensions',
                 icon: 'fa-cubes',
-                tooltip: 'Manage and view all installed extensions',
+                tooltip: 'Manage and View All Installed Extensions',
                 description: 'Install, manage, and configure SillyTavern extensions here. Backwards compatibility isn\'t guaranteed, but should be applicable.',
                 searchPlaceholder: 'Search themes, Quick Reply, Dialogue Colors, or Image Gen',
                 searchExamples: ['themes', 'Quick Reply', 'Dialogue Colors', 'Image Gen'],
@@ -1272,7 +1272,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'interface',
                 label: 'Interface',
                 icon: 'fa-screwdriver-wrench',
-                tooltip: 'Toggle UI settings',
+                tooltip: 'Toggle UI Settings',
                 description: 'Configure interface behavior, power user features, and UI preferences.',
                 searchPlaceholder: 'Search top bar, auto-scroll, power user, or chat features',
                 searchExamples: ['top bar', 'auto-scroll', 'power user'],
@@ -1282,7 +1282,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'messages',
                 label: 'Messages',
                 icon: 'fa-message',
-                tooltip: 'View all chat-related settings and configuration',
+                tooltip: 'View All Chat-Related Settings and Configuration',
                 description: 'Configure message display, actions, swipes, and interaction preferences.',
                 searchPlaceholder: 'Search message actions, swipes, auto-scroll, or display',
                 searchExamples: ['swipes', 'message actions', 'auto-scroll'],
@@ -1292,7 +1292,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'data-security',
                 label: 'Data & Security',
                 icon: 'fa-server',
-                tooltip: 'View SillyBunny\'s server configuration and backend',
+                tooltip: 'View SillyBunny\'s Server Configuration and Backend',
                 description: 'Manage the SillyBunny backend and server settings here.',
                 searchPlaceholder: 'Search backup, data path, security, or config.yaml',
                 searchExamples: ['backup', 'data path', 'security'],
@@ -1302,7 +1302,7 @@ const SB_SHELLS = Object.freeze({
                 id: 'logs',
                 label: 'Logs',
                 icon: 'fa-terminal',
-                tooltip: 'View and gather SillyBunny\'s backend logs',
+                tooltip: 'View and Gather SillyBunny\'s Backend Logs',
                 description: 'View SillyBunny logs for advanced troubleshooting or bug reporting.',
                 searchPlaceholder: 'Search error, warning, npm, bun, or extension logs',
                 searchExamples: ['error', 'warning', 'npm', 'bun'],
@@ -1364,8 +1364,8 @@ const SB_SIDEBAR_SECTION_MATCH_SELECTOR = [
     '.ch_name',
 ].join(', ');
 
-const SB_UNIVERSAL_SEARCH_PLACEHOLDER = 'Type to search...';
-const SB_UNIVERSAL_SEARCH_IDLE_TITLE = 'Search all settings';
+const SB_UNIVERSAL_SEARCH_PLACEHOLDER = 'Type to search…';
+const SB_UNIVERSAL_SEARCH_IDLE_TITLE = 'Search All Settings';
 const SB_UNIVERSAL_SEARCH_IDLE_HINT = 'Jump to any workspace or customization control from one place.';
 const SB_UNIVERSAL_SEARCH_EMPTY_HINT = 'Could not find query. Try a broader term or a different setting name.';
 // The panel shows a short list and reveals the rest on request, so the ceiling belongs to the
@@ -2211,8 +2211,8 @@ function createUniversalSearchShowAllRow(hiddenCount, groupLabel = '') {
         },
     });    row.appendChild(createElement('strong', {
         text: groupLabel
-            ? `Show ${hiddenCount} more in ${groupLabel}`
-            : `Show all ${hiddenCount} more results`,
+            ? `Show ${hiddenCount} More in ${groupLabel}`
+            : `Show All ${hiddenCount} More Results`,
     }));
     row.addEventListener('click', () => {
         const searchState = getUniversalSearchState();
@@ -3469,12 +3469,12 @@ async function handleClearCookiesAndCacheClick(event) {
 
         const serverCookieResult = await clearServerCookies();
         const clearedCookieCount = clearAllBrowserCookies();
-        globalThis.toastr?.success?.('Cookies and cache cleared. Reloading SillyBunny...', 'Cookies cleared');
+        globalThis.toastr?.success?.('Cookies and cache cleared. Reloading SillyBunny…', 'Cookies Cleared');
         console.info(`[Cache] Expired ${clearedCookieCount} browser cookies and queued ${serverCookieResult?.expirationAttempts ?? 0} server cookie expirations before reload`);
         window.setTimeout(() => window.location.reload(), 1000);
     } catch (error) {
         console.error('Failed to clear cookies and cache', error);
-        globalThis.toastr?.error?.(String(error?.message || error), 'Clear failed');
+        globalThis.toastr?.error?.(String(error?.message || error), 'Clear Failed');
         button.disabled = false;
         button.classList.remove('disabled');
         button.removeAttribute('aria-busy');
@@ -4025,7 +4025,7 @@ function openTopbarOverflowMenu() {
         return {
             label: config.label,
             icon: `fa-solid ${config.icon}`,
-            title: `Quick access: ${config.label}`,
+            title: `Quick Access: ${config.label}`,
             onSelect: () => activateShortcutTarget(target),
         };
     });
@@ -4584,7 +4584,7 @@ async function handleDeleteChat() {
     }
 
     const confirmed = await openAlert({
-        heading: t`Delete chat?`,
+        heading: t`Delete Chat?`,
         body: t`This action cannot be undone.`,
         responses: [
             { id: 'cancel', label: t`Cancel` },
@@ -4627,7 +4627,7 @@ async function handleAutoNameChat() {
         scheduleBottomChatBarRefresh(160);
     } catch (error) {
         console.error('[SillyBunny] Failed to auto-name current chat.', error);
-        globalThis.toastr?.error?.(String(error?.message || error), 'Auto-name Chat');
+        globalThis.toastr?.error?.(String(error?.message || error), 'Auto-Name Chat');
     } finally {
         setBottomChatActionBusy(button, false);
     }
@@ -4695,7 +4695,7 @@ async function handleMassDeleteChats() {
         }
 
         const confirmed = await openAlert({
-            heading: t`Delete chats?`,
+            heading: t`Delete Chats?`,
             body: t`Delete ${names.length} chat(s)? This cannot be undone.`,
             responses: [
                 { id: 'cancel', label: t`Cancel` },
@@ -5393,8 +5393,8 @@ function createBottomChatSearchField() {
         className: 'text_pole',
         attrs: {
             type: 'search',
-            placeholder: 'Search chat...',
-            'aria-label': 'Search all messages in this chat',
+            placeholder: 'Search chat…',
+            'aria-label': 'Search All Messages in This Chat',
             autocomplete: 'off',
             spellcheck: 'false',
         },
@@ -5434,7 +5434,7 @@ function syncBottomChatBarSecondaryState() {
 
     const button = bottomChatBarState.collapseToggleButton;
     if (button instanceof HTMLElement) {
-        const title = isOpen ? 'Hide chat actions' : 'Show chat actions';
+        const title = isOpen ? 'Hide Chat Actions' : 'Show Chat Actions';
 
         button.title = title;
         button.setAttribute('aria-label', title);
@@ -5465,7 +5465,7 @@ function syncBottomChatBarSearchState({ focusInput = false } = {}) {
 
     const button = bottomChatBarState.searchToggleButton;
     if (button instanceof HTMLElement) {
-        const title = isOpen ? 'Hide chat search' : 'Search chat';
+        const title = isOpen ? 'Hide Chat Search' : 'Search Chat';
 
         button.title = title;
         button.setAttribute('aria-label', title);
@@ -5938,7 +5938,7 @@ function syncCharacterListControls(view) {
 
     if (bulkEditButton instanceof HTMLElement) {
         bulkEditButton.title = normalizedView === 'groups'
-            ? 'Bulk actions for group chats'
+            ? 'Bulk Actions for Group Chats'
             : 'Bulk edit characters\n\nClick to toggle characters\nShift + Click to select/deselect a range of characters\nRight-click for actions';
     }
 }
@@ -6049,7 +6049,7 @@ function setCharacterEditorEmptyState(visible) {
                 state: 'empty',
                 icon: 'address-card',
                 // HUMAN: replace — a title in header capitalisation that names the state, and a description that says what to do next.
-                title: t`No character selected`,
+                title: t`No Character Selected`,
                 description: t`Please pick a character card from the character menu, or create a new character.`,
                 compact: true,
                 actions: [
@@ -7117,7 +7117,7 @@ function buildUniversalSearchRow() {
         className: 'sb-search-results',
         attrs: {
             role: 'listbox',
-            'aria-label': 'Universal search results',
+            'aria-label': 'Universal Search Results',
         },
     });
 
@@ -7256,7 +7256,7 @@ function buildTopBar() {
             id: 'sb-left-shell-toggle',
             icon: getShellConfig('left').proxyIcon,
             label: getShellConfig('left').proxyLabel,
-            title: 'Open backend tools (Ctrl+U)',
+            title: 'Open Backend Tools (Ctrl+U)',
         },
         () => toggleSettingsPage('left'),
     );
@@ -7267,7 +7267,7 @@ function buildTopBar() {
             icon: 'fa-house',
             label: 'Home',
             name: 'Home',
-            title: 'Return to the landing page (Ctrl+O)',
+            title: 'Return to the Landing Page (Ctrl+O)',
         },
         () => {
             void returnToLandingPage();
@@ -7280,7 +7280,7 @@ function buildTopBar() {
             icon: getShellConfig('right').proxyIcon,
             label: getShellConfig('right').proxyLabel,
             name: getShellConfig('right').proxyLabel,
-            title: 'Open customization tools (Ctrl+I)',
+            title: 'Open Customization Tools (Ctrl+I)',
         },
         () => toggleSettingsPage('right'),
     );
@@ -7291,7 +7291,7 @@ function buildTopBar() {
             icon: 'fa-address-card',
             label: 'Characters',
             name: 'Characters',
-            title: 'Open character management (Ctrl+P)',
+            title: 'Open Character Management (Ctrl+P)',
         },
         activateCharacterTopbarButton,
     );
@@ -7302,7 +7302,7 @@ function buildTopBar() {
             id: 'sb-shortcut-left',
             icon: leftShortcutConfig.icon,
             label: leftShortcutConfig.label,
-            title: `Quick access: ${leftShortcutConfig.label}`,
+            title: `Quick Access: ${leftShortcutConfig.label}`,
             className: 'sb-proxy-button-icon-only sb-desktop-setting',
         },
         () => activateShortcutTarget(getShortcutTarget('left')),
@@ -7315,7 +7315,7 @@ function buildTopBar() {
             id: 'sb-shortcut-right',
             icon: rightShortcutConfig.icon,
             label: rightShortcutConfig.label,
-            title: `Quick access: ${rightShortcutConfig.label}`,
+            title: `Quick Access: ${rightShortcutConfig.label}`,
             className: 'sb-proxy-button-icon-only sb-desktop-setting',
         },
         () => activateShortcutTarget(getShortcutTarget('right')),
@@ -7330,7 +7330,7 @@ function buildTopBar() {
                 id: getShortcutButtonId(side),
                 icon: shortcutConfig.icon,
                 label: shortcutConfig.label,
-                title: `Quick access: ${shortcutConfig.label}`,
+                title: `Quick Access: ${shortcutConfig.label}`,
                 className: 'sb-proxy-button-icon-only sb-desktop-setting',
             },
             () => activateShortcutTarget(getShortcutTarget(side)),
@@ -7340,7 +7340,7 @@ function buildTopBar() {
     }
 
     centerGroup.innerHTML = `
-        <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to return to the chat">${SB_IDLE_BRAND_LABEL}</div>
+        <div id="sb-topbar-title" class="sb-brand-title" role="button" tabindex="0" aria-label="Tap to Return to the Chat">${SB_IDLE_BRAND_LABEL}</div>
     `;
 
     const quickActionsLeftDivider = createTopbarClusterDivider('sb-topbar-divider-quick-left');
@@ -7358,7 +7358,7 @@ function buildTopBar() {
             id: 'sb-topbar-search-toggle',
             icon: 'fa-magnifying-glass',
             label: 'Search',
-            title: 'Search settings (Ctrl+F)',
+            title: 'Search Settings (Ctrl+F)',
             className: 'sb-proxy-button-icon-only',
         },
         () => {
@@ -7379,7 +7379,7 @@ function buildTopBar() {
             id: 'sb-mode-toggle',
             icon: 'fa-masks-theater',
             label: 'Mode',
-            title: 'Switch chat mode (Ctrl+M)',
+            title: 'Switch Chat Mode (Ctrl+M)',
             className: 'sb-proxy-button-icon-only',
         },
         () => openModeDropdown(),
@@ -9219,7 +9219,7 @@ function renderSillyTavernExtensionSyncReport(reportData = null) {
         const card = createElement('article', { className: `sb-import-report-item is-${result?.status || 'warning'}` });
         const header = createElement('div', { className: 'sb-import-report-item-header' });
         const titleGroup = createElement('div', { className: 'sb-import-report-item-title' });
-        const title = createElement('strong', { text: result?.displayName || result?.name || 'Unknown extension' });
+        const title = createElement('strong', { text: result?.displayName || result?.name || 'Unknown Extension' });
         const metaParts = [];
 
         if (result?.version) {
@@ -9735,7 +9735,7 @@ function createGuidedGenerationsBarRow() {
 function createTopbarIconsOnlyRow() {
     return createInterfaceSwitchRow({
         id: 'sb-desktop-topbar-icons-only-input',
-        label: 'Icons only top bar',
+        label: 'Icons Only Top Bar',
         subtitle: 'Show only icons in the desktop top bar.',
         field: 'topbar-icons-only',
         onChange: checked => setTopbarIconsOnly('desktop', checked),
@@ -9772,20 +9772,20 @@ function createCharactersPinRow() {
 function createPaperTextureBody() {
     const toggleRow = createInterfaceSwitchRow({
         id: 'sb-paper-texture-enabled-input',
-        label: 'Enable paper texture',
+        label: 'Enable Paper Texture',
         subtitle: 'Add a paper texture across the mobile interface.',
         field: 'paper-texture',
         onChange: checked => setPaperTextureEnabled(checked),
     });
     const opacitySliderGroup = createThemeSliderGroup({
-        title: 'Texture opacity',
+        title: 'Texture Opacity',
         valueId: 'sb-paper-texture-opacity-value',
         inputId: 'sb-paper-texture-opacity-input',
         value: sbState.paperTextureOpacity,
         min: SB_PAPER_TEXTURE_OPACITY.min,
         max: SB_PAPER_TEXTURE_OPACITY.max,
         step: SB_PAPER_TEXTURE_OPACITY.step,
-        ariaLabel: 'Paper texture opacity',
+        ariaLabel: 'Paper Texture Opacity',
         caption: 'Higher values make the paper grain and wash more visible.',
         onInput: nextValue => setPaperTextureOpacity(nextValue),
     });
@@ -9830,8 +9830,8 @@ function updateShortcutButton(side) {
     if (span) {
         span.textContent = config.label;
     }
-    button.title = `Quick access: ${config.label}`;
-    button.setAttribute('aria-label', `Quick access: ${config.label}`);
+    button.title = `Quick Access: ${config.label}`;
+    button.setAttribute('aria-label', `Quick Access: ${config.label}`);
     button.dataset.sbUniversalSearchTrigger = String(isSearchShortcutTarget(target));
     syncShortcutButtonActiveStates();
     queueTopbarFit();
@@ -9876,7 +9876,7 @@ function createTopbarLabelSettingsGroups() {
             type: 'text',
             maxlength: String(SB_TOPBAR_LABEL_CUSTOM_TEXT_MAX_LENGTH),
             placeholder: 'SillyBunny',
-            'aria-label': 'Top bar custom text',
+            'aria-label': 'Top Bar Custom Text',
         },
     });
     const customTextRow = createEntryRow({
@@ -9936,7 +9936,7 @@ function injectThemePicker() {
         min: SB_SURFACE_TRANSPARENCY.min,
         max: SB_SURFACE_TRANSPARENCY.max,
         step: SB_SURFACE_TRANSPARENCY.step,
-        ariaLabel: 'Background visibility',
+        ariaLabel: 'Background Visibility',
         caption: 'Higher values make the home and chat surfaces more transparent so your selected background picture shows through.',
         onInput: nextValue => setSurfaceTransparency(nextValue),
     });
@@ -9948,7 +9948,7 @@ function injectThemePicker() {
         min: SB_TOPBAR_SCALE.min,
         max: SB_TOPBAR_SCALE.max,
         step: SB_TOPBAR_SCALE.step,
-        ariaLabel: 'Bottom bar size',
+        ariaLabel: 'Bottom Bar Size',
         caption: 'Resize the bottom chat bar, send form, and action buttons without editing CSS.',
         onInput: nextValue => setBottomBarScale(nextValue),
     });
@@ -9960,7 +9960,7 @@ function injectThemePicker() {
         min: SB_TOPBAR_SCALE.min,
         max: SB_TOPBAR_SCALE.max,
         step: SB_TOPBAR_SCALE.step,
-        ariaLabel: 'Desktop button size',
+        ariaLabel: 'Desktop Button Size',
         caption: 'Increase or decrease the desktop top bar and shell navigation buttons without changing mobile controls.',
         onInput: nextValue => setDesktopButtonScale(nextValue),
     });
@@ -9972,7 +9972,7 @@ function injectThemePicker() {
         min: SB_TOPBAR_SCALE.min,
         max: SB_TOPBAR_SCALE.max,
         step: SB_TOPBAR_SCALE.step,
-        ariaLabel: 'Mobile button size',
+        ariaLabel: 'Mobile Button Size',
         caption: 'Increase or decrease the mobile nav and mobile chat tool buttons without changing desktop controls.',
         onInput: nextValue => setMobileButtonScale(nextValue),
     });
@@ -12004,7 +12004,7 @@ function injectModelFilterInput($select) {
     const input = document.createElement('input');
     input.type = 'search';
     input.className = 'sb-model-filter text_pole';
-    input.placeholder = 'Filter models...';
+    input.placeholder = 'Filter models…';
 
     // Store all options for filtering
     const allOptions = Array.from($select[0].options).map(opt => ({
@@ -12045,7 +12045,7 @@ function buildBottomChatBar() {
     // Persona bubble
     const personaBubble = createElement('button', {
         id: 'sb-persona-bubble',
-        attrs: { type: 'button', title: 'Switch persona' },
+        attrs: { type: 'button', title: 'Switch Persona' },
     });
     personaBubble.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -12055,20 +12055,20 @@ function buildBottomChatBar() {
 
     const chatSelect = createElement('select', {
         id: 'sb-bottom-chat-select',
-        attrs: { title: 'Switch chat' },
+        attrs: { title: 'Switch Chat' },
     });
     chatSelect.addEventListener('change', () => {
         void openChatById(chatSelect.value);
     });
 
-    const collapseToggleBtn = createBottomChatButton({ icon: 'fa-chevron-up', title: 'Hide chat actions', className: 'sb-bottom-chat-collapse-toggle' }, () => {
+    const collapseToggleBtn = createBottomChatButton({ icon: 'fa-chevron-up', title: 'Hide Chat Actions', className: 'sb-bottom-chat-collapse-toggle' }, () => {
         setBottomChatSecondaryOpen(!getBottomChatBarState().secondaryOpen);
     });
     collapseToggleBtn.setAttribute('aria-controls', 'sb-bottom-chat-secondary-row');
     collapseToggleBtn.setAttribute('aria-expanded', 'true');
 
     const search = createBottomChatSearchField();
-    const searchToggleBtn = createBottomChatButton({ icon: 'fa-magnifying-glass', title: 'Search chat', className: 'sb-bottom-chat-search-toggle' }, () => {
+    const searchToggleBtn = createBottomChatButton({ icon: 'fa-magnifying-glass', title: 'Search Chat', className: 'sb-bottom-chat-search-toggle' }, () => {
         const shouldOpen = !getBottomChatBarState().searchOpen;
         setBottomChatSearchOpen(shouldOpen, { focusInput: shouldOpen });
     });
@@ -12079,18 +12079,18 @@ function buildBottomChatBar() {
         id: 'sb-bottom-chat-secondary-row',
         className: 'sb-bottom-chat-secondary-row',
         attrs: {
-            'aria-label': 'Chat actions',
+            'aria-label': 'Chat Actions',
         },
     });
 
-    const topBtn = createBottomChatButton({ icon: 'fa-arrow-up', title: 'Go to top of chat' }, scrollCurrentChatToTop);
-    const bottomBtn = createBottomChatButton({ icon: 'fa-arrow-down', title: 'Go to bottom of chat' }, scrollCurrentChatToBottom);
+    const topBtn = createBottomChatButton({ icon: 'fa-arrow-up', title: 'Go to Top of Chat' }, scrollCurrentChatToTop);
+    const bottomBtn = createBottomChatButton({ icon: 'fa-arrow-down', title: 'Go to Bottom of Chat' }, scrollCurrentChatToBottom);
     const chatManagerBtn = createBottomChatButton({ icon: 'fa-address-book', title: 'View chat files' }, handleChatManagerClick);
     const newBtn = createBottomChatButton({ icon: 'fa-plus', title: 'New chat' }, handleNewChat);
     const massDeleteBtn = createBottomChatButton({ icon: 'fa-list-check', title: 'Mass Delete Chats' }, () => { void handleMassDeleteChats(); });
     const autoNameBtn = createBottomChatButton({ icon: 'fa-wand-magic-sparkles', title: 'Ask the LLM to name this chat' }, () => { void handleAutoNameChat(); });
     const renameBtn = createBottomChatButton({ icon: 'fa-pencil', title: 'Rename chat' }, () => { void handleRenameChat(); });
-    const hideBtn = createBottomChatButton({ icon: 'fa-eye-slash', title: 'Hide bottom chat bar' }, () => {
+    const hideBtn = createBottomChatButton({ icon: 'fa-eye-slash', title: 'Hide Bottom Chat Bar' }, () => {
         setBottomChatBarVisible(false);
     });
     const deleteBtn = createBottomChatButton({ icon: 'fa-trash', title: 'Delete chat' }, () => { void handleDeleteChat(); });
@@ -12643,14 +12643,14 @@ function openPersonaPicker({ focus = true, place = null } = {}) {
         id: 'sb-persona-picker',
         attrs: {
             role: 'dialog',
-            'aria-label': 'Switch persona',
+            'aria-label': 'Switch Persona',
         },
     });
     const optionsList = createElement('div', {
         className: 'sb-persona-options',
         attrs: {
             role: 'listbox',
-            'aria-label': 'Choose persona',
+            'aria-label': 'Choose Persona',
         },
     });
     picker.addEventListener('keydown', event => {
@@ -12670,7 +12670,7 @@ function openPersonaPicker({ focus = true, place = null } = {}) {
     if (!keys.length) {
         const empty = createElement('div', { className: 'sb-persona-option-empty' });
         // HUMAN: replace — a title in header capitalisation that names the state, and a description that says what to do next.
-        empty.append(createStatusPage({ state: 'empty', icon: 'user', title: 'No personas defined', compact: true }).element);
+        empty.append(createStatusPage({ state: 'empty', icon: 'user', title: 'No Personas Defined', compact: true }).element);
         optionsList.appendChild(empty);
     } else {
         for (const avatarId of keys) {
@@ -12736,7 +12736,7 @@ function renderPersonaPickerAppendixControls(picker, context, avatarId) {
         attrs: { 'aria-label': `Scenario Notes for ${personaName}` },
     });
     const header = createElement('div', { className: 'sb-persona-picker-appendices-header' });
-    const title = createElement('strong', { text: 'Use with Scenario Notes' });
+    const title = createElement('strong', { text: 'Use With Scenario Notes' });
     const manageButton = createElement('button', {
         className: 'sb-persona-picker-manage menu_button menu_button_icon',
         attrs: { type: 'button', title: 'Manage Scenario Notes' },
@@ -14023,7 +14023,7 @@ function syncModeToggleButton() {
     if (label) {
         label.textContent = mode.label;
     }
-    const title = `Chat mode: ${mode.label} (Ctrl+M)`;
+    const title = `Chat Mode: ${mode.label} (Ctrl+M)`;
     modeToggleBtn.title = title;
     modeToggleBtn.setAttribute('aria-label', title);
 }
@@ -14069,7 +14069,7 @@ function openModeDropdown() {
         id: 'sb-mode-menu',
         attrs: {
             role: 'menu',
-            'aria-label': 'Switch chat mode',
+            'aria-label': 'Switch Chat Mode',
         },
     });
 
