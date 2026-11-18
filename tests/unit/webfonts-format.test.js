@@ -5,6 +5,17 @@ import { fileURLToPath } from 'node:url';
 
 const webfontsRoot = fileURLToPath(new URL('../../public/webfonts/', import.meta.url));
 const WOFF2_SIGNATURE = 'wOF2';
+const TRUETYPE_SIGNATURE = '00010000';
+
+// The family name is what a stored font choice and a CSS stack match on, so it never follows
+// the font file's internal name ("Inter Variable", "Public Sans Thin").
+const PRESET_FAMILIES = Object.freeze({
+    Inter: { name: 'Inter', formats: ['woff2'] },
+    JetBrainsMono: { name: 'JetBrains Mono', formats: ['truetype'] },
+    Roboto: { name: 'Roboto', formats: ['truetype'] },
+    PublicSans: { name: 'Public Sans', formats: ['truetype'] },
+    SourceSerif4: { name: 'Source Serif 4', formats: ['woff2'] },
+});
 
 function listFiles(directory) {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -24,10 +35,25 @@ function readFontUrls(stylesheetPath) {
 
 const allFiles = listFiles(webfontsRoot);
 const woff2Files = allFiles.filter(file => file.endsWith('.woff2'));
+const ttfFiles = allFiles.filter(file => file.endsWith('.ttf'));
 const stylesheets = allFiles.filter(file => file.endsWith('stylesheet.css'));
 const adwaitaFamilies = readdirSync(webfontsRoot, { withFileTypes: true })
     .filter(entry => entry.isDirectory() && entry.name.startsWith('Adwaita'))
     .map(entry => entry.name);
+const keyedFamilies = [...adwaitaFamilies, ...Object.keys(PRESET_FAMILIES)];
+
+function readFontFaces(family) {
+    const css = readFileSync(path.join(webfontsRoot, family, 'stylesheet.css'), 'utf8');
+    return [...css.matchAll(/@font-face\s*{([^}]*)}/g)].map(match => {
+        const declaration = property => match[1].match(new RegExp(`${property}\\s*:\\s*([^;]+);`))?.[1].trim();
+        return {
+            family: declaration('font-family')?.replace(/^['"]|['"]$/g, ''),
+            style: declaration('font-style'),
+            display: declaration('font-display'),
+            src: declaration('src'),
+        };
+    });
+}
 
 describe('bundled webfonts', () => {
     test('finds the font files this suite guards', () => {
@@ -43,6 +69,13 @@ describe('bundled webfonts', () => {
         expect(signature).toBe(WOFF2_SIGNATURE);
     });
 
+    // The OpenType sanitizer of a browser rejects a woff2 file saved as .ttf and the reverse only
+    // when it decodes the file, so the signature has to match the extension here.
+    test.each(ttfFiles.map(relativeToWebfonts))('%s is a real TrueType file', relativePath => {
+        const signature = readFileSync(path.join(webfontsRoot, relativePath)).subarray(0, 4).toString('hex');
+        expect(signature).toBe(TRUETYPE_SIGNATURE);
+    });
+
     test.each(stylesheets.map(relativeToWebfonts))('%s only references existing files', relativePath => {
         const stylesheetPath = path.join(webfontsRoot, relativePath);
         const missing = readFontUrls(stylesheetPath)
@@ -54,9 +87,37 @@ describe('bundled webfonts', () => {
     // The service worker caches /webfonts/ by full URL, so a rebuilt font under an unchanged URL
     // is served stale. The Noto stylesheets are unmodified upstream files without a key; the
     // Adwaita sheets are SillyBunny's, so their bytes can change and the key must change with them.
-    test.each(adwaitaFamilies)('%s font URLs carry a ?v= cache key', family => {
+    // The preset sheets are SillyBunny's too, and a release bump replaces their files.
+    test.each(keyedFamilies)('%s font URLs carry a ?v= cache key', family => {
         const urls = readFontUrls(path.join(webfontsRoot, family, 'stylesheet.css'));
         expect(urls.length).toBeGreaterThan(0);
         expect(urls.filter(url => !/\?v=[\w.-]+$/.test(url))).toEqual([]);
+    });
+
+    describe.each(Object.entries(PRESET_FAMILIES))('%s preset', (directory, preset) => {
+        const directoryPath = path.join(webfontsRoot, directory);
+
+        test('ships its licence beside the fonts', () => {
+            const licences = readdirSync(directoryPath).filter(name => /^(LICENSE|OFL)(\.|$)/.test(name));
+            expect(licences.length).toBeGreaterThan(0);
+            for (const licence of licences) {
+                expect(readFileSync(path.join(directoryPath, licence), 'utf8')).toMatch(/SIL OPEN FONT LICENSE Version 1\.1/i);
+            }
+        });
+
+        test('declares the exact family name with an upright and an italic face', () => {
+            const faces = readFontFaces(directory);
+            expect(faces.map(face => face.family)).toEqual([preset.name, preset.name]);
+            expect(faces.map(face => face.style).sort()).toEqual(['italic', 'normal']);
+            expect(faces.map(face => face.display)).toEqual(['swap', 'swap']);
+        });
+
+        test('names each file with the format its bytes are in', () => {
+            for (const face of readFontFaces(directory)) {
+                const [, file, format] = face.src.match(/url\('([^'?]+)[^']*'\)\s*format\('(\w+)'\)/);
+                expect(preset.formats).toContain(format);
+                expect(file.endsWith(format === 'woff2' ? '.woff2' : '.ttf')).toBe(true);
+            }
+        });
     });
 });
