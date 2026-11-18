@@ -393,9 +393,15 @@ function checkMotion(motion, fail) {
         fail('motion must be { "master", "output", "sha256" }.');
         return;
     }
-    onlyKeys(motion, ['master', 'output', 'sha256'], 'motion', fail);
+    onlyKeys(motion, ['master', 'output', 'layer', 'cell', 'sha256'], 'motion', fail);
     checkMaster(motion.master, '.json', fail);
     checkOutputPath(motion.output, fail);
+    if (motion.layer !== undefined && !NAME_PATTERN.test(motion.layer)) {
+        fail('motion.layer must be the id of the splash layer, in lowercase letters, digits and hyphens.');
+    }
+    if (motion.cell !== undefined && !(typeof motion.cell === 'number' && Number.isFinite(motion.cell) && motion.cell > 0)) {
+        fail('motion.cell must be the source pixels per art pixel that the description records, a number above 0.');
+    }
     if (!SHA256_PATTERN.test(motion.sha256 ?? '')) {
         fail(`The sha256 of ${motion.output} must be 64 lowercase hex digits.`);
     }

@@ -1,0 +1,209 @@
+import { posix } from 'node:path';
+import { frameBox } from './frame.js';
+import { masterFile, parseRatio } from './manifest.js';
+import { ArtProblem } from './problem.js';
+import { readRaster } from './raster.js';
+
+const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
+const PICTURE_FILE_PATTERN = /^[a-z0-9][a-z0-9-]*\.png$/;
+const BLINK_EYES = Object.freeze(['half', 'closed']);
+const EFFECT_KINDS = Object.freeze(['rings', 'burst', 'puff']);
+// A splash loop's one layer draws the same at any z; the shipped descriptions give it 1.
+const SPLASH_LAYER_Z = 1;
+
+/**
+ * Whether a motion master is the description that a run of the art pipeline left. The derive builds the player's
+ * description from it; a player's own description, which the shipped art was adopted with, has no `kind` and ships as
+ * it is.
+ * @param {any} description
+ */
+export const isRunDescription = (description) => isPlainObject(description) && Object.hasOwn(description, 'kind');
+
+/**
+ * The description an animation's player reads, built from the description its run left and the files its asset ships.
+ * Each picture of the run is the asset's picture whose master has the run's file name. The fields that no run gives
+ * come from the asset's `motion`: `cell`, the source pixels per art pixel that the description records, and, for a
+ * splash loop, `layer`, the id of its one layer (the asset's id when left out).
+ * @param {{ root: string, id: string }} context
+ * @param {any} asset A valid manifest asset with a `motion`.
+ * @param {any} run The parsed motion master.
+ * @returns {Promise<{ description: object, bytes: Buffer }>}
+ * @throws {ArtProblem} `motion-invalid` when the run's description is not one the derive can build from;
+ *   `motion-mismatch` when it does not fit the asset.
+ */
+export async function buildPlayerDescription({ root, id }, asset, run) {
+    const fail = (code, message) => {
+        throw new ArtProblem(code, `${asset.motion.master}: ${message}`, { asset: id, path: asset.motion.master });
+    };
+    const builder = BUILDERS[run.kind];
+    if (run.format !== 1 || !builder) {
+        fail('motion-invalid', `it is a run's description of the kind ${JSON.stringify(run.kind)} in format ${JSON.stringify(run.format)}, and the derive builds only format 1 of ${Object.keys(BUILDERS).join(', ')}.`);
+    }
+    const { p, q } = parseRatio(asset.ratio);
+    if (p !== q) {
+        fail('motion-invalid', `the asset is placed at the ratio ${asset.ratio}, and a player's description is built at ratio 1 only.`);
+    }
+    const description = await builder({ root, id, asset, run, fail });
+    return { description, bytes: Buffer.from(`${JSON.stringify(description, null, 4)}\n`) };
+}
+
+const BUILDERS = Object.freeze({ 'splash-loop': splashDescription });
+
+/**
+ * The `--anim.json` of the splash player: one layer that holds every frame, its timeline with the effects in its own
+ * pixels, and the blink.
+ */
+async function splashDescription({ root, id, asset, run, fail }) {
+    if (asset.type !== 'still' || !isPlainObject(asset.frames)) {
+        fail('motion-mismatch', `a splash loop's description belongs to a still with frames, and ${id} is a ${asset.type}${asset.frames ? '' : ' with no frames'}.`);
+    }
+    const frames = runFrames(run, fail);
+    if (!NAME_PATTERN.test(run.base ?? '') || !Object.hasOwn(frames, run.base)) {
+        fail('motion-invalid', `base must name the frame that the loop's base picture is, one of ${Object.keys(frames).join(', ')}.`);
+    }
+    matchFrames(asset, frames, fail);
+    const timeline = runTimeline(run.timeline, frames, fail);
+    const opening = timeline.keys[0].frame;
+    const repeated = (asset.outputs ?? []).find((output) => output.from !== undefined);
+    if (repeated && repeated.from !== opening) {
+        fail('motion-mismatch', `the timeline opens on ${opening}, but the still repeats the frame ${repeated.from}, so the loop would not start on the still.`);
+    }
+    const blink = runBlink(run.blink, frames, fail);
+    const layer = asset.motion.layer ?? id;
+    const origin = await originOf(root, asset, asset.master ?? asset.frames[run.base].master);
+    const [width, height] = asset.grid;
+    return {
+        id,
+        grid: gridOf(asset),
+        layers: [{
+            id: layer,
+            z: SPLASH_LAYER_Z,
+            left: 0,
+            top: 0,
+            width,
+            height,
+            base: opening,
+            frames: Object.fromEntries(Object.entries(asset.frames).map(([name, frame]) => [name, shippedName(frame, `the frame ${name}`, fail)])),
+        }],
+        timelines: {
+            [layer]: {
+                seconds: timeline.seconds,
+                keys: timeline.keys.map(({ at, frame }) => ({ at, frame })),
+                effects: timeline.effects.map((effect) => ({
+                    kind: effect.kind,
+                    frames: [...effect.frames],
+                    // The player counts an effect's age from the first key that shows one of its frames.
+                    from: timeline.keys.find(({ frame }) => effect.frames.includes(frame)).at,
+                    x: effect.x - origin.x,
+                    y: effect.y - origin.y,
+                })),
+            },
+        },
+        ...(blink ? { blinks: { ...playerBlink(blink), never: blink.never.length > 0 ? { [layer]: [...blink.never] } : {} } } : {}),
+    };
+}
+
+function runFrames(run, fail) {
+    const valid = isPlainObject(run.frames) && Object.keys(run.frames).length > 0
+        && Object.entries(run.frames).every(([name, frame]) => NAME_PATTERN.test(name) && isPlainObject(frame) && PICTURE_FILE_PATTERN.test(frame.file ?? ''));
+    if (!valid) {
+        fail('motion-invalid', 'frames must name at least one frame, each as { "file": "<name>.png" }.');
+    }
+    return run.frames;
+}
+
+/**
+ * Every frame of the run is the frame of the asset with the same name, whose master has the run's file name, and the
+ * asset has no other frame.
+ */
+function matchFrames(asset, frames, fail) {
+    const names = Object.keys(frames);
+    const extra = Object.keys(asset.frames).filter((name) => !names.includes(name));
+    if (extra.length > 0) {
+        fail('motion-mismatch', `the still has the frames ${extra.join(', ')}, which the run did not make.`);
+    }
+    for (const [name, { file }] of Object.entries(frames)) {
+        const frame = asset.frames[name];
+        if (!frame) {
+            fail('motion-mismatch', `the run made the frame ${name}, which the still does not have.`);
+        }
+        if (posix.basename(frame.master) !== file) {
+            fail('motion-mismatch', `the frame ${name} is ${file} in the run, but its master is ${frame.master}.`);
+        }
+    }
+}
+
+function runTimeline(timeline, frames, fail) {
+    const isFrame = (name) => Object.hasOwn(frames, name);
+    if (!isPlainObject(timeline) || !(typeof timeline.seconds === 'number' && timeline.seconds > 0) || !Array.isArray(timeline.keys) || timeline.keys.length === 0) {
+        fail('motion-invalid', 'timeline must give seconds above 0 and at least one key.');
+    }
+    timeline.keys.forEach((key, index) => {
+        const rising = index === 0 ? key?.at === 0 : key?.at > timeline.keys[index - 1].at;
+        if (!isPlainObject(key) || typeof key.at !== 'number' || !rising || key.at >= timeline.seconds || !isFrame(key.frame)) {
+            fail('motion-invalid', `key ${index} must show a frame of the run at a time that rises from 0 and stays below ${timeline.seconds} seconds.`);
+        }
+    });
+    const effects = timeline.effects ?? [];
+    if (!Array.isArray(effects)) {
+        fail('motion-invalid', 'timeline.effects must be a list.');
+    }
+    effects.forEach((effect, index) => {
+        const valid = isPlainObject(effect) && EFFECT_KINDS.includes(effect.kind)
+            && Array.isArray(effect.frames) && effect.frames.length > 0 && effect.frames.every(isFrame)
+            && timeline.keys.some(({ frame }) => effect.frames.includes(frame))
+            && Number.isInteger(effect.x) && Number.isInteger(effect.y);
+        if (!valid) {
+            fail('motion-invalid', `effect ${index} needs a kind of ${EFFECT_KINDS.join(', ')}, frames that the timeline shows, and x and y in whole pixels of the base picture.`);
+        }
+    });
+    return { seconds: timeline.seconds, keys: timeline.keys, effects };
+}
+
+/** The run's blink in the recipe's form, or null when the run has none. */
+function runBlink(blink, frames, fail) {
+    if (blink === undefined || blink === null) {
+        return null;
+    }
+    const steps = isPlainObject(blink) && Array.isArray(blink.steps) ? blink.steps : [];
+    const gap = isPlainObject(blink) ? blink.gapMs : undefined;
+    const never = isPlainObject(blink) ? blink.never ?? [] : [];
+    const valid = steps.length > 0 && steps.every((step) => isPlainObject(step) && BLINK_EYES.includes(step.eyes) && Number.isInteger(step.ms) && step.ms >= 1)
+        && isPlainObject(gap) && Number.isInteger(gap.min) && Number.isInteger(gap.max) && gap.min >= 1 && gap.max >= gap.min
+        && Array.isArray(never) && never.every((name) => Object.hasOwn(frames, name));
+    if (!valid) {
+        fail('motion-invalid', `blink must give steps of eyes ${BLINK_EYES.join(' or ')} with whole ms of 1 or more, gapMs as { min, max } with max at least min, and never as frames of the run.`);
+    }
+    return { steps, gapMs: gap, never };
+}
+
+/** A blink in the form both players read. */
+const playerBlink = ({ steps, gapMs }) => ({ steps: steps.map(({ eyes, ms }) => ({ variant: eyes, ms })), gapMs: [gapMs.min, gapMs.max] });
+
+function gridOf(asset) {
+    const [width, height] = asset.grid;
+    return { ...(asset.motion.cell === undefined ? {} : { cell: asset.motion.cell }), width, height };
+}
+
+/** The file name the player loads for a picture: its output at scale 1. */
+function shippedName(picture, what, fail) {
+    const output = picture.outputs.find(({ scale }) => (scale ?? 1) === 1);
+    if (!output) {
+        fail('motion-mismatch', `${what} has no output at scale 1 for the player to load.`);
+    }
+    return posix.basename(output.path);
+}
+
+/**
+ * Where the asset's shipped picture starts in its master's pixels, which the run's description counts in: the top
+ * left of its frame, cut from `master`.
+ */
+async function originOf(root, asset, master) {
+    if (asset.frame.mode === 'canvas') {
+        return { x: 0, y: 0 };
+    }
+    const box = frameBox(await readRaster(masterFile(root, master)), asset.frame);
+    return { x: box.x, y: box.y };
+}
+
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);

@@ -5,6 +5,7 @@ import { fitToGrid, placementStep } from './fit.js';
 import { frameBox, renderFrame, SUBJECT_ALPHA } from './frame.js';
 import { encodeIco } from './ico.js';
 import { masterFile, outputsOf, parseRatio } from './manifest.js';
+import { buildPlayerDescription, isRunDescription } from './motion.js';
 import { ArtProblem } from './problem.js';
 import { createRaster, hasBinaryAlpha, isOpaque, opaqueBox, paste, readRaster, samePixels, sha256, upscaleNearest } from './raster.js';
 import { rebuildRings } from './rings.js';
@@ -118,7 +119,7 @@ async function deriveStill(context, asset) {
         files.push(...await encodeOutputs(frames.get(output.from), [output]));
     }
     if (asset.motion) {
-        files.push(copyMotion(context, asset));
+        files.push(await copyMotion(context, asset));
     }
     return files;
 }
@@ -180,7 +181,7 @@ async function deriveScene(context, asset) {
     if (!samePixels(composed, still)) {
         throw new ArtProblem('composition-mismatch', `The backdrop and the "${asset.compose.pose}" pictures of the layers, drawn in order, do not give the still.`, { asset: id });
     }
-    files.push(copyMotion(context, asset));
+    files.push(await copyMotion(context, asset));
     return files;
 }
 
@@ -223,19 +224,25 @@ function deriveCopy({ root, id }, asset) {
     return asset.outputs.map((output) => ({ path: output.path, bytes, sha256: sha256(bytes), kind: 'data' }));
 }
 
-/** The motion description ships as it is, after a check that it names only files of its asset, inside its grid. */
-function copyMotion({ root, id }, asset) {
+/**
+ * The motion description ships as it is, or, when a run of the art pipeline left it, as the player's description built
+ * from it. Either is checked to name only files of its asset, inside its grid.
+ */
+async function copyMotion({ root, id }, asset) {
     const { master, output } = asset.motion;
     const path = masterFile(root, master);
     if (!existsSync(path)) {
         throw new ArtProblem('master-missing', `The motion description ${master} does not exist.`, { asset: id, path: master });
     }
-    const bytes = readFileSync(path);
+    let bytes = readFileSync(path);
     let description;
     try {
         description = JSON.parse(bytes.toString('utf8'));
     } catch (error) {
         throw new ArtProblem('motion-invalid', `${master} is not JSON: ${error.message}`, { asset: id, path: master });
+    }
+    if (isRunDescription(description)) {
+        ({ description, bytes } = await buildPlayerDescription({ root, id }, asset, description));
     }
     const fail = (message) => {
         throw new ArtProblem('motion-invalid', `${master}: ${message}`, { asset: id, path: master });
