@@ -6,7 +6,7 @@ function activateDeferredStyles() {
             continue;
         }
 
-        // SillyBunny: retain settled state for consumers that subscribe after idle activation — see docs/ui-migration.md
+        // SillyBunny: retain settled state for consumers that subscribe after idle activation
         style.dataset.sbStyleState = 'loading';
         style.addEventListener('load', () => {
             style.dataset.sbStyleState = 'loaded';

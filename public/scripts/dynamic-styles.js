@@ -23,7 +23,7 @@ function findStylesheetLink(absoluteHref, id = '') {
         }
     }
 
-    // SillyBunny: adopt deferred style preloads instead of duplicating them — see docs/ui-migration.md
+    // SillyBunny: adopt deferred style preloads instead of duplicating them
     return Array.from(document.querySelectorAll('link[rel~="stylesheet"], link[rel~="preload"][as="style"][data-sb-deferred-style]'))
         .find(link => link instanceof HTMLLinkElement && getAbsoluteAssetUrl(link.href) === absoluteHref) ?? null;
 }
@@ -35,7 +35,7 @@ function waitForStylesheetLink(link, media = 'all') {
             link.removeEventListener('error', failed);
         };
         const loaded = () => {
-            // SillyBunny: share settled readiness across deferred activation and late subscribers — see docs/ui-migration.md
+            // SillyBunny: share settled readiness across deferred activation and late subscribers
             link.dataset.sbStyleState = 'loaded';
             link.dataset.loaded = 'true';
             if (link.media === 'print') {
@@ -87,7 +87,7 @@ export function loadStylesheetAsync(href, { id = '', media = 'all' } = {}) {
     const absoluteHref = getAbsoluteAssetUrl(href);
     let existing = findStylesheetLink(absoluteHref, id);
 
-    // SillyBunny: replace an already-failed deferred request once; a fresh failure rejects normally — see docs/ui-migration.md
+    // SillyBunny: replace an already-failed deferred request once; a fresh failure rejects normally
     if (existing?.dataset.sbStyleState === 'error') {
         existing.remove();
         asyncStylesheetPromises.delete(absoluteHref);
@@ -95,7 +95,7 @@ export function loadStylesheetAsync(href, { id = '', media = 'all' } = {}) {
     }
 
     if (existing) {
-        // SillyBunny: identify adopted links for retry cleanup and activate them before awaiting — see docs/ui-migration.md
+        // SillyBunny: identify adopted links for retry cleanup and activate them before awaiting
         if (id && !existing.id) existing.id = id;
         if (existing.relList.contains('preload') && existing.hasAttribute('data-sb-deferred-style')) {
             existing.dataset.sbStyleActivated = 'true';

@@ -439,7 +439,7 @@ class BulkEditOverlay {
     #stateChangeCallbacks = [];
     #selectedCharacters = [];
     #bulkTagPopupHandler = new BulkTagPopupHandler();
-    // SillyBunny: the shared list owns selection, not the legacy overlay — see docs/ui-migration.md.
+    // SillyBunny: the shared list owns selection, not the legacy overlay.
     #legacyRowSelectionEnabled = true;
     #bulkActionRunning = false;
     #stateChange = Promise.resolve();
@@ -489,7 +489,7 @@ class BulkEditOverlay {
     set state(newState) {
         if (this.#state === newState) return;
 
-        // SillyBunny: serialize legacy and shared notifications so rapid enter/exit preserves event order — see docs/ui-migration.md.
+        // SillyBunny: serialize legacy and shared notifications so rapid enter/exit preserves event order.
         this.#notifyStateChange(newState);
     }
 
@@ -508,7 +508,7 @@ class BulkEditOverlay {
         return this.#stateChange;
     }
 
-    // SillyBunny: shared selection preserves extension notifications without enabling legacy controls — see docs/ui-migration.md.
+    // SillyBunny: shared selection preserves extension notifications without enabling legacy controls.
     /** Notifies the upstream state lifecycle for shared selection. @param {'select'|'browse'} state @returns {Promise<void>} */
     notifySharedSelectionState(state) {
         if (state !== 'select' && state !== 'browse') throw new TypeError(`Unknown shared selection state: ${state}`);
@@ -535,7 +535,7 @@ class BulkEditOverlay {
         return this.#selectedCharacters;
     }
 
-    // SillyBunny: leave the upstream action handlers usable without their selection UI — see docs/ui-migration.md.
+    // SillyBunny: leave the upstream action handlers usable without their selection UI.
     /** Whether legacy rows and bulk-button transports may drive selection. @returns {boolean} */
     get legacyRowSelectionEnabled() {
         return this.#legacyRowSelectionEnabled && !this.#notifyingSharedState;
@@ -549,7 +549,7 @@ class BulkEditOverlay {
         clearTimeout(this.#holdTimer);
         this.#holdTimer = null;
         this.isLongPress = false;
-        // SillyBunny: clean original rows before the shared list detaches them, and restored container attributes on teardown — see docs/ui-migration.md.
+        // SillyBunny: clean original rows before the shared list detaches them, and restored container attributes on teardown.
         this.#resetLegacySelectionUI();
         if (enabled) this.onPageLoad();
         else this.notifySharedSelectionState('browse');
@@ -648,7 +648,7 @@ class BulkEditOverlay {
      */
     onPageLoad = () => {
         this.onPageUnload();
-        // SillyBunny: page refreshes must not reset the shared list's selection or bind legacy gestures — see docs/ui-migration.md.
+        // SillyBunny: page refreshes must not reset the shared list's selection or bind legacy gestures.
         if (!this.legacyRowSelectionEnabled) return;
         this.browseState();
 
@@ -673,7 +673,7 @@ class BulkEditOverlay {
      *
      */
     handleStateChange = () => {
-        // SillyBunny: shared transitions notify consumers but never bind the legacy selection UI — see docs/ui-migration.md.
+        // SillyBunny: shared transitions notify consumers but never bind the legacy selection UI.
         if (!this.legacyRowSelectionEnabled) {
             this.stateChangeCallbacks.forEach(callback => callback(this.state));
             return;

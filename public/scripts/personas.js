@@ -131,7 +131,7 @@ let personaLastLoadedChatId = null;
 /** @type {function(string): void} */
 let navigateToAvatar = () => { };
 
-// SillyBunny: set while the persona editor is mounted; legacy renderers defer to it — see docs/ui-migration.md
+// SillyBunny: set while the persona editor is mounted; legacy renderers defer to it
 /** @type {{ isOpen: () => boolean, refresh: (reason: 'list'|'states'|'persona', avatarId?: string) => void } | null} */
 let personaEditorAdapter = null;
 
@@ -140,14 +140,14 @@ let personaEditorAdapter = null;
  * @returns {boolean}
  */
 export function isPersonaPanelOpen() {
-    // SillyBunny: let the mounted editor own its visibility signal — see docs/ui-migration.md
+    // SillyBunny: let the mounted editor own its visibility signal
     if (personaEditorAdapter) return Boolean(personaEditorAdapter.isOpen());
     const panel = document.getElementById('PersonaManagement');
     return Boolean(panel?.classList.contains('openDrawer') && panel.getClientRects().length > 0);
 }
 
 function switchPersonaGridView() {
-    // SillyBunny: leave layout to the mounted editor — see docs/ui-migration.md
+    // SillyBunny: leave layout to the mounted editor
     if (personaEditorAdapter) return;
     const state = accountStorage.getItem(GRID_STORAGE_KEY) === 'true';
     $('#user_avatar_block').toggleClass('gridView', state);
@@ -427,7 +427,7 @@ async function refreshPersonaAvatar(avatarId) {
     ]);
 
     reloadPersonaAvatar(avatarId, true);
-    // SillyBunny: invalidate editor images only for an actual avatar overwrite — see docs/ui-migration.md
+    // SillyBunny: invalidate editor images only for an actual avatar overwrite
     personaEditorAdapter?.refresh('avatar', avatarId);
 }
 
@@ -535,7 +535,7 @@ export async function getUserAvatars(doRender = true, openPageAt = '', { strict 
         const allEntities = await response.json();
 
         if (!Array.isArray(allEntities)) {
-            // SillyBunny: the rebuilt list must distinguish malformed data from an empty library — see docs/ui-migration.md
+            // SillyBunny: the rebuilt list must distinguish malformed data from an empty library
             if (strict) throw new Error(t`Error`);
             return [];
         }
@@ -546,7 +546,7 @@ export async function getUserAvatars(doRender = true, openPageAt = '', { strict 
 
         // If any persona is missing from the power user settings, we add it
         await addMissingPersonas(allEntities);
-        // SillyBunny: bypass legacy rendering when the editor is mounted — see docs/ui-migration.md
+        // SillyBunny: bypass legacy rendering when the editor is mounted
         if (personaEditorAdapter) {
             personaEditorAdapter.refresh('list');
             return allEntities;
@@ -1906,7 +1906,7 @@ function getPersonaStates(avatarId) {
  */
 
 function updatePersonaUIStates({ navigateToCurrent = false } = {}) {
-    // SillyBunny: bypass legacy state rendering when the editor is mounted — see docs/ui-migration.md
+    // SillyBunny: bypass legacy state rendering when the editor is mounted
     if (personaEditorAdapter) {
         personaEditorAdapter.refresh('states');
         return;
@@ -3382,7 +3382,7 @@ function registerPersonaSlashCommands() {
     }));
 }
 
-// SillyBunny: targetable persona editor API; inert for legacy callers — see docs/ui-migration.md
+// SillyBunny: targetable persona editor API; inert for legacy callers
 // #region SillyBunny persona editor adapter and data API
 
 export function setPersonaEditorAdapter(adapter) {
@@ -3397,7 +3397,7 @@ export function getPersonaRecord(avatarId) {
 }
 
 export async function listPersonaAvatars() {
-    // SillyBunny: list readiness must reject failed legacy fetches so reopening retries — see docs/ui-migration.md
+    // SillyBunny: list readiness must reject failed legacy fetches so reopening retries
     const avatars = await getUserAvatars(false, '', { strict: true });
     if (!Array.isArray(avatars)) throw new Error(t`Error`);
     await addMissingPersonas(avatars);
@@ -3581,7 +3581,7 @@ export function getPersonaModelDeps() {
     };
 }
 
-// SillyBunny: reuse fuzzy filtering without legacy controls or renderer side effects — see docs/ui-migration.md
+// SillyBunny: reuse fuzzy filtering without legacy controls or renderer side effects
 export function getPersonaDisplayAvatars(allIds, query = '') {
     const ids = personasFilter.applyFilters([...allIds], { tempOverrides: { [FILTER_TYPES.PERSONA_SEARCH]: query } });
     return ids.sort((left, right) => {
@@ -3594,7 +3594,7 @@ export function getPersonaDisplayAvatars(allIds, query = '') {
     });
 }
 
-// SillyBunny: expose scope-aware selections including the legacy chat fallback — see docs/ui-migration.md
+// SillyBunny: expose scope-aware selections including the legacy chat fallback
 export function getPersonaActiveAppendixIds(avatarId) {
     return [...getActivePersonaAppendixIds(avatarId)];
 }
@@ -3698,7 +3698,7 @@ export async function initPersonas() {
         if (!avatarId || avatarId === user_avatar) {
             syncPersonaDescriptionFromDescriptor();
         }
-        // SillyBunny: refresh inactive editor records as well as the active one — see docs/ui-migration.md
+        // SillyBunny: refresh inactive editor records as well as the active one
         personaEditorAdapter?.refresh('persona', avatarId);
     });
     switchPersonaGridView();

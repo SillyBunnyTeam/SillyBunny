@@ -24,7 +24,7 @@ import {
     chat,
     sendSystemMessage,
     printMessages,
-    // SillyBunny: refresh the shared main list after id-based row actions — see docs/ui-migration.md
+    // SillyBunny: refresh the shared main list after id-based row actions
     printCharactersDebounced,
     characters,
     // SillyBunny: Back re-peeks the member already peeked over the group chat
@@ -94,7 +94,7 @@ import { t } from './i18n.js';
 // SillyBunny: member actions share the shell's popover / bottom-sheet menu.
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { MOTION_FAST, animateListChange, applyListChange, captureListChange } from './sillybunny-motion.js';
-// SillyBunny: shared entity rows, list controls and origin routing — see docs/ui-migration.md
+// SillyBunny: shared entity rows, list controls and origin routing
 import { createEntityRow, entityKey, entityRowMotionKey, limitTagChips } from './sillybunny-editor/entity-row.js';
 import { createListPagination } from './sillybunny-editor/list-pagination.js';
 import { createListSearch } from './sillybunny-editor/list-search.js';
@@ -120,9 +120,9 @@ import {
     notifyGroupEditorChanged,
     rebaseGroupEditor,
     initGroupEditor,
-    // SillyBunny: deletion must retire a hidden editor session and backup — see docs/ui-migration.md
+    // SillyBunny: deletion must retire a hidden editor session and backup
     discardGroupEditorForEntity,
-    // SillyBunny: cloned member filters share the searchable tag menu — see docs/ui-migration.md.
+    // SillyBunny: cloned member filters share the searchable tag menu.
     attachGroupTagFilterMenus,
     prepareGroupEditorReveal,
     setGroupEditorFolderValue,
@@ -190,7 +190,7 @@ const EDITABLE_KEYS = [
 /** @type {GroupDraft|null} */
 let editorDraft = null;
 let editorFolderId = null;
-// SillyBunny: group routes share deferred-style readiness, including failed-link retries — see docs/ui-migration.md
+// SillyBunny: group routes share deferred-style readiness, including failed-link retries
 let groupEditorReady = Promise.resolve(true);
 
 /**
@@ -1145,7 +1145,7 @@ export async function getGroupChat(groupId, reload = false, { switchMenu = true,
     } catch (error) {
         console.error(error);
         toastr.error(t`Could not load chat data. Try reloading the page.`);
-        // SillyBunny: callers must distinguish a failed load from a successful selection — see docs/ui-migration.md.
+        // SillyBunny: callers must distinguish a failed load from a successful selection.
         return false;
     }
     const metadata = data?.[0]?.chat_metadata ?? {};
@@ -1843,7 +1843,7 @@ function getGroupAvatar(group) {
         for (const member of group.members) {
             const charIndex = characters.findIndex(x => x.avatar === member);
             if (charIndex !== -1 && characters[charIndex].avatar !== 'none') {
-                // SillyBunny: collages use viewport-sized thumbnails too — see docs/ui-migration.md.
+                // SillyBunny: collages use viewport-sized thumbnails too.
                 const avatar = getThumbnailUrlForViewport('avatar', characters[charIndex].avatar);
                 memberAvatars.push(avatar);
             }
@@ -1887,7 +1887,7 @@ function getGroupAvatar(group) {
 }
 
 // SillyBunny: the shared main list consumes the existing group collage as a
-// DOM node instead of reconstructing group avatar markup — see docs/ui-migration.md
+// DOM node instead of reconstructing group avatar markup
 /**
  * Builds the existing custom or collage group avatar node.
  * @param {Group} group
@@ -2405,7 +2405,7 @@ function activateNaturalOrder(members, input, lastMessage, allowSelfResponses, i
  * @returns {Promise<boolean>} Whether the group was deleted
  */
 // SillyBunny: return deletion success for id-based row actions while preserving
-// the legacy side-effect sequence — see docs/ui-migration.md
+// the legacy side-effect sequence
 async function deleteGroup(id) {
     const group = groups.find((x) => x.id === id);
 
@@ -2423,7 +2423,7 @@ async function deleteGroup(id) {
 
     if (response.ok) {
         // SillyBunny: a deleted group cannot retain an editable hidden draft
-        // or a recovery backup — see docs/ui-migration.md
+        // or a recovery backup
         discardGroupEditorForEntity(id);
         if (editorDraft && String(editorDraft.id) === String(id)) {
             editorDraft = null;
@@ -2521,7 +2521,7 @@ async function modifyGroupMember(groupId, groupMember, isDelete) {
     }
 }
 
-// SillyBunny: reconciliation also runs after failed member hydration — see docs/ui-migration.md
+// SillyBunny: reconciliation also runs after failed member hydration
 function refreshGroupMemberLists() {
     printGroupCandidates({ animate: true });
     printGroupMembers({ animate: true });
@@ -2743,7 +2743,7 @@ function getGroupCharacters({ doFilter = false, onlyMembers = false } = {}) {
     // group, so the member lists must filter against it rather than groups[].
     const thisGroup = getEditedGroup();
 
-    // SillyBunny: one membership lookup per character; no repeated member scans — see docs/ui-migration.md.
+    // SillyBunny: one membership lookup per character; no repeated member scans.
     const memberAvatars = new Set(thisGroup?.members ?? editorDraft?.members ?? []);
     const results = characters.flatMap((item, id) => memberAvatars.has(item.avatar) === onlyMembers
         ? [{ item, id, type: 'character' }] : []);
@@ -2757,16 +2757,16 @@ function getGroupCharacters({ doFilter = false, onlyMembers = false } = {}) {
     return handleMembers(results, thisGroup);
 }
 
-// SillyBunny: retain native list controls and page state across draft renders — see docs/ui-migration.md
+// SillyBunny: retain native list controls and page state across draft renders
 let membersPagination = null;
 let candidatesPagination = null;
 const groupListSearches = new Map();
-// SillyBunny: each main list retains keyed rows and their factory update handles — see docs/ui-migration.md
+// SillyBunny: each main list retains keyed rows and their factory update handles
 const groupRowCaches = new WeakMap();
 const groupRowViews = new WeakMap();
 const groupListEmptyPages = new WeakMap();
 
-// SillyBunny: an empty member list shows the shared status page beside the rows; the rows keep the `:empty` state extensions read — see docs/ui-migration.md
+// SillyBunny: an empty member list shows the shared status page beside the rows; the rows keep the `:empty` state extensions read
 function syncGroupListEmptyPage(rows, total) {
     let page = groupListEmptyPages.get(rows);
     if (rows.childElementCount > 0) {
@@ -2809,7 +2809,7 @@ function getGroupListPagination(onlyMembers) {
 function reportGroupList(onlyMembers, shown, total) {
     for (const [input, search] of groupListSearches) {
         if (onlyMembers !== (input.id === 'rm_group_members_filter')) continue;
-        // SillyBunny: clearing search must not leave a stale no-results announcement — see docs/ui-migration.md
+        // SillyBunny: clearing search must not leave a stale no-results announcement
         if (!search.query) input.closest('.ds-entity-list')?.querySelector('[data-sb-group-list-status]')?.replaceChildren();
         search.report(shown, total);
     }
@@ -2825,7 +2825,7 @@ function printGroupCandidates({ animate = false } = {}) {
     pagination.setTotal(candidates.length);
     rows.dataset.emptyText = total ? t`No results` : t`No characters available`;
     const render = () => {
-        // SillyBunny: unchanged candidates keep their nodes and focused controls — see docs/ui-migration.md
+        // SillyBunny: unchanged candidates keep their nodes and focused controls
         reconcileGroupCharacterRows(rows, pagination.slice(candidates));
         syncGroupListEmptyPage(rows, total);
         reportGroupList(false, candidates.length, total);
@@ -2843,7 +2843,7 @@ function printGroupMembers({ animate = false } = {}) {
     const order = getEditedGroup()?.members ?? [];
     pagination.setTotal(members.length);
     const render = () => {
-        // SillyBunny: reconcile the main list; HTML-only popouts still mirror its page — see docs/ui-migration.md
+        // SillyBunny: reconcile the main list; HTML-only popouts still mirror its page
         rows.dataset.emptyText = total ? t`No results` : t`Group is empty.`;
         reconcileGroupCharacterRows(rows, pagination.slice(members), { order, grip: true });
         syncGroupListEmptyPage(rows, total);
@@ -2863,7 +2863,7 @@ function printGroupMembers({ animate = false } = {}) {
     return animateMemberListRender(render, { duration: MOTION_FAST, enterDuration: MOTION_FAST });
 }
 
-// SillyBunny: mutable presentation is updated through the row factory, not its identity signature — see docs/ui-migration.md
+// SillyBunny: mutable presentation is updated through the row factory, not its identity signature
 function reconcileGroupCharacterRows(container, entries, { order = [], grip = false } = {}) {
     let cache = groupRowCaches.get(container);
     if (!cache) {
@@ -2891,7 +2891,7 @@ function getMemberRowsContainers() {
 }
 
 function animateMemberListRender(render, options = {}) {
-    // SillyBunny: shared row keys survive pagination and candidate/member moves — see docs/ui-migration.md
+    // SillyBunny: shared row keys survive pagination and candidate/member moves
     options = { key: entityRowMotionKey, ...options };
     const snapshots = getMemberRowsContainers()
         .map(container => captureListChange(container, options));
@@ -2916,7 +2916,7 @@ function animateMemberListRender(render, options = {}) {
  * @returns {JQuery<HTMLElement>} jQuery element representing the group character block
  */
 function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {}) {
-    // SillyBunny: one row factory, preserving upstream hooks and transports — see docs/ui-migration.md
+    // SillyBunny: one row factory, preserving upstream hooks and transports
     const isMember = isGroupMember(getEditedGroup(), character.avatar);
     const aux = $('<span class="ch_additional_info character_version"></span>')[0];
     const modelLabel = $('<span class="sb-group-member-model"></span>')[0];
@@ -2937,7 +2937,7 @@ function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {
         subtitle: [aux, modelLabel],
         badges: [queueBadge],
         suffix,
-        // SillyBunny: a member row keeps grip, switch and menu; its press opens the character without a chevron — see docs/ui-migration.md
+        // SillyBunny: a member row keeps grip, switch and menu; its press opens the character without a chevron
         activation: 'activate',
         compatClasses: {
             row: isMember ? ['group_member'] : ['group_member', 'sb-group-candidate'],
@@ -2977,7 +2977,7 @@ function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {
     return block;
 }
 
-// SillyBunny: retain row/control identity while refreshing all mutable character and draft state — see docs/ui-migration.md
+// SillyBunny: retain row/control identity while refreshing all mutable character and draft state
 function updateGroupCharacterBlock(row, character, { draftIndex = -1, grip = false } = {}) {
     const view = groupRowViews.get(row);
     const { entity, aux, modelLabel, queueBadge, isMember } = view;
@@ -3034,7 +3034,7 @@ function isGroupMemberDisabled(avatarId) {
 }
 
 // SillyBunny: delegate the existing editor delete action through the shared
-// id-based confirmation and generation guard — see docs/ui-migration.md
+// id-based confirmation and generation guard
 async function onDeleteGroupClick() {
     if (!openGroupId) {
         toastr.warning(t`Currently no group selected.`);
@@ -3065,7 +3065,7 @@ async function onFavoriteGroupClick() {
 }
 
 // SillyBunny: list favourites are acknowledged live writes, independent of
-// the shared save debounce and any hidden editor draft — see docs/ui-migration.md
+// the shared save debounce and any hidden editor draft
 /**
  * Persists a group's favourite flag and rebases that field in its owned editor draft.
  * @param {string} groupId
@@ -3186,7 +3186,7 @@ function toggleHiddenControls(group, generationMode = null) {
  * @param {boolean} skipAnimation If true, skips the animation when selecting the group
  */
 function select_group_chats(groupId, skipAnimation) {
-    // SillyBunny: gate every native open path, not only shell navigation — see docs/ui-migration.md
+    // SillyBunny: gate every native open path, not only shell navigation
     groupEditorReady = prepareGroupEditorReveal(document.getElementById('rm_group_chats_block'),
         () => ['group_edit', 'group_create'].includes(menu_type)).catch(error => {
         reportGroupEditorError(error);
@@ -3216,7 +3216,7 @@ function select_group_chats(groupId, skipAnimation) {
     }
 
     if (!reconciled) {
-        // SillyBunny: reset native search state before the first render — see docs/ui-migration.md
+        // SillyBunny: reset native search state before the first render
         for (const search of groupListSearches.values()) search.clear();
         $('#rm_group_filter, [id="rm_group_members_filter"]').val('');
         groupCandidatesFilter.setFilterData(FILTER_TYPES.SEARCH, '');
@@ -3401,7 +3401,7 @@ function onGroupActionClick(event) {
     return runGroupEditorAction(() => runGroupMemberAction(action, member));
 }
 
-// SillyBunny: DOM callbacks consume errors; awaited command APIs still reject — see docs/ui-migration.md
+// SillyBunny: DOM callbacks consume errors; awaited command APIs still reject
 function reportGroupEditorError(error) {
     console.error(error);
     toastr.error(error?.message || t`Error`);
@@ -3480,7 +3480,7 @@ async function applyGroupMemberAction(action, member) {
     }
 }
 
-// SillyBunny: off-page commands use detached rows without moving the list page — see docs/ui-migration.md
+// SillyBunny: off-page commands use detached rows without moving the list page
 /**
  * Runs a member action by character index whether or not the member row is rendered.
  * @param {number} chid
@@ -3500,7 +3500,7 @@ export async function runGroupMemberActionByChid(chid, action) {
 // SillyBunny: use DOM identity and the originating list so re-rendered controls
 // regain focus in the sheet or its HTML-only popout, never in a newer session.
 function captureGroupMemberFocus(member) {
-    // SillyBunny: candidate focus survives its row moving into the member list — see docs/ui-migration.md
+    // SillyBunny: candidate focus survives its row moving into the member list
     const list = member[0]?.closest('.rm_group_members, #rm_group_add_members');
     return {
         list,
@@ -3515,13 +3515,13 @@ function captureGroupMemberFocus(member) {
 function restoreGroupMemberFocus(focus, { removed = false, control = '.sb-group-member-menu' } = {}) {
     if (!focus.list?.isConnected || focus.draft !== editorDraft || focus.groupId !== openGroupId) return;
     const rows = Array.from(focus.list.querySelectorAll('.group_member'));
-    // SillyBunny: removing the last item on the final page focuses its previous neighbour — see docs/ui-migration.md
+    // SillyBunny: removing the last item on the final page focuses its previous neighbour
     const pagination = focus.list.id === 'rm_group_add_members' ? candidatesPagination : membersPagination;
     const index = pagination?.page < focus.page ? rows.length - 1 : Math.min(focus.index, rows.length - 1);
     const member = removed
         ? rows[index]
         : rows.find(row => row.getAttribute('data-avatar') === focus.avatar);
-    // SillyBunny: candidate Add focuses a row, with search as the empty-list fallback — see docs/ui-migration.md
+    // SillyBunny: candidate Add focuses a row, with search as the empty-list fallback
     const target = (control ? member?.querySelector(control) : member)
         ?? focus.list.closest('.ds-entity-list')?.querySelector('input[type="search"]');
     target?.focus({ preventScroll: true });
@@ -3534,7 +3534,7 @@ function isGroupCandidateRowClick(event) {
     return Boolean(target && !target.closest('.right_menu_button, input, button, select, textarea, a, label, [role="button"]:not(.tag), .tag:is(.actionable, .clickable-action, .placeholder-expander, .interactable), .tag_remove'));
 }
 
-// SillyBunny: row activation shares keyboard and pointer routing — see docs/ui-migration.md
+// SillyBunny: row activation shares keyboard and pointer routing
 function bindGroupListKeyboard(container, onlyMembers) {
     bindListKeyboard(container, {
         rowSelector: '.group_member',
@@ -3553,10 +3553,10 @@ function bindGroupListKeyboard(container, onlyMembers) {
     });
 }
 
-// SillyBunny: the row press and the member menu share one route to the character editor — see docs/ui-migration.md
+// SillyBunny: the row press and the member menu share one route to the character editor
 function openGroupMemberEditor(avatarId) {
     return runGroupEditorAction(() => objectNavigation.navigate({ kind: 'character-editor', id: avatarId, via: 'group-member' }, {
-        // SillyBunny: a leave-guard Save may turn a create draft into a persisted group — see docs/ui-migration.md
+        // SillyBunny: a leave-guard Save may turn a create draft into a persisted group
         from: () => ({ kind: 'group-editor', id: openGroupId ?? 'create' }),
     }));
 }
@@ -3585,7 +3585,7 @@ function onGroupMemberMenuClick(event) {
     const actions = [];
     // SillyBunny: capitalisation by DESIGN.md
     if (openGroupId) actions.push(actionItem(t`Speak Now`, 'comment', 'speak'));
-    // SillyBunny: the row has no chevron, so the menu names the row's press — see docs/ui-migration.md
+    // SillyBunny: the row has no chevron, so the menu names the row's press
     actions.push({ label: t`View Character Card`, icon: 'fa-solid fa-address-card', onSelect: () => openGroupMemberEditor(avatarId) });
     actions.push({ label: t`Model Override…`, icon: 'fa-solid fa-microchip', onSelect: () => runGroupEditorAction(() => editGroupMemberModel(member)) });
     const title = member.find('.ch_name').text();
@@ -3826,7 +3826,7 @@ export async function openGroupById(groupId, { switchMenu = true, onAccepted } =
     }
 
     if (selected_group === groupId) {
-        // SillyBunny: opt-in acceptance preserves save-before-dismissal order — see docs/ui-migration.md.
+        // SillyBunny: opt-in acceptance preserves save-before-dismissal order.
         if (onAccepted) {
             if (!await flushPendingChatSavesForNavigation()) return false;
             onAccepted();
@@ -3839,7 +3839,7 @@ export async function openGroupById(groupId, { switchMenu = true, onAccepted } =
         return false;
     }
 
-    // SillyBunny: notify the list before fetching or printing the new chat — see docs/ui-migration.md.
+    // SillyBunny: notify the list before fetching or printing the new chat.
     onAccepted?.();
     groupChatQueueOrder = new Map();
     setCharacterId(undefined);
@@ -3850,7 +3850,7 @@ export async function openGroupById(groupId, { switchMenu = true, onAccepted } =
     selected_group = groupId;
     setEditedMessageId(undefined);
     updateChatMetadata({}, true);
-    // SillyBunny: do not dismiss the list when the selected group's chat could not load — see docs/ui-migration.md.
+    // SillyBunny: do not dismiss the list when the selected group's chat could not load.
     if (!await getGroupChat(groupId, false, { switchMenu })) return false;
     syncCharacterMenuActiveEntity();
     return true;
@@ -3863,7 +3863,7 @@ export async function openGroupById(groupId, { switchMenu = true, onAccepted } =
  * @returns {Promise<boolean>} Whether the definition was selected.
  */
 async function openCharacterDefinition(characterSelect, { isCurrent } = {}) {
-    // SillyBunny: hydration may finish after a newer route has claimed selection — see docs/ui-migration.md
+    // SillyBunny: hydration may finish after a newer route has claimed selection
     if (isCurrent?.() === false) return false;
     if (is_group_generating) {
         toastr.warning(t`Can't peek a character while group reply is being generated`);
@@ -3888,7 +3888,7 @@ async function openCharacterDefinition(characterSelect, { isCurrent } = {}) {
     return true;
 }
 
-// SillyBunny: stable group-editor destinations and Back snapshots — see docs/ui-migration.md
+// SillyBunny: stable group-editor destinations and Back snapshots
 /**
  * True when the member peek path is safe: the edited group is the selected chat group and the avatar is a member.
  * @param {string} avatarId
@@ -3928,7 +3928,7 @@ export async function openGroupMemberDefinition(avatarId, { isCurrent, restore =
  * @returns {boolean}
  */
 export function groupEditorTargetExists(groupId) {
-    // SillyBunny: a stale 'create' origin must not resurrect an unrelated editor draft — see docs/ui-migration.md
+    // SillyBunny: a stale 'create' origin must not resurrect an unrelated editor draft
     if (groupId === 'create') {
         return Boolean(editorDraft && editorDraft.id == null && openGroupId === null
             && captureGroupEditorSave()?.context.mode === 'create');
@@ -3943,7 +3943,7 @@ export function groupEditorTargetExists(groupId) {
  * @returns {Promise<boolean>} True once the editor is visible.
  */
 export async function openGroupEditor(groupId, { switchChat = false, isCurrent } = {}) {
-    // SillyBunny: Back restores only presentation, even if another chat is selected — see docs/ui-migration.md
+    // SillyBunny: Back restores only presentation, even if another chat is selected
     if (isCurrent?.() === false || !groupEditorTargetExists(groupId)) return false;
     if (groupId === 'create' || !switchChat) {
         if (await select_group_chats(groupId === 'create' ? null : groupId, false) === false) return false;
@@ -3982,7 +3982,7 @@ export function captureGroupEditorListState() {
  */
 export function restoreGroupEditorListState(state) {
     if (!state) return;
-    // SillyBunny: restore after pagination and reveal layout, never into a newer editor session — see docs/ui-migration.md
+    // SillyBunny: restore after pagination and reveal layout, never into a newer editor session
     const draft = editorDraft;
     const groupId = openGroupId;
     const pagination = getGroupListPagination(true);
@@ -3999,7 +3999,7 @@ export function restoreGroupEditorListState(state) {
         });
 }
 
-// SillyBunny: always-visible, scoped search keeps the existing filter engine — see docs/ui-migration.md
+// SillyBunny: always-visible, scoped search keeps the existing filter engine
 function mountGroupListSearch(input, onlyMembers) {
     if (!input || groupListSearches.has(input)) return;
     input.setAttribute('aria-label', t`Search`);
@@ -4028,7 +4028,7 @@ function mountGroupListSearch(input, onlyMembers) {
 
 function filterGroupMemberList() {
     const searchValue = String($(this).val());
-    // SillyBunny: cloned search helpers mirror the query without duplicate filtering — see docs/ui-migration.md
+    // SillyBunny: cloned search helpers mirror the query without duplicate filtering
     $('[id="rm_group_members_filter"]').not(this).val(searchValue);
     for (const [input, search] of groupListSearches) {
         if (input.id === 'rm_group_members_filter' && input !== this) search.setQuery(searchValue, { notify: false });
@@ -4501,10 +4501,10 @@ function doCurMemberListPopout() {
         newElement.find('.group_pagination').empty();
 
         $('#movingDivs').append(newElement);
-        // SillyBunny: the HTML clone needs native menu bindings and live tag transports — see docs/ui-migration.md.
+        // SillyBunny: the HTML clone needs native menu bindings and live tag transports.
         const tagMenus = attachGroupTagFilterMenus(newElement[0]);
         newElement.data('sb-tag-menus', tagMenus);
-        // SillyBunny: cloned controls need their own native listeners — see docs/ui-migration.md
+        // SillyBunny: cloned controls need their own native listeners
         const popoutInput = newElement.find('[id="rm_group_members_filter"]')[0];
         mountGroupListSearch(popoutInput, true);
         bindGroupListKeyboard(newElement.find('.rm_group_members')[0], true);
@@ -4518,16 +4518,16 @@ function doCurMemberListPopout() {
         $('#groupMemberListPopout').fadeIn(animation_duration);
         dragElement(newElement);
         $('#groupMemberListPopoutClose').off('click').on('click', function () {
-            // SillyBunny: release the popout's search scope when closing — see docs/ui-migration.md
+            // SillyBunny: release the popout's search scope when closing
             newElement.fadeOut(animation_duration, removePopout);
         });
     } else {
         console.debug('saw existing popout, removing');
-        // SillyBunny: release native search listeners with the cloned list — see docs/ui-migration.md
+        // SillyBunny: release native search listeners with the cloned list
         const popout = $('#groupMemberListPopout');
         const input = popout.find('[id="rm_group_members_filter"]')[0];
         popout.fadeOut(animation_duration, () => {
-            // SillyBunny: release cloned filter observers and any open picker — see docs/ui-migration.md.
+            // SillyBunny: release cloned filter observers and any open picker.
             popout.data('sb-tag-menus')?.destroy();
             groupListSearches.get(input)?.destroy();
             groupListSearches.delete(input);
@@ -4577,7 +4577,7 @@ jQuery(() => {
             globalThis.SillyBunnyShell?.closeCharacters?.();
         }
     });
-    // SillyBunny: shared search and keyboard controllers keep native list semantics — see docs/ui-migration.md
+    // SillyBunny: shared search and keyboard controllers keep native list semantics
     mountGroupListSearch(document.getElementById('rm_group_filter'), false);
     mountGroupListSearch(document.getElementById('rm_group_members_filter'), true);
     for (const [id, onlyMembers] of [['rm_group_members', true], ['rm_group_add_members', false]]) {

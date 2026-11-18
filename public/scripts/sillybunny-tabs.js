@@ -774,7 +774,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-world-info-editor.css?v=20261117zp', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
-        // SillyBunny: persona editor assets stay deferred like World Info — see docs/ui-migration.md
+        // SillyBunny: persona editor assets stay deferred like World Info
         { href: 'css/sillybunny-editor-shell.css?v=20261118t', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118t', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
@@ -782,13 +782,13 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-persona-detail.css?v=20261118zm', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
-        // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
+        // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves.
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118t', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-character-list.css?v=20261117l', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
-        // SillyBunny: Characters and Groups use the same deferred selection UI — see docs/ui-migration.md.
+        // SillyBunny: Characters and Groups use the same deferred selection UI.
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118t', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-character-list.css?v=20261117l', id: 'deferred-character-list-css' },
@@ -5892,7 +5892,7 @@ async function setCharacterListEntityView(view) {
         import('./sillybunny-character-list-state.js'),
         import('../script.js'),
     ]);
-    // SillyBunny: replace Back's upstream menu state without its extra render — see docs/ui-migration.md.
+    // SillyBunny: replace Back's upstream menu state without its extra render.
     script.setMenuType('characters');
     await state.switchCharacterListView(view, { render: false });
 }
@@ -5958,7 +5958,7 @@ async function revealCharacterListView(view, revision) {
     await setCharacterListEntityView(normalizedView);
     if (revision !== characterListViewRevision) return false;
 
-    // SillyBunny: list navigation has one render and no synthetic upstream Back refresh — see docs/ui-migration.md.
+    // SillyBunny: list navigation has one render and no synthetic upstream Back refresh.
     for (const id of ['result_info', 'rm_PinAndTabs', 'rm_ch_create_block', 'rm_group_chats_block']) {
         const element = document.getElementById(id);
         if (!(element instanceof HTMLElement)) continue;
@@ -6119,7 +6119,7 @@ function ensureCharacterWorldInfoPanel() {
     return host;
 }
 
-// SillyBunny: lazy-mount the persona editor only after its deferred styles load — see docs/ui-migration.md
+// SillyBunny: lazy-mount the persona editor only after its deferred styles load
 let personaEditorMountPromise = null;
 let characterListMountPromise = null;
 let characterPanelRevealPromise = null;
@@ -6207,7 +6207,7 @@ async function mountCharacterListController() {
 }
 
 function getCharacterListNavigationGeneration() {
-    // SillyBunny: authoritative page and character-tab revisions exclude close-animation cleanup — see docs/ui-migration.md.
+    // SillyBunny: authoritative page and character-tab revisions exclude close-animation cleanup.
     return `${sbSettingsState.closeGen}:${characterListViewRevision}`;
 }
 function setCharacterPersonaPanelVisible(visible) {
@@ -6920,7 +6920,7 @@ function preloadPanelStylesheets(shellKey, tabId = null) {
         return;
     }
 
-    // SillyBunny: persona preloads share mount retry cleanup for failed links — see docs/ui-migration.md
+    // SillyBunny: persona preloads share mount retry cleanup for failed links
     if (normalizedKey === 'characters:persona') {
         return import('./sillybunny-persona-editor.js')
             .then(module => module.loadPersonaEditorStyles(stylesheets))
@@ -7034,7 +7034,7 @@ function syncProxyButtonState(proxyButton, sourceIcon) {
         return;
     }
 
-    // SillyBunny: the page synchronously owns this button; keep drawer state for legacy consumers — see docs/ui-migration.md
+    // SillyBunny: the page synchronously owns this button; keep drawer state for legacy consumers
     if (proxyButton.id === 'sb-character-toggle' && getCharacterPanel()?.classList.contains('sb-settings-mounted-shell')) {
         proxyButton.classList.remove('is-open', 'is-pinned', 'is-current');
         proxyButton.setAttribute('aria-expanded', String(proxyButton.classList.contains('sb-settings-active')));
@@ -10355,7 +10355,7 @@ function getPersonaSearchEntries(tabState) {
             tabLabel: tabState.label,
             dedupeKey: getSearchEntryDedupeKey(tabState, 'Persona', name, { avatarId }),
             action: async () => {
-                // SillyBunny: open the exact persona without changing the list search — see docs/ui-migration.md
+                // SillyBunny: open the exact persona without changing the list search
                 const { openPersonaEditor } = await import('./sillybunny-persona-editor.js');
                 await openPersonaEditor({ avatarId });
             },
@@ -12397,7 +12397,7 @@ function composePersonaDescriptionFromContext(context, avatarId, activeIds = nul
     for (const appendix of appendices) {
         const description = String(appendix.description ?? '').trim();
         if (activeIdSet.has(appendix.id) && description) {
-            // SillyBunny: match persona/Conversation note composition — see docs/ui-migration.md
+            // SillyBunny: match persona/Conversation note composition
             chunks.push(`(${appendix.name})\n${description}`);
         }
     }
@@ -12784,7 +12784,7 @@ function renderPersonaPickerAppendixControls(picker, context, avatarId) {
 async function openPersonaAppendicesManager() {
     const { currentAvatarId } = getCurrentPersonaSelection();
     closePersonaPicker();
-    // SillyBunny: bridge Manage directly to the active persona's notes — see docs/ui-migration.md
+    // SillyBunny: bridge Manage directly to the active persona's notes
     const { openPersonaEditor } = await import('./sillybunny-persona-editor.js');
     await openPersonaEditor({ avatarId: currentAvatarId, section: 'notes' });
 }
@@ -13106,7 +13106,7 @@ function initAll() {
                 openCharacterPanelTab(tabId);
                 // A named page is the page to show: on a phone the pane that is off screen is inert.
                 if (tabId && isMobileViewport()) setSettingsMobileContentView(true);
-                // SillyBunny: bridges await the atomic reveal, not just module mounting — see docs/ui-migration.md
+                // SillyBunny: bridges await the atomic reveal, not just module mounting
                 if (['persona', 'world-info', 'import'].includes(tabId)) {
                     return characterPanelRevealPromise;
                 }
@@ -13667,7 +13667,7 @@ function deactivateSettingsPageRoot(shellKey) {
     } else {
         setCharacterPersonaPanelVisible(false);
         setCharacterImportPanelVisible(false);
-        // SillyBunny: upstream WI probes require layout in the closed page; aria-hidden still suspends adapter work — see docs/ui-migration.md
+        // SillyBunny: upstream WI probes require layout in the closed page; aria-hidden still suspends adapter work
         setCharacterWorldInfoPanelVisible(false, { preserveLayout: true });
     }
 

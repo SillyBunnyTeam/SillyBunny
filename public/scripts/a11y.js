@@ -82,7 +82,7 @@ const tabItemSelectors = [
 /** @type {Record<string, (element: Element) => void>} */
 const a11yRules = {
     [buttonSelectors]: (element) => {
-        // SillyBunny: entity metadata is not a separate action — see docs/ui-migration.md.
+        // SillyBunny: entity metadata is not a separate action.
         if (element.matches('.ds-entity-row__tags .tag:not(.actionable, .clickable-action)') && !element.querySelector('button, .tag_remove:not([style*="display: none"])')) {
             element.setAttribute('role', 'generic');
             return;

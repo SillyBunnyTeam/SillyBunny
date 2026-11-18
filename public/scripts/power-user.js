@@ -61,7 +61,7 @@ import { renderTemplateAsync } from './templates.js';
 import { countOccurrences, debounce, delay, download, getFileText, getSanitizedFilename, getStringHash, isOdd, isTrueBoolean, onlyUnique, resetScrollHeight, shuffle, sortMoments, stringToRange, timestampToMoment, uuidv4 } from './utils.js';
 import { FILTER_TYPES } from './filters.js';
 // SillyBunny: the shared sort control delegates Groups persistence to the
-// view-scoped state module — see docs/ui-migration.md
+// view-scoped state module
 import { getCharacterListView, setListSort } from './sillybunny-character-list-state.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
@@ -3334,7 +3334,7 @@ function validateStoryString(storyString, params) {
 
 
 // SillyBunny: accept an isolated view sort without changing power_user's
-// character settings or the upstream callers that omit it — see docs/ui-migration.md
+// character settings or the upstream callers that omit it
 const sortFunc = (a, b, sortSettings = power_user) => sortSettings.sort_order == 'asc' ? compareFunc(a, b, sortSettings) : compareFunc(b, a, sortSettings);
 const compareFunc = (first, second, sortSettings = power_user) => {
     const a = first[sortSettings.sort_field];
@@ -4815,7 +4815,7 @@ jQuery(async () => {
     });
 
     // SillyBunny: route the shared sort control to per-view storage for Groups
-    // while preserving power_user sort keys for Characters — see docs/ui-migration.md
+    // while preserving power_user sort keys for Characters
     $('#character_sort_order').on('change', function () {
         const field = String($(this).find(':selected').data('field'));
         // Save sort order, but do not save search sorting, as this is a temporary sorting option

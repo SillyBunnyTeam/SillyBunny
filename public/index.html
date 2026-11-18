@@ -6780,7 +6780,7 @@
                         </button>
                     </div>
                 </div>
-                <!-- SillyBunny: keep upstream favourites and pin markup as hidden transports — see docs/ui-migration.md. -->
+                <!-- SillyBunny: keep upstream favourites and pin markup as hidden transports. -->
                 <div id="CharListButtonAndHotSwaps" class="flex-container flexnowrap" hidden aria-hidden="true">
                     <div class="flexFlowColumn flex-container">
                         <div id="rm_button_panel_pin_div" class="alignitemsflexstart" title="Locked = Character Management panel will stay open" data-i18n="[title]Locked = Character Management panel will stay open">
@@ -6846,7 +6846,7 @@
                     </div>
                     <div id="sb_character_persona_panel" class="sb-character-persona-panel" hidden></div>
                     <div id="sb_character_import_panel" class="sb-character-import-panel" hidden>
-                        <!-- SillyBunny: keep the rebuilt Import surface hidden until deferred styles resolve; the shell shows its loading page meanwhile. Upstream transports remain unchanged — see docs/ui-migration.md. -->
+                        <!-- SillyBunny: keep the rebuilt Import surface hidden until deferred styles resolve; the shell shows its loading page meanwhile. Upstream transports remain unchanged. -->
                         <div id="sb_character_import_content" hidden></div>
                     </div>
                     <!-- SillyBunny: runtime reparents the upstream #WI-SP-button/#WorldInfo node here so World Info behaves as a right Characters tab without duplicating IDs. This differs from upstream so the route stays compatible with saved shortcuts and existing selectors. -->
@@ -6865,7 +6865,7 @@
                                      #rm_PinAndTabs). It is a real button so keyboard users get the
                                      same entry point; the controller focuses #character_name_pole. -->
                                 <button class="sb-editor-title-button" id="sb_character_editor_title_button" type="button" title="Rename Character" data-i18n="[title]Rename Character">
-                                    <!-- SillyBunny: the title takes the shared dialog title role; the pencil is the rename cue, not a title — see docs/ui-migration.md -->
+                                    <!-- SillyBunny: the title takes the shared dialog title role; the pencil is the rename cue, not a title -->
                                     <span class="sb-editor-title sb-dialog__title" id="sb_character_editor_title"></span>
                                     <i class="fa-solid fa-pencil sb-editor-pencil" aria-hidden="true"></i>
                                 </button>
@@ -6946,7 +6946,7 @@
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <div id="avatar-and-name-block" class="sb-character-essentials">
                                             <div id="avatar_div" class="sb-character-essentials__avatar">
-                                                <!-- SillyBunny: keyboard-operable picker keeps the upstream input/handlers — see docs/ui-migration.md. -->
+                                                <!-- SillyBunny: keyboard-operable picker keeps the upstream input/handlers. -->
                                                 <button type="button" id="avatar_div_div" class="add_avatar avatar" data-sb-avatar-input="add_avatar_button" title="Click to select a new avatar for this character" aria-label="Change Persona Image" data-i18n="[title]Click to select a new avatar for this character;[aria-label]Change Persona Image">
                                                     <img id="avatar_load_preview" src="img/ai4.png" alt="avatar">
                                                 </button>
@@ -7274,7 +7274,7 @@
                                         </div>
                                     </div>
                                 </section>
-                                <!-- SillyBunny: origin-aware related-object links — see docs/ui-migration.md. -->
+                                <!-- SillyBunny: origin-aware related-object links. -->
                                 <section id="sb_character_related" class="sb-editor-section displayNone" data-sb-section="related" aria-labelledby="sb_character_section_related" hidden>
                                     <header class="ds-pref-group-header">
                                         <h3 class="ds-pref-group-heading" id="sb_character_section_related">Related</h3>
@@ -7314,7 +7314,7 @@
                                  character editor's header (the legacy #rm_button_selected_ch h2 click
                                  target is inside the hidden #rm_PinAndTabs). -->
                             <button class="sb-editor-title-button" id="sb_group_editor_title_button" type="button" title="Rename Group" data-i18n="[title]Rename Group">
-                                <!-- SillyBunny: the title takes the shared dialog title role; the pencil is the rename cue, not a title — see docs/ui-migration.md -->
+                                <!-- SillyBunny: the title takes the shared dialog title role; the pencil is the rename cue, not a title -->
                                 <span class="sb-editor-title sb-dialog__title" id="sb_group_editor_title"></span>
                                 <i class="fa-solid fa-pencil sb-editor-pencil" aria-hidden="true"></i>
                             </button>
@@ -7372,7 +7372,7 @@
                                 <div class="ds-pref-group sb-editor-section__body">
                                     <div id="group-metadata-controls" class="sb-character-essentials">
                                         <div class="sb-character-essentials__avatar">
-                                            <!-- SillyBunny: keyboard-operable picker keeps the upstream input/handlers — see docs/ui-migration.md. -->
+                                            <!-- SillyBunny: keyboard-operable picker keeps the upstream input/handlers. -->
                                             <button type="button" id="group_avatar_div" class="add_avatar avatar" data-sb-avatar-input="group_avatar_button" title="Click to select a new avatar for this group" aria-label="Change Persona Image" data-i18n="[title]Click to select a new avatar for this group;[aria-label]Change Persona Image">
                                                 <div id="group_avatar_preview">
                                                     <div class="avatar">
@@ -7407,7 +7407,7 @@
                                     <h3 class="ds-pref-group-heading" id="sb_group_section_members" data-i18n="Members">Members</h3>
                                     <p class="ds-pref-group-subtitle" data-i18n="group_members_subtitle">lorum ipsum</p>
                                     <div class="ds-row-suffix">
-                                        <!-- SillyBunny: both heading buttons take the shared flat header-icon style — see docs/ui-migration.md -->
+                                        <!-- SillyBunny: both heading buttons take the shared flat header-icon style -->
                                         <a href="https://docs.sillytavern.app/usage/core-concepts/groupchats/" class="sb-editor-icon-button sb-header-icon-button" target="_blank" rel="noopener noreferrer" aria-label="Open the Group Chats Documentation" data-i18n="[aria-label]Open the Group Chats Documentation">
                                             <span class="fa-solid fa-circle-question" aria-hidden="true"></span>
                                         </a>
@@ -7421,14 +7421,14 @@
                                     <!-- tags.js reads .rm_tag_controls as the immediate next sibling of
                                          #rm_group_members_header, so the header must stay directly above it. -->
                                     <div id="rm_group_members_header" class="ds-row">
-                                        <!-- SillyBunny: label shared list search without changing extension IDs — see docs/ui-migration.md -->
+                                        <!-- SillyBunny: label shared list search without changing extension IDs -->
                                         <input id="rm_group_members_filter" class="text_pole margin0" type="search" aria-label="Search" data-i18n="[placeholder]Search...;[aria-label]Search" placeholder="Search..." />
                                     </div>
                                     <div class="rm_tag_controls ds-tag-filter">
                                         <div class="tags rm_tag_filter"></div>
                                     </div>
                                     <div id="rm_group_members" class="rm_group_members ds-entity-list__rows ds-entity-list__empty" group_empty_text="Group is empty." data-i18n="[group_empty_text]Group is empty."></div>
-                                    <!-- SillyBunny: announce filtered results independently of pagination — see docs/ui-migration.md -->
+                                    <!-- SillyBunny: announce filtered results independently of pagination -->
                                     <span class="sr-only" role="status" aria-live="polite" data-sb-group-list-status></span>
                                     <div id="rm_group_members_pagination" class="rm_group_members_pagination group_pagination ds-entity-list__footer"></div>
                                 </div>
@@ -7441,14 +7441,14 @@
                                 </header>
                                 <div id="unaddedCharList" name="Unadded Char List" class="ds-pref-group sb-editor-section__body ds-entity-list">
                                     <div id="rm_group_add_members_header" class="ds-row">
-                                        <!-- SillyBunny: label shared list search without changing extension IDs — see docs/ui-migration.md -->
+                                        <!-- SillyBunny: label shared list search without changing extension IDs -->
                                         <input id="rm_group_filter" class="text_pole margin0" type="search" aria-label="Search" data-i18n="[placeholder]Search...;[aria-label]Search" placeholder="Search..." />
                                     </div>
                                     <div class="rm_tag_controls ds-tag-filter">
                                         <div class="tags rm_tag_filter"></div>
                                     </div>
                                     <div id="rm_group_add_members" class="ds-entity-list__rows ds-entity-list__empty" no_characters_text="No characters available" data-i18n="[no_characters_text]No characters available"></div>
-                                    <!-- SillyBunny: announce filtered results independently of pagination — see docs/ui-migration.md -->
+                                    <!-- SillyBunny: announce filtered results independently of pagination -->
                                     <span class="sr-only" role="status" aria-live="polite" data-sb-group-list-status></span>
                                     <div id="rm_group_add_members_pagination" class="group_pagination ds-entity-list__footer"></div>
                                 </div>
@@ -8701,7 +8701,7 @@
                 <h4 data-i18n="Persona Name:">Persona Name:</h4>
             </div>
         </div>
-        <!-- SillyBunny: retained for extensions; getGroupCharacterBlock now uses createEntityRow — see docs/ui-migration.md -->
+        <!-- SillyBunny: retained for extensions; getGroupCharacterBlock now uses createEntityRow -->
         <div id="group_member_template" class="template_element">
             <div class="group_member ds-entity-row">
                 <div class="avatar ds-entity-row__avatar">

@@ -369,7 +369,7 @@ async function RA_autoloadchat() {
 
 export async function favsToHotswap({ onlyIfVisible = false } = {}) {
     const container = $('#right-nav-panel .hotswap');
-    // SillyBunny: skip the retired strip during list prints, retain explicit API rebuilding — see docs/ui-migration.md.
+    // SillyBunny: skip the retired strip during list prints, retain explicit API rebuilding.
     if (onlyIfVisible && !container.is(':visible')) return;
     const entities = getEntitiesList({ doFilter: false });
 

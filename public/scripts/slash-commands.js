@@ -75,7 +75,7 @@ import { getMessageTimeStamp, isMobile } from './RossAscends-mods.js';
 import { hideChatMessageRange } from './chats.js';
 import { getContext, saveMetadataDebounced } from './extensions.js';
 import { getRegexedString, regex_placement } from './extensions/regex/engine.js';
-// SillyBunny: member commands use pagination-independent action transport — see docs/ui-migration.md
+// SillyBunny: member commands use pagination-independent action transport
 import { findGroupMemberId, groups, is_group_generating, openGroupById, regenerateGroup, resetSelectedGroup, saveGroupChat, selected_group, getGroupMembers, runGroupMemberActionByChid } from './group-chats.js';
 import { chat_completion_sources, MINIMAX_ENDPOINT, oai_settings, POLLINATIONS_ENDPOINT, promptManager, SILICONFLOW_ENDPOINT, ZAI_ENDPOINT } from './openai.js';
 import { user_avatar } from './personas.js';
@@ -4866,7 +4866,7 @@ async function unhideMessageCallback(args, value) {
  * @returns {Promise<void>}
  */
 function performGroupMemberAction(chid, action) {
-    // SillyBunny: off-page actions never reconfigure the visible list — see docs/ui-migration.md
+    // SillyBunny: off-page actions never reconfigure the visible list
     return runGroupMemberActionByChid(chid, action);
 }
 
@@ -4883,7 +4883,7 @@ async function disableGroupMemberCallback(_, arg) {
         return '';
     }
 
-    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    // SillyBunny: finish the member mutation before resolving the command
     await performGroupMemberAction(chid, 'disable');
     return '';
 }
@@ -4901,7 +4901,7 @@ async function enableGroupMemberCallback(_, arg) {
         return '';
     }
 
-    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    // SillyBunny: finish the member mutation before resolving the command
     await performGroupMemberAction(chid, 'enable');
     return '';
 }
@@ -4919,7 +4919,7 @@ async function moveGroupMemberUpCallback(_, arg) {
         return '';
     }
 
-    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    // SillyBunny: finish the member mutation before resolving the command
     await performGroupMemberAction(chid, 'up');
     return '';
 }
@@ -4937,7 +4937,7 @@ async function moveGroupMemberDownCallback(_, arg) {
         return '';
     }
 
-    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    // SillyBunny: finish the member mutation before resolving the command
     await performGroupMemberAction(chid, 'down');
     return '';
 }
@@ -4960,7 +4960,7 @@ async function peekCallback(_, arg) {
         return '';
     }
 
-    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    // SillyBunny: finish the member mutation before resolving the command
     await performGroupMemberAction(chid, 'view');
     return '';
 }
@@ -4987,7 +4987,7 @@ async function removeGroupMemberCallback(_, arg) {
         return '';
     }
 
-    // SillyBunny: finish the member mutation before resolving the command — see docs/ui-migration.md
+    // SillyBunny: finish the member mutation before resolving the command
     await performGroupMemberAction(chid, 'remove');
     return '';
 }

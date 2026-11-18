@@ -1,4 +1,4 @@
-/* SillyBunny: shared Characters and Groups list presentation — see docs/ui-migration.md */
+/* SillyBunny: shared Characters and Groups list presentation */
 
 #rm_characters_block:has(> .sb-character-list) #rm_button_bar,
 #rm_characters_block:has(> .sb-character-list) #form_character_search_form,

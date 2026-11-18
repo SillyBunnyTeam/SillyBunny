@@ -27,7 +27,7 @@ import { getOrCreatePersonaDescriptor, setPersonaDescription, user_avatar } from
 import { escapeCharacterBookRegex, getFreeCharacterBookEntryId, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from './world-info-character-book.js';
 import { detectEmbeddedLorebookCandidates, findMatchingLorebookName, getLinkedAuxBooks, isEmbeddedBookLinked } from './world-info-batch-helpers.js';
 import { getTimedEffectWindow, getWorldInfoGroupNames, normalizeWorldInfoKey, normalizeWorldInfoProbability, passesWorldInfoProbability } from './world-info-scan-core.js';
-// SillyBunny: failed transfers must not leak optimistic entries into later saves — see docs/ui-migration.md
+// SillyBunny: failed transfers must not leak optimistic entries into later saves
 import { captureWorldInfoMutation } from './sillybunny-world-info-model.js';
 // SillyBunny: native lorebook controls retain their handlers and results inside shared rows.
 import { embeddedLorebookOptions, lorebookSelectOptions, lorebookSortingOptions } from './sillybunny-editor/adapters/preset-lorebook-dialogs.js';
@@ -2090,7 +2090,7 @@ function registerWorldInfoSlashCommands() {
  * @return {Promise<void>} A promise that resolves when the world editor is loaded
  */
 export async function showWorldEditor(name, { isCurrent = () => true } = {}) {
-    // SillyBunny: a timed-out or superseded link cannot commit delayed book data — see docs/ui-migration.md.
+    // SillyBunny: a timed-out or superseded link cannot commit delayed book data.
     if (!isCurrent()) return;
     const loadId = ++worldInfoEditorLoadId;
     if (!name) {
@@ -2132,12 +2132,12 @@ export function getWorldInfoEditorState() {
     return worldInfoEditor ? { name: worldInfoEditor.name, data: worldInfoEditor.data } : { name: null, data: null };
 }
 
-/** SillyBunny: captures mounted WI presentation without eagerly importing its editor — see docs/ui-migration.md. */
+/** SillyBunny: captures mounted WI presentation without eagerly importing its editor. */
 export function captureWorldInfoEditorListState() {
     return worldInfoEditorAdapter?.captureState?.() ?? null;
 }
 
-/** SillyBunny: restores mounted WI presentation for an active navigation transaction — see docs/ui-migration.md. */
+/** SillyBunny: restores mounted WI presentation for an active navigation transaction. */
 export function restoreWorldInfoEditorListState(state, isCurrent) {
     return worldInfoEditorAdapter?.restoreState?.(state, isCurrent) ?? false;
 }
@@ -2246,7 +2246,7 @@ async function hideWorldEditor() {
 function openWorldInfoCharacterPanelTab() {
     const sillyBunnyShell = /** @type {any} */ (globalThis.SillyBunnyShell);
     if (sillyBunnyShell?.openTab) {
-        // SillyBunny: let object links await the shell route — see docs/ui-migration.md.
+        // SillyBunny: let object links await the shell route.
         return sillyBunnyShell.openTab('characters', 'world-info');
     }
 
@@ -2549,7 +2549,7 @@ function clearEntryList($list) {
 async function displayWorldEntries(name, data, navigation = navigation_option.none, flashOnNav = true) {
     updateEditor = async (navigation, flashOnNav = true) => await displayWorldEntries(name, data, navigation, flashOnNav);
 
-    // SillyBunny: hidden adapters retain the latest book, deferring transport and row work until reveal — see docs/ui-migration.md
+    // SillyBunny: hidden adapters retain the latest book, deferring transport and row work until reveal
     if (worldInfoEditorAdapter?.isOpen?.() === false) {
         return worldInfoEditorAdapter.render({ name, data, navigation, flashOnNav });
     }
@@ -6857,7 +6857,7 @@ export function onWorldInfoChange(args, text) {
  * @returns {Promise<void|false|{ok: boolean, name: string|null, error: string|null}>}
  */
 export async function importWorldInfo(file, { returnResult = false } = {}) {
-    // SillyBunny: result-bearing imports report their own outcome, not global WI events — see docs/ui-migration.md.
+    // SillyBunny: result-bearing imports report their own outcome, not global WI events.
     const failed = error => ({ ok: false, name: null, error: String(error?.message ?? error) });
     if (!file) {
         return returnResult ? failed(t`Failed to import World Info`) : undefined;
@@ -6925,7 +6925,7 @@ export async function importWorldInfo(file, { returnResult = false } = {}) {
     let saveTarget = persistedWorldName;
     let importedName;
     let importedData;
-    // SillyBunny: preserve server detail for the opt-in result only — see docs/ui-migration.md.
+    // SillyBunny: preserve server detail for the opt-in result only.
     let importError = null;
 
     try {
@@ -6978,7 +6978,7 @@ export async function importWorldInfo(file, { returnResult = false } = {}) {
     if (importedName) {
         await eventSource.emit(event_types.WORLDINFO_UPDATED, importedName, importedData, { replaced: true });
     }
-    // SillyBunny: default callers still receive undefined on success/transport failure — see docs/ui-migration.md.
+    // SillyBunny: default callers still receive undefined on success/transport failure.
     if (returnResult) return importError ? failed(importError) : {
         ok: Boolean(importedName), name: importedName ?? null, error: importedName ? null : t`Failed to import World Info`,
     };
@@ -6991,7 +6991,7 @@ export async function importWorldInfo(file, { returnResult = false } = {}) {
  * @returns {Promise<boolean>} True only after the mounted editor shows the loaded book.
  */
 export async function openWorldInfoEditor(worldName, { isCurrent = () => true } = {}) {
-    // SillyBunny: await book readiness and reject missing links — see docs/ui-migration.md.
+    // SillyBunny: await book readiness and reject missing links.
     if (!isCurrent()) return false;
     if (!world_names.includes(worldName)) {
         toastr.warning(t`-- World Info not found --`);
@@ -7105,7 +7105,7 @@ export async function moveWorldInfoEntry(sourceName, targetName, uid, { deleteOr
 
     const entryUidString = String(uid);
 
-    // SillyBunny: each book rolls back only its own uncommitted mutation — see docs/ui-migration.md
+    // SillyBunny: each book rolls back only its own uncommitted mutation
     let sourceMutation;
     let targetMutation;
     let sourceCommitted = false;
@@ -7322,7 +7322,7 @@ export function initWorldInfo() {
         }
     });
 
-    // SillyBunny: preserve legacy change transports while propagating link cancellation — see docs/ui-migration.md.
+    // SillyBunny: preserve legacy change transports while propagating link cancellation.
     $('#world_editor_select').on('change', async (_event, { isCurrent = () => true } = {}) => {
         if (!isCurrent()) return;
         cancelDebounce(debouncedWorldInfoSearch);
