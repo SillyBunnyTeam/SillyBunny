@@ -799,6 +799,24 @@ function renderSystemBackgrounds(backgrounds) {
     activateLazyLoader();
 }
 
+// SillyBunny: the hint is the shared status page, built when the hint is first on screen. Building it at startup would load the
+// status page stylesheet for a tab that most sessions never open.
+function observeChatBackgroundsHint() {
+    const hint = document.getElementById('bg_chat_hint');
+    if (!hint || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(async entries => {
+        if (!entries.some(entry => entry.isIntersecting)) return;
+        observer.disconnect();
+        const { createStatusPage } = await import('./sillybunny-editor/status-page.js');
+        // The upstream sentence, with its translation attributes, moves into the page's description.
+        const sentence = [...hint.childNodes];
+        const page = createStatusPage({ state: 'empty', icon: 'image', title: t`No Chat Backgrounds`, description: ' ', compact: true });
+        page.element.querySelector('.sb-status-page__description').replaceChildren(...sentence);
+        hint.replaceChildren(page.element);
+    });
+    observer.observe(hint);
+}
+
 /**
  * Renders the chat-specific (custom) backgrounds gallery.
  * @param {string[]} [backgrounds] - Optional filtered list of backgrounds.
@@ -1292,6 +1310,7 @@ function setupBackgroundScrollToTop() {
 }
 
 export function initBackgrounds() {
+    observeChatBackgroundsHint();
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
     eventSource.on(event_types.FORCE_SET_BACKGROUND, forceSetBackground);
 

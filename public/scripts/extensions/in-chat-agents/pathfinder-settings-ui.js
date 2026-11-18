@@ -8,6 +8,7 @@ import { accountStorage } from '../../util/AccountStorage.js';
 import { escapeHtml } from '../../utils.js';
 import { normalizeBackendSettingsRows } from '../../sillybunny-settings-presentation.js';
 import { attachTextareaFullscreen } from './textarea-fullscreen.js';
+import { createStatusPage } from '../../sillybunny-editor/status-page.js';
 import { world_names } from '../../world-info.js';
 import { areAgentsGloballyEnabled, getActiveAgentChatScope, getAgentById, getGlobalSettings, isAgentEnabledForCurrentScope, isPathfinderSubmoduleEnabled, persistAgentGlobalSettings, saveAgent, setAgentEnabledForScope } from './agent-store.js';
 import { runDiagnostics } from './pathfinder-init.js';
@@ -43,6 +44,14 @@ const DEFAULT_PIPELINE_MAX_TOKENS = 64000;
  * permissions, confirmed tools) are not here: they stay check boxes.
  */
 const SWITCH_LABELS = '.pf--master-toggle > .checkbox_label, .pf--setting-group > .checkbox_label, .pf--mode-card-header > .checkbox_label';
+
+/** An empty region of the Pathfinder settings: the shared status page inside a wrapper that keeps the `pf--empty-state` hook. */
+function createEmptyPage(icon, title, description, extraClass = '') {
+    const wrapper = document.createElement('div');
+    wrapper.className = `pf--empty-state ${extraClass}`.trim();
+    wrapper.append(createStatusPage({ state: 'empty', icon, title, description, compact: true }).element);
+    return wrapper;
+}
 
 /**
  * Pathfinder draws its page itself, so the shared settings pass does not reach it. This gives the
@@ -442,12 +451,7 @@ function refreshLorebookList() {
     const enabledBooks = getActiveTunnelVisionBooks(settings);
 
     if (lorebooks.length === 0) {
-        listEl.html(`
-            <div class="pf--empty-state">
-                <i class="fa-solid fa-book-open"></i>
-                <span>No lorebooks found. Create a lorebook in World Info first.</span>
-            </div>
-        `);
+        listEl.empty().append(createEmptyPage('book-open', 'No Lorebooks', 'No lorebooks found. Create a lorebook in World Info first.'));
         renderPermissionMatrix([]);
         return;
     }
@@ -599,7 +603,7 @@ function renderPermissionMatrix(lorebooks = null) {
     const books = getEffectiveLorebooks(lorebooks, settings);
 
     if (books.length === 0) {
-        matrix.html('<div class="pf--empty-state pf--permission-empty"><i class="fa-solid fa-lock-open"></i><span>Select a lorebook above, or attach one to the current character/chat with auto-select enabled.</span></div>');
+        matrix.empty().append(createEmptyPage('lock-open', 'No Lorebook Selected', 'Select a lorebook above, or attach one to the current character/chat with auto-select enabled.', 'pf--permission-empty'));
         return;
     }
 

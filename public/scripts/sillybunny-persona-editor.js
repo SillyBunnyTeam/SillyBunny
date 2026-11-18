@@ -29,7 +29,7 @@ import { mountPersonaDetail, personaDraftKey } from './sillybunny-persona-detail
 const STYLESHEETS = [
     { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
-    { href: 'css/sillybunny-persona-detail.css?v=20261117zp', id: 'deferred-persona-detail-css' },
+    { href: 'css/sillybunny-persona-detail.css?v=20261118zk', id: 'deferred-persona-detail-css' },
 ];
 const DEFAULT_BATCH_SIZE = 50;
 const mountedEditors = new WeakMap();

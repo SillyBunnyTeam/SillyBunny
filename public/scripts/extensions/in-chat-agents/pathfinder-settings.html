@@ -885,8 +885,19 @@
     color: var(--pf-text-muted);
 }
 
-.pf--empty-state i {
+.pf--empty-state > i {
     font-size: calc(var(--mainFontSize) * 1.6);
+}
+
+/* The shared status page brings its own padding, icon and ink. */
+.pf--empty-state:has(> .sb-status-page) {
+    padding: 0;
+}
+
+/* `.pf--settings *` sets start alignment on every element, which would override the centred text that the status page inherits. */
+.pf--settings .sb-status-page,
+.pf--settings .sb-status-page * {
+    text-align: center;
 }
 
 /* Mode Cards */

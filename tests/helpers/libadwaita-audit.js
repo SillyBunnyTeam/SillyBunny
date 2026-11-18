@@ -12,7 +12,7 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
     if (!(root instanceof HTMLElement)) throw new TypeError('auditLibadwaita requires an HTMLElement root');
 
     const defaultAllowlist = [
-        { selector: '#completion_prompt_manager', rule: '*', reason: 'Prompt Manager redesigned in Phase 5' },
+        { selector: '#completion_prompt_manager', rule: '*', reason: 'The Prompt Manager is a list with its own markup, not a preference group' },
     ];
     const effectiveAllowlist = allowlist ?? defaultAllowlist;
     const contentInsetSelector = [
@@ -398,50 +398,31 @@ export function auditLibadwaita(root, { allowlist = null } = {}) {
 export { auditPromptingLayout };
 
 export const LIBADWAITA_AUDIT_ALLOWLIST = Object.freeze([
-    { selector: '#completion_prompt_manager', rule: '*', reason: 'Prompt Manager redesigned in Phase 5' },
-    // SillyBunny: bespoke grid layouts — inset and edge rules require full-width .ds-row anatomy which these sections intentionally do not use.
-    { selector: '#sb-af-reasoning', rule: 'content-inset', reason: 'Reasoning uses a multi-column toggle grid; horizontal inset check does not apply to grid-placed items' },
-    { selector: '#sb-af-reasoning', rule: 'row-edges', reason: 'Reasoning uses a multi-column toggle grid; row-edge check does not apply to grid-placed items' },
-    { selector: '#sb-quick-access-shortcuts-drawer', rule: 'content-inset', reason: 'Shortcut rows use a two-column label/select grid; inset check does not apply' },
-    { selector: '#sb-quick-access-shortcuts-drawer', rule: 'row-edges', reason: 'Shortcut rows use a two-column label/select grid; row-edge check does not apply' },
-    // SillyBunny: prompt-editor rows in the Prompts group contain tall textareas; vertical-centering check is not meaningful for mixed-height flex rows.
+    // SillyBunny: the settings parity spec never renders these elements (the Prompt Manager, and parts of the page that only some backends or modes show), so no measurement says whether they still need an exemption.
+    { selector: '#completion_prompt_manager', rule: '*', reason: 'The Prompt Manager is a list with its own markup, not a preference group' },
     { selector: '#sb-openai-prompts', rule: 'row-geometry', reason: 'Prompt editor rows use bespoke textarea layout; midpointDelta check does not apply' },
-    // SillyBunny: tab root containers — these are structural wrappers, not preference groups, and carry no heading of their own.
-    { selector: '#sb-messages-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav, not a group heading' },
-    { selector: '#sb-appearance-content', rule: 'group-anatomy', reason: 'Tab root container; heading is provided by the tab nav' },
-    { selector: '#user-settings-block', rule: 'group-anatomy', reason: 'Right-shell root used as a structural mount point, not a named preference group' },
     { selector: '#ica--settings', rule: 'group-anatomy', reason: 'Agents extension settings; marked data-sb-presentation=manual and excluded from normalizer' },
-    // SillyBunny: upstream containers with bespoke layout — row-edges and content-inset checks expect full-width .ds-row anatomy.
-    { selector: '#MovingUI-presets-block', rule: 'row-edges', reason: 'Moving UI presets block uses bespoke two-row layout; row-edge check does not apply' },
-    { selector: '#MovingUI-presets-block', rule: 'content-inset', reason: 'Moving UI presets block uses bespoke two-row layout; inset check does not apply' },
-    // SillyBunny: tab root containers and structural mount points — row-edges and content-inset expect full-bleed .ds-row anatomy but these containers add their own wrapper padding.
-    { selector: '#sb-appearance-content', rule: 'row-edges', reason: 'Tab root container with wrapper padding; row-edge inset check does not apply' },
-    { selector: '#sb-appearance-content', rule: 'content-inset', reason: 'Tab root container with wrapper padding; content-inset check does not apply' },
-    { selector: '#sb-messages-content', rule: 'row-edges', reason: 'Tab root container with wrapper padding; row-edge check does not apply' },
-    { selector: '#sb-messages-content', rule: 'content-inset', reason: 'Tab root container; rows sit inside section children that add their own inset' },
-    { selector: '#user-settings-block', rule: 'row-edges', reason: 'Structural mount point; content is hosted inside extension-owned sections with their own padding' },
-    { selector: '#user-settings-block', rule: 'content-inset', reason: 'Structural mount point; rightInset and inset measurements are meaningless for a full-width container' },
-    { selector: '#bg-header-fixed', rule: 'row-edges', reason: 'Background section with bespoke fixed-header layout; row-edge check does not apply' },
-    { selector: '#bg-header-fixed', rule: 'content-inset', reason: 'Background section; rightInset is measured against a group that spans the full panel width' },
-    // SillyBunny: rows that lead with a control or whose buttons reach out of the row by design.
-    { selector: '.ds-row-check > .ds-row-text', rule: 'content-inset', reason: 'A check row leads with its control, so the text starts after the control (the libadwaita check prefix), not at the row inset' },
-    { selector: '.ds-row--spin > .ds-row-suffix', rule: 'content-inset', reason: 'The buttons of a spin row draw inside the row, and their hit area reaches out through the negative margin of the suffix' },
-    { selector: '#sb-openai-request', rule: 'row-edges', reason: 'Backend source rules hide sibling rows with inline display, so the first or last visible row keeps a separator that :first-child and :last-child cannot remove' },
-    // SillyBunny: first/last row border leakage on specific groups whose inner rows retain their borders at the group boundary.
-    { selector: '#sb-tc-context', rule: 'row-edges', reason: 'Context Template group; inner section rows retain border-top at the group boundary — upstream layout, addressed in Phase 4' },
-    // SillyBunny: autoSetHeight textareas in Formatting sections — these resize to content and may render shorter than 32px when empty; they are multi-line inputs, not interactive controls.
+    { selector: '#sb-tc-context', rule: 'row-edges', reason: 'Context Template group; inner section rows retain border-top at the group boundary' },
+    // SillyBunny: autoSetHeight textareas in Formatting sections resize to content and may render shorter than 32px when empty; they are multi-line inputs, not interactive controls.
     { selector: '#instruct_story_string_prefix', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
     { selector: '#instruct_story_string_suffix', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
     { selector: '#context_example_separator', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
     { selector: '#context_chat_start', rule: 'row-geometry', reason: 'Auto-height multiline textarea; touch-target floor does not apply to free-form text fields' },
-    // SillyBunny: Formatting panel uses sb-settings-flat-section rows (14px padding, different separator token); structural divergence from the standard ds-row Prompting layout is intentional.
-    { selector: '[data-sb-panel="context"]', rule: 'cross-tab-parity', reason: 'Formatting uses sb-settings-flat-section rows with 14px padding and a different separator token — divergence from the standard Prompting ds-row layout is intentional' },
     // SillyBunny: the Editor and Agents pages are list editors; they hold no preference group, and the Agents page opens on a list of entity rows.
     { selector: '[data-sb-panel="editor"]', rule: 'group-anatomy', reason: 'A list editor page holds no preference group; the groups of the old Editor layout stay hidden while the prompt editor owns the page' },
     { selector: '[data-sb-panel="agents"]', rule: 'group-anatomy', reason: 'A list editor page holds no preference group; its settings pages open inside the editor pane' },
     { selector: '[data-sb-panel="agents"]', rule: 'cross-tab-parity', reason: 'The Agents page opens on a list of entity rows, so it has no preference row to take a signature from' },
-    // SillyBunny: the right-shell Logs tab has a different row density from the Appearance reference in some backend/theme scenarios.
+    // SillyBunny: panels that the manual cross-tab sweep compares; the settings parity spec does not measure this rule.
+    { selector: '[data-sb-panel="context"]', rule: 'cross-tab-parity', reason: 'Formatting uses sb-settings-flat-section rows with 14px padding and a different separator token; divergence from the standard Prompting ds-row layout is intentional' },
     { selector: '[data-sb-panel="logs"]', rule: 'cross-tab-parity', reason: 'Logs panel row density differs from the Appearance reference in some scenarios; cross-tab parity within the right shell is not enforced' },
-    // SillyBunny: #bg-header-fixed image picker on mobile uses a stacked control layout; midpointDelta check is not meaningful for that row.
-    { selector: '#bg-header-fixed', rule: 'row-geometry', reason: 'Background image picker uses a stacked control layout on mobile; midpointDelta check does not apply' },
+    // SillyBunny: measured exceptions, each narrowed to the element that fails.
+    { selector: '.ds-row--spin > .ds-row-suffix', rule: 'content-inset', reason: 'The buttons of a spin row draw inside the row (right inset 5px at 390px), and their hit area reaches out through the negative margin of the suffix' },
+    { selector: '.sb-subpage-row > .ds-row-text', rule: 'content-inset', reason: 'A subpage row leads with an icon, so its text starts after the icon (38px) and not at the row inset' },
+    { selector: '#user-settings-utility-actions', rule: 'content-inset', reason: 'The suffix of the utility-actions row sits 32px from the group edge at 390px, not 12px' },
+    { selector: '#sb-slider-mode', rule: 'content-inset', reason: 'The mode switch of the slider row sits 43px from the group edge at 390px, not 12px' },
+    { selector: '#bpt-animated-bg-panel', rule: 'group-anatomy', reason: 'The animated-background panel comes from an extension that draws its own header, with a 12px gap to the first row where the settings groups use 6px' },
+    { selector: '#bpt-animated-bg-panel', rule: 'row-edges', reason: 'The animated-background panel comes from an extension whose last row keeps its bottom border' },
+    { selector: '#sb-background-settings-controls', rule: 'row-edges', reason: 'The last row of the background controls keeps its bottom border because the controls after it are shown or hidden by script' },
+    { selector: '#sb-interface-content', rule: 'row-edges', reason: 'The last visible switch row of one Interface category keeps its bottom border; rows after it are hidden by script, so :last-child cannot remove the separator' },
+    { selector: '#sb-openai-request', rule: 'row-edges', reason: 'Backend source rules hide sibling rows with inline display, so the first or last visible row keeps a separator that :first-child and :last-child cannot remove' },
 ]);

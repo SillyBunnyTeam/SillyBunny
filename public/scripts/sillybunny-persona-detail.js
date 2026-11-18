@@ -199,7 +199,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     changeImage.addEventListener('click', () => changePersonaImage(currentId));
     const identityAvatar = createRow({ label: t`Change Persona Image`, field: 'image', prefix: changeImage });
     // HUMAN: replace — caption of the Persona Title row (P5): the title is the summary shown in the list.
-    const title = createEntryRow({ label: t`Persona Title (optional, display only)`, subtitle: t`TODO(copy)`, field: 'title', value: draft.title, onInput: value => writeField('title', value) });
+    const title = createEntryRow({ label: t`Persona Title (optional, display only)`, subtitle: t`TODO(copy)`, field: 'title', value: draft.title, floating: true, onInput: value => writeField('title', value) });
     title.row.querySelector('.ds-row-subtitle')?.setAttribute('data-sb-copy-placeholder', 'true');
     const folderSelect = element('select');
     folderSelect.setAttribute('aria-label', t`Folder`);

@@ -452,7 +452,7 @@
 }
 
 /* Boxed like the World Info chip entries on the same page, so an empty value still reads as a field. */
-#sb-settings-page .sb-persona-entry .ds-row-entry input {
+#sb-settings-page .sb-persona-entry .ds-row-entry:not(.ds-row-entry--floating) input {
     min-height: 38px;
     padding: 4px 12px;
     border: 1px solid var(--sb-input-border, var(--sb-shell-border));
@@ -460,18 +460,18 @@
     transition: border-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-#sb-settings-page .sb-persona-entry .ds-row-entry input:focus-visible {
+#sb-settings-page .sb-persona-entry .ds-row-entry:not(.ds-row-entry--floating) input:focus-visible {
     border-color: var(--sb-composer-focus-border);
     box-shadow: var(--sb-composer-focus-ring);
 }
 
-#sb-settings-page .sb-persona-entry .ds-row-entry input[aria-invalid='true'] {
+#sb-settings-page .sb-persona-entry .ds-row-entry:not(.ds-row-entry--floating) input[aria-invalid='true'] {
     border-color: var(--sb-color-danger);
 }
 
 @media (pointer: coarse) {
     #sb-settings-page .sb-persona-entry :is(.menu_button, input:not(.sb-switch), textarea:not(.ds-row-textarea__input)),
-    #sb-settings-page .sb-persona-entry .ds-row-entry input,
+    #sb-settings-page .sb-persona-entry .ds-row-entry:not(.ds-row-entry--floating) input,
     :is(.sb-persona-property-sheet, .sb-dialog.sb-persona-properties-dialog) :is(.menu_button, .sb-persona-property input),
     .sb-persona-property-option {
         min-height: 44px;

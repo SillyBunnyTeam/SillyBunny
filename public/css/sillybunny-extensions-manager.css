@@ -20,6 +20,17 @@
     background: transparent;
 }
 
+/* The lists are boxed lists as in every other list: a shadow ring in place of the dialog group's border, and rows of the list-row height. */
+.extensions_info .sb-extensions-section .ds-pref-group {
+    border: 0;
+    box-shadow: var(--sb-shadow-card);
+}
+
+.extensions_info .sb-extensions-section .ds-pref-group > .ds-row {
+    column-gap: var(--sb-row-gap);
+    min-height: 52px;
+}
+
 .extensions_info .sb-extensions-section .ds-pref-group > .extension_block {
     border-bottom: 1px solid var(--sb-shell-border);
 }

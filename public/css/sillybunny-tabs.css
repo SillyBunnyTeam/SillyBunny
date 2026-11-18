@@ -1324,8 +1324,7 @@ body:not(.movingUI) .drawer-content.maximized {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-.sb-search-result span,
-.sb-search-empty span {
+.sb-search-result span {
     font-size: var(--sb-type-meta);
     opacity: 0.76;
 }
@@ -1391,12 +1390,6 @@ body:not(.movingUI) .drawer-content.maximized {
     color: var(--SmartThemeBodyColor);
 }
 
-.sb-search-empty {
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
 
 @media (pointer: coarse) {
     .sb-search-result {

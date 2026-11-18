@@ -148,6 +148,7 @@ export function mountAgentDetail({
         label,
         field: path,
         value: read(initial, path) ?? '',
+        floating: true,
         onInput: value => update(path, value),
     }), g);
     const spin = (g, path, label, options = {}) => register(

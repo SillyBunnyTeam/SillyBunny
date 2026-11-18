@@ -18,6 +18,8 @@ import { copyText, isTrueBoolean, uuidv4 } from './utils.js';
 import { accountStorage } from './util/AccountStorage.js';
 // SillyBunny: keep Add Secret's upstream input identity inside shared entry rows.
 import { utilityFormOptions } from './sillybunny-editor/adapters/utility-dialogs.js';
+// SillyBunny: the shared status page draws the empty key list.
+import { createStatusPage } from './sillybunny-editor/status-page.js';
 
 export const SECRET_KEYS = {
     HORDE: 'api_key_horde',
@@ -714,6 +716,10 @@ async function openKeyManagerDialog(key) {
         const previousScrollTop = list.scrollTop();
 
         const emptyMessage = template.find('.secretKeyManagerListEmpty');
+        // SillyBunny: the empty list is the shared status page in place of a line of text.
+        if (!emptyMessage.children('.sb-status-page').length) {
+            emptyMessage.empty().append(createStatusPage({ state: 'empty', title: t`No Secrets Saved`, compact: true }).element);
+        }
         emptyMessage.toggle(secrets.length === 0);
 
         const itemBlocks = [];

@@ -983,9 +983,9 @@ const settingsSidebarNoMatch = status({
 const settingsSearchNoMatch = status({
     id: 'settings.search-no-match',
     title: 'Settings search: nothing found',
-    component: 'own',
+    component: 'shared',
     overlay: true,
-    root: '#sb-universal-search-results .sb-search-empty',
+    root: '#sb-universal-search-results .sb-search-empty .sb-status-page',
     async open(page) {
         await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
         await page.locator('#sb-universal-search input').fill('no-such-setting-982734');
@@ -1421,12 +1421,12 @@ const logsEmpty = status({
     sources: [`${SCRIPTS}/sillybunny-server-tools.js`],
 });
 
-const BACKGROUNDS_HINT = '#bg_chat_hint';
+const BACKGROUNDS_HINT = '#bg_chat_hint .sb-status-page';
 
 const backgroundsChatEmpty = status({
     id: 'backgrounds.chat-empty',
     title: 'Backgrounds: no chat backgrounds yet (the Chat tab shows a hint)',
-    component: 'own',
+    component: 'shared',
     root: BACKGROUNDS_HINT,
     async open(page) {
         // The Chat tab lists the backgrounds that the open chat has saved, and no chat is open here; the list is cleared anyway.
@@ -1445,9 +1445,9 @@ const LOGPROBS_EMPTY = '.sb-side-panel[data-sb-side-panel-id="logprobsViewer"] .
 const logprobsEmpty = status({
     id: 'logprobs.empty',
     title: 'Token Probabilities: nothing to show for the message',
-    component: 'own',
+    component: 'shared',
     overlay: true,
-    root: LOGPROBS_EMPTY,
+    root: `${LOGPROBS_EMPTY} .sb-status-page`,
     async open(page) {
         // The view draws itself on a chat event while it is shown, so the panel opens first and the chat is then opened.
         await page.evaluate(() => window.SillyBunnySidePanels.openSidePanel('logprobsViewer'));
@@ -1466,8 +1466,8 @@ const PATHFINDER_EMPTY = '#pf--lorebook-list .pf--empty-state';
 const pathfinderEmpty = status({
     id: 'pathfinder.no-lorebooks',
     title: 'Pathfinder settings: no lorebooks to choose from',
-    component: 'own',
-    root: PATHFINDER_EMPTY,
+    component: 'shared',
+    root: `${PATHFINDER_EMPTY} .sb-status-page`,
     async open(page) {
         await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'extensions'));
         // A state opens on a page whose subpage is already open, where the row is hidden.
@@ -1486,8 +1486,8 @@ const pathfinderEmpty = status({
     },
     states: [{
         id: 'permissions',
-        root: '#pf--permission-matrix .pf--permission-empty',
-        ready: '#pf--permission-matrix .pf--permission-empty',
+        root: '#pf--permission-matrix .pf--permission-empty .sb-status-page',
+        ready: '#pf--permission-matrix .pf--permission-empty .sb-status-page',
         async open(page) {
             await reveal(page, '#pf--permission-matrix .pf--permission-empty');
             await settle(page);
@@ -1502,9 +1502,9 @@ const KEY_MANAGER_EMPTY = 'dialog.popup[open] .secretKeyManagerListEmpty';
 const secretsEmpty = status({
     id: 'secrets.no-keys',
     title: 'API key manager: no secrets saved',
-    component: 'own',
+    component: 'shared',
     overlay: true,
-    root: KEY_MANAGER_EMPTY,
+    root: `${KEY_MANAGER_EMPTY} .sb-status-page`,
     async open(page) {
         await page.route('**/api/secrets/read', route => route.fulfill({ json: { api_key_openai: [] } }));
         await page.route('**/api/secrets/settings', route => route.fulfill({ json: { allowKeysExposure: true } }));

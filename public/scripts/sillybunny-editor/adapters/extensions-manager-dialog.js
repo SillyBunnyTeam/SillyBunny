@@ -1,11 +1,12 @@
 import { t } from '../../i18n.js';
 import { openActionMenu } from '../../sillybunny-action-menu.js';
 import { loadStylesheetAsync } from '../../dynamic-styles.js';
+import { createStatusPage } from '../status-page.js';
 
 let extensionsManagerStyles;
 
 export function loadExtensionsManagerStyles() {
-    extensionsManagerStyles ??= loadStylesheetAsync('/css/sillybunny-extensions-manager.css?v=20261118d', { id: 'sillybunny-extensions-manager-css' });
+    extensionsManagerStyles ??= loadStylesheetAsync('/css/sillybunny-extensions-manager.css?v=20261118zk', { id: 'sillybunny-extensions-manager-css' });
     return extensionsManagerStyles;
 }
 
@@ -130,7 +131,11 @@ export function adaptExtensionsManager(source, {
     suffix.append(toggleAllExtensionsButton, restoreBulkToggledExtensionsButton);
     moveSectionRows(builtinWrapper, ':scope > .extension_block', builtinWrapper.querySelector(':scope > h3'));
     const installedHeading = externalWrapper.querySelector(':scope > div > h3');
-    moveSectionRows(externalWrapper, ':scope > .extension_block, :scope > .extensions_loading', installedHeading, suffix);
+    const installedSection = moveSectionRows(externalWrapper, ':scope > .extension_block, :scope > .extensions_loading', installedHeading, suffix);
+    // The list is known when the Window opens, so a manager with no installed extension says so instead of drawing an empty box.
+    if (installedSection && !installedSection.querySelector('.extension_block')) {
+        installedSection.querySelector('.ds-pref-group').append(createStatusPage({ state: 'empty', title: t`No Installed Extensions`, compact: true }).element);
+    }
     externalWrapper.querySelector('.third_party_toolbar')?.remove();
     externalWrapper.querySelector('.flex-container.alignitemscenter')?.remove();
     root.querySelector('.extensions_toolbar')?.remove();

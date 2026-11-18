@@ -1480,6 +1480,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.7a). |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/logprobs.js`, `public/scripts/secrets.js`, `public/css/secrets.css` and `public/scripts/backgrounds.js` - empty views as shared status pages
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/logprobs.js` (the empty branch of `renderAlternativeTokensView()`); `public/scripts/secrets.js` (the empty key list); `public/css/secrets.css` (the empty line's opacity, weight and size removed); `public/scripts/backgrounds.js` (`observeChatBackgroundsHint()` and its call). |
+| Area | Token Probabilities, the secrets key manager, and the chat backgrounds hint. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `createStatusPage()` from `public/scripts/sillybunny-editor/status-page.js`, called where upstream wrote a line of text. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6e): each empty view is a compact shared status page. Token Probabilities has one state per reason (not enabled, not available with smooth streaming, generating, none for the message) and keeps upstream's sentences as the descriptions; the empty key list shows "No Secrets Saved"; the chat backgrounds hint keeps upstream's sentence with its translation attributes as the description of "No Chat Backgrounds", and is built when it first scrolls into view, so the status page stylesheet does not load at startup. |
+| Protecting tests | The surface audit of `status.logprobs.empty`, `status.secrets.no-keys` and `status.backgrounds.chat-empty` (smoke, parity, axe, copy); `tests/frontend-performance.e2e.js` (the startup resource limit). |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of 19 surfaces, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6e). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |

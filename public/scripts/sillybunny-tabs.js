@@ -774,7 +774,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-character-editor.css?v=20261118t', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
-        { href: 'css/sillybunny-persona-detail.css?v=20261117zp', id: 'deferred-persona-detail-css' },
+        { href: 'css/sillybunny-persona-detail.css?v=20261118zk', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
@@ -2215,13 +2215,11 @@ function createUniversalSearchShowAllRow(hiddenCount, groupLabel = '') {
     return row;
 }
 
-function renderSearchEmptyState(container, title, detail) {
+function renderSearchEmptyState(container, title, detail, state = 'no-results') {
     container.replaceChildren();
 
     const empty = createElement('div', { className: 'sb-search-empty' });
-    const emptyTitle = createElement('strong', { text: title });
-    const emptyCopy = createElement('span', { text: detail });
-    empty.append(emptyTitle, emptyCopy);
+    empty.append(createStatusPage({ state, icon: 'magnifying-glass', title, description: detail, compact: true }).element);
     container.appendChild(empty);
 }
 
@@ -10585,7 +10583,7 @@ async function renderUniversalSearchResults(query) {
     if (!trimmedQuery) {
         results.removeAttribute('aria-busy');
         clearResults();
-        renderSearchEmptyState(results, SB_UNIVERSAL_SEARCH_IDLE_TITLE, SB_UNIVERSAL_SEARCH_IDLE_HINT);
+        renderSearchEmptyState(results, SB_UNIVERSAL_SEARCH_IDLE_TITLE, SB_UNIVERSAL_SEARCH_IDLE_HINT, 'empty');
         results.classList.add('is-visible');
         return;
     }
@@ -10696,8 +10694,8 @@ async function renderUniversalSearchResults(query) {
     if (!results.childElementCount) {
         renderSearchEmptyState(
             results,
-            `No matches for "${trimmedQuery}" yet.`,
-            SB_UNIVERSAL_SEARCH_EMPTY_HINT,
+            t`No Results Found`,
+            `No matches for "${trimmedQuery}" yet. ${SB_UNIVERSAL_SEARCH_EMPTY_HINT}`,
         );
     } else if (!searchState.expandedAll && totalMatches > rows.length) {
         results.appendChild(createUniversalSearchShowAllRow(totalMatches - rows.length));

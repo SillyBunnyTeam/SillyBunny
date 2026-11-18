@@ -38,7 +38,9 @@ export const rules = {
                 // The number of a spin row and the input of a floating entry row are part of a row, which draws the field
                 // (DESIGN.md Spin row, Entry rows: the row is the field, with no fill, border or radius of its own on the input).
                 { id: 'text-pole', selector: 'input.text_pole:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.ds-row--spin input.ds-spin):not(.ds-row-entry--floating input)' },
-                { id: 'own', selector: ':is(input[type="text"], input:not([type])):not(.ds-row--spin input.ds-spin):not(.ds-row-entry--floating input)' },
+                // The input of a chip entry is the typing area inside the tag field, which the chip box draws (DESIGN.md Tag lists). The title
+                // input of an editor is the header's editable title (DESIGN.md Explicit save), which the header part measures.
+                { id: 'own', selector: ':is(input[type="text"], input:not([type])):not(.ds-row--spin input.ds-spin):not(.ds-row-entry--floating input):not(.sb-chip-entry__input, .sb-wi-entry-title, .sb-persona-entry-name, .sb-prompt-title)' },
             ],
             properties: [
                 { property: 'offsetHeight', token: '--sb-field-min-height', source: 'DESIGN.md' },

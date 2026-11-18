@@ -2406,6 +2406,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 /* libadwaita swipe picker: borderless rows, flat hover, neutral selection like the shell tabs. */
 .swipe_picker_block {
     position: relative;
+    align-items: center;
     gap: 10px;
     margin: 0;
     min-height: 52px;

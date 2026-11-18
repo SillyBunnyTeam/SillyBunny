@@ -114,7 +114,7 @@
             "important": 264,
             "breakpoint-off-set": 10,
             "focus-outline": 1,
-            "spacing-off-scale": 138,
+            "spacing-off-scale": 136,
             "spacing-off-scale-fallback": 2
         },
         "public/css/sillybunny-tag-manager.css": {

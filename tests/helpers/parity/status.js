@@ -47,7 +47,8 @@ export const rules = {
             id: 'icon',
             selectors: [
                 { id: 'shared', selector: '.sb-status-page__icon' },
-                { id: 'own', selector: `:scope i.fa-solid${NOT_IN_ACTION}` },
+                // A glyph inside the description's prose is part of the sentence, not the page's icon.
+                { id: 'own', selector: `:scope i.fa-solid${NOT_IN_ACTION}:not(.sb-status-page__description *)` },
                 { id: 'svg', selector: `:scope svg${NOT_IN_ACTION}` },
                 // The loading form shows the shared spinner in its place, at 64px.
                 { id: 'spinner', selector: '.sb-spinner', agrees: true },

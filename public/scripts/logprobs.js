@@ -17,6 +17,8 @@ import { power_user } from './power-user.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { t } from './i18n.js';
 import { isSmoothStreamingEffectivelyEnabled } from './mobile-streaming.js';
+// SillyBunny: the shared status page draws the empty view.
+import { createStatusPage } from './sillybunny-editor/status-page.js';
 
 const TINTS = 4;
 const MAX_MESSAGE_LOGPROBS = 100;
@@ -91,15 +93,16 @@ function renderAlternativeTokensView() {
         androidDisableSmoothStreaming: power_user.android_disable_smooth_streaming,
     });
     if (!messageLogprobs?.length || usingSmoothStreaming) {
+        // SillyBunny: the empty view is a shared status page, one state for each reason that no probabilities show.
         const emptyState = $('<div></div>');
-        const noTokensMsg = !power_user.request_token_probabilities
-            ? '<span>Enable <b>Request token probabilities</b> in the User Settings menu to use this feature.</span>'
+        const page = !power_user.request_token_probabilities
+            ? { state: 'unavailable', title: t`Not Enabled`, description: 'Enable Request token probabilities in the User Settings menu to use this feature.' }
             : usingSmoothStreaming
-                ? t`Token probabilities are not available when using Smooth Streaming.`
+                ? { state: 'unavailable', title: t`Not Available`, description: t`Token probabilities are not available when using Smooth Streaming.` }
                 : is_send_press
-                    ? t`Generation in progress...`
-                    : t`No token probabilities available for the current message.`;
-        emptyState.html(noTokensMsg);
+                    ? { state: 'loading', title: t`Generating`, description: t`Generation in progress...` }
+                    : { state: 'empty', title: t`No Token Probabilities`, description: t`No token probabilities available for the current message.` };
+        emptyState.append(createStatusPage({ ...page, compact: true }).element);
         emptyState.addClass('logprobs_empty_state');
         view.append(emptyState);
         return;
