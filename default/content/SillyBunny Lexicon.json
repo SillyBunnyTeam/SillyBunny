@@ -1745,11 +1745,14 @@
                 "default persona",
                 "convert to persona",
                 "persona lorebook",
-                "scenario note"
+                "scenario note",
+                "persona folder",
+                "persona folders",
+                "move persona to folder"
             ],
             "keysecondary": [],
             "comment": "A38 Personas in the app",
-            "content": "Personas live in the Persona tab of the Characters menu (\"Edit your own persona here for roleplay and chats!\"). The list has Search, New, Sort, Backup, Restore and Usage Stats; rows offer Use this persona, Duplicate and Delete, with Current Persona and Default Persona badges. Global settings include \"Auto-lock a chosen persona to the chat\". A persona's detail page has Identity, Persona Description with position, depth and role, Scenario Notes, Connections (lock to the chat or to a character) and Lorebook (\"Link to Persona Lorebook\"). \"Convert to Persona\" turns a character into a persona; \"Create Character Card from Persona\" does the reverse. Persona switching is also in the bottom chat bar.",
+            "content": "Personas live in the Persona tab of the Characters menu (\"Edit your own persona here for roleplay and chats!\"). The list has Search, New, Sort, Backup, Restore and Usage Stats; rows offer Use this persona, Duplicate and Delete, with Current Persona and Default Persona badges. Personas can be sorted into folders: Manage Folders in the list's Persona Management menu opens the Folders window, where folders are created, renamed, coloured, reordered and deleted and personas are added to or removed from a folder; the list shows each folder as a collapsible section with its persona count above the personas that are not in a folder; and Select in the same menu starts selection mode, where Move to Folder files the chosen personas. A persona is in one folder at a time: the Folder row on its detail page (\"No folder\" by default) files it at once, without Save. Deleting a folder keeps its personas, and a duplicate stays in its source's folder. Global settings include \"Auto-lock a chosen persona to the chat\". A persona's detail page has Identity, Persona Description with position, depth and role, Scenario Notes, Connections (lock to the chat or to a character) and Lorebook (\"Link to Persona Lorebook\"). \"Convert to Persona\" turns a character into a persona; \"Create Character Card from Persona\" does the reverse. Persona switching is also in the bottom chat bar.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,

@@ -73,8 +73,14 @@ afterEach(() => {
     document.body.replaceChildren();
 });
 
-function mount(scope = 'groups') {
-    manager = createFolderManager(scope, adapter);
+const personaAdapter = {
+    getItems: () => ['a.png', 'b.png'],
+    getKey: avatarId => avatarId,
+    getName: avatarId => ({ 'a.png': 'Alice', 'b.png': 'Bob' })[avatarId],
+};
+
+function mount(scope = 'groups', source = adapter) {
+    manager = createFolderManager(scope, source);
     manager.show();
     return manager;
 }
@@ -232,6 +238,49 @@ describe('Folder Manager', () => {
         expect(action.textContent).toBe('Add');
         action.click();
         expect(pickerOptions.items).toHaveLength(2);
+    });
+});
+
+describe('Folder Manager persona scope', () => {
+    test('lists personas under their folder, adds and removes members, and counts personas', () => {
+        const folder = folders.createFolder('personas', 'Casts');
+        folders.setFolder('personas', ['a.png'], folder.id);
+        mount('personas', personaAdapter);
+        expect(manager.root.querySelector(`[data-folder-id="${folder.id}"] .sb-folder-manager__count`).textContent).toBe('1 persona');
+        manager.root.querySelector(`[data-folder-id="${folder.id}"]`).click();
+        expect(manager.root.querySelectorAll('.sb-folder-manager__member-row')).toHaveLength(1);
+        expect(manager.root.querySelector('.sb-folder-manager__member-row').textContent).toContain('Alice');
+        manager.root.querySelector('.sb-folder-manager__add-member').click();
+        expect(pickerOptions.items.map(item => item.label)).toEqual(['Alice', 'Bob']);
+        pickerOptions.onSelect('b.png');
+        expect(folders.getFolderMembers('personas', folder.id)).toEqual(['a.png', 'b.png']);
+        manager.root.querySelector('.sb-folder-manager__remove').click();
+        expect(folders.getFolderMembers('personas', folder.id)).toEqual(['b.png']);
+        expect(folders.getFolders('groups')).toEqual([]);
+    });
+
+    test('marks the placeholder wording of its empty page and its delete alert', async () => {
+        const folder = folders.createFolder('personas', 'Casts');
+        mount('personas', personaAdapter);
+        manager.root.querySelector(`[data-folder-id="${folder.id}"] .sb-folder-manager__row-menu`).click();
+        menuOptions.sections.flatMap(section => section.items).find(item => item.label === 'Delete').onSelect();
+        const body = document.querySelector('.sb-dialog-host[role="alertdialog"] .sb-dialog__message');
+        expect(body.textContent).toBe('TODO(copy)');
+        expect(body.querySelector('[data-sb-copy-placeholder="true"]')).not.toBeNull();
+        document.querySelector('.sb-dialog-host[role="alertdialog"] [data-response="cancel"]').click();
+        await settle();
+        manager.root.querySelector(`[data-folder-id="${folder.id}"]`).click();
+        expect(manager.root.querySelector('.sb-status-page__description').getAttribute('data-sb-copy-placeholder')).toBe('true');
+    });
+
+    test.each([
+        ['personas', personaAdapter, ['a.png', 'gone.png', 'also-gone.png'], '1 persona'],
+        ['groups', adapter, ['g1', 'gone'], '1 group'],
+    ])('the %s folder count leaves out members that no longer exist', (scope, source, keys, label) => {
+        const folder = folders.createFolder(scope, 'Casts');
+        folders.setFolder(scope, keys, folder.id);
+        mount(scope, source);
+        expect(manager.root.querySelector(`[data-folder-id="${folder.id}"] .sb-folder-manager__count`).textContent).toBe(label);
     });
 });
 

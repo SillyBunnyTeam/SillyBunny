@@ -198,5 +198,46 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expect.poll(async () => (await storedFolders(page)).personas.members).toEqual({ [persona.avatarId]: folderId });
             await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast, 1 persona');
         });
+
+        test('the manager\'s members page adds a persona to the folder and removes it again', async ({ page }) => {
+            const persona = await currentPersona(page);
+            const editor = await openList(page);
+            const manager = await createFolderInManager(page, editor, 'Cast');
+            const folderId = (await storedFolders(page)).personas.folders[0].id;
+            await manager.locator(`[data-folder-id="${folderId}"] .sb-folder-manager__count`).click();
+            await expect(manager.locator('.sb-dialog__back').last()).toBeVisible();
+
+            await manager.locator('.sb-folder-manager__add-member').click();
+            const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
+            await expect(picker).toBeVisible();
+            await picker.getByRole('option', { name: persona.name }).first().click();
+            await expect.poll(async () => (await storedFolders(page)).personas.members).toEqual({ [persona.avatarId]: folderId });
+            await expect.poll(() => savedFolders(page)?.personas?.members).toEqual({ [persona.avatarId]: folderId });
+            await expect(manager.locator('.sb-folder-manager__member-row')).toHaveCount(1);
+
+            await manager.locator('.sb-folder-manager__remove').click();
+            await expect(manager.locator('.sb-folder-manager__member-row')).toHaveCount(0);
+            await expect.poll(async () => (await storedFolders(page)).personas.members).toEqual({});
+
+            await manager.locator('.sb-dialog__back').last().click();
+            await expect(manager.locator('.sb-folder-manager__count')).toHaveText('0 personas');
+        });
+
+        test('a membership whose persona was removed outside the app is not counted by the manager or the list', async ({ page }) => {
+            const persona = await currentPersona(page);
+            const folderId = await page.evaluate(async ({ avatarId }) => {
+                const folders = await import('./scripts/sillybunny-folders.js');
+                const folder = folders.createFolder('personas', 'Cast');
+                folders.setFolder('personas', [avatarId, 'removed-elsewhere.png'], folder.id);
+                return folder.id;
+            }, { avatarId: persona.avatarId });
+            const editor = await openList(page);
+            await expect(editor.locator('.sb-folder-row')).toHaveAccessibleName('Cast, 1 persona');
+            await editor.getByRole('button', { name: 'Persona Management', exact: true }).click();
+            await page.getByRole('menuitem', { name: 'Manage Folders', exact: true }).click();
+            const manager = page.locator('.sb-dialog-host[open]:has(> .sb-folder-manager)');
+            await expect(manager.locator('.sb-folder-manager__count')).toHaveText('1 persona');
+            expect((await storedFolders(page)).personas.members['removed-elsewhere.png']).toBe(folderId);
+        });
     });
 }

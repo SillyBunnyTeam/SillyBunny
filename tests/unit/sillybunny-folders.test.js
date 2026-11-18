@@ -177,6 +177,24 @@ describe('SillyBunny folder store', () => {
             eventSource.listeners.get('persona_deleted')({ avatarId: 'never-filed.png' });
         });
 
+        test('renaming a persona keeps its folder, because the key is the avatar id and no event moves it', () => {
+            const eventSource = personaEvents();
+            const folder = folders.createFolder('personas', 'Cast');
+            folders.setFolder('personas', ['one.png'], folder.id);
+            const key = 'one.png';
+            settings.personas = { [key]: 'One' };
+            settings.personas[key] = 'Renamed';
+            expect([...eventSource.listeners.keys()].sort()).toEqual(['persona_created', 'persona_deleted']);
+            expect(folders.getFolderId('personas', key)).toBe(folder.id);
+            expect(folders.getFolderMembers('personas', folder.id)).toEqual([key]);
+        });
+
+        test('loading keeps a membership whose persona no longer exists, so readers count only what exists', () => {
+            const saved = { personas: { folders: [{ id: 'f', name: 'Cast', color: '', expanded: true }], members: { 'gone.png': 'f' } } };
+            const normalized = folders.normalizeFoldersData(structuredClone(saved));
+            expect(normalized.personas.members).toEqual({ 'gone.png': 'f' });
+        });
+
         test('deleting a folder leaves its personas unfiled and other scopes alone', () => {
             const persona = folders.createFolder('personas', 'Cast');
             const character = folders.createFolder('characters', 'Cast');

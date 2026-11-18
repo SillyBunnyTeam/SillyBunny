@@ -215,6 +215,12 @@ export function createFolderManager(scope, adapter) {
     let unbindKeyboard;
     let unsubscribe;
 
+    /** Settings keep a membership for a persona or character that was removed outside the app, so the count follows what still exists, like the members page. */
+    function liveMemberCount(folderId) {
+        const existing = new Set(currentItems().map(item => String(adapter.getKey(item))));
+        return getFolderMembers(scope, folderId).filter(key => existing.has(key)).length;
+    }
+
     function currentItems() {
         const source = adapter?.getItems?.() ?? [];
         return [...source].filter(item => item && typeof adapter?.getKey?.(item) === 'string');
@@ -276,7 +282,7 @@ export function createFolderManager(scope, adapter) {
         error.hidden = true;
         const name = element('div', 'sb-folder-manager__field');
         name.append(input, error);
-        const count = element('span', 'sb-folder-manager__count', countLabel(getFolderMembers(scope, folder.id).length, scope));
+        const count = element('span', 'sb-folder-manager__count', countLabel(liveMemberCount(folder.id), scope));
         const more = rowButton(t`Manage folder`, 'ellipsis-vertical', trigger => folderMenu(trigger, folder), 'sb-folder-manager__row-menu');
         more.setAttribute('aria-haspopup', 'menu');
         const entity = createEntityRow({
@@ -348,7 +354,7 @@ export function createFolderManager(scope, adapter) {
         entry.row.dataset.folderId = folder.id;
         entry.dot.style.setProperty('--sb-folder-color', folder.color || 'var(--sb-muted-fg)');
         const count = entry.row.querySelector('.sb-folder-manager__count');
-        if (count) count.textContent = countLabel(getFolderMembers(scope, folder.id).length, scope);
+        if (count) count.textContent = countLabel(liveMemberCount(folder.id), scope);
     }
 
     function renderFolders() {
@@ -474,9 +480,12 @@ export function createFolderManager(scope, adapter) {
     }
 
     async function confirmDelete(folder) {
+        const body = scopeCopy(scope).deleteBody;
+        const bodyNode = element('span', '', body);
+        if (body === PLACEHOLDER_COPY) bodyNode.setAttribute('data-sb-copy-placeholder', 'true');
         const response = await openAlert({
             heading: t`Delete Folder?`,
-            body: scopeCopy(scope).deleteBody,
+            bodyNode,
             responses: [{ id: 'cancel', label: t`Cancel` }, { id: 'delete', label: t`Delete`, appearance: 'destructive' }],
             closeResponse: 'cancel',
         });
