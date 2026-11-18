@@ -2853,7 +2853,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     max-width: 100%;
     display: inline-flex;
     align-items: center;
-    padding: 1px 5px;
+    padding: 0 6px;
     border-radius: var(--sb-radius-pill);
     overflow: hidden;
     text-overflow: ellipsis;

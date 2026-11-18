@@ -647,7 +647,8 @@
     align-items: center;
     justify-content: center;
     min-height: 32px;
-    padding: 4px 12px;
+    /* SillyBunny: the pill pads on the spacing scale; min-height keeps its height. */
+    padding: 3px 9px;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
     border-radius: 99px;
     background: transparent;

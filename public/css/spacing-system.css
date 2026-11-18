@@ -12,15 +12,8 @@
     --button-size-sm: 38px;
     --button-size-md: 42px;
     --button-size-lg: 48px;
-    --button-padding-x: 16px;
-    --button-padding-y: 12px;
-
-    /* Input sizing */
-    --input-padding-x: 16px;
-    --input-padding-y: 14px;
 
     /* Card/Panel spacing */
-    --card-gap: 18px;
     --panel-padding: 18px;
     --panel-gap: 12px;
 
@@ -40,7 +33,6 @@
     :root {
         --button-size-md: 40px;
         --panel-padding: 16px;
-        --input-padding-y: 12px;
     }
 }
 

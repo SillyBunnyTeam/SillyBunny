@@ -15,6 +15,8 @@ import { MOTION_EASE, MOTION_EASE_OUT_CUBIC, MOTION_SURFACE, play, stopMotion } 
 export const TOAST_SHOW_METHOD = 'sbToastIn';
 export const TOAST_HIDE_METHOD = 'sbToastOut';
 export const TOAST_LEAVING_CLASS = 'sb-toast-leaving';
+/** On a toast that holds exactly one button, so its styles can put the button at the end of the text. */
+export const TOAST_ACTION_CLASS = 'sb-toast--action';
 
 export const TOAST_HOLD_METHOD = 'sbToastHold';
 /** libadwaita's REPLACE_DURATION: how long a toast takes to show while another one is still leaving. */
@@ -392,11 +394,26 @@ function toastEntry(type, message, title, effective, high, { $toast, options }) 
     return entry;
 }
 
+function markAction(element) {
+    element.classList.toggle(TOAST_ACTION_CLASS, element.querySelectorAll('.toast-message button').length === 1);
+}
+
+/** Marks the toast now and again when a caller changes its content after it is shown. */
+function watchAction($toast) {
+    const element = getToastElement($toast);
+    if (element && typeof MutationObserver === 'function') {
+        markAction(element);
+        new MutationObserver(() => markAction(element)).observe(element, { childList: true, subtree: true });
+    }
+    return $toast;
+}
+
 function wrapNotifier(toastr, type) {
     if (typeof toastr[type] !== 'function') {
         return;
     }
-    const original = toastr[type].bind(toastr);
+    const notify = toastr[type].bind(toastr);
+    const original = (...args) => watchAction(notify(...args));
     toastr[type] = function (message, title, optionsOverride) {
         const args = [message, title, optionsOverride];
         const effective = { ...toastr.options, ...optionsOverride };

@@ -38,7 +38,7 @@
             "duration-literal": 3,
             "important": 5,
             "breakpoint-off-set": 1,
-            "spacing-off-scale": 106
+            "spacing-off-scale": 104
         },
         "public/css/sillybunny-editor-shell.css": {
             "radius-literal": 2,
@@ -113,7 +113,7 @@
             "important": 264,
             "breakpoint-off-set": 6,
             "focus-outline": 1,
-            "spacing-off-scale": 125,
+            "spacing-off-scale": 123,
             "spacing-off-scale-fallback": 2
         },
         "public/css/sillybunny-tag-manager.css": {
@@ -150,7 +150,7 @@
             "radius-literal": 1,
             "duration-literal": 1,
             "important": 5,
-            "spacing-off-scale": 86
+            "spacing-off-scale": 82
         },
         "public/scripts/extensions/in-chat-agents/ui/agent-editor.css": {
             "important": 3,
@@ -164,7 +164,7 @@
             "radius-literal": 2,
             "shadow-literal": 1,
             "important": 19,
-            "spacing-off-scale": 34
+            "spacing-off-scale": 32
         },
         "public/scripts/extensions/sillybunny-debugger/style.css": {
             "spacing-off-scale": 3

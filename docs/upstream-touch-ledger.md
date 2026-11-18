@@ -1578,7 +1578,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Banners, overlaid controls, the regex debugger, shortcut help. |
 | Divergence reason | `TODO(copy)` |
 | Target seam | `public/scripts/sillybunny-editor/banner.js`; `openShortcutsWindow()` in `public/scripts/sillybunny-shortcuts.js`; `--sb-osd-bg` and `--sb-osd-ink`; `UPSTREAM_SORTABLES` in `public/scripts/sillybunny-editor/reorder-menu.js`. |
-| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6j; F-321 to F-330): each surface keeps its ids, toggles and handlers and takes the shared pattern; the MovingUI title loses its final period under a new i18n key; `hotkeys.html` and `system_message_types.HOTKEYS` stay, with no code path that shows them. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6j; F-321 to F-330): each surface keeps its ids, toggles and handlers and takes the shared pattern; the MovingUI title loses its final period under a new i18n key; `hotkeys.html` and `system_message_types.HOTKEYS` stayed for a time with no code path that shows them, and the last pass (task 14.6l) removed them. |
 | Protecting tests | `tests/window-dialogs.e2e.js`; `tests/toast-queue.e2e.js`; `tests/unit/sillybunny-toast-motion.test.js`; the surface audit of `dialog.window.regex-debugger`, `editor.prompt`, `editor.quick-reply` and `panel.companion.panel`. |
 | Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of the changed surfaces, the related e2e specs. |
 | Rollback path | `TODO(copy)` |
@@ -1598,6 +1598,36 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the `copy` check over every family (346 of 346), the related e2e specs. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6k). |
+| Owner | `TODO(copy)` |
+
+### The old shortcut message removed from upstream-origin files (task 14.6l)
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/system-messages.js` (`system_message_types.HOTKEYS` and the `hotkeys` system message, with a `SillyBunny:` marker where the type was); `public/scripts/templates/hotkeys.html` (deleted); `tests/fixtures/upstream-origin-public-files.json` (its entry removed). |
+| Area | Shortcut help. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `openShortcutsWindow()` in `public/scripts/sillybunny-shortcuts.js`, which `/help hotkeys` and `/help 3` open. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6l; F-347): no code path showed the old chat message after `/help hotkeys` opened the Keyboard Shortcuts window, so the type, the message and the template are gone. The `help_hotkeys_*` keys stay in the upstream locale files. An upstream sync that brings the template back leaves it unused. |
+| Protecting tests | `tests/unit/sillybunny-shortcuts.test.js` (the registry's chat and Markdown lists are spelled in the test); `tests/unit/upstream-template-compatibility.test.js`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, a search of `public/`, `default/`, `tests/` and the bundled extensions for `hotkeys` and `HOTKEYS`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6l). |
+| Owner | `TODO(copy)` |
+
+### Pill padding in an upstream-origin sheet (task 14.6l)
+
+| Field | Value |
+| --- | --- |
+| File | `public/css/promptmanager.css` (`.pm-trigger-chip` padding `4px 12px` to `3px 9px`, marked); `public/style.css` and `public/index.html` (cache keys of the changed sheets); `scripts/copy-strings.js` is SillyBunny's own. |
+| Area | Spacing scale. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The spacing scale of `DESIGN.md` (`3, 6, 9, 12, 18, 24, 36px`). |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6l; F-345): the trigger chip's `min-height: 32px` keeps its height. |
+| Protecting tests | The surface audit's parity check; `tests/unit/stylesheet-cache-keys.test.js`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, design rules. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6l). |
 | Owner | `TODO(copy)` |
 
 ### Capitalisation of SillyBunny-written labels in upstream-origin files

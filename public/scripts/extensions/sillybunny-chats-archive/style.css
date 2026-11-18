@@ -683,7 +683,7 @@
 .sbca-role,
 .sbca-chip {
     display: inline-block;
-    padding: 1px 8px;
+    padding: 0 9px;
     border: 1px solid var(--sbca-hairline);
     border-radius: var(--sb-radius-control);
     color: var(--sbca-muted);

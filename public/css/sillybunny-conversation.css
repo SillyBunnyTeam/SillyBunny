@@ -1633,7 +1633,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     min-block-size: 22px;
     display: inline-flex;
     align-items: center;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border: 1px solid color-mix(in srgb, var(--sb-accent) 26%, var(--sb-shell-border));
     border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--sb-accent) 8%, transparent);

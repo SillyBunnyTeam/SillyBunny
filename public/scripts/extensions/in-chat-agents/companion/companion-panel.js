@@ -4,7 +4,8 @@ import { captureVisibleMessageAnchor, restoreVisibleMessageAnchor } from '../../
 import { eventSource, event_types } from '../../../events.js';
 import { t } from '../../../i18n.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
-import { attachSortableKeys } from '../../../sillybunny-editor/reorder-menu.js';
+import { openActionMenu } from '../../../sillybunny-action-menu.js';
+import { attachSortableKeys, reorderMenuItems } from '../../../sillybunny-editor/reorder-menu.js';
 import { registerSidePanel } from '../../../sillybunny-editor/side-panel.js';
 import { createStatusPage, spinnerMarkup } from '../../../sillybunny-editor/status-page.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
@@ -1288,6 +1289,35 @@ export function initCompanionPanel() {
             .filter((_, el) => el.dataset.agentId === agentId)
             .find('.ica--tpanel-drag-handle')
             .trigger('focus');
+    });
+    // The grip opens the move menu, so a section can be moved without a drag or Alt+Arrow keys. The jQuery UI mouse widget
+    // swallows the click that ends a drag, so a drag never opens it.
+    $('#ica--tracker-panel').on('click', '.ica--tpanel-drag-handle', function (event) {
+        event.preventDefault();
+        const section = this.closest('.ica--tpanel-agent');
+        const agentId = section?.dataset.agentId;
+        const orderedIds = $('#ica--tracker-panel .ica--tpanel-body')
+            .children('.ica--tpanel-agent')
+            .map((_, el) => el.dataset.agentId)
+            .get()
+            .filter(Boolean);
+        const name = section?.querySelector('.ica--tpanel-agent-name')?.textContent ?? '';
+        const items = reorderMenuItems({
+            index: orderedIds.indexOf(agentId),
+            count: orderedIds.length,
+            name,
+            move: async (to) => {
+                const ids = orderedIds.filter(id => id !== agentId);
+                ids.splice(to, 0, agentId);
+                await applyPanelReorder(ids);
+            },
+            focus: () => [...document.querySelectorAll('#ica--tracker-panel .ica--tpanel-agent')]
+                .find(el => el.dataset.agentId === agentId)?.querySelector('.ica--tpanel-drag-handle') ?? null,
+        });
+        if (items.length === 0) {
+            return;
+        }
+        openActionMenu({ trigger: this, title: name, sections: [{ items }] });
     });
     $('#ica--tracker-panel').on('click', '.ica--tpanel-agent-body .ica--choice-line', function (event) {
         event.preventDefault();

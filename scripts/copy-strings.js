@@ -265,10 +265,13 @@ export function treeStrings({ file } = {}) {
 
 /**
  * A lookup over a set of strings. A string with `${}` in it (a template) also matches text that fills the holes, as long as the
- * template keeps at least three letters of its own, so that "Actions for ${}" counts and "${} ${}" does not.
+ * template keeps at least three letters of its own, so that "Actions for ${}" counts and "${} ${}" does not. A hole does not
+ * cross the end of a sentence, so a text of several sentences is not a template's data when only its first sentence is the template's.
  * @param {readonly string[]} strings
  */
 export function stringLookup(strings) {
+    // A hole holds one piece of data (a name, a number), so text that fills it does not run on past the end of a sentence.
+    const crossesSentence = filled => /[.!?\u2026\u3002\uff01\uff1f]["')\]\u201d\u2019]*\s+\S/u.test(filled);
     const exact = new Set(strings);
     const templates = strings.filter(text => text.includes('${}')).map(text => {
         const chunks = text.split('${}');
@@ -286,10 +289,11 @@ export function stringLookup(strings) {
                 }
                 position = chunk.length;
             } else if (index === chunks.length - 1) {
-                return text.length - position >= 1 + chunk.length && text.endsWith(chunk);
+                return text.length - position >= 1 + chunk.length && text.endsWith(chunk)
+                    && !crossesSentence(text.slice(position, text.length - chunk.length));
             } else {
                 const found = text.indexOf(chunk, position + 1);
-                if (found < 0) {
+                if (found < 0 || crossesSentence(text.slice(position, found))) {
                     return false;
                 }
                 position = found + chunk.length;

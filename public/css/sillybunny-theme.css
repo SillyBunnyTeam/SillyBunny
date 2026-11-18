@@ -6978,6 +6978,33 @@ body #toast-container[class] > div {
     -webkit-backdrop-filter: none !important;
 }
 
+/* AdwToast puts its one button at the end of the text; a toast with several buttons keeps its block layout. */
+body #toast-container[class] > .sb-toast--action {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 6px;
+}
+
+.sb-toast--action .toast-message,
+.sb-toast--action .toast-message > :has(> button) {
+    display: contents;
+}
+
+.sb-toast--action .toast-message button {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.sb-toast--action > .toast-title ~ .toast-message button {
+    grid-row: 1 / span 2;
+}
+
+.sb-toast--action > .toast-close-button {
+    grid-column: 3;
+    grid-row: 1;
+}
+
 /* Status colour on the icon glyph and title only; the toast is dark in both tones, so a light tone's colour is lifted. */
 #toast-container > .toast-success { --sb-toast-src: var(--sb-color-success); --sb-toast-glyph: '\f058'; }
 #toast-container > .toast-error { --sb-toast-src: var(--sb-color-danger); --sb-toast-glyph: '\f06a'; }

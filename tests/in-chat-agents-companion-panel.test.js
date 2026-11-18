@@ -34,6 +34,7 @@ describe('companion tracker panel', () => {
     async function importPanel({ registerSidePanel = jest.fn() } = {}) {
         jest.resetModules();
 
+        await jest.unstable_mockModule('../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu: jest.fn() }));
         await jest.unstable_mockModule('../public/scripts/sillybunny-editor/side-panel.js', () => ({
             registerSidePanel,
         }));

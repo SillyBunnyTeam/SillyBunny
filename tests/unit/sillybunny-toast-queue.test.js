@@ -100,6 +100,29 @@ afterEach(async () => {
     document.body.innerHTML = '';
 });
 
+describe('the action class', () => {
+    const marked = $toast => $toast[0].classList.contains(toastQueue.TOAST_ACTION_CLASS);
+    const options = { escapeHtml: false, timeOut: 0, extendedTimeOut: 0 };
+
+    test('is set on a toast with exactly one button, queued or not, and on no other toast', () => {
+        expect(marked(toastr.info('<div>Removed <button type="button">Undo</button></div>', '', options))).toBe(true);
+        expect(marked(toastr.info('<div><button>Restore</button><button>Discard</button></div>', '', options))).toBe(false);
+        expect(marked(toastr.info('A plain toast', 'Plain', options))).toBe(false);
+        expect(marked(toastr.info('<div>Queued <button type="button">Undo</button></div>', '', { ...options, timeOut: 5000 }))).toBe(true);
+    });
+
+    test('follows the content when a caller changes it after the toast is shown', async () => {
+        const $toast = toastr.info('<div>Removed</div>', '', options);
+        expect(marked($toast)).toBe(false);
+        $toast.find('.toast-message').append('<button type="button">Undo</button>');
+        await flush();
+        expect(marked($toast)).toBe(true);
+        $toast.find('.toast-message').append('<button type="button">Redo</button>');
+        await flush();
+        expect(marked($toast)).toBe(false);
+    });
+});
+
 describe('the toast queue', () => {
     test('a second toast waits behind the first, and every call returns the toast element that toastr makes', () => {
         const first = toastr.info('first message', 'First');

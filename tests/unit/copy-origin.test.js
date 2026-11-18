@@ -22,6 +22,21 @@ describe('stringLookup', () => {
     });
 });
 
+describe('stringLookup across sentences', () => {
+    const lookup = stringLookup(['${} ${}${} and ${} ${}', 'Omit ${} from the text.', 'Open ${}']);
+
+    test('a hole does not run past the end of a sentence, so a longer text is not the template of its first sentence', () => {
+        expect(lookup('Omit World Info from the text.')).toBe('Omit ${} from the text.');
+        expect(lookup('Omit World Info from the text. Only has an effect when using the Main API.')).toBeNull();
+        expect(lookup('This is a built-in extension. It cannot be deleted and can be disabled.')).toBeNull();
+    });
+
+    test('a full stop inside a name or a number does not end a sentence', () => {
+        expect(lookup('Open notes v1.2.txt')).toBe('Open ${}');
+        expect(lookup('Open Dr. Who')).toBeNull();
+    });
+});
+
 describe('createOrigin', () => {
     const tree = { strings: ['Check for updates', 'Top nsigma', 'Actions for ${}', 'Shared label'], foreign: ['Generate image', 'Shared label'] };
     const upstream = { strings: ['Top nsigma', 'Shared label'] };

@@ -93,6 +93,31 @@ for (const width of [1440, 390]) {
             expect(driver.writes.filter(write => /\/generate(?:[-/]|$)|\/(?:chat\/)?completions?$/.test(write.path))).toEqual([]);
         });
 
+        test('the grip of a section opens a menu with Move Up and Move Down, left out at the ends', async ({ page, baseURL }) => {
+            await openEditorAgents(page, baseURL, width);
+            await seedCompanionPanel(page);
+            await page.locator('#sb-settings-close').click();
+            await page.locator('#ica_tracker_panel_wand_item').evaluate(node => node.click());
+            const panel = page.locator('#ica--tracker-panel');
+            await expect(panel).toHaveClass(/is-open/);
+            const names = () => panel.locator('.ica--tpanel-agent-name').allTextContents();
+            const first = await names();
+            expect(first.length).toBeGreaterThanOrEqual(2);
+            const grip = index => panel.locator('.ica--tpanel-agent').nth(index).locator('.ica--tpanel-drag-handle');
+
+            await grip(0).click();
+            await expect(page.getByRole('menuitem', { name: 'Move Up', exact: true })).toHaveCount(0);
+            await page.getByRole('menuitem', { name: 'Move Down', exact: true }).click();
+            await expect.poll(names).toEqual([first[1], first[0], ...first.slice(2)]);
+            await expect(page.locator('.sb-reorder-status')).toHaveText(/^Moved .+ to position 2 of \d+$/);
+
+            await grip(1).click();
+            await expect(page.getByRole('menuitem', { name: 'Move Up', exact: true })).toBeVisible();
+            if (first.length === 2) await expect(page.getByRole('menuitem', { name: 'Move Down', exact: true })).toHaveCount(0);
+            await page.getByRole('menuitem', { name: 'Move Up', exact: true }).click();
+            await expect.poll(names).toEqual(first);
+        });
+
         test('docks beside the chat on a wide window and is a sheet above the composer on a phone', async ({ page, baseURL }) => {
             const driver = await openEditorAgents(page, baseURL, width);
             await seedCompanionPanel(page);

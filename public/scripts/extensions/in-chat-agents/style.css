@@ -4,7 +4,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border-radius: var(--sb-radius-pill);
     font-size: calc(var(--mainFontSize) * 0.68);
     background: color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
@@ -982,7 +982,7 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border-radius: var(--sb-radius-pill);
     font-size: calc(var(--mainFontSize) * 0.72);
     background: var(--black30a);

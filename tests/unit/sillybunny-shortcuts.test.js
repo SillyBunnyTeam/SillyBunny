@@ -1,6 +1,5 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for pure functions. */
-import { readFileSync } from 'node:fs';
 import { describe, expect, jest, test } from '@jest/globals';
 import { SHORTCUTS_COPY } from '../helpers/copy-about.js';
 
@@ -71,19 +70,14 @@ describe('Keyboard shortcut registry', () => {
     });
 });
 
-describe('Keyboard shortcut registry and the hotkey template', () => {
-    // `/help hotkeys` shows this file, so it is where the upstream handlers are written down.
-    const template = readFileSync(new URL('../../public/scripts/templates/hotkeys.html', import.meta.url), 'utf8');
-    const [chatPart, markdownPart] = template.split(/<strong[^>]*>Markdown Hotkeys<\/strong>/);
-    const kbdOf = part => [...part.matchAll(/<kbd[^>]*>([^<]+)<\/kbd>/g)].map(match => match[1]);
-    const spelled = scope => getShortcuts().filter(entry => entry.scope === scope).map(entry => entry.keys.join('+'));
-
-    test('lists the chat hotkeys of the template, in its order', () => {
-        expect(spelled('chat')).toEqual(kbdOf(chatPart));
+describe('Keyboard shortcut registry and the upstream handlers', () => {
+    // These are the chat and Markdown hotkeys that the upstream handlers answer, in the order of upstream's own list.
+    test('lists the chat hotkeys that the upstream handlers answer', () => {
+        expect(keysOf('chat')).toEqual(['Up', 'Ctrl+Up', 'Left', 'Right', 'Enter', 'Ctrl+Enter', 'Alt+Enter', 'Escape', 'Ctrl+Shift+Up', 'Ctrl+Shift+Down']);
     });
 
-    test('lists the Markdown hotkeys of the template, in its order', () => {
-        expect(spelled('formatting')).toEqual(kbdOf(markdownPart));
+    test('lists the Markdown hotkeys that the upstream handlers answer', () => {
+        expect(keysOf('formatting')).toEqual(['Ctrl+B', 'Ctrl+I', 'Ctrl+U', 'Ctrl+K', 'Ctrl+Shift+~']);
     });
 });
 

@@ -140,3 +140,45 @@ test.describe('with a finger', () => {
         await expect(held, 'it goes once the press ends').toHaveCount(0, { timeout: 4000 });
     });
 });
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    test(`a toast's button sits at the end of the title line at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await page.evaluate(() => {
+            window.toastr.info('<div>Removed Main Prompt <button type="button" class="menu_button" id="toast-action">Undo</button></div>', '', { timeOut: 0, extendedTimeOut: 0, escapeHtml: false });
+            window.toastr.info('A plain toast', 'Plain', { timeOut: 0, extendedTimeOut: 0 });
+        });
+        const action = page.locator('#toast-action');
+        const withButton = page.locator('#toast-container .toast', { has: action });
+        await expect(action).toBeVisible();
+        const layout = await page.evaluate(() => {
+            const button = document.getElementById('toast-action').getBoundingClientRect();
+            const body = document.getElementById('toast-action').parentElement;
+            const range = document.createRange();
+            range.selectNodeContents(body.firstChild);
+            const text = range.getBoundingClientRect();
+            const toastBox = document.getElementById('toast-action').closest('.toast').getBoundingClientRect();
+            return { buttonTop: button.top, buttonBottom: button.bottom, buttonLeft: button.left, buttonRight: button.right, textTop: text.top, textBottom: text.bottom, textRight: text.right, toastRight: toastBox.right, toastBottom: toastBox.bottom, toastTop: toastBox.top };
+        });
+        expect(layout.buttonTop, 'the button is not below the text').toBeLessThan(layout.textBottom);
+        expect(layout.buttonLeft, 'the button is after the text').toBeGreaterThanOrEqual(layout.textRight - 1);
+        expect(Math.abs((layout.buttonTop + layout.buttonBottom) / 2 - (layout.textTop + layout.textBottom) / 2), 'the button and the text share a centre line').toBeLessThan(4);
+        expect(layout.buttonRight).toBeLessThanOrEqual(layout.toastRight);
+        expect(layout.toastBottom - layout.toastTop, 'the toast is one line high plus its padding').toBeLessThan(layout.buttonBottom - layout.buttonTop + 24);
+        await expect(withButton).toBeVisible();
+    });
+}
+
+test('a toast without a button keeps its block layout', async ({ page }) => {
+    await page.evaluate(() => window.toastr.info('A plain toast', 'Plain', { timeOut: 0, extendedTimeOut: 0 }));
+    await expect(toast(page, 'Plain')).toBeVisible();
+    expect(await toast(page, 'Plain').evaluate(node => getComputedStyle(node).display)).toBe('block');
+});
+
+test('a toast with two buttons keeps its block layout, so the buttons do not share a cell', async ({ page }) => {
+    await page.evaluate(() => window.toastr.info('<div>Unsaved changes</div><div><button type="button" id="first-action">Restore</button><button type="button" id="second-action">Discard</button></div>', '', { timeOut: 0, extendedTimeOut: 0, escapeHtml: false }));
+    await expect(page.locator('#first-action')).toBeVisible();
+    expect(await page.locator('#toast-container .toast').first().evaluate(node => getComputedStyle(node).display)).toBe('block');
+    await page.locator('#second-action').click({ trial: true });
+    await page.locator('#first-action').click({ trial: true });
+});
