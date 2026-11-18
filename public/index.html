@@ -6242,21 +6242,20 @@
                                     <div class="flex-container flexFlowColumn gap5">
                                         <div class="flex-container alignitemscenter">
                                             <label for="google_font_preset"><small>Preset</small></label>
-                                            <small class="ds-row-subtitle" data-i18n="Choose a Google Font for text across the interface.">Choose a Google Font for text across the interface.</small>
+                                            <!-- SillyBunny: the subtitle follows the bundled presets and imported fonts; the Custom row is gone. -->
+                                            <small class="ds-row-subtitle" data-i18n="Pick a locally saved global font for the user interface.">Pick a locally saved global font for the user interface.</small>
                                             <select id="google_font_preset" class="flex1 margin0 text_pole">
                                                 <option value="">Default (none)</option>
-                                                <option value="Inter">Inter</option>
-                                                <option value="JetBrains Mono">JetBrains Mono</option>
-                                                <option value="Roboto">Roboto</option>
-                                                <option value="Public Sans">Public Sans</option>
-                                                <option value="Source Serif 4">Source Serif 4</option>
+                                                <optgroup label="Presets">
+                                                    <option value="Inter">Inter</option>
+                                                    <option value="JetBrains Mono">JetBrains Mono</option>
+                                                    <option value="Roboto">Roboto</option>
+                                                    <option value="Public Sans">Public Sans</option>
+                                                    <option value="Source Serif 4">Source Serif 4</option>
+                                                </optgroup>
                                             </select>
-                                        </div>
-                                        <div class="flex-container alignitemscenter">
-                                            <label for="google_font_custom"><small>Custom</small></label>
-                                            <small class="ds-row-subtitle" data-i18n="Enter a Google Fonts name, then select the checkmark to apply it.">Enter a Google Fonts name, then select the checkmark to apply it.</small>
-                                            <input id="google_font_custom" type="text" class="text_pole flex1 margin0" placeholder="Enter a custom font name...">
-                                            <div id="apply_google_font" class="menu_button margin0" title="Load and apply the selected font"><i class="fa-solid fa-check"></i></div>
+                                            <!-- SillyBunny: the file input behind the Import Font menu item. -->
+                                            <input id="sb_font_import_input" type="file" multiple hidden accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf">
                                         </div>
                                     </div>
                                 </div>

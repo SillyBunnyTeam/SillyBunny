@@ -3006,11 +3006,15 @@
                 "css snippets",
                 "moonlit echoes",
                 "terminal ui",
-                "chat style"
+                "chat style",
+                "font settings",
+                "import a font",
+                "custom font",
+                "change the font"
             ],
             "keysecondary": [],
             "comment": "A63 Themes, Custom CSS and CSS Snippets",
-            "content": "UI themes are set in Customize ▸ Appearance with the \"UI Theme\" select and its ⋮ menu to update, save, import, export and delete a theme file. Bundled themes include Libadwaita, Catppuccin, Dracula, Nord and Gruvbox. The UI Theme group also has Accent Colors and a Reset button, and \"Custom RGB Accent\" is a group of its own with a switch and Primary and Secondary Accent colors. \"Chat Style\" options are Flat, Bubbles, Document and Echo. The \"Custom CSS\" group is a text area, with an Expand button, that styles the whole interface, and its \"Generate CSS with AI\" wand uses a chosen connection profile. CSS Snippets (a first-party extension in Bundled Extras) manages snippets that can be global, per theme or per chat. Moonlit Echoes and Terminal UI are theme extensions, installed like any extension. Themes and Custom CSS apply to both modes; Conversation has its own stylesheet.",
+            "content": "UI themes are set in Customize ▸ Appearance with the \"UI Theme\" select and its ⋮ menu to update, save, import, export and delete a theme file. Bundled themes include Libadwaita, Catppuccin, Dracula, Nord and Gruvbox. The UI Theme group also has Accent Colors and a Reset button, and \"Custom RGB Accent\" is a group of its own with a switch and Primary and Secondary Accent colors. \"Chat Style\" options are Flat, Bubbles, Document and Echo. The \"Font Settings\" group has one \"Preset\" select with Default (none), five bundled presets (Inter, JetBrains Mono, Roboto, Public Sans and Source Serif 4) and any imported fonts. Its ⋮ menu has Import Font and, while an imported font is selected, Remove Font. Import Font takes .woff2, .woff, .ttf and .otf files of up to 5 MB each, up to 20 files in all, and stores them on the SillyBunny server; when a file does not name its family, a dialog asks for the Family, Weight and Style. Presets and imported fonts load from SillyBunny, not from Google. A Google Fonts name saved by an older version stays applied and is listed under \"Google Fonts\" until another font is chosen. The \"Custom CSS\" group is a text area, with an Expand button, that styles the whole interface, and its \"Generate CSS with AI\" wand uses a chosen connection profile. CSS Snippets (a first-party extension in Bundled Extras) manages snippets that can be global, per theme or per chat. Moonlit Echoes and Terminal UI are theme extensions, installed like any extension. Themes and Custom CSS apply to both modes; Conversation has its own stylesheet.",
             "constant": false,
             "selective": false,
             "selectiveLogic": 0,

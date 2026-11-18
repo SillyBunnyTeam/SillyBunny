@@ -507,6 +507,22 @@ export const surfaces = [
         sources: [`${SCRIPTS}/BulkEditOverlay.js`, `${SCRIPTS}/tags.js`],
     }),
     form({
+        id: 'font-import-name',
+        upstreamMarkup: false,
+        title: 'Font import naming (family entry, weight select and style choice; opened when a font file names no family)',
+        ready: ['font-family', 'font-weight', 'font-style'].map(field => within(DIALOG_FRAME, `[data-sb-editor-field="${field}"]`)),
+        async open(page) {
+            await closeDialogs(page);
+            await closeMenus(page);
+            await page.evaluate(async () => {
+                const { openFontNamingDialog } = await import('/scripts/sillybunny-fonts.js');
+                void openFontNamingDialog({ fileName: 'Example-BoldItalic.woff2' });
+            });
+            await settleFrame(page, DIALOG_FRAME);
+        },
+        sources: [`${SCRIPTS}/sillybunny-fonts.js`],
+    }),
+    form({
         id: 'color-picker',
         upstreamMarkup: false,
         title: 'Colour picker as a bottom sheet (under the overlay breakpoint; a popover above it)',

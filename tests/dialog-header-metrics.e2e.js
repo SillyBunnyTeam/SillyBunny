@@ -22,6 +22,12 @@ const OPEN = {
             window.__headerDialog = openDialog({ tier: 'window', title: 'A Title', content: document.createElement('div'), responses: { affirmative: { id: 'ok', label: 'Save' } } });
         });
     },
+    async naming(page) {
+        await page.evaluate(async () => {
+            const { openFontNamingDialog } = await import('/scripts/sillybunny-fonts.js');
+            void openFontNamingDialog({ fileName: 'Example-BoldItalic.woff2' });
+        });
+    },
     async popup(page) {
         await page.evaluate(async () => {
             const { Popup, POPUP_TYPE } = await import('/scripts/popup.js');
@@ -55,6 +61,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         }
         expect(metrics.window).toEqual(metrics.dialog);
         expect(metrics.popup).toEqual(metrics.dialog);
+        expect(metrics.naming).toEqual(metrics.dialog);
         expect(metrics.dialog.align).toBe('center');
         expect(metrics.dialog.gap).toBe('6px');
     });

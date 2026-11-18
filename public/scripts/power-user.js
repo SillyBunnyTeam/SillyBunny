@@ -436,6 +436,8 @@ export const power_user = {
 
     custom_css: '',
     google_font: '',
+    // SillyBunny: imported font files; the choice itself stays in `google_font`.
+    sb_fonts: [],
 
     waifuMode: false,
     movingUI: false,
@@ -1912,52 +1914,76 @@ function getGoogleFontStylesheetId() {
     return 'google-font-style';
 }
 
-function buildGoogleFontHref(fontName) {
-    const family = String(fontName ?? '').trim();
+// SillyBunny: imported fonts, the bundled presets and the legacy Google path live in sillybunny-fonts.js. It loads only when
+// a font is saved, applied or imported, so default settings add no module and no request at startup.
+let fontsModule = null;
+let fontsModulePromise = null;
+const fontHost = {
+    getFonts: () => power_user.sb_fonts,
+    setFonts: fonts => { power_user.sb_fonts = fonts; },
+    getChoice: () => power_user.google_font,
+    setChoice: name => { power_user.google_font = name; },
+    save: () => saveSettingsDebounced(),
+    apply: () => applyGoogleFont(),
+    getRequestHeaders: () => getRequestHeaders(),
+    uuid: () => uuidv4(),
+};
 
-    if (!family) {
-        return '';
+/**
+ * Loads the fonts module once.
+ * @returns {Promise<{ fonts: typeof import('./sillybunny-fonts.js'), host: typeof fontHost }>}
+ */
+export function loadFontsModule() {
+    fontsModulePromise ??= import('./sillybunny-fonts.js').then(module => {
+        fontsModule = module;
+        return module;
+    }, error => {
+        fontsModulePromise = null;
+        throw error;
+    });
+    return fontsModulePromise.then(fonts => ({ fonts, host: fontHost }));
+}
+
+/** Normalises the saved font list and rewrites a choice that differs from a known family only by case or spacing. */
+async function normalizeFontSettings() {
+    if (!Array.isArray(power_user.sb_fonts)) {
+        power_user.sb_fonts = [];
     }
-
-    const encodedFamily = family.split(/\s+/).filter(Boolean).join(' ');
-    return `https://fonts.googleapis.com/css2?family=${encodeURIComponent(encodedFamily)}:wght@400;500;600;700&display=swap`;
+    if (!power_user.sb_fonts.length && !power_user.google_font) {
+        return;
+    }
+    const { fonts } = await loadFontsModule();
+    const normalized = fonts.normalizeFonts(power_user.sb_fonts);
+    const choice = fonts.canonicalFontName(power_user.google_font, normalized);
+    const changed = JSON.stringify(normalized) !== JSON.stringify(power_user.sb_fonts) || choice !== power_user.google_font;
+    power_user.sb_fonts = normalized;
+    power_user.google_font = choice;
+    if (changed) {
+        saveSettingsDebounced();
+    }
 }
 
 function applyGoogleFont(fontName = power_user.google_font) {
     const normalizedFontName = String(fontName ?? '').trim();
-    const styleId = getGoogleFontStylesheetId();
-    let link = document.getElementById(styleId);
-    const presetSelect = $('#google_font_preset');
-    const hasPresetMatch = normalizedFontName && presetSelect.find(`option[value="${CSS.escape(normalizedFontName)}"]`).length > 0;
 
-    if (!normalizedFontName) {
-        if (link) {
-            link.remove();
-        }
-
+    if (!fontsModule && !normalizedFontName && !power_user.sb_fonts?.length) {
+        document.getElementById(getGoogleFontStylesheetId())?.remove();
         if (customThemeStyleEntries?.mainFont) {
             document.documentElement.style.setProperty('--mainFontFamily', customThemeStyleEntries.mainFont);
         } else {
             document.documentElement.style.removeProperty('--mainFontFamily');
         }
-
-        presetSelect.val('');
-        $('#google_font_custom').val('');
+        $('#google_font_preset').val('');
         return;
     }
 
-    if (!link) {
-        link = document.createElement('link');
-        link.id = styleId;
-        link.rel = 'stylesheet';
-        document.head.appendChild(link);
-    }
-
-    link.href = buildGoogleFontHref(normalizedFontName);
-    document.documentElement.style.setProperty('--mainFontFamily', `'${normalizedFontName}', sans-serif`);
-
-    presetSelect.val(hasPresetMatch ? normalizedFontName : '');
-    $('#google_font_custom').val(normalizedFontName);
+    loadFontsModule().then(({ fonts }) => {
+        const resolved = fonts.applyFontChoice(normalizedFontName, {
+            fonts: power_user.sb_fonts,
+            themeFont: customThemeStyleEntries?.mainFont ?? '',
+        });
+        fonts.syncFontSelect(document.getElementById('google_font_preset'), { fonts: power_user.sb_fonts, choice: resolved.name });
+    }).catch(error => console.warn('Could not apply the font.', error));
 }
 
 function applyCustomThemeStyleEntries() {
@@ -2313,6 +2339,9 @@ export async function loadPowerUserSettings(settings, data) {
         eventTypes: event_types,
     });
 
+    // SillyBunny: normalise the imported font list and the saved font name at the settings boundary.
+    await normalizeFontSettings();
+
     // SillyBunny: preset autosave is on for new installs and off for upgrades until the user opts in.
     if (!Object.hasOwn(savedPowerUserSettings, 'sb_preset_autosave')) {
         power_user.sb_preset_autosave = !!settings.firstRun;
@@ -2516,7 +2545,6 @@ export async function loadPowerUserSettings(settings, data) {
     $('#movingUImode').prop('checked', power_user.movingUI);
     $('#noShadowsmode').prop('checked', power_user.noShadows);
     $('#google_font_preset').val(power_user.google_font);
-    $('#google_font_custom').val(power_user.google_font);
     $('.start-reply-with-input').val(power_user.user_prompt_bias);
     $('#chat-show-reply-prefix-checkbox').prop('checked', power_user.show_user_prompt_bias);
     $('#auto_continue_enabled').prop('checked', power_user.auto_continue.enabled);
@@ -4474,18 +4502,11 @@ jQuery(async () => {
         $('#custom_css_ai_wand').trigger('click');
     });
 
+    // SillyBunny: the select is the only way to choose a font; the Custom row and its apply button are gone.
     $('#google_font_preset').on('change', function () {
         const selectedFont = String($(this).val() ?? '').trim();
-        $('#google_font_custom').val(selectedFont);
         power_user.google_font = selectedFont;
         applyGoogleFont(selectedFont);
-        saveSettingsDebounced();
-    });
-
-    $('#apply_google_font').on('click', function () {
-        const customFont = String($('#google_font_custom').val() ?? '').trim();
-        power_user.google_font = customFont;
-        applyGoogleFont(customFont);
         saveSettingsDebounced();
     });
 

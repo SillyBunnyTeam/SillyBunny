@@ -187,14 +187,46 @@ function presentCustomAccent(container) {
     retire(oldLabel);
 }
 
-/** Font Settings: the preset select and the custom font name with its apply button. */
+/** The fonts module and the host that owns its settings, loaded when the Font group first needs them. */
+async function loadFonts() {
+    const { loadFontsModule } = await import('./power-user.js');
+    return loadFontsModule();
+}
+
+/**
+ * The Font Actions menu: Import Font, and Remove Font alone in a last section while an imported font is selected.
+ * @param {HTMLSelectElement} select
+ * @param {HTMLInputElement} importInput
+ */
+function fontMenuSections(select, importInput) {
+    const sections = [{ items: [{ label: t`Import Font`, icon: 'fa-solid fa-file-import', onSelect: () => importInput.click() }] }];
+    if (select.selectedOptions[0]?.dataset.sbFontKind === 'imported') {
+        const family = select.value;
+        sections.push({
+            items: [{
+                label: t`Remove Font`,
+                icon: 'fa-solid fa-trash-can',
+                danger: true,
+                onSelect: async () => {
+                    const { fonts, host } = await loadFonts();
+                    await fonts.removeFontFamily(family, host);
+                },
+            }],
+        });
+    }
+    return sections;
+}
+
+/**
+ * Font Settings: one select over the presets, the imported fonts and, while one is saved, a legacy Google name, with its
+ * actions in a trailing menu. The select keeps its id and handler in `power-user.js`; the fonts module rebuilds its options.
+ */
 function presentFont(container) {
     if (container.querySelector('[data-sb-category="font"]')) return;
     const presetSelect = container.querySelector('#google_font_preset');
-    const customInput = container.querySelector('#google_font_custom');
-    const applyButton = container.querySelector('#apply_google_font');
+    const importInput = container.querySelector('#sb_font_import_input');
     const block = container.querySelector('#GoogleFont-block');
-    if (!(presetSelect instanceof HTMLSelectElement) || !(customInput instanceof HTMLInputElement) || !block) return;
+    if (!(presetSelect instanceof HTMLSelectElement) || !(importInput instanceof HTMLInputElement) || !block) return;
 
     const bodyCopy = block.querySelector(':scope > small, :scope > .sb-settings-subdrawer-body > small');
     const group = createAppearanceGroup({
@@ -205,28 +237,52 @@ function presentFont(container) {
     });
 
     const presetCopy = copyOf(presetSelect);
-    const presetRow = createSelectRow({
+    const presetRow = createProfileRow({
         select: presetSelect,
         label: presetCopy.labelText,
         subtitle: presetCopy.subtitleText,
         field: 'google-font-preset',
         searchLabel: t`Search`,
         emptyText: t`No results`,
+        menuLabel: t`Font Actions`,
+        onMenu: trigger => openActionMenu({ trigger, title: presetCopy.labelText, sections: fontMenuSections(presetSelect, importInput) }),
     });
     carryCopy(presetRow, presetCopy);
 
-    const customCopy = copyOf(customInput);
-    const customRow = createEntryRow({
-        label: customCopy.labelText,
-        subtitle: customCopy.subtitleText,
-        field: 'google-font-custom',
-        input: customInput,
-        floating: true,
-        suffix: applyButton ? [applyButton] : undefined,
-    });
-    carryCopy(customRow, customCopy);
+    // A saved Google Fonts name still loads from Google, so while it is chosen the subtitle says so in place of the local-font one.
+    const subtitle = presetRow.row.querySelector('.ds-row-text > .ds-row-subtitle:not(.ds-select-row__detail)');
+    const localSubtitle = { text: subtitle?.textContent ?? '', i18n: subtitle?.dataset.i18n };
+    const syncSubtitle = () => {
+        if (!subtitle) return;
+        const google = presetSelect.dataset.sbFontSource === 'google';
+        if (google) {
+            subtitle.textContent = t`TODO(copy)`;
+            subtitle.dataset.sbCopyPlaceholder = 'true';
+            delete subtitle.dataset.i18n;
+        } else {
+            subtitle.textContent = localSubtitle.text;
+            delete subtitle.dataset.sbCopyPlaceholder;
+            if (localSubtitle.i18n) subtitle.dataset.i18n = localSubtitle.i18n;
+        }
+    };
+    new MutationObserver(syncSubtitle).observe(presetSelect, { attributes: true, attributeFilter: ['data-sb-font-source'] });
+    syncSubtitle();
 
-    group.append(presetRow, customRow);
+    importInput.addEventListener('change', async () => {
+        const files = [...importInput.files];
+        importInput.value = '';
+        if (!files.length) return;
+        try {
+            const { fonts, host } = await loadFonts();
+            await fonts.importFontFiles(files, host);
+        } catch (error) {
+            console.error('Could not import the font.', error);
+            globalThis.toastr?.error(t`TODO(copy)`);
+        }
+    });
+
+    group.append(presetRow);
+    group.section.append(importInput);
     block.before(group.section);
     retire(block);
 }

@@ -1451,6 +1451,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05, PR #870 (stand-in expression packs). |
 | Owner | Defaults and release integrator. |
 
+### `public/scripts/power-user.js`, `public/index.html` and `src/endpoints/data-maid.js` - Font Settings with imported fonts
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/power-user.js` (the `sb_fonts` default; `loadFontsModule()` and `normalizeFontSettings()`, called from `loadPowerUserSettings`; `applyGoogleFont` hands a saved or imported font to the fonts module and keeps a no-module path for default settings; the `#google_font_custom` and `#apply_google_font` handlers and `buildGoogleFontHref` are removed); `public/index.html` (the Custom row and its apply button removed from the Font group, the Preset subtitle, the `Presets` optgroup, the hidden `#sb_font_import_input`); `src/endpoints/data-maid.js` (file names starting `sb-font-` are skipped in the loose-file scan, beside the Chat Archive exclusion). |
+| Area | Customize, Appearance, Font Settings: bundled presets, imported font files, and a Google Fonts name saved by an earlier version. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-fonts.js`, loaded on demand (the table reader, validation, import and removal through `/api/files/upload` and `/api/files/delete`, the `sb_fonts` normaliser, the `@font-face` injection, the naming dialog); the profile select row in `public/scripts/sillybunny-appearance.js`; the preset files under `public/webfonts/`. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 13.8b): `power_user.google_font` stays the choice and holds a family name; `power_user.sb_fonts` lists imported files as `{ id, family, file, weight, style, format }`. A choice resolves to an imported family, else a bundled preset (a name that differs from a preset only by case or spaces is rewritten at load), else the earlier Google stylesheet, which stays only for a name saved before the Custom row was removed. Default settings load neither the module nor any font file. |
+| Protecting tests | `tests/unit/sillybunny-fonts.test.js`; `tests/unit/sillybunny-fonts-page.test.js`; `tests/font-routes.test.js` (Node.js and Bun); `tests/data-maid-fonts.test.js`; `tests/font-import.e2e.js`; `tests/dialog-header-metrics.e2e.js`; the settings inventory of Appearance; `tests/frontend-performance.e2e.js`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, the route tests on Node.js and Bun, boots under `bun server.js` and `node server.js` on throwaway data roots, `font-import.e2e.js` at 1440x900 and 390x844, the settings inventory, the audit of the naming dialog and the Appearance page, budgets, contracts and design rules. Chromium only. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 13.8b). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/power-user.js` - bundled theme text repair
 | Field | Value |
 | --- | --- |

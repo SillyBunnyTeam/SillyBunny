@@ -311,6 +311,20 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/character-route-inputs.test.js`. Its harness option `requestTimeoutMs` makes a request that a route never answers fail at a deadline, and Jest fails the running test with the unhandled rejection. `tests/hostile-file-names-characters.test.js` requires 400 from `/api/characters/edit` for an empty `avatar_url`.
 - **Fixes:** `5e6923c81` (request fields), `62068ea31` (file steps).
 
+### Font Settings: imported fonts, presets and the legacy Google name
+
+- **Breaks:** a font name went into `--mainFontFamily` as `'<name>'` with no escaping, so a name with a quote gave an invalid value, and a name written into an `@font-face` rule would have let a user's text close the rule. A minimal font file that a test builds is refused by the browser's sanitiser unless every table is valid: an empty `glyf` fails with `OTS parsing error: glyf: zero-length table`, and a short `maxp` fails with `Failed to read version 1 table data`.
+- **Files:** `public/scripts/sillybunny-fonts.js`, `applyGoogleFont()` and `normalizeFontSettings()` in `public/scripts/power-user.js`, `presentFont()` in `public/scripts/sillybunny-appearance.js`, `src/endpoints/data-maid.js`.
+- **State:** `power_user.sb_fonts` is the list (one entry per file: `id`, `family`, `file`, `weight`, `style`, `format`) and `power_user.google_font` stays the choice and holds a family name. `resolveFont()` decides where a family comes from: an imported family, then a bundled preset by its exact name, then the Google stylesheet of old. `canonicalFontName()` rewrites a name that differs from a preset or an imported family only by case or spacing, once, at load. The stack is `'<name>', 'Adwaita Sans', system-ui, sans-serif`.
+- **Guards:**
+  - Every name that reaches CSS goes through `cssString()`, which writes any character outside letters, digits and a few marks as a code point escape. `normalizeFonts()` drops an entry whose file path is not `/user/files/sb-font-<12 hex>.<ext>`, so a tampered setting cannot reach a stylesheet or a delete request.
+  - The server checks only the file name of an upload, so `validateFontFile()` checks the extension, the size (5 MB), the first four bytes against the extension and refuses collections before anything is sent, and `FontFace().load()` must resolve before the file is uploaded. The upload name is built by the client (`sb-font-<12 hex>`), never from the user's file name.
+  - Data Maid skips files that start with `sb-font-`; without that it offers every imported font as a loose file.
+  - The module loads on demand: `applyGoogleFont()` returns without it while no font is saved, none is imported and it has never loaded. `tests/font-import.e2e.js` asserts that default data requests no module, no preset stylesheet and nothing from Google.
+  - A WOFF table declares its own size, so `readWoffTables()` refuses more than 1 MB before inflating. WOFF2 metadata is read only where `DecompressionStream('brotli')` exists (`canReadWoff2()`); otherwise the naming dialog opens.
+- **Tests:** `tests/unit/sillybunny-fonts.test.js`, `tests/unit/sillybunny-fonts-page.test.js`, `tests/font-routes.test.js` (the real routes on Node.js and on Bun, through `tests/helpers/font-routes-harness.js`), `tests/data-maid-fonts.test.js`, `tests/font-import.e2e.js`, `tests/dialog-header-metrics.e2e.js`; the font builder is `tests/helpers/font-fixtures.js`.
+- **Open:** the list is saved with `saveSettingsDebounced()`, which reports no result, so a failed save leaves the uploaded files on the server; the next Data Maid run does not list them either. jsdom has no `TextDecoder`, so a jsdom test of the reader sets it from `node:util`.
+
 ### Security and credentials
 
 - **Breaks:** untrusted card scripts reach remote resources; secrets cross scopes.
