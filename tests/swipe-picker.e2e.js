@@ -71,7 +71,8 @@ async function assertPickerLayout(page, messageId, screenshotPath) {
     const metadata = row.locator('.select_chat_info');
     await expect(title).toHaveCSS('color', /rgb\(/);
     await expect(title).toHaveCSS('font-weight', '400');
-    await expect(metadata).toHaveCSS('color', /rgb\(/);
+    // The dimmed ink is a mix, which a browser may report as `color(srgb ...)`.
+    await expect(metadata).toHaveCSS('color', /^(?:rgb|color)\(/);
     // One trailing control: the four actions are in its menu, and their original controls stay in the row, hidden.
     await expect(row.locator('.swipe_picker_menu, [data-sb-forwarded]:visible')).toHaveCount(1);
     await expect(row.getByRole('button', { name: 'Menu' })).toBeVisible();

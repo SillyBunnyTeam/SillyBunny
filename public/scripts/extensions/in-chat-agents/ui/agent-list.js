@@ -753,7 +753,7 @@ export function mountAgentsPanel(column) {
             let previous = null;
             for (const href of [
                 'css/sillybunny-persona-detail.css?v=20261118zm',
-                'css/sillybunny-prompt-editor.css?v=20261118zj',
+                'css/sillybunny-prompt-editor.css?v=20261118zr',
                 'scripts/extensions/in-chat-agents/ui/agent-editor.css',
             ]) {
                 let link = document.querySelector(`link[href="${href}"]`);

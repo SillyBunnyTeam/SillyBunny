@@ -8,9 +8,14 @@ import { power_user } from './power-user.js';
 // SillyBunny: the row's actions are one menu, so a row holds a single trailing control.
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { isMobile } from './RossAscends-mods.js';
+// SillyBunny: loads the entity list sheet for the entity rows.
+import { loadStylesheetAsync } from './dynamic-styles.js';
 import { getTokenCountAsync } from './tokenizers.js';
 import { addLongPressEvent, clamp, copyText, timestampToMoment } from './utils.js';
 import { chat, deleteSwipe, ensureSwipes, isMessageSwipeable, isSwipingAllowed, swipe, syncMesToSwipe } from '/script.js';
+
+// SillyBunny: the rows are shared entity rows, which a deferred sheet styles.
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' };
 
 /**
  * Returns whether a swipe picker can be opened for the message.
@@ -88,6 +93,9 @@ async function openSwipePicker(messageId) {
         selectedSwipeId = clamp(Number(nextSwipeId), 0, message.swipes.length - 1);
         listContainer.querySelectorAll('.swipe_picker_block').forEach((element) => {
             const isSelected = Number(element.getAttribute('data-swipe-id')) === selectedSwipeId;
+            // SillyBunny: the shared entity row draws its selected fill from `is-selected`, and the select button reports the current row.
+            element.classList.toggle('is-selected', isSelected);
+            element.querySelector('.swipe_picker_select')?.toggleAttribute('aria-current', isSelected);
             if (isSelected) {
                 element.setAttribute('highlight', 'true');
             } else {
@@ -357,9 +365,32 @@ async function openSwipePicker(messageId) {
                 swipeTitle.append(' ', currentMarker);
             }
             template.find('.chat_messages_date').text(sendDate);
-            template.find('.chat_file_size').text(swipeDetails.length ? `(${swipeDetails[0]}${swipeDetails.length > 1 ? ',' : ')'}` : '');
-            template.find('.chat_messages_num').text(swipeDetails.length > 1 ? `${swipeDetails.slice(1).join(', ')})` : '');
+            // SillyBunny: the details are plain text, because the entity row's subtitle separates them.
+            template.find('.chat_file_size').text(swipeDetails[0] ?? '');
+            template.find('.chat_messages_num').text(swipeDetails.slice(1).join(', '));
             template.find('.select_chat_block_mes').text(previewText ? swipeText : t`(empty swipe)`);
+
+            // SillyBunny: the row is the shared entity row on the cloned chat-file node: a title, the details as its subtitle, the
+            // swipe's text as a preview, and the one menu button as its suffix. Every upstream control stays in the row, hidden.
+            const rowTitle = block.find('.select_chat_block_filename').first()[0];
+            const rowDetails = block.find('.select_chat_info')[0];
+            const rowPreview = block.find('.select_chat_block_mes')[0];
+            block[0].querySelectorAll('.select_chat_block_filename_item').forEach(node => node.classList.remove('select_chat_block_filename_item'));
+            block.addClass('ds-entity-row ds-entity-row--activatable');
+            const text = document.createElement('span');
+            text.className = 'ds-entity-row__text';
+            rowTitle.classList.add('ds-entity-row__title');
+            rowDetails.classList.add('ds-entity-row__subtitle');
+            rowPreview.classList.add('ds-entity-row__preview');
+            text.append(rowTitle, rowDetails, rowPreview);
+            const suffix = document.createElement('span');
+            suffix.className = 'ds-entity-row__suffix';
+            menuButton.classList.add('ds-entity-row__button');
+            suffix.append(menuButton);
+            const store = document.createElement('span');
+            store.hidden = true;
+            store.append(expandCheckbox, ...forwarded);
+            block[0].replaceChildren(selectButton, text, suffix, store);
 
             // SillyBunny: the select button's click covers pointer and keyboard activation, so both use one selection and commit path.
             selectButton.addEventListener('click', async () => {
@@ -478,6 +509,8 @@ async function openSwipePicker(messageId) {
         });
     }
 
+    // SillyBunny: the sheet has to apply before the rows show, or they change look when it arrives.
+    await loadStylesheetAsync(ENTITY_LIST_STYLESHEET.href, { id: ENTITY_LIST_STYLESHEET.id }).catch(error => console.warn('Failed to load the entity list stylesheet:', error));
     await renderSwipeList();
 
     const popupResult = await popup.show();

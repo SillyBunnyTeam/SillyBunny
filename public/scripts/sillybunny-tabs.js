@@ -760,11 +760,12 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-editor-shell.css?v=20261118zp', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118t', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261118zj', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261118zr', id: 'deferred-prompt-editor-css' },
     ],
-    // SillyBunny: Presets builds the Edit Prompts button row, which the editor shell sheet styles.
+    // SillyBunny: Presets builds the Edit Prompts button row, which the editor shell sheet styles. NovelAI's Logit Bias entries are entity rows, which the entity list sheet styles.
     'left:prompting': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zp', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },

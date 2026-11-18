@@ -24,6 +24,7 @@ const FORMS = Object.freeze({
  */
 const SKIPPED = Object.freeze({
     'status.home.about-unknown': 'an unknown version is a value in a property row of the About window, which has no status page',
+    'status.home.offline': 'an offline state is a link button on each card of the home page, not an empty view',
     'status.sampling.unavailable': 'an unavailable sampler is an inert row of a boxed list with a badge, not an empty view',
 });
 

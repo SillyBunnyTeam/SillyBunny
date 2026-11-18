@@ -273,6 +273,34 @@ describe('the adopter', () => {
         });
     });
 
+    test('opens a flex container of select rows and buttons into the group, and gives each button a row that follows its display', async () => {
+        const container = mount(`
+            <div class="ds-pref-group">
+                <label for="translation_provider">Provider</label>
+                <div class="flex-container gap5px flexnowrap">
+                    <select id="translation_provider"><option value="deepl">DeepL API</option></select>
+                    <select id="deepl_api_endpoint" title="DeepL API Endpoint"><option value="free">Free</option></select>
+                    <div id="translate_key_button" class="menu_button menu_button_icon"><i class="fa-solid fa-key"></i><span>Key</span></div>
+                    <div id="translate_url_button" class="menu_button menu_button_icon" style="display: none;"><i class="fa-solid fa-link"></i><span>URL</span></div>
+                </div>
+            </div>`, 'translation_container');
+        normalizeExtensionSettings(container);
+
+        const group = container.querySelector('.ds-pref-group');
+        expect(group.querySelector('.flex-container')).toBeNull();
+        expect([...group.children].filter(row => !row.matches('.sb-legacy-search-hidden')).map(row => row.className.includes('ds-select-row') ? 'select' : row.className.includes('ds-row-actions') ? 'button' : row.className)).toEqual(['select', 'select', 'button', 'button']);
+        const key = field(container, '#translate_key_button');
+        const url = field(container, '#translate_url_button');
+        expect(key.closest('.ds-row-actions').parentElement).toBe(group);
+        expect(key.closest('.ds-row-actions').querySelector('.ds-row-label').textContent).toBe('Key');
+        expect(key.closest('.ds-row-actions').hidden).toBe(false);
+        expect(url.closest('.ds-row-actions').hidden).toBe(true);
+
+        url.style.display = '';
+        await flush();
+        expect(url.closest('.ds-row-actions').hidden).toBe(false);
+    });
+
     test('reports a field that has no label and no placeholder, and leaves it as it was', () => {
         const container = mount('<div><select id="provider"><option>System</option></select></div>');
         const before = container.innerHTML;

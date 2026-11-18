@@ -1475,3 +1475,17 @@ test('Adding a Logit Bias entry keeps the rows that are already drawn live', asy
     });
     expect(sameArray).toBe(true);
 });
+
+test('NovelAI Logit Bias entries on the Presets page are entity rows, because the page loads the entity list sheet', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'novel');
+    const prompting = await openPanel(page, 'prompting');
+    const add = prompting.locator('#novelai_logit_bias_new_entry');
+    await add.scrollIntoViewIfNeeded();
+    await add.click();
+    const row = prompting.locator('#logit_bias_novel').locator('xpath=ancestor::div[contains(@class,"range-block")][1]').locator('.logit_bias_list > .logit_bias_form').first();
+    await expect(row).toHaveClass(/ds-entity-row/);
+    await expect(page.locator('#deferred-entity-list-css')).toHaveCount(1);
+    // The sheet has applied when the row has the shared row's minimum height.
+    await expect.poll(() => row.evaluate(node => getComputedStyle(node).minHeight)).toBe('52px');
+});

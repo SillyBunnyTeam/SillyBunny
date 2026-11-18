@@ -22,5 +22,7 @@ for (const viewport of MISC_VIEWPORTS) {
         await expect(status).toBeVisible();
         await expect(status).toHaveAttribute('data-state', 'empty');
         await expect(status.locator('.sb-status-page__title')).toHaveText('No Installed Extensions');
+        // With nothing installed there is nothing to bulk toggle.
+        await expect(installed.getByText('Toggle extensions', { exact: true })).toBeHidden();
     });
 }

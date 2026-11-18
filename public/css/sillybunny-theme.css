@@ -2431,58 +2431,14 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
 }
 
-.swipe_picker_block:last-child {
-    border-bottom: 0;
+/* Each row sits in a wrapper of its own, so `:last-child` is true for every row; a hairline starts each wrapper after the first. */
+.swipe_picker_div .select_chat_block_wrapper + .select_chat_block_wrapper {
+    border-top: 1px solid var(--sb-shell-border);
 }
 
-.swipe_picker_block #select_chat_name_wrapper {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-}
-
-.swipe_picker_block #select_chat_name_wrapper > :first-child {
-    display: grid;
-    grid-template-columns: 24px minmax(0, 1fr);
-    align-items: center;
-    min-width: 0;
-}
-
-.swipe_picker_block #select_chat_name_wrapper > :first-child::before {
-    display: inline-flex;
-    width: 24px;
-    align-items: center;
-    justify-content: flex-start;
-    color: transparent;
-    font: var(--fa-font-solid);
-    font-size: 12px;
-}
-
-.swipe_picker_block[highlight] #select_chat_name_wrapper > :first-child::before {
-    content: '\f00c';
-    color: var(--sb-accent);
-}
-
-.swipe_picker_block #select_chat_name_wrapper > :last-child {
-    display: contents;
-}
-
-.swipe_picker_block .select_chat_info {
-    display: block;
-    grid-area: 2 / 1 / 3 / 3;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.swipe_picker_block .select_chat_info > * {
-    display: inline;
-    white-space: nowrap;
-}
-
-.swipe_picker_block .select_chat_info .chat_file_size {
-    margin-inline-start: 6px;
+/* The window follows its content, and a row that is not drawn yet would keep the shared row's placeholder height, which is shorter than a row with a preview. */
+.swipe_picker_div .swipe_picker_block {
+    content-visibility: visible;
 }
 
 /* Cancels upstream's sticky white hover on touch; hover-capable devices get the flat fill below. */
@@ -2517,7 +2473,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
-    font-size: calc(var(--mainFontSize) * 0.86);
+    font-size: var(--sb-type-caption);
     line-height: var(--sb-line-body);
     color: var(--sb-muted-fg);
 }
@@ -2634,32 +2590,11 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     }
 }
 
-/* Swipe picker header: more breathing room. */
-
-.swipe_picker_block .select_chat_block_filename {
-    font-size: var(--sb-type-body);
-    font-weight: 400;
-    color: var(--SmartThemeBodyColor);
-    opacity: 1;
-}
-
 .swipe_picker_block .swipe_picker_current {
     margin-inline-start: 4px;
     color: var(--sb-accent);
     font-size: var(--sb-type-meta);
     font-weight: 600;
-}
-
-.swipe_picker_block .select_chat_info .select_chat_block_filename {
-    color: var(--sb-muted-fg);
-    font-weight: 400;
-    opacity: 1;
-}
-
-.swipe_picker_block .chat_messages_date,
-.swipe_picker_block .chat_file_size,
-.swipe_picker_block .chat_messages_num {
-    font-size: calc(var(--mainFontSize) * 0.84);
 }
 
 body.bubblechat .mes {

@@ -713,6 +713,10 @@
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label input {
   flex: 0 0 auto;
 }
+/* SillyBunny: the rule above sizes the inputs of the upstream label stack to their content. The input of an entry row is the row's editable area, so it fills it; without this the field collapses to no width. */
+.popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels .ds-row-entry__field > input {
+  flex: 1 1 auto;
+}
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList,
 .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList {
   /* SillyBunny: the popover surface of the other lists (opaque layer, overlay radius, a ring in the shadow). `--stcdx--bgColor` is defined nowhere, so the list had no background. */
@@ -1289,26 +1293,23 @@ dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modal
   gap: 0;
   padding: 0;
 }
+/* SillyBunny: the boxed list clips its content to its corners, which would cut off the switcher list that opens below the last row. The corners square off only while the list is open. */
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels:has(.qr--modal-switcherList) {
+  overflow: visible;
+}
+/* SillyBunny: an entry row stacks its line and its caption, so only the other rows lay out in a row. */
 dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .ds-row {
   flex: 0 0 auto;
-  flex-direction: row;
   min-width: 0;
+}
+dialog.popup.sb-dialog--window:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .ds-row:not(.ds-row-entry--floating) {
+  flex-direction: row;
 }
 dialog.popup.sb-dialog--window #qr--modalEditor .ds-row-label {
   font-size: inherit;
 }
 dialog.popup.sb-dialog--window #qr--modalEditor .qr--labelHint {
   font-size: inherit;
-}
-dialog.popup.sb-dialog--window #qr--modalEditor .qr--inputGroup {
-  position: relative;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 4px;
-}
-dialog.popup.sb-dialog--window #qr--modalEditor .qr--inputGroup > input {
-  min-width: 0;
 }
 dialog.popup.sb-dialog--window #qr--modalEditor #qr--modal-icon {
   height: auto;

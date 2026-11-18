@@ -135,6 +135,9 @@ export function adaptExtensionsManager(source, {
     // The list is known when the Window opens, so a manager with no installed extension says so instead of drawing an empty box.
     if (installedSection && !installedSection.querySelector('.extension_block')) {
         installedSection.querySelector('.ds-pref-group').append(createStatusPage({ state: 'empty', title: t`No Installed Extensions`, compact: true }).element);
+        // The bulk toggle and its restore button act on installed extensions; with none, they have nothing to act on. The suffix
+        // is removed and not hidden, because `.ds-row-suffix` sets its own display.
+        suffix.remove();
     }
     externalWrapper.querySelector('.third_party_toolbar')?.remove();
     externalWrapper.querySelector('.flex-container.alignitemscenter')?.remove();

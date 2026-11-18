@@ -290,7 +290,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 @container sb-list-editor-sidebar (width < 440px) {
     .sb-prompt-row:not(.sb-prompt-row--template) {
         gap: 6px;
-        padding-inline: 4px;
+        padding-inline: 6px;
     }
 }
 

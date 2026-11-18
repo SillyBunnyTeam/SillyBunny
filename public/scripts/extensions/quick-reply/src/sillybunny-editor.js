@@ -1,5 +1,5 @@
 import { t } from '../../../i18n.js';
-import { createEntryRow, createRow, createSpinRow, createSwitchRow, releaseRowIds } from '../../../sillybunny-editor/rows.js';
+import { createEntryRow, createRow, createSpinRow, createSwitchRow, moveCaption, releaseRowIds } from '../../../sillybunny-editor/rows.js';
 import { createSelectRow } from '../../../sillybunny-editor/select-row.js';
 
 function textOf(node) {
@@ -15,6 +15,13 @@ function adoptCaption(row, caption, hint) {
     }
     const description = row.row.querySelector('.ds-row-subtitle');
     if (hint && description) description.replaceChildren(hint);
+}
+
+/** The caption and the hint of a floating entry row: the source nodes keep their translation keys and stay in the template. */
+function adoptFloatingCaption(row, caption, hint) {
+    moveCaption(row.row.querySelector('.ds-row-entry__title'), caption, { keepSource: true });
+    const description = row.row.querySelector('.ds-row-entry__caption');
+    if (hint && description) moveCaption(description, hint, { keepSource: true });
 }
 
 function requireSource(root, selector, ElementType = HTMLElement) {
@@ -48,21 +55,26 @@ export function adaptQuickReplyEditor(root) {
     const iconRow = createRow({ label: textOf(iconCaption), field: icon.id, suffix: icon });
     adoptCaption(iconRow, iconCaption);
 
-    const label = requireSource(root, '#qr--modal-label', HTMLInputElement);
-    const labelContainer = label.closest('.label');
-    const labelRow = createEntryRow({ label: textOf(labelContainer.querySelector('.qr--labelText')), subtitle: textOf(labelContainer.querySelector('.qr--labelHint')), field: label.id, input: label });
-    adoptCaption(labelRow, labelContainer.querySelector('.qr--labelText'), labelContainer.querySelector('.qr--labelHint'));
-    labelRow.row.classList.add('label');
-    // The switcher appends its live list to the label input's parent.
-    const inputGroup = labelContainer.querySelector('.qr--inputGroup');
-    const showLabel = adoptSwitch(inputGroup.querySelector('.checkbox_label'));
-    inputGroup.prepend(label);
-    labelRow.row.querySelector('.ds-row-text').append(inputGroup);
-
     const title = requireSource(root, '#qr--modal-title', HTMLInputElement);
     const titleContainer = title.parentElement;
-    const titleRow = createEntryRow({ label: textOf(titleContainer.querySelector('.qr--labelText')), subtitle: textOf(titleContainer.querySelector('.qr--labelHint')), field: title.id, input: title });
-    adoptCaption(titleRow, titleContainer.querySelector('.qr--labelText'), titleContainer.querySelector('.qr--labelHint'));
+    const titleRow = createEntryRow({ label: textOf(titleContainer.querySelector('.qr--labelText')), subtitle: textOf(titleContainer.querySelector('.qr--labelHint')), field: title.id, input: title, floating: true });
+    adoptFloatingCaption(titleRow, titleContainer.querySelector('.qr--labelText'), titleContainer.querySelector('.qr--labelHint'));
+
+    const label = requireSource(root, '#qr--modal-label', HTMLInputElement);
+    const labelContainer = label.closest('.label');
+    const inputGroup = labelContainer.querySelector('.qr--inputGroup');
+    const showLabel = adoptSwitch(inputGroup.querySelector('.checkbox_label'));
+    // The switcher appends its live list to the parent of the label input, which the floating row makes its editable area.
+    const labelRow = createEntryRow({
+        label: textOf(labelContainer.querySelector('.qr--labelText')),
+        subtitle: textOf(labelContainer.querySelector('.qr--labelHint')),
+        field: label.id,
+        input: label,
+        floating: true,
+        suffix: requireSource(inputGroup, '#qr--modal-switcher'),
+    });
+    adoptFloatingCaption(labelRow, labelContainer.querySelector('.qr--labelText'), labelContainer.querySelector('.qr--labelHint'));
+    labelRow.row.classList.add('label');
     labels.classList.add('ds-pref-group');
     labels.replaceChildren(iconRow.row, labelRow.row, showLabel, titleRow.row);
 
@@ -94,8 +106,8 @@ export function adaptQuickReplyEditor(root) {
     const automationId = requireSource(automation, '#qr--automationId', HTMLInputElement);
     const automationContainer = automationId.parentElement;
     const automationCaption = automationContainer.querySelector('small');
-    const automationRow = createEntryRow({ label: textOf(automationCaption), subtitle: automationContainer.title, field: automationId.id, input: automationId });
-    adoptCaption(automationRow, automationCaption);
+    const automationRow = createEntryRow({ label: textOf(automationCaption), subtitle: automationContainer.title, field: automationId.id, input: automationId, floating: true });
+    moveCaption(automationRow.row.querySelector('.ds-row-entry__title'), automationCaption, { keepSource: true });
     automationContainer.replaceWith(automationRow.row);
 
     // Shrinking after a scrolled debug view must not strand Maximize above the viewport.

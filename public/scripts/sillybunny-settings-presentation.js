@@ -502,21 +502,56 @@ export function adoptButtonRows(scope) {
         }
         for (const button of box.querySelectorAll(':scope > .menu_button')) {
             if (!(button instanceof HTMLElement)) continue;
-            const caption = button.querySelector('span, small') ?? button;
-            const title = readRowTitle(caption instanceof HTMLElement ? caption : button);
-            if (!title) continue;
-            const tooltip = button.getAttribute('title')?.trim();
             const next = button.nextSibling;
-            const { row } = createRow({ label: title, subtitle: tooltip || undefined, field: button.id || 'button', suffix: button });
-            row.classList.add('ds-row-actions');
-            const key = readLabelI18nKey(caption instanceof HTMLElement ? caption : button);
-            const rowTitle = row.querySelector('.ds-row-label');
-            if (key && rowTitle instanceof HTMLElement) rowTitle.dataset.i18n = key;
-            const tooltipKey = button.getAttribute('data-i18n')?.match(/(?:^|;)\[title\]([^;]+)/)?.[1];
-            const rowSubtitle = row.querySelector('.ds-row-subtitle');
-            if (tooltipKey && rowSubtitle instanceof HTMLElement) rowSubtitle.dataset.i18n = tooltipKey;
-            box.insertBefore(row, next);
+            const row = createButtonRow(button);
+            if (row) box.insertBefore(row, next);
         }
+    }
+}
+
+/**
+ * The row for one loose button: a title that reads like the button, the button's tooltip as the subtitle, and the button itself, with
+ * its id and listeners, in the trailing slot.
+ * @param {HTMLElement} button
+ * @returns {HTMLElement|null} the row, or null when the button has no text to title it
+ */
+function createButtonRow(button) {
+    const caption = button.querySelector('span, small') ?? button;
+    const title = readRowTitle(caption instanceof HTMLElement ? caption : button);
+    if (!title) return null;
+    const tooltip = button.getAttribute('title')?.trim();
+    const { row } = createRow({ label: title, subtitle: tooltip || undefined, field: button.id || 'button', suffix: button });
+    row.classList.add('ds-row-actions');
+    const key = readLabelI18nKey(caption instanceof HTMLElement ? caption : button);
+    const rowTitle = row.querySelector('.ds-row-label');
+    if (key && rowTitle instanceof HTMLElement) rowTitle.dataset.i18n = key;
+    const tooltipKey = button.getAttribute('data-i18n')?.match(/(?:^|;)\[title\]([^;]+)/)?.[1];
+    const rowSubtitle = row.querySelector('.ds-row-subtitle');
+    if (tooltipKey && rowSubtitle instanceof HTMLElement) rowSubtitle.dataset.i18n = tooltipKey;
+    return row;
+}
+
+/**
+ * An extension page that lays out a field and its buttons in one flex container (the provider select, its endpoint select and
+ * the Key and URL buttons of Translate) has its rows opened into the group, and each button gets a button row of its own. The
+ * extension shows and hides such a button itself (`.toggle()`), so its row follows the button's own `display`.
+ * @param {HTMLElement} scope
+ */
+function adoptWrappedButtonRows(scope) {
+    for (const wrapper of scope.querySelectorAll('.ds-pref-group > .flex-container')) {
+        const nodes = [...wrapper.children];
+        if (!nodes.some(node => node.matches('.menu_button')) || !nodes.some(node => node.matches('.ds-row'))) continue;
+        if (!nodes.every(node => node.matches('.ds-row, .menu_button'))) continue;
+        const rows = nodes.map(node => {
+            if (!node.matches('.menu_button') || !(node instanceof HTMLElement)) return node;
+            const row = createButtonRow(node);
+            if (!row) return node;
+            const follow = () => { row.hidden = node.style.display === 'none'; };
+            follow();
+            new MutationObserver(follow).observe(node, { attributes: true, attributeFilter: ['style'] });
+            return row;
+        });
+        wrapper.replaceWith(...rows);
     }
 }
 
@@ -1926,6 +1961,8 @@ export function normalizeExtensionSettings(scope) {
         adoptExtensionField(control, kind, found);
         report[kind === 'select' ? 'selects' : kind === 'spin' ? 'numbers' : kind === 'textarea' ? 'textareas' : 'entries']++;
     }
+
+    adoptWrappedButtonRows(scope);
 
     return report;
 }
