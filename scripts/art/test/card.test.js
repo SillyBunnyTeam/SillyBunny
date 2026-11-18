@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildCard, cardPicture, differences, embedCard, loadAppCardParser, prepareCard, verifyCard } from '../lib/card.js';
+import { buildCard, cardOnGrid, cardPicture, differences, embedCard, gradientRow, loadAppCardParser, prepareCard, verifyCard } from '../lib/card.js';
 import { decode, encode } from '../lib/codec.js';
-import { samePixels, upscaleNearest } from '../lib/raster.js';
+import { isOpaque, samePixels, upscaleNearest } from '../lib/raster.js';
 import { fixtureCard } from '../test-support/cards.js';
-import { paint } from '../test-support/pictures.js';
+import { paint, pixelAt } from '../test-support/pictures.js';
 
 const WORLD = 'SillyBunny Lexicon';
 const FIGURE = [200, 120, 220, 255];
@@ -160,6 +160,39 @@ test('building the same inputs again gives the same bytes', async () => {
     const [one, two] = [await buildCard(input), await buildCard(input)];
 
     assert.ok(one.png.equals(two.png));
+});
+
+test('the gradient runs from its top colour on the first row to its bottom colour on the last, each channel rounded half up', () => {
+    const gradient = { top: '#000010', bottom: '#ff0000' };
+
+    assert.deepEqual([0, 1, 2].map((row) => gradientRow(gradient, row, 3)), [[0, 0, 16], [128, 0, 8], [255, 0, 0]]);
+    assert.deepEqual(gradientRow(gradient, 0, 1), [0, 0, 16], 'a grid of one row is the top colour');
+    assert.deepEqual(gradientRow({ top: '#f5e9ff', bottom: '#d9c2f0' }, 143, 288), [0xe7, 0xd6, 0xf8]);
+});
+
+test('the card on its grid is the crop of the sprite over the gradient, which shows wherever the crop reaches past the sprite', () => {
+    const sprite = paint(4, 5, (x, y) => (x >= 1 && x < 3 && y >= 1 ? FIGURE : [0, 0, 0, 0]));
+    const gradient = { top: '#000000', bottom: '#0000ff' };
+
+    const card = cardOnGrid(sprite, { crop: [-1, -1, 4, 6], gradient });
+
+    assert.deepEqual([card.width, card.height, card.channels, isOpaque(card)], [4, 6, 3, true]);
+    for (let y = 0; y < 6; y++) {
+        for (let x = 0; x < 4; x++) {
+            const inFigure = x - 1 >= 1 && x - 1 < 3 && y - 1 >= 1;
+            assert.deepEqual(pixelAt(card, x, y), inFigure ? FIGURE : [...gradientRow(gradient, y, 6), 255], `${x},${y}`);
+        }
+    }
+});
+
+test('a crop that cuts off the top of the figure, or whose last row misses the figure, is refused', () => {
+    const sprite = paint(4, 5, (x, y) => (x >= 1 && x < 3 && y >= 1 ? FIGURE : [0, 0, 0, 0]));
+    const gradient = { top: '#000000', bottom: '#0000ff' };
+
+    assert.throws(() => cardOnGrid(sprite, { crop: [0, 2, 4, 3], gradient }, 'card-test'), (error) => error.code === 'card-cut-top' && error.details.asset === 'card-test' && /starts at row 1 of the master, above the crop's first row 2/.test(error.message));
+    assert.throws(() => cardOnGrid(sprite, { crop: [0, 0, 4, 6], gradient }), (error) => error.code === 'card-waist' && /row 5 of the master, does not cut the figure, which ends at row 4/.test(error.message));
+    assert.throws(() => cardOnGrid(sprite, { crop: [3, 0, 4, 5], gradient }), { code: 'card-waist' }, 'a crop beside the figure');
+    assert.throws(() => cardOnGrid(paint(4, 5, () => [0, 0, 0, 0]), { crop: [0, 0, 4, 5], gradient }), { code: 'card-figure' });
 });
 
 test('differences compares the JSON of the values, so equal empty lists match and a changed list does not', () => {

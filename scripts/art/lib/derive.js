@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { posix } from 'node:path';
+import { deriveCard } from './card.js';
 import { encode } from './codec.js';
 import { fitToGrid, placementStep } from './fit.js';
 import { frameBox, renderFrame, SUBJECT_ALPHA } from './frame.js';
@@ -16,7 +17,15 @@ import { rebuildRings } from './rings.js';
  * @typedef {{ path: string, bytes: Buffer, sha256: string, kind: 'picture' | 'ico' | 'data' }} DerivedFile
  */
 
-const DERIVERS = Object.freeze({ still: deriveStill, scene: deriveScene, pair: derivePair, icon: deriveIcon, ico: deriveIco, copy: deriveCopy });
+const DERIVERS = Object.freeze({
+    still: deriveStill,
+    scene: deriveScene,
+    pair: derivePair,
+    icon: deriveIcon,
+    ico: deriveIco,
+    copy: deriveCopy,
+    card: (context, asset) => deriveCard(context, asset, { readMaster }),
+});
 
 /** Whether the files of an asset are made from masters, as opposed to pinned by their sha256. */
 export const isDerived = (asset) => Object.hasOwn(DERIVERS, asset.type);

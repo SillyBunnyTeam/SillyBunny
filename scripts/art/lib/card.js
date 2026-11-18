@@ -1,8 +1,12 @@
 import { Buffer } from 'node:buffer';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { rgbOf } from './card-entry.js';
 import { encode } from './codec.js';
+import { renderFrame } from './frame.js';
+import { outputFile } from './manifest.js';
 import { ArtProblem } from './problem.js';
-import { isOpaque, upscaleNearest } from './raster.js';
+import { createRaster, isOpaque, opaqueBox, paste, sha256, upscaleNearest } from './raster.js';
 
 // The card text is written by the app's own writer, so the app reads the card as one it wrote itself: its V2 and V3
 // conversion, its chunk keywords and its chunk order. The parser has no side effects when imported, and the packages it
@@ -170,4 +174,91 @@ export async function buildCard({ master, scale, source, world }) {
     const png = await embedCard(await cardPicture(master, scale), card);
     const { chunks, fields } = await verifyCard(png, card, world);
     return { png, edits, chunks, fields };
+}
+
+/**
+ * The colour of one row of the card's vertical gradient: `top` on the first row and `bottom` on the last, each channel
+ * rounded with `Math.round`. The art repository composes the card that a person approves with this same rule, so a
+ * change here makes the shipped card differ from the approved one.
+ * @param {{ top: string, bottom: string }} gradient
+ * @param {number} row
+ * @param {number} height
+ * @returns {number[]} [r, g, b]
+ */
+export function gradientRow({ top, bottom }, row, height) {
+    const [from, to] = [rgbOf(top), rgbOf(bottom)];
+    return from.map((channel, at) => (height === 1 ? channel : Math.round(channel + ((to[at] - channel) * row) / (height - 1))));
+}
+
+/**
+ * The card at scale 1, an opaque native master of the whole card: the crop of a sprite master laid over the gradient. The
+ * crop may reach past the master's top and sides, where the gradient shows. It may not cut off the top of the figure, and
+ * its last row must cut the figure, as at the waist, because a gap under the figure would show as a band of gradient.
+ * @param {import('./raster.js').Raster} master A sprite master with binary alpha.
+ * @param {{ crop: number[], gradient: { top: string, bottom: string } }} asset
+ * @param {string} [id]
+ * @returns {import('./raster.js').Raster}
+ * @throws {ArtProblem} `card-figure`, `card-cut-top`, `card-waist`
+ */
+export function cardOnGrid(master, { crop, gradient }, id) {
+    const [left, top, width, height] = crop;
+    const figure = opaqueBox(master);
+    if (!figure) {
+        throw new ArtProblem('card-figure', 'The card master has no opaque pixel, so there is no figure to put on the card.', { asset: id });
+    }
+    if (figure.y < top) {
+        throw new ArtProblem('card-cut-top', `The figure starts at row ${figure.y} of the master, above the crop's first row ${top}, so the card would cut off its top.`, { asset: id });
+    }
+    const cut = renderFrame(master, { x: left, y: top, width, height });
+    const shown = opaqueBox(cut);
+    if (!shown || shown.y + shown.height !== height) {
+        throw new ArtProblem('card-waist', `The crop's last row, row ${top + height - 1} of the master, does not cut the figure, which ends at row ${figure.y + figure.height - 1}. The card's bottom edge must cut the figure, as at the waist, or a band of gradient shows under it.`, { asset: id });
+    }
+    const card = createRaster(width, height, 3);
+    for (let y = 0; y < height; y++) {
+        const colour = [...gradientRow(gradient, y, height), 255];
+        for (let x = 0; x < width; x++) {
+            card.data.set(colour, (y * width + x) * 4);
+        }
+    }
+    return paste(card, cut, 0, 0);
+}
+
+/**
+ * The card text the card carries: the V3 card that the app's reader reads from the card file named by `text`, which for a
+ * card the app already ships is the card file itself.
+ * @param {{ root: string, id: string }} context
+ * @param {{ text: string }} asset
+ * @throws {ArtProblem} `card-text-missing`, `card-text-invalid`, `card-parser-missing`
+ */
+export async function cardTextOf({ root, id }, { text }) {
+    const path = outputFile(root, text);
+    if (!existsSync(path)) {
+        throw new ArtProblem('card-text-missing', `The card text is read from ${text}, which does not exist.`, { asset: id, path: text });
+    }
+    const { read } = await loadAppCardParser();
+    try {
+        return JSON.parse(read(readFileSync(path)));
+    } catch (error) {
+        throw new ArtProblem('card-text-invalid', `${text} holds no card text that the app can read: ${error.message}`, { asset: id, path: text });
+    }
+}
+
+/**
+ * Makes the card file of a card entry in memory: the card on its grid, enlarged by the output's whole scale, with the card
+ * text written by the app's writer and read back field by field. Nothing is written.
+ * @param {{ root: string, id: string }} context
+ * @param {any} asset A valid card entry.
+ * @param {{ readMaster: (context: object, master: string) => Promise<import('./raster.js').Raster> }} reader Reads a native master.
+ * @returns {Promise<import('./derive.js').DerivedFile[]>}
+ */
+export async function deriveCard(context, asset, { readMaster }) {
+    const picture = cardOnGrid(await readMaster(context, asset.master), asset, context.id);
+    const source = await cardTextOf(context, asset);
+    const files = [];
+    for (const output of asset.outputs) {
+        const { png } = await buildCard({ master: picture, scale: output.scale ?? 1, source, world: asset.world });
+        files.push({ path: output.path, bytes: png, sha256: sha256(png), kind: 'picture' });
+    }
+    return files;
 }
