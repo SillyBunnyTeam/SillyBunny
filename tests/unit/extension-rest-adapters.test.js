@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom DOM assertions. */
 import { readFileSync } from 'node:fs';
-import { afterEach, beforeAll, describe, expect, jest, test } from '@jest/globals';
+import { afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
@@ -36,6 +36,10 @@ afterEach(() => {
 });
 
 describe('a select row', () => {
+    beforeEach(() => {
+        window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    });
+
     test('shows an option written in brackets without them and leaves the option as it is', () => {
         document.body.innerHTML = '<select id="fallback"><option value="99">[ None ]</option><option value="1">Sad</option><option value="2">[Currently selected]</option></select>';
         const select = document.querySelector('#fallback');
@@ -51,6 +55,52 @@ describe('a select row', () => {
         document.body.innerHTML = '<select id="mode"><option value="a">[Raw] mode</option></select>';
         const { row } = createSelectRow({ select: document.querySelector('#mode'), label: 'Mode', field: 'mode', searchLabel: 'Search', emptyText: 'No results' });
         expect(row.querySelector('.ds-select-row__value').textContent).toBe('[Raw] mode');
+    });
+
+    // An extension's action buttons are often `div.menu_button`. A click on one must not reach the row's background
+    // handler: the picker would open and take the focus from whatever the action opened (a confirmation dialog).
+    test('does not open the picker for a click on an extension action that is not a button element', () => {
+        document.body.innerHTML = `
+            <label for="speaker">Speaker:</label>
+            <div class="flex-container">
+                <select id="speaker" class="text_pole flex1"><option value="a">A</option><option value="b">B</option></select>
+                <div id="upload" class="menu_button">Upload</div>
+                <div id="delete" class="menu_button">Delete</div>
+            </div>`;
+        const { row, trigger } = createSelectRow({
+            select: document.querySelector('#speaker'),
+            label: 'Speaker',
+            field: 'speaker',
+            searchLabel: 'Search',
+            emptyText: 'No results',
+            suffix: [...document.querySelectorAll('.menu_button')],
+        });
+        document.body.append(row);
+        const clicked = jest.fn();
+        row.querySelector('#delete').addEventListener('click', clicked);
+        row.querySelector('#delete').click();
+        expect(clicked).toHaveBeenCalledTimes(1);
+        expect(trigger.getAttribute('aria-expanded')).not.toBe('true');
+        expect(document.querySelector('.sb-picker')).toBeNull();
+
+        row.querySelector('.ds-row-text').click();
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    test('the settings pass keeps a TTS provider action from opening the picker of its select row', () => {
+        document.body.innerHTML = `<div id="tts_settings"><div id="tts_provider_settings">
+            <label for="speecht5_tts_speaker">Speaker:</label>
+            <div class="flex-container">
+                <select id="speecht5_tts_speaker" class="text_pole flex1"><option value="a">A</option></select>
+                <div id="speecht5_tts_delete_speaker_button" class="menu_button" title="Delete speaker"><i class="fa-solid fa-trash"></i></div>
+            </div></div></div>`;
+        const scope = document.querySelector('#tts_settings');
+        normalizeExtensionSettings(scope);
+        const row = scope.querySelector('#speecht5_tts_speaker').closest('.ds-select-row');
+        expect(row).not.toBeNull();
+        row.querySelector('#speecht5_tts_delete_speaker_button').click();
+        expect(row.querySelector('.ds-select-row__trigger')?.getAttribute('aria-expanded')).not.toBe('true');
+        expect(document.querySelector('.sb-picker')).toBeNull();
     });
 });
 

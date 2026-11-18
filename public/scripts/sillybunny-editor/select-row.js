@@ -3,6 +3,13 @@ import { closePicker, isPickerOpen, openPicker } from './picker.js';
 import { renderDetails } from './option-details.js';
 import { createRow } from './rows.js';
 
+/**
+ * Elements inside a row that act on their own. An extension's action beside a select is often a `div.menu_button`, so the
+ * list includes the legacy button classes and roles. A click on one must not also open the picker: the picker takes the
+ * focus, which moves it away from whatever the action opened (a confirmation dialog).
+ */
+const OWN_CONTROL_SELECTOR = 'button, a, input, select, textarea, [role="button"], .menu_button, .right_menu_button';
+
 let nextId = 0;
 
 function uniqueId(prefix) {
@@ -300,7 +307,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
     });
     // HIG boxed lists: clicking the row background activates its control, so it toggles like the trigger.
     row.addEventListener('click', event => {
-        if (event.target instanceof Element && event.target.closest('button, a, input, select, textarea')) return;
+        if (event.defaultPrevented || (event.target instanceof Element && event.target.closest(OWN_CONTROL_SELECTOR))) return;
         open();
     });
     sync();
