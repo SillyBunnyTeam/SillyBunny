@@ -1495,6 +1495,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6e). |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/openai.js` and `public/index.html` - Logit Bias rows, model defaults and the inline model picker
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/openai.js` (`normalizeLogitBiasPresets()` and its call in `normalizeLogitBiasState()`; `bindInlineSelectPickerSelect()`; the `moonshot_model` default); `public/index.html` (the two Logit Bias row templates; one option of `#model_pollinations_select`). |
+| Area | Sampling (Logit Bias), Connections (Moonshot, Pollinations, the model picker). |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `normalizeLogitBiasPresets()`; the Logit Bias row templates; `bindInlineSelectPickerSelect()`; `oai_settings.moonshot_model`; `#model_moonshot_select` and `#model_pollinations_select`. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6c): a `keepEntries` mode normalises the live Logit Bias arrays and entries in place, because copying them on every call (the Add button runs it) cut the rows already drawn off from the saved state; the row templates carry `ds-entity-row` and `ds-entity-row__button`; an `opensInline()` guard keeps the inline model list from opening over a select that a select row adopted; the Moonshot default is `kimi-k3`, a model the select lists (the retired `kimi-latest` left the row blank); the Pollinations select lists its default `openai` until the catalogue loads. |
+| Protecting tests | `tests/sillybunny-backend-settings.e2e.js` ("Adding a Logit Bias entry keeps the rows…"); `tests/openrouter-picker-touch.e2e.js` ("the hidden select of a row opens no second list…"); `tests/unit/sillybunny-connection-defaults.test.js`; `tests/sillybunny-connections-layout.e2e.js`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of nine Sampling and Connections surfaces, the settings inventory, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6c). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |

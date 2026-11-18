@@ -195,6 +195,18 @@ test('mobile touch tap opens once without changing native selection', async ({ p
     await expect(select).toHaveValues(['int8', 'fp16']);
 });
 
+test('the hidden select of a row opens no second list over the row', async ({ page, baseURL }) => {
+    const { select, trigger, menu } = await openQuantizations(page, baseURL);
+    // The select has a row, so its own list (a narrow popover with "No options available" when it is empty) is not the picker of the page.
+    await select.evaluate(element => {
+        element.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'mouse', bubbles: true, cancelable: true }));
+        element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
+    await expect(page.locator('.sb-model-id-picker-menu')).toHaveCount(0);
+    await trigger.tap();
+    await expect(menu).toBeVisible();
+});
+
 test('mobile picker row keeps mouse and keyboard activation', async ({ page, baseURL }) => {
     const { select, trigger, menu } = await openQuantizations(page, baseURL);
     for (const key of ['Enter', 'Space', 'ArrowDown', 'ArrowUp']) {

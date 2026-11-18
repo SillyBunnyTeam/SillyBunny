@@ -1538,26 +1538,29 @@ const connectionFoldersEmpty = status({
     owner: 'C',
 });
 
-const MODEL_PICKER_EMPTY = '.sb-model-id-picker-menu:not([hidden]) .sb-model-id-picker-empty';
+const MODEL_PICKER_TRIGGER = '[data-sb-editor-field="model_openrouter_select"] .ds-select-row__trigger';
+const MODEL_PICKER_EMPTY = '.sb-picker__empty .sb-status-page';
 
 const modelPickerEmpty = status({
     id: 'connections.model-picker-empty',
-    title: 'Connections: the phone model list when the backend has no options',
-    component: 'own',
+    title: 'Connections: the model list when the backend has no options',
+    component: 'shared',
     overlay: true,
     root: MODEL_PICKER_EMPTY,
     async open(page) {
         await selectBackend(page, 'chat-completion');
         await openSettingsTab(page, { shell: 'left', tab: 'connections' });
-        // A tap on the select opens the inline list; this select has lost its options, as one does while the model list loads.
+        // The select has lost its options, as one does while the model list loads; the row's own picker opens from its trigger, on a phone too.
         await page.evaluate(() => {
             const select = document.getElementById('model_openrouter_select');
             if (!select) {
                 throw new Error('The OpenRouter model select is not in the page.');
             }
             select.replaceChildren();
-            select.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'mouse', bubbles: true, cancelable: true }));
         });
+        const trigger = page.locator(MODEL_PICKER_TRIGGER);
+        await trigger.scrollIntoViewIfNeeded();
+        await trigger.click();
         await reveal(page, MODEL_PICKER_EMPTY);
         await settle(page);
     },
@@ -1566,7 +1569,7 @@ const modelPickerEmpty = status({
         await page.locator(MODEL_PICKER_EMPTY).first().waitFor({ state: 'hidden' });
     },
     viewports: MOBILE_LAYOUT_VIEWPORTS,
-    sources: [`${SCRIPTS}/openai.js`],
+    sources: [`${SCRIPTS}/sillybunny-editor/select-row.js`, `${SCRIPTS}/sillybunny-editor/picker.js`, STATUS_PAGE_SOURCE],
 });
 
 // --- Companion panel and cards -------------------------------------------------------------------------------------------

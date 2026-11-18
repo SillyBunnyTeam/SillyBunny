@@ -161,6 +161,7 @@ function rememberPosition(nodes) {
  * @param {string} [options.searchPlaceholder]
  * @param {string} [options.emptyText]
  * @param {string} [options.noneLabel='']  Trigger text when nothing is selected.
+ * @param {boolean} [options.hint=false]  The select's empty choice (`value=""`, such as `-- Connect to the API --`) is a hint: it shows as a placeholder, without its dashes.
  * @param {Node|Node[]} [options.suffix]  Extra trailing nodes after the trigger.
  * @param {boolean} [options.ordered=false]  Newly selected options move last (routing priority).
  * @param {(item: object, option: HTMLOptionElement) => object|void} [options.mapItem]  Called for each option
@@ -179,7 +180,7 @@ function rememberPosition(nodes) {
  *     labels (a count, for a multiple select whose labels the row shows elsewhere).
  * @returns {object}
  */
-export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, searchPlaceholder, emptyText, noneLabel = '', suffix, ordered = false, mapItem, bounds = null, onChange, onPick, footer = [], create = null, summarize = null, followsHidden = false }) {
+export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, searchPlaceholder, emptyText, noneLabel = '', hint = false, suffix, ordered = false, mapItem, bounds = null, onChange, onPick, footer = [], create = null, summarize = null, followsHidden = false }) {
     if (!(select instanceof HTMLSelectElement)) throw new TypeError('Expected a select element.');
     const container = select.nextElementSibling?.matches('.select2-container') ? select.nextElementSibling : null;
     const previous = { tabIndex: select.getAttribute('tabindex'), ariaHidden: select.getAttribute('aria-hidden') };
@@ -244,7 +245,12 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
     };
     const sync = () => {
         const items = selectedItems();
-        const text = summary(items);
+        let text = summary(items);
+        // The words of an empty choice describe what to do; they are not a value, so they are drawn as a placeholder.
+        const emptyChoice = select.multiple ? items.length === 0 : select.value === '';
+        const placeholder = Boolean(text) && emptyChoice && (hint || text === noneLabel);
+        if (placeholder && hint) text = text.replace(/^-{2,}\s*(.+?)\s*-{2,}$/, '$1');
+        if (value.classList.contains('is-placeholder') !== placeholder) value.classList.toggle('is-placeholder', placeholder);
         // Writing an unchanged value still queues a mutation, and some callers re-sync on every panel update.
         if (value.textContent !== text) value.textContent = text;
         if (trigger.disabled !== select.disabled) trigger.disabled = select.disabled;

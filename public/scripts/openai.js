@@ -654,7 +654,7 @@ const default_settings = {
     pollinations_model: 'openai',
     pollinations_endpoint: POLLINATIONS_ENDPOINT.AUTHENTICATED,
     cometapi_model: 'gpt-4o',
-    moonshot_model: 'kimi-latest',
+    moonshot_model: 'kimi-k3', // SillyBunny: a model that #model_moonshot_select lists; the retired 'kimi-latest' left the row blank.
     fireworks_model: 'accounts/fireworks/models/kimi-k2-instruct',
     zai_model: 'glm-5.3',
     zai_endpoint: ZAI_ENDPOINT.COMMON,
@@ -2901,8 +2901,12 @@ function bindInlineSelectPickerSelect(select, control) {
         });
     }
 
+    // SillyBunny: a select that a select row adopted is hidden and opens the row's shared picker from its trigger; this list
+    // would open over the row as a narrow popover, with "No options available" four lines high at 390px.
+    const opensInline = () => shouldUseInlineModelSelectPicker() && !select.classList.contains('ds-select-row__native');
+
     const openPicker = event => {
-        if (!shouldUseInlineModelSelectPicker()) {
+        if (!opensInline()) {
             return;
         }
 
@@ -2916,7 +2920,7 @@ function bindInlineSelectPickerSelect(select, control) {
     let tapStart = null;
     select.addEventListener('pointerdown', event => {
         tapStart = null;
-        if (!shouldUseInlineModelSelectPicker()) return;
+        if (!opensInline()) return;
         if (event.pointerType === 'mouse') {
             openPicker(event);
             return;
@@ -2937,14 +2941,14 @@ function bindInlineSelectPickerSelect(select, control) {
     });
     // Native multiple selects can toggle an option on touchend despite canceled pointer events.
     select.addEventListener('touchend', event => {
-        if (shouldUseInlineModelSelectPicker()) event.preventDefault();
+        if (opensInline()) event.preventDefault();
     }, { passive: false });
     document.getElementById(`${select.id}_picker`)?.addEventListener('click', openPicker);
     select.addEventListener('click', event => {
-        if (shouldUseInlineModelSelectPicker()) event.preventDefault();
+        if (opensInline()) event.preventDefault();
     });
     select.addEventListener('keydown', event => {
-        if (!shouldUseInlineModelSelectPicker() || ![' ', 'Enter', 'ArrowDown'].includes(event.key)) {
+        if (!opensInline() || ![' ', 'Enter', 'ArrowDown'].includes(event.key)) {
             return;
         }
 
@@ -7889,12 +7893,27 @@ function normalizeLogitBiasEntry(entry) {
     };
 }
 
-function normalizeLogitBiasPresets(source, { includeDefaults = false } = {}) {
+function normalizeLogitBiasPresets(source, { includeDefaults = false, keepEntries = false } = {}) {
     const presets = includeDefaults ? structuredClone(default_bias_presets) : {};
 
     if (source && typeof source === 'object' && !Array.isArray(source)) {
         for (const [name, entries] of Object.entries(source)) {
             if (!Array.isArray(entries)) {
+                continue;
+            }
+
+            // SillyBunny: the Logit Bias list keeps each row's entry object and the array its drag handler sorts, so the
+            // state that is already live is normalised in place; copying it on every call (the Add button runs this) cut
+            // the rows already drawn off from what is saved.
+            if (keepEntries) {
+                const kept = entries.map(entry => {
+                    const normalized = normalizeLogitBiasEntry(entry);
+                    return normalized ? Object.assign(entry, normalized) : null;
+                }).filter(Boolean);
+                if (kept.length !== entries.length || kept.some((entry, index) => entry !== entries[index])) {
+                    entries.splice(0, entries.length, ...kept);
+                }
+                presets[name] = entries;
                 continue;
             }
 
@@ -7906,7 +7925,7 @@ function normalizeLogitBiasPresets(source, { includeDefaults = false } = {}) {
 }
 
 function normalizeLogitBiasState(selectedPreset = oai_settings.bias_preset_selected) {
-    oai_settings.bias_presets = normalizeLogitBiasPresets(oai_settings.bias_presets, { includeDefaults: true });
+    oai_settings.bias_presets = normalizeLogitBiasPresets(oai_settings.bias_presets, { includeDefaults: true, keepEntries: true }); // SillyBunny: see normalizeLogitBiasPresets.
 
     let selected = typeof selectedPreset === 'string' && selectedPreset.trim()
         ? selectedPreset

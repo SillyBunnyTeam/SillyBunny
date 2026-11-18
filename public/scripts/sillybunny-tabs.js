@@ -30,7 +30,7 @@ import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProt
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { adoptComposerMenus, adoptLegacyPopup } from './sillybunny-editor/sheet-gestures.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
-import { createButtonRow, createEntryRow, createExpanderRow, createPrefGroup, createPropertyRow, createSwitchRow } from './sillybunny-editor/rows.js';
+import { createButtonRow, createEntryRow, createExpanderRow, createPrefGroup, createPropertyRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
@@ -7894,7 +7894,7 @@ const SB_SAMPLER_REGISTRY = Object.freeze([
     { id: 'min_length', group: 'tokens', textgenerationwebui: '#min_length_textgenerationwebui', novel: '#min_length_novel', gated: true },
     { id: 'max_tokens_second', group: 'tokens', textgenerationwebui: '#max_tokens_second_textgenerationwebui', gated: true },
     // Output
-    { id: 'sampler_order', group: 'output', textgenerationwebui: ['#sampler_order_block_kcpp', '#sampler_order_block_lcpp'], kobold: '#kobold_order', gated: true },
+    { id: 'sampler_order', group: 'output', textgenerationwebui: ['#sampler_order_block_kcpp', '#sampler_order_block_lcpp'], kobold: '#kobold_order', novel: '#novel_order', gated: true },
     { id: 'sampler_priority', group: 'output', textgenerationwebui: ['#sampler_priority_block_ooba', '#sampler_priority_block_aphrodite'], gated: true },
     { id: 'json_schema', group: 'output', textgenerationwebui: '#json_schema_block', gated: true },
     { id: 'do_sample', group: 'output', textgenerationwebui: '#do_sample_textgenerationwebui', gated: true },
@@ -8192,24 +8192,19 @@ function buildChatCompletionPlaceholderCard(entry, root) {
         className: 'sb-sampling-control-card sb-sampling-row sb-sampling-placeholder-card',
         attrs: { 'data-sb-sampling-placeholder': '', 'data-sb-sampler-id': entry.id },
     });
-    const row = createElement('div', { className: 'ds-row' });
-    const text = createElement('div', { className: 'ds-row-text' });
-    const label = createElement('span', { className: 'ds-row-label', text: labelText });
-    const i18nKey = sourceLabel.getAttribute('data-i18n') ?? sourceLabel.querySelector(':scope > [data-i18n]')?.getAttribute('data-i18n');
-    if (i18nKey && !i18nKey.startsWith('[')) label.dataset.i18n = i18nKey;
-    text.append(label, createElement('small', {
-        className: 'ds-row-subtitle',
-        text: SB_CC_PLACEHOLDER_SUBTITLE,
-        attrs: { 'data-i18n': SB_CC_PLACEHOLDER_SUBTITLE },
-    }));
     const badge = createElement('span', { className: 'sb-sampling-unavailable-badge' });
     badge.append(
         createElement('i', { className: 'fa-solid fa-ban', attrs: { 'aria-hidden': 'true' } }),
         createElement('span', { text: 'Unavailable', attrs: { 'data-i18n': 'Unavailable' } }),
     );
-    const suffix = createElement('div', { className: 'ds-row-suffix' });
-    suffix.append(badge);
-    row.append(text, suffix);
+    const { row } = createRow({ label: labelText, subtitle: SB_CC_PLACEHOLDER_SUBTITLE, field: `sampler-${entry.id}-unavailable`, suffix: badge });
+    // The row has no control to disable, so it takes the insensitive look without `inert`: the reason stays readable to a screen reader.
+    row.classList.add('is-insensitive');
+    row.setAttribute('aria-disabled', 'true');
+    const label = row.querySelector('.ds-row-label');
+    const i18nKey = sourceLabel.getAttribute('data-i18n') ?? sourceLabel.querySelector(':scope > [data-i18n]')?.getAttribute('data-i18n');
+    if (i18nKey && !i18nKey.startsWith('[')) label.dataset.i18n = i18nKey;
+    row.querySelector('.ds-row-subtitle').dataset.i18n = SB_CC_PLACEHOLDER_SUBTITLE;
     card.append(row);
     return card;
 }
@@ -8438,6 +8433,7 @@ function createBackendGroupHeader(title, attrs = {}, description = '') {
 
 async function buildSamplingPanel() {
     samplingModule ??= await loadSamplingModule();
+    await samplingModule.loadSamplingStyles();
     const { panel, scroller } = createShellPanel({ id: 'sampling' });
     const column = createElement('div', {
         className: 'sb-shell-column sb-sampling-panel',

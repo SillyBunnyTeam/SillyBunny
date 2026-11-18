@@ -836,13 +836,13 @@ h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3):not(:where(.sb-action-menu h3
 }
 
 /* Upstream sortable lists lead with the six-dot grip and use boxed-list row metrics. The sampler rows have no handle element, so the grip is their pseudo-element. */
-:is(.openai_logit_bias_form, .regex-script-label, .qr--content, .qr--setList > .qr--item) > .drag-handle {
+:is(.openai_logit_bias_form, .logit_bias_form, .regex-script-label, .qr--content, .qr--setList > .qr--item) > .drag-handle {
     display: flex;
     align-items: center;
     font-size: 0;
 }
 
-:is(.openai_logit_bias_form, .regex-script-label, .qr--content, .qr--setList > .qr--item) > .drag-handle::before,
+:is(.openai_logit_bias_form, .logit_bias_form, .regex-script-label, .qr--content, .qr--setList > .qr--item) > .drag-handle::before,
 .prompt_order > div::after {
     content: "\f58e";
     font: var(--fa-font-solid);
@@ -887,17 +887,20 @@ h3:not(.popup h3):not(.sb-dialog h3):not(#chat h3):not(:where(.sb-action-menu h3
     }
 }
 
-.openai_logit_bias_list {
+.openai_logit_bias_list,
+.logit_bias_list {
     gap: 0;
 }
 
-.openai_logit_bias_form {
+.openai_logit_bias_form,
+.logit_bias_form {
     min-height: 52px;
     padding: 6px 12px;
     border-bottom: 1px solid var(--SmartThemeBorderColor);
 }
 
-.openai_logit_bias_form:last-child {
+.openai_logit_bias_form:last-child,
+.logit_bias_form:last-child {
     border-bottom: 0;
 }
 

@@ -281,13 +281,18 @@ test('empty picker summaries reuse upstream placeholders in precedence order wit
     // Without select2 (768px and below) the same strings that select2 would have shown come from the Connections form.
     await expect(page.locator('[data-sb-editor-field="openrouter_providers_text"] .ds-select-row__value')).toHaveText('Select providers. No selection = all providers.');
     await expect(page.locator('[data-sb-editor-field="openrouter_quantizations_text"] .ds-select-row__value')).toHaveText('Select quantizations. No selection = all quantizations.');
+    // The hint of an empty choice is a placeholder, not a value: the placeholder colour, and room for two lines so that the phrase is not cut.
+    for (const field of ['openrouter_providers_text', 'openrouter_quantizations_text', 'nanogpt_allowed_providers']) {
+        await expect(page.locator(`[data-sb-editor-field="${field}"] .ds-select-row__value`)).toHaveClass(/is-placeholder/);
+    }
     await expect(page.locator('[data-sb-editor-field="nanogpt_allowed_providers"] .ds-select-row__value')).toHaveText('Select providers');
     await expect(page.locator('[data-sb-editor-field="nanogpt_ignored_providers"] .ds-select-row__value')).toHaveText('Select providers');
     await expect(page.locator('[data-sb-editor-field="horde_model"] .ds-select-row__value')).toHaveText('Select Horde models');
     await page.locator('#model_aimlapi_select').evaluate(select => { select.replaceChildren(); });
     await expect(page.locator('[data-sb-editor-field="model_aimlapi_select"] .ds-select-row__value')).toHaveText('Select a model');
-    // A select that never had a placeholder stays empty.
-    await expect(page.locator('[data-sb-editor-field="model_pollinations_select"] .ds-select-row__value')).toHaveText('');
+    // The Pollinations catalogue fills its select after connecting, so its default model is listed until then: no blank value, and no invented placeholder.
+    await expect(page.locator('[data-sb-editor-field="model_pollinations_select"] .ds-select-row__value')).toHaveText('openai');
+    await expect(page.locator('[data-sb-editor-field="model_pollinations_select"] .ds-select-row__value')).not.toHaveClass(/is-placeholder/);
 });
 
 test('derived titles omit trailing ASCII and full-width colons without rewriting upstream labels', async ({ page }) => {

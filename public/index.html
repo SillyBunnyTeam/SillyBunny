@@ -64,11 +64,11 @@
     <!-- SillyBunny: this cache key tracks fork edits to the mobile stylesheet. -->
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261118zb" media="(max-width: 768px)">
     <!-- SillyBunny: shell stylesheet cache keys track fork CSS changes without changing upstream asset URLs. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261118zk">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261118zn">
     <!-- SillyBunny: the mobile surface stylesheet cache key tracks its fork-owned responsive rules. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261112t" media="(max-width: 768px)">
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261118zm">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261118zn">
     <!-- SillyBunny: entity lists and tag filters load after startup; the group editor activates them on open. -->
     <link rel="preload" as="style" href="css/sillybunny-entity-list.css?v=20261117s" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: the Characters/Groups list activates this deferred stylesheet on first mount. Keep this version aligned with the runtime loader URLs. -->
@@ -4191,6 +4191,8 @@
                             </div>
                             <h4 data-i18n="Pollinations Model">Pollinations Model</h4>
                             <select id="model_pollinations_select">
+                                <!-- SillyBunny: the default model is listed until the catalogue replaces the list, so the Connections row never shows a blank value. -->
+                                <option value="openai">openai</option>
                                 <!-- Populated by JavaScript -->
                             </select>
                         </div>
@@ -8336,19 +8338,21 @@
             </span>
         </div>
         <div id="openai_logit_bias_template" class="template_element">
-            <div class="openai_logit_bias_form">
+            <!-- SillyBunny: the entry is a row of the shared list pattern (`ds-entity-row`, `ds-entity-row__button`); the classes upstream and extensions query stay. -->
+            <div class="openai_logit_bias_form ds-entity-row">
                 <span class="drag-handle">☰</span>
                 <input class="openai_logit_bias_text text_pole" data-i18n="[placeholder]Text or token ids" placeholder="Text or [token ids]" />
                 <input class="openai_logit_bias_value text_pole" type="number" min="-100" value="0" max="100" />
-                <i class="menu_button fa-solid fa-xmark openai_logit_bias_remove"></i>
+                <i class="menu_button fa-solid fa-xmark openai_logit_bias_remove ds-entity-row__button"></i>
             </div>
         </div>
         <div id="logit_bias_template" class="template_element">
-            <div class="logit_bias_form">
+            <!-- SillyBunny: same row pattern as the Chat Completions entry above. -->
+            <div class="logit_bias_form ds-entity-row">
                 <span class="drag-handle">☰</span>
                 <input class="logit_bias_text text_pole" data-i18n="[placeholder]Type here..." placeholder="type here..." />
                 <input class="logit_bias_value text_pole" type="number" min="-100" value="0" max="100" step="0.01" />
-                <i class="menu_button fa-solid fa-xmark logit_bias_remove"></i>
+                <i class="menu_button fa-solid fa-xmark logit_bias_remove ds-entity-row__button"></i>
             </div>
         </div>
         <div id="completion_prompt_manager_popup" class="drawer-content" style="display:none;">

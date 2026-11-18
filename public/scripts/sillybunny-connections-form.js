@@ -255,6 +255,7 @@ export function applyConnectionsFormPass(block, ctx) {
             label,
             field: input.id,
             noneLabel,
+            hint: true,
             ordered: input.classList.contains('openrouter_providers'),
             mapItem: createDetailsMapper(input.id),
             suffix: safeSuffix,

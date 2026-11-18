@@ -4619,6 +4619,18 @@ body.reduced-motion :is(.ds-row.ds-row-entry--floating, .ds-row-entry--floating 
     white-space: nowrap;
 }
 
+/* An empty choice's hint is a placeholder, not a value: the placeholder colour, and room for a second line, because a
+   hint is a phrase and a cut one cannot be read. */
+.ds-select-row__value.is-placeholder {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    color: var(--sb-input-placeholder);
+    text-align: end;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .ds-select-row__arrow {
     flex: 0 0 16px;
     color: var(--sb-muted-fg);
@@ -5033,20 +5045,7 @@ body.reduced-motion .ds-row-expander__toggle::after {
     max-width: 1px;
 }
 
-/* Inert Chat Completions rows for Text Completions-only samplers keep their layout but read as unavailable. */
-#sb-settings-page .sb-sampling-panel .sb-sampling-placeholder-card {
-    cursor: not-allowed;
-    background: repeating-linear-gradient(
-        135deg,
-        color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent) 0 6px,
-        transparent 6px 12px
-    );
-}
-
-#sb-settings-page .sb-sampling-panel .sb-sampling-placeholder-card .ds-row-text {
-    opacity: 0.5;
-}
-
+/* Chat Completions rows for Text Completions-only samplers are insensitive rows (`.is-insensitive`, `aria-disabled`): the badge names the state and the subtitle gives the reason. */
 #sb-settings-page .sb-sampling-panel .sb-sampling-unavailable-badge {
     display: inline-flex;
     flex: 0 0 auto;

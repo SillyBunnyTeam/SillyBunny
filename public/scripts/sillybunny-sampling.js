@@ -1,4 +1,5 @@
 import { t } from './i18n.js';
+import { loadStylesheetAsync } from './dynamic-styles.js';
 import { createRow, createSwitchRow, createTextAreaField, moveCaption } from './sillybunny-editor/rows.js';
 import { createSelectRow } from './sillybunny-editor/select-row.js';
 import { createToggleRow } from './sillybunny-editor/toggle-row.js';
@@ -11,6 +12,14 @@ import { adoptSamplingFieldRows, bindDependentSets, carryGatingAttributes, readL
  * or a switch row. Lists (the sampler order, the logit bias entries) stay lists, in a block of their own.
  * The module loads when the Sampling panel is first built, so the startup bundle does not carry it.
  */
+
+/** The row rules of the entity lists: the sampler order and the logit bias entries are rows of that pattern. */
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' };
+
+/** The sheet has to apply before the Sampling page shows its lists, or their rows change look when it arrives. */
+export function loadSamplingStyles() {
+    return loadStylesheetAsync(ENTITY_LIST_STYLESHEET.href, { id: ENTITY_LIST_STYLESHEET.id });
+}
 
 const clean = text => (text ?? '').replace(/\s+/g, ' ').trim();
 
@@ -230,9 +239,55 @@ function prepareJsonSchema(block) {
     block.prepend(row);
 }
 
+let samplerToggleCount = 0;
+
+/**
+ * NovelAI's order lets each sampler be switched off: upstream draws that as a bare div with a click handler. It becomes a button
+ * (the page's accessibility pass gives it `role="button"`) that the sampler's name and its state, in hidden words, label, reachable
+ * by keyboard. The state follows the `disabled` class the handler toggles. `aria-pressed` is not used: the shell draws a pressed
+ * `.right_menu_button` as an active chip with a dot, in place of the glyph that shows this state.
+ * @param {HTMLElement} list
+ */
+function adoptSamplerToggles(list) {
+    const items = [...list.querySelectorAll(':scope > [data-id]')];
+    /** @type {Map<Element, HTMLElement>} */
+    const states = new Map();
+    const syncItem = item => {
+        const state = states.get(item);
+        const text = item.classList.contains('disabled') ? t`Disabled` : t`Enabled`;
+        if (state && state.textContent !== text) state.textContent = text;
+    };
+    for (const item of items) {
+        const toggle = item.querySelector(':scope > .toggle_button');
+        const name = item.querySelector(':scope > span');
+        if (!(toggle instanceof HTMLElement) || !name) continue;
+        const state = element('span', 'sr-only');
+        const number = ++samplerToggleCount;
+        name.id ||= `sb-sampler-toggle-name-${number}`;
+        state.id = `sb-sampler-toggle-state-${number}`;
+        states.set(item, state);
+        toggle.append(state);
+        toggle.setAttribute('aria-labelledby', `${name.id} ${state.id}`);
+        toggle.tabIndex = 0;
+        toggle.addEventListener('keydown', event => {
+            if (event.key !== ' ' && event.key !== 'Enter') return;
+            event.preventDefault();
+            toggle.click();
+        });
+        syncItem(item);
+    }
+    if (!states.size) return;
+    new MutationObserver(records => {
+        for (const record of records) {
+            const item = record.target instanceof Element ? record.target.closest('[data-id]') : null;
+            if (item) syncItem(item);
+        }
+    }).observe(list, { attributes: true, attributeFilter: ['class'], subtree: true });
+}
+
 /**
  * The sampler order and priority lists: a row with the title, the description and the lock, the list in a
- * block of its own, and the button that loads the default order as an action row.
+ * block of its own, and the button that loads the default order, where the backend has one, as an action row.
  */
 function prepareSamplerList(block) {
     const list = block.querySelector(':scope > .prompt_order');
@@ -241,7 +296,7 @@ function prepareSamplerList(block) {
     const name = heading?.querySelector(':scope > span[data-i18n]');
     const description = block.querySelector(':scope > .toggle-description');
     const reset = block.querySelector(':scope > .menu_button');
-    if (!list || !(lock instanceof HTMLElement) || !name || !(reset instanceof HTMLElement)) return;
+    if (!list || !(lock instanceof HTMLElement) || !name) return;
 
     const { row } = createRow({ label: readRowTitle(name), subtitle: clean(description?.textContent) || undefined, field: list.id || 'sampler-order', suffix: lock });
     setKey(row.querySelector('.ds-row-label'), readLabelI18nKey(name));
@@ -249,11 +304,15 @@ function prepareSamplerList(block) {
     if (subtitle && description) moveCaption(subtitle, description);
     // The list scrolls, so a keyboard user needs a stop on it to reach what is below its fold.
     list.setAttribute('tabindex', '0');
+    // Upstream and its drag handler move these nodes and never rebuild them, so the class set here stays.
+    for (const item of list.querySelectorAll(':scope > div')) item.classList.add('ds-entity-row');
+    adoptSamplerToggles(list);
     list.setAttribute('role', 'group');
     list.setAttribute('aria-label', readRowTitle(name));
     const nameKey = readLabelI18nKey(name);
     if (nameKey) list.setAttribute('data-i18n', `[aria-label]${nameKey}`);
-    block.replaceChildren(row, createListBlock(list), createActionRow(reset));
+    // NovelAI's order has no button that loads a default order.
+    block.replaceChildren(row, createListBlock(list), ...(reset instanceof HTMLElement ? [createActionRow(reset)] : []));
 }
 
 /** Dynamic temperature: its range sliders follow its switch, as a dependent set does elsewhere. */

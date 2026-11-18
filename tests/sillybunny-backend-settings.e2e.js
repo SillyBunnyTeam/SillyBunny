@@ -1392,3 +1392,84 @@ test('Backend edits and quick context actions survive settings serialization and
     await openPanel(page, 'prompting');
     await expect(prompting.locator('#max_context')).toHaveValue('8192');
 });
+
+test('NovelAI Sampling mounts its sampler order as a list of reorderable list rows', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'novel');
+    const sampling = await openPanel(page, 'sampling');
+    const list = sampling.locator('#sb-sampling-novel #novel_order');
+    await expect(list).toBeVisible();
+    await expect(list).toHaveAttribute('role', 'group');
+    const items = list.locator(':scope > div');
+    expect(await items.count()).toBeGreaterThan(5);
+    await expect(list.locator(':scope > .ds-entity-row')).toHaveCount(await items.count());
+    // Each sampler can be switched off: the button is named by its sampler and its state, which follows the item's `disabled` class.
+    const toggles = list.locator(':scope > div > .toggle_button');
+    await expect(toggles).toHaveCount(await items.count());
+    const temperature = list.locator('[data-id="0"] > .toggle_button');
+    await expect(temperature).toHaveRole('button');
+    await expect(temperature).toHaveAccessibleName('Temperature Sampling Enabled');
+    await expect(temperature).not.toHaveAttribute('aria-pressed', /.*/);
+    await temperature.focus();
+    await page.keyboard.press('Space');
+    await expect(temperature).toHaveAccessibleName('Temperature Sampling Disabled');
+    await expect(list.locator('[data-id="0"]')).toHaveClass(/disabled/);
+    const lock = sampling.locator('#sb-sampling-novel [data-sampler-order-lock="novel_order"]');
+    await expect(lock).toBeVisible();
+    await expect(lock).toHaveAttribute('aria-pressed', 'true');
+    await lock.click();
+    await expect(lock).toHaveAttribute('aria-pressed', 'false');
+    await expect(list).not.toHaveClass(/ui-sortable-disabled/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(list).toBeVisible();
+    await expectNoOverflow(sampling);
+});
+
+test('Unavailable samplers are insensitive rows without a striped fill', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'openai', 'openai');
+    const sampling = await openPanel(page, 'sampling');
+    const placeholders = sampling.locator('#sb-sampling-openai [data-sb-sampling-placeholder]');
+    await expect(placeholders.first()).toBeVisible();
+    const rows = placeholders.locator('.ds-row');
+    await expect(rows).toHaveCount(await placeholders.count());
+    for (const row of await rows.all()) {
+        await expect(row).toHaveClass(/is-insensitive/);
+        await expect(row).toHaveAttribute('aria-disabled', 'true');
+        await expect(row.locator('.ds-row-subtitle')).toHaveText('Not available in Chat Completions. Custom endpoints can send it with Additional Parameters.');
+    }
+    // The stripe was a repeating gradient on the card, and the reason's dimming was on the text only.
+    expect(await placeholders.evaluateAll(cards => cards.map(card => getComputedStyle(card).backgroundImage))).toEqual(Array(await placeholders.count()).fill('none'));
+    expect(await rows.evaluateAll(list => list.map(row => getComputedStyle(row).backgroundImage))).toEqual(Array(await placeholders.count()).fill('none'));
+});
+
+test('Adding a Logit Bias entry keeps the rows that are already drawn live', async ({ page, baseURL }) => {
+    await loadSettings(page, baseURL);
+    await selectBackend(page, 'openai', 'openai');
+    const sampling = await openPanel(page, 'sampling');
+    const add = sampling.locator('#openai_logit_bias_new_entry');
+    const rows = sampling.locator('.openai_logit_bias_list > .openai_logit_bias_form');
+    await add.click();
+    await add.click();
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toHaveClass(/ds-entity-row/);
+    await expect(rows.first().locator('.openai_logit_bias_remove')).toHaveClass(/ds-entity-row__button/);
+    // The row that is drawn first is the newest one; the older one sits under it.
+    await add.click();
+    await expect(rows).toHaveCount(3);
+    await rows.nth(2).locator('.openai_logit_bias_text').fill('older');
+    await rows.nth(1).locator('.openai_logit_bias_text').fill('middle');
+    const saved = await page.evaluate(async () => {
+        const { oai_settings } = await import('/scripts/openai.js');
+        return oai_settings.bias_presets[oai_settings.bias_preset_selected].map(entry => entry.text);
+    });
+    expect(saved).toEqual(['older', 'middle', '']);
+    // The drag handler sorts the array that the list was drawn from, which has to be the one that is saved.
+    const sameArray = await page.evaluate(async () => {
+        const { oai_settings } = await import('/scripts/openai.js');
+        const before = oai_settings.bias_presets[oai_settings.bias_preset_selected];
+        document.getElementById('openai_logit_bias_new_entry').click();
+        return oai_settings.bias_presets[oai_settings.bias_preset_selected] === before;
+    });
+    expect(sameArray).toBe(true);
+});
