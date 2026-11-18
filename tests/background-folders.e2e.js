@@ -78,6 +78,47 @@ test.afterEach(async ({ page }) => {
     await cleanup(page).catch(() => {});
 });
 
+/**
+ * Clicks a folder row in the page and records its section body on every frame: the running animations, the box height,
+ * the opacity and the chevron's transform. `clickAgainAt` clicks a second time that many milliseconds after the first.
+ */
+async function traceFolder(page, name, { clickAgainAt = 0, duration = 450 } = {}) {
+    return page.evaluate(({ name: folderName, clickAgainAt: again, duration: span }) => new Promise(resolve => {
+        const row = [...document.querySelectorAll('#bg_menu_content .sb-folder-row')].find(node => node.textContent.includes(folderName));
+        const bodyOf = () => row.closest('.sb-bg-section').querySelector('.sb-bg-section__body');
+        const frames = [];
+        const sample = at => {
+            const body = bodyOf();
+            const chevron = row.querySelector('.ds-entity-row__chevron');
+            frames.push({
+                at: Math.round(at),
+                height: body.getBoundingClientRect().height,
+                opacity: Number(getComputedStyle(body).opacity),
+                hidden: body.hidden,
+                thumbs: body.querySelectorAll('.bg_example').length,
+                expanded: row.getAttribute('aria-expanded'),
+                chevron: getComputedStyle(chevron).transform,
+                animations: body.getAnimations().map(animation => ({ duration: animation.effect.getTiming().duration, easing: animation.effect.getTiming().easing })),
+            });
+        };
+        const start = performance.now();
+        row.click();
+        sample(0);
+        let clickedAgain = !again;
+        const tick = now => {
+            const at = now - start;
+            if (!clickedAgain && at >= again) {
+                clickedAgain = true;
+                row.click();
+            }
+            sample(at);
+            if (at < span) requestAnimationFrame(tick);
+            else resolve(frames);
+        };
+        requestAnimationFrame(tick);
+    }), { name, clickAgainAt, duration });
+}
+
 async function endsOf(page) {
     return page.evaluate(() => {
         const edge = node => Math.round(node.getBoundingClientRect().right * 100) / 100;
@@ -221,6 +262,105 @@ for (const { label, width, height, touch } of [
             await page.locator('#bg-filter').fill('');
             await expect(section(page, `${PREFIX}One`).locator('.bg_example')).toHaveCount(0);
             await expect(section(page, `${PREFIX}Two`)).toHaveCount(1);
+        });
+
+        test('a folder opens and closes with the motion of the other folders: the shared duration and easing, a body that shrinks to nothing, a turning chevron', async ({ page }) => {
+            const folderName = `${PREFIX}One`;
+            await seed(page, { folders: [folderName], members: { [folderName]: NAMES.slice(0, 4) } });
+            await openGallery(page);
+            const thumbs = section(page, folderName).locator('.bg_example');
+            await expect(thumbs).toHaveCount(4);
+            const body = section(page, folderName).locator('.sb-bg-section__body');
+            const settled = await body.evaluate(node => node.getBoundingClientRect().height);
+            expect(settled).toBeGreaterThan(60);
+            const chevronRest = await folderRow(page, folderName).locator('.ds-entity-row__chevron').evaluate(node => getComputedStyle(node).transform);
+            expect(chevronRest).toBe('matrix(-1, 0, 0, -1, 0, 0)');
+
+            const closing = await traceFolder(page, folderName);
+            // The first frame already has the running animation, with the duration and easing of every other folder.
+            expect(closing[0].animations).toEqual([{ duration: 250, easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)' }]);
+            expect(closing[0].expanded).toBe('false');
+            const shrinking = closing.filter(frame => !frame.hidden && frame.animations.length);
+            const heights = shrinking.map(frame => frame.height);
+            expect(heights.filter(height => height > settled * 0.1 && height < settled * 0.9).length).toBeGreaterThanOrEqual(3);
+            for (let index = 1; index < heights.length; index++) expect(heights[index]).toBeLessThanOrEqual(heights[index - 1] + 0.5);
+            // The body is not held up by its own padding: it passes below 19px (padding and border) before it is hidden, so it never snaps at the end.
+            expect(Math.min(...heights)).toBeLessThan(10);
+            expect(Math.max(...shrinking.map(frame => frame.opacity))).toBeGreaterThan(0.9);
+            expect(Math.min(...shrinking.map(frame => frame.opacity))).toBeLessThan(0.1);
+            expect(closing.some(frame => !['matrix(-1, 0, 0, -1, 0, 0)', 'none'].includes(frame.chevron))).toBe(true);
+            const closed = closing.at(-1);
+            expect(closed).toMatchObject({ hidden: true, thumbs: 0, expanded: 'false', chevron: 'none' });
+            await expect(thumbs).toHaveCount(0);
+            await expect.poll(async () => (await stored(page))?.folders.find(folder => folder.name === folderName)?.expanded).toBe(false);
+
+            const opening = await traceFolder(page, folderName);
+            expect(opening[0].animations).toEqual([{ duration: 250, easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)' }]);
+            expect(opening[0].height).toBeLessThan(1);
+            const growing = opening.filter(frame => frame.animations.length).map(frame => frame.height);
+            expect(growing.filter(height => height > settled * 0.1 && height < settled * 0.9).length).toBeGreaterThanOrEqual(3);
+            for (let index = 1; index < growing.length; index++) expect(growing[index]).toBeGreaterThanOrEqual(growing[index - 1] - 0.5);
+            expect(opening.some(frame => !['matrix(-1, 0, 0, -1, 0, 0)', 'none'].includes(frame.chevron))).toBe(true);
+            // Late thumbnails fill cells that already have their size, so the settled height is the height the motion aimed at.
+            expect(growing.at(-1)).toBeGreaterThan(settled * 0.97);
+            const opened = opening.at(-1);
+            expect(opened).toMatchObject({ hidden: false, thumbs: 4, expanded: 'true', chevron: 'matrix(-1, 0, 0, -1, 0, 0)' });
+            expect(opened.height).toBeCloseTo(settled, 0);
+            await expect.poll(async () => (await stored(page))?.folders.find(folder => folder.name === folderName)?.expanded).toBe(true);
+        });
+
+        test('an empty folder moves its note the same way, and a second click in the middle of a motion goes on from where the body is', async ({ page }) => {
+            const folderName = `${PREFIX}One`;
+            const emptyName = `${PREFIX}Empty`;
+            await seed(page, { folders: [folderName, emptyName], members: { [folderName]: NAMES.slice(0, 4), [emptyName]: [] } });
+            await openGallery(page);
+            await expect(section(page, folderName).locator('.bg_example')).toHaveCount(4);
+            const settled = await section(page, folderName).locator('.sb-bg-section__body').evaluate(node => node.getBoundingClientRect().height);
+
+            // Closed after 120ms of the opening: the body turns round from its own height, with no jump to the full height or to nothing.
+            await traceFolder(page, folderName);
+            await expect(section(page, folderName).locator('.sb-bg-section__body')).toBeHidden();
+            const turned = await traceFolder(page, folderName, { clickAgainAt: 120, duration: 600 });
+            const before = turned.findLast(frame => frame.at < 120);
+            const after = turned.find(frame => frame.at > 120 && frame.expanded === 'false');
+            expect(before.height).toBeGreaterThan(5);
+            expect(before.height).toBeLessThan(settled - 5);
+            expect(Math.abs(after.height - before.height)).toBeLessThan(settled * 0.35);
+            expect(turned.at(-1)).toMatchObject({ hidden: true, thumbs: 0, expanded: 'false' });
+
+            // And the other way round: closing, then opening again in the middle of it.
+            const reopened = await traceFolder(page, folderName);
+            expect(reopened.at(-1)).toMatchObject({ hidden: false, thumbs: 4, expanded: 'true' });
+            const midway = await traceFolder(page, folderName, { clickAgainAt: 120, duration: 600 });
+            const closingFrame = midway.findLast(frame => frame.at < 120);
+            const openingFrame = midway.find(frame => frame.at > 120 && frame.expanded === 'true');
+            expect(Math.abs(openingFrame.height - closingFrame.height)).toBeLessThan(settled * 0.35);
+            expect(midway.at(-1)).toMatchObject({ hidden: false, thumbs: 4, expanded: 'true' });
+            expect(midway.at(-1).height).toBeCloseTo(settled, 0);
+
+            // An empty folder has a note and no thumbnails; the note opens and closes over the same motion.
+            const emptyBody = section(page, emptyName).locator('.sb-bg-section__body');
+            for (let click = 0; click < 2; click++) {
+                const wasOpen = await emptyBody.evaluate(node => !node.hidden);
+                const emptyTrace = await traceFolder(page, emptyName);
+                expect(emptyTrace[0].animations).toEqual([{ duration: 250, easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)' }]);
+                expect(emptyTrace.at(-1).hidden).toBe(wasOpen);
+                expect(await emptyBody.locator('.sb-bg-section__empty').count()).toBe(wasOpen ? 0 : 1);
+            }
+        });
+
+        test('reduced motion opens and closes a folder with no animation', async ({ page }) => {
+            const folderName = `${PREFIX}One`;
+            await seed(page, { folders: [folderName], members: { [folderName]: NAMES.slice(0, 3) } });
+            await openGallery(page);
+            await expect(section(page, folderName).locator('.bg_example')).toHaveCount(3);
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            const closing = await traceFolder(page, folderName, { duration: 100 });
+            expect(closing.every(frame => frame.animations.length === 0)).toBe(true);
+            expect(closing[0]).toMatchObject({ hidden: true, thumbs: 0, expanded: 'false' });
+            const opening = await traceFolder(page, folderName, { duration: 100 });
+            expect(opening.every(frame => frame.animations.length === 0)).toBe(true);
+            expect(opening[0]).toMatchObject({ hidden: false, thumbs: 3, expanded: 'true' });
         });
 
         test('the Chat tab keeps its behaviour and has no folders', async ({ page }) => {

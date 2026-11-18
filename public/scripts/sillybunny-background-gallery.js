@@ -8,12 +8,11 @@
  */
 import { t } from './i18n.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
-import { createFolderRow, folderCountLabel } from './sillybunny-editor/folder-row.js';
+import { animateFolderBody, createFolderRow, folderCountLabel } from './sillybunny-editor/folder-row.js';
 import { createSelectionMode } from './sillybunny-editor/selection-mode.js';
 import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { openActionMenu } from './sillybunny-action-menu.js';
 import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
-import { MOTION_SLOW, play, prefersReducedMotion } from './sillybunny-motion.js';
 import { attachBackgroundGallery } from './backgrounds.js';
 import { buildBackgroundSections } from './sillybunny-background-sections.js';
 import {
@@ -260,31 +259,36 @@ function buildGrid(files) {
     return grid;
 }
 
-function setSectionExpanded(section, expanded, { persist, files }) {
+function createEmptyNote() {
+    return el('p', 'sb-bg-section__empty', t`No backgrounds`);
+}
+
+function setSectionExpanded(section, expanded, { persist, files, emptyFolder }) {
     const row = section.querySelector('.sb-folder-row');
     const body = section.querySelector('.sb-bg-section__body');
     row.setAttribute('aria-expanded', String(expanded));
-    if (expanded && !body.firstElementChild && files.length) {
-        body.append(buildGrid(files));
-        hooks.activateLazyLoader();
-        hooks.refreshHighlights();
+    if (expanded && !body.firstElementChild) {
+        if (files.length) {
+            body.append(buildGrid(files));
+            hooks.activateLazyLoader();
+            hooks.refreshHighlights();
+        } else if (emptyFolder) {
+            body.append(createEmptyNote());
+        }
     }
     if (persist) setFolderExpanded(SCOPE, section.dataset.folderId, expanded);
-    const animate = !prefersReducedMotion() && files.length > 0;
     // A closed folder holds no thumbnails: they are dropped when the close ends and built again on the next open.
     const close = () => {
         if (row.getAttribute('aria-expanded') === 'true') return;
         body.hidden = true;
         body.replaceChildren();
     };
-    if (expanded) {
-        body.hidden = false;
-        if (animate) play(body, [{ height: '0px', opacity: 0 }, { height: `${body.scrollHeight}px`, opacity: 1 }], { duration: MOTION_SLOW, styles: { overflow: 'hidden' } });
-    } else if (animate) {
-        play(body, [{ height: `${body.scrollHeight}px`, opacity: 1 }, { height: '0px', opacity: 0 }], {
-            duration: MOTION_SLOW, fill: 'forwards', inert: true, styles: { overflow: 'hidden' }, onEnd: close,
-        });
-    } else close();
+    if (expanded) body.hidden = false;
+    if (!body.firstElementChild) {
+        if (!expanded) close();
+        return;
+    }
+    animateFolderBody(body, expanded, { onEnd: expanded ? null : close });
 }
 
 function buildSection({ folder, files, total, expanded }, searching) {
@@ -305,28 +309,15 @@ function buildSection({ folder, files, total, expanded }, searching) {
     const body = el('div', 'sb-bg-section__body');
     // A closed folder builds no thumbnails: they appear on the first open.
     if (expanded && files.length) body.append(buildGrid(files));
-    if (expanded && !total && !searching) {
-        const empty = el('p', 'sb-bg-section__empty', t`No backgrounds`);
-        body.append(empty);
-    }
+    const emptyFolder = !total && !searching;
+    if (expanded && emptyFolder) body.append(createEmptyNote());
     body.hidden = !expanded;
     section.append(head, body);
     const toggle = () => {
         if (selection?.isActive) return;
         const next = row.getAttribute('aria-expanded') !== 'true';
-        if (!total && !searching) {
-            // An empty folder has nothing to open except its note.
-            row.setAttribute('aria-expanded', String(next));
-            body.hidden = !next;
-            if (next && !body.firstElementChild) {
-                const empty = el('p', 'sb-bg-section__empty', t`No backgrounds`);
-                body.append(empty);
-            }
-            setFolderExpanded(SCOPE, folder.id, next);
-            return;
-        }
         // A search opens folders for its own sake and leaves the stored state alone, so a click during one changes only what is on screen.
-        setSectionExpanded(section, next, { persist: !searching, files });
+        setSectionExpanded(section, next, { persist: !searching, files, emptyFolder });
     };
     row.addEventListener('click', toggle);
     row.addEventListener('keydown', event => {
@@ -487,7 +478,7 @@ async function deleteSelected(keys) {
         if (!await confirmDestructiveAction({ text, confirmLabel: t`Delete`, copyPlaceholder: true })) return;
         const { failed } = await hooks.deleteBackgrounds(keys);
         selection.exit();
-        if (failed.length) globalThis.toastr?.error(failed.join(', '), t`Delete failed`);
+        if (failed.length) globalThis.toastr?.error(failed.join(', '), t`Delete Failed`);
     } finally {
         bulkBusy = false;
     }
