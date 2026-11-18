@@ -39,6 +39,7 @@ export const COPY_ALLOW_HINT = `Records may be added to the sillybunny section o
  */
 
 export const copyKey = record => JSON.stringify([record.surface, record.state ?? '', record.role, record.text]);
+const wordingKey = record => JSON.stringify([record.role, record.text]);
 const unitKey = unit => JSON.stringify([unit.surface, unit.state ?? '']);
 
 const compareRecords = (first, second) => {
@@ -71,6 +72,10 @@ export function uniqueObservations(items) {
  */
 export function compareToCopyBaseline({ observed, baseline, units }) {
     const collected = new Set(units.map(unitKey));
+    // Upstream wording is never changed here, and some of it shows only once a value has loaded (a token count's tooltip), so
+    // the state it turns up in varies between runs. The gate holds the upstream section to the wording it knows, wherever it
+    // shows, and leaves its records to the update; the sillybunny section stays held record by record.
+    const upstreamWording = new Set(baseline.upstream.map(wordingKey));
     const recorded = new Map();
     for (const section of COPY_SECTIONS) {
         for (const record of baseline[section]) {
@@ -89,12 +94,15 @@ export function compareToCopyBaseline({ observed, baseline, units }) {
         // A string whose origin is not known (the upstream commit is not in this clone) is judged in the section of its record.
         const section = item.section ?? known?.section ?? 'sillybunny';
         if (!known) {
+            if (section === 'upstream' && upstreamWording.has(wordingKey(item))) continue;
             added.push({ section, record: publicRecord(item) });
         } else if (known.section !== section) {
             moved.push({ from: known.section, to: section, record: publicRecord(item) });
         }
     }
-    const fixed = [...recorded.entries()].filter(([key]) => !seen.has(key)).map(([, { section, record }]) => ({ section, record }));
+    const fixed = [...recorded.entries()]
+        .filter(([key, { section }]) => section === 'sillybunny' && !seen.has(key))
+        .map(([, { section, record }]) => ({ section, record }));
     return { added, fixed, moved };
 }
 

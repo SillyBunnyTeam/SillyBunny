@@ -6198,8 +6198,8 @@ function revealDeferredCharacterPanel(host, content, mount, panelId) {
     })().catch(error => {
         if (isCurrent()) {
             state.requested = false;
-            // HUMAN: replace — a title that names the error and a description of what to do next.
-            status.update({ state: 'error', title: t`Error` });
+            // HUMAN: add — a description of what to do next.
+            status.update({ state: 'error', title: t`Page Not Loaded` });
         }
         throw error;
     });

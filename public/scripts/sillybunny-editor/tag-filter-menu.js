@@ -221,7 +221,7 @@ export function adoptTagField({ input, list, manage = null, field, jquery }) {
             }
             for (const id of ids.filter(id => !next.includes(id))) remove(id);
         },
-        create: { onCreate: add, label: text => t`Create tag ${text}` },
+        create: { onCreate: add, label: text => t`Create Tag ${text}` },
         footer: manage ? [{ label: t`Manage Tags`, icon: 'fa-solid fa-tags', onSelect: () => manage.click() }] : [],
     });
     row.row.classList.add('sb-tag-field');

@@ -55,6 +55,27 @@ describe('compareToCopyBaseline', () => {
         expect(comparison.fixed.map(item => item.record.text)).toEqual(['Reload file']);
     });
 
+    test('holds the upstream section to its wording: a known upstream string in another state or surface passes', () => {
+        const baseline = { ...emptyCopyBaseline(), upstream: [record('Top nsigma', { state: 'loaded' })] };
+        const elsewhere = observed('Top nsigma', 'upstream', { state: 'other' });
+        expect(compareToCopyBaseline({ observed: [elsewhere], baseline, units: [...UNITS, { surface: 'settings.backend.sampling', state: 'other' }] }).added).toEqual([]);
+        const newWording = observed('Top nsigma', 'upstream', { role: 'tooltip' });
+        expect(compareToCopyBaseline({ observed: [newWording], baseline, units: UNITS }).added.map(item => item.record.role)).toEqual(['tooltip']);
+    });
+
+    test('an upstream record the run did not see is not a failure; a sillybunny one is', () => {
+        const baseline = { ...emptyCopyBaseline(), upstream: [record('Top nsigma')], sillybunny: [record('Reload file')] };
+        const comparison = compareToCopyBaseline({ observed: [], baseline, units: UNITS });
+        expect(comparison.fixed.map(item => [item.section, item.record.text])).toEqual([['sillybunny', 'Reload file']]);
+    });
+
+    test('a sillybunny string is held record by record, even when the same wording is known in another state', () => {
+        const baseline = { ...emptyCopyBaseline(), sillybunny: [record('Reload file', { state: 'loaded' })] };
+        const elsewhere = observed('Reload file', 'sillybunny', { state: 'other' });
+        const comparison = compareToCopyBaseline({ observed: [elsewhere], baseline, units: [{ surface: 'settings.backend.sampling', state: 'other' }] });
+        expect(comparison.added.map(item => item.record.text)).toEqual(['Reload file']);
+    });
+
     test('judges only the units that the run collected', () => {
         const baseline = { ...emptyCopyBaseline(), sillybunny: [record('Reload file'), record('Other', { surface: 'dialog.alert.popup-text' })] };
         const comparison = compareToCopyBaseline({ observed: [], baseline, units: UNITS });

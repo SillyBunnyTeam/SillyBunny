@@ -74,7 +74,7 @@ async function addTag(page, boxSelector, listSelector, name) {
     await page.locator(`${boxSelector} .sb-tag-field .ds-select-row__trigger`).click();
     const picker = page.locator('.sb-picker:visible, .sb-picker-sheet:visible').last();
     await picker.locator('.sb-picker__search').fill(name);
-    const create = picker.getByRole('option', { name: `Create tag ${name}`, exact: true });
+    const create = picker.getByRole('option', { name: `Create Tag ${name}`, exact: true });
     await expect(create).toBeVisible();
     await create.click();
     const chips = page.locator(`${listSelector} > .tag`);

@@ -237,7 +237,7 @@ describe('editor tag field', () => {
         field.row.querySelector('.ds-select-row__trigger').click();
         expect(field.row.querySelector('.ds-select-row__value').textContent).toBe('None');
         expect(field.row.querySelector('.ds-row-subtitle').hidden).toBe(true);
-        expect(options.create.label('Vampire')).toBe('Create tag Vampire');
+        expect(options.create.label('Vampire')).toBe('Create Tag Vampire');
         options.create.onCreate('Vampire');
         await settle();
         expect(added).toEqual(['Vampire']);
