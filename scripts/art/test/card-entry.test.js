@@ -8,10 +8,11 @@ import { decode, encode, encoderVersions } from '../lib/codec.js';
 import { runBump, runCheck, runDerive, runNotice, runProve } from '../lib/commands.js';
 import { MASTER_ROOT, mastersOf, outputsOf, picturesOf, readManifest, validateManifest } from '../lib/manifest.js';
 import { samePixels, sha256, upscaleNearest } from '../lib/raster.js';
+import { REISEN_CARD, copyWithDerivedCard } from '../test-support/card-copy.js';
 import { fixtureCard } from '../test-support/cards.js';
-import { fakeSha, sampleManifest, sampleRecord } from '../test-support/manifests.js';
+import { fakeSha, sampleManifest } from '../test-support/manifests.js';
 import { paint } from '../test-support/pictures.js';
-import { copyOfArt, fixtureRepo, writeFixtureManifest } from '../test-support/repos.js';
+import { fixtureRepo, writeFixtureManifest } from '../test-support/repos.js';
 
 const CARD_FILE = 'default/content/default_AssistantTest.png';
 const CLEAR = [0, 0, 0, 0];
@@ -201,22 +202,14 @@ test('a crop that cuts the figure wrongly, a translucent master, and a card file
     }
 });
 
-test('check, derive, prove, notice and bump take a card entry in place of a pinned card, and the card keeps the text it shipped with', async (t) => {
-    const root = copyOfArt(t, { pinned: true });
-    const output = 'default/content/default_AssistantReisen.png';
+test('check, derive, prove, notice and bump take a card entry in place of a pinned card, and the card keeps the text it shipped with but its version', async (t) => {
+    const root = await copyWithDerivedCard(t);
     const { read } = await loadAppCardParser();
-    const shippedText = JSON.parse(read(readFileSync(join(root, output))));
-    const masterBytes = await encode(sprite(), 'png');
-    writeFileSync(join(root, MASTER_ROOT, 'reisen/card-reisen.png'), masterBytes);
-    writeFileSync(join(root, MASTER_ROOT, 'reisen/card-reisen.provenance.json'), `${JSON.stringify({ ...sampleRecord(), file: 'card-reisen.png', sha256: sha256(masterBytes) }, null, 4)}\n`);
-    const { manifest } = readManifest(root);
-    const pinnedSha = manifest.assets['card-reisen'].outputs[0].sha256;
-    manifest.assets['card-reisen'] = derivedEntry({ master: 'reisen/card-reisen.png', text: output, world: 'SillyBunny Lexicon', outputs: [{ path: output, encoding: 'png-card', scale: 4, sha256: pinnedSha }] });
-    writeFixtureManifest(root, manifest);
+    const shippedText = JSON.parse(read(readFileSync(join(root, REISEN_CARD))));
 
     const derived = await runDerive({ root, write: true, only: ['card-reisen'] });
-    assert.deepEqual([codes(derived), derived.result.written], [[], [output]]);
-    assert.deepEqual(differences(shippedText, JSON.parse(read(readFileSync(join(root, output))))), [], 'the shipped card links the world already and has no book, so its text is unchanged');
+    assert.deepEqual([codes(derived), derived.result.written], [[], [REISEN_CARD]]);
+    assert.deepEqual(differences(shippedText, JSON.parse(read(readFileSync(join(root, REISEN_CARD))))), [], 'the shipped card links the world already and has no book, so its text is unchanged');
 
     assert.equal((await runNotice({ root, write: true })).result.written, true);
     const notice = readFileSync(join(root, 'assets-src/art/NOTICE.md'), 'utf8');
@@ -224,9 +217,12 @@ test('check, derive, prove, notice and bump take a card entry in place of a pinn
     assert.ok(!notice.includes('| card-reisen | 1 |'), 'and the card is no longer a shipped file without a master');
     const bumped = await runBump({ root, write: true, today: '2026-11-18' });
     assert.deepEqual([codes(bumped), bumped.result.bumps], [[], []], 'a card has no cache key');
+    assert.deepEqual(bumped.result.managed, [{ asset: 'card-reisen', item: 'default_AssistantReisen.png', type: 'character', from: 1, to: 2 }]);
+    assert.deepEqual(differences(shippedText, JSON.parse(read(readFileSync(join(root, REISEN_CARD))))), [{ path: 'data.character_version', expected: '1.0', actual: '2.0' }]);
 
     const checked = await runCheck({ root });
     assert.deepEqual(codes(checked), []);
     assert.deepEqual([checked.result.summary.derived, checked.result.summary.pinned], [38, 3]);
     assert.equal((await runProve({ root, only: ['card-reisen'] })).exitCode, 0);
+    assert.deepEqual((await runDerive({ root, write: true })).result.written, [], 'a second derive changes nothing');
 });

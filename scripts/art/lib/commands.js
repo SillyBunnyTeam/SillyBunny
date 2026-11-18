@@ -4,6 +4,7 @@ import { checkArt } from './check.js';
 import { encoderMismatches } from './codec.js';
 import { deriveAsset, isDerived } from './derive.js';
 import { applyBump, keyProblems, planBump } from './keys.js';
+import { applyManaged, managedProblems, planManaged } from './managed.js';
 import { MANIFEST_PATH, mastersOf, outputFile, outputsOf, readManifest } from './manifest.js';
 import { NOTICE_PATH, noticeState } from './notice.js';
 import { ArtProblem, exitCodeOf } from './problem.js';
@@ -56,6 +57,7 @@ export async function runCheck(options) {
     const { summary, problems, warnings } = await checkArt(options.root, manifest);
     problems.push(...keyProblems(options.root, manifest));
     problems.push(...noticeState(options.root, manifest).problems);
+    problems.push(...await managedProblems(options.root, manifest));
     return finish('check', { summary }, problems, warnings);
 }
 
@@ -80,8 +82,9 @@ export async function runNotice(options) {
 }
 
 /**
- * Gives a new key to every group whose files changed since its key did, and records it in the manifest. Without
- * `write` it only reports the keys it would change.
+ * Gives a new key to every group whose files changed since its key did, and a new version to every managed item that a
+ * derived entry ships and that changed since its version did, and records them. Without `write` it only reports the keys
+ * and the versions it would change.
  * @param {CommandOptions} options `today` as YYYY-MM-DD, by default the UTC day.
  * @returns {Promise<CommandRun>}
  */
@@ -95,12 +98,24 @@ export async function runBump(options) {
         return finish('bump', { write }, [{ code: 'usage', message: `--today must be YYYY-MM-DD, got ${today}.` }]);
     }
     const { bumps, problems } = planBump(root, manifest, { today: today.replaceAll('-', ''), key });
-    if (problems.length > 0 || !write || bumps.length === 0) {
-        return finish('bump', { write, bumps }, problems);
+    const managed = await planManaged(root, manifest);
+    problems.push(...managed.problems);
+    const versions = managed.changes.map(({ asset, item, type, from, to }) => ({ asset, item, type, from, to }));
+    if (problems.length > 0 || !write || (bumps.length === 0 && versions.length === 0)) {
+        return finish('bump', { write, bumps, managed: versions }, problems);
+    }
+    let managedWritten;
+    try {
+        managedWritten = await applyManaged(root, manifest, managed.changes);
+    } catch (error) {
+        if (!(error instanceof ArtProblem)) {
+            throw error;
+        }
+        return finish('bump', { write, bumps, managed: versions }, [error.toJSON()]);
     }
     applyBump(root, manifest, bumps);
     const manifestChanged = writeManifest(join(root, manifestPath), manifest);
-    return finish('bump', { write, bumps, written: [...new Set(bumps.map(({ file }) => file))], manifestChanged }, []);
+    return finish('bump', { write, bumps, managed: versions, written: [...new Set([...bumps.map(({ file }) => file), ...managedWritten])], manifestChanged }, []);
 }
 
 /** @param {CommandOptions} options @returns {Promise<CommandRun>} */

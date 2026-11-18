@@ -264,6 +264,31 @@ export async function deriveCard(context, asset, { readMaster }) {
 }
 
 /**
+ * The card file with `data.character_version` set to `version`, written again by the app's writer over the same picture,
+ * so no pixel and no other field changes. The app offers an edited copy of a bundled card an update only while its
+ * `character_version` is below the managed version, so the two must go up together. The value keeps the form it had:
+ * "2.0" for a card written as "1.0", "2" otherwise.
+ * @param {Buffer} png A card file.
+ * @param {number} version
+ * @returns {Promise<Buffer>}
+ * @throws {ArtProblem} `card-text-invalid` when the file holds no card that the app can read
+ */
+export async function stampCardVersion(png, version) {
+    const { read, write } = await loadAppCardParser();
+    let card;
+    try {
+        card = JSON.parse(read(png));
+    } catch (error) {
+        throw new ArtProblem('card-text-invalid', `The card file holds no card text that the app can read: ${error.message}`);
+    }
+    if (!isObject(card?.data)) {
+        throw new ArtProblem('card-text-invalid', 'The card file holds no V3 card data to stamp a version into.');
+    }
+    card.data.character_version = /^\d+\.0$/.test(String(card.data.character_version)) ? `${version}.0` : `${version}`;
+    return write(png, JSON.stringify(card));
+}
+
+/**
  * Whether two card files carry the same card text: the same text chunks, keyword for keyword and byte for byte, in the
  * same order.
  * @param {Buffer} one

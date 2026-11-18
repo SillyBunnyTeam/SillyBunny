@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildCard, cardOnGrid, cardPicture, differences, embedCard, gradientRow, loadAppCardParser, prepareCard, sameCardText, verifyCard } from '../lib/card.js';
+import { buildCard, cardOnGrid, cardPicture, differences, embedCard, gradientRow, loadAppCardParser, prepareCard, sameCardText, stampCardVersion, verifyCard } from '../lib/card.js';
 import { decode, encode } from '../lib/codec.js';
 import { isOpaque, samePixels, upscaleNearest } from '../lib/raster.js';
 import { fixtureCard } from '../test-support/cards.js';
@@ -194,6 +194,32 @@ test('a crop that cuts off the top of the figure, or whose last row misses the f
     assert.throws(() => cardOnGrid(sprite, { crop: [3, 0, 4, 5], gradient }), { code: 'card-waist' }, 'a crop beside the figure');
     assert.throws(() => cardOnGrid(paint(4, 5, () => [0, 0, 0, 0]), { crop: [0, 0, 4, 5], gradient }), { code: 'card-figure' });
 });
+
+test('a new version is written into a card\'s character_version by the app\'s writer, in the form the card had, and no other field or pixel changes', async () => {
+    const { card } = prepareCard(fixtureCard(), WORLD);
+    const png = await embedCard(await plainPng(), card);
+
+    const stamped = await stampCardVersion(png, 2);
+
+    const { read } = await loadAppCardParser();
+    assert.deepEqual(differences(card, JSON.parse(read(stamped))), [{ path: 'data.character_version', expected: '1.0', actual: '2.0' }]);
+    assert.deepEqual((await verifyCard(stamped, { ...card, data: { ...card.data, character_version: '2.0' } }, WORLD)).chunks, ['chara', 'ccv3'], 'both chunks carry it');
+    assert.equal(samePixels(await decode(stamped), await decode(png)), true);
+    const plain = await embedCard(await plainPng(), { ...card, data: { ...card.data, character_version: '1' } });
+    assert.equal(JSON.parse(read(await stampCardVersion(plain, 3))).data.character_version, '3');
+    await assert.rejects(quietly(() => stampCardVersion(Buffer.from('not a card'), 2)), { code: 'card-text-invalid' });
+});
+
+/** Runs `action` with the app's reader free to log, as it does for a picture that holds no card, without printing it. */
+async function quietly(action) {
+    const original = console.error;
+    console.error = () => {};
+    try {
+        return await action();
+    } finally {
+        console.error = original;
+    }
+}
 
 test('two card files carry the same card text only when their text chunks are equal, whatever their pictures', async () => {
     const { card } = prepareCard(fixtureCard(), WORLD);

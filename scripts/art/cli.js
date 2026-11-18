@@ -10,10 +10,12 @@ export const USAGE = `Usage: node scripts/art/cli.js <command> [options]
 Commands:
   list      List the assets of the art manifest with their masters and outputs.
   check     Check the manifest, the masters, the provenance records and the shipped files, without encoding,
-            and warn about each figure whose rings measure other widths than the manifest gives.
+            and warn about each figure whose rings measure other widths than the manifest gives. A card that
+            no longer matches what default/content/sillybunny-managed.json records for it is a problem.
   derive    Derive every output from its master and report the files that would change.
   prove     Derive every output again and compare it with the shipped file, byte for byte.
-  bump      Give a new cache key to every group whose files changed since its key did.
+  bump      Give a new cache key to every group whose files changed since its key did, and a new version to
+            every managed card that changed since its version did, with the version in its character_version.
   notice    Make the generated region of assets-src/art/NOTICE.md from the provenance records.
 
 Options:
@@ -21,7 +23,8 @@ Options:
   --manifest <path>   The manifest, relative to the root. Default: assets-src/art/art-manifest.json.
   --only <id,id>      derive, prove: only these assets.
   --write             derive: write the changed outputs and their sha256 in the manifest.
-                      bump: write the new keys into their files and the manifest.
+                      bump: write the new keys into their files and the manifest, and the new versions into the
+                      cards and default/content/sillybunny-managed.json.
                       notice: write the generated region.
   --pixels            prove: compare encoded pictures by their decoded pixels, for an encoder that gives other bytes;
                       a card also by its card text.
@@ -30,8 +33,8 @@ Options:
   --help              Show this text.
 
 The result is one JSON document on stdout, with its problems and its warnings. Warnings never change the exit code.
-Exit codes: 0 no problem, 1 problems, 2 usage, 3 the install (sharp is missing, or its encoder versions differ from
-the manifest).`;
+Exit codes: 0 no problem, 1 problems, 2 usage, 3 the install (sharp is missing, its encoder versions differ from
+the manifest, or the root packages that the app's card and managed content code load are missing).`;
 
 const COMMANDS = Object.freeze({
     list: { run: 'runList', options: [] },

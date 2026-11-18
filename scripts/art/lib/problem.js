@@ -1,5 +1,5 @@
 /** Problems with these codes come from the install, not from the art, and make the command exit with 3. */
-export const ENVIRONMENT_CODES = Object.freeze(['encoder-mismatch', 'sharp-missing', 'card-parser-missing']);
+export const ENVIRONMENT_CODES = Object.freeze(['encoder-mismatch', 'sharp-missing', 'card-parser-missing', 'managed-code-missing']);
 
 /** A reason the art cannot be derived or proven, with a stable code that the art repository reads from the JSON. */
 export class ArtProblem extends Error {
