@@ -299,7 +299,7 @@ export const surfaces = [
         id: 'editor-chrome.more',
         title: 'Editor header overflow menu (character editor)',
         needs: ['character'],
-        ready: menuItemWith('Convert to Persona'),
+        ready: menuItemWith('Set / Unset as Welcome Page Assistant'),
         sources: [`${SCRIPTS}/sillybunny-editor/chrome.js`, ACTION_MENU],
         async open(page) {
             await openAuditCharacterEditor(page);

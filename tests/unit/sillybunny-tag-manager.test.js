@@ -559,7 +559,7 @@ describe('tag manager batches, counts and refresh cost', () => {
         search.value = 'zzz';
         search.dispatchEvent(new Event('input'));
         jest.advanceTimersByTime(300);
-        expect(manager.root.querySelector('.sb-tag-manager__empty .sb-status-page__title').textContent).toBe('No Results');
+        expect(manager.root.querySelector('.sb-tag-manager__empty .sb-status-page__title').textContent).toBe('No Results Found');
         expect(manager.root.querySelector('.sb-tag-manager__empty .sb-status-page__action')).toBeNull();
     });
 });

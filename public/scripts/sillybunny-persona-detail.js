@@ -774,7 +774,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         }
         const position = model.POSITION_OPTIONS.find(option => Number(option.value) === draft.position);
         const role = model.ROLE_OPTIONS.find(option => Number(option.value) === draft.role);
-        setSummaryText(summary, t`Persona`, `${translate(position.label, position.i18n)}${draft.position === model.PERSONA_POSITION.AT_DEPTH ? ` · ${t`Depth`} ${draft.depth} · ${translate(role.label, role.i18n)}` : ''}`);
+        setSummaryText(summary, t`Persona Properties`, `${translate(position.label, position.i18n)}${draft.position === model.PERSONA_POSITION.AT_DEPTH ? ` · ${t`Depth`} ${draft.depth} · ${translate(role.label, role.i18n)}` : ''}`);
     }
 
     function openProperties() {
@@ -782,7 +782,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         closeDropdown();
         refreshProperties(true);
         summary.setAttribute('aria-expanded', 'true');
-        const heading = element('h2', '', t`Persona`);
+        const heading = element('h2', '', t`Persona Properties`);
         heading.id = `${instanceId}-properties-title`;
         heading.tabIndex = -1;
         propertyContent ??= createProperties();

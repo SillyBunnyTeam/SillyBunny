@@ -1158,7 +1158,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(helpSidebar(host).locator('[data-sb-help-topic]')).toHaveCount(0);
                 const status = host.locator('.sb-status-page');
                 await expect(status).toBeVisible();
-                await expectSlots(status, ['HELP-SEARCH-EMPTY-BODY']);
+                await expect(status.locator('.sb-status-page__description')).toHaveText('Try a different search');
                 await expect(status.locator('.sb-status-page__title')).toHaveText('No Results Found');
                 await expect(status.locator('.sb-status-page__title[data-sb-copy-placeholder]')).toHaveCount(0);
 

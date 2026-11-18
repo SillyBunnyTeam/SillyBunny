@@ -392,8 +392,8 @@ export function createFolderManager(scope, adapter) {
             status.replaceChildren(markCopyPlaceholder(createStatusPage({
                 state: query ? 'no-results' : 'empty',
                 icon: 'folder-open',
-                title: query ? t`No Results` : t`No Folders`,
-                description: query ? '' : scopeCopy(scope).empty,
+                title: query ? t`No Results Found` : t`No Folders`,
+                description: query ? t`Try a different search` : scopeCopy(scope).empty,
                 compact: true,
                 actions: query ? [] : [{ label: t`New Folder`, primary: true, onActivate: () => openCreatePopover(addButton) }],
             }).element));

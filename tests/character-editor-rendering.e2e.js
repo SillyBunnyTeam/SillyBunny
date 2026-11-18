@@ -195,6 +195,30 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await page.keyboard.press('Escape');
     });
 
+    test(`the action menu holds twelve items at most and leaves out what another place offers at ${viewport.width}px`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        await openEditor(page);
+        const more = page.locator('#sb_character_editor_more');
+        const items = page.getByRole('menuitem');
+
+        // Convert to Persona is in the character list's row menu, so the editor's menu does not repeat it.
+        await more.click();
+        await expect(page.getByRole('menuitem', { name: 'Link to World Info', exact: true })).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: 'Convert to Persona', exact: true })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await expect(items.first()).toBeHidden();
+
+        // A card with no book has the Link to World Info row in its Related group, so the menu leaves the item out.
+        await page.evaluate(() => { window.qaApp.characters[window.qaApp.this_chid].data.extensions.world = ''; });
+        await more.click();
+        await expect(page.getByRole('menuitem', { name: 'Global Styles', exact: true })).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: 'Link to World Info', exact: true })).toHaveCount(0);
+        // The toolbar buttons that fold into the menu on a narrow header repeat buttons of the header, so they are not the menu's own items.
+        const folded = new Set(['Duplicate Character', 'Export and Download', 'Connected Personas', 'Character Lore', 'Character Connections']);
+        const own = (await items.allTextContents()).map(text => text.trim()).filter(text => !folded.has(text));
+        expect(own.length).toBeLessThanOrEqual(12);
+    });
+
     test(`the action menu offers External Media while editing and leaves it out of the create form at ${viewport.width}px`, async ({ page }) => {
         await page.setViewportSize(viewport);
         await openEditor(page);

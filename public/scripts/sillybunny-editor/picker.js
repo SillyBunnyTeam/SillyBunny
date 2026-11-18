@@ -327,7 +327,8 @@ function renderOptions(state) {
         empty.className = 'sb-picker__empty';
         empty.setAttribute('role', 'presentation');
         // HUMAN: replace — a title that names the state in header capitalisation ("No Results"); the callers supply `emptyText`.
-        empty.append(createStatusPage({ state: state.items.length ? 'no-results' : 'empty', title: state.emptyText, compact: true }).element);
+        const searched = state.items.length > 0;
+        empty.append(createStatusPage({ state: searched ? 'no-results' : 'empty', title: state.emptyText, description: searched ? t`Try a different search` : undefined, compact: true }).element);
         state.list.append(empty);
         state.input.removeAttribute('aria-activedescendant');
         return;

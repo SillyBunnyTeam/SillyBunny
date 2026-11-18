@@ -586,7 +586,8 @@ export function mountAgentsPanel(column) {
             empty = createStatusPage({
                 state: model.savedCount ? 'no-results' : 'empty',
                 icon: model.savedCount ? 'magnifying-glass' : 'puzzle-piece',
-                title: model.savedCount ? t`No Results` : t`No Agents`, compact: true,
+                title: model.savedCount ? t`No Results Found` : t`No Agents`, compact: true,
+                description: model.savedCount ? t`Try a different search` : undefined,
                 actions: model.savedCount ? [] : [
                     { label: t`New Agent`, primary: true, onActivate: () => run(() => adapter.openEditor()) },
                     { label: t`New Agent From Template…`, onActivate: () => openTemplates(false) },

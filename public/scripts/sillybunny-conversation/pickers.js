@@ -592,6 +592,7 @@ function openStartPicker(key, anchor, options) {
         trigger,
         bounds: document.getElementById('sheld'),
         searchLabel: 'Search Characters…',
+        searchPlaceholder: 'Search characters…',
         emptyText: 'No matching characters found.',
         ...options,
         onClose: () => {

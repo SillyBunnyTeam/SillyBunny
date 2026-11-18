@@ -391,7 +391,7 @@ function draw() {
         }
     }
     if (searching && !model.hasMatches) {
-        container.append(createStatusPage({ state: 'no-results', icon: 'magnifying-glass', title: t`No Results`, compact: true }).element);
+        container.append(createStatusPage({ state: 'no-results', icon: 'magnifying-glass', title: t`No Results Found`, description: t`Try a different search`, compact: true }).element);
     }
     hooks.activateLazyLoader();
     hooks.refreshHighlights();

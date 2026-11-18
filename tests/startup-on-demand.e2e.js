@@ -120,7 +120,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
             await search.fill('config.yaml');
             await search.fill('no-such-startup-setting-982734');
             await expect(page.locator('.sb-search-result')).toHaveCount(0);
-            await expect(page.locator('#sb-universal-search')).toContainText('no-such-startup-setting-982734');
+            await expect(page.locator('#sb-universal-search .sb-search-empty .sb-status-page__title')).toHaveText('No Results Found');
         });
     });
 }

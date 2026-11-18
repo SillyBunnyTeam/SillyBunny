@@ -473,7 +473,8 @@ export function mountPersonaEditor(container) {
             listStatus.replaceChildren(createStatusPage({
                 state: allIds.length ? 'no-results' : 'empty',
                 icon: allIds.length ? 'magnifying-glass' : 'user',
-                title: allIds.length ? t`No Results` : t`No Personas`, compact: true,
+                title: allIds.length ? t`No Results Found` : t`No Personas`, compact: true,
+                description: allIds.length ? t`Try a different search` : undefined,
                 actions: allIds.length ? [] : [{ label: t`New`, primary: true, onActivate: () => run(() => shell.selectItem({ kind: 'create' })) }],
             }).element);
         }

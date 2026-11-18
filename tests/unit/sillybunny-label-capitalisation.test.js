@@ -59,6 +59,29 @@ function collect() {
     return { counts, violations, stale: ALLOWLIST.filter((_entry, index) => !used.has(index)) };
 }
 
+describe('the period rule', () => {
+    test('a one-sentence row subtitle or caption that ends in a period fails, with the form without it', () => {
+        for (const role of ['row subtitle', 'caption']) {
+            expect(checkLabel(role, 'Choose how replies begin.')).toEqual({ ok: false, expected: 'Choose how replies begin', why: 'trailing period' });
+        }
+    });
+
+    test('several sentences keep their periods, and so does body text', () => {
+        expect(checkLabel('caption', 'Saves the name. Reload to apply it.')).toEqual({ ok: true });
+        expect(checkLabel('row subtitle', 'Saves the name. Reload to apply it.')).toEqual({ ok: true });
+        expect(checkLabel('body', 'Choose how replies begin.')).toEqual({ ok: true });
+    });
+
+    test('a check of rendered strings can leave the caption period to the source test', () => {
+        expect(checkLabel('caption', 'Choose how replies begin.', { captionPeriod: false })).toEqual({ ok: true });
+        expect(checkLabel('heading', 'Rename Chat.', { captionPeriod: false }).ok).toBe(false);
+    });
+
+    test('a caption that ends in an ellipsis keeps it', () => {
+        expect(checkLabel('caption', 'Waiting for the server…')).toEqual({ ok: true });
+    });
+});
+
 describe('the source reader', () => {
     test('reads the keys of row, dialog, menu and status page factories by their role', () => {
         const source = `
@@ -72,7 +95,7 @@ describe('the source reader', () => {
             toastr.error('Could not save', 'Save Failed');`;
         expect(scriptLabels(source).map(({ role, text }) => [role, text])).toEqual([
             ['row title', 'Auto Close'], ['row subtitle', 'Close the others'], ['check or radio label', 'Keep it'], ['button', 'Reset'],
-            ['heading', 'Rename Chat'], ['dialog response', 'Rename'], ['heading', 'No Results'],
+            ['heading', 'Rename Chat'], ['dialog response', 'Rename'], ['heading', 'No Results'], ['caption', 'Nothing here'],
             ['menu item', 'Copy Text'], ['row title', 'Name'], ['placeholder', 'Type a name'], ['tooltip', 'Hint'],
             ['body', 'Could not save'], ['toast title', 'Save Failed'],
         ]);
@@ -81,6 +104,30 @@ describe('the source reader', () => {
     test('reads the labels that a helper takes by position, in the file that defines it', () => {
         const source = 'createServerButtonRow(t`Reload file`, field, go); createServerSection(\'Status\', null);';
         expect(scriptLabels(source, 'public/scripts/sillybunny-server-tools.js').map(({ role, text }) => [role, text])).toEqual([['button', 'Reload file'], ['heading', 'Status']]);
+        expect(scriptLabels(source, 'public/scripts/other.js')).toEqual([]);
+    });
+
+    test('reads the description of a status page, a group table and a settings page as a caption', () => {
+        const source = `
+            createStatusPage({ title: 'No Results Found', description: 'Try a different search.' });
+            const groups = [{ id: 'a', title: 'Presets', description: 'Choose a preset.' }];
+            const pages = [{ id: 'b', label: 'Samplers', icon: 'x', description: 'Tune sampling.' }];
+            const data = [{ name: 'fetch', description: 'A tool for a model.' }];`;
+        expect(scriptLabels(source).map(({ role, text }) => [role, text])).toEqual([
+            ['heading', 'No Results Found'], ['caption', 'Try a different search.'], ['caption', 'Choose a preset.'], ['tab', 'Samplers'], ['caption', 'Tune sampling.'],
+        ]);
+    });
+
+    test('reads every argument of a helper that takes a title and a description', () => {
+        const source = 'createBackendGroupHeader(\'Presets\', {}, \'Choose a preset.\'); createGroup(\'id\', \'Stopping\', \'Choose a string.\');';
+        expect(scriptLabels(source, 'public/scripts/sillybunny-tabs.js').map(({ role, text }) => [role, text])).toEqual([
+            ['heading', 'Presets'], ['caption', 'Choose a preset.'], ['heading', 'Stopping'], ['caption', 'Choose a string.'],
+        ]);
+    });
+
+    test('reads a table of [id, title, description] as a heading and a caption', () => {
+        const source = 'for (const [id, title, description] of [[\'sb-tc-names\', \'Character Names\', \'Choose a name.\'], [\'sb-x\', \'Other\']]) go(id, title, description);';
+        expect(scriptLabels(source, 'public/scripts/sillybunny-tabs.js').map(({ role, text }) => [role, text])).toEqual([['heading', 'Character Names'], ['caption', 'Choose a name.']]);
         expect(scriptLabels(source, 'public/scripts/other.js')).toEqual([]);
     });
 

@@ -1525,6 +1525,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (F-127). |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/openai.js` and `public/scripts/group-chats.js` - capability icon names and the member lists' no-result guidance
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/openai.js` (the capability icons of the Electron Hub, Chutes and NanoGPT model templates); `public/scripts/group-chats.js` (`syncGroupListEmptyPage()`). |
+| Area | Connections model pickers; the group editor's member and candidate lists. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The select2 result templates' icon markup; the values passed to the member lists' shared status page. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6h; the user's choices on F-101 and F-138): each capability icon is `role="img"` with an `aria-label` equal to its tooltip, because a `title` is not an accessible name; a member list search without a match shows "Try a different search" as the page's description. |
+| Protecting tests | `tests/select2-model-templates.test.js`; the surface audit of the `status` family. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of the `status` family and the changed surfaces, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6h). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |

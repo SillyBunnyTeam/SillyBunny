@@ -669,7 +669,8 @@ export function mountWorldInfoEditor(container) {
             showStatus(listStatus, {
                 state: total ? 'no-results' : 'empty',
                 icon: total ? 'magnifying-glass' : 'book-open',
-                title: total ? t`No Results` : t`No Entries`, compact: true,
+                title: total ? t`No Results Found` : t`No Entries`, compact: true,
+                description: total ? t`Try a different search` : undefined,
                 actions: total ? [] : [{ label: t`New Entry`, primary: true, onActivate: () => run(() => clickTransport('world_popup_new')) }],
             });
         }

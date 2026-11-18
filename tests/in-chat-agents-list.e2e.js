@@ -336,7 +336,7 @@ for (const width of [1440, 390]) {
         await page.getByRole('menuitemcheckbox', { name: 'Only Agents That Are On', exact: true }).click();
         await expect(filter).toHaveAttribute('aria-pressed', 'true');
         await expect(trigger).toHaveAttribute('aria-pressed', 'true');
-        await expect(root.locator('.sb-status-page').getByRole('heading')).toHaveText('No Results');
+        await expect(root.locator('.sb-status-page').getByRole('heading')).toHaveText('No Results Found');
         const activeFill = await trigger.evaluate(node => getComputedStyle(node).backgroundColor);
         await trigger.click();
         await expect(search).toBeHidden();

@@ -330,12 +330,12 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         }
         const strategy = model.STRATEGY_OPTIONS.find(option => option.value === model.entryStrategy(draft));
         const outlet = Number(draft.position) === model.WI_POSITION.outlet && draft.outletName ? ` ${draft.outletName}` : '';
-        setSummaryText(summary, t`World Info`, `${translate(strategy.label, strategy.i18n)} · ${model.entryBadge(draft)}${outlet} · ${model.readField(draft, 'probability') ?? '—'}%`);
+        setSummaryText(summary, t`World Info Properties`, `${translate(strategy.label, strategy.i18n)} · ${model.entryBadge(draft)}${outlet} · ${model.readField(draft, 'probability') ?? '—'}%`);
     }
 
     function openProperties() {
         closeDropdown();
-        const heading = element('h2', '', t`World Info`);
+        const heading = element('h2', '', t`World Info Properties`);
         heading.id = `${instanceId}-properties-title`;
         heading.tabIndex = -1;
         propertyContent ??= createProperties();

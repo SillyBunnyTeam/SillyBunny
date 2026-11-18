@@ -1170,7 +1170,7 @@ test.describe('Prompt Manager characterization', () => {
         await expect(body.locator('.sb-prompt-section:not([hidden])')).toHaveCount(0);
         const status = body.locator(':scope > .sb-status-page');
         await expect(status).toBeVisible();
-        await expect(status.locator('.sb-status-page__title')).toHaveText('No Results');
+        await expect(status.locator('.sb-status-page__title')).toHaveText('No Results Found');
         await expect(page.locator('.sb-prompt-list-header .sb-list-header__subtitle')).toHaveText('No results');
         await search.fill('');
         await expect(status).toHaveCount(0);

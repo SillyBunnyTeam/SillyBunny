@@ -717,7 +717,7 @@ describe('Persona editor shell', () => {
         await settle();
         expect(displayIds).toHaveBeenCalledWith(avatarIds, 'missing');
         expect(rowIds()).toEqual([]);
-        expect(container.querySelector('.sb-persona-list-status').textContent).toBe('No Results');
+        expect(container.querySelector('.sb-persona-list-status').textContent).toBe('No Results FoundTry a different search');
         expect(container.querySelector('.sb-persona-list-heading').hidden).toBe(true);
         expect(container.querySelector('.sb-list-editor__status').textContent).toBe('No results');
     });

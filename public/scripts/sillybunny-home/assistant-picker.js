@@ -34,8 +34,8 @@ function createSelectedMark() {
     return mark;
 }
 
-function createStatus(state, icon, title) {
-    const status = createStatusPage({ state, icon, title, compact: true });
+function createStatus(state, icon, title, description) {
+    const status = createStatusPage({ state, icon, title, description, compact: true });
     status.element.hidden = true;
     return status;
 }
@@ -130,7 +130,7 @@ export async function openAssistantPickerWindow({ getEntries, getThumbnailUrl, c
 
     const emptyLibrary = createStatus('empty', 'user', t`No Characters Yet`);
     emptyLibrary.element.hidden = items.length > 0;
-    const noResults = createStatus('no-results', 'magnifying-glass', t`No Results`);
+    const noResults = createStatus('no-results', 'magnifying-glass', t`No Results Found`, t`Try a different search`);
     group.section.hidden = items.length === 0;
 
     function filter(value) {

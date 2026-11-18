@@ -181,7 +181,7 @@ describe('searchable picker', () => {
 
         filter(input, 'missing');
         const empty = list.querySelector('.sb-picker__empty');
-        expect(empty.textContent).toBe('Nothing found');
+        expect(empty.textContent).toBe('Nothing foundTry a different search');
         expect(empty.getAttribute('role')).toBe('presentation');
         expect(input.hasAttribute('aria-activedescendant')).toBe(false);
         keydown(input, 'Enter');

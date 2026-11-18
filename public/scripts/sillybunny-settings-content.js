@@ -526,7 +526,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
                 id: 'auto-swipe',
                 title: 'Auto-swipe',
                 searchAliases: ['Swipes and Continue'],
-                description: 'Automatically reject and re-generate AI message based on configurable criteria.',
+                description: 'Automatically reject and re-generate AI message based on configurable criteria',
                 descriptionKey: 'Automatically reject and re-generate AI message based on configurable criteria',
                 enabledBy: '#auto_swipe',
                 rows: [

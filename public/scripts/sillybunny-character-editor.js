@@ -687,10 +687,17 @@ const RECOVERED_ACTIONS = [
 function _buildActionSections() {
     const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('char-management-dropdown'));
 
+    // DESIGN.md holds a menu to twelve items, so an action that another place already offers is left out of this one:
+    // the character list's row menu and selection mode carry Convert to Persona, and the Related group carries
+    // Link to World Info for a card that has no book. Both transports stay in the select for those callers.
+    const character = session.context?.mode === 'edit' ? characters.find(candidate => candidate.avatar === session.context.entityId) : null;
+    const relatedOffersLink = character ? _relatedEntries(character).some(entry => entry.kind === 'link-lorebook') : false;
+    const offeredElsewhere = new Set(['convert_to_persona', ...(relatedOffersLink ? ['set_character_world'] : [])]);
+
     const primary = [];
     for (const option of Array.from(select?.options ?? [])) {
         const id = option.id;
-        if (!id || option.disabled) continue;
+        if (!id || option.disabled || offeredElsewhere.has(id)) continue;
         // Upstream hides entries it does not apply to (Rename in create mode,
         // Character Settings Overrides without a group) with an inline
         // `display: none`. That does NOT set option.hidden, so it has to be read

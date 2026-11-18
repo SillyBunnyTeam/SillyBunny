@@ -22,5 +22,10 @@
         "text": "Prune ${} tags and ${} references",
         "role": "heading",
         "reason": "Upstream wording on a line that SillyBunny touched only to name the response with a verb; no locale translates it."
+    },
+    {
+        "file": "public/scripts/openai.js",
+        "text": "This model supports vision",
+        "reason": "Upstream wording (a tooltip that no locale translates) on lines that SillyBunny touched only to give the icon an accessible name."
     }
 ]

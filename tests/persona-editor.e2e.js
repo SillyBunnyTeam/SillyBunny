@@ -452,10 +452,10 @@ test.describe('Persona editor on mobile', () => {
         for (const label of ['Back', 'Cancel', 'Save']) await expect(header.getByRole('button', { name: label, exact: true })).toBeInViewport();
         const summary = entry.locator('.sb-persona-property-summary');
         await expect(summary).toBeVisible();
-        await expect(summary).toHaveAccessibleName(`Persona: ${(await summary.textContent()).replace(/\s*›\s*$/, '')}`);
+        await expect(summary).toHaveAccessibleName(`Persona Properties: ${(await summary.textContent()).replace(/\s*›\s*$/, '')}`);
         await expect(entry.locator(':scope > .sb-persona-properties')).toBeHidden();
         await summary.click();
-        const sheet = page.getByRole('dialog', { name: 'Persona', exact: true });
+        const sheet = page.getByRole('dialog', { name: 'Persona Properties', exact: true });
         await expect(sheet).toBeVisible();
         await sheet.locator('[data-sb-editor-field="position"] > button').click();
         await page.getByRole('option', { name: 'In-chat @ Depth', exact: true }).click();
@@ -486,7 +486,7 @@ test.describe('Persona editor on mobile', () => {
         const editor = await openList(page);
         await editor.getByRole('listitem', { name: persona.name, exact: true }).click();
         await entryFor(page).locator('.sb-persona-property-summary').click();
-        const sheet = page.getByRole('dialog', { name: 'Persona', exact: true });
+        const sheet = page.getByRole('dialog', { name: 'Persona Properties', exact: true });
         await sheet.locator('[data-sb-editor-field="position"] > button').click();
         await page.getByRole('option', { name: 'In-chat @ Depth', exact: true }).click();
         await expect(sheet.locator('[data-sb-editor-field="role"]')).toBeVisible();

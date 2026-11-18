@@ -417,7 +417,7 @@ describe('Prompt list', () => {
         search(column, 'zz-no-such-prompt');
         const page = column.querySelector('.sb-prompt-list-body > .sb-status-page');
         expect(page).not.toBeNull();
-        expect(page.querySelector('.sb-status-page__title').textContent).toBe('No Results');
+        expect(page.querySelector('.sb-status-page__title').textContent).toBe('No Results Found');
         expect([...column.querySelectorAll('.sb-prompt-section')].every(section => section.hidden)).toBe(true);
         expect(column.querySelector('.sb-list-header__subtitle').textContent).toBe('No results');
         search(column, 'First');

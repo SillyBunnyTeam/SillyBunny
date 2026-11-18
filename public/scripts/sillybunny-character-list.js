@@ -1034,7 +1034,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             });
             content = empty.element;
         } else if (!model.entities.length && !hasVisibleFolder) {
-            const empty = createStatusPage({ state: 'no-results', title: t`No Results`, compact: true, actions: [{ label: t`Clear All Filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
+            const empty = createStatusPage({ state: 'no-results', title: t`No Results Found`, description: t`Try a different search`, compact: true, actions: [{ label: t`Clear All Filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
             content = empty.element;
         }
         if (revision !== renderRevision) return;

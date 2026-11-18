@@ -403,8 +403,8 @@ export function openChatHistoryDialog() {
             emptyState.update({
                 state: searching ? 'no-results' : 'empty',
                 icon: searching ? 'magnifying-glass' : 'comments',
-                title: searching ? t`No Results` : t`No Chats`,
-                description: searching ? '' : t`Saved chats appear here`,
+                title: searching ? t`No Results Found` : t`No Chats`,
+                description: searching ? t`Try a different search` : t`Saved chats appear here`,
             });
         }
         if (!hasRows && !chatList.contains(emptyState.element)) chatList.append(emptyState.element);

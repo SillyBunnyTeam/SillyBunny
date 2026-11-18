@@ -135,7 +135,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expectSharedDialogEntryStyles(managerSearch);
             await managerSearch.fill('no-folder-matches-this');
             await expect(manager.locator('.sb-folder-manager__folder-row:not([hidden])')).toHaveCount(0);
-            await expect(manager.getByRole('heading', { name: 'No Results', exact: true })).toBeVisible();
+            await expect(manager.getByRole('heading', { name: 'No Results Found', exact: true })).toBeVisible();
             await managerSearch.fill('QA Folder');
             await expect(manager.locator(`[data-folder-id="${folderId}"]`)).toBeVisible();
             await expect(manager.locator('.sb-folder-manager__folder-row:not([hidden])')).toHaveCount(1);

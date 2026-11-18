@@ -801,7 +801,7 @@ export function initializePromptEditor(column) {
             return;
         }
         if (empty) return;
-        listBody.append(createStatusPage({ state: 'no-results', icon: 'magnifying-glass', title: t`No Results`, compact: true }).element);
+        listBody.append(createStatusPage({ state: 'no-results', icon: 'magnifying-glass', title: t`No Results Found`, description: t`Try a different search`, compact: true }).element);
     }
 
     function scheduleListTokens() {

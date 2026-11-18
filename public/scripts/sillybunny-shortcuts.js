@@ -155,10 +155,7 @@ export async function openShortcutsWindow() {
     let noMatch = null;
     const getNoMatch = () => {
         if (!noMatch) {
-            noMatch = createStatusPage({ state: 'no-results', title: t`No Results Found`, description: t`TODO(copy)`, compact: true });
-            const description = noMatch.element.querySelector('.sb-status-page__description');
-            description?.setAttribute('data-sb-copy-placeholder', 'true');
-            description?.setAttribute('data-sb-copy-slot', 'KS-NO-MATCH-DESCRIPTION');
+            noMatch = createStatusPage({ state: 'no-results', title: t`No Results Found`, description: t`Try a different search`, compact: true });
             body.append(noMatch.element);
         }
         return noMatch.element;

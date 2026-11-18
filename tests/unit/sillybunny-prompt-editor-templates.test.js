@@ -178,7 +178,7 @@ describe('Text Completion template list', () => {
         expect(column.querySelector('.sb-list-header__subtitle').textContent).toBe('1 of 4 results');
         type('zz-no-such-template');
         const page = column.querySelector('.sb-prompt-list-body > .sb-status-page');
-        expect(page.querySelector('.sb-status-page__title').textContent).toBe('No Results');
+        expect(page.querySelector('.sb-status-page__title').textContent).toBe('No Results Found');
         expect([...column.querySelectorAll('.sb-prompt-section')].every(section => section.hidden)).toBe(true);
         expect(column.querySelector('.sb-list-header__subtitle').textContent).toBe('No results');
         type('');

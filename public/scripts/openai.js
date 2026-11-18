@@ -4541,10 +4541,11 @@ function getElectronHubModelTemplate(option) {
     const outputPrice = model.pricing?.output;
     const price = inputPrice && outputPrice ? `$${inputPrice}/$${outputPrice} in/out Mtoken` : 'Unknown';
 
-    const visionIcon = model.metadata?.vision ? '<i class="fa-solid fa-eye fa-sm" title="This model supports vision"></i>' : '';
-    const reasoningIcon = model.metadata?.reasoning ? '<i class="fa-solid fa-brain fa-sm" title="This model supports reasoning"></i>' : '';
-    const toolCallsIcon = model.metadata?.function_call ? '<i class="fa-solid fa-wrench fa-sm" title="This model supports function tools"></i>' : '';
-    const premiumIcon = model?.premium_model ? '<i class="fa-solid fa-crown fa-sm" title="This model requires a subscription"></i>' : '';
+    // SillyBunny: a `title` is a tooltip, not an accessible name, so each capability icon is an image with the same words as its label.
+    const visionIcon = model.metadata?.vision ? '<i class="fa-solid fa-eye fa-sm" role="img" title="This model supports vision" aria-label="This model supports vision"></i>' : '';
+    const reasoningIcon = model.metadata?.reasoning ? '<i class="fa-solid fa-brain fa-sm" role="img" title="This model supports reasoning" aria-label="This model supports reasoning"></i>' : '';
+    const toolCallsIcon = model.metadata?.function_call ? '<i class="fa-solid fa-wrench fa-sm" role="img" title="This model supports function tools" aria-label="This model supports function tools"></i>' : '';
+    const premiumIcon = model?.premium_model ? '<i class="fa-solid fa-crown fa-sm" role="img" title="This model requires a subscription" aria-label="This model requires a subscription"></i>' : '';
 
     const iconsContainer = document.createElement('span');
     iconsContainer.insertAdjacentHTML('beforeend', visionIcon);
@@ -4605,9 +4606,10 @@ function getChutesModelTemplate(option) {
     }
 
     const contextLength = model.context_length || model.max_model_len || 'Unknown';
-    const visionIcon = model.input_modalities?.includes('image') ? '<i class="fa-solid fa-eye fa-sm" title="This model supports vision"></i>' : '';
-    const reasoningIcon = model.supported_features?.includes('reasoning') ? '<i class="fa-solid fa-brain fa-sm" title="This model supports reasoning"></i>' : '';
-    const toolCallsIcon = model.supported_features?.includes('structured_outputs') ? '<i class="fa-solid fa-wrench fa-sm" title="This model supports function tools"></i>' : '';
+    // SillyBunny: a `title` is a tooltip, not an accessible name, so each capability icon is an image with the same words as its label.
+    const visionIcon = model.input_modalities?.includes('image') ? '<i class="fa-solid fa-eye fa-sm" role="img" title="This model supports vision" aria-label="This model supports vision"></i>' : '';
+    const reasoningIcon = model.supported_features?.includes('reasoning') ? '<i class="fa-solid fa-brain fa-sm" role="img" title="This model supports reasoning" aria-label="This model supports reasoning"></i>' : '';
+    const toolCallsIcon = model.supported_features?.includes('structured_outputs') ? '<i class="fa-solid fa-wrench fa-sm" role="img" title="This model supports function tools" aria-label="This model supports function tools"></i>' : '';
 
     const iconsContainer = document.createElement('span');
     iconsContainer.insertAdjacentHTML('beforeend', visionIcon);
@@ -4656,7 +4658,7 @@ function getNanoGptModelTemplate(option) {
         ['tool_calling', 'wrench', 'This model supports tool calling'],
     ]) {
         if (model.capabilities?.[capability] === true) {
-            icons.append($('<i>', { class: `fa-solid fa-${icon} fa-sm`, title, 'aria-label': title }), ' ');
+            icons.append($('<i>', { class: `fa-solid fa-${icon} fa-sm`, role: 'img', title, 'aria-label': title }), ' ');
         }
     }
 

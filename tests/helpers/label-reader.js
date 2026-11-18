@@ -130,6 +130,8 @@ function roleOfKey(key, siblings, call) {
     if (['ariaLabel', 'aria-label'].includes(key)) return 'accessible name';
     if (key === 'heading' && DIALOG_FACTORY.test(name)) return 'heading';
     if (key === 'subtitle' && (ROW_FACTORY.test(name) || name === 'createPrefGroup')) return 'row subtitle';
+    // A description sits beside a title or a label (a status page, a group or a page of the settings shell), never beside a bare name.
+    if (key === 'description' && (GROUP_FACTORY.test(name) || ROW_FACTORY.test(name) || siblings.has('title') || (siblings.has('label') && siblings.has('id')))) return 'caption';
     if (key === 'title') {
         if (DIALOG_FACTORY.test(name) || GROUP_FACTORY.test(name)) return 'heading';
         if (ROW_FACTORY.test(name)) return siblings.has('label') ? 'tooltip' : 'row title';
@@ -156,6 +158,7 @@ const menuItem = { index: 0, role: 'menu item' };
 const rowTitle = { index: 0, role: 'row title' };
 const heading = { index: 0, role: 'heading' };
 const menuTitle = { index: 1, role: 'heading' };
+const caption = index => ({ index, role: 'caption' });
 export const POSITIONAL_HELPERS = {
     'public/scripts/sillybunny-server-tools.js': {
         createServerButtonRow: button, createServerSection: heading, createServerToolsGroup: heading,
@@ -175,7 +178,10 @@ export const POSITIONAL_HELPERS = {
     'public/scripts/sillybunny-home/assistant-picker.js': { createStatus: { index: 2, role: 'heading' } },
     'public/scripts/sillybunny-home/step-rows.js': { createFlatButton: button },
     'public/scripts/sillybunny-character-import.js': { button, resultButton: button },
-    'public/scripts/sillybunny-tabs.js': { createBackendGroupHeader: heading, createBackendPromptGroup: { index: 1, role: 'heading' }, createGroup: { index: 1, role: 'heading' }, createPromptingGroup: { index: 1, role: 'heading' } },
+    'public/scripts/sillybunny-tabs.js': {
+        createBackendGroupHeader: [heading, caption(2)], createBackendPromptGroup: { index: 1, role: 'heading' },
+        createGroup: [{ index: 1, role: 'heading' }, caption(2)], createPromptingGroup: [{ index: 1, role: 'heading' }, caption(2)],
+    },
     'public/scripts/sillybunny-editor/reorder-menu.js': { item: { index: 1, role: 'menu item' } },
     'public/scripts/sillybunny-color-picker.js': { range: rowTitle },
     'public/scripts/sillybunny-segmented-control.js': { createSegmentedControl: rowTitle },
@@ -189,6 +195,10 @@ export const POSITIONAL_HELPERS = {
     'public/scripts/extensions/in-chat-agents/ui/companions-page.js': { action: button },
     'public/scripts/extensions/guided-generations/index.js': { createActionButton: { index: 1, role: 'tooltip' } },
 };
+// Files whose `[id, title, description]` tables are group tables: the second element is a group heading and the third its caption.
+const ROW_TABLE_FILES = new Set(['public/scripts/sillybunny-tabs.js']);
+const isIdLike = node => node?.type === 'Literal' && typeof node.value === 'string' && /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+$/.test(node.value);
+
 // Helpers that other files import by name.
 const SHARED_HELPERS = { confirmVerb: { index: 0, role: 'dialog response' }, createIconButton: tooltip };
 const POPUP_SHORTCUTS = new Set(['confirm', 'alert', 'input', 'text']);
@@ -249,8 +259,15 @@ export function scriptLabels(source, file = '') {
                 const textNode = options ? options.value : node.arguments[2];
                 add(textNode, staticText(textNode), roleOfTag(tag), `text of a <${tag}> built by ${name}`);
             } else if (node.callee.type === 'Identifier' && (helpers[name] || SHARED_HELPERS[name])) {
-                const { index, role } = helpers[name] ?? SHARED_HELPERS[name];
-                add(node.arguments[index], staticText(node.arguments[index]), role, `${name} argument ${index}`);
+                for (const { index, role } of [helpers[name] ?? SHARED_HELPERS[name]].flat()) {
+                    add(node.arguments[index], staticText(node.arguments[index]), role, `${name} argument ${index}`);
+                }
+            }
+        } else if (node.type === 'ArrayExpression' && ROW_TABLE_FILES.has(file) && node.elements.length === 3 && isIdLike(node.elements[0])) {
+            const [, title, description] = node.elements;
+            if (staticText(title) !== null && staticText(description) !== null) {
+                add(title, staticText(title), 'heading', 'title of an [id, title, description] table');
+                add(description, staticText(description), 'caption', 'description of an [id, title, description] table');
             }
         }
         if (node.type === 'Literal' && typeof node.value === 'string' || node.type === 'TemplateLiteral') {

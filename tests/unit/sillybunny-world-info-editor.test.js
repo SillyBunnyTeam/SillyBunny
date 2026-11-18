@@ -476,7 +476,7 @@ describe('World Info shell', () => {
     test('filtered nonempty books route to No Results, including view-only filters', async () => {
         visibleEntries = [];
         await mount({ name: 'Book A', data: book(3) });
-        expect(container.querySelector('.sb-wi-list-status').textContent).toBe('No Results');
+        expect(container.querySelector('.sb-wi-list-status').textContent).toBe('No Results FoundTry a different search');
         expect(container.querySelector('.sb-wi-list-status button')).toBeNull();
         expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(true);
     });
@@ -627,7 +627,7 @@ describe('World Info shell', () => {
         await mount({ name: 'Book A', data: book(2) });
         await render(liveState, 7);
         expect(mountEntry).toHaveBeenLastCalledWith(expect.objectContaining({ uid: 7, data: liveState.data }));
-        expect(container.querySelector('.sb-wi-list-status').textContent).toBe('No Results');
+        expect(container.querySelector('.sb-wi-list-status').textContent).toBe('No Results FoundTry a different search');
     });
 
     test.each([[0, null], [1, 'save'], [2, 'discard']])('delayed numeric navigation guards edits made after New Entry (choice %i)', async (choice, method) => {

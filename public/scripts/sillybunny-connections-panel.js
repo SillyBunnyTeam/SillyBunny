@@ -356,6 +356,7 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
                 field: `source-${backend.id}`,
                 title: t`Source`,
                 searchLabel: t`Search Sources`,
+                searchPlaceholder: t`Search sources`,
                 onPick: clearProfileSelection,
                 onChange: backend.id === 'other'
                     ? value => {

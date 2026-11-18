@@ -417,8 +417,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await prepareList(page, viewport);
         await setSearch(page, 'no matching entity');
         await expect(list(page).locator('.sb-character-list__box')).toBeHidden();
-        await expect(list(page).locator('.sb-status-page__title')).toHaveText('No Results');
-        await expect(list(page).locator('.sb-status-page__description')).toHaveCount(0);
+        await expect(list(page).locator('.sb-status-page__title')).toHaveText('No Results Found');
+        await expect(list(page).locator('.sb-status-page__description')).toHaveText('Try a different search');
 
         await page.evaluate(async () => {
             const app = await import('/script.js');

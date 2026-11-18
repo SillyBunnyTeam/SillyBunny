@@ -2774,7 +2774,8 @@ function syncGroupListEmptyPage(rows, total) {
         groupListEmptyPages.delete(rows);
         return;
     }
-    const values = { state: total ? 'no-results' : 'empty', title: rows.dataset.emptyText };
+    // SillyBunny: a search without a match says what to do next, like every other no-result page.
+    const values = { state: total ? 'no-results' : 'empty', title: rows.dataset.emptyText, description: total ? t`Try a different search` : '' };
     if (page) {
         page.update(values);
     } else {

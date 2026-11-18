@@ -411,7 +411,7 @@ describe('active books', () => {
         change(search, 'input');
         jest.advanceTimersByTime(300);
         expect(host.querySelector('.sb-wi-settings-empty').hidden).toBe(false);
-        expect(host.querySelector('.sb-wi-settings-empty .sb-status-page__title').textContent).toBe('No Results');
+        expect(host.querySelector('.sb-wi-settings-empty .sb-status-page__title').textContent).toBe('No Results Found');
         search.value = '';
         change(search, 'input');
         expect(host.querySelectorAll('.sb-wi-settings-book:not([hidden])')).toHaveLength(3);

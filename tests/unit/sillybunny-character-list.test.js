@@ -744,8 +744,8 @@ describe('shared Characters/Groups list', () => {
         expect(create).toHaveBeenCalledTimes(1);
         model.sourceCount = 3;
         await mounted.render(model);
-        expect(status.querySelector('.sb-status-page__title').textContent).toBe('No Results');
-        expect(status.querySelector('.sb-status-page__description')).toBeNull();
+        expect(status.querySelector('.sb-status-page__title').textContent).toBe('No Results Found');
+        expect(status.querySelector('.sb-status-page__description').textContent).toBe('Try a different search');
         expect(document.querySelector('.sb-character-list__box').hidden).toBe(true);
     });
 

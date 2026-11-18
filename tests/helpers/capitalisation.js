@@ -23,6 +23,9 @@ export const HEADER_ROLES = new Set(['heading', 'button', 'menu item', 'tooltip'
 // after the first that is not a protected name or code is lower case.
 export const SENTENCE_ROLES = new Set(['row subtitle', 'caption', 'placeholder', 'check or radio label', 'drop-down item', 'body', 'toast title']);
 
+// A one-sentence caption or row subtitle ends without a period (DESIGN.md, Writing); body text and toast messages keep theirs.
+const PERIOD_ROLES = new Set(['row subtitle', 'caption']);
+
 const norm = text => text.replace(/\s+/g, ' ').trim();
 const wordCount = text => text.split(/\s+/).filter(token => /\p{L}/u.test(token)).length;
 
@@ -211,14 +214,15 @@ function fixStyle(text, { period }) {
  * Checks one label against the rule for its role.
  * @param {string} role A member of HEADER_ROLES or SENTENCE_ROLES.
  * @param {string} text The string as written; a `${...}` hole is read as `${}`.
- * @param {{ style?: boolean }} [options] `style: false` leaves the ellipsis, Latin abbreviation and period faults to another test.
+ * @param {{ style?: boolean, captionPeriod?: boolean }} [options] `style: false` leaves the ellipsis, Latin abbreviation and period faults to another test.
+ *     `captionPeriod: false` lets a row subtitle or caption keep its period, for a check that holds the rendered strings of upstream code.
  * @returns {{ ok: true, skipped?: string } | { ok: false, expected: string, why: string }}
  */
-export function checkLabel(role, text, { style = true } = {}) {
+export function checkLabel(role, text, { style = true, captionPeriod = true } = {}) {
     if (text.includes('{{')) return { ok: true, skipped: 'template' };
     const flat = norm(text);
     const header = HEADER_ROLES.has(role);
-    const period = header;
+    const period = header || (captionPeriod && PERIOD_ROLES.has(role));
     const styled = style ? fixStyle(flat, { period }) : flat;
     const faults = style ? styleFaults(flat, { period }) : [];
 

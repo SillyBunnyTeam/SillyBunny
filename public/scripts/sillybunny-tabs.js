@@ -1210,9 +1210,9 @@ const SB_SHELLS = Object.freeze({
                 id: 'editor',
                 label: 'Editor',
                 icon: 'fa-pen-to-square',
-                tooltip: 'Edit prompt content, order, and placement.',
-                description: 'Edit prompt content, order, and placement.',
-                descriptionI18n: 'Edit prompt content, order, and placement.',
+                tooltip: 'Edit prompt content, order, and placement',
+                description: 'Edit prompt content, order, and placement',
+                descriptionI18n: 'Edit prompt content, order, and placement',
                 searchAliases: ['Prompt Manager', 'Prompts'],
             },
             {
@@ -1254,7 +1254,7 @@ const SB_SHELLS = Object.freeze({
             label: 'Appearance',
             icon: 'fa-palette',
             tooltip: 'Change or modify the appearance of the SillyBunny graphical shell',
-            description: 'Customize SillyBunny\'s visual appearance, themes, backgrounds, and UI scale.',
+            description: 'Customize SillyBunny\'s visual appearance, themes, backgrounds, and UI scale',
             searchPlaceholder: 'Search themes, backgrounds, blur, or UI scale',
             searchExamples: ['theme', 'background', 'blur', 'scale'],
             searchAliases: ['colors', 'colours', 'wallpaper', 'fonts', 'UI scale'],
@@ -8683,8 +8683,8 @@ function preparePromptingPanel(root) {
     const presetsContainer = configuration.querySelector('#respective-presets-block');
 
     for (const [id, title, description] of [
-        ['respective-presets-block', 'Presets', 'Choose and manage presets for the current backend.'],
-        ['common-gen-settings-block', 'Generation Settings', 'Set context and reply limits, streaming, and other generation options.'],
+        ['respective-presets-block', 'Presets', 'Choose and manage presets for the current backend'],
+        ['common-gen-settings-block', 'Generation Settings', 'Set context and reply limits, streaming, and other generation options'],
     ]) {
         const block = configuration.querySelector(`#${id}`);
         if (!(block instanceof HTMLElement)) continue;
