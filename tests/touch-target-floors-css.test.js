@@ -99,10 +99,13 @@ describe('touch target floors of the Quick Reply editor, the composer buttons, t
         expect(ruleBody(css, '#qr--settings')).toContain('--qr--target: max(38px, var(--sb-density-floor, 38px));');
         const narrow = css.slice(css.indexOf('@media screen and (max-width: 600px) {\n  #qr--settings {'));
         expect(narrow.slice(0, narrow.indexOf('\n}\n'))).not.toContain('38px;');
-        expect(css).toContain('grid-template-columns: var(--qr--target) minmax(0, 1fr) var(--qr--target);');
-        const grip = ruleBody(css, '#qr--settings :is(.qr--setList > .qr--item, .qr--set-qrListContents > .qr--set-item .qr--content) > .drag-handle');
-        expect(grip).toContain('min-inline-size: var(--sb-density-floor, 0px);');
-        expect(grip).toContain('min-block-size: var(--sb-density-floor, 0px);');
+        expect(narrow.slice(0, narrow.indexOf('\n}\n'))).toContain('#qr--settings .qr--set-qrListActions > .menu_button {');
+        // A set link's grip has a rule for its padding before the one for its floor, so every rule of the selector is read.
+        for (const selector of ['#qr--settings .qr--setList > .qr--item > .drag-handle', '#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item > .drag-handle']) {
+            const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const bodies = [...css.matchAll(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'g'))].map(match => match[1]);
+            expect(bodies.some(body => body.includes('min-inline-size: var(--sb-density-floor, 0px);') && body.includes('min-block-size: var(--sb-density-floor, 0px);'))).toBe(true);
+        }
         expect(ruleBody(css, '#qr--settings #qr--set-settings label')).toContain('min-block-size: var(--sb-density-floor, 0px);');
     });
 
@@ -113,10 +116,5 @@ describe('touch target floors of the Quick Reply editor, the composer buttons, t
         expect(gg).toContain('--gg-mobile-action-size: max(var(--sb-density-floor, 28px), clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px));');
         expect(ruleBody(history, '.stih--buttons .stih--button')).toContain('--stih-action-size: max(var(--bottomFormBlockSize), var(--sb-density-floor, 0px));');
         expect(history).toContain('--stih-mobile-action-size: max(var(--sb-density-floor, 28px), clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px));');
-    });
-
-    test('the regex editor\'s checkbox rows take the floor', () => {
-        const css = readExtension('regex');
-        expect(ruleBody(css, '.regex_editor label.checkbox')).toContain('min-block-size: var(--sb-density-floor, 0px);');
     });
 });

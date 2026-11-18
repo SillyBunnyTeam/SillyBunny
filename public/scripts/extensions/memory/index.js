@@ -32,7 +32,7 @@ import { countWebLlmTokens, generateWebLlmChatPrompt, getWebLlmContextSize, isWe
 import { commonEnumProviders } from '../../slash-commands/SlashCommandCommonEnumsProvider.js';
 import { removeReasoningFromString } from '../../reasoning.js';
 import { MacrosParser } from '/scripts/macros.js';
-import { adoptPositionRadios } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the injection position is a select row.
+import { adoptSummarizeSettings } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the summary box, the prompt builder and the injection position are shared rows.
 export { MODULE_NAME };
 
 const MODULE_NAME = '1_memory';
@@ -1114,7 +1114,7 @@ export async function init() {
         const settingsHtml = await renderExtensionTemplateAsync('memory', 'settings', { defaultSettings });
         $('#summarize_container').append(settingsHtml);
         setupListeners();
-        adoptPositionRadios($('#memory_settings')[0], 'memory_position'); // SillyBunny: the injection position is a select row.
+        adoptSummarizeSettings($('#memory_settings')[0]); // SillyBunny: the summary box, the prompt builder and the injection position are shared rows.
         $('#summaryExtensionPopoutButton').off('click').on('click', function (e) {
             doPopout(e);
             e.stopPropagation();

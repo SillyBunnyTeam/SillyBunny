@@ -196,12 +196,7 @@ dialog.popup.sb-dialog--window.sd-comfy-workflow-window .sd_comfy_workflow_edito
     position: relative;
 }
 
-#sd_swap_dimensions {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    transform: translateX(-50%);
-}
+/* SillyBunny: #sd_swap_dimensions sits in a button row of its own (adoptImageGenerationSettings), so upstream's absolute placement over the width slider is removed. */
 
 #sd_model_custom_settings summary {
     cursor: pointer;

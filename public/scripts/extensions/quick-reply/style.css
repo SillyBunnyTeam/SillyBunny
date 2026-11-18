@@ -273,84 +273,70 @@
   align-items: center;
   min-block-size: var(--sb-density-floor, 0px);
 }
-/* SillyBunny: the rows carry the row inset themselves (below), so the list adds none. */
+/* SillyBunny: the rows carry the row inset themselves, so the list adds none. The settings page insets each block by the row padding, and a quick reply row spans the card. */
 #qr--settings #qr--set-qrList .qr--set-qrListContents {
   padding: 0;
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder {
-  display: flex;
-  align-items: center;
-  opacity: 0;
-  transition: var(--animation-duration);
-  margin: -2px 0 -11px 0;
-  position: relative;
+#sb-settings-page .sb-settings-mounted-shell #qr--settings #qr--set-qrList .qr--set-qrListContents {
+  margin-inline: calc(-1 * var(--sb-density-row-padding-inline, 12px));
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder .qr--actions {
-  display: flex;
-  gap: 0.25em;
-  flex: 0 0 auto;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder .qr--actions .qr--action {
-  margin: 0;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder:before,
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder:after {
-  content: "";
-  display: block;
-  flex: 1 1 auto;
-  border: 1px solid;
-  margin: 0 1em;
-  height: 0;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder:hover,
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--set-itemAdder:focus-within {
-  opacity: 1;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content {
-  display: flex;
-  flex-direction: row;
-  gap: 0.5em;
-  align-items: baseline;
-  padding: 0.25em 0;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(2) {
-  flex: 0 0 auto;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(2) {
-  flex: 1 1 25%;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(3) {
-  flex: 0 0 auto;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(4) {
-  flex: 1 1 75%;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(5) {
-  flex: 0 1 auto;
-  display: flex;
-  gap: 0.25em;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > .drag-handle {
-  padding: 0.75em;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemLabelContainer {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-}
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemLabelContainer .qr--set-itemIcon:not(.fa-solid) {
+/* SillyBunny: a set link is an entity row, and the editor's set picker is a select row with one menu. The buttons they replaced stay in place, hidden, for the menus to run. The settings page insets each block by the row padding, and these rows span the card. */
+#qr--settings .qr--setList > .qr--item > [hidden],
+#qr--settings #qr--editor > .qr--head > [hidden] {
   display: none;
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemLabelContainer .qr--set-itemLabel {
-  min-width: 24px;
+#qr--settings #qr--editor > .qr--head {
+  display: block;
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemLabel,
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--action {
+#qr--settings #qr--editor > .qr--head > .ds-select-row {
+  padding: 6px var(--sb-density-row-padding-inline, 12px);
+}
+#sb-settings-page .sb-settings-mounted-shell #qr--settings .qr--setList {
+  margin-inline: calc(-1 * var(--sb-density-row-padding-inline, 12px));
+}
+#qr--settings .qr--setList > .qr--item > .ds-entity-row__text > .qr--set {
+  width: 100%;
+}
+@media (max-width: 620px) {
+  #qr--settings .qr--setList .qr--visibleText {
+    display: none;
+  }
+}
+
+/* SillyBunny: a quick reply is a shared entity row. The text column holds the icon button and the label field above the
+   message field. The buttons the row used to show stay in it, hidden, for the row's menu to run. */
+#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item > [hidden] {
+  display: none;
+}
+#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item > .drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: var(--sb-density-floor, 0px);
+  min-block-size: var(--sb-density-floor, 0px);
+}
+#qr--settings .qr--set-itemText {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#qr--settings .qr--set-itemText .qr--set-itemLabelContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+#qr--settings .qr--set-itemText .qr--set-itemLabelContainer .qr--set-itemIcon:not(.fa-solid) {
+  display: none;
+}
+#qr--settings .qr--set-itemText .qr--set-itemLabel {
+  flex: 1 1 auto;
+  min-width: 24px;
   margin: 0;
 }
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--set-itemMessage {
+#qr--settings .qr--set-itemText .qr--set-itemMessage {
+  width: 100%;
+  min-height: 3.2em;
+  margin: 0;
   font-size: smaller;
 }
 #qr--settings .qr--set-qrListActions {
@@ -400,24 +386,12 @@
 }
 
 /* SillyBunny: a grip is as large as the pointer's floor; its glyph stays small and centred in it. */
-#qr--settings :is(.qr--setList > .qr--item, .qr--set-qrListContents > .qr--set-item .qr--content) > .drag-handle {
+#qr--settings .qr--setList > .qr--item > .drag-handle {
   display: flex;
   align-items: center;
   justify-content: center;
   min-inline-size: var(--sb-density-floor, 0px);
   min-block-size: var(--sb-density-floor, 0px);
-}
-
-/* SillyBunny: a Quick Reply row has the metrics of a boxed-list row. */
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item {
-  box-sizing: border-box;
-  min-height: 52px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--SmartThemeBorderColor);
-}
-
-#qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item:last-child {
-  border-bottom: 0;
 }
 
 #qr--settings .qr--setList > .qr--item > .qr--visible {
@@ -498,50 +472,6 @@
     padding: 0;
   }
 
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content {
-    display: grid;
-    grid-template-columns: var(--qr--target) minmax(0, 1fr) var(--qr--target);
-    gap: 0.4em;
-    align-items: center;
-    padding: 0.4em 0;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > .drag-handle {
-    grid-column: 1;
-    grid-row: 1;
-    padding: 0;
-    text-align: center;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(2) {
-    grid-column: 2;
-    grid-row: 1;
-    min-width: 0;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(3) {
-    grid-column: 3;
-    grid-row: 1;
-    justify-self: end;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(4) {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    min-width: 0;
-    width: 100%;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content > :nth-child(5) {
-    grid-column: 1 / -1;
-    grid-row: 3;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 0.35em;
-  }
-
-  #qr--settings #qr--set-qrList .qr--set-qrListContents > .qr--set-item .qr--content .qr--action,
   #qr--settings .qr--set-qrListActions > .menu_button {
     flex: 0 0 var(--qr--target);
     width: var(--qr--target);

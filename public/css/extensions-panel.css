@@ -403,3 +403,17 @@ input.extension_missing[type="checkbox"] {
         transition: none;
     }
 }
+
+/* SillyBunny: an extension nests its rows in a plain wrapper of its own. The wrapper draws nothing, so its rows take the
+   geometry that a direct child of the group has; without this each one keeps the free-standing row's fill,
+   radius and padding and reads as a separate chip. */
+#sb-settings-page [data-sb-panel="extensions"] .ds-pref-group .sb-settings-row-wrapper > .ds-row {
+    padding: var(--sb-density-row-padding-block) var(--sb-density-row-padding-inline);
+    border-radius: 0;
+    background: transparent;
+}
+
+/* SillyBunny: st-tailwind.css paints `.failure` a literal red ("Missing modules" on the Extensions page). It takes the theme's status colour for error text instead. */
+#sb-settings-page [data-sb-panel="extensions"] .failure {
+    color: var(--sb-warning-fg);
+}

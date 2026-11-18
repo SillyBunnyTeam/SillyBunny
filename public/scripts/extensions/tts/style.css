@@ -137,3 +137,11 @@
 #at-status_info {
     color: lightgreen;
 }
+
+/* SillyBunny: a submit button of the provider forms keeps its label on one line; the shared button width wrapped "Available voices" and "Remove Voice" over two. */
+.tts_buttons input.menu_button,
+#tts_refresh,
+#tts_provider_settings input.menu_button {
+    width: auto;
+    white-space: nowrap;
+}

@@ -97,6 +97,7 @@ export class QuickReplySet {
         if (!this.settingsDom) {
             this.settingsDom = document.createElement('div'); {
                 this.settingsDom.classList.add('qr--set-qrListContents');
+                this.settingsDom.setAttribute('role', 'list'); // SillyBunny: each quick reply row is a list item.
                 this.qrList.forEach((qr, idx) => {
                     this.renderSettingsItem(qr, idx);
                 });

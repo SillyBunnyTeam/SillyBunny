@@ -278,12 +278,12 @@ describe('the adopter', () => {
         expect(report.left).toEqual([{ id: 'a', type: 'entry', reason: 'its label holds a control or a link' }]);
     });
 
-    test('leaves password, file and hidden inputs, and multi-line fields, to their own rows', () => {
-        const container = mount('<div><label for="p">Key</label><input id="p" type="password"><label for="f">File</label><input id="f" type="file"><input id="h" type="hidden"><label for="t">Notes</label><textarea id="t"></textarea></div>');
+    test('leaves password, file and hidden inputs, and read-only text areas, to their own rows', () => {
+        const container = mount('<div><label for="p">Key</label><input id="p" type="password"><label for="f">File</label><input id="f" type="file"><input id="h" type="hidden"><label for="t">Notes</label><textarea id="t" readonly></textarea></div>');
         const before = container.innerHTML;
         const report = normalizeExtensionSettings(container);
 
-        expect(report).toMatchObject({ entries: 0, numbers: 0, selects: 0, left: [] });
+        expect(report).toMatchObject({ entries: 0, numbers: 0, selects: 0, textareas: 0, left: [] });
         expect(container.innerHTML).toBe(before);
     });
 
@@ -309,22 +309,20 @@ describe('the adopter', () => {
         expect(field(container, '#url').closest('.ds-row-entry--floating').parentElement).toBe(container.querySelector('form'));
     });
 
-    test('adopts only the text fields of the provider settings, whose other rows each provider lays out itself', () => {
+    test('presents every labelled field of the provider settings, as a row inside the provider\'s own form', () => {
         const container = mount(`<form id="tts_provider_settings">
-            <label for="url">Server URL</label><input id="url" type="text">
-            <label for="lang">Language</label><select id="lang"><option>en</option></select>
-            <label for="n">Count</label><input id="n" type="number">
+            <div><label for="url">Server URL</label><input id="url" type="text"></div>
+            <div><label for="lang">Language</label><select id="lang"><option>en</option></select></div>
+            <div><label for="n">Count</label><input id="n" type="number"></div>
             <label class="checkbox_label"><input id="stream" type="checkbox"><span>Stream</span></label>
-            <label for="speed">Speed</label><input id="speed" type="range"></form>`, 'tts_container');
+            <div><label for="speed">Speed</label><input id="speed" type="range"></div></form>`, 'tts_container');
         const report = normalizeExtensionSettings(container);
 
-        expect(report).toMatchObject({ entries: 1, selects: 0, numbers: 0 });
-        expect(report.left).toEqual([
-            { id: 'lang', type: 'select', reason: 'laid out by the provider' },
-            { id: 'n', type: 'spin', reason: 'laid out by the provider' },
-        ]);
-        expect(container.querySelector('#stream').closest('.ds-row')).toBeNull();
-        expect(container.querySelector('#speed').closest('.ds-row')).toBeNull();
+        expect(report).toMatchObject({ entries: 1, selects: 1, numbers: 1 });
+        expect(report.left).toEqual([]);
+        expect(container.querySelector('#stream').closest('.ds-row-switch')).not.toBeNull();
+        expect(container.querySelector('#speed').closest('.ds-row-slider')).not.toBeNull();
+        expect(container.querySelector('form').contains(container.querySelector('#lang').closest('.ds-select-row'))).toBe(true);
     });
 });
 

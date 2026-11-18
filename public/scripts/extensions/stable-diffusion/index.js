@@ -67,6 +67,7 @@ import { MacrosParser } from '/scripts/macros.js';
 import { ActionLoaderHandle, loader } from '/scripts/action-loader.js';
 // SillyBunny: expose the configured provider without borrowing the active roleplay chat.
 import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
+import { adoptImageGenerationSettings } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the swap button and the style picker get rows.
 import { isNovelAIV5Model, normalizeNovelAIImageParameters, NOVELAI_IMAGE_MODELS } from '../../novelai-image-models.js';
 
 export { MODULE_NAME };
@@ -5858,6 +5859,7 @@ export async function init() {
 
     const template = await renderExtensionTemplateAsync('stable-diffusion', 'settings', defaultSettings);
     $('#sd_container').append(template);
+    adoptImageGenerationSettings($('#sd_container')[0]); // SillyBunny: the swap button and the style picker get rows.
     $('#sd_source').on('change', onSourceChange);
     $('#sd_scale').on('input', onScaleInput);
     $('#sd_steps').on('input', onStepsInput);

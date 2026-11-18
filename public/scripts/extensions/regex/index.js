@@ -861,8 +861,10 @@ async function onRegexEditorOpenClick(existingId, scriptType) {
     editorHtml.find('input, textarea, select').on('input', updateTestResult);
     updateInfoBlock(editorHtml);
 
-    // SillyBunny: the editor is a Window-tier surface and becomes a page when opened from another Window.
-    const popupResult = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { tier: 'window', okButton: t`Save`, cancelButton: t`Cancel`, allowVerticalScrolling: true });
+    // SillyBunny: the editor is a Window-tier surface and becomes a page when opened from another Window. Its fields are shared rows, built after the values above are set; the adapter loads when an editor opens, so it is not a startup module.
+    const { adaptRegexEditor } = await import('./sillybunny-editor.js');
+    const editor = adaptRegexEditor(editorHtml[0]);
+    const popupResult = await callGenericPopup(editorHtml, POPUP_TYPE.CONFIRM, '', { tier: 'window', okButton: t`Save`, cancelButton: t`Cancel`, allowVerticalScrolling: true, ...editor.options });
     if (popupResult) {
         const newRegexScript = {
             id: existingId ? String(existingId) : uuidv4(),

@@ -5,6 +5,7 @@ import { getSortableDelay } from '../../../../utils.js';
 import { log, warn } from '../shared.js';
 import { QuickReply } from '../QuickReply.js';
 import { QuickReplySet } from '../QuickReplySet.js';
+import { adoptQuickReplySetPicker } from '../../../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the set picker is a select row with one menu.
 import { getUniqueQuickReplySetsByName, removeQuickReplySetLinksByName } from '../quick-reply-set-list.js';
 import { QuickReplySettings } from '../QuickReplySettings.js';
 
@@ -171,6 +172,7 @@ export class SettingsUi {
                 this.currentSet.append(opt);
             }
         });
+        adoptQuickReplySetPicker(this.dom); // SillyBunny: the set's six action buttons move into one menu beside the picker.
         this.disableSend = this.dom.querySelector('#qr--disableSend');
         this.disableSend.addEventListener('click', () => {
             const qrs = this.currentQrSet;

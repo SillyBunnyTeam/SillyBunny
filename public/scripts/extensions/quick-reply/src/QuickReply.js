@@ -21,6 +21,7 @@ import { getUniqueQuickReplySetsByName } from './quick-reply-set-list.js';
 import { ContextMenu } from './ui/ctx/ContextMenu.js';
 // SillyBunny: adopt the editor controls without changing live-apply or debugger semantics.
 import { adaptQuickReplyEditor } from './sillybunny-editor.js';
+import { adoptQuickReplyRow } from '../../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the settings row of a quick reply is a shared entity row.
 
 export class QuickReply {
     /**
@@ -380,6 +381,7 @@ export class QuickReply {
                     }
                     itemContent.append(actions);
                 }
+                adoptQuickReplyRow(item); // SillyBunny: the row is a shared entity row; the menu runs the buttons built above.
             }
         }
         return this.settingsDom;

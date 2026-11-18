@@ -20,8 +20,14 @@ function icon(className) {
     return node;
 }
 
+/**
+ * The text an option shows in the row and in the picker. An upstream option that stands for "nothing" is written
+ * in brackets (`[ None ]`, `[Currently selected]`); the brackets are a text-mode device, so the display drops them
+ * while the option keeps its own text.
+ */
 function optionLabel(option) {
-    return option.textContent.replace(/\s+/g, ' ').trim();
+    const text = option.textContent.replace(/\s+/g, ' ').trim();
+    return text.replace(/^\[\s*([^[\]]+?)\s*\]$/, '$1');
 }
 
 /**

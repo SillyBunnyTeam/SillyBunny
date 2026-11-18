@@ -150,6 +150,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-17, UI polish sweep (tasks 9.5b and 9.5c). |
 | Owner | UI overhaul integrator. |
 
+### The remaining built-in extensions - settings rows, the Quick Reply set controls and the regex editor
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/regex/index.js`, `public/scripts/extensions/regex/dropdown.html`, `public/scripts/extensions/regex/style.css` (the editor adapter loads on editor open; the Presets bar's gap; the toolbar's label-only buttons); `public/scripts/extensions/quick-reply/src/QuickReply.js`, `src/QuickReplySet.js`, `src/QuickReplySetLink.js`, `src/ui/SettingsUi.js`, `style.css`, `html/settings.html` (quick replies and set links as entity rows, the set select's six actions in one ⋮ menu that runs the hidden buttons, list roles); `public/scripts/extensions/memory/index.js` (the Summarize sliders and the Prompt builder toggle row); `public/scripts/extensions/stable-diffusion/index.js` and `style.css` (the swap button as a button row, the style select titled Preset); `public/scripts/extensions/tts/style.css`; `public/css/extensions-panel.css` (the nested-row geometry and `.failure`'s warning ink, scoped to the Extensions page). `public/index.html` changes a cache key only. |
+| Area | Built-in extension settings not reached by 10.1a, the Quick Reply set controls, and the Regex editor's body. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The extension pass of `public/scripts/sillybunny-settings-presentation.js` (labelled text areas as text-area fields, ranges as slider rows, side hints as captions, TTS provider forms adopted); `adoptSummarizeSettings`, `adoptQuickReplyRow` and `adoptImageGenerationSettings` in `public/scripts/sillybunny-editor/adapters/utility-dialogs.js`; `adaptRegexEditor` in `public/scripts/extensions/regex/sillybunny-editor.js`; `optionLabel()` in `public/scripts/sillybunny-editor/select-row.js` (option brackets dropped in the display). |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 10.1c): the adapters move upstream nodes into shared rows and boxed groups and keep every id and handler; the regex editor keeps Cancel and Save in its header; marked one-line calls and rules in the files above. |
+| Protecting tests | `tests/unit/extension-rest-adapters.test.js`; `tests/unit/sillybunny-extension-settings.test.js`; `tests/window-dialogs.e2e.js`; the settings inventory (`qr_container`, `sd_container` and the other extension sections); the audit surfaces `list.quick-replies`, `list.regex-scripts`, `editor.regex`, `editor.quick-reply`, `settings.customize.extensions`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, `frontend-performance.e2e.js` (startup at 863), the coder's related run (296 tests), the five audit surfaces, the extensions inventory and `window-dialogs.e2e.js` on the merge. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 10.1c). |
+| Owner | `TODO(copy)` |
+
 ### The Regex, Quick Reply, Summarize and Vector Storage extensions - settings rows and script rows
 | Field | Value |
 | --- | --- |

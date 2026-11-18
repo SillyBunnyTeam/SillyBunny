@@ -1,7 +1,7 @@
 import { t } from '../../i18n.js';
-import { createEntryRow, createPrefGroup, createSpinRow, moveCaption, releaseRowIds } from '../rows.js';
+import { createButtonRow, createEntryRow, createPrefGroup, createSpinRow, createTextAreaField, moveCaption, releaseRowIds } from '../rows.js';
 import { createToggleRow } from '../toggle-row.js';
-import { createSelectRow } from '../select-row.js';
+import { createProfileRow, createSelectRow } from '../select-row.js';
 
 function asElement(source) {
     const root = source?.jquery ? source.get(0) : source;
@@ -377,11 +377,15 @@ export function adoptPositionRadios(root, name) {
     select.id = name;
     select.className = 'text_pole';
     for (const radio of radios) {
-        const caption = radio.closest('label')?.querySelector('span[data-i18n]');
+        const label = radio.closest('label');
+        const caption = label?.querySelector('span[data-i18n]');
         const option = document.createElement('option');
         option.value = radio.value;
         option.textContent = caption?.textContent?.trim() ?? radio.value;
         if (caption?.dataset.i18n) option.dataset.i18n = caption.dataset.i18n;
+        // The explanation sat in an info icon or in the label's tooltip; the select row shows it under its title while the option is chosen.
+        const description = label?.querySelector('i[title]')?.getAttribute('title') || label?.getAttribute('title');
+        if (description) option.dataset.sbDescription = description;
         select.append(option);
     }
 
@@ -421,4 +425,255 @@ export function adoptPositionRadios(root, name) {
     // `.radio_group` sets its own display, which would beat the hidden attribute.
     group.hidden = true;
     group.style.display = 'none';
+}
+
+// The Summarize extension's own controls.
+
+/**
+ * The three prompt builders are an exclusive choice of three, so they become a toggle row. The radios keep their ids, name and
+ * handlers: they move into the row's segments, and the extension keeps reading and writing them. The row's caption under the
+ * title is the explanation of the chosen builder, which the labels carried as tooltips.
+ * @param {HTMLElement} root The extension's settings block.
+ */
+function adoptPromptBuilder(root) {
+    const radios = [...root.querySelectorAll('input[type="radio"][name="memory_prompt_builder"]')];
+    const labels = radios.map(radio => radio.closest('label'));
+    const heading = labels[0]?.parentElement?.querySelector(':scope > label:not(:has(input))');
+    if (radios.length < 2 || labels.some(label => !label) || !heading || radios[0].closest('.ds-toggle-row')) return;
+
+    const descriptions = new Map(radios.map((radio, index) => [radio, labels[index].getAttribute('title') ?? '']));
+    const row = segmentedRow(labels, heading, 'memory-prompt-builder');
+    const subtitle = document.createElement('small');
+    subtitle.className = 'ds-row-subtitle';
+    subtitle.id = `${row.group.getAttribute('aria-labelledby')}-description`;
+    const showDescription = () => { subtitle.textContent = descriptions.get(radios.find(radio => radio.checked)) ?? ''; };
+    row.row.querySelector('.ds-row-text').append(subtitle);
+    row.group.setAttribute('aria-describedby', subtitle.id);
+    globalThis.jQuery(radios).on('input change', showDescription);
+    showDescription();
+    labels[0].before(row.row);
+    // The emptied labels held the radios before the segments took them.
+    for (const label of labels) label.remove();
+}
+
+/**
+ * The summary box is a text-area field with the extension's Restore button in its label row, in place of the loose header
+ * that held the caption, an Expand icon and the button.
+ * @param {HTMLElement} root The extension's settings block.
+ */
+function adoptSummaryBox(root) {
+    const textarea = root.querySelector('#memory_contents');
+    const header = textarea?.previousElementSibling;
+    const caption = header?.querySelector(':scope > span[data-i18n="ext_sum_current_summary"]');
+    if (!(textarea instanceof HTMLTextAreaElement) || !(header instanceof HTMLElement) || !caption || textarea.closest('.ds-row-textarea')) return;
+
+    const row = createTextAreaField({ label: textOf(caption).replace(/[：:]$/, ''), field: 'memory_contents', input: textarea, expandLabel: t`Expand the editor` });
+    const restore = header.querySelector('#memory_restore');
+    if (restore) row.labelRow.insertBefore(restore, row.expand);
+    header.before(row.row);
+    header.remove();
+}
+
+/**
+ * Brings the Summarize page's loose controls to the shared rows: the summary box, the prompt builder and the injection
+ * position. Call it after the extension has set its controls from the saved settings; the rows then follow the controls.
+ * @param {HTMLElement} root The extension's settings block.
+ */
+export function adoptSummarizeSettings(root) {
+    adoptSummaryBox(root);
+    adoptPromptBuilder(root);
+    adoptPositionRadios(root, 'memory_position');
+}
+
+// The Quick Reply rows of a set.
+
+/** The buttons of a Quick Reply row that the row's menu runs, as `[selector, icon]`, in the order the menu lists them. */
+const QUICK_REPLY_ROW_ACTIONS = Object.freeze({
+    insert: [['.qr--set-itemAdder .qr--add', 'plus'], ['.qr--set-itemAdder .qr--paste', 'paste'], ['.qr--set-itemAdder .qr--importFile', 'file-import']],
+    own: [['.qr--set-optionsContainer .qr--action', 'sliders'], ['.qr--actions .fa-truck-arrow-right', 'truck-arrow-right'], ['.qr--actions .fa-copy', 'copy'], ['.qr--actions .fa-cut', 'scissors'], ['.qr--actions .fa-file-export', 'file-export']],
+    remove: [['.qr--actions .fa-trash-can', 'trash']],
+});
+
+/**
+ * The ⋮ button of an entity row. Its menu is built when it opens, from the extension's own hidden buttons, so that every
+ * handler is the one the extension bound.
+ * @param {{ className: string, titleOf: () => string, sectionsOf: () => object[], boundsOf: () => Element|null }} options
+ */
+function overflowMenuButton({ className, titleOf, sectionsOf, boundsOf }) {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = `ds-entity-row__button ${className}`;
+    more.setAttribute('aria-haspopup', 'menu');
+    more.setAttribute('aria-label', t`Actions`);
+    more.title = t`Actions`;
+    const glyph = document.createElement('i');
+    glyph.className = 'fa-solid fa-ellipsis-vertical';
+    glyph.setAttribute('aria-hidden', 'true');
+    more.append(glyph);
+    more.addEventListener('click', async () => {
+        const { openActionMenu } = await import('../../sillybunny-action-menu.js');
+        openActionMenu({ trigger: more, title: titleOf(), sections: sectionsOf(), bounds: boundsOf() ?? null });
+    });
+    return more;
+}
+
+/** A menu section that runs hidden buttons of `scope`, each named by the first line of its tooltip. */
+function quickReplyMenuSection(scope, actions, danger = false) {
+    return {
+        items: actions.map(([selector, icon]) => {
+            const button = scope.querySelector(selector);
+            const name = button?.title?.split('\n')[0].trim();
+            return button && name ? { label: name, icon: `fa-solid fa-${icon}`, danger, onSelect: () => button.click() } : null;
+        }).filter(Boolean),
+    };
+}
+
+/**
+ * Turns the settings row of one Quick Reply (a button of a set) into a shared entity row: a grip, the icon button, the label
+ * field and the message field in the text column, and one menu button at the end. The buttons that the row used to show (add
+ * above, options, move, copy, cut, export, remove) stay in the row, hidden, and the menu items run them, so every handler is the
+ * one the extension bound. Call it once the row is complete.
+ * @param {HTMLElement} item The `.qr--set-item` that `QuickReply.renderSettings()` built.
+ */
+export function adoptQuickReplyRow(item) {
+    const content = item.querySelector(':scope > .qr--content');
+    const grip = content?.querySelector(':scope > .drag-handle');
+    const labelContainer = content?.querySelector(':scope > .qr--set-itemLabelContainer');
+    const message = content?.querySelector(':scope > .qr--set-itemMessage');
+    const label = labelContainer?.querySelector('.qr--set-itemLabel');
+    if (!content || !grip || !labelContainer || !message || !(label instanceof HTMLInputElement) || item.classList.contains('ds-entity-row')) return;
+
+    item.classList.add('ds-entity-row');
+    // The settings normaliser would read the row's fields and buttons as settings of their own.
+    item.setAttribute('data-sb-presentation', 'manual');
+    item.setAttribute('role', 'listitem');
+    grip.classList.add('ds-entity-row__grip');
+    label.setAttribute('aria-label', t`Label`);
+    message.setAttribute('aria-label', t`Message`);
+
+    const text = document.createElement('div');
+    text.className = 'ds-entity-row__text qr--set-itemText';
+    text.append(labelContainer, message);
+
+    const more = overflowMenuButton({
+        className: 'qr--set-itemMenu',
+        boundsOf: () => item.closest('#sb-settings-page'),
+        titleOf: () => label.value || t`Quick Reply`,
+        sectionsOf: () => [
+            quickReplyMenuSection(item, QUICK_REPLY_ROW_ACTIONS.own),
+            quickReplyMenuSection(item, QUICK_REPLY_ROW_ACTIONS.insert),
+            quickReplyMenuSection(item, QUICK_REPLY_ROW_ACTIONS.remove, true),
+        ],
+    });
+    const suffix = document.createElement('div');
+    suffix.className = 'ds-entity-row__suffix';
+    suffix.append(more);
+
+    content.hidden = true;
+    item.querySelector(':scope > .qr--set-itemAdder')?.setAttribute('hidden', '');
+    item.append(grip, text, suffix);
+}
+
+// The Image Generation extension.
+
+/**
+ * Gives the two controls of Image Generation that have no row of their own a row: the swap button, which the stylesheet laid
+ * over the middle of the width slider, becomes a button row after the two dimensions, and the style picker, which has no label,
+ * is titled by what it picks, so that the settings normaliser shows it as a select row.
+ * @param {HTMLElement} root The extension's container.
+ */
+export function adoptImageGenerationSettings(root) {
+    const swap = root.querySelector('#sd_swap_dimensions');
+    if (swap instanceof HTMLElement && !swap.classList.contains('ds-button-row') && swap.title) {
+        const label = swap.title;
+        swap.replaceChildren();
+        createButtonRow({ label, icon: 'arrow-right-arrow-left', field: 'sd-swap-dimensions', button: swap });
+        swap.dataset.i18n = '[title]Swap width and height';
+    }
+    const style = root.querySelector('#sd_style');
+    if (style instanceof HTMLSelectElement && !style.hasAttribute('aria-label')) {
+        style.setAttribute('aria-label', t`Preset`);
+    }
+}
+
+/**
+ * The picker of the set that the editor edits becomes a select row with one ⋮ menu for the set's actions (rename, new, duplicate,
+ * import, export, remove). The six buttons stay in the head, hidden, and the menu runs them.
+ * @param {HTMLElement} root The extension's settings block.
+ */
+export function adoptQuickReplySetPicker(root) {
+    const head = root.querySelector('#qr--editor > .qr--head');
+    const select = head?.querySelector('#qr--set');
+    const title = head?.querySelector(':scope > .qr--title');
+    const actions = head?.querySelector(':scope > .qr--actions');
+    if (!(select instanceof HTMLSelectElement) || !title || !actions || select.closest('.ds-select-row')) return;
+
+    const heading = textOf(title);
+    const row = createProfileRow({
+        select, label: heading, field: 'qr-set', searchLabel: t`Search`, emptyText: t`No results`, menuLabel: t`Actions`,
+        async onMenu(trigger) {
+            const { openActionMenu } = await import('../../sillybunny-action-menu.js');
+            openActionMenu({
+                trigger,
+                title: heading || t`Quick Reply`,
+                sections: [
+                    quickReplyMenuSection(head, [['#qr--set-rename', 'pencil'], ['#qr--set-new', 'plus'], ['#qr--set-duplicate', 'paste'], ['#qr--set-import', 'file-import'], ['#qr--set-export', 'file-export']]),
+                    quickReplyMenuSection(head, [['#qr--set-delete', 'trash']], true),
+                ],
+                bounds: head.closest('#sb-settings-page') ?? null,
+            });
+        },
+    });
+    moveCaption(row.row.querySelector('.ds-row-label'), title);
+    actions.hidden = true;
+    head.prepend(row.row);
+}
+
+/**
+ * A set link of the global, chat and character lists becomes an entity row: a grip, the set's select in the text column, and in the
+ * suffix the switch that shows its buttons and one ⋮ menu (edit, remove). The pencil and the trash can stay in the row, hidden.
+ * @param {HTMLElement} item The `.qr--item` that `QuickReplySetLink.renderSettings()` built.
+ */
+export function adoptQuickReplySetLink(item) {
+    const grip = item.querySelector(':scope > .drag-handle');
+    const select = item.querySelector(':scope > select.qr--set');
+    const visible = item.querySelector(':scope > .qr--visible');
+    const checkbox = visible?.querySelector('input[type="checkbox"]');
+    if (!grip || !select || !(checkbox instanceof HTMLInputElement) || item.classList.contains('ds-entity-row')) return;
+
+    item.classList.remove('ds-row', 'ds-row--activatable');
+    item.classList.add('ds-entity-row');
+    item.setAttribute('data-sb-presentation', 'manual');
+    item.setAttribute('role', 'listitem');
+    grip.classList.add('ds-entity-row__grip');
+    select.setAttribute('aria-label', t`Quick Reply Set`);
+    checkbox.classList.add('sb-switch');
+    checkbox.setAttribute('role', 'switch');
+    checkbox.setAttribute('aria-label', visible.title || t`Show buttons`);
+    // The word stays beside the switch on a wide page and goes on a narrow one, where the select needs the room.
+    const word = [...visible.childNodes].find(node => node.nodeType === Node.TEXT_NODE);
+    if (word) {
+        const span = document.createElement('span');
+        span.className = 'qr--visibleText';
+        span.textContent = word.textContent;
+        word.replaceWith(span);
+    }
+
+    const text = document.createElement('div');
+    text.className = 'ds-entity-row__text';
+    text.append(select);
+    const more = overflowMenuButton({
+        className: 'qr--setlink-menu',
+        boundsOf: () => item.closest('#sb-settings-page'),
+        titleOf: () => select.value || t`Quick Reply Set`,
+        sectionsOf: () => [
+            quickReplyMenuSection(item, [[':scope > .fa-pencil', 'pencil']]),
+            quickReplyMenuSection(item, [[':scope > .qr--del', 'trash']], true),
+        ],
+    });
+    const suffix = document.createElement('div');
+    suffix.className = 'ds-entity-row__suffix';
+    suffix.append(visible, more);
+    for (const button of item.querySelectorAll(':scope > .menu_button')) button.hidden = true;
+    item.append(text, suffix);
 }

@@ -6647,6 +6647,27 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     border-top: 0;
 }
 
+/* A select row with three or more buttons after its field (Regex Presets) does not fit one line on a narrow page: the title and caption take the first line and the field and its buttons the second. */
+@media (max-width: 620px) {
+    #sb-settings-page .sb-settings-mounted-shell .ds-select-row:has(> .ds-row-suffix > .menu_button ~ .menu_button ~ .menu_button) {
+        flex-wrap: wrap;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell .ds-select-row:has(> .ds-row-suffix > .menu_button ~ .menu_button ~ .menu_button) > :is(.ds-row-text, .ds-row-suffix) {
+        flex: 1 1 100%;
+        max-width: none;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell .ds-select-row:has(> .ds-row-suffix > .menu_button ~ .menu_button ~ .menu_button) > .ds-row-suffix {
+        justify-content: flex-end;
+    }
+
+    #sb-settings-page .sb-settings-mounted-shell .ds-select-row:has(> .ds-row-suffix > .menu_button ~ .menu_button ~ .menu_button) .ds-select-row__trigger {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+}
+
 #sb-settings-page .sb-settings-mounted-shell .ds-pref-group > :not(.ds-row, .ds-row-expander) + :is(.ds-row, .ds-row-expander) {
     border-top: 1px solid var(--sb-shell-border);
 }

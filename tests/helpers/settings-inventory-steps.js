@@ -432,9 +432,13 @@ const operated = (page, via) => page.locator(via && via !== 'self' ? DRIVER : TA
 
 const ACTION = { timeout: 4000 };
 
+/** The picker shows an option written in brackets (`[ None ]`) without them; the native option keeps its text. */
+const shownLabel = label => label.replace(/^\[\s*([^[\]]+?)\s*\]$/, '$1');
+
 async function pickFromPicker(page, label, occurrence) {
+    const shown = shownLabel(label);
     const option = page.locator('.sb-picker:visible .sb-picker__option, .sb-picker-sheet:visible .sb-picker__option')
-        .filter({ has: page.locator('.sb-picker__label', { hasText: new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) }) });
+        .filter({ has: page.locator('.sb-picker__label', { hasText: new RegExp(`^\\s*${shown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) }) });
     await option.nth(occurrence).click(ACTION);
 }
 

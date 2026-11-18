@@ -11,6 +11,25 @@
     align-items: center;
 }
 
+/* SillyBunny: a button shows a label or an icon, not both, and buttons side by side share one width. The toolbars therefore show the label and lay the buttons out in a grid. */
+.regex_settings .inline-drawer-content > .flex-container:has(> #open_regex_editor) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 6px;
+    width: 100%;
+}
+
+.regex_settings :is(.inline-drawer-content > .flex-container:has(> #open_regex_editor), .regex_bulk_operations) > .menu_button {
+    justify-content: center;
+    width: auto;
+    min-block-size: var(--sb-density-floor, 32px);
+    margin: 0;
+}
+
+.regex_settings :is(.inline-drawer-content > .flex-container:has(> #open_regex_editor), .regex_bulk_operations) > .menu_button:has(> small) > i {
+    display: none;
+}
+
 .regex-script-container {
     margin-top: 10px;
     margin-bottom: 10px;
@@ -89,11 +108,6 @@ input.enable_scoped {
     cursor: pointer;
 }
 
-/* SillyBunny: the group labels of the editor take the Label size of the field labels above them; the footer's reduced size was applied to them twice (9.75px). */
-.regex_editor .wi-enter-footer-text small {
-    font-size: var(--sb-type-caption);
-}
-
 #regex_info_block_wrapper {
     position: relative;
 }
@@ -102,6 +116,17 @@ input.enable_scoped {
     margin: 10px 0;
     padding: 5px 20px;
     font-size: 0.9em;
+}
+
+/* SillyBunny: the groups of the editor are borderless boxed lists. The dialog's rule for groups draws a 1px edge around each. */
+.sb-dialog .regex_editor .ds-pref-group {
+    border-width: 0;
+}
+
+/* SillyBunny: the baseline bar that holds only the Regex Presets heading is sized for the buttons that the other bars carry; without them it left an empty band under the heading. */
+#regex_presets_block > .flex-container.alignItemsBaseline {
+    min-height: 0;
+    padding-bottom: 0;
 }
 
 #regex_info_block_wrapper:has(#regex_info_block:empty) {
@@ -123,12 +148,6 @@ input.enable_scoped {
     margin-inline: 5px;
 }
 
-/* SillyBunny: the pointer's target floor for the editor's checkbox rows (the label is the control). In bulk mode the whole script row toggles its checkbox, so the checkbox itself keeps its size. */
-.regex_editor label.checkbox {
-    align-items: center;
-    min-block-size: var(--sb-density-floor, 0px);
-}
-
 .regex_settings .regex_bulk_operations,
 .regex_settings .regex_bulk_checkbox,
 .regex_settings .regex_bulk_operations_hr {
@@ -136,7 +155,10 @@ input.enable_scoped {
 }
 
 .regex_settings:has(#regex_bulk_edit:checked) .regex_bulk_operations {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 6px;
+    width: 100%;
 }
 
 .regex_settings:has(#regex_bulk_edit:checked) .regex_bulk_operations_hr {

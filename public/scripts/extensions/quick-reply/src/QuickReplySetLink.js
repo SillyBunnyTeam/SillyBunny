@@ -1,4 +1,5 @@
 import { QuickReplySet } from './QuickReplySet.js';
+import { adoptQuickReplySetLink } from '../../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: a set link is a shared entity row.
 import { getQuickReplySetLinkNameKey, getQuickReplySetNameKey, getUniqueQuickReplySetsByName } from './quick-reply-set-list.js';
 
 export class QuickReplySetLink {
@@ -89,6 +90,7 @@ export class QuickReplySetLink {
                 del.addEventListener('click', () => this.delete());
                 item.append(del);
             }
+            adoptQuickReplySetLink(item); // SillyBunny: the pencil and the trash can move into the row's menu.
         }
         return this.settingsDom;
     }

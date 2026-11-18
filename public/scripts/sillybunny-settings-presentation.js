@@ -134,7 +134,7 @@ function normalizeCustomizeSwitch(label, { subtitles = true } = {}) {
         input.setAttribute('aria-labelledby', title.id);
     }
     const subtitle = subtitles ? createRowSubtitle(label, { placeholder: subtitles !== 'titled' }) : null;
-    for (const marker of label.querySelectorAll('.fa-circle-info:not(a .fa-circle-info)')) marker.remove();
+    for (const marker of label.querySelectorAll(':is(.fa-circle-info, .fa-info-circle):not(a *)')) marker.remove();
     const suffix = document.createElement('span');
     suffix.className = 'ds-row-suffix';
     for (const node of [...label.childNodes]) {
@@ -174,7 +174,7 @@ function normalizeCustomizeField(row, control, { subtitles = true } = {}) {
     suffix.className = 'ds-row-suffix';
     const subtitle = subtitles ? createRowSubtitle(row, { placeholder: subtitles !== 'titled' }) : null;
     // Tooltip info markers have become visible copy; actionable help links keep their handlers.
-    for (const marker of title.querySelectorAll('.fa-circle-info')) marker.remove();
+    for (const marker of title.querySelectorAll('.fa-circle-info, .fa-info-circle')) marker.remove();
     addMissingClasses(title, 'ds-row-label');
     removePresentClasses(title, 'displayNone');
     if (title instanceof HTMLLabelElement && control.id) title.htmlFor = control.id;
@@ -1538,9 +1538,9 @@ const SB_EXT_SWITCH_LABELS = '.checkbox_label, label:has(> input[type="checkbox"
  */
 const SB_EXT_AREAS = new Map([
     ['qr_container', { left: '#qr--global, #qr--chat, #qr--character, #qr--editor > :not(#qr--set-settings)' }],
-    // The script rows are shared entity rows that the extension's own adapter builds.
-    ['regex_container', { left: '.regex-script-label' }],
-    ['tts_container', { entriesOnly: '#tts_provider_settings' }],
+    // The script rows are shared entity rows that the extension's own adapter builds. Bulk Edit is a toggle button whose
+    // checkbox is hidden state, not a switch for a row.
+    ['regex_container', { left: '.regex-script-label, label[for="regex_bulk_edit"]' }],
 ]);
 
 /**
@@ -1702,10 +1702,88 @@ function isStandaloneNumber(control) {
 }
 
 /**
+ * The description an option carries (`data-sb-description`). The select row shows it under its title while
+ * the option is chosen, and the picker shows it under the option.
+ * @param {{label?: string}} item
+ * @param {HTMLOptionElement} option
+ */
+function describeOption(item, option) {
+    const subtitle = option.dataset.sbDescription?.trim();
+    return subtitle ? { ...item, subtitle } : item;
+}
+
+/**
+ * A `small` hint that sits between a title and its control ("Won't be used in groups."), or before the wrapper that holds a
+ * field with only its action buttons (Regex Presets). The row shows it as its own caption, so the caller hides the original.
+ * @param {HTMLElement} control
+ * @param {HTMLElement[]} titles
+ * @returns {HTMLElement|null}
+ */
+function takeHintBefore(control, titles) {
+    let anchor = control;
+    const wrapper = control.parentElement;
+    if (!control.previousElementSibling && wrapper && wrapper !== control.closest('.ds-row, .ds-pref-group')
+        && [...wrapper.children].every(node => node === control || node.matches(SB_EXT_ACTION_SELECTOR))) {
+        anchor = wrapper;
+    }
+    const hint = anchor.previousElementSibling;
+    if (!(hint instanceof HTMLElement) || !hint.matches('small') || titles.includes(hint) || hint.querySelector(SB_EXT_FOREIGN_SELECTOR)) return null;
+    return hint.textContent?.trim() ? hint : null;
+}
+
+/**
+ * Moves the text of a hint into the caption of the row built for it, with its translation key, and hides what is left.
+ * @param {HTMLElement} row
+ * @param {HTMLElement|null} hint
+ */
+function carryHint(row, hint) {
+    if (!hint) return;
+    const caption = row.querySelector(':scope > .ds-row-text > .ds-row-subtitle:not(.ds-select-row__detail), :scope > .ds-row-textarea__caption');
+    if (caption instanceof HTMLElement) moveCaption(caption, hint, { keepSource: true });
+    hint.classList.add('sb-legacy-search-hidden');
+}
+
+/**
+ * Gives a range the slider row. Other pages get theirs from the row pass, which leaves a range alone when
+ * its wrapper holds several; an extension that lists its sliders one after another is such a wrapper.
+ * The title (with the live value the extension writes into it), the range and a counter beside it move
+ * into a row of their own at the range's place. A trailing `small` in the title ("0 = default") becomes
+ * the subtitle, and a button in the title (a restore or auto-adjust icon) moves to the row's end.
+ *
+ * @param {HTMLInputElement} range
+ * @param {{nodes: HTMLElement[], source: string}} found
+ */
+function adoptExtensionSlider(range, found) {
+    const [title] = found.nodes;
+    const counter = range.nextElementSibling instanceof HTMLInputElement && range.nextElementSibling.dataset.for === range.id ? range.nextElementSibling : null;
+    const after = counter ?? range;
+    // The section pass can pull a bare range into a group of its own and leave its label behind, so a label that names the range
+    // by `for` travels to the range even when it no longer sits beside it.
+    const adjacent = title?.nextElementSibling === range || title?.nextElementSibling === after;
+    if (!(title instanceof HTMLElement) || (!adjacent && found.source !== 'label')) return false;
+
+    const actions = [...title.querySelectorAll(SB_EXT_ACTION_SELECTOR)];
+    const hint = [...title.querySelectorAll('small')].pop();
+    const wrapper = document.createElement('div');
+    (adjacent ? title : range).before(wrapper);
+    wrapper.append(title, range, ...(counter ? [counter] : []));
+    if (hint && hint.textContent?.trim() && title.textContent?.trim() !== hint.textContent.trim()) {
+        hint.classList.add('ds-row-subtitle');
+        wrapper.append(hint);
+    }
+    // `title_restorable` is the extension's bold, tracked heading for a label with a restore icon; a row title is a plain title.
+    title.classList.remove('title_restorable');
+    normalizeCustomizeField(wrapper, range, { subtitles: 'titled' });
+    wrapper.querySelector(':scope > .ds-row-suffix')?.append(...actions);
+    sbExtensionControllers.set(range, {});
+    return true;
+}
+
+/**
  * Gives one control the row that fits it, inside the wrapper the extension put it in.
  *
- * @param {HTMLInputElement|HTMLSelectElement} control
- * @param {'entry'|'select'|'spin'} kind
+ * @param {HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement} control
+ * @param {'entry'|'select'|'spin'|'textarea'} kind
  * @param {{title: string, nodes: HTMLElement[], source: string}} found
  * @returns {boolean}
  */
@@ -1717,15 +1795,35 @@ function adoptExtensionField(control, kind, found) {
     const { actions, bars } = findTrailingActions(control, found.nodes);
     let row;
     if (kind === 'select') {
+        const hint = found.source === 'preceding' ? null : takeHintBefore(control, found.nodes);
         row = createSelectRow({
             select: /** @type {HTMLSelectElement} */ (control),
             label: found.title,
+            subtitle: hint?.textContent?.trim() || undefined,
             field,
             noneLabel: control.dataset.placeholder ?? '',
             searchLabel: t`Search`,
             emptyText: t`No results`,
             suffix: actions,
+            mapItem: describeOption,
         });
+        carryHint(row.row, hint);
+    } else if (kind === 'textarea') {
+        const subtitle = takeHintBefore(control, found.nodes);
+        row = createTextAreaField({
+            label: found.title,
+            field,
+            input: /** @type {HTMLTextAreaElement} */ (control),
+            subtitle: subtitle?.textContent?.trim() || undefined,
+            expandLabel: t`Expand the editor`,
+        });
+        // A refresh or restore icon of the old title stays beside the label, ahead of Expand.
+        for (const action of actions) row.expand ? row.labelRow.insertBefore(action, row.expand) : row.labelRow.append(action);
+        // The extension drew its own Expand icon for this field; the row has one now.
+        for (const own of document.querySelectorAll('.editor_maximize[data-for]:not(.ds-row-textarea__expand)')) {
+            if (own instanceof HTMLElement && own.dataset.for === control.id && !row.row.contains(own)) own.classList.add('sb-legacy-search-hidden');
+        }
+        carryHint(row.row, subtitle);
     } else if (kind === 'spin') {
         row = createSpinRow({ label: found.title, field, input: /** @type {HTMLInputElement} */ (control), normalize: false });
         // Numeric keypads of some phones have no decimal point, so a fractional step asks for the decimal one.
@@ -1756,10 +1854,10 @@ function adoptExtensionField(control, kind, found) {
  * Idempotent, because it runs again whenever the extension rebuilds part of its page.
  *
  * @param {HTMLElement} scope the extension's container
- * @returns {{selects: number, numbers: number, entries: number, left: {id: string, type: string, reason: string}[]}}
+ * @returns {{selects: number, numbers: number, entries: number, textareas: number, sliders: number, left: {id: string, type: string, reason: string}[]}}
  */
 export function normalizeExtensionSettings(scope) {
-    const report = { selects: 0, numbers: 0, entries: 0, left: [] };
+    const report = { selects: 0, numbers: 0, entries: 0, textareas: 0, sliders: 0, left: [] };
     if (!(scope instanceof HTMLElement)) return report;
 
     // Switches come from the row pass of the other pages; a tooltip becomes the subtitle and a row
@@ -1772,8 +1870,8 @@ export function normalizeExtensionSettings(scope) {
         skip: [leftAreas, entriesOnly].filter(Boolean).join(', '),
     });
 
-    for (const control of scope.querySelectorAll('select, input')) {
-        if (!(control instanceof HTMLSelectElement || control instanceof HTMLInputElement)) continue;
+    for (const control of scope.querySelectorAll('select, input, textarea')) {
+        if (!(control instanceof HTMLSelectElement || control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement)) continue;
         if (control.closest('.ds-select-row')) {
             sbExtensionControllers.get(control)?.sync?.();
             continue;
@@ -1783,7 +1881,9 @@ export function normalizeExtensionSettings(scope) {
 
         const kind = control instanceof HTMLSelectElement
             ? (control.size > 1 ? null : 'select')
-            : control.type === 'number' ? 'spin' : SB_EXT_ENTRY_TYPES.has(control.type) ? 'entry' : null;
+            : control instanceof HTMLTextAreaElement ? (control.readOnly ? null : 'textarea')
+                : control.type === 'range' ? 'slider'
+                    : control.type === 'number' ? 'spin' : SB_EXT_ENTRY_TYPES.has(control.type) ? 'entry' : null;
         if (!kind) continue;
         if (kind === 'spin' && (control.dataset.for || control.closest('.range-block-counter'))) continue;
 
@@ -1792,7 +1892,7 @@ export function normalizeExtensionSettings(scope) {
             leave(SB_EXT_LEFT_FIELDS.get(control.id));
             continue;
         }
-        if (kind !== 'entry' && entriesOnly && control.closest(entriesOnly)) {
+        if (kind !== 'entry' && kind !== 'slider' && entriesOnly && control.closest(entriesOnly)) {
             leave('laid out by the provider');
             continue;
         }
@@ -1815,8 +1915,13 @@ export function normalizeExtensionSettings(scope) {
             continue;
         }
 
+        if (kind === 'slider') {
+            if (adoptExtensionSlider(/** @type {HTMLInputElement} */ (control), found)) report.sliders++;
+            else leave('its title is not right before it');
+            continue;
+        }
         adoptExtensionField(control, kind, found);
-        report[kind === 'select' ? 'selects' : kind === 'spin' ? 'numbers' : 'entries']++;
+        report[kind === 'select' ? 'selects' : kind === 'spin' ? 'numbers' : kind === 'textarea' ? 'textareas' : 'entries']++;
     }
 
     return report;
