@@ -4,6 +4,7 @@ import { captureVisibleMessageAnchor, restoreVisibleMessageAnchor } from '../../
 import { eventSource, event_types } from '../../../events.js';
 import { t } from '../../../i18n.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
+import { attachSortableKeys } from '../../../sillybunny-editor/reorder-menu.js';
 import { registerSidePanel } from '../../../sillybunny-editor/side-panel.js';
 import { createStatusPage, spinnerMarkup } from '../../../sillybunny-editor/status-page.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
@@ -852,6 +853,11 @@ function setupPanelSortable() {
             const orderedIds = body.children('.ica--tpanel-agent').map((_, el) => el.dataset.agentId).get().filter(Boolean);
             await applyPanelReorder(orderedIds);
         },
+    });
+    // A section is found again by its agent, because the panel builds its sections anew after each move.
+    attachSortableKeys(body[0], {
+        name: row => row.querySelector('.ica--tpanel-agent-name')?.textContent,
+        key: row => row.dataset.agentId,
     });
 }
 

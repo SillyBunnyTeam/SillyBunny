@@ -577,7 +577,7 @@ for (const viewport of WINDOW_VIEWPORTS) {
         expect(ruleLayout.every(layout => Object.values(layout).every(Boolean))).toBe(true);
         const scopeLayout = await debuggerPopup.locator('#regex_debugger_rules').evaluate(container => ({
             headingsOutsideLists: [...container.querySelectorAll(':scope > .regex-debugger-list-header')].every(header => header.parentElement === container),
-            scopeListsAreBoxed: [...container.querySelectorAll(':scope > .sortable-list')].every(list => parseFloat(getComputedStyle(list).borderTopWidth) > 0),
+            scopeListsAreBoxed: [...container.querySelectorAll(':scope > .sortable-list')].every(list => getComputedStyle(list).boxShadow !== 'none' && parseFloat(getComputedStyle(list).borderTopWidth) === 0),
         }));
         expect(scopeLayout).toEqual({ headingsOutsideLists: true, scopeListsAreBoxed: true });
         if (viewport.width <= 450) {

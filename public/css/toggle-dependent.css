@@ -565,10 +565,6 @@ label[for="model_sampling_profiles_enabled"]:has(input:checked)~#model_sampling_
     color: var(--golden);
 }
 
-#advanced-formatting-cc-notice {
-    display: none !important;
-}
-
 #AdvancedFormatting.sb-chat-completion-mode [data-cc-null]:not([data-cc-chat-completion-visible]) {
     display: none !important;
 }

@@ -555,6 +555,24 @@ function adoptWrappedButtonRows(scope) {
     }
 }
 
+/**
+ * A button that sits loose in an extension page's group, beside rows that the page has adopted (Translate's Clear Translations), gets
+ * a button row of its own, like the buttons of {@link adoptWrappedButtonRows}. A group without rows is left alone: its button
+ * is part of a layout that this pass did not change.
+ * @param {HTMLElement} scope
+ */
+function adoptLooseButtonRows(scope) {
+    for (const group of scope.querySelectorAll('.ds-pref-group')) {
+        if (!group.querySelector(':scope > .ds-row')) continue;
+        for (const button of group.querySelectorAll(':scope > .menu_button:not(.ds-row)')) {
+            if (!(button instanceof HTMLElement)) continue;
+            const next = button.nextSibling;
+            const row = createButtonRow(button);
+            if (row) group.insertBefore(row, next);
+        }
+    }
+}
+
 /** @param {HTMLElement} row @param {boolean} insensitive */
 export function setRowInsensitive(row, insensitive) {
     if (row.classList.contains('is-insensitive') === insensitive) return;
@@ -1963,6 +1981,7 @@ export function normalizeExtensionSettings(scope) {
     }
 
     adoptWrappedButtonRows(scope);
+    adoptLooseButtonRows(scope);
 
     return report;
 }

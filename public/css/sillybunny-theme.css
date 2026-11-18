@@ -3948,9 +3948,9 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     width: 100%;
     min-width: 0;
     padding: 20px;
-    border-radius: var(--sb-radius-lg);
+    border-radius: var(--sb-radius-card);
     background: transparent;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 82%, transparent);
+    border: 0;
     box-shadow: var(--sb-shadow-card);
 }
 
@@ -6456,17 +6456,6 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     white-space: nowrap;
 }
 
-/* Groups inside dialogs and windows: boxed list (12px, 8% tint). */
-.sb-dialog .ds-pref-group {
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: var(--sb-radius-card);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
-}
-
-:root[data-sb-surface-tone='light'] .sb-dialog .ds-pref-group {
-    background: var(--sb-layer-view);
-}
-
 .sb-dialog .ds-pref-group-header {
     margin: 0 0 8px;
     padding: 0 4px;
@@ -6686,7 +6675,7 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
     :is(
         .sb-action-popover,
         .sb-action-sheet,
-        .sb-press-tooltip,
+        .sbca-mention-menu,
         #options,
         #extensionsMenu,
         .actionButtonsModal.options-content,

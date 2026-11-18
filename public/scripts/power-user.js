@@ -94,6 +94,7 @@ import { configureFolderStore, normalizeFoldersData } from './sillybunny-folders
 // SillyBunny: present the AI form with shared rows; generation and validation stay upstream.
 import { customCssAiOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
 import { setIconBusy } from './sillybunny-editor/status-page.js'; // SillyBunny: the shared spinner
+import { createBanner } from './sillybunny-editor/banner.js'; // SillyBunny: the shared banner
 // SillyBunny: keep debug actions in the shared Window rows without replacing delegated controls.
 import { adaptDebugMenu } from './sillybunny-editor/adapters/window-tools-dialogs.js';
 
@@ -4526,7 +4527,17 @@ jQuery(async () => {
         saveSettingsDebounced();
     });
 
-    $('#movingUIreset, #movingUIOffscreenReset').on('click', () => resetMovablePanels());
+    $('#movingUIreset').on('click', () => resetMovablePanels());
+    // SillyBunny: the off-screen warning is a banner with its one action, not an info block with a button inside.
+    const offscreenBanner = createBanner({
+        title: t`A saved MovingUI panel position appears to be off-screen`,
+        actionLabel: t`Reset Panels`,
+        onActivate: () => resetMovablePanels(),
+    });
+    const offscreenReset = offscreenBanner.element.querySelector('.sb-banner__action');
+    offscreenReset?.setAttribute('id', 'movingUIOffscreenReset');
+    offscreenReset?.setAttribute('title', t`Reset MovingUI panel sizes/locations.`);
+    $('#movingUIOffscreenWarning').append(offscreenBanner.element);
 
     $('#avatar_style').on('change', function () {
         const value = $(this).find(':selected').val();

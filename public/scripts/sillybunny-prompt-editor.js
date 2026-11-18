@@ -2,7 +2,7 @@ import { eventSource, event_types, getRequestHeaders, main_api } from '../script
 import { createPromptEditorModel, PROMPT_EDITOR_UTILITY_FIELDS as UTILITY_FIELDS } from './sillybunny-prompt-editor-model.js';
 import { promptManager } from './openai.js';
 import { openActionMenu, openPopover, closeActionMenu } from './sillybunny-action-menu.js';
-import { play, MOTION_FAST, MOTION_SURFACE } from './sillybunny-motion.js';
+import { play, MOTION_FAST } from './sillybunny-motion.js';
 import { Popup, POPUP_RESULT } from './popup.js';
 import { confirmDestructiveAction } from './sillybunny-delete-confirm.js';
 import { getTokenCountAsync, getTokenizerModel } from './tokenizers.js';
@@ -201,7 +201,7 @@ export function initializePromptEditor(column) {
     let listTokenTimer = null;
     let tokenRequest = 0;
     let placingCounts = false;
-    let toastTimer = null;
+    let activeToast = null;
     let replayingChange = false;
     let stylesReady = false;
     let tokenizerKey = '';
@@ -375,22 +375,23 @@ export function initializePromptEditor(column) {
     }
 
     function toast(message, undo) {
-        clearTimeout(toastTimer);
-        root.querySelector('.sb-prompt-toast')?.remove();
-        const node = element('div', 'sb-prompt-toast');
-        node.setAttribute('role', 'status');
-        node.append(element('span', '', message));
-        if (undo) node.append(button(t`Undo`, null, () => {
-            run(undo);
-            node.remove();
-            synchronize();
-        }));
-        root.append(node);
-        play(node, [{ opacity: 0, transform: 'translateY(100%)' }, { opacity: 1, transform: 'none' }], { duration: MOTION_SURFACE });
-        toastTimer = setTimeout(() => {
-            if (node.contains(document.activeElement)) return;
-            play(node, [{ opacity: 1 }, { opacity: 0, transform: 'scale(0.95)' }], { duration: MOTION_SURFACE, onFinish: () => node.remove() });
-        }, 5000);
+        if (activeToast) toastr.clear(activeToast, { force: true });
+        const body = element('div', '', message);
+        if (undo) {
+            body.append(button(t`Undo`, null, () => {
+                run(undo);
+                toastr.clear(activeToast, { force: true });
+                synchronize();
+            }));
+        }
+        const shown = toastr.info(body, '', {
+            timeOut: 5000,
+            escapeHtml: false,
+            onHidden: () => {
+                if (activeToast === shown) activeToast = null;
+            },
+        });
+        activeToast = shown;
     }
 
     function orderedIds() {
@@ -1680,7 +1681,7 @@ export function initializePromptEditor(column) {
     Promise.all([
         loadListEditorStyles(),
         window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-entity-list.css?v=20261118zo', { id: 'deferred-entity-list-css' }),
-        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261118zt', { id: 'deferred-prompt-editor-css' }),
+        window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-prompt-editor.css?v=20261118zu', { id: 'deferred-prompt-editor-css' }),
     ])
         .then(() => { stylesReady = true; synchronize(); })
         .catch(error => toastr.error(error.message));

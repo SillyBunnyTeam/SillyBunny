@@ -294,6 +294,10 @@
 #sb-settings-page .sb-settings-mounted-shell #qr--settings .qr--setList {
   margin-inline: calc(-1 * var(--sb-density-row-padding-inline, 12px));
 }
+/* SillyBunny: the set list reaches the box edges, so a line of text in it takes the inset of a row. */
+#qr--settings .qr--setListEmpty {
+  padding: 6px var(--sb-density-row-padding-inline, 12px);
+}
 #qr--settings .qr--setList > .qr--item > .ds-entity-row__text > .qr--set {
   width: 100%;
 }

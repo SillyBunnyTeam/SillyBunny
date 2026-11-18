@@ -369,6 +369,38 @@ describe('the toast queue', () => {
         expect(shown(second)).toBe(true);
     });
 
+    test('a toast with a button that is pressed on touch stays while the press lasts, and the next one keeps waiting', async () => {
+        const press = (type, target, pointerType = 'touch') => {
+            const event = new Event(type, { bubbles: true });
+            Object.defineProperty(event, 'pointerType', { value: pointerType });
+            target.dispatchEvent(event);
+        };
+        const message = document.createElement('div');
+        const action = document.createElement('button');
+        message.append(action);
+        const first = toastr.info(message, '', { escapeHtml: false });
+        const second = toastr.info('second');
+
+        press('pointerdown', action);
+        await advance(20000);
+        expect(shown(first)).toBe(true);
+        expect(shown(second)).toBe(false);
+
+        press('pointerup', action);
+        await advance(5000);
+        expect(shown(second)).toBe(true);
+    });
+
+    test('a press with a mouse changes nothing: the pointer on the toast already holds it', async () => {
+        const first = toastr.info('first');
+        toastr.info('second');
+        const event = new Event('pointerdown', { bubbles: true });
+        Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+        first[0].dispatchEvent(event);
+        await advance(5000);
+        expect(first.hasClass('sb-toast-leaving')).toBe(true);
+    });
+
     test('toastr keeps its answers: preventDuplicates returns nothing and the app listener still hears every toast', () => {
         const events = [];
         toastr.subscribe(args => events.push([args.state, args.map.message]));

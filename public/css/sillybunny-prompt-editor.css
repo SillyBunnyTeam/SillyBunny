@@ -321,7 +321,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     border-radius: var(--sb-radius-control);
     background: transparent;
     color: inherit;
-    font-size: calc(var(--mainFontSize) * 1.08);
+    font-size: var(--sb-type-title);
     font-weight: 700;
     text-overflow: ellipsis;
 }
@@ -556,23 +556,6 @@ label.sb-prompt-property {
 
 .sb-prompt-editor[data-collapsed='true'] .sb-prompt-detail > .sb-editor-summary-row:not(:has(> :not([hidden]))) {
     display: none;
-}
-
-.sb-prompt-toast {
-    position: absolute;
-    bottom: 12px;
-    left: 50%;
-    translate: -50% 0;
-    z-index: var(--sb-z-toast);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    max-width: calc(100% - 24px);
-    padding: 8px 12px;
-    border-radius: var(--sb-radius-overlay);
-    background: var(--sb-layer-toast);
-    color: var(--sb-layer-toast-fg);
-    box-shadow: var(--sb-shadow-toast);
 }
 
 .sb-dialog.sb-prompt-properties-dialog .sb-prompt-properties {

@@ -30,7 +30,7 @@
         }
     </script>
     <script src="scripts/sillybunny-restart-cache-clear.js?v=20261013a"></script>
-    <link rel="preload" as="style" href="style.css?v=20261118zt">
+    <link rel="preload" as="style" href="style.css?v=20261118zu">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
@@ -57,14 +57,14 @@
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link rel="stylesheet" type="text/css" href="style.css?v=20261118zt">
+    <link rel="stylesheet" type="text/css" href="style.css?v=20261118zu">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
-    <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css?v=20261118zf">
+    <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css?v=20261118zu">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20261117zc">
     <!-- SillyBunny: this cache key tracks fork edits to the mobile stylesheet. -->
     <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261118zb" media="(max-width: 768px)">
     <!-- SillyBunny: shell stylesheet cache keys track fork CSS changes without changing upstream asset URLs. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261118zt">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261118zu">
     <!-- SillyBunny: the mobile surface stylesheet cache key tracks its fork-owned responsive rules. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261112t" media="(max-width: 768px)">
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
@@ -75,7 +75,7 @@
     <link rel="preload" as="style" href="css/sillybunny-character-list.css?v=20261118zo" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261118zo" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261118zo">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261118zo">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261118zu">
     <!-- SillyBunny: the editor chrome sheet is deferred, so it stays out of the blocking-CSS budget. The editors, the lists and the windows that use it load it through loadListEditorStyles() and wait for it before they show; the character and group editors are held hidden until it applies (holdEditorsUntilStyled() in sillybunny-editor/list-shell.js). Keep this version aligned with the runtime loader URLs. -->
     <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261118zo" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
@@ -4417,12 +4417,6 @@
                         </div>
                     </div>
                 </div>
-                <div id="advanced-formatting-cc-notice" class="info-block warning">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                    <span data-i18n="Text Completion-only sections are hidden while message-style Chat Completions are active.">
-                        Text Completion-only sections are hidden while message-style Chat Completions are active.
-                    </span>
-                </div>
                 <div class="flex-container spaceEvenly">
                     <div id="ContextSettings" class="flex-container flexNoGap flexFlowColumn flex1">
                         <div>
@@ -5958,15 +5952,8 @@
                                     <span data-i18n="mui_reset">Reset</span>
                                 </div>
                             </div>
-                            <!-- SillyBunny: surface recovery when restored MovingUI geometry puts panels outside the viewport. -->
-                            <div id="movingUIOffscreenWarning" class="info-block warning displayNone">
-                                <i class="fa-solid fa-triangle-exclamation margin-r5"></i>
-                                <span data-i18n="A saved MovingUI panel position appears to be off-screen.">A saved MovingUI panel position appears to be off-screen.</span>
-                                <div id="movingUIOffscreenReset" title="Reset MovingUI panel sizes/locations." class="menu_button margin0" data-i18n="[title]Reset MovingUI panel sizes/locations.">
-                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
-                                    <span data-i18n="Reset Panels">Reset Panels</span>
-                                </div>
-                            </div>
+                            <!-- SillyBunny: power-user.js mounts the shared banner here, with Reset Panels as its one action. -->
+                            <div id="movingUIOffscreenWarning" class="displayNone"></div>
                             <div id="MovingUI-presets-block" class="flex-container alignitemscenter">
                                 <div class="flex-container alignItemsFlexEnd">
                                     <label for="movingUIPresets" title="MovingUI preset. Predefined/saved draggable positions." data-i18n="[title]MovingUI preset. Predefined/saved draggable positions">

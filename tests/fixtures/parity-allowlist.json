@@ -3,10 +3,8 @@
     "entries": [
         {"family":"dialog","surface":"dialog.alert.legacy-dialogue-popup","viewport":"1440x900","part":"response-row-alert","property":"markup","value":"legacy","canonical":"popup","kind":"temporary","reason":"outlier at the base"},
         {"family":"dialog","surface":"dialog.alert.legacy-dialogue-popup","viewport":"390x844","part":"response-row-alert","property":"markup","value":"legacy","canonical":"popup","kind":"temporary","reason":"outlier at the base"},
-        {"family":"editor","surface":"editor.quick-reply","viewport":"1440x900","part":"group-box","property":"borderTopWidth","value":1,"canonical":0,"kind":"temporary","reason":"outlier at the base"},
         {"family":"editor","surface":"editor.quick-reply","viewport":"1440x900","part":"group-heading","property":"markup","value":"own","canonical":"ds-heading","kind":"temporary","reason":"outlier at the base"},
         {"family":"editor","surface":"editor.quick-reply","viewport":"1440x900","part":"header","property":"markup","value":"dialog-header","canonical":"editor-header","kind":"temporary","reason":"outlier at the base"},
-        {"family":"editor","surface":"editor.quick-reply","viewport":"390x844","part":"group-box","property":"borderTopWidth","value":1,"canonical":0,"kind":"temporary","reason":"outlier at the base"},
         {"family":"editor","surface":"editor.quick-reply","viewport":"390x844","part":"group-heading","property":"markup","value":"own","canonical":"ds-heading","kind":"temporary","reason":"outlier at the base"},
         {"family":"editor","surface":"editor.quick-reply","viewport":"390x844","part":"header","property":"markup","value":"dialog-header","canonical":"editor-header","kind":"temporary","reason":"outlier at the base"},
         {"family":"editor","surface":"editor.regex","viewport":"1440x900","part":"group-heading","property":"markup","value":"own","canonical":"ds-heading","kind":"temporary","reason":"outlier at the base"},
@@ -44,9 +42,7 @@
         {"family":"header","surface":"header.editor.persona","viewport":"390x844","part":"title","property":"markup","value":"own","canonical":"dialog","kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.editor.persona-settings","viewport":"1440x900","part":"title","property":"markup","value":"own","canonical":"dialog","kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.editor.persona-settings","viewport":"390x844","part":"title","property":"markup","value":"own","canonical":"dialog","kind":"temporary","reason":"outlier at the base"},
-        {"family":"header","surface":"header.editor.prompt","viewport":"1440x900","part":"title","property":"fontSize","value":16,"canonical":15,"kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.editor.prompt","viewport":"1440x900","part":"title","property":"markup","value":"own","canonical":"dialog","kind":"temporary","reason":"outlier at the base"},
-        {"family":"header","surface":"header.editor.prompt","viewport":"390x844","part":"title","property":"fontSize","value":16,"canonical":15,"kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.editor.prompt","viewport":"390x844","part":"title","property":"markup","value":"own","canonical":"dialog","kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.editor.worldinfo-entry","viewport":"1440x900","part":"title","property":"markup","value":"own","canonical":"dialog","kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.editor.worldinfo-entry","viewport":"390x844","part":"title","property":"markup","value":"own","canonical":"dialog","kind":"temporary","reason":"outlier at the base"},
@@ -77,7 +73,6 @@
         {"family":"header","surface":"header.side-panel.authors-note","viewport":"1440x900","part":"button","property":"markup","value":"dialog","canonical":"shared","kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.side-panel.authors-note","viewport":"390x844","part":"button","property":"markup","value":"dialog","canonical":"shared","kind":"temporary","reason":"outlier at the base"},
         {"family":"header","surface":"header.side-panel.chat-sidebar","viewport":"1440x900","part":"button","property":"markup","value":"dialog","canonical":"shared","kind":"temporary","reason":"outlier at the base"},
-
         {"family":"list","surface":"list.extensions-manager","viewport":"*","part":"row","property":"columnGap","value":6,"canonical":10,"kind":"registered","reason":"DESIGN.md Boxed Lists and Rows: a list in a dialog has switch rows (50px, 6px gap); the 52px minimum is for rows in list sidebars"},
         {"family":"list","surface":"list.extensions-manager","viewport":"*","part":"box","property":"markup","value":"group","canonical":"entity-list","kind":"registered","reason":"DESIGN.md Boxed Lists and Rows (Reordering): the markup stays upstream's for compatibility with upstream and its extensions; the rows are upstream's switch rows, whose delegated btn_* handlers extensions hook"},
         {"family":"list","surface":"list.extensions-manager","viewport":"*","part":"row","property":"markup","value":"own","canonical":"entity-row","kind":"registered","reason":"DESIGN.md Boxed Lists and Rows (Reordering): the markup stays upstream's for compatibility with upstream and its extensions; the rows are upstream's switch rows, whose delegated btn_* handlers extensions hook"},

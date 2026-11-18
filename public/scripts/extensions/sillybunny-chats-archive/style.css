@@ -382,10 +382,10 @@
     flex-direction: column;
     gap: 2px;
     overflow-y: auto;
-    padding: var(--sbca-space-xs);
-    border: 1px solid var(--sbca-border);
-    border-radius: var(--sb-radius-button);
-    background: var(--sbca-surface);
+    padding: 6px;
+    border: 0;
+    border-radius: var(--sb-radius-overlay);
+    background: var(--sb-layer-popover);
     box-shadow: var(--sb-shadow-popover);
 }
 

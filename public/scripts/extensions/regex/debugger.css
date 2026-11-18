@@ -9,9 +9,10 @@
     margin: 0 0 10px;
     padding: 0;
     list-style: none;
-    border: 1px solid var(--SmartThemeBorderColor);
+    border: 0;
     border-radius: var(--sb-radius-card, 12px);
-    background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
+    background: var(--sb-card-fill);
+    box-shadow: var(--sb-shadow-card);
     overflow: hidden;
 }
 
@@ -38,9 +39,10 @@
     display: grid;
     grid-template-columns: 24px 24px minmax(0, 1fr) 40px;
     align-items: center;
-    padding: 8px 10px;
+    min-height: var(--sb-density-row-min-height, 50px);
+    padding: 6px var(--sb-density-row-padding-inline, 12px);
     cursor: pointer;
-    gap: 5px;
+    gap: 6px;
 }
 
 #regex_debugger_rules .regex-debugger-rule {
@@ -107,8 +109,14 @@
     margin: 0;
 }
 
-.regex-debugger-rule:hover {
-    filter: brightness(1.1);
+@media (hover: hover) {
+    .regex-debugger-rule:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+}
+
+.regex-debugger-rule:active {
+    background: var(--sb-flat-active-bg);
 }
 
 .regex-debugger-rule .handle {
@@ -234,7 +242,7 @@
         align-items: center;
         column-gap: 8px;
         row-gap: 1px;
-        padding: 8px 10px;
+        padding: 6px var(--sb-density-row-padding-inline, 12px);
     }
 
     .regex-debugger-rule .rule-details {

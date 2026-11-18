@@ -301,6 +301,27 @@ describe('the adopter', () => {
         expect(url.closest('.ds-row-actions').hidden).toBe(false);
     });
 
+    test('gives a loose button beside the rows of its group a button row, and leaves a group without rows alone', () => {
+        const container = mount(`
+            <div class="ds-pref-group">
+                <label for="translation_provider">Provider</label>
+                <select id="translation_provider"><option value="deepl">DeepL API</option></select>
+                <label for="translation_target_language">Target Language</label>
+                <select id="translation_target_language"><option value="en">English</option></select>
+                <div id="translation_clear" class="menu_button"><i class="fa-solid fa-trash-can"></i><span>Clear Translations</span></div>
+            </div>
+            <div class="ds-pref-group" id="buttons_only">
+                <div id="lone" class="menu_button"><span>Lone</span></div>
+            </div>`, 'translation_container');
+        normalizeExtensionSettings(container);
+
+        const clear = field(container, '#translation_clear');
+        const row = clear.closest('.ds-row-actions');
+        expect(row.parentElement).toBe(container.querySelector('.ds-pref-group'));
+        expect(row.querySelector('.ds-row-label').textContent).toBe('Clear Translations');
+        expect(field(container, '#lone').parentElement.id).toBe('buttons_only');
+    });
+
     test('reports a field that has no label and no placeholder, and leaves it as it was', () => {
         const container = mount('<div><select id="provider"><option>System</option></select></div>');
         const before = container.innerHTML;

@@ -1,7 +1,7 @@
 import { Fuse, lodash } from '../lib.js';
 
 import { saveSettings, substituteParams, getRequestHeaders, chat_metadata, this_chid, characters, saveCharacterDebounced, menu_type, eventSource, event_types, getExtensionPromptByName, saveMetadata, getCurrentChatId, extension_prompt_roles, create_save, createOrEditCharacter, name1, getOneCharacter, select_selected_character, getEntitiesList } from '../script.js';
-import { download, debounce, initScrollHeight, resetScrollHeight, parseJsonFile, extractDataFromPng, getFileBuffer, getCharaFilename, getSortableDelay, escapeRegex, PAGINATION_TEMPLATE, navigation_option, waitUntilCondition, isTrueBoolean, setValueByPath, flashHighlight, select2ModifyOptions, getSelect2OptionId, dynamicSelect2DataViaAjax, highlightRegex, select2ChoiceClickSubscribe, isFalseBoolean, getSanitizedFilename, checkOverwriteExistingData, getStringHash, parseStringArray, cancelDebounce, findChar, onlyUnique, equalsIgnoreCaseAndAccents, uuidv4, normalizeArray, getUniqueName, logSlashCommandWarn, addLongPressEvent, escapeHtml, setInfoBlock, clearInfoBlock } from './utils.js';
+import { download, debounce, initScrollHeight, resetScrollHeight, parseJsonFile, extractDataFromPng, getFileBuffer, getCharaFilename, getSortableDelay, escapeRegex, PAGINATION_TEMPLATE, navigation_option, waitUntilCondition, isTrueBoolean, setValueByPath, flashHighlight, select2ModifyOptions, getSelect2OptionId, dynamicSelect2DataViaAjax, highlightRegex, select2ChoiceClickSubscribe, isFalseBoolean, getSanitizedFilename, checkOverwriteExistingData, getStringHash, parseStringArray, cancelDebounce, findChar, onlyUnique, equalsIgnoreCaseAndAccents, uuidv4, normalizeArray, getUniqueName, logSlashCommandWarn, addLongPressEvent, escapeHtml } from './utils.js';
 import { extension_settings, getContext } from './extensions.js';
 import { NOTE_MODULE_NAME, getAuthorsNoteDepth, getAuthorsNotePosition, getAuthorsNoteRole, shouldWIAddPrompt } from './authors-note.js';
 import { isMobile } from './RossAscends-mods.js';
@@ -30,6 +30,7 @@ import { getTimedEffectWindow, getWorldInfoGroupNames, normalizeWorldInfoKey, no
 // SillyBunny: failed transfers must not leak optimistic entries into later saves
 import { captureWorldInfoMutation } from './sillybunny-world-info-model.js';
 // SillyBunny: native lorebook controls retain their handlers and results inside shared rows.
+import { createBanner } from './sillybunny-editor/banner.js'; // SillyBunny: the shared banner
 import { embeddedLorebookOptions, lorebookSelectOptions, lorebookSortingOptions } from './sillybunny-editor/adapters/preset-lorebook-dialogs.js';
 
 // SillyBunny divergence: World Info is integrated with the fork shell and auxiliary lorebook sources while retaining upstream scan helpers.
@@ -2762,8 +2763,9 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
         contentEl.appendChild(entryCountText);
         contentEl.appendChild(description);
 
-        const warningEl = document.createElement('div');
-        contentEl.appendChild(warningEl);
+        // SillyBunny: the clamp warning is a banner that the inputs show and hide, not an info block.
+        const clampBanner = createBanner({ title: '', revealed: false });
+        contentEl.appendChild(clampBanner.element);
 
         /** @type {(startInput: HTMLInputElement, stepInput: HTMLInputElement, ascendingInput: HTMLInputElement) => void} */
         const updateWarning = (startInput, stepInput, ascendingInput) => {
@@ -2771,9 +2773,13 @@ async function displayWorldEntries(name, data, navigation = navigation_option.no
             const stepVal = Number(stepInput.value);
             const isAscending = ascendingInput.checked;
             if (!isAscending && !isNaN(startVal) && !isNaN(stepVal) && startVal - (entryCount - 1) * stepVal < 0) {
-                setInfoBlock(warningEl, t`Some entries will be clamped to Order 0, causing collisions at the bottom. The last entry would reach ${startVal - (entryCount - 1) * stepVal} (${entryCount} entries, step ${stepVal}).`, 'warning');
+                const warning = t`Some entries will be clamped to Order 0, causing collisions at the bottom. The last entry would reach ${startVal - (entryCount - 1) * stepVal} (${entryCount} entries, step ${stepVal}).`;
+                clampBanner.setTitle(warning);
+                // A banner title clamps at three lines, so the whole text is also the tooltip.
+                clampBanner.element.title = warning;
+                clampBanner.show();
             } else {
-                clearInfoBlock(warningEl);
+                clampBanner.hide();
             }
         };
 

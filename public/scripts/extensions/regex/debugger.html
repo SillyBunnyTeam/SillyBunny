@@ -128,7 +128,8 @@
 
 <!-- Template for a single rule item -->
 <template id="regex_debugger_rule_template">
-    <li class="regex-debugger-rule" draggable="true">
+    <!-- SillyBunny: the explicit role keeps the row a list item when the keyboard moves make it focusable. -->
+    <li class="regex-debugger-rule" role="listitem" draggable="true">
         <i class="fa-solid fa-grip-vertical handle"></i>
         <label class="checkbox">
             <input type="checkbox" class="rule-enabled" checked />

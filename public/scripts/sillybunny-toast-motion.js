@@ -515,6 +515,36 @@ function applyMotionOptions(options) {
     return options;
 }
 
+/**
+ * A finger on a toast holds it like a pointer over it does. Touch sends no hover while the finger is down (the
+ * compatibility mouse events come after the release), so the press runs toastr's own hover handlers. A mouse
+ * already holds the toast by hovering it.
+ */
+function holdWhilePressed(jQuery, document) {
+    if (!document?.addEventListener) {
+        return;
+    }
+    let pressed = null;
+    const release = () => {
+        pressed?.triggerHandler('mouseleave');
+        pressed = null;
+    };
+    document.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'mouse' || !(event.target instanceof Element)) {
+            return;
+        }
+        const element = event.target.closest('#toast-container .toast');
+        if (!element) {
+            return;
+        }
+        release();
+        pressed = jQuery(element);
+        pressed.triggerHandler('mouseenter');
+    }, true);
+    document.addEventListener('pointerup', release, true);
+    document.addEventListener('pointercancel', release, true);
+}
+
 export function initializeToastMotion({ jQuery = globalThis.jQuery, toastr = globalThis.toastr } = {}) {
     if (initialized || !jQuery?.fn || !toastr) {
         return;
@@ -524,6 +554,7 @@ export function initializeToastMotion({ jQuery = globalThis.jQuery, toastr = glo
     jQuery.fn[TOAST_HIDE_METHOD] = sbToastOut;
     jQuery.fn[TOAST_HOLD_METHOD] = sbToastHold;
     hookSubscribe(toastr);
+    holdWhilePressed(jQuery, globalThis.document);
     for (const type of NOTIFIER_TYPES) {
         wrapNotifier(toastr, type);
     }

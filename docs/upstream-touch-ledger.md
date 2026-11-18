@@ -321,11 +321,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### Quick Reply editor window
 | Field | Value |
 | --- | --- |
-| File | `public/scripts/extensions/quick-reply/src/QuickReply.js`; `public/scripts/extensions/quick-reply/src/QuickReplySetLink.js`; `public/scripts/extensions/quick-reply/style.css`. |
+| File | `public/scripts/extensions/quick-reply/src/QuickReply.js`; `public/scripts/extensions/quick-reply/src/QuickReplySetLink.js`; `public/scripts/extensions/quick-reply/src/ui/SettingsUi.js`; `public/scripts/extensions/quick-reply/style.css`. |
 | Area | Quick Reply editor, context-set rows, execution debugger and minimized debugger. |
 | Divergence reason | Upstream lays the Quick Reply editor out for desktop only. SillyBunny shows it in the shared Window with shared rows, so it scrolls and fits phones, and the execution debugger stacks on narrow screens. |
 | Target seam | `public/scripts/extensions/quick-reply/src/sillybunny-editor.js`; shared rows and `public/scripts/sillybunny-editor/popup-frame.js`. |
-| Adapter shape | Keep the existing template, control identities, IDs, input/change/click listeners, live mutation/persistence, parser, debug controller, Popup callbacks and results. Pass Window/Quick Reply title options, use the shared select/switch/entry/spin rows for adopted controls, and let the existing Popup frame stack the icon picker. Feature CSS is loaded by Quick Reply's manifest, so QR-only layout and minimized-debugger rules stay in `style.css`; the earlier QR container-query workaround is gone from the global theme. Since 2026-11-18 (UI polish sweep, task 14.6i, F-036): Title, Label and Automation ID are floating entry rows in their template order; in `style.css` the `.qr--labels` row rule skips floating rows, an entry input fills its field, the group does not clip the switcher list while it is open, and the `.qr--inputGroup` rules are removed. |
+| Adapter shape | Keep the existing template, control identities, IDs, input/change/click listeners, live mutation/persistence, parser, debug controller, Popup callbacks and results. Pass Window/Quick Reply title options, use the shared select/switch/entry/spin rows for adopted controls, and let the existing Popup frame stack the icon picker. Feature CSS is loaded by Quick Reply's manifest, so QR-only layout and minimized-debugger rules stay in `style.css`; the earlier QR container-query workaround is gone from the global theme. Since 2026-11-18 (UI polish sweep, task 14.6i, F-036): Title, Label and Automation ID are floating entry rows in their template order; in `style.css` the `.qr--labels` row rule skips floating rows, an entry input fills its field, the group does not clip the switcher list while it is open, and the `.qr--inputGroup` rules are removed. Since 2026-11-18 (task 14.6j, F-321 and F-330): the editor's group box takes the boxed-list group, and the set list's empty line (`.qr--setListEmpty` in `SettingsUi.js`) takes the row inset. |
 | Protecting tests | `tests/unit/quick-reply-editor.test.js`; `tests/quick-reply-editor.e2e.js` at 1440×900, 390×844 and 844×390; `tests/utility-dialogs.e2e.js`; `tests/quick-reply-bar-layout.e2e.js`; `tests/mobile-shell-smoke.e2e.js`; `tests/sillybunny-dialog-tiers.e2e.js`; `tests/popup-scroll.e2e.js`. The editor suite verifies live/persisted fields, options, context selection, icon page, execute/error/debugger controls, Ctrl+Enter, F9, Ctrl+Backslash, scrolling, split/stack debugger widths and minimization. |
 | Validation | 2026-10-22: HEAD characterization `tests/quick-reply-editor.e2e.js` 6/6 at 1440×900 and 390×844. Full Jest: 420 suites, 6,400 passed, 2 skipped, 1 snapshot passed. Root lint, test-file ESLint, and `git diff --check` pass; frontend budget passes at 16 blocking stylesheets / 1,002.9 KiB. Chromium: editor 16/16; requested editor + dialog tiers + Popup scroll + utility dialogs 62/62. Narrow debugger result width is asserted ≥90% of body at 390×844 and 844×390; desktop retains the side-by-side debugger split. Generation calls are intercepted; test slash commands use local fixtures. Refreshed 390/844 debug screenshots and 1440 desktop split were visually reviewed in `/tmp/opencode/quick-reply-layout-review/`. |
 | Rollback path | Remove the `adaptQuickReplyEditor()` call and the Window and title options in `QuickReply.js`, and revert the marked hunks in `QuickReplySetLink.js`. Delete the marked rules in `quick-reply/style.css`. Then drop `tests/unit/quick-reply-editor.test.js` and `tests/quick-reply-editor.e2e.js`. |
@@ -1568,6 +1568,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of the header, list, editor, settings, menu, dialog, status and panel families, the settings inventory, the related e2e specs. |
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6f). |
+| Owner | `TODO(copy)` |
+
+### Surfaces moved onto shared patterns in upstream-origin files (task 14.6j)
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/power-user.js` and `public/index.html` (the MovingUI off-screen warning as a shared banner with Reset Panels, which keeps `#movingUIOffscreenReset`; the never-shown `#advanced-formatting-cc-notice` removed); `public/scripts/world-info.js` (the clamp warning as a banner); `public/scripts/slash-commands.js` (`/help hotkeys` and `/help 3` open the Keyboard Shortcuts window); `public/scripts/extensions/regex/debugger.html` and `debugger.css` (`role="listitem"` on the rule template; boxed list and rows); `public/style.css` and `public/css/file-form.css` (image, video and swipe bars on the OSD fill and ink); `public/css/toggle-dependent.css` (rules of the removed notice). |
+| Area | Banners, overlaid controls, the regex debugger, shortcut help. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-editor/banner.js`; `openShortcutsWindow()` in `public/scripts/sillybunny-shortcuts.js`; `--sb-osd-bg` and `--sb-osd-ink`; `UPSTREAM_SORTABLES` in `public/scripts/sillybunny-editor/reorder-menu.js`. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6j; F-321 to F-330): each surface keeps its ids, toggles and handlers and takes the shared pattern; the MovingUI title loses its final period under a new i18n key; `hotkeys.html` and `system_message_types.HOTKEYS` stay, with no code path that shows them. |
+| Protecting tests | `tests/window-dialogs.e2e.js`; `tests/toast-queue.e2e.js`; `tests/unit/sillybunny-toast-motion.test.js`; the surface audit of `dialog.window.regex-debugger`, `editor.prompt`, `editor.quick-reply` and `panel.companion.panel`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of the changed surfaces, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6j). |
 | Owner | `TODO(copy)` |
 
 ### Capitalisation of SillyBunny-written labels in upstream-origin files

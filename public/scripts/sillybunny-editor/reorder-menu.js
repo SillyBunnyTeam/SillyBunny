@@ -377,6 +377,14 @@ export const UPSTREAM_SORTABLES = [
         options: { name: row => selectedTextOf(row, '.qr--set'), movable: row => row.classList.contains('qr--ctxItem') },
     },
     {
+        selector: '#completion_prompt_manager_list',
+        options: { name: row => textOf(row, '.pm-row-primary'), key: row => row.dataset.pmIdentifier },
+    },
+    {
+        selector: '#regex_debugger_rules_global, #regex_debugger_rules_scoped, #regex_debugger_rules_preset',
+        options: { name: row => textOf(row, '.rule-name'), key: row => row.dataset.id },
+    },
+    {
         selector: '.logit_bias_list, .openai_logit_bias_list',
         options: {
             name: row => valueOf(row, '.logit_bias_text, .openai_logit_bias_text'),

@@ -114,3 +114,29 @@ test('many errors at once are all kept, ahead of the notices that were waiting',
     expect(order.slice(0, 5), 'the errors are the first to show after the current toast').toEqual(waitingErrors);
     expect(order.filter(title => title.startsWith('Notice')).length, 'the oldest notices were dropped').toBeLessThanOrEqual(6);
 });
+
+test.describe('with a finger', () => {
+    test.use({ hasTouch: true });
+
+    test('a toast with a button stays while the finger is on it, and goes after the finger lifts', async ({ page }) => {
+        await page.evaluate(() => {
+            const body = document.createElement('div');
+            body.textContent = 'Removed';
+            const action = document.createElement('button');
+            action.className = 'menu_button';
+            action.textContent = 'Undo';
+            body.append(action);
+            window.toastr.info(body, '', { timeOut: 700, extendedTimeOut: 700, escapeHtml: false });
+        });
+        const held = page.locator('#toast-container .toast', { hasText: 'Removed' });
+        await expect(held).toBeVisible();
+        const box = await held.locator('button').boundingBox();
+        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        const session = await page.context().newCDPSession(page);
+        await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+        await page.waitForTimeout(2000);
+        await expect(held, 'the press holds the toast past its timeout').toBeVisible();
+        await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await expect(held, 'it goes once the press ends').toHaveCount(0, { timeout: 4000 });
+    });
+});

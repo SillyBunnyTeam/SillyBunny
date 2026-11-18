@@ -114,6 +114,8 @@ export class SettingsUi {
             const setListContainer = /** @type {HTMLElement} */ (clone.querySelector('.qr--setList'));
             setListContainer.innerHTML = '';
             const info = document.createElement('div');
+            // SillyBunny: the set list reaches the box edges, so its line of text takes a row's inset through this class.
+            info.classList.add('qr--setListEmpty');
             info.textContent = 'No character is currently loaded.';
             setListContainer.append(info);
         } else {
