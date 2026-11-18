@@ -7255,6 +7255,7 @@ function buildTopBar() {
             id: 'sb-left-shell-toggle',
             icon: getShellConfig('left').proxyIcon,
             label: getShellConfig('left').proxyLabel,
+            name: getShellConfig('left').proxyLabel,
             title: 'Open Backend Tools (Ctrl+U)',
         },
         () => toggleSettingsPage('left'),
