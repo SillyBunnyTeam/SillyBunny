@@ -7464,40 +7464,28 @@ function loadOpenAISettings(data, settings) {
     scheduleOpenAIUiRefresh();
 }
 
+// SillyBunny: each row shows one subtitle, the description of its current mode; the recommendation beside it was a second line.
 function updateBindPresetToConnectionHelp() {
     const copy = document.getElementById('bind_preset_to_connection_copy');
-    const tip = document.getElementById('bind_preset_to_connection_tip');
-
-    if (!(copy instanceof HTMLElement) || !(tip instanceof HTMLElement)) {
+    if (!(copy instanceof HTMLElement)) {
         return;
     }
 
-    if (oai_settings.bind_preset_to_connection) {
-        copy.textContent = t`Linked mode: choosing a preset can also switch the provider, model, and other connection-specific options saved inside that preset.`;
-        tip.textContent = t`Use this when each preset is meant for one exact API setup.`;
-        return;
-    }
-
-    copy.textContent = t`Independent mode: choosing a preset keeps your current provider and model, so one preset can be reused across multiple connections.`;
-    tip.textContent = t`Recommended for most setups and especially for shared preset libraries.`;
+    copy.textContent = oai_settings.bind_preset_to_connection
+        ? t`Linked mode: choosing a preset can also switch the provider, model, and other connection-specific options saved inside that preset`
+        : t`Independent mode: choosing a preset keeps your current provider and model, so one preset can be reused across multiple connections`;
 }
 
+// SillyBunny: see updateBindPresetToConnectionHelp().
 function updateBindPresetToSamplingHelp() {
     const copy = document.getElementById('bind_preset_to_sampling_copy');
-    const tip = document.getElementById('bind_preset_to_sampling_tip');
-
-    if (!(copy instanceof HTMLElement) || !(tip instanceof HTMLElement)) {
+    if (!(copy instanceof HTMLElement)) {
         return;
     }
 
-    if (shouldIncludeSamplingFieldsInPreset(oai_settings)) {
-        copy.textContent = t`Linked mode: choosing a preset also updates temperature, penalties, and other sampling sliders to values saved inside that preset.`;
-        tip.textContent = t`Use this when each preset stores its own sampling values.`;
-        return;
-    }
-
-    copy.textContent = t`Independent mode: choosing a preset leaves your current sampling sliders unchanged, so one set of sampling values can be reused across multiple presets.`;
-    tip.textContent = t`Recommended when different models need different sampling settings.`;
+    copy.textContent = shouldIncludeSamplingFieldsInPreset(oai_settings)
+        ? t`Linked mode: choosing a preset also updates temperature, penalties, and other sampling sliders to values saved inside that preset`
+        : t`Independent mode: choosing a preset leaves your current sampling sliders unchanged, so one set of sampling values can be reused across multiple presets`;
 }
 
 function syncModelSamplingProfilesUI() {

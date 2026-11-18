@@ -1510,6 +1510,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6c). |
 | Owner | `TODO(copy)` |
 
+### `public/index.html` and `public/scripts/openai.js` - the preset linking rows' descriptions
+
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` (`#bind_preset_to_connection_copy` and `#bind_preset_to_sampling_copy`); `public/scripts/openai.js` (`updateBindPresetToConnectionHelp()`, `updateBindPresetToSamplingHelp()`). |
+| Area | Backend ▸ Presets, Preset API/Sampler Linking. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The two description elements after each linking switch's label, which the settings presentation pass makes the row's subtitle. |
+| Adapter shape | The description of the current mode is written when the switch changes. Since 2026-11-18 (UI polish sweep, F-127, the user's choice "Keep the description"): one subtitle per row; the recommendation line after it (`#bind_preset_to_connection_tip`, `#bind_preset_to_sampling_tip`) is removed, and the one-sentence descriptions end without a period. |
+| Protecting tests | `tests/sillybunny-backend-settings.e2e.js` ("Preset API/Sampler Linking is a Chat Completions group of its own after Presets"); the surface audit of `settings.backend.presets`. |
+| Validation | 2026-11-18: root lint, the full unit run, contracts, the related e2e specs, the audit of `settings.backend.presets`. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (F-127). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |

@@ -294,12 +294,10 @@
                                                     <input id="bind_preset_to_connection" type="checkbox" />
                                                     <span data-i18n="Keep API/Model Linked to Preset">Keep API/Model Linked to Preset</span>
                                                 </label>
+                                                <!-- SillyBunny: one subtitle, the mode's description, which openai.js writes for the current mode. -->
                                                 <div id="bind_preset_to_connection_copy" class="toggle-description justifyLeft marginBot5">
-                                                    Independent mode keeps your current provider and model, so one preset can be reused across multiple connections.
+                                                    Independent mode: choosing a preset keeps your current provider and model, so one preset can be reused across multiple connections
                                                 </div>
-                                                <strong id="bind_preset_to_connection_tip" class="toggle-description justifyLeft">
-                                                    Recommended for most setups and especially for shared preset libraries.
-                                                </strong>
                                             </div>
                                             <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
                                                 <!-- SillyBunny: capitalisation by DESIGN.md -->
@@ -307,12 +305,10 @@
                                                     <input id="bind_preset_to_sampling" type="checkbox" checked />
                                                     <span data-i18n="Keep Sampling Settings Linked to Preset">Keep Sampling Settings Linked to Preset</span>
                                                 </label>
+                                                <!-- SillyBunny: one subtitle, the mode's description, which openai.js writes for the current mode. -->
                                                 <div id="bind_preset_to_sampling_copy" class="toggle-description justifyLeft marginBot5">
-                                                    Linked mode updates temperature, penalties, and other sampling sliders when switching presets.
+                                                    Linked mode: choosing a preset also updates temperature, penalties, and other sampling sliders to values saved inside that preset
                                                 </div>
-                                                <strong id="bind_preset_to_sampling_tip" class="toggle-description justifyLeft">
-                                                    Use this when each preset stores its own sampling values.
-                                                </strong>
                                             </div>
                                             <div class="marginTop10 sb-setting-inline-copy sb-setting-inline-copy-center">
                                                 <!-- SillyBunny: capitalisation by DESIGN.md -->

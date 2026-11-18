@@ -594,9 +594,11 @@ test('Preset API/Sampler Linking is a Chat Completions group of its own after Pr
     await expect(prompting.locator('#openai_api-presets :is(.inline-drawer, .sb-settings-flat-section)')).toHaveCount(0);
     // The copy blocks' `flex: 1 1 320px` basis was written for a row parent and becomes a height floor in a column.
     expect(await linking.locator('.sb-setting-inline-copy').evaluateAll(blocks => blocks.map(block => block.getBoundingClientRect().height < 150))).toEqual([true, true, true]);
-    const tips = linking.locator('strong.toggle-description');
-    await expect(tips).toHaveCount(2);
-    for (const tip of await tips.all()) await expect(tip).toHaveCSS('font-weight', '400');
+    // One subtitle per row: the description of the current mode, with no recommendation line after it (F-127).
+    await expect(linking.locator('strong.toggle-description')).toHaveCount(0);
+    for (const id of ['bind_preset_to_connection', 'bind_preset_to_sampling']) {
+        await expect(linking.locator(`#${id}_copy`)).toHaveText(/^(Linked|Independent) mode: choosing a preset [^.]+$/);
+    }
 
     await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
     await page.locator('#sb-universal-search input').fill('Preset API/Sampler Linking');
