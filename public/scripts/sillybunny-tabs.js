@@ -663,8 +663,6 @@ const SB_STORAGE_KEYS = Object.freeze({
     leftTab: 'sb-left-tab',
     rightTab: 'sb-right-tab',
     surfaceTransparency: 'sb-surface-transparency',
-    topbarScaleDesktop: 'sb-topbar-scale-desktop',
-    topbarScaleMobile: 'sb-topbar-scale-mobile',
     // The one stored list of label parts, read at every width. The name is from when it held the desktop label only.
     topbarLabelDesktopParts: 'sb-topbar-label-desktop-parts',
     // Read once, to seed the list above for a browser that stored only a phone value; nothing writes it.
@@ -1452,10 +1450,6 @@ const sbState = {
     bottomBarScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale)),
     desktopButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale)),
     mobileButtonScale: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.mobileButtonScale)),
-    topbarScale: {
-        desktop: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.topbarScaleDesktop)),
-        mobile: normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.topbarScaleMobile)),
-    },
     topbarLabel: {
         desktopParts: readTopbarLabelParts(),
         customText: normalizeTopbarCustomText(safeGetItem(SB_STORAGE_KEYS.topbarLabelCustomText)),
@@ -1713,14 +1707,6 @@ function formatTopbarScale(value) {
 }
 
 function seedTopbarScaleDefaults() {
-    if (safeGetItem(SB_STORAGE_KEYS.topbarScaleDesktop) === null) {
-        safeSetItem(SB_STORAGE_KEYS.topbarScaleDesktop, String(SB_TOPBAR_SCALE.defaultValue));
-    }
-
-    if (safeGetItem(SB_STORAGE_KEYS.topbarScaleMobile) === null) {
-        safeSetItem(SB_STORAGE_KEYS.topbarScaleMobile, String(SB_TOPBAR_SCALE.defaultValue));
-    }
-
     if (safeGetItem(SB_STORAGE_KEYS.bottomBarScale) === null) {
         safeSetItem(SB_STORAGE_KEYS.bottomBarScale, String(SB_TOPBAR_SCALE.defaultValue));
     }
@@ -1735,8 +1721,6 @@ function seedTopbarScaleDefaults() {
 }
 
 function restorePersistedTopbarState() {
-    sbState.topbarScale.desktop = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.topbarScaleDesktop));
-    sbState.topbarScale.mobile = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.topbarScaleMobile));
     sbState.bottomBarScale = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.bottomBarScale));
     sbState.desktopButtonScale = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.desktopButtonScale));
     sbState.mobileButtonScale = normalizeTopbarScale(safeGetItem(SB_STORAGE_KEYS.mobileButtonScale));
@@ -1794,30 +1778,6 @@ function setTopbarOffset(offset, { persist = true } = {}) {
     }
 
     applyTopbarOffset();
-}
-
-function setTopbarScale(mode, value, { persist = true } = {}) {
-    const storageKey = mode === 'mobile'
-        ? SB_STORAGE_KEYS.topbarScaleMobile
-        : mode === 'desktop'
-            ? SB_STORAGE_KEYS.topbarScaleDesktop
-            : '';
-
-    if (!storageKey) {
-        return;
-    }
-
-    const nextScale = normalizeTopbarScale(value);
-    const scaleFactor = Number((nextScale / 100).toFixed(2)).toString();
-
-    sbState.topbarScale[mode] = nextScale;
-    document.documentElement.style.setProperty(`--sb-topbar-scale-${mode}`, scaleFactor);
-
-    if (persist) {
-        safeSetItem(storageKey, String(nextScale));
-    }
-
-    updateThemePickerUi();
 }
 
 function setBottomBarScale(value, { persist = true } = {}) {
@@ -10037,8 +9997,6 @@ function updateThemePickerUi() {
 
     const sliderInput = document.getElementById('sb-surface-transparency-input');
     const sliderValue = document.getElementById('sb-surface-transparency-value');
-    const desktopTopbarScaleInput = document.getElementById('sb-topbar-scale-desktop-input');
-    const desktopTopbarScaleValue = document.getElementById('sb-topbar-scale-desktop-value');
     const bottomBarScaleInput = document.getElementById('sb-bottom-bar-scale-input');
     const bottomBarScaleValue = document.getElementById('sb-bottom-bar-scale-value');
     const desktopButtonScaleInput = document.getElementById('sb-desktop-button-scale-input');
@@ -10059,14 +10017,6 @@ function updateThemePickerUi() {
 
     if (sliderValue instanceof HTMLElement) {
         sliderValue.textContent = formatSurfaceTransparency(sbState.surfaceTransparency);
-    }
-
-    if (desktopTopbarScaleInput instanceof HTMLInputElement) {
-        desktopTopbarScaleInput.value = String(sbState.topbarScale.desktop);
-    }
-
-    if (desktopTopbarScaleValue instanceof HTMLElement) {
-        desktopTopbarScaleValue.textContent = formatTopbarScale(sbState.topbarScale.desktop);
     }
 
     if (bottomBarScaleInput instanceof HTMLInputElement) {
@@ -13041,8 +12991,6 @@ function initAll() {
     setPaperTextureEnabled(sbState.paperTextureEnabled, { persist: false });
     setPaperTextureOpacity(sbState.paperTextureOpacity, { persist: false });
     setCompactMode(sbState.compactMode, { persist: false });
-    setTopbarScale('desktop', sbState.topbarScale.desktop, { persist: false });
-    setTopbarScale('mobile', sbState.topbarScale.mobile, { persist: false });
     setBottomBarScale(sbState.bottomBarScale, { persist: false });
     setDesktopButtonScale(sbState.desktopButtonScale, { persist: false });
     setMobileButtonScale(sbState.mobileButtonScale, { persist: false });
@@ -13194,9 +13142,8 @@ function initAll() {
         setSurfaceTransparency(value) {
             setSurfaceTransparency(value);
         },
-        setTopbarScale(mode, value) {
-            setTopbarScale(mode, value);
-        },
+        // Kept as a no-op for extensions; the top bar scale has no control and is always 100.
+        setTopbarScale() {},
         setMobileButtonScale(value) {
             setMobileButtonScale(value);
         },
@@ -13227,10 +13174,8 @@ function initAll() {
         getSurfaceTransparency() {
             return sbState.surfaceTransparency;
         },
-        getTopbarScale(mode) {
-            return mode === 'mobile'
-                ? sbState.topbarScale.mobile
-                : sbState.topbarScale.desktop;
+        getTopbarScale() {
+            return SB_TOPBAR_SCALE.defaultValue;
         },
         getMobileButtonScale() {
             return sbState.mobileButtonScale;
