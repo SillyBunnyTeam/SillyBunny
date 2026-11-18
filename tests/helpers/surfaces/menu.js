@@ -828,7 +828,7 @@ export const surfaces = [
             root: PICKER_ROOT,
             ready: READY[PICKER_ROOT],
             async open(page) {
-                await chooseItem(page, 'New Agent from Template…', PICKER_ROOT);
+                await chooseItem(page, 'New Agent From Template…', PICKER_ROOT);
             },
         }],
     }),
