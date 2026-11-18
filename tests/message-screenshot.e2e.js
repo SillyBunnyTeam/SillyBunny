@@ -420,6 +420,42 @@ test.describe('desktop message screenshots', () => {
         expect(pageErrors).toEqual([]);
     });
 
+    test('never holds two screenshot forms when reopened while the first dialog is closing', async ({ page }) => {
+        await page.goto(APP_URL, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction('document.getElementById("preloader") === null', { timeout: 0 });
+        await testSetup.waitForAppReady({ page });
+        await installScreenshotMessage(page, 'reopen while closing');
+
+        const result = await page.evaluate(async () => {
+            const trigger = document.querySelector('#chat .mes .mes_screenshot');
+            const idCount = () => document.querySelectorAll('#message_screenshot_start_id').length;
+            const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+
+            trigger.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            while (!document.querySelector('.message_screenshot_popup[open]')) await frame();
+
+            // An out-of-range start ID keeps the dialog open, so cancelling is the way to start its exit animation.
+            document.querySelector('.message_screenshot_popup .popup-button-cancel').click();
+            while (!document.querySelector('.message_screenshot_popup[closing]')) await frame();
+            const closingWhenReopened = true;
+            trigger.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            let maximumIdCount = 0;
+            const deadline = performance.now() + 3000;
+            while (performance.now() < deadline) {
+                maximumIdCount = Math.max(maximumIdCount, idCount());
+                if (document.querySelector('.message_screenshot_popup[open]:not([closing])')) break;
+                await frame();
+            }
+            return { closingWhenReopened, maximumIdCount, finalIdCount: idCount() };
+        });
+
+        expect(result.closingWhenReopened).toBe(true);
+        expect(result.maximumIdCount).toBeLessThanOrEqual(1);
+        expect(result.finalIdCount).toBe(1);
+        await expect(page.locator('.message_screenshot_popup')).toHaveCount(1);
+    });
+
     test('exports message and wand screenshots with modern colors', async ({ page }) => {
         const screenshotErrors = [];
         page.on('console', message => {

@@ -13861,7 +13861,25 @@ async function downloadMessageScreenshot(startId, endId) {
     }
 }
 
+// SillyBunny: a closing popup stays in the document until its exit animation ends, and the form's fixed IDs would then exist twice.
+let messageScreenshotDialogSettled = Promise.resolve();
+
 async function promptForMessageScreenshotRange(messageId) {
+    const previousDialogSettled = messageScreenshotDialogSettled;
+    let settleDialog = () => {};
+    messageScreenshotDialogSettled = new Promise(resolve => {
+        settleDialog = resolve;
+    });
+    await previousDialogSettled;
+
+    try {
+        await showMessageScreenshotRangePopup(messageId);
+    } finally {
+        settleDialog();
+    }
+}
+
+async function showMessageScreenshotRangePopup(messageId) {
     const maximumMessageId = Math.max(chat.length - 1, 0);
     let captureStarted = false;
 
