@@ -11,6 +11,7 @@ import { getSharedGettingStartedState } from './getting-started.js';
 import { fitHomeHeader } from './header-fit.js';
 import { chooseHeroArt } from './hero-art.js';
 import { openHomeMenu } from './menu.js';
+import { openShellTarget } from './shell-targets.js';
 import { getVisibleRegions, parseDisplayMode } from './modes.js';
 import { beginPanelLifetime } from './panel-lifetime.js';
 import { describeTiles, mountTiles } from './tiles-view.js';
@@ -24,6 +25,7 @@ import { openAbout, openAssistantPicker, openBundledExtras, openGettingStarted, 
  * @property {() => string} getDisplayMode Reads the stored display mode.
  * @property {(mode: string) => void} setDisplayMode Applies and stores a display mode.
  * @property {() => unknown} openRecentChatsSettings
+ * @property {() => unknown} [retryRecentChats] Asks for the recent chats again, after a request for them failed.
  * @property {AssistantsContext} assistants What the assistant cards show and do.
  *
  * @typedef {Pick<Parameters<typeof mountAssistants>[1], 'getCards' | 'actions' | 'getThumbnailUrl'> & {
@@ -86,6 +88,36 @@ function mountFilteredEmptyState(panel) {
 }
 
 /**
+ * A failed request for the recent chats is a status page with the one action that can resolve it. The status page
+ * takes its base styles from a sheet that Home does not wait for, so it stays unpainted until the sheet is ready.
+ * @param {HTMLElement} panel
+ * @param {() => unknown} [retry] Asks for the recent chats again.
+ */
+function mountFailedState(panel, retry) {
+    const container = panel.querySelector('[data-recent-chat-empty-state="failed"]');
+    if (!container) {
+        return;
+    }
+
+    const { element } = createStatusPage({
+        state: 'error',
+        title: t`TODO(copy)`,
+        description: t`TODO(copy)`,
+        actions: retry ? [{ label: t`Try Again`, primary: true, onActivate: () => void retry() }] : [],
+        compact: true,
+    });
+    element.querySelectorAll('h3, .sb-status-page__description').forEach((text, index) => {
+        text.dataset.sbCopyPlaceholder = 'true';
+        text.dataset.sbCopySlot = index === 0 ? 'HOME-RECENT-FAILED-TITLE' : 'HOME-RECENT-FAILED-DESCRIPTION';
+    });
+    container.append(element);
+    container.style.visibility = 'hidden';
+    loadListEditorStyles()
+        .catch(error => console.warn('Failed to load the status page styles for Home.', error))
+        .finally(() => container.style.removeProperty('visibility'));
+}
+
+/**
  * The status page takes its base styles from the deferred editor-shell sheet, which Home does not wait for. The
  * container shows when a filter has no match. The first time it shows, it stays invisible until the sheet is
  * ready, which is at once when the sheet has loaded already.
@@ -116,6 +148,7 @@ function mountMenuButton(panel, { getDisplayMode, setDisplayMode, openRecentChat
         openRecentChatsSettings,
         showWelcome,
         showGettingStarted: () => gettingStarted.setHidden(false),
+        openPreferences: () => openShellTarget('customize'),
         openKeyboardShortcuts,
         openHelp,
         openAbout,
@@ -152,6 +185,7 @@ export function mountHome(panel, context) {
     const gettingStarted = getSharedGettingStartedState();
     mountEmptyStateArt(panel);
     mountFilteredEmptyState(panel);
+    mountFailedState(panel, context.retryRecentChats);
     mountMenuButton(panel, context, gettingStarted);
     lifetime.keep('tiles', mountTiles(panel, {
         state: gettingStarted,

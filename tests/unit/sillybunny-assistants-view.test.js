@@ -174,12 +174,12 @@ describe('a card with a file', () => {
 });
 
 describe.each([['missing', MISSING_TEWI], ['deleted', DELETED_TEWI]])('a card whose file is %s', (_state, card) => {
-    test('is insensitive: the card button and both footer buttons are disabled', () => {
+    test('is insensitive: the card button is disabled, and it has no chat buttons', () => {
         const { panel } = render([card]);
         const element = cardOf(panel, 'assistant-tewi');
 
         expect(overlay(element).disabled).toBe(true);
-        expect(footButtons(element).map(button => button.disabled)).toEqual([true, true]);
+        expect(footButtons(element)).toEqual([]);
     });
 
     test('has no menu, because D has nothing to put in it', () => {
@@ -187,16 +187,19 @@ describe.each([['missing', MISSING_TEWI], ['deleted', DELETED_TEWI]])('a card wh
         const element = cardOf(panel, 'assistant-tewi');
 
         expect(element.querySelector('.sbHomeRowMenu')).toBeNull();
-        expect(element.querySelectorAll('.sbHomeCardFooter > *')).toHaveLength(2);
+        expect(element.querySelector('.sbHomeCardFooter')).toBeNull();
     });
 
-    test('keeps its name and its subtitle, and adds no text', () => {
+    test('keeps its name and states that it is unavailable in place of its subtitle, as a copy placeholder', () => {
         const { panel } = render([card]);
         const element = cardOf(panel, 'assistant-tewi');
+        const subtitle = element.querySelector('.sbHomeCardSub');
 
         expect(element.querySelector('.sbHomeCardName').textContent).toBe('Tewi');
-        expect(element.querySelector('.sbHomeCardSub').textContent).toBe('Gege~ Are you a little down on your luck? Ask me anything!');
-        expect([...element.querySelectorAll('.sbHomeFootLabel')].map(label => label.textContent)).toEqual(['Start New Chat', 'Temporary Chat']);
+        expect(subtitle.textContent).toBe('TODO(copy)');
+        expect(subtitle.dataset.sbCopyPlaceholder).toBe('true');
+        expect(subtitle.dataset.sbCopySlot).toBe('AS-UNAVAILABLE');
+        expect(element.querySelector('.sbHomeFootLabel')).toBeNull();
         expect(element.hasAttribute('title')).toBe(false);
     });
 
@@ -241,14 +244,13 @@ describe('a card whose bundled file can be restored', () => {
             expect(element.querySelectorAll('.sbHomeCardFooter > *')).toHaveLength(1);
         });
 
-        test('names the button with the card, and gives it the icon of the footer buttons', () => {
+        test('names the button with the card, and gives it a label and no icon, as the footer buttons have', () => {
             const { panel } = render([card], { actions: managedActions() });
             const [button] = footButtons(cardOf(panel, 'assistant-tewi'));
 
             expect(button.getAttribute('aria-label')).toBe('Restore Tewi');
             expect(button.title).toBe('Restore Tewi');
-            expect(button.querySelector('i').className).toBe('fa-solid fa-rotate-left fa-fw');
-            expect(button.querySelector('i').getAttribute('aria-hidden')).toBe('true');
+            expect(button.querySelector('i')).toBeNull();
             expect(button.disabled).toBe(false);
         });
 
@@ -286,28 +288,26 @@ describe('a card whose bundled file can be restored', () => {
             expect(document.activeElement).toBe(button);
         });
 
-        test('keeps its name, its subtitle, and adds no other text', () => {
+        test('keeps its name and states that it is unavailable in place of its subtitle, with no other text', () => {
             const { panel } = render([card], { actions: managedActions() });
             const element = cardOf(panel, 'assistant-tewi');
 
             expect(element.querySelector('.sbHomeCardName').textContent).toBe('Tewi');
-            expect(element.querySelector('.sbHomeCardSub').textContent).toBe('Gege~ Are you a little down on your luck? Ask me anything!');
-            expect(element.querySelectorAll('[data-sb-copy-placeholder="true"]')).toHaveLength(0);
+            expect(element.querySelector('.sbHomeCardSub').textContent).toBe('TODO(copy)');
+            expect([...element.querySelectorAll('[data-sb-copy-placeholder="true"]')]).toEqual([element.querySelector('.sbHomeCardSub')]);
         });
     });
 
-    test('shows the two disabled chat buttons and no Restore when the card offers none', () => {
+    test('has no footer, and no chat buttons, when the card offers no Restore', () => {
         const { panel } = render([DELETED_TEWI], { actions: managedActions() });
-        const element = cardOf(panel, 'assistant-tewi');
 
-        expect([...element.querySelectorAll('.sbHomeFootLabel')].map(label => label.textContent)).toEqual(['Start New Chat', 'Temporary Chat']);
-        expect(footButtons(element).map(button => button.disabled)).toEqual([true, true]);
+        expect(cardOf(panel, 'assistant-tewi').querySelector('.sbHomeCardFooter')).toBeNull();
     });
 
-    test('shows the chat buttons when the actions have no Restore, so the card never offers what it cannot do', () => {
+    test('has no footer when the actions have no Restore, so the card never offers what it cannot do', () => {
         const { panel } = render([deleted]);
 
-        expect([...cardOf(panel, 'assistant-tewi').querySelectorAll('.sbHomeFootLabel')].map(label => label.textContent)).toEqual(['Start New Chat', 'Temporary Chat']);
+        expect(cardOf(panel, 'assistant-tewi').querySelector('.sbHomeCardFooter')).toBeNull();
     });
 });
 

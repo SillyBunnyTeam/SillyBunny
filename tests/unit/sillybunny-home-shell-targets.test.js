@@ -61,8 +61,16 @@ describe('Home shell targets', () => {
         expect(shell.revealSetting).toHaveBeenCalledWith('right', 'appearance', '#themes');
     });
 
+    test('Customize opens the right shell on its last page', () => {
+        const shell = fakeShell();
+
+        openShellTarget('customize', shell);
+
+        expect(shell.openTab).toHaveBeenCalledWith('right');
+    });
+
     test('names every target once', () => {
-        expect([...SHELL_TARGETS].sort()).toEqual(['characters', 'connections', 'mode-menu', 'personas', 'presets', 'ui-theme']);
+        expect([...SHELL_TARGETS].sort()).toEqual(['characters', 'connections', 'customize', 'mode-menu', 'personas', 'presets', 'ui-theme']);
     });
 
     test('fails loudly on an unknown target', () => {

@@ -320,6 +320,7 @@ async function readFooters(page) {
         const shown = labels.map(label => getComputedStyle(label).display !== 'none');
         return {
             shown,
+            stacked: card.hasAttribute('data-sb-footer-compact'),
             clipped: labels.filter((label, index) => shown[index] && label.scrollWidth > label.clientWidth).length,
             overflow: footer.scrollWidth - footer.clientWidth,
             menuOutside: card.querySelector('.sbHomeRowMenu').getBoundingClientRect().right - card.getBoundingClientRect().right,
@@ -329,32 +330,35 @@ async function readFooters(page) {
 }
 
 /** What is wrong with the footers, so a poll can wait for the fit to settle and a failure names the card. */
-function footerProblems(footers) {
+function footerProblems(footers, { allowCut = false } = {}) {
     return footers.flatMap((footer, index) => [
-        new Set(footer.shown).size !== 1 && 'labels split',
-        footer.clipped > 0 && 'label cut short',
+        footer.shown.includes(false) && 'label hidden',
+        !allowCut && footer.clipped > 0 && 'label cut short',
         footer.overflow > 0 && 'footer overflows',
         footer.menuOutside > 0 && 'menu button outside the card',
         footer.measuring && 'still measuring',
     ].filter(Boolean).map(problem => `card ${index}: ${problem}`));
 }
 
-async function expectFootersFit(page) {
-    await expect.poll(async () => footerProblems(await readFooters(page)), { timeout: 5000 }).toEqual([]);
+/** `allowCut` is for text that no card holds: a label then ends in an ellipsis, and its tooltip carries the whole name. */
+async function expectFootersFit(page, options) {
+    await expect.poll(async () => footerProblems(await readFooters(page), options), { timeout: 5000 }).toEqual([]);
 }
 
-/** At the default font the cards of a 1440 window or wider hold both labels, as approved, and a phone's hold none. */
+/** At the default font the cards of a 1440 window or wider hold both labels in one row, and a phone's stack them. */
 async function expectDefaultLabels(page, windowWidth) {
     if (windowWidth >= 1440) {
-        await expectLabelsShown(page, true);
+        await expectFootersStacked(page, false);
     }
     if (windowWidth <= 390) {
-        await expectLabelsShown(page, false);
+        await expectFootersStacked(page, true);
     }
 }
 
-async function expectLabelsShown(page, shown) {
-    await expect.poll(async () => (await readFooters(page)).map(footer => footer.shown), { timeout: 5000 }).toEqual([[shown, shown], [shown, shown]]);
+/** Both labels are always on show; what changes with the room is whether the two buttons share a row. */
+async function expectFootersStacked(page, stacked) {
+    await expect.poll(async () => (await readFooters(page)).map(footer => [footer.stacked, ...footer.shown]), { timeout: 5000 })
+        .toEqual([[stacked, true, true], [stacked, true, true]]);
 }
 
 async function useLongFooterLabels(page) {
@@ -789,6 +793,17 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await escapeOpenMenu(page);
         });
 
+        sizeFreeTest('Preferences opens Customize from the main menu, before Keyboard Shortcuts, Help and About SillyBunny', async ({ page }) => {
+            await menuButton(page).click();
+            const labels = await page.getByRole('menuitem').allTextContents();
+            expect(labels.slice(-4).map(label => label.trim())).toEqual(['Preferences', 'Keyboard Shortcuts', 'Help', 'About SillyBunny']);
+
+            await page.getByRole('menuitem', { name: 'Preferences', exact: true }).click();
+
+            await expect(page.locator('#sb-settings-page')).toBeVisible();
+            await expect(page.locator('#sb-settings-page [data-sb-shell-key="right"]')).toBeAttached();
+        });
+
         sizeFreeTest('Recent Chats Settings opens from the main menu', async ({ page }) => {
             await menuButton(page).click();
             await page.getByRole('menuitem', { name: 'Recent Chats Settings', exact: true }).click();
@@ -1086,8 +1101,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                 await expect(card.locator('.sbHomeCardSub')).toHaveText(SUBTITLES[name]);
                 await expect(card.locator('.sbHomeCardSub')).not.toHaveAttribute('data-sb-copy-placeholder', /./);
                 await expect(card.locator('.sbHomeCardFooter > *')).toHaveCount(3);
-                await expect(card.locator('.sbHomeFootButton i.fa-plus')).toHaveCount(1);
-                await expect(card.locator('.sbHomeFootButton i.fa-hourglass-half')).toHaveCount(1);
+                await expect(card.locator('.sbHomeFootButton i')).toHaveCount(0);
                 await expect(card.locator('.sbHomeRowMenu i.fa-ellipsis-vertical')).toHaveCount(1);
                 await expect(card.locator('button:not(.sbHomeCardConnect)')).toHaveCount(4);
             }
@@ -1125,7 +1139,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             }
         });
 
-        test('both footer labels are shown together or hidden together, and the footer never overflows', async ({ page }) => {
+        test('both footer labels are always shown, in one row or stacked together, and the footer never overflows', async ({ page }) => {
             await chooseMode(page, 'full');
 
             await expectFootersFit(page);
@@ -1138,8 +1152,8 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await chooseMode(page, 'full');
 
             await setFontSize(page, 20);
-            await expectFootersFit(page);
-            expect(footerProblems(await readFooters(page)), 'at 20px').toEqual([]);
+            await expectFootersFit(page, { allowCut: true });
+            expect(footerProblems(await readFooters(page), { allowCut: true }), 'at 20px').toEqual([]);
             await setFontSize(page, 15);
             await expectFootersFit(page);
             await expectDefaultLabels(page, options.viewport.width);
@@ -1147,21 +1161,21 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             expect(footerProblems(await readFooters(page)), 'back at 15px').toEqual([]);
         });
 
-        test('long translated labels hide together and leave the menu button inside the card', async ({ page }) => {
+        test('long translated labels stack together and leave the menu button inside the card', async ({ page }) => {
             await chooseMode(page, 'full');
             await expectFootersFit(page);
 
             await useLongFooterLabels(page);
 
-            await expectFootersFit(page);
-            await expectLabelsShown(page, false);
-            expect(footerProblems(await readFooters(page))).toEqual([]);
+            await expectFootersFit(page, { allowCut: true });
+            await expectFootersStacked(page, true);
+            expect(footerProblems(await readFooters(page), { allowCut: true })).toEqual([]);
         });
 
         if (options.viewport.width >= 1440) {
             test('before the footer is measured again, long labels shrink to an ellipsis instead of pushing the menu button out', async ({ page }) => {
                 await chooseMode(page, 'full');
-                await expectLabelsShown(page, true);
+                await expectFootersStacked(page, false);
 
                 const footers = await page.evaluate((labels) => {
                     document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--choose)').forEach((card) => {
@@ -1194,8 +1208,8 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await chooseMode(page, 'list');
             await setFontSize(page, 20);
             await chooseMode(page, 'full');
-            await expectFootersFit(page);
-            expect(footerProblems(await readFooters(page)), 'after a larger font while hidden').toEqual([]);
+            await expectFootersFit(page, { allowCut: true });
+            expect(footerProblems(await readFooters(page), { allowCut: true }), 'after a larger font while hidden').toEqual([]);
 
             await chooseMode(page, 'list');
             await setFontSize(page, 15);
@@ -1208,18 +1222,18 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             expect(footerProblems(await readFooters(page)), 'back at the default font').toEqual([]);
         });
 
-        test('the footer labels switch together at the width where both fit, and no width cuts a label or overflows the footer', async ({ page }) => {
+        test('the footer buttons stack together below the width where both labels fit one row, and no width hides or cuts a label or overflows the footer', async ({ page }) => {
             await chooseMode(page, 'full');
             await expectFootersFit(page);
 
-            // Every second pixel, since the labels are cut short only in a band a few pixels wide just above the switch.
+            // Every second pixel, since the labels are cut short only in a band a few pixels wide just above the switch. A card is never narrower than 160px: one of two columns on a 360px phone is wider.
             const sweep = await page.evaluate(async () => {
                 const card = document.querySelector('.welcomePanel .sbHomeCard[data-sb-home-key="assistant-reisen"]');
                 const footer = card.querySelector('.sbHomeCardFooter');
                 const labels = [...footer.querySelectorAll('.sbHomeFootLabel')];
                 card.style.justifySelf = 'start';
                 const steps = [];
-                for (let width = 150; width <= 420; width += 2) {
+                for (let width = 160; width <= 420; width += 2) {
                     card.style.width = `${width}px`;
                     for (let frame = 0; frame < 4; frame++) {
                         await new Promise(resolve => requestAnimationFrame(resolve));
@@ -1228,6 +1242,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                     steps.push({
                         width,
                         shown,
+                        stacked: card.hasAttribute('data-sb-footer-compact'),
                         cut: labels.filter((label, index) => shown[index] && label.scrollWidth > label.clientWidth).length,
                         overflow: footer.scrollWidth - footer.clientWidth,
                         menuOutside: card.querySelector('.sbHomeRowMenu').getBoundingClientRect().right - card.getBoundingClientRect().right,
@@ -1236,12 +1251,12 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                 return steps;
             });
 
-            const broken = sweep.filter(step => new Set(step.shown).size !== 1 || step.cut > 0 || step.overflow > 0 || step.menuOutside > 0);
+            const broken = sweep.filter(step => step.shown.includes(false) || step.cut > 0 || step.overflow > 0 || step.menuOutside > 0);
             expect(broken.map(step => step.width), 'widths with a split, cut or overflowing footer').toEqual([]);
-            const shownWidths = sweep.filter(step => step.shown[0]).map(step => step.width);
-            expect(sweep[0].shown[0], 'icon-only at the narrowest card').toBe(false);
-            expect(shownWidths.length, 'labels appear at some width').toBeGreaterThan(0);
-            expect(shownWidths, 'once shown, shown at every wider width').toEqual(sweep.filter(step => step.width >= Math.min(...shownWidths)).map(step => step.width));
+            const rowWidths = sweep.filter(step => !step.stacked).map(step => step.width);
+            expect(sweep[0].stacked, 'stacked at the narrowest card').toBe(true);
+            expect(rowWidths.length, 'the buttons share a row at some width').toBeGreaterThan(0);
+            expect(rowWidths, 'once in one row, in one row at every wider width').toEqual(sweep.filter(step => step.width >= Math.min(...rowWidths)).map(step => step.width));
         });
 
         test('pressing a footer button does not start the card action, and pressing the card or the empty footer space does', async ({ page }) => {
@@ -1473,14 +1488,14 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
         }
 
         for (const mode of ['full', 'compact']) {
-            for (const footer of ['labelled', 'icon-only']) {
+            for (const footer of ['row', 'stacked']) {
                 sizeFreeTest(`every icon-only control in ${mode} has a tooltip and a name, and no labelled control repeats its label, with ${footer} card footers`, async ({ page }) => {
                     const characters = await pickFixtureCharacters(page, 2);
                     await renderHome(page, recentChatEntries(characters, 5, { distinctFiles: true }));
                     await chooseMode(page, mode);
                     await expect(page.locator('.welcomePanel button.showMoreChats')).toBeVisible();
 
-                    const controls = await page.evaluate((icons) => {
+                    const controls = await page.evaluate((stacked) => {
                         const visibleText = (node, pieces = []) => {
                             let text = '';
                             const walk = (child) => {
@@ -1504,7 +1519,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                             return text.replace(/\s+/g, ' ').trim();
                         };
                         document.querySelectorAll('.welcomePanel .sbHomeCard[data-sb-footer-compact]').forEach(card => card.removeAttribute('data-sb-footer-compact'));
-                        if (icons) {
+                        if (stacked) {
                             document.querySelectorAll('.welcomePanel .sbHomeCard').forEach((card) => {
                                 if (card.querySelector('.sbHomeCardFooter')) {
                                     card.setAttribute('data-sb-footer-compact', '');
@@ -1524,14 +1539,14 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                                 title: node.getAttribute('title') ?? '',
                             };
                         });
-                    }, footer === 'icon-only');
+                    }, footer === 'stacked');
 
                     const iconOnly = controls.filter(control => control.hasIcon && control.text === '');
                     const labelled = controls.filter(control => control.text !== '');
                     expect(iconOnly.map(control => control.kind.split(' ')[0]), 'the icon-only controls of Home').toEqual(expect.arrayContaining(['sbHomeMenuButton', 'pinChat', 'chatMenu', 'showMoreChats', 'sbHomeRowMenu']));
                     const footerButtons = controls.filter(control => control.kind.startsWith('sbHomeFootButton'));
                     expect(footerButtons.length, 'the footer buttons').toBeGreaterThan(0);
-                    expect(footerButtons.map(control => control.text === ''), 'the footer buttons show their label or not').toEqual(footerButtons.map(() => footer === 'icon-only'));
+                    expect(footerButtons.map(control => control.text === '' || control.hasIcon), 'the footer buttons show a label and no icon, in a row and stacked').toEqual(footerButtons.map(() => false));
 
                     for (const control of iconOnly) {
                         expect(control.title.trim(), `${control.kind} has a tooltip`).not.toBe('');
@@ -2275,10 +2290,10 @@ test.describe('Home Recent Chats empty states', () => {
                 }, undefined, { timeout: STARTUP_TIMEOUT });
             });
 
-            // Wide Home puts Tewi beside the text, and narrow Home puts a banner above it.
+            // Wide Home shows the whole figure as a panel and narrow Home a banner; both stand above the centred text.
             const beside = viewport.width >= 1024;
 
-            test(`with no chats, Tewi is ${beside ? 'a panel beside' : 'a banner above'} the heading and the body, as one status page`, async ({ page }) => {
+            test(`with no chats, Tewi is ${beside ? 'a panel' : 'a banner'} above the heading and the body, all centred, as one status page`, async ({ page }) => {
                 await renderHome(page, []);
                 await chooseMode(page, 'full');
 
@@ -2290,13 +2305,6 @@ test.describe('Home Recent Chats empty states', () => {
                 // 159 x 318 art pixels at one device pixel each. A banner shows the rows down to the hips, 62% of them.
                 expect([state.art.width, Math.round(state.art.height)]).toEqual([159, beside ? 318 : Math.floor(318 * 0.62)]);
                 expect(state.overflows).toBe(false);
-                if (beside) {
-                    expect(state.art.right, 'the art is before the text').toBeLessThanOrEqual(state.title.left);
-                    expect(Math.abs(state.title.left - state.body.left), 'the heading and the body share a start edge').toBeLessThanOrEqual(1);
-                    expect([state.title.align, state.body.align]).toEqual(['start', 'start']);
-                    expect(state.title.bottom, 'the heading sits above the body').toBeLessThanOrEqual(state.body.top);
-                    return;
-                }
                 expect(state.art.bottom, 'the art sits above the heading').toBeLessThanOrEqual(state.title.top);
                 expect(state.title.bottom, 'the heading sits above the body').toBeLessThanOrEqual(state.body.top);
                 for (const centre of [state.art.centre, state.title.centre, state.body.centre]) {
@@ -2438,5 +2446,49 @@ test.describe('Home while its template loads', () => {
 
         await expect(page.locator('#chat > .welcomePanel')).toHaveCount(0);
         await expect(page.locator('#sheld')).not.toHaveAttribute('data-sb-home', /.*/);
+    });
+});
+
+test.describe('Home Recent Chats when the request fails', () => {
+    test.beforeEach(async ({ page }) => {
+        await protectMaintainerServer(page);
+        await installFixtureChats(page);
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await expectHome(page);
+        await page.waitForFunction(() => {
+            try {
+                return Boolean(window.SillyTavern?.getContext?.().characters?.some(character => character?.avatar));
+            } catch {
+                return false;
+            }
+        }, undefined, { timeout: STARTUP_TIMEOUT });
+    });
+
+    test('a failed request shows an error status page with Try Again, not the empty list, and Try Again asks once more', async ({ page }) => {
+        let requests = 0;
+        let answer = route => route.fulfill({ status: 500, body: '' });
+        await page.route('**/api/chats/recent', (route) => {
+            requests++;
+            return answer(route);
+        });
+        await page.evaluate(async () => {
+            const { openWelcomeScreen } = await import('/scripts/welcome-screen.js');
+            await openWelcomeScreen({ force: true });
+        });
+        await expectHome(page);
+
+        const failed = page.locator('.welcomePanel [data-recent-chat-empty-state="failed"]');
+        await expect(failed.locator('.sb-status-page[data-state="error"]')).toBeVisible();
+        await expect(page.locator('.welcomePanel [data-sb-home-empty="all"]')).toHaveCount(0);
+        await expect(failed.getByRole('button', { name: 'Try Again' })).toBeVisible();
+        await expect(failed.locator('[data-sb-copy-placeholder="true"]')).toHaveText(['TODO(copy)', 'TODO(copy)']);
+
+        const before = requests;
+        answer = route => route.fulfill({ json: [] });
+        await failed.getByRole('button', { name: 'Try Again' }).click();
+
+        await expect.poll(() => requests).toBeGreaterThan(before);
+        await expect(page.locator('.welcomePanel [data-sb-home-empty="all"]')).toHaveCount(1);
+        await expect(page.locator('.welcomePanel [data-recent-chat-empty-state="failed"] > *')).toHaveCount(0);
     });
 });

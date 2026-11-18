@@ -20,7 +20,7 @@ function needsMoreRoom(footer) {
 }
 
 /**
- * Hides both footer labels on every card whose footer cannot hold them. How wide the labels are depends on the
+ * Stacks the footer buttons on every card whose footer cannot hold them in one row. How wide the labels are depends on the
  * font size and on the translation, so a width breakpoint cannot decide it. Cards without a box, such as those
  * in a hidden display mode, keep their last state until they show again.
  * @param {HTMLElement[]} cards

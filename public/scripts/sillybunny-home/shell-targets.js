@@ -10,6 +10,7 @@ const TARGET_OPENERS = Object.freeze({
     personas: shell => shell.openTab('characters', 'persona'),
     'mode-menu': shell => shell.openModeMenu(),
     'ui-theme': shell => shell.revealSetting('right', 'appearance', '#themes'),
+    customize: shell => shell.openTab('right'),
 });
 
 const REQUIRED_SHELL_METHODS = Object.freeze({
@@ -19,6 +20,7 @@ const REQUIRED_SHELL_METHODS = Object.freeze({
     personas: 'openTab',
     'mode-menu': 'openModeMenu',
     'ui-theme': 'revealSetting',
+    customize: 'openTab',
 });
 
 export const SHELL_TARGETS = Object.freeze(Object.keys(TARGET_OPENERS));

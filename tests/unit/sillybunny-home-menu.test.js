@@ -14,6 +14,7 @@ function allActions() {
         showWelcome: jest.fn(),
         openRecentChatsSettings: jest.fn(),
         showGettingStarted: jest.fn(),
+        openPreferences: jest.fn(),
         openKeyboardShortcuts: jest.fn(),
         openHelp: jest.fn(),
         openAbout: jest.fn(),
@@ -29,7 +30,7 @@ describe('Home main menu', () => {
         expect(labelsOf(sections)).toEqual([
             ['Full', 'Compact', 'List Only'],
             ['Show Welcome', 'Recent Chats Settings'],
-            ['Keyboard Shortcuts', 'Help', 'About SillyBunny'],
+            ['Preferences', 'Keyboard Shortcuts', 'Help', 'About SillyBunny'],
         ]);
         expect(sections[0].title).toBe('Display Mode');
     });
@@ -96,7 +97,7 @@ describe('Home main menu', () => {
         const sections = buildHomeMenuSections({ displayMode: 'full', gettingStartedHidden: true }, allActions());
         const commands = sections.slice(1).flatMap(section => section.items);
 
-        expect(commands).toHaveLength(6);
+        expect(commands).toHaveLength(7);
         for (const item of commands) {
             expect(item.icon).toMatch(/^fa-solid fa-[a-z-]+$/);
         }

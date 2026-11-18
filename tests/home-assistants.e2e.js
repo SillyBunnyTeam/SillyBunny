@@ -38,6 +38,8 @@ const MIGRATED = { WelcomePage_AssistantPointerMigrated: 'true' };
 
 const HOME = '#chat > .welcomePanel';
 const cardOf = (page, key) => page.locator(`${HOME} .sbHomeCard[data-sb-home-key="${key}"]`);
+/** The corner of a card's padding, which no control inside the card covers, however tall the footer or the text makes it. */
+const CARD_CORNER = { x: 8, y: 8 };
 const overlayOf = card => card.locator('.sbHomeCardOpen');
 const startOf = card => card.locator('.sbHomeFootButton').nth(0);
 const temporaryOf = card => card.locator('.sbHomeFootButton').nth(1);
@@ -396,15 +398,14 @@ for (const { name, portrait, options } of VIEWPORTS) {
         });
 
         test.describe('a card with no file', () => {
-            sizeFreeTest('is insensitive when the library never had the card: its buttons are disabled and it has no menu', async ({ page }) => {
+            sizeFreeTest('is insensitive when the library never had the card: its card button is disabled, it has no chat buttons and no menu', async ({ page }) => {
                 await boot(page, { library: [REISEN] });
                 const tewi = cardOf(page, 'assistant-tewi');
 
                 await expect(overlayOf(tewi)).toBeDisabled();
-                await expect(startOf(tewi)).toBeDisabled();
-                await expect(temporaryOf(tewi)).toBeDisabled();
+                await expect(tewi.locator('.sbHomeFootButton')).toHaveCount(0);
                 await expect(menuOf(tewi)).toHaveCount(0);
-                await expect(tewi.locator('.sbHomeCardFooter > *')).toHaveCount(2);
+                await expect(tewi.locator('.sbHomeCardFooter')).toHaveCount(0);
                 await expect(overlayOf(cardOf(page, 'assistant-reisen'))).toBeEnabled();
             });
 
@@ -427,19 +428,18 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 const reisen = cardOf(page, 'assistant-reisen');
 
                 await expect(overlayOf(reisen)).toBeDisabled();
-                await expect(startOf(reisen)).toBeDisabled();
-                await expect(temporaryOf(reisen)).toBeDisabled();
+                await expect(reisen.locator('.sbHomeFootButton')).toHaveCount(0);
                 await expect(menuOf(reisen)).toHaveCount(0);
             });
 
-            sizeFreeTest('keeps its name, its subtitle and its footer labels, and adds no text', async ({ page }) => {
+            sizeFreeTest('keeps its name, drops its footer, and states that it is unavailable in place of its subtitle', async ({ page }) => {
                 await boot(page, { library: [] });
                 const reisen = cardOf(page, 'assistant-reisen');
 
                 await expect(reisen.locator('.sbHomeCardName')).toHaveText('Reisen');
-                await expect(reisen.locator('.sbHomeCardSub')).toHaveText(SUBTITLES.reisen);
-                await expect(reisen.locator('.sbHomeFootLabel')).toHaveText(['Start New Chat', 'Temporary Chat']);
-                await expect(reisen.locator('[data-sb-copy-placeholder="true"]')).toHaveCount(0);
+                await expect(reisen.locator('.sbHomeCardSub')).toHaveText('TODO(copy)');
+                await expect(reisen.locator('.sbHomeFootLabel')).toHaveCount(0);
+                await expect(reisen.locator('[data-sb-copy-placeholder="true"]')).toHaveCount(1);
             });
 
             sizeFreeTest('opens nothing when it is pressed', async ({ page }) => {
@@ -447,8 +447,6 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 const tewi = cardOf(page, 'assistant-tewi');
 
                 await overlayOf(tewi).dispatchEvent('click');
-                await startOf(tewi).dispatchEvent('click');
-                await temporaryOf(tewi).dispatchEvent('click');
 
                 await expect(page.locator('#sheld')).toHaveAttribute('data-sb-home', 'on');
                 expect(await currentAvatar(page)).toBeNull();
@@ -485,7 +483,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
             sizeFreeTest('the card button does the same for Tewi', async ({ page }) => {
                 await boot(page, { library: BOTH });
 
-                await overlayOf(cardOf(page, 'assistant-tewi')).click();
+                await overlayOf(cardOf(page, 'assistant-tewi')).click({ position: CARD_CORNER });
 
                 await expect.poll(() => currentAvatar(page)).toBe(TEWI);
                 await expect.poll(() => currentChat(page)).toMatch(/^Assistant Tewi - /);
@@ -524,7 +522,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
             sizeFreeTest('a second New Chat is a second fresh branch, not the one before', async ({ page }) => {
                 await boot(page, { library: BOTH, lastMode: 'conversation' });
                 await startThread(page, TEWI);
-                await overlayOf(cardOf(page, 'assistant-tewi')).click();
+                await overlayOf(cardOf(page, 'assistant-tewi')).click({ position: CARD_CORNER });
                 await expect.poll(() => conversationOf(page, TEWI)).toMatchObject({ open: true });
                 const first = await conversationOf(page, TEWI);
 
@@ -533,7 +531,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
                     await (await import('/scripts/welcome-screen.js')).openWelcomeScreen({ force: true });
                 });
                 await expect.poll(async () => (await conversationOf(page, TEWI)).open).toBe(false);
-                await overlayOf(cardOf(page, 'assistant-tewi')).click();
+                await overlayOf(cardOf(page, 'assistant-tewi')).click({ position: CARD_CORNER });
 
                 await expect.poll(async () => (await conversationOf(page, TEWI)).branches).toBe(first.branches + 1);
                 expect((await conversationOf(page, TEWI)).active).not.toBe(first.active);

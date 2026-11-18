@@ -290,6 +290,37 @@ for (const { name, options } of VIEWPORTS) {
                 await expect(note).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
             });
 
+            sizeFreeTest('Keyboard Shortcuts has a search that filters the rows by label and by key, hides a group with no row, and shows a status page when nothing matches', async ({ page }) => {
+                await page.keyboard.press('Control+?');
+                const window = page.locator(SHORTCUTS);
+                await expect(window).toBeVisible();
+                const rows = window.locator('.ds-row:visible');
+                const total = await rows.count();
+
+                await window.getByRole('button', { name: 'Search Shortcuts' }).click();
+                const entry = window.getByRole('searchbox', { name: 'Search Shortcuts' });
+                await expect(entry).toBeVisible();
+                await expect(entry).toHaveAttribute('placeholder', 'Search shortcuts');
+
+                await entry.fill('swipe');
+                await expect(rows).toHaveCount(2);
+                await expect(window.locator('.ds-pref-group-heading:visible')).toHaveText(['Chat']);
+
+                await entry.fill('ctrl+o');
+                await expect(rows).toHaveCount(1);
+                await expect(rows.first()).toContainText('Home');
+
+                await entry.fill('zzzz');
+                await expect(rows).toHaveCount(0);
+                const status = window.locator('.sb-status-page[data-state="no-results"]');
+                await expect(status).toBeVisible();
+                await expect(status.locator('.sb-status-page__title')).toHaveText('No Results Found');
+
+                await entry.fill('');
+                await expect(rows).toHaveCount(total);
+                await expect(status).toBeHidden();
+            });
+
             sizeFreeTest('every general shortcut of the registry has its key pinned here, and does what its row says', async ({ page }) => {
                 expect(await registryOf(page, 'general')).toEqual(Object.keys(GENERAL_KEYS));
 

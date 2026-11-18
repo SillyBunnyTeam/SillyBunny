@@ -38,19 +38,18 @@ function createActionButton(className, { name, title, disabled = false, onActiva
 }
 
 /**
- * A footer control shows its icon always and its label when the footer has room for both labels. The tooltip
- * carries the full name for the icon-only form and for a label that is cut short.
+ * A footer control shows its label and no icon, in every layout. When the labels do not fit side by side the footer
+ * stacks the buttons instead of hiding the labels.
  */
-function createFootButton({ icon, label, name, title, disabled, onActivate }) {
+function createFootButton({ label, name, title, disabled, onActivate }) {
     const button = createActionButton('sbHomeFootButton', { name, title, disabled, onActivate });
-    button.append(createIcon(`${icon} fa-fw`), createElement('span', 'sbHomeFootLabel', label));
+    button.append(createElement('span', 'sbHomeFootLabel', label));
     return button;
 }
 
 function createChatButtons(card, actions, disabled) {
     return [
         createFootButton({
-            icon: 'fa-solid fa-plus',
             label: t`Start New Chat`,
             name: t`Start new chat with ${card.name}`,
             title: t`Start New Chat With ${card.name}`,
@@ -58,7 +57,6 @@ function createChatButtons(card, actions, disabled) {
             onActivate: () => void actions.newChat(card),
         }),
         createFootButton({
-            icon: 'fa-solid fa-hourglass-half',
             label: t`Temporary Chat`,
             name: t`Temporary Chat with ${card.name}`,
             title: t`Temporary Chat With ${card.name}`,
@@ -71,7 +69,6 @@ function createChatButtons(card, actions, disabled) {
 /** The one action of a card whose file is gone. Safari does not focus a button on click, and Home puts the focus back where it was. */
 function createRestoreButton(card, restore) {
     const button = createFootButton({
-        icon: 'fa-solid fa-rotate-left',
         label: t`Restore`,
         name: t`Restore ${card.name}`,
         title: t`Restore ${card.name}`,
@@ -118,11 +115,18 @@ function createConnectButton() {
     return button;
 }
 
-function createCardText({ name, titleId, subtitleId, subtitle: subtitleText, connect = false }) {
+/** The slot of the guidance line that a card without a file shows in place of its subtitle. */
+const UNAVAILABLE_SLOT = 'AS-UNAVAILABLE';
+
+function createCardText({ name, titleId, subtitleId, subtitle: subtitleText, connect = false, unavailable = false }) {
     const text = createElement('div', 'sbHomeCardText');
     const title = createElement('strong', 'sbHomeCardName', name);
     title.id = titleId;
     const subtitle = createElement('span', 'sbHomeCardSub', subtitleText);
+    if (unavailable) {
+        subtitle.dataset.sbCopyPlaceholder = 'true';
+        subtitle.dataset.sbCopySlot = UNAVAILABLE_SLOT;
+    }
     subtitle.id = subtitleId;
     text.append(title, subtitle);
     if (connect) {
@@ -156,10 +160,11 @@ function createCardArt({ art }, getThumbnailUrl) {
 }
 
 /**
- * A card whose file is missing or deleted has nothing to open, so its card button is disabled, it shows no menu and no
- * Connect a Model button, because that button is a hint for a chat the card cannot start. When
- * its bundled file can be restored, Restore is the one control of its footer, in place of the two chat buttons. The card
- * of the third slot has two more menu items, which change which character it is.
+ * A card whose file is missing or deleted has nothing to open, so its card button is disabled, it shows no menu, no
+ * chat buttons and no Connect a Model button, because those are for a chat the card cannot start. When
+ * its bundled file can be restored, Restore is the one control of its footer; otherwise the card has no footer. The card
+ * of the third slot has two more menu items, which change which character it is. In place of its subtitle it says that
+ * the card is unavailable, so a blank picture is not all that tells the user.
  */
 function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker, removeAssistant }) {
     const titleId = `sb-home-${card.key}-title`;
@@ -173,7 +178,12 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker
 
     const footer = createElement('div', 'sbHomeCardFooter');
     const canRestore = card.offers.restore && typeof actions.restore === 'function';
-    footer.append(...(canRestore ? [createRestoreButton(card, actions.restore)] : createChatButtons(card, actions, disabled)));
+    // A card with no file cannot open a chat, so it has no chat buttons; Restore is its one control when the bundled file can come back.
+    if (canRestore) {
+        footer.append(createRestoreButton(card, actions.restore));
+    } else if (!disabled) {
+        footer.append(...createChatButtons(card, actions, disabled));
+    }
 
     if (buildAssistantMenuSections({ lastMode: getLastChatMode(), actions: menuActions, state: card.state }).length > 0) {
         const menuButton = createMenuButton(`sb-home-${card.key}-menu`);
@@ -209,9 +219,11 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker
             onActivate: () => void actions.newChat(card),
         }),
         createCardArt(card, getThumbnailUrl),
-        createCardText({ name: card.name, titleId, subtitleId, subtitle: getAssistantSubtitle(card.id), connect: !disabled }),
-        footer,
+        createCardText({ name: card.name, titleId, subtitleId, subtitle: disabled ? t`TODO(copy)` : getAssistantSubtitle(card.id), connect: !disabled, unavailable: disabled }),
     );
+    if (footer.childElementCount > 0) {
+        element.append(footer);
+    }
     return element;
 }
 

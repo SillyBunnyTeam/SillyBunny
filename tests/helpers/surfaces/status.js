@@ -1106,6 +1106,24 @@ const homeRecentFiltered = status({
     sources: [`${SCRIPTS}/sillybunny-home/mount.js`, STATUS_PAGE_SOURCE],
 });
 
+const homeRecentFailed = status({
+    id: 'home.recent-failed',
+    title: 'Home: the request for the recent chats failed',
+    component: 'shared',
+    root: `${HOME} [data-recent-chat-empty-state="failed"] .sb-status-page`,
+    async open(page) {
+        await page.route('**/api/chats/recent', route => route.fulfill({ status: 500, body: '' }));
+        await page.evaluate(async () => {
+            const { openWelcomeScreen } = await import('/scripts/welcome-screen.js');
+            await openWelcomeScreen({ force: true });
+        });
+        await page.locator('#sheld[data-sb-home="on"]').waitFor();
+        await reveal(page, `${HOME} [data-recent-chat-empty-state="failed"] .sb-status-page`);
+        await settle(page);
+    },
+    sources: [`${SCRIPTS}/sillybunny-home/mount.js`, `${SCRIPTS}/welcome-screen.js`, STATUS_PAGE_SOURCE],
+});
+
 const homeOffline = status({
     id: 'home.offline',
     title: 'Home: the assistant cards while no model is connected',
@@ -1698,6 +1716,7 @@ export const surfaces = [
     samplingUnavailable,
     homeRecentEmpty,
     homeRecentFiltered,
+    homeRecentFailed,
     homeOffline,
     aboutUnknown,
     personaPickerEmpty,

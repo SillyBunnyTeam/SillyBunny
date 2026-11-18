@@ -117,6 +117,42 @@ describe('Keyboard Shortcuts window', () => {
     });
 });
 
+describe('Keyboard Shortcuts search', () => {
+    const fill = (apple = false) => {
+        const body = document.createElement('div');
+        const list = fillShortcuts(body, getShortcuts(), apple);
+        return { body, list };
+    };
+    const shownLabels = body => [...body.querySelectorAll('section > div')].filter(row => !row.hidden).map(row => row.textContent);
+    const shownTitles = body => [...body.querySelectorAll('section')].filter(section => !section.hidden).map(section => section.dataset.title);
+
+    test('shows the rows whose label has the query, whatever its letter case, and the groups that still have a row', () => {
+        const { body, list } = fill();
+
+        expect(list.filter('  SWIPE ')).toBe(2);
+
+        expect(shownLabels(body)).toEqual(['Swipe Left', 'Swipe Right']);
+        expect(shownTitles(body)).toEqual(['Chat']);
+    });
+
+    test('matches the keys as they are written for the platform', () => {
+        const { body, list } = fill(true);
+
+        expect(list.filter('⌘+O')).toBe(1);
+        expect(shownLabels(body)).toEqual(['Home']);
+    });
+
+    test('shows everything again for an empty query, and reports no row for a query that nothing matches', () => {
+        const { body, list } = fill();
+
+        expect(list.filter('zzzz')).toBe(0);
+        expect(shownTitles(body)).toEqual([]);
+        expect(list.filter('')).toBe(getShortcuts().length);
+        expect(shownLabels(body)).toHaveLength(getShortcuts().length);
+        expect(shownTitles(body)).toHaveLength(4);
+    });
+});
+
 describe('Shortcut key labels', () => {
     test('shows the platform modifier as Ctrl, or as the command symbol on Apple platforms', () => {
         expect(formatKeyToken('Mod', { apple: false })).toBe('Ctrl');

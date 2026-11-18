@@ -249,6 +249,21 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
                 await expectNoToast(failureToast(page));
             });
 
+            test('is the one control of a missing bundled card that the account never recorded as deleted, and brings the card back', async ({ page }) => {
+                const world = await boot(page, { library: [TEWI], status: { [REISEN]: DELETED } });
+                const reisen = cardOf(page, 'assistant-reisen');
+
+                await expect(reisen.locator('.sbHomeFootButton')).toHaveText(['Restore']);
+                await expect(reisen.locator('.sbHomeFootButton', { hasText: /New Chat|Temporary Chat/ })).toHaveCount(0);
+                await expect(reisen.locator('.sbHomeCardOpen')).toBeDisabled();
+
+                await restoreOf(page).click();
+
+                await expect(reisen.locator('.sbHomeCardOpen')).toBeEnabled();
+                await expect(reisen.locator('.sbHomeFootButton')).toHaveText(['Start New Chat', 'Temporary Chat']);
+                expect(world.requests).toEqual([{ action: 'restore', filename: REISEN }]);
+            });
+
             test('shows no message of its own, because the card coming back is the answer', async ({ page }) => {
                 await boot(page, { library: [TEWI], status: { [REISEN]: DELETED }, accountStorage: REISEN_DELETED_ACCOUNT });
 
@@ -313,7 +328,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
 
                     await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeCardOpen')).toBeDisabled();
                     await expect(restoreOf(page)).toHaveCount(0);
-                    await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeFootButton')).toHaveCount(2);
+                    await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeFootButton')).toHaveCount(0);
                 });
             }
 
@@ -572,7 +587,7 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP])) {
 
                 await expect(cardOf(page, 'assistant-tewi').locator('.sbHomeCardOpen')).toBeEnabled();
                 await expect(restoreOf(page)).toHaveCount(0);
-                await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeFootButton')).toHaveCount(2);
+                await expect(cardOf(page, 'assistant-reisen').locator('.sbHomeFootButton')).toHaveCount(0);
                 await expectNoToast(failureToast(page));
             });
 

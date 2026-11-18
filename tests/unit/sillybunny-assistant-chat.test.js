@@ -8,7 +8,8 @@ import { HOME_COPY } from '../helpers/copy-home.js';
 const characters = [{ avatar: 'first.png' }, { avatar: 'second.png' }];
 const doNewChat = jest.fn(async () => {});
 const selectCharacterById = jest.fn();
-jest.unstable_mockModule('../../public/script.js', () => ({ characters, doNewChat, selectCharacterById }));
+const getPastCharacterChats = jest.fn(async () => [{ file_name: 'earlier' }]);
+jest.unstable_mockModule('../../public/script.js', () => ({ characters, doNewChat, getPastCharacterChats, selectCharacterById }));
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => String.raw({ raw: strings }, ...values),
 }));
@@ -42,6 +43,18 @@ describe('the app actions of an assistant card', () => {
 
         expect(selectCharacterById).toHaveBeenCalledWith(1, expect.objectContaining({ switchMenu: false, onAccepted: expect.any(Function) }));
         expect(doNewChat).toHaveBeenCalledWith({ deleteCurrentChat: false });
+    });
+
+    test('starts no second chat for a character that had none, because selecting it already made the first', async () => {
+        getPastCharacterChats.mockResolvedValueOnce([]);
+        selectCharacterById.mockResolvedValue(true);
+        const actions = createAppAssistantActions({ openConversation: jest.fn() });
+
+        expect(await actions.newChat(CARD)).toBe(true);
+
+        expect(getPastCharacterChats).toHaveBeenCalledWith(1);
+        expect(selectCharacterById).toHaveBeenCalledTimes(1);
+        expect(doNewChat).not.toHaveBeenCalled();
     });
 
     test('starts no chat and reports no failure when the selection is declined, as it is while a generation runs', async () => {

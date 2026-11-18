@@ -433,10 +433,11 @@ function setWelcomeUiPreference(key, value) {
 }
 
 // SillyBunny: the Home template reads only these fields. welcomePanelMode seeds data-home-panel-mode for the first paint, and mountHome then applies the mode to the regions.
-function buildWelcomeTemplateData(chats) {
+function buildWelcomeTemplateData(chats, { failed = false } = {}) {
     return {
         chats,
-        empty: !chats.length,
+        empty: !chats.length && !failed,
+        failed,
         more: chats.length > getRecentChatsSettings().collapsedDisplayed,
         welcomePanelMode: getWelcomePanelMode(),
         separateAgentRecentChats: shouldSeparateAgentRecentChats(),
@@ -704,7 +705,9 @@ export async function openWelcomeScreen({ force = false, expand = false } = {}) 
         return;
     }
 
-    const recentChats = await getRecentChats();
+    // SillyBunny: a failed request is told from an empty list, so Home does not say that the user has no chats.
+    let recentChatsFailed = false;
+    const recentChats = await getRecentChats({ onRequestFailed: () => { recentChatsFailed = true; } });
     const chatAfterFetch = getCurrentChatId();
     if (chatAfterFetch !== currentChatId) {
         console.debug('Chat changed while fetching recent chats.');
@@ -718,26 +721,27 @@ export async function openWelcomeScreen({ force = false, expand = false } = {}) 
         $('#chat').children().not('.welcomePanel').remove();
     }
 
-    await sendWelcomePanel(recentChats, expand);
+    await sendWelcomePanel(recentChats, expand, { failed: recentChatsFailed && recentChats.length === 0 });
 }
 
 /**
  * Sends the welcome panel to the chat.
  * @param {RecentChat[]} chats List of recent chats
  * @param {boolean} [expand=false] If true, expands the recent chats section
+ * @param {{ failed?: boolean }} [state] SillyBunny: `failed` is set when the request for the recent chats failed and no chat is listed.
  */
-async function sendWelcomePanel(chats, expand = false) {
+async function sendWelcomePanel(chats, expand = false, { failed = false } = {}) {
     try {
         const chatElement = document.getElementById('chat');
         if (!chatElement) {
             console.error('Chat element not found');
             return;
         }
-        const templateData = buildWelcomeTemplateData(chats);
+        const templateData = buildWelcomeTemplateData(chats, { failed });
         // SillyBunny: the status of the bundled files is read while the template loads. Only the first render waits for it, and briefly; a later answer replaces the cards.
         const managedStatus = managedAssistants.refreshStatus();
         // SillyBunny: Home has its own template. The template cache and the browser cache both key on the full path, so ?v= changes with every template edit.
-        const template = await renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261106a', templateData, true, true, true);
+        const template = await renderTemplateAsync('/scripts/templates/sillybunnyHome.html?v=20261118k', templateData, true, true, true);
         await managedAssistants.waitForFirstAnswer(managedStatus);
         // SillyBunny: the first template request is not cached, and a chat can open while it is pending. Adding the panel then would cover that chat.
         if (getCurrentChatId() !== undefined) {
@@ -761,6 +765,7 @@ async function sendWelcomePanel(chats, expand = false) {
                 version: displayVersion,
                 getDisplayMode: getWelcomePanelMode,
                 setDisplayMode: mode => setWelcomePanelMode(root, mode),
+                retryRecentChats: () => refreshWelcomeScreen(),
                 openRecentChatsSettings: () => {
                     rememberHomeFocus(root.querySelector('.sbHomeMenuButton'));
                     return openRecentChatsSettingsPopup();
@@ -1431,7 +1436,8 @@ function isAgentRecentChat(chatData) {
     ));
 }
 
-async function getRecentChats() {
+// SillyBunny: onRequestFailed tells a failed request from an empty list, which both return no chats.
+async function getRecentChats({ onRequestFailed = () => {} } = {}) {
     const settings = getRecentChatsSettings();
     const finalizeRecentChats = chats => chats
         .slice(0, settings.maxDisplayed)
@@ -1459,6 +1465,7 @@ async function getRecentChats() {
 
     if (!response.ok) {
         console.warn('Failed to fetch recent character chats');
+        onRequestFailed();
         return finalizeRecentChats(await getConversationChats());
     }
 

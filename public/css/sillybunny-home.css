@@ -171,6 +171,7 @@
     --sb-home-title-leading: 1.12;
     --sb-home-version-leading: 1.35;
     --sb-home-version-gap: 2px;
+    --sb-home-version-line: calc(var(--sb-type-meta) * var(--sb-home-version-leading));
     /* The height of the line of the title. The logo is 32px, and a smaller title line still centres on it. */
     --sb-home-title-line: max(32px, calc(var(--sb-home-title-size) * var(--sb-home-title-leading)));
     display: grid;
@@ -227,12 +228,20 @@
     white-space: nowrap;
 }
 
+/* Below the title the version adds its line to the height of the header. A fractional line would put everything under
+   the header, the hero picture included, on a fractional pixel, and the picture would draw in uneven blocks. */
+@supports (line-height: round(up, 1.5px, 1px)) {
+    .sbHomeHeader {
+        --sb-home-version-line: round(up, calc(var(--sb-type-meta) * var(--sb-home-version-leading)), 1px);
+    }
+}
+
 /* header-fit.js sets this when the version no longer fits between the title and the menu button. The version
    then hangs under the title, outside the centred row, so the header grows by exactly what it takes. A title
    line taller than the 44px row makes the row grow with it, so there is no spare space to count then. */
 .sbHomeHeader[data-sb-version-below] {
     padding-block-end: max(0px, calc(
-        var(--sb-type-meta) * var(--sb-home-version-leading) + var(--sb-home-version-gap)
+        var(--sb-home-version-line) + var(--sb-home-version-gap)
         - max(0px, (44px - var(--sb-home-title-line)) / 2)
     ));
 }
@@ -242,6 +251,7 @@
 }
 
 .sbHomeHeader[data-sb-version-below] .sbHomeVersion {
+    line-height: var(--sb-home-version-line);
     grid-column: 2;
     grid-row: 2;
     justify-self: center;
@@ -750,10 +760,10 @@
 }
 
 /* How wide the labels are depends on the font size and on the translation, so footer-fit.js measures whether both
-   fit and sets data-sb-footer-compact on the card when they do not. The two labels then go together. While it
-   measures, data-sb-footer-measure keeps the buttons at their natural width and the menu button next to them, so
-   the row spans what it needs. If a measure is missed, the buttons shrink and the label ends in an ellipsis,
-   which keeps the menu button inside the card. */
+   fit in one row and sets data-sb-footer-compact on the card when they do not. The two buttons then stack, each
+   with its whole label, and the menu button stays beside them. While it measures, data-sb-footer-measure keeps the
+   buttons at their natural width and the menu button next to them, so the row spans what it needs. If a measure is
+   missed, the buttons shrink and the label ends in an ellipsis, which keeps the menu button inside the card. */
 .sbHomeFootLabel {
     min-width: 0;
     overflow: hidden;
@@ -769,22 +779,24 @@
     margin-inline-start: 0;
 }
 
-.sbHomeCard[data-sb-footer-compact] .sbHomeFootLabel {
-    display: none;
+.sbHomeCard[data-sb-footer-compact] .sbHomeCardFooter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0;
+    padding-inline: 3px;
 }
 
+/* The two labels need about 110px beside the 44px menu button of a coarse pointer, and a card of a 360px phone
+   leaves a little more than that, so the buttons keep only a thin padding. */
 .sbHomeCard[data-sb-footer-compact] .sbHomeFootButton {
-    min-width: 32px;
+    grid-column: 1;
+    padding-inline: 4px;
 }
 
-/* The icon-only footer has a fixed size whatever the font: three 44px targets plus the gaps and the padding need
-   164px of footer, which is 132px of card content at the 16px card padding and 140px at the 12px one. Below 140px
-   of card content the gaps and the padding tighten, so the menu button keeps its 44px. */
-@container sbhomecard (max-width: 140px) {
-    .sbHomeCardFooter {
-        gap: 4px;
-        padding-inline: 4px;
-    }
+.sbHomeCard[data-sb-footer-compact] .sbHomeCardFooter > .sbHomeRowMenu {
+    grid-column: 2;
+    grid-row: 1 / span 2;
 }
 
 /* ── Choose Assistant ───────────────────────────────────────────────────── */
@@ -1213,37 +1225,6 @@ body.big-avatars .welcomeRecent .chatMessage {
     margin-block-end: 12px;
 }
 
-/* On wide Home the mascot stands beside the text, as a panel does in a window. The container is the Home panel, whose
-   width does not depend on this layout. Below 640px no panel leaves the text a 360px column beside the paddings of the
-   Home column and of the empty state. The script makes the exact choice and sets `data-sb-art-mode`. */
-@container welcome-home (min-width: 640px) {
-    .welcomeRecent .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
-        align-items: center;
-        column-gap: 16px;
-        text-align: start;
-    }
-
-    .sbHomeEmpty > .sbArtPanel[data-sb-art-mode='panel'] {
-        grid-row: 1 / span 2;
-        margin-block-end: 0;
-    }
-
-    .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) > :is(.sbHomeEmptyTitle, .sbHomeEmptyDescription) {
-        grid-column: 2;
-        justify-self: start;
-    }
-
-    .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) > .sbHomeEmptyTitle {
-        align-self: end;
-    }
-
-    .sbHomeEmpty:has(> .sbArtPanel[data-sb-art-mode='panel']:not([hidden])) > .sbHomeEmptyDescription {
-        align-self: start;
-    }
-}
-
 .sbHomeEmptyTitle {
     width: min(100%, 36ch);
     margin: 0 0 12px;
@@ -1356,12 +1337,6 @@ body.big-avatars .welcomeRecent .chatMessage {
         padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
     }
 
-    /* The display size plus the logo and the version no longer fit beside each other in a narrow column. */
-    .sbHomeHeader {
-        --sb-home-title-size: var(--sb-type-headline);
-        --sb-home-title-leading: 1.18;
-    }
-
     .sbHomeBand {
         padding-inline: 16px;
     }
@@ -1413,10 +1388,6 @@ body.big-avatars .welcomeRecent .chatMessage {
 
     .sbHomeFootButton {
         min-height: 44px;
-    }
-
-    .sbHomeCard[data-sb-footer-compact] .sbHomeFootButton {
-        min-width: 44px;
     }
 }
 

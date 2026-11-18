@@ -1,6 +1,7 @@
 import { t } from './i18n.js';
 import { SHORTCUTS_DIALOG_CLASS } from './sillybunny-help/dialog-classes.js';
 import { openDialog } from './sillybunny-editor/dialog.js';
+import { createStatusPage } from './sillybunny-editor/status-page.js';
 import { createPrefGroup, createRow } from './sillybunny-editor/rows.js';
 import { createArtIntro } from './sillybunny-home/art-intro.js';
 import { isApplePlatform } from './sillybunny-platform.js';
@@ -99,20 +100,45 @@ function getScopeNote(scope) {
  * @param {HTMLElement} body
  * @param {Shortcut[]} shortcuts
  * @param {boolean} apple
+ * @returns {{ filter: (query: string) => number }} `filter` shows the rows whose label or keys have the query, hides a
+ *   group with no such row, and returns how many rows show.
  */
 export function fillShortcuts(body, shortcuts, apple) {
     const titles = getScopeTitles();
+    const groups = [];
     for (const scope of SHORTCUT_SCOPES) {
-        const rows = shortcuts
+        const entries = shortcuts
             .filter(shortcut => shortcut.scope === scope)
-            .map((shortcut, index) => createRow({
-                label: shortcut.label,
-                field: `shortcut-${scope}-${index}`,
-                suffix: createKeys(shortcut.keys, apple),
+            .map((shortcut, index) => ({
+                controller: createRow({
+                    label: shortcut.label,
+                    field: `shortcut-${scope}-${index}`,
+                    suffix: createKeys(shortcut.keys, apple),
+                }),
+                // The keys are matched as they are written on this platform, so a user can search for the key that they press.
+                text: `${shortcut.label} ${shortcut.keys.map(token => formatKeyToken(token, { apple })).join('+')}`.toLocaleLowerCase(),
             }));
-        const { section } = createPrefGroup({ title: titles[scope], subtitle: getScopeNote(scope), field: `shortcuts-${scope}`, rows });
+        const { section } = createPrefGroup({ title: titles[scope], subtitle: getScopeNote(scope), field: `shortcuts-${scope}`, rows: entries.map(entry => entry.controller) });
         body.append(section);
+        groups.push({ section, entries });
     }
+    return {
+        filter(query) {
+            const needle = query.trim().toLocaleLowerCase();
+            let shown = 0;
+            for (const { section, entries } of groups) {
+                let shownInGroup = 0;
+                for (const { controller, text } of entries) {
+                    const matches = text.includes(needle);
+                    controller.row.hidden = !matches;
+                    shownInGroup += matches ? 1 : 0;
+                }
+                section.hidden = shownInGroup === 0;
+                shown += shownInGroup;
+            }
+            return shown;
+        },
+    };
 }
 
 /**
@@ -122,13 +148,46 @@ export function fillShortcuts(body, shortcuts, apple) {
 export async function openShortcutsWindow() {
     await ensureWindowStyles();
     const apple = isApplePlatform();
-    return openDialog({
+    let dialog;
+    let list;
+    let body;
+    // Made on the first search that matches nothing, so a window that is only read holds no unwritten text.
+    let noMatch = null;
+    const getNoMatch = () => {
+        if (!noMatch) {
+            noMatch = createStatusPage({ state: 'no-results', title: t`No Results Found`, description: t`TODO(copy)`, compact: true });
+            const description = noMatch.element.querySelector('.sb-status-page__description');
+            description?.setAttribute('data-sb-copy-placeholder', 'true');
+            description?.setAttribute('data-sb-copy-slot', 'KS-NO-MATCH-DESCRIPTION');
+            body.append(noMatch.element);
+        }
+        return noMatch.element;
+    };
+    dialog = openDialog({
         tier: 'dialog',
         title: t`Keyboard Shortcuts`,
         className: SHORTCUTS_DIALOG_CLASS,
-        content: (body) => {
+        search: {
+            label: t`Search Shortcuts`,
+            toggleLabel: t`Search Shortcuts`,
+            placeholder: t`Search shortcuts`,
+            collapsed: true,
+            escapeClearsFirst: true,
+            onChange: (query) => {
+                const shown = list.filter(query);
+                if (shown === 0) {
+                    getNoMatch().hidden = false;
+                } else if (noMatch) {
+                    noMatch.element.hidden = true;
+                }
+                dialog.search.report(shown, getShortcuts().length);
+            },
+        },
+        content: (contentBody) => {
+            body = contentBody;
             body.append(createArtIntro({ art: 'shortcuts-tewi', text: t`I know every shortcut through the bamboo forest, and through SillyBunny too! Try a few and you'll get around much faster.` }).intro);
-            fillShortcuts(body, getShortcuts(), apple);
+            list = fillShortcuts(body, getShortcuts(), apple);
         },
     });
+    return dialog;
 }

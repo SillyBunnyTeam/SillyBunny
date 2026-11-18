@@ -17,6 +17,7 @@ import { getVisibleRegions, parseDisplayMode } from './modes.js';
  * @property {() => void} [showWelcome]
  * @property {() => void} [openRecentChatsSettings]
  * @property {() => void} [showGettingStarted]
+ * @property {() => void} [openPreferences]
  * @property {() => void} [openKeyboardShortcuts]
  * @property {() => void} [openHelp]
  * @property {() => void} [openAbout]
@@ -63,6 +64,7 @@ export function buildHomeMenuSections({ displayMode, gettingStartedHidden = fals
         },
         {
             items: commandItems([
+                [actions.openPreferences, t`Preferences`, 'fa-solid fa-gear'],
                 [actions.openKeyboardShortcuts, t`Keyboard Shortcuts`, 'fa-solid fa-keyboard'],
                 [actions.openHelp, help.getTitle(), help.icon],
                 [actions.openAbout, t`About SillyBunny`, 'fa-solid fa-circle-info'],

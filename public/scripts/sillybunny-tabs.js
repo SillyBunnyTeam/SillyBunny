@@ -6943,6 +6943,13 @@ function isLandingPageVisible() {
     return isHomeActive();
 }
 
+// The state that the Home toggle has at load is drawn as it is. Only a change after the user has pressed a key or
+// a pointer is a transition, so the pill does not fade in when the app boots to Home.
+let homeToggleInitialState = true;
+for (const type of ['pointerdown', 'keydown']) {
+    globalThis.addEventListener?.(type, () => { homeToggleInitialState = false; }, { capture: true, once: true });
+}
+
 function syncHomeButtonState() {
     const homeButton = document.getElementById('sb-home-toggle');
     if (!(homeButton instanceof HTMLButtonElement)) {
@@ -6952,8 +6959,15 @@ function syncHomeButtonState() {
     // SillyBunny: one destination is active at a time, the one on screen. A settings page open over Home
     // is the destination, so Home is current again only once the page closes.
     const isHomeVisible = isHomeActive() && !sbSettingsState.open;
+    if (homeToggleInitialState) {
+        homeButton.style.transition = 'none';
+    }
     setButtonPressed(homeButton, isHomeVisible);
     homeButton.classList.toggle('is-current', isHomeVisible);
+    if (homeToggleInitialState) {
+        void homeButton.offsetWidth;
+        homeButton.style.removeProperty('transition');
+    }
 
     if (isHomeVisible) {
         homeButton.setAttribute('aria-current', 'page');

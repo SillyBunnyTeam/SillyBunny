@@ -1,4 +1,4 @@
-import { characters, doNewChat, selectCharacterById } from '../../script.js';
+import { characters, doNewChat, getPastCharacterChats, selectCharacterById } from '../../script.js';
 import { t } from '../i18n.js';
 import { getLastChatMode } from '../sillybunny-chat-mode-memory.js';
 import { conversationState } from '../sillybunny-conversation/state.js';
@@ -28,15 +28,21 @@ function findCharacterId(avatar) {
  * Selecting another character and starting a new chat both leave a temporary chat through the same seam, which asks
  * first when the chat was written in. Conversation closes only once the selection is accepted, so a Cancel leaves the
  * user where they were.
+ * A character with no chat file gets its first chat from the selection itself, so a second one is not started on top
+ * of it. The list is read before the selection, because the selection is what creates that first file.
  * @param {string} avatar
  * @returns {Promise<boolean>}
  */
 async function openRoleplayChat(avatar) {
-    const selected = await selectCharacterById(findCharacterId(avatar), { switchMenu: false, onAccepted: closeConversationWorkspace });
+    const characterId = findCharacterId(avatar);
+    const hadChat = (await getPastCharacterChats(characterId)).length > 0;
+    const selected = await selectCharacterById(characterId, { switchMenu: false, onAccepted: closeConversationWorkspace });
     if (!selected) {
         return false;
     }
-    await doNewChat({ deleteCurrentChat: false });
+    if (hadChat) {
+        await doNewChat({ deleteCurrentChat: false });
+    }
     return true;
 }
 

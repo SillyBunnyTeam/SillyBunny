@@ -32,6 +32,20 @@ async function waitForFillAtRest(toggle) {
         .filter(animation => animation.transitionProperty === 'background-color' && animation.playState === 'running').length)).toBe(0);
 }
 
+test('the Home toggle is drawn current at load, without a fill that eases in', async ({ page }) => {
+    await page.addInitScript(() => {
+        window.__homeToggleTransitions = [];
+        document.addEventListener('transitionrun', (event) => {
+            if (event.target?.id === 'sb-home-toggle') window.__homeToggleTransitions.push(event.propertyName);
+        }, true);
+    });
+    await prepare(page, 1440);
+    await expect(page.locator('#sb-home-toggle')).toHaveClass(/is-current/);
+    await waitForFillAtRest(page.locator('#sb-home-toggle'));
+
+    expect(await page.evaluate(() => window.__homeToggleTransitions)).toEqual([]);
+});
+
 for (const width of [1440, 390]) {
     test(`Characters uses the Home selected-pill fill at ${width}`, async ({ page }) => {
         await prepare(page, width);

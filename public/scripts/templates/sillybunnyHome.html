@@ -49,6 +49,9 @@
                         <p class="sbHomeEmptyDescription" data-i18n="Make sure to actually start one with any character, or say hello to Reisen or me first. Nothing will show here otherwise!">Make sure to actually start one with any character, or say hello to Reisen or me first. Nothing will show here otherwise!</p>
                     </div>
                 {{/if}}
+                {{#if failed}}
+                    <div class="noRecentChat" data-recent-chat-empty-state="failed"></div>
+                {{/if}}
                     <div class="noRecentChat displayNone" data-recent-chat-empty-state="filtered"></div>
                 {{#each chats}}
                     {{#with this}}

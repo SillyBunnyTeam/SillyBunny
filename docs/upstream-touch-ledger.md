@@ -1871,6 +1871,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-11, Home finished Getting Started tile; 2026-11-05, PR #870 (hero motion; padding rules removed). |
 | Owner | UI overhaul integrator. |
 
+### `public/scripts/welcome-screen.js` - Home recent chats that failed to load
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/welcome-screen.js` (`getRecentChats()` takes an `onRequestFailed` callback; `openWelcomeScreen()` and `sendWelcomePanel()` pass `failed` to the template and `retryRecentChats` to `mountHome()`; the `sillybunnyHome.html` key). |
+| Area | Home's Recent Chats: a failed request is told from an empty list. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `mountHome()` in `public/scripts/sillybunny-home/mount.js`, which shows the error status page (`status.home.recent-failed`) with Try Again; `public/scripts/templates/sillybunnyHome.html`. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 11.1a, F-075): marked hunks; upstream's request and its empty result are unchanged, and `failed` is set only when the request failed and no chat is listed. |
+| Protecting tests | `tests/home-layout.e2e.js` (the failed state); `tests/home-windows.e2e.js`; the `status.home.recent-failed` surface of `tests/audit/surface-audit.e2e.js`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the coder's related run (1,799 tests, `frontend-performance` included), the home family audit (16 of 16), and the merge's related run (`e2e-related --since fa089f1fb`). |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 11.1a). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/welcome-screen.js` - Home skeleton adapter and mode switcher resume
 | Field | Value |
 | --- | --- |
