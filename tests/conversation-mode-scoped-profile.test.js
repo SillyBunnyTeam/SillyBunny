@@ -201,7 +201,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(timelineSource).not.toContain('bubble.append(actionBar, mobileTrigger)');
         expect(pickersSource).toContain('maxLeft < minLeft');
         expect(actionMenuSource).toContain('maxLeft < minLeft');
-        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261117zp');
+        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261118t');
     });
 
     test('keeps saved Conversation-owned group DMs visible without messages', () => {

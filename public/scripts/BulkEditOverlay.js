@@ -241,12 +241,11 @@ class BulkTagPopupHandler {
                         <div id="bulkTagList" class="m-t-1 tags"></div>
                     </div>
                     <div id="dialogue_popup_controls" class="m-t-1">
+                        <!-- SillyBunny: All and Mutual are label-only buttons (an icon or a label, not both). -->
                         <div id="bulk_tag_popup_reset" class="menu_button" title="Remove all tags from the selected ${noun}" data-i18n="[title]Remove all tags from the selected characters">
-                            <i class="fa-solid fa-trash-can margin-right-10px"></i>
                             All
                         </div>
                         <div id="bulk_tag_popup_remove_mutual" class="menu_button" title="Remove all mutual tags from the selected ${noun}" data-i18n="[title]Remove all mutual tags from the selected characters">
-                            <i class="fa-solid fa-trash-can margin-right-10px"></i>
                             Mutual
                         </div>
                         ${importButtons}

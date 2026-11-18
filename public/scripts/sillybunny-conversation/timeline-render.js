@@ -217,7 +217,7 @@ function createConversationSelfieCommandActions(message) {
         button.dataset.selfieIndex = String(index);
         button.title = request.context ? `Generate selfie: ${request.context}` : 'Generate selfie with Quick Image Gen';
         button.setAttribute('aria-label', button.title);
-        button.innerHTML = '<i class="fa-solid fa-camera" aria-hidden="true"></i><span>Generate selfie</span>';
+        button.innerHTML = '<span>Generate selfie</span>';
         actions.appendChild(button);
     });
 

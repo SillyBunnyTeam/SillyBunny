@@ -7491,15 +7491,29 @@ body.groupSpeakerControlsHidden #extensionsMenu>#wand_group_speaker_controls {
     text-overflow: ellipsis;
 }
 
-/* Narrow bar: icon-only buttons. */
-@container (max-width: 900px) {
-    .group_speaker_controls :is(#group_add_greeting, #group_speaker_now, #group_speaker_hide) {
-        width: var(--sb-control-min-height);
-        padding: 0;
+/* SillyBunny: with the buttons label-only, a phone held sideways has no height for a second row, so the bar stays one row and the chips scroll beside the buttons. */
+@media (max-height: 500px) {
+    .group_speaker_controls {
+        flex-wrap: nowrap;
     }
 
-    .group_speaker_controls :is(#group_add_greeting, #group_speaker_now, #group_speaker_hide) > span {
+    .group_speaker_list {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .group_speaker_list::-webkit-scrollbar {
         display: none;
+    }
+
+    .group_speaker_avatar {
+        flex: 0 0 auto;
+    }
+
+    .group_speaker_controls :is(#group_add_greeting, #group_speaker_now, #group_speaker_hide) {
+        flex: 0 0 auto;
+        padding-inline: 8px;
     }
 }
 

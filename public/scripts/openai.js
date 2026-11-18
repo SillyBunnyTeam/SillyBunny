@@ -4356,17 +4356,15 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                     </label>
                 </section>
             </div>
+            <!-- SillyBunny: the three actions are label-only buttons (an icon or a label, not both). -->
             <div class="sb-chat-completion-config-actions">
                 <button id="sb-chat-completion-config-reload" class="menu_button menu_button_icon" type="button">
-                    <i class="fa-solid fa-rotate-right"></i>
                     <span>Reload</span>
                 </button>
                 <button id="sb-chat-completion-config-save" class="menu_button menu_button_icon" type="button">
-                    <i class="fa-solid fa-floppy-disk"></i>
                     <span>Save server config</span>
                 </button>
                 <button id="sb-chat-completion-config-save-restart" class="menu_button menu_button_icon menu_button_primary" type="button">
-                    <i class="fa-solid fa-power-off"></i>
                     <span>Save & Restart</span>
                 </button>
             </div>

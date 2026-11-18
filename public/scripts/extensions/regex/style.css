@@ -30,6 +30,21 @@
     display: none;
 }
 
+/* SillyBunny: Test Mode is a label-only toggle button; it looks pushed in while it is on. */
+#regex_test_mode_toggle[aria-pressed='true'] {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+}
+
+@media (hover: hover) {
+    #regex_test_mode_toggle[aria-pressed='true']:hover {
+        background: color-mix(in srgb, var(--SmartThemeBodyColor) 35%, transparent);
+    }
+}
+
+#regex_test_mode_toggle[aria-pressed='true']:active {
+    background: color-mix(in srgb, var(--SmartThemeBodyColor) 40%, transparent);
+}
+
 .regex-script-container {
     margin-top: 10px;
     margin-bottom: 10px;

@@ -1334,10 +1334,19 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     padding: 8px 12px;
 }
 
+/* The two-class selector beats the icon font's own `display`, which loads after this sheet. */
+.sb-selection-action > .sb-selection-action__icon {
+    display: none;
+}
+
 @media (max-width: 450px), (max-height: 360px) {
     .sb-selection-action-bar--icon-only-narrow {
         flex-wrap: nowrap;
         justify-content: space-evenly;
+    }
+
+    .sb-selection-action-bar--icon-only-narrow .sb-selection-action > .sb-selection-action__icon {
+        display: inline-block;
     }
 
     .sb-selection-action-bar--icon-only-narrow .sb-selection-action {

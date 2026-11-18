@@ -1249,8 +1249,9 @@
 
     .group_speaker_controls {
         display: grid !important;
-        grid-template-columns: minmax(0, 1fr) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) var(--sb-mobile-touch-target, 44px) !important;
-        grid-template-areas: "avatars greeting speak hide" !important;
+        /* SillyBunny: the three buttons are label-only, so they share a row of their own under the chips. */
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        grid-template-areas: "avatars avatars avatars" "greeting speak hide" !important;
         gap: 5px !important;
         align-items: center !important;
         min-height: calc(var(--sb-mobile-touch-target, 44px) + 8px) !important;
@@ -1264,7 +1265,7 @@
 
     /* SillyBunny: the typing line is a row of its own above the chips, so the chips stay in view. */
     .group_speaker_controls.is-typing {
-        grid-template-areas: "typing typing typing typing" "avatars greeting speak hide" !important;
+        grid-template-areas: "typing typing typing" "avatars avatars avatars" "greeting speak hide" !important;
     }
 
     .group_speaker_controls.displayNone {
@@ -1323,23 +1324,21 @@
         height: 34px !important;
     }
 
-    .group_speaker_avatar span,
-    #group_add_greeting span,
-    #group_speaker_now span,
-    #group_speaker_hide span {
+    .group_speaker_avatar span {
         display: none !important;
     }
 
+    /* SillyBunny: a label-only button keeps the touch floor and lets a long label wrap to a second line. */
     #group_add_greeting,
     #group_speaker_now,
     #group_speaker_hide {
-        width: var(--sb-mobile-touch-target, 44px) !important;
-        min-width: var(--sb-mobile-touch-target, 44px) !important;
-        max-width: var(--sb-mobile-touch-target, 44px) !important;
-        height: var(--sb-mobile-touch-target, 44px) !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        height: auto !important;
         min-height: var(--sb-mobile-touch-target, 44px) !important;
-        max-height: var(--sb-mobile-touch-target, 44px) !important;
-        padding: 0 !important;
+        max-height: none !important;
+        padding: 4px 8px !important;
         margin: 0 !important;
         display: inline-flex !important;
         align-items: center !important;
@@ -1347,7 +1346,13 @@
         gap: 0 !important;
         border-radius: var(--sb-radius-control) !important;
         box-sizing: border-box !important;
-        font-size: 16px !important;
+        text-align: center !important;
+        line-height: 1.2 !important;
+    }
+
+    :is(#group_add_greeting, #group_speaker_now, #group_speaker_hide) > span {
+        overflow-wrap: anywhere;
+        white-space: normal;
     }
 
     #group_add_greeting {
@@ -1360,6 +1365,25 @@
 
     #group_speaker_hide {
         grid-area: hide !important;
+    }
+
+    /* SillyBunny: a phone held sideways has no height for a second row, so the buttons sit beside the chips. */
+    @media (max-height: 500px) {
+        .group_speaker_controls {
+            grid-template-columns: minmax(0, 1fr) repeat(3, auto) !important;
+            grid-template-areas: "avatars greeting speak hide" !important;
+        }
+
+        .group_speaker_controls.is-typing {
+            grid-template-areas: "typing typing typing typing" "avatars greeting speak hide" !important;
+        }
+
+        #group_add_greeting,
+        #group_speaker_now,
+        #group_speaker_hide {
+            width: auto !important;
+            padding-inline: 8px !important;
+        }
     }
 
     /* SillyBunny: ds-entity-row owns responsive group-member touch targets. */

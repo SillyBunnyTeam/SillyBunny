@@ -237,7 +237,13 @@ export function createSelectionMode({
             button.dataset.actionId = action.id;
             button.classList.toggle('is-danger', Boolean(action.danger));
             button.disabled = selected.size === 0;
-            button.append(createIcon(action.icon));
+            // An action shows its label. Only a bar that goes icon-only under the overlay breakpoint carries the
+            // icon, which the stylesheet shows there and hides above it, so the two never show together.
+            if (iconOnlyAtNarrow) {
+                const icon = createIcon(action.icon);
+                icon.classList.add('sb-selection-action__icon');
+                button.append(icon);
+            }
             button.setAttribute('aria-label', action.label);
             button.title = action.label;
             const label = document.createElement('span');

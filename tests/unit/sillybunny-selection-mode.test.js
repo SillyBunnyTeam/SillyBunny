@@ -391,6 +391,18 @@ describe('selection mode', () => {
         expect(rows[0].querySelector('.sb-selection-check')).toBeNull();
     });
 
+    test('a bar that opts in to icon-only actions under the overlay breakpoint carries the icon beside the label', () => {
+        const { selection, actionBar } = makeSelection({ iconOnlyAtNarrow: true });
+        selection.enter();
+        const button = actionBar.querySelector('.sb-selection-action');
+
+        expect(actionBar.classList.contains('sb-selection-action-bar--icon-only-narrow')).toBe(true);
+        expect(button.querySelector('i.sb-selection-action__icon').getAttribute('aria-hidden')).toBe('true');
+        expect(button.querySelector('span').textContent).toBe('Remove');
+        expect(button.getAttribute('aria-label')).toBe('Remove');
+        expect(button.title).toBe('Remove');
+    });
+
     test('actions are disabled with zero selected and receive a copy of selected keys', () => {
         const { selection, actionBar, onActivate } = makeSelection();
         selection.enter();
@@ -401,7 +413,9 @@ describe('selection mode', () => {
         expect(button.dataset.actionId).toBe('remove');
         expect(button.getAttribute('aria-label')).toBe('Remove');
         expect(button.title).toBe('Remove');
-        expect(button.querySelector('i').getAttribute('aria-hidden')).toBe('true');
+        // The base bar is label-only: an action shows its label, and the icon exists only for a bar that opts in.
+        expect(button.querySelector('i')).toBeNull();
+        expect(button.querySelector('span').textContent).toBe('Remove');
         button.click();
         expect(onActivate).not.toHaveBeenCalled();
         selection.select(['a', 'b']);

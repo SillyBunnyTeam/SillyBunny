@@ -64,6 +64,13 @@ export function adaptRegexEditor(root) {
     test.classList.remove('flex1', 'flex-container');
     test.classList.add('ds-pref-group');
 
+    // Test Mode is a label-only toggle button, so its state is on the button itself. The extension toggles the class
+    // `displayNone` on the test fields, which the observer follows, so the extension's handler stays unchanged.
+    const testToggle = needed(root, '#regex_test_mode_toggle');
+    const syncTestToggle = () => testToggle.setAttribute('aria-pressed', String(!test.classList.contains('displayNone')));
+    syncTestToggle();
+    new MutationObserver(syncTestToggle).observe(test, { attributes: true, attributeFilter: ['class'] });
+
     // What the script affects: a pick-several list of places, and the depth range.
     const [affects, other] = [...root.querySelectorAll('.regex_editor > .flex-container > .wi-enter-footer-text')];
     if (!affects || !other) throw new TypeError('The regex editor template is missing its option columns.');

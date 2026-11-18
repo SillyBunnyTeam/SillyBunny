@@ -440,20 +440,19 @@ class BackupsBrowser {
         keepField.appendChild(keepLabel);
         keepField.appendChild(keepInput);
 
+        // SillyBunny: Preview and Clean are label-only buttons (an icon or a label, not both).
         const previewButton = document.createElement('button');
         previewButton.type = 'button';
         previewButton.classList.add('menu_button', 'menu_button_icon', 'chatBackupsCleanupPreviewButton');
         previewButton.title = t`Preview old backups that match the cleanup settings`;
-        previewButton.innerHTML = '<i class="fa-solid fa-list-check"></i><span></span>';
-        previewButton.querySelector('span').textContent = t`Preview`;
+        previewButton.textContent = t`Preview`;
         previewButton.addEventListener('click', () => this.previewCleanup());
 
         const cleanupButton = document.createElement('button');
         cleanupButton.type = 'button';
         cleanupButton.classList.add('menu_button', 'menu_button_icon', 'chatBackupsCleanupCleanButton');
         cleanupButton.title = t`Delete old backups that match the cleanup settings`;
-        cleanupButton.innerHTML = '<i class="fa-solid fa-broom"></i><span></span>';
-        cleanupButton.querySelector('span').textContent = t`Clean`;
+        cleanupButton.textContent = t`Clean`;
         cleanupButton.addEventListener('click', () => this.cleanupOldBackups());
 
         const status = document.createElement('div');

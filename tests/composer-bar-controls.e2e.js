@@ -130,11 +130,11 @@ test.describe('composer, bottom bar and speaker controls on a desktop window', (
         }
     });
 
-    test('the bar drops the button labels, then the chip names, as its own width shrinks', async ({ page }) => {
+    test('the bar keeps the button labels and drops the chip names as its own width shrinks', async ({ page }) => {
         await openQuietChatForSmoke(page);
         await showGroupBar(page);
 
-        for (const [width, buttonLabels, chipNames] of [[1100, true, true], [700, false, true], [440, false, false]]) {
+        for (const [width, buttonLabels, chipNames] of [[1100, true, true], [700, true, true], [440, true, false]]) {
             await page.locator('#group_speaker_controls').evaluate((element, value) => { element.style.width = `${value}px`; }, width);
             await waitForAnimationFrames(page, 2);
             const bar = await measureGroupBar(page);
@@ -142,6 +142,11 @@ test.describe('composer, bottom bar and speaker controls on a desktop window', (
             expect(bar.buttons.every(button => button.labelShown === buttonLabels), `button labels at ${width}px`).toBe(true);
             expect(bar.chips.every(chip => chip.labelShown === chipNames), `chip names at ${width}px`).toBe(true);
             expect(bar.listOverflow).toBeLessThanOrEqual(1);
+            // The label-only buttons wrap under the chips when the bar is narrow; none is cut off by the bar.
+            for (const button of bar.buttons) {
+                expect(button.left, `button left edge at ${width}px`).toBeGreaterThanOrEqual(bar.bar.left - 0.5);
+                expect(button.right, `button right edge at ${width}px`).toBeLessThanOrEqual(bar.bar.right + 0.5);
+            }
         }
     });
 

@@ -996,7 +996,12 @@
 
 #form_create .sb-greetings-editor__add {
     display: inline-flex;
+    align-items: center;
+    justify-content: center;
     margin: 0;
+    padding: 0;
+    inline-size: var(--sb-density-floor);
+    block-size: var(--sb-density-floor);
     white-space: nowrap;
 }
 

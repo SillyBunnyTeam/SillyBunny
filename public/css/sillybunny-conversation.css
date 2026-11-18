@@ -1601,7 +1601,7 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
 }
 
 .sb-conversation-selfie-action {
-    min-block-size: 28px;
+    min-block-size: var(--sb-density-floor, 32px);
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1633,10 +1633,6 @@ body:not(.expandMessageActions) .sb-conversation-message:not([data-sb-actions-ex
     outline: none;
     color: var(--SmartThemeBodyColor);
     box-shadow: var(--sb-focus-ring-inset);
-}
-
-.sb-conversation-selfie-action i {
-    font-size: 0.92em;
 }
 
 .sb-conversation-message-reaction-chip {
@@ -2943,6 +2939,12 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
 #sb_conversation_schedule_modal .sb-schedule-modal-tab.is-selected {
     background: var(--sb-flat-selected-bg);
     font-weight: var(--sb-weight-control);
+}
+
+/* The base button is `width: min-content`, which wraps a label-only button's words one per line. */
+#sb_conversation_schedule_modal .sb-schedule-modal-add {
+    width: fit-content;
+    white-space: nowrap;
 }
 
 .sb-schedule-modal-row input,

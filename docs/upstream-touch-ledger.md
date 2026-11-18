@@ -1451,6 +1451,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05, PR #870 (stand-in expression packs). |
 | Owner | Defaults and release integrator. |
 
+### `public/index.html`, `public/style.css`, `public/css/mobile-styles.css` and six scripts and templates - a button shows an icon or a label
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` (the Browser Cache and MovingUI Reset buttons, the group speaker bar's three buttons and the Chat History cancel, preview and clean buttons lose their icons; the character editor's two Add buttons lose their labels and keep them as tooltip and accessible name); `public/scripts/BulkEditOverlay.js` (All and Mutual); `public/scripts/chat-backups.js` (Preview and Clean); `public/scripts/openai.js` (the server config's three actions); `public/scripts/templates/dataMaidDialog.html` (Scan); `public/scripts/extensions/expressions/settings.html` (five actions); `public/scripts/extensions/regex/editor.html` and `public/scripts/extensions/regex/style.css` (Test Mode as a label-only toggle with a pressed fill); `public/style.css` (the speaker bar's container rule that made it icon-only is removed; a short view keeps it to one row); `public/css/mobile-styles.css` (the speaker bar's phone grid). |
+| Area | Buttons that showed an icon and a label together, outside the top bar. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `BUTTON_FORMS` in `tests/helpers/button-forms.js` (the list of buttons and the form each has); the selection action bar in `public/scripts/sillybunny-editor/selection-mode.js` (label-only, an icon only where a consumer opts in to icon-only under the overlay breakpoint); `public/css/sillybunny-character-editor.css` (the square icon-only size). |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 12.2b): each button keeps its id, classes, handler, `data-i18n` key and accessible name; only the icon element or the visible label is removed, under a marker. Buttons that are hidden transports or unrendered templates are left as upstream has them. |
+| Protecting tests | `tests/unit/sillybunny-button-forms.test.js`; `tests/unit/upstream-template-compatibility.test.js` (the icons removed on purpose); `tests/unit/sillybunny-selection-mode.test.js`; `tests/group-chat-greetings-qol.test.js`; `tests/composer-bar-controls.e2e.js`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the coder's related runs (36 specs) with each failure rerun alone, the audit of 54 surfaces, the settings inventory of six pages, and the merge's specs. Chromium only. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 12.2b). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/power-user.js`, `public/index.html` and `src/endpoints/data-maid.js` - Font Settings with imported fonts
 | Field | Value |
 | --- | --- |

@@ -75,7 +75,7 @@ const EDITOR_HTML = `
 
         <div class="prompt-editor-actions">
             <button id="pf-prompt-save" class="menu_button">
-                <i class="fa-solid fa-save"></i> <span>Save</span>
+                <span>Save</span>
             </button>
             <span id="pf-prompt-status" class="prompt-status"></span>
         </div>

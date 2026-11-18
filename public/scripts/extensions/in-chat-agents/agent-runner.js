@@ -2456,7 +2456,6 @@ function showPromptTransformRunningToast(agent, mode, profileId = '', options = 
         <div>${escapeToastHtml(runningLabel)}</div>
         <div>${escapeToastHtml(`Order ${metadata.order} | Model: ${metadata.modelLabel}`)}</div>
         <button type="button" class="menu_button menu_button_icon caution ${cancelButtonClass}">
-            <i class="fa-solid fa-stop"></i>
             <span>${escapeToastHtml(cancelLabel)}</span>
         </button>
     `;

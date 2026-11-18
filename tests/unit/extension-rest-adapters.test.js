@@ -263,6 +263,23 @@ describe('the regex editor', () => {
         return { root, result };
     }
 
+    test('the Test Mode button is a label-only toggle whose pressed state follows the test fields', async () => {
+        const { root } = editor();
+        const toggle = root.querySelector('#regex_test_mode_toggle');
+        const fields = root.querySelector('#regex_test_mode');
+
+        expect(toggle.querySelector('i')).toBeNull();
+        expect(toggle.textContent.trim()).toBe('Test Mode');
+        expect(fields.classList.contains('displayNone')).toBe(true);
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        fields.classList.toggle('displayNone');
+        await Promise.resolve();
+        expect(toggle.getAttribute('aria-pressed')).toBe('true');
+        fields.classList.toggle('displayNone');
+        await Promise.resolve();
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    });
+
     test('keeps every control the extension reads by its own selector', () => {
         const { root } = editor();
         for (const selector of ['.regex_script_name', '.find_regex', '.regex_replace_string', '.regex_trim_strings', 'input[name="disabled"]', 'input[name="run_on_edit"]', 'input[name="only_format_display"]', 'input[name="only_format_prompt"]', 'select[name="substitute_regex"]', 'input[name="min_depth"]', 'input[name="max_depth"]', '#regex_test_input', '#regex_test_output', '#regex_test_mode_toggle']) {

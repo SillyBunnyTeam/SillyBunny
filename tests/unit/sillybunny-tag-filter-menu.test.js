@@ -72,7 +72,7 @@ describe('tag filter menu', () => {
         button().click();
         expect(openPicker).not.toHaveBeenCalled();
         await settle();
-        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261117zo', { id: 'deferred-editor-shell-css' });
+        expect(globalThis.SillyBunnyAssets.loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-editor-shell.css?v=20261118t', { id: 'deferred-editor-shell-css' });
         expect(options).toMatchObject({ title: 'Tags', multiple: true });
         expect(options.bounds).toBe(controls.parentElement);
         expect(options.items.map(({ value, label, muted }) => ({ value, label, muted }))).toEqual([

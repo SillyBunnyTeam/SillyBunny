@@ -11,6 +11,12 @@ const templates = [
     'public/scripts/extensions/regex/debugger.html',
 ];
 
+// Classes that a template drops on purpose. Scan is a label-only button (DESIGN.md, Buttons, Content), so its cog icon and
+// the classes of that icon are gone; no upstream code reads the icon.
+const REMOVED_ON_PURPOSE = {
+    'public/scripts/templates/dataMaidDialog.html': { classes: ['fa', 'fa-cog'] },
+};
+
 function templateAttributes(html) {
     const template = document.createElement('template');
     template.innerHTML = html;
@@ -29,6 +35,7 @@ test.each(templates)('%s retains every upstream class, id and i18n key', path =>
     const current = templateAttributes(working);
 
     for (const attribute of ['classes', 'ids', 'i18n']) {
-        expect([...current[attribute]]).toEqual(expect.arrayContaining([...original[attribute]]));
+        const removed = REMOVED_ON_PURPOSE[path]?.[attribute] ?? [];
+        expect([...current[attribute]]).toEqual(expect.arrayContaining([...original[attribute]].filter(value => !removed.includes(value))));
     }
 });

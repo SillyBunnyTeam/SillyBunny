@@ -755,7 +755,6 @@ function buildCompactionButton(state) {
 
     return `
         <button type="button" class="menu_button menu_button_icon ica--tpanel-compact" data-action="panel-hide-before" title="Exclude every message above this shard from prompts — the shard carries the history from here on">
-            <i class="fa-solid fa-broom"></i>
             <span>Hide story above this shard</span>
         </button>
     `;

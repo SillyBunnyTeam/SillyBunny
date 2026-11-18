@@ -369,7 +369,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
         <div class="sb-schedule-modal-body">
             <div class="sb-schedule-modal-blocks-list"></div>
             <button type="button" class="menu_button sb-schedule-modal-add">
-                <i class="fa-solid fa-plus" aria-hidden="true"></i><span>Add time block</span>
+                <span>Add time block</span>
             </button>
         </div>
         <div class="sb-schedule-modal-meta">
