@@ -9,6 +9,7 @@ import { formatProgress, getSharedGettingStartedState } from './sillybunny-home/
 import { openShellTarget } from './sillybunny-home/shell-targets.js';
 import { getWelcomeStartup } from './sillybunny-home/welcome-boot.js';
 import { createArtIntro } from './sillybunny-home/art-intro.js';
+import { markCopyPlaceholder } from './sillybunny-home/copy.js';
 import { openBundledExtras, openFromHomeTile, openGettingStarted, openHelp } from './sillybunny-home/windows.js';
 import { openAlert, openDialog } from './sillybunny-editor/dialog.js';
 import { createEntryRow, createPrefGroup, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
@@ -202,6 +203,9 @@ function fillImport(body, { importer, canImportFolder }) {
             createTextBlock(t`Please enter the path of a SillyTavern folder on the computer running SillyBunny, or upload a backup ZIP. We'll try to transfer everything over right away. Just be careful... files with the same name will be replaced.`),
             createPrefGroup({ field: 'welcome-import-group', rows: [folder] }).section,
         );
+    } else {
+        // Without a line the page shows one button and nothing that says why the folder import is missing.
+        body.append(markCopyPlaceholder(createTextBlock(''), 'WL-IMPORT-NO-FOLDER'));
     }
     body.append(actions, status);
 }

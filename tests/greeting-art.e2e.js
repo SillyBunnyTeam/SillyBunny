@@ -508,6 +508,22 @@ for (const { name, options } of VIEWPORTS) {
             await expect(viewer).toHaveCount(0);
         });
 
+        test('keeps the focus on the picture button when the delayed autofocus of a chat load comes after it', async ({ page }) => {
+            await boot(page);
+            await openFromHome(page, 'assistant-reisen', 'Start New Chat');
+            await expectOneFigure(page);
+            // A chat that loads once more ends in the autofocus of the message box, 200 ms later. Focus lands on the
+            // button in between, as when the viewer closes and returns the focus to it.
+            await page.evaluate(async () => {
+                const { getChat } = await import('/script.js');
+                await getChat();
+                document.activeElement?.blur();
+                document.querySelector('#chat .sbGreetingArt .sbGreetingArtOpen').focus();
+            });
+            await page.waitForTimeout(600);
+            await expect(page.locator(`${FIGURES} .sbGreetingArtOpen`)).toBeFocused();
+        });
+
         test('sizes the enlarged picture again when the window is resized while it is open', async ({ page }) => {
             await boot(page);
             await openFromHome(page, 'assistant-reisen', 'Start New Chat');

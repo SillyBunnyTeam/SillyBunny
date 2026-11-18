@@ -636,6 +636,8 @@ test.describe('the Import From SillyTavern page', () => {
         await expect(current.getByRole('button', { name: 'Import Folder', exact: true })).toHaveCount(0);
         await expect(current).not.toContainText(WELCOME_COPY.importExplanation);
         await expect(current.getByRole('button', { name: 'Import Backup ZIP', exact: true })).toBeVisible();
+        // The page says why the folder import is missing. Its wording is placeholder copy until the copy pass.
+        await expect(current.locator('[data-sb-copy-slot="WL-IMPORT-NO-FOLDER"][data-sb-copy-placeholder="true"]')).toHaveText('TODO(copy)');
 
         await current.locator('input[type="file"]').setInputFiles({ name: 'backup.zip', mimeType: 'application/zip', buffer: Buffer.from('PK-not-a-real-zip') });
         await confirmImport(page);

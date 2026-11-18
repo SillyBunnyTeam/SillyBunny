@@ -2118,11 +2118,11 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Area | Focus after a chat loads while a menu or picker is open; the TTS row of the wand menu. |
 | Divergence reason | `TODO(copy)` |
 | Target seam | `public/scripts/sillybunny-action-menu.js` (menu layers, Escape from outside) and the persona picker's Escape handling; the `#tts_media_control` markup. |
-| Adapter shape | Since 2026-11-17 (UI polish sweep, task 9.4a): one marked guard in each of the two delayed-focus callbacks, and one marked class on the TTS control. |
-| Protecting tests | `tests/persona-picker-dismiss.e2e.js`; `tests/unit/sillybunny-action-menu.test.js`; `tests/composer-menu-sheets.e2e.js`; the `menu.composer.wand` surface of `tests/audit/surface-audit.e2e.js`. |
+| Adapter shape | Since 2026-11-17 (UI polish sweep, task 9.4a): one marked guard in each of the two delayed-focus callbacks, and one marked class on the TTS control. Since 2026-11-18 (task 11.1b, F-282), the same guards also return early while focus is inside the greeting picture viewer (`.sbGreetingArt`), so closing it with Escape keeps focus on its opener. |
+| Protecting tests | `tests/persona-picker-dismiss.e2e.js`; `tests/unit/sillybunny-action-menu.test.js`; `tests/composer-menu-sheets.e2e.js`; the `menu.composer.wand` surface of `tests/audit/surface-audit.e2e.js`.; `tests/greeting-art.e2e.js` (the delayed autofocus); `tests/dialogs-accessibility.e2e.js` (the greeting picture viewer, Escape). |
 | Validation | 2026-11-17: root and tests lint, the full unit run, budgets, contracts and design rules, `frontend-performance.e2e.js`, the coder's related and named-class specs (39 files, failures rerun alone), the merge's related run (`e2e-related --since d5fae16fa`), and the menu family audit (77 of 78, the one failure pre-existing). |
 | Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-17, UI polish sweep (task 9.4a). |
+| Last reviewed | 2026-11-18, UI polish sweep (task 11.1b). |
 | Owner | `TODO(copy)` |
 
 ### `public/style.css`, `public/css/select2-overrides.css` and the Quick Reply and Regex extensions - type-ahead lists and list overlays

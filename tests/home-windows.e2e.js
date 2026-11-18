@@ -1707,6 +1707,17 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.getByText(version.gitRevision, { exact: true })).toBeVisible();
             });
 
+            test('stands its boxed lists 24px apart', async ({ page }) => {
+                const host = await openFromMenu(page, 'About SillyBunny');
+
+                const gaps = await host.locator('.sb-dialog__body > .sb-editor-section').evaluateAll((sections) => {
+                    const boxes = sections.map(section => section.getBoundingClientRect());
+                    return boxes.slice(1).map((box, index) => Math.round((box.top - boxes[index].bottom) * 10) / 10);
+                });
+                expect(gaps.length).toBeGreaterThan(2);
+                expect(new Set(gaps), `the gaps between the boxed lists of About: ${gaps}`).toEqual(new Set([24]));
+            });
+
             for (const scale of [1, 2, 3]) {
                 test.describe(`at a screen scale of ${scale}`, () => {
                     test.use({ deviceScaleFactor: scale });
@@ -1913,6 +1924,27 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host).toHaveAccessibleName('Getting Started');
                 await expect(host.locator('.sb-dialog__subtitle')).toHaveText('0 of 4');
                 await expect(homeTile(page, 'getting-started')).not.toHaveAttribute('data-sb-stub', /.*/);
+            });
+
+            test('keeps a readable text column in every row and draws Show Me and Skip as raised buttons', async ({ page }) => {
+                const host = await openFromTile(page, 'getting-started');
+                const rows = host.locator('.sbHomeStepRow');
+                await expect(rows).toHaveCount(4);
+
+                const measured = await rows.evaluateAll(list => list.map((row) => {
+                    const text = row.querySelector('.ds-row-text').getBoundingClientRect();
+                    const suffix = row.querySelector('.ds-row-suffix').getBoundingClientRect();
+                    const button = getComputedStyle(row.querySelector('.ds-row-suffix .sbHomeFlatButton'));
+                    const learnMore = getComputedStyle(row.querySelector('.sbHomeStepLearnMore'));
+                    const em = Number.parseFloat(getComputedStyle(row.querySelector('.ds-row-text')).fontSize);
+                    return { textWidth: text.width, em, beside: suffix.top < text.bottom - 1, raised: button.backgroundColor !== 'rgba(0, 0, 0, 0)', learnMoreFlat: learnMore.backgroundColor === 'rgba(0, 0, 0, 0)' };
+                }));
+                for (const row of measured) {
+                    // The text column is at least 14em wide, or the buttons stand under it and it takes the row.
+                    expect(row.textWidth, JSON.stringify(row)).toBeGreaterThanOrEqual(row.em * 14 - 1);
+                    expect(row.raised, 'Show Me and Skip have a fill').toBe(true);
+                    expect(row.learnMoreFlat, 'Learn More stays flat').toBe(true);
+                }
             });
 
             test('shows Reisen\'s art and intro, then the four steps with their lines, Show Me and Skip', async ({ page }) => {
@@ -2265,6 +2297,25 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(host.locator('.ds-row-subtitle')).toHaveText(Object.values(EXTRA_DESCRIPTIONS));
                 await expect(host.getByText('Nahida')).toHaveCount(0);
                 expect(await readCopyPlaceholders(host)).toEqual([]);
+            });
+
+            test('keeps a readable text column in every row and draws Install as a raised button', async ({ page }) => {
+                const host = await openFromTile(page, 'extras');
+
+                const measured = await host.locator('.ds-row:has(.sbBundledExtraControls)').evaluateAll(list => list.map((row) => {
+                    const text = row.querySelector('.ds-row-text');
+                    const button = row.querySelector('.sbBundledExtraControls .sbHomeFlatButton');
+                    return {
+                        textWidth: text.getBoundingClientRect().width,
+                        em: Number.parseFloat(getComputedStyle(text).fontSize),
+                        raised: !button || getComputedStyle(button).backgroundColor !== 'rgba(0, 0, 0, 0)',
+                    };
+                }));
+                expect(measured.length).toBeGreaterThan(10);
+                for (const row of measured) {
+                    expect(row.textWidth, JSON.stringify(row)).toBeGreaterThanOrEqual(row.em * 14 - 1);
+                    expect(row.raised, 'the buttons of the row have a fill').toBe(true);
+                }
             });
 
             test('shows the Tewi art, and no art beside a row', async ({ page }) => {

@@ -17,6 +17,12 @@
     gap: 16px;
 }
 
+/* The body spaces its children 16px apart, and the shared rule for a group after a group adds 16px more. Groups stand 24px
+   apart, so the margin is what the body's gap lacks. */
+:is(.sbWelcomeDialog, .sbAboutDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog) .sb-dialog__body > :is(.ds-pref-group, .sb-editor-section) + :is(.ds-pref-group, .sb-editor-section, .ds-pref-group-header) {
+    margin-top: calc(24px - 16px);
+}
+
 /* A flex item that holds a clipped boxed list could otherwise shrink to nothing. */
 :is(.sbWelcomeDialog, .sbAboutDialog, .sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog) .sb-dialog__body > * {
     flex: none;
@@ -244,6 +250,17 @@ kbd.sbKeys > kbd {
 :is(.sbShortcutsDialog, .sbGettingStartedDialog, .sbBundledExtrasDialog, .sbHelpDialog) .ds-row-text {
     min-inline-size: min-content;
     overflow-wrap: break-word;
+}
+
+/* A step or an extra has a description of a few lines. Beside its buttons the text column would shrink to the width of its
+   longest word, so the column asks for a readable measure and the buttons move under it when the two do not fit. */
+:is(.sbGettingStartedDialog, .sbBundledExtrasDialog) .ds-row {
+    --sb-row-title-min: 14em;
+}
+
+/* Under the text the buttons stay at the end of the row, where they are beside it. */
+:is(.sbGettingStartedDialog, .sbBundledExtrasDialog) .ds-row > .ds-row-suffix {
+    margin-inline-start: auto;
 }
 
 /* A note line is cut short with an ellipsis, so its length must not count as a word that the row has to make room for. */
@@ -507,6 +524,26 @@ body.reduced-motion .sbHomeFlatButton {
     .sbHomeFlatButton[aria-pressed='true'] {
         outline: 2px solid Highlight;
         outline-offset: -2px;
+    }
+}
+
+/* The actions of a row (Show Me, Skip, Install) are secondary buttons, as the buttons of the other windows are, so they do
+   not read as labels. Learn More stays flat because it is a link under the title. A pressed Skip is the toggle fill. */
+:is(.sbHomeStepRow .ds-row-suffix, .sbBundledExtraControls) > .sbHomeFlatButton {
+    background: var(--sb-raised-bg);
+}
+
+:is(.sbHomeStepRow .ds-row-suffix, .sbBundledExtraControls) > .sbHomeFlatButton[aria-pressed='true'] {
+    background: var(--sb-raised-active-bg);
+}
+
+:is(.sbHomeStepRow .ds-row-suffix, .sbBundledExtraControls) > .sbHomeFlatButton:active {
+    background: var(--sb-raised-active-bg);
+}
+
+@media (hover: hover) {
+    :is(.sbHomeStepRow .ds-row-suffix, .sbBundledExtraControls) > .sbHomeFlatButton:not([aria-pressed='true']):hover {
+        background: var(--sb-raised-hover-bg);
     }
 }
 
