@@ -2,7 +2,7 @@ import { parseJsonl, recordsToText } from '../core.js';
 import { setStatus, tr } from './dom.js';
 
 export function downloadChat(ctx, ui, row, raw, format) {
-    setStatus(ui, tr(ctx, 'Preparing...'));
+    setStatus(ui, tr(ctx, 'Preparing…'));
     try {
         const content = format === 'txt' ? recordsToText(parseJsonl(raw)) : raw;
         const mime = format === 'txt' ? 'text/plain;charset=utf-8' : 'application/x-ndjson;charset=utf-8';

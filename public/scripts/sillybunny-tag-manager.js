@@ -450,7 +450,7 @@ export function createTagManager(adapter) {
             picker.setAttribute('data-default-color', defaultColor);
             picker.setAttribute('aria-label', property === 'color' ? t`Background Color` : t`Text Color`);
             picker.addEventListener('change', event => actions.color(event, property));
-            const reset = rowButton(t`Link to theme color`, 'link', () => picker.color = defaultColor);
+            const reset = rowButton(t`Link to Theme Color`, 'link', () => picker.color = defaultColor);
             const dismiss = rowButton(t`Close`, 'xmark', () => entry.colors.hidden = true);
             wrapper.append(picker, reset, dismiss);
             entry.colors.append(wrapper);

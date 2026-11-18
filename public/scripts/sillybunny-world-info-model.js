@@ -390,7 +390,7 @@ export const FIELDS = Object.freeze([
     },
     // Advanced
     bool('ignoreBudget', 'advanced', 'Ignore budget'),
-    bool('agentBlacklisted', 'advanced', 'Agent blacklisted'),
+    bool('agentBlacklisted', 'advanced', 'Agent Blacklisted'),
     { id: 'uid', section: 'advanced', control: 'property', label: 'UID', i18n: 'UID', keys: [], read: entry => String(entry.uid ?? ''), write: null },
 ]);
 

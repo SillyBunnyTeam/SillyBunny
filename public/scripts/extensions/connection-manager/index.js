@@ -927,7 +927,8 @@ async function deleteAllConnectionProfiles() {
     }
 
     const confirm = await Popup.show.confirm(
-        t`Delete selected connection profiles?`,
+        // SillyBunny: capitalisation by DESIGN.md
+        t`Delete Selected Connection Profiles?`,
         t`This will permanently delete ${profilesToDelete.length} saved connection profile(s).`,
         {
             // SillyBunny: final destructive confirmations focus Cancel and mark the irreversible action, with a verb (confirmVerb).

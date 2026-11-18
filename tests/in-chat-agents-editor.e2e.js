@@ -134,7 +134,7 @@ for (const width of [360, 390, 430, 768]) {
         for (const id of ['pre', 'wrap', 'tracker', 'post', 'companion', 'chatroom', 'director', 'plot']) {
             await editor.open(id);
             if (id === 'post') {
-                await editor.detail.getByRole('switch', { name: 'Utility Post-processing', exact: true }).check();
+                await editor.detail.getByRole('switch', { name: 'Utility Post-Processing', exact: true }).check();
                 await editor.detail.locator('[data-sb-editor-field="postProcess.type"]').getByRole('radio', { name: 'Append', exact: true }).check();
             }
             const fields = await editor.detail.locator('textarea:visible').evaluateAll(nodes => nodes.map(node => ({
@@ -620,7 +620,7 @@ test('390px phone property sheet matches Prompt pills, controls, title and summa
     const prompt = page.locator('.sb-prompt-detail');
     const promptSummary = prompt.locator('.sb-prompt-property-summary');
     await expect(promptSummary).toHaveText(/^.+ · .+ · .+ ›$/);
-    await expect(promptSummary).toHaveAccessibleName(`Prompt properties: ${(await promptSummary.textContent()).replace(/\s*›\s*$/, '')}`);
+    await expect(promptSummary).toHaveAccessibleName(`Prompt Properties: ${(await promptSummary.textContent()).replace(/\s*›\s*$/, '')}`);
     await promptSummary.click();
     const reference = page.locator('.sb-dialog.sb-prompt-properties-dialog');
     const forbid = reference.getByRole('switch', { name: 'Forbid Overrides', exact: true });
@@ -655,7 +655,7 @@ test('390px phone property sheet matches Prompt pills, controls, title and summa
     expect(agent.thumb).toEqual(promptStyles.thumb);
     expect(checkedAgent.switch).toEqual(checkedPrompt.switch);
     expect(checkedAgent.thumb).toEqual(checkedPrompt.thumb);
-    expect(agentLabels).toEqual({ title: 'Agent properties', close: 'Close Agent Properties' });
+    expect(agentLabels).toEqual({ title: 'Agent Properties', close: 'Close Agent Properties' });
 });
 
 for (const width of [1440, 768, 390, 360]) {
@@ -875,7 +875,7 @@ for (const width of [1440, 390]) {
             1440: async () => {},
             390: async () => {
                 const summary = prompt.locator('.sb-prompt-property-summary');
-                await expect(summary).toHaveAccessibleName(`Prompt properties: ${(await summary.textContent()).replace(/\s*›\s*$/, '')}`);
+                await expect(summary).toHaveAccessibleName(`Prompt Properties: ${(await summary.textContent()).replace(/\s*›\s*$/, '')}`);
                 await summary.click();
             },
         };

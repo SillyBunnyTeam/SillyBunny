@@ -93,7 +93,7 @@ describe('Data & Security groups', () => {
 
         const general = container.querySelector('[data-sb-category="general"] > .ds-pref-group');
         const labels = [...general.children].map(row => row.querySelector('.ds-row-label, .ds-row-subtitle').textContent);
-        expect(labels).toEqual(['Language', 'Account', 'Admin Panel', 'Logout', 'Usage Stats', 'Version', 'Browser Cache', 'Auto-clear cache after updates']);
+        expect(labels).toEqual(['Language', 'Account', 'Admin Panel', 'Logout', 'Usage Stats', 'Version', 'Browser Cache', 'Auto-Clear Cache After Updates']);
         for (const [id, node] of Object.entries(nodes)) {
             expect(container.querySelector(`#${id}`)).toBe(node);
             expect(general.contains(node)).toBe(true);

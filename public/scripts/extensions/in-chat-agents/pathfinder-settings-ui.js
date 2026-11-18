@@ -986,7 +986,7 @@ function bindEvents() {
 
         session.summaryBusy = true;
         renderSummaryMemoryEditor();
-        status.text('Saving entry...').removeClass('success error');
+        status.text('Saving entry…').removeClass('success error');
 
         try {
             const result = await createSeparateSummaryMemoryEntry(draft);
@@ -1006,7 +1006,7 @@ function bindEvents() {
         const status = panel.find('#pf--summary-save-status');
         session.summaryBusy = true;
         renderSummaryMemoryEditor();
-        status.text('Creating summary...').removeClass('success error');
+        status.text('Creating summary…').removeClass('success error');
 
         try {
             const result = await createManualSummaryMemory();
@@ -1098,7 +1098,7 @@ function bindEvents() {
     // Diagnostics
     settingsEl.find('#pf--run-diagnostics').on('click', async () => {
         const output = settingsEl.find('#pf--diagnostics-output');
-        output.text('Running diagnostics...');
+        output.text('Running diagnostics…');
 
         try {
             const results = await runDiagnostics();

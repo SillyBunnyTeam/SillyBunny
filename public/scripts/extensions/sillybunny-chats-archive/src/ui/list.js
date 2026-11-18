@@ -154,7 +154,7 @@ function paintList(ctx, state, ui) {
             // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
             showStatusPage(ui, {
                 state: 'loading',
-                title: tr(ctx, 'Loading chats...'),
+                title: tr(ctx, 'Loading chats…'),
                 actions: [{ label: tr(ctx, 'Cancel'), onActivate: () => stopBusyTask(ctx, state, ui) }],
             });
             return;

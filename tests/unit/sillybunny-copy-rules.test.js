@@ -2,16 +2,7 @@
 import { describe, test, expect } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 
-// UI modules written for the Connections and Agents rework. Add each new module here (plan §5.4, Q32).
-const MODULES = [
-    'public/scripts/sillybunny-editor/rows.js',
-    'public/scripts/sillybunny-editor/select-row.js',
-    'public/scripts/sillybunny-editor/toggle-row.js',
-    'public/scripts/sillybunny-connections-panel.js',
-    'public/scripts/sillybunny-connections-form.js',
-    'public/scripts/sillybunny-connections-groups.js',
-    'public/scripts/sillybunny-data-security.js',
-];
+import { COPY_RULE_MODULES } from '../helpers/copy-rule-modules.js';
 
 const TRANSLATED = /\bt`((?:[^`\\]|\\.)*)`|\btranslate\(\s*(['"])((?:(?!\2)[^\\]|\\.)*)\2/g;
 
@@ -24,9 +15,9 @@ describe('UI copy rules', () => {
         expect(translatedStrings('t`Delete…` translate(\'Export...\') t`Search`')).toEqual(['Delete…', 'Export...', 'Search']);
     });
 
-    for (const file of MODULES) {
+    for (const file of COPY_RULE_MODULES) {
         test(`${file} uses the U+2026 ellipsis, never three dots, in translatable strings`, () => {
-            const source = readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+            const source = readFileSync(new URL(`../../public/${file}`, import.meta.url), 'utf8');
             expect(translatedStrings(source).filter(text => text.includes('...'))).toEqual([]);
         });
     }

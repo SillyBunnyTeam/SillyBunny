@@ -329,7 +329,7 @@ async function importOrganization(ctx, state, ui) {
         state.selectedViewId = null;
         refreshOrganizationUI(ctx, state, ui);
         applySavedView(ctx, state, ui, organization.lastView, null, false);
-        ui.backup.status.textContent = tr(ctx, 'Imported organization. Saving replacement...');
+        ui.backup.status.textContent = tr(ctx, 'Imported organization. Saving replacement…');
         delete ui.backup.status.dataset.sbcaOrganizationError;
         refreshOpenOrganizer(ctx, state, ui);
         markOrganizationDirty(ctx, state, ui);

@@ -130,7 +130,7 @@ export async function openAssistantPickerWindow({ getEntries, getThumbnailUrl, c
 
     const emptyLibrary = createStatus('empty', 'user', t`No Characters Yet`);
     emptyLibrary.element.hidden = items.length > 0;
-    const noResults = createStatus('no-results', 'magnifying-glass', t`No results`);
+    const noResults = createStatus('no-results', 'magnifying-glass', t`No Results`);
     group.section.hidden = items.length === 0;
 
     function filter(value) {

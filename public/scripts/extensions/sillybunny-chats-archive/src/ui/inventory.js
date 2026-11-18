@@ -41,7 +41,7 @@ export async function loadRows(ctx, state, ui) {
     resetViewer(state);
     syncBusyControls(ctx, state, ui);
     renderList(ctx, state, ui);
-    setStatus(ui, tr(ctx, 'Loading chats...'));
+    setStatus(ui, tr(ctx, 'Loading chats…'));
 
     try {
         for await (const page of iterateArchiveInventoryPages(ctx, 'archive', controller.signal)) {
@@ -63,7 +63,7 @@ export async function loadRows(ctx, state, ui) {
             state.inventoryFailures = page.errors + invalidRows;
             renderList(ctx, state, ui);
             updateSelectionControls(ctx, state, ui);
-            setStatus(ui, `${tr(ctx, 'Loading chats...')} ${tr(ctx, '{matching} of {total} indexed chat files', {
+            setStatus(ui, `${tr(ctx, 'Loading chats…')} ${tr(ctx, '{matching} of {total} indexed chat files', {
                 matching: page.loaded,
                 total: page.total,
             })}`);
@@ -123,7 +123,7 @@ export async function scanOrphans(ctx, state, ui) {
     const controller = new AbortController();
     state.scanAbort = controller;
     syncBusyControls(ctx, state, ui);
-    setStatus(ui, tr(ctx, 'Scanning for missing-character and unlinked-group chats...'));
+    setStatus(ui, tr(ctx, 'Scanning for missing-character and unlinked-group chats…'));
 
     const previousRows = state.orphanRows;
     const previousToken = state.archiveReadToken;
@@ -154,7 +154,7 @@ export async function scanOrphans(ctx, state, ui) {
             state.visibleLimit = LIST_PAGE_SIZE;
             renderList(ctx, state, ui);
             updateSelectionControls(ctx, state, ui);
-            setStatus(ui, `${tr(ctx, 'Scanning for missing-character and unlinked-group chats...')} ${tr(ctx, '{matching} of {total} indexed chat files', {
+            setStatus(ui, `${tr(ctx, 'Scanning for missing-character and unlinked-group chats…')} ${tr(ctx, '{matching} of {total} indexed chat files', {
                 matching: page.loaded,
                 total: page.total,
             })}`);

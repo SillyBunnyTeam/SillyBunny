@@ -3407,7 +3407,7 @@ async function confirmClearCookiesAndCache() {
         body: 'This removes browser cache, service worker data, temporary session data, and IndexedDB cache stores for SillyBunny, then reloads the page. Saved settings and account data stay intact. Clearing browser cookies may require you to sign in again.',
         responses: [
             { id: 'cancel', label: t`Cancel` },
-            { id: 'clear', label: 'Clear cookies & cache', appearance: 'destructive' },
+            { id: 'clear', label: 'Clear Cookies & Cache', appearance: 'destructive' },
         ],
         // The affirmative label is too wide for two responses at 372px, so the Alert widens to keep Cancel first in a row like its siblings.
         preferWide: true,
@@ -5275,7 +5275,7 @@ async function applyChatSearchHighlights({ scrollToFirst = false } = {}) {
     const firstMatchId = searchMatches.matches[0]?.messageId;
 
     if (scrollToFirst && Number.isInteger(firstMatchId)) {
-        setSearchStatusText('Loading match...');
+        setSearchStatusText('Loading match…');
 
         try {
             await ensureChatMessageRendered(firstMatchId);
@@ -6168,7 +6168,7 @@ function revealDeferredCharacterPanel(host, content, mount) {
     // A fast load shows no loading page, because the page waits like any other. This one keeps its place meanwhile, so that
     // no frame between the old panel and the new one is empty.
     // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
-    const status = createStatusPage({ state: 'loading', title: t`Loading...`, reserveSpace: true, busy: host });
+    const status = createStatusPage({ state: 'loading', title: t`Loading…`, reserveSpace: true, busy: host });
     status.element.classList.add('sb-character-panel-loading');
     host.after(status.element);
     state.status = status;
@@ -12149,7 +12149,7 @@ function buildBottomChatBar() {
 }
 
 function getBottomChatOverflowLabel() {
-    return t`Chat actions`;
+    return t`Chat Actions`;
 }
 
 function getBottomChatFoldableButtons() {

@@ -28,13 +28,13 @@ async function generateNewSwipe() {
     if (missingProps.length > 0) {
         const errorMessage = `Could not get required context properties: ${missingProps.join(', ')}`;
         console.error(`[GuidedGenerations][Swipe] ${errorMessage}`);
-        globalThis.toastr?.error?.(`Guided Swipe Error: ${errorMessage}`);
+        globalThis.toastr?.error?.(`Guided Swipe error: ${errorMessage}`);
         return false;
     }
 
     try {
         if (!Array.isArray(context.chat) || context.chat.length === 0) {
-            globalThis.toastr?.error?.('Guided Swipe Error: Cannot access chat context.');
+            globalThis.toastr?.error?.('Guided Swipe error: Cannot access chat context.');
             return false;
         }
 
@@ -72,7 +72,7 @@ async function generateNewSwipe() {
 
         context = getContext();
         if (typeof context?.swipe?.right !== 'function') {
-            globalThis.toastr?.error?.('Guided Swipe Error: SillyTavern swipe generation API is not available.');
+            globalThis.toastr?.error?.('Guided Swipe error: SillyTavern swipe generation API is not available.');
             return false;
         }
 
@@ -83,7 +83,7 @@ async function generateNewSwipe() {
     } catch (error) {
         console.error('[GuidedGenerations][Swipe] Error during swipe generation process:', error);
         const errorMessage = String(error?.message || error);
-        globalThis.toastr?.error?.(errorMessage.startsWith('Guided Swipe Error:') ? errorMessage : `Guided Swipe Error: ${errorMessage}`);
+        globalThis.toastr?.error?.(errorMessage.startsWith('Guided Swipe error:') ? errorMessage : `Guided Swipe error: ${errorMessage}`);
         return false;
     }
 }
@@ -97,7 +97,7 @@ async function guidedSwipe() {
         const textarea = document.getElementById('send_textarea');
         if (!(textarea instanceof HTMLTextAreaElement)) {
             console.error('[GuidedGenerations][Swipe] Textarea #send_textarea not found.');
-            globalThis.toastr?.error?.('Guided Swipe Error: Textarea not found.');
+            globalThis.toastr?.error?.('Guided Swipe error: Textarea not found.');
             return;
         }
 
@@ -131,7 +131,7 @@ async function guidedSwipe() {
             }
 
             if (!injectionFound) {
-                globalThis.toastr?.error?.('Guided Swipe Error: Could not verify instruction injection. Aborting swipe generation.');
+                globalThis.toastr?.error?.('Guided Swipe error: Could not verify instruction injection. Aborting swipe generation.');
                 textarea.value = originalInput;
                 await executeSTScriptCommand(`/flushinject ${guidedSwipeInjectId}`);
                 return;
@@ -141,8 +141,8 @@ async function guidedSwipe() {
         } catch (error) {
             console.error('[GuidedGenerations][Swipe] Error during guided swipe execution:', error);
             const errorMessage = String(error?.message || error);
-            if (!errorMessage.startsWith('Guided Swipe Error:')) {
-                globalThis.toastr?.error?.(`Guided Swipe Error: ${errorMessage}`);
+            if (!errorMessage.startsWith('Guided Swipe error:')) {
+                globalThis.toastr?.error?.(`Guided Swipe error: ${errorMessage}`);
             }
         } finally {
             textarea.value = getPreviousImpersonateInput();

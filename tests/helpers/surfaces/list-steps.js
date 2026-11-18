@@ -290,7 +290,7 @@ export async function openPromptList(page, backend) {
     await closeOverlays(page);
     await selectBackend(page, backend);
     await openSettingsTab(page, { shell: 'left', tab: 'editor' });
-    await leaveDetail(page, '.sb-prompt-detail .sb-prompt-detail-header [aria-label="Back to prompt list"]');
+    await leaveDetail(page, '.sb-prompt-detail .sb-prompt-detail-header [aria-label="Back to Prompt List"]');
     await shown(page, '.sb-prompt-editor .sb-prompt-list-header');
     await clearSearch(page, promptSearch);
     await shown(page, '.sb-prompt-editor .sb-prompt-row:visible');

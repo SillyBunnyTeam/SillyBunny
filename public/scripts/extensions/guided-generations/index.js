@@ -325,7 +325,7 @@ function createActionButton(id, title, iconClass, actionFunc) {
 }
 
 function getFlushGuideButtonLabel(activeCount) {
-    return `Flush guides (${activeCount} active)`;
+    return `Flush Guides (${activeCount} Active)`;
 }
 
 const OVERFLOW_LABEL = 'Guided Generations';

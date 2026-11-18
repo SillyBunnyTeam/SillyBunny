@@ -150,7 +150,7 @@ export async function openViewer(ctx, state, row, ui) {
     state.selectedRow = row;
     const { actions, slot } = buildDetail(ctx, state, ui, row);
     // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
-    slot.append(createStatusPage({ state: 'loading', title: tr(ctx, 'Loading chat...') }).element);
+    slot.append(createStatusPage({ state: 'loading', title: tr(ctx, 'Loading chat…') }).element);
     ui.viewerContent.setAttribute('aria-busy', 'true');
     showViewerPage(ctx, state, ui, row);
 

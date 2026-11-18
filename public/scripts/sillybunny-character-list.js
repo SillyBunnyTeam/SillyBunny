@@ -500,7 +500,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     const section = node('section', 'sb-character-list');
     section.dataset.view = 'characters';
     // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
-    const loading = createStatusPage({ state: 'loading', title: t`Loading...`, busy: section });
+    const loading = createStatusPage({ state: 'loading', title: t`Loading…`, busy: section });
     const status = node('div', 'sb-character-list__status');
     status.append(loading.element);
 
@@ -1424,7 +1424,7 @@ export async function mountCharacterList(container = document.getElementById('rm
         for (const { element } of originalChildren) element.style.setProperty('display', 'none', 'important');
         const section = node('section', 'sb-character-list sb-character-list--loading');
         // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
-        section.append(createStatusPage({ state: 'loading', title: t`Loading...` }).element);
+        section.append(createStatusPage({ state: 'loading', title: t`Loading…` }).element);
         container.append(section);
         let mounted;
         try {

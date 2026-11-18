@@ -136,7 +136,7 @@ test('Pathfinder uses native keyboard disclosures, labelled controls and narrow 
     await expect(page.getByRole('checkbox', { name: `${ATTACHED_BOOK} Write`, exact: true })).toBeChecked();
     await expect(page.getByRole('switch', { name: 'Automatically include attached lorebooks, aside from excluded lorebooks', exact: true })).toBeChecked();
     await expect(page.getByLabel('Pipeline Type', { exact: true })).toBeVisible();
-    await expect(page.getByLabel('Allow summary memory tool', { exact: true })).not.toBeChecked();
+    await expect(page.getByLabel('Allow Summary Memory Tool', { exact: true })).not.toBeChecked();
     await expect(page.locator('#pf--permission-matrix')).toBeVisible();
     await expect(page.locator('#pf--confirm-tool-list')).toBeVisible();
 
@@ -195,7 +195,7 @@ test('Pathfinder\'s apply-at-once options are switch rows and its pick-several l
         await expect(input).toHaveAttribute('role', 'switch');
         await expect(page.locator(`label.ds-row-switch:has(#pf--${id})`)).toHaveCount(1);
     }
-    await expect(page.locator('#pf--master-enable')).toHaveAccessibleName('Enable Pathfinder for this chat');
+    await expect(page.locator('#pf--master-enable')).toHaveAccessibleName('Enable Pathfinder for This Chat');
     // The help line moved into the row as its subtitle, without being recreated.
     await expect(page.locator('label.ds-row-switch:has(#pf--auto-use-attached) .ds-row-subtitle.pf--setting-help')).toHaveCount(1);
     await expect(page.locator('#pf--confirm-tool-list input[role="switch"], #pf--lorebook-list input[role="switch"], #pf--permission-matrix input[role="switch"], .pf--tool-list input[role="switch"]')).toHaveCount(0);

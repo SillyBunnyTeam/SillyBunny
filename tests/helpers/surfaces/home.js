@@ -907,7 +907,7 @@ const assistantPicker = windowEntry({
         },
         {
             id: 'search-no-results',
-            ready: `${WINDOW} .sb-status-page:has-text("No results"):visible`,
+            ready: `${WINDOW} .sb-status-page:has-text("No Results"):visible`,
             async open(page) {
                 await searchWindow(page, 'zzzz');
                 await page.locator(`${WINDOW} .sb-status-page`).first().waitFor({ state: 'visible' });

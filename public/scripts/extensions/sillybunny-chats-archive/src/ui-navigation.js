@@ -99,7 +99,7 @@ export async function jumpToChat(ctx, state, row, control) {
     const copy = control.querySelector('.sbca-button-copy');
     const original = copy.textContent;
     control.setAttribute('aria-disabled', 'true');
-    copy.textContent = tr(ctx, 'Opening...');
+    copy.textContent = tr(ctx, 'Opening…');
     let host;
     let groupChats;
     let previous;

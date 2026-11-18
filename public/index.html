@@ -142,7 +142,7 @@
                 </div>
                 <div id="sb-settings-search-row" aria-hidden="true">
                     <!-- SillyBunny: the search entry component wraps this input at startup (sillybunny-editor/search-entry.js). -->
-                    <input id="sb-settings-search-input" type="search" placeholder="Search..." aria-label="Search Settings" autocomplete="off" spellcheck="false">
+                    <input id="sb-settings-search-input" type="search" placeholder="Search…" aria-label="Search Settings" autocomplete="off" spellcheck="false">
                 </div>
                 <nav id="sb-settings-tab-list" role="tablist" aria-orientation="vertical"></nav>
             </aside>
@@ -4123,9 +4123,10 @@
                                 <select id="model_custom_select" class="text_pole model_custom_select" aria-label="Available Models" data-i18n="[aria-label]Available Models"></select>
                             </div>
                             <div class="range-block">
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label widthFreeExpand" for="custom_model_icon_detection">
                                     <input id="custom_model_icon_detection" type="checkbox">
-                                    <span data-i18n="Auto-detect message icon from model name">Auto-detect message icon from model name</span>
+                                    <span data-i18n="Auto-Detect Message Icon From Model Name">Auto-Detect Message Icon From Model Name</span>
                                     <small class="ds-row-subtitle" data-i18n="Match message icons to recognized model names for Custom connections.">Match message icons to recognized model names for Custom connections.</small>
                                 </label>
                                 <small data-i18n="Use the custom model name to pick a closer timestamp icon while keeping the provider label as Custom.">
@@ -5342,9 +5343,10 @@
                     </button>
                     </div>
                     </div>
+                    <!-- SillyBunny: capitalisation by DESIGN.md -->
                     <label for="auto_clear_cache_on_update" class="checkbox_label" title="Automatically clear browser cache and temporary UI data after SillyBunny updates, then reload.">
                         <input id="auto_clear_cache_on_update" type="checkbox" />
-                        <span>Auto-clear cache after updates</span>
+                        <span>Auto-Clear Cache After Updates</span>
                     </label>
                 </div>
                 <div id="user-settings-block-content" class="flex-container spaceEvenly">
@@ -5647,9 +5649,10 @@
                                     <input id="noShadowsmode" type="checkbox" />
                                     <small data-i18n="No Text Shadows">No Text Shadows</small>
                                 </label>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label for="sb_auto_close_inline_drawers" class="checkbox_label" title="Automatically collapse sibling settings drawers when you open another one.">
                                     <input id="sb_auto_close_inline_drawers" type="checkbox" />
-                                    <small>Auto-close setting drawers</small>
+                                    <small>Auto-Close Setting Drawers</small>
                                 </label>
                                 <label for="waifuMode" class="checkbox_label" title="Reduce chat height, and put a static sprite behind the chat window." data-i18n="[title]Reduce chat height, and put a static sprite behind the chat window">
                                     <input id="waifuMode" type="checkbox" />
@@ -5838,46 +5841,55 @@
                             <div name="IOSWebKitStreamingToggles">
                                 <h4><span data-i18n="iOS Streaming Stability">iOS Streaming Stability</span></h4>
                                 <small data-i18n="iOS Streaming Stability_desc">Controls iPhone and iPad WebKit safeguards for long streamed generations.</small>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="ios_webkit_conservative_streaming" title="Use a lower live update rate and slower live reasoning refreshes on iOS WebKit." data-i18n="[title]Use a lower live update rate and slower live reasoning refreshes on iOS WebKit.">
                                     <input id="ios_webkit_conservative_streaming" type="checkbox" />
-                                    <small data-i18n="Conservative iOS stream timing">Conservative iOS stream timing</small>
+                                    <small data-i18n="Conservative iOS Stream Timing">Conservative iOS Stream Timing</small>
                                 </label>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="ios_webkit_reduce_streaming_work" title="Defer token counts, metadata badges, and swipe metadata snapshots until the final streamed render on iOS WebKit." data-i18n="[title]Defer token counts, metadata badges, and swipe metadata snapshots until the final streamed render on iOS WebKit.">
                                     <input id="ios_webkit_reduce_streaming_work" type="checkbox" />
-                                    <small data-i18n="Reduce live iOS stream work">Reduce live iOS stream work</small>
+                                    <small data-i18n="Reduce Live iOS Stream Work">Reduce Live iOS Stream Work</small>
                                 </label>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="ios_webkit_disable_smooth_streaming" title="Use normal SSE chunks instead of per-character smooth streaming on iOS WebKit." data-i18n="[title]Use normal SSE chunks instead of per-character smooth streaming on iOS WebKit.">
                                     <input id="ios_webkit_disable_smooth_streaming" type="checkbox" />
-                                    <small data-i18n="Bypass iOS smooth streaming">Bypass iOS smooth streaming</small>
+                                    <small data-i18n="Bypass iOS Smooth Streaming">Bypass iOS Smooth Streaming</small>
                                 </label>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="ios_webkit_disable_stream_fade_in" title="Use the lighter live DOM patch path instead of stream fade-in segmentation on iOS WebKit." data-i18n="[title]Use the lighter live DOM patch path instead of stream fade-in segmentation on iOS WebKit.">
                                     <input id="ios_webkit_disable_stream_fade_in" type="checkbox" />
-                                    <small data-i18n="Bypass iOS stream fade-in">Bypass iOS stream fade-in</small>
+                                    <small data-i18n="Bypass iOS Stream Fade-In">Bypass iOS Stream Fade-In</small>
                                 </label>
                             </div>
 
                             <div name="AndroidStreamingToggles" data-sb-persistent-menu="true">
                                 <h4><span data-i18n="Android Streaming Stability">Android Streaming Stability</span></h4>
                                 <small data-i18n="Android Streaming Stability_desc">Applies when the browser is Android, even if the server runs on another machine.</small>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="android_conservative_streaming" title="Throttle live Android stream updates and reasoning refreshes." data-i18n="[title]Throttle live Android stream updates and reasoning refreshes.">
                                     <input id="android_conservative_streaming" type="checkbox" />
-                                    <small data-i18n="Throttle Android stream updates">Throttle Android stream updates</small>
+                                    <small data-i18n="Throttle Android Stream Updates">Throttle Android Stream Updates</small>
                                 </label>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="android_reduce_streaming_work" title="Save Android main-thread work by deferring live token counts, badges, and swipe snapshots until the final render." data-i18n="[title]Save Android main-thread work by deferring live token counts, badges, and swipe snapshots until the final render.">
                                     <input id="android_reduce_streaming_work" type="checkbox" />
-                                    <small data-i18n="Defer Android stream extras">Defer Android stream extras</small>
+                                    <small data-i18n="Defer Android Stream Extras">Defer Android Stream Extras</small>
                                 </label>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="android_streaming_basic_markdown" title="Use basic markdown formatting during streaming without full sanitization. Improves performance while keeping some formatting. Final render uses full formatting." data-i18n="[title]Use basic markdown formatting during streaming without full sanitization. Improves performance while keeping some formatting. Final render uses full formatting.">
                                     <input id="android_streaming_basic_markdown" type="checkbox" />
-                                    <small data-i18n="Basic markdown during streaming">Basic markdown during streaming</small>
+                                    <small data-i18n="Basic Markdown During Streaming">Basic Markdown During Streaming</small>
                                 </label>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="android_disable_smooth_streaming" title="Avoid Android per-character smoothing and render provider chunks directly." data-i18n="[title]Avoid Android per-character smoothing and render provider chunks directly.">
                                     <input id="android_disable_smooth_streaming" type="checkbox" />
-                                    <small data-i18n="Use raw Android stream chunks">Use raw Android stream chunks</small>
+                                    <small data-i18n="Use Raw Android Stream Chunks">Use Raw Android Stream Chunks</small>
                                 </label>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="android_disable_stream_fade_in" title="Skip Android fade-in text segmentation during live streaming." data-i18n="[title]Skip Android fade-in text segmentation during live streaming.">
                                     <input id="android_disable_stream_fade_in" type="checkbox" />
-                                    <small data-i18n="Skip Android fade-in segmentation">Skip Android fade-in segmentation</small>
+                                    <small data-i18n="Skip Android Fade-In Segmentation">Skip Android Fade-In Segmentation</small>
                                 </label>
                             </div>
 
@@ -5885,9 +5897,10 @@
                             <div name="AggressiveDomUnloadToggles">
                                 <h4><span data-i18n="Aggressive DOM Unloading">Aggressive DOM Unloading</span></h4>
                                 <small data-i18n="Aggressive DOM Unloading_desc">Drastically reduces rendered messages to prevent crashes on low-memory devices during long streams.</small>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="aggressive_dom_unload" title="Enable aggressive DOM unloading to keep only a minimal number of messages rendered. Useful for devices that crash during long streaming generations." data-i18n="[title]Enable aggressive DOM unloading to keep only a minimal number of messages rendered. Useful for devices that crash during long streaming generations.">
                                     <input id="aggressive_dom_unload" type="checkbox" />
-                                    <small data-i18n="Enable aggressive unloading">Enable aggressive unloading</small>
+                                    <small data-i18n="Enable Aggressive Unloading">Enable Aggressive Unloading</small>
                                 </label>
                                 <div class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
                                     <small>
@@ -6093,9 +6106,10 @@
                                     <input id="forbid_external_media" type="checkbox" />
                                     <small data-i18n="Forbid External Media">Forbid External Media</small>
                                 </label>
+                                <!-- SillyBunny: capitalisation by DESIGN.md -->
                                 <label class="checkbox_label" for="allow_card_scripts" title="Run sandboxed scripts embedded in character cards. Off by default." data-i18n="[title]Run sandboxed scripts embedded in character cards. Off by default.">
                                     <input id="allow_card_scripts" type="checkbox" />
-                                    <small data-i18n="Allow Card Scripts (sandboxed)">Allow Card Scripts (sandboxed)</small>
+                                    <small data-i18n="Allow Card Scripts (Sandboxed)">Allow Card Scripts (Sandboxed)</small>
                                 </label>
                                 <label class="checkbox_label" for="allow_name2_display">
                                     <input id="allow_name2_display" type="checkbox" />

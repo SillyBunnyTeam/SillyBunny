@@ -127,7 +127,7 @@ describe('in-chat agents generation UI wiring', () => {
         expect(getFunctionSource('getAgentEditorCompanionOptions')).toContain('isAgentEnabledForCurrentScope(candidate)');
         expect(editorSource).toContain('toggle(coordination, \'companion.sendContextToCompanions\', t`Send Context`)');
         expect(editorSource).toContain('select(coordination, \'companion.contextRecipientAgentIds\', t`Recipients`');
-        expect(editorSource).toContain('select(coordination, \'companion.dependencies\', t`Re-run After`');
+        expect(editorSource).toContain('select(coordination, \'companion.dependencies\', t`Re-Run After`');
         expect(editorSource).toContain('toggle(coordination, \'companion.waitForDependencies\', t`Wait`)');
         expect(editorSource).toContain('Companion · Chat History');
         expect(editorSource).toContain('toggle(history, \'companion.includeInChatHistory\', t`Keep in Chat History`)');

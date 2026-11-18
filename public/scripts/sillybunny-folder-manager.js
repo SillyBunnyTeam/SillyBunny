@@ -289,7 +289,7 @@ export function createFolderManager(scope, adapter) {
         const name = element('div', 'sb-folder-manager__field');
         name.append(input, error);
         const count = element('span', 'sb-folder-manager__count', countLabel(liveMemberCount(folder.id), scope));
-        const more = rowButton(t`Manage folder`, 'ellipsis-vertical', trigger => folderMenu(trigger, folder), 'sb-folder-manager__row-menu');
+        const more = rowButton(t`Manage Folder`, 'ellipsis-vertical', trigger => folderMenu(trigger, folder), 'sb-folder-manager__row-menu');
         more.setAttribute('aria-haspopup', 'menu');
         const entity = createEntityRow({
             key: `folder:${scope}:${folder.id}`,

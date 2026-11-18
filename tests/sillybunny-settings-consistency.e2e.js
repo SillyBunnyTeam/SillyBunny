@@ -479,7 +479,7 @@ test.describe('Settings header consistency', () => {
         await expect(actions.locator('.ds-pref-group-heading')).toHaveText('Thumbnail Actions');
         await expect(actions.locator('.ds-pref-group-heading')).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
         await expect(actions.locator('.ds-pref-group-subtitle')).toHaveCount(0);
-        await expect(actions.locator('.ds-button-row')).toHaveText(['Use desktop recommended', 'Use mobile recommended', 'Save thumbnails', 'Save & Clear Cache', 'Clear cache only']);
+        await expect(actions.locator('.ds-button-row')).toHaveText(['Use Desktop Recommended', 'Use Mobile Recommended', 'Save Thumbnails', 'Save & Clear Cache', 'Clear Cache Only']);
     });
 
     test('a button row on a settings page shows the focus ring when the keyboard reaches it', async ({ page }) => {

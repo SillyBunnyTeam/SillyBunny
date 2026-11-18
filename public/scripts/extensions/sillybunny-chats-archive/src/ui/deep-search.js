@@ -53,7 +53,7 @@ export async function runDeepSearch(ctx, state, ui) {
             if (signal.aborted) {
                 break;
             }
-            setStatus(ui, tr(ctx, 'Searching source {current} of {total}...', { current: completed + 1, total }));
+            setStatus(ui, tr(ctx, 'Searching source {current} of {total}…', { current: completed + 1, total }));
             try {
                 const results = await searchScope(ctx, query, scope, signal);
                 let malformed = false;
@@ -90,7 +90,7 @@ export async function runDeepSearch(ctx, state, ui) {
                 completed++;
                 continue;
             }
-            setStatus(ui, tr(ctx, 'Searching source {current} of {total}...', { current: completed + 1, total }));
+            setStatus(ui, tr(ctx, 'Searching source {current} of {total}…', { current: completed + 1, total }));
             try {
                 const raw = await loadRawChat(ctx, state, row, signal);
                 const { snippet, invalidLines } = await findMatchingSnippetInJsonlAsync(raw, query, { signal });

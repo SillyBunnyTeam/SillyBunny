@@ -27,10 +27,10 @@ export function stopBusyTask(ctx, state, ui) {
         state.listAbort.abort();
     } else if (state.scanAbort) {
         state.scanAbort.abort();
-        setStatus(ui, tr(ctx, 'Stopping after the current server scan...'));
+        setStatus(ui, tr(ctx, 'Stopping after the current server scan…'));
     } else {
         return;
     }
     ui.bannerAction.disabled = true;
-    ui.bannerAction.textContent = tr(ctx, 'Stopping...');
+    ui.bannerAction.textContent = tr(ctx, 'Stopping…');
 }

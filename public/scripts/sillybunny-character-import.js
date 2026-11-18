@@ -207,7 +207,7 @@ export function mountCharacterImport(host) {
         submit.setDisabled(true);
         picker.disabled = true;
         // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
-        results.replaceChildren(createStatusPage({ state: 'loading', title: t`Loading...` }).element);
+        results.replaceChildren(createStatusPage({ state: 'loading', title: t`Loading…` }).element);
         summary.textContent = '';
         try {
             const items = await runCharacterImport({ ...input, policy: 'stay' });

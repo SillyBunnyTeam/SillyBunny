@@ -95,7 +95,7 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
         }
         preparePopup(summary);
         summary.setAttribute('aria-expanded', 'true');
-        const heading = element('h2', '', t`Agent properties`);
+        const heading = element('h2', '', t`Agent Properties`);
         heading.id = `ica-agent-properties-title-${propertyId}`;
         heading.tabIndex = -1;
         const content = document.createDocumentFragment();
@@ -140,7 +140,7 @@ export function createAgentEditorProperties({ categories, onChange, preparePopup
             const labels = [categoryLabel.textContent];
             if (!stageProperty.hidden) labels.push(stages.find(([value]) => value === fields.phase)?.[1] ?? fields.phase);
             labels.push(executions.find(([value]) => value === fields.execution)?.[1] ?? fields.execution);
-            setSummaryText(summary, t`Agent properties`, labels.join(' · '));
+            setSummaryText(summary, t`Agent Properties`, labels.join(' · '));
         },
         destroy() {
             propertyDialog?.forceClose();

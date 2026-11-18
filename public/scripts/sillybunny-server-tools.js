@@ -776,7 +776,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         refs.updateButton.dataset.sbCanUpdate = String(Boolean(updateMode));
         refs.updateButton.dataset.sbUpdateMode = updateMode;
         refs.updateButton.hidden = !isGitInstall;
-        getServerButtonLabel(refs.refreshButton).textContent = isGitInstall ? 'Check for updates' : 'Refresh status';
+        getServerButtonLabel(refs.refreshButton).textContent = isGitInstall ? 'Check for Updates' : 'Refresh Status';
 
         // SillyBunny: Docker and non-Git copies have no in-app updater; the note explains how they update instead.
         const installNote = isDockerInstall
@@ -1169,7 +1169,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             body: 'They will be rebuilt as images are loaded.',
             responses: [
                 { id: 'cancel', label: t`Cancel` },
-                { id: 'clear', label: t`Clear cache`, appearance: 'suggested' },
+                { id: 'clear', label: t`Clear Cache`, appearance: 'suggested' },
             ],
             defaultResponse: 'clear',
         });
@@ -1568,9 +1568,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const updateSection = createServerSection('Updates & Restart', t`Updates use Git and only run when the repository can fast-forward cleanly.`, 'updates-restart');
         const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull', 'aria-label': 'Auto-Stash Local Changes Before Pulling' } });
         const autoStashRow = createSwitchRow({ label: 'Auto-Stash Local Changes Before Pulling', field: 'auto-stash', input: autoStashCheckbox });
-        const refreshButton = createServerButtonRow('Check for updates', 'check-for-updates', () => refreshServerAdminPanel({ includeConfig: false }));
+        const refreshButton = createServerButtonRow('Check for Updates', 'check-for-updates', () => refreshServerAdminPanel({ includeConfig: false }));
         const updateButton = createServerButtonRow('Update & Restart', 'update-restart', handleServerAdminUpdate);
-        const restartButton = createServerButtonRow('Restart server', 'restart-server', handleServerAdminRestart);
+        const restartButton = createServerButtonRow('Restart Server', 'restart-server', handleServerAdminRestart);
         const updateNote = createServerStatusRow('Git fast-forward updates restart automatically once they finish.');
         const updateOutput = createElement('pre', { className: 'sb-server-output' });
         updateOutput.hidden = true;
@@ -1589,17 +1589,17 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const mobileSection = createServerSection('Mobile Preset', 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.', 'thumbnail-mobile');
         const thumbnailMobileEnabled = createElement('input', { attrs: { type: 'checkbox', 'aria-label': 'Generate Mobile Thumbnails' } });
         const thumbnailMobileEnabledRow = createSwitchRow({ label: 'Generate Mobile Thumbnails', field: 'thumbnail-mobile-enabled', input: thumbnailMobileEnabled });
-        const { select: thumbnailMobileFormat, row: thumbnailMobileFormatRow } = createThumbnailFormatRow('Mobile format', 'thumbnail-mobile-format');
-        const { input: thumbnailMobileQuality, row: thumbnailMobileQualityRow } = createThumbnailQualityRow('Mobile quality', 'thumbnail-mobile-quality');
-        const mobileBgSize = createThumbnailSizeRow('Mobile background', 'mobile-bg');
-        const mobileAvatarSize = createThumbnailSizeRow('Mobile character', 'mobile-avatar');
-        const mobilePersonaSize = createThumbnailSizeRow('Mobile persona', 'mobile-persona');
+        const { select: thumbnailMobileFormat, row: thumbnailMobileFormatRow } = createThumbnailFormatRow('Mobile Format', 'thumbnail-mobile-format');
+        const { input: thumbnailMobileQuality, row: thumbnailMobileQualityRow } = createThumbnailQualityRow('Mobile Quality', 'thumbnail-mobile-quality');
+        const mobileBgSize = createThumbnailSizeRow('Mobile Background', 'mobile-bg');
+        const mobileAvatarSize = createThumbnailSizeRow('Mobile Character', 'mobile-avatar');
+        const mobilePersonaSize = createThumbnailSizeRow('Mobile Persona', 'mobile-persona');
         const actionsSection = createServerSection(t`Thumbnail Actions`, undefined, 'thumbnail-actions');
-        const thumbnailUseRecommendedButton = createServerButtonRow('Use desktop recommended', 'thumbnail-use-recommended', handleUseRecommendedThumbnailSettings);
-        const thumbnailUseRecommendedMobileButton = createServerButtonRow('Use mobile recommended', 'thumbnail-use-recommended-mobile', handleUseRecommendedMobileThumbnailSettings);
-        const thumbnailSaveButton = createServerButtonRow('Save thumbnails', 'thumbnail-save', () => handleServerThumbnailSave({ clearCache: false }));
+        const thumbnailUseRecommendedButton = createServerButtonRow('Use Desktop Recommended', 'thumbnail-use-recommended', handleUseRecommendedThumbnailSettings);
+        const thumbnailUseRecommendedMobileButton = createServerButtonRow('Use Mobile Recommended', 'thumbnail-use-recommended-mobile', handleUseRecommendedMobileThumbnailSettings);
+        const thumbnailSaveButton = createServerButtonRow('Save Thumbnails', 'thumbnail-save', () => handleServerThumbnailSave({ clearCache: false }));
         const thumbnailSaveClearButton = createServerButtonRow('Save & Clear Cache', 'thumbnail-save-clear', () => handleServerThumbnailSave({ clearCache: true }));
-        const thumbnailClearButton = createServerButtonRow('Clear cache only', 'thumbnail-clear', handleServerThumbnailClearCache);
+        const thumbnailClearButton = createServerButtonRow('Clear Cache Only', 'thumbnail-clear', handleServerThumbnailClearCache);
         const thumbnailNote = createServerStatusRow();
         thumbnailNote.hidden = true;
         mobileSection.append(
@@ -1627,8 +1627,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const configField = createTextAreaField({ label: 'config.yaml', field: 'config-file', input: configEditor, expand: false });
         configField.row.querySelector('.ds-row-textarea__label').replaceChildren(configPath);
         configField.labelRow.append(configState);
-        const reloadConfigButton = createServerButtonRow('Reload file', 'config-reload', handleServerAdminReloadConfig);
-        const saveConfigButton = createServerButtonRow('Save config', 'config-save', () => handleServerAdminSaveConfig({ restart: false }));
+        const reloadConfigButton = createServerButtonRow('Reload File', 'config-reload', handleServerAdminReloadConfig);
+        const saveConfigButton = createServerButtonRow('Save Config', 'config-save', () => handleServerAdminSaveConfig({ restart: false }));
         const saveConfigRestartButton = createServerButtonRow('Save & Restart', 'config-save-restart', () => handleServerAdminSaveConfig({ restart: true }));
         const configNote = createServerStatusRow('Most config changes only take effect after a restart.');
         configSection.append(configField, reloadConfigButton, saveConfigButton, saveConfigRestartButton, configNote);

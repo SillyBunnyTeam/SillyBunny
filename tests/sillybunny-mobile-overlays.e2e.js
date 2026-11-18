@@ -157,7 +157,7 @@ for (const layout of layouts) {
                 return;
             }
 
-            await expect(summary).toHaveAccessibleName(`Prompt properties: ${(await summary.textContent()).replace(/\s*›\s*$/, '')}`);
+            await expect(summary).toHaveAccessibleName(`Prompt Properties: ${(await summary.textContent()).replace(/\s*›\s*$/, '')}`);
             await summary.click();
             const surface = await expectDialogPresentation(page, 'sb-prompt-properties-dialog', layout.width, layout.height);
             await expect(surface.locator('.sb-prompt-properties')).toBeVisible();

@@ -416,7 +416,7 @@ export function mountAgentDetail({
     select(coordination, 'companion.batchAgentIds', t`Companions`, companions('companion.batchAgentIds'), true);
     toggle(coordination, 'companion.sendContextToCompanions', t`Send Context`);
     select(coordination, 'companion.contextRecipientAgentIds', t`Recipients`, companions('companion.contextRecipientAgentIds'), true);
-    select(coordination, 'companion.dependencies', t`Re-run After`, companions('companion.dependencies'), true);
+    select(coordination, 'companion.dependencies', t`Re-Run After`, companions('companion.dependencies'), true);
     toggle(coordination, 'companion.waitForDependencies', t`Wait`);
     const options = group('template-options', t`Template Options`, 'sliders');
     select(options, 'settings.chatroomStyle', t`Chatroom Style`, adapter.editor.chatroomStyles);
@@ -482,7 +482,7 @@ export function mountAgentDetail({
         companions('conditions.companionOutputTargetAgentIds'),
         true,
     );
-    toggle(after, 'postProcess.enabled', t`Utility Post-processing`);
+    toggle(after, 'postProcess.enabled', t`Utility Post-Processing`);
     choice(after, 'postProcess.type', t`Type`, [['extract', t`Extract`], ['append', t`Append`]]);
     text(after, 'postProcess.extractPattern', t`Extract Pattern`);
     text(after, 'postProcess.extractVariable', t`Extract Variable`);

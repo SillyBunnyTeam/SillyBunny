@@ -158,7 +158,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(editor).toHaveValue('fixture: true\n');
             const initialConfigReads = configReads;
             await editor.fill('fixture: false\n');
-            await panel.getByRole('button', { name: 'Reload file', exact: true }).click();
+            await panel.getByRole('button', { name: 'Reload File', exact: true }).click();
 
             let alert = await expectDestructiveAlert(page, 'discard');
             await expect(alert).toContainText('Discard your unsaved config edits and reload config.yaml from disk?');
@@ -167,7 +167,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(alert).toHaveCount(0);
             expect(configReads).toBe(initialConfigReads);
 
-            await panel.getByRole('button', { name: 'Reload file', exact: true }).click();
+            await panel.getByRole('button', { name: 'Reload File', exact: true }).click();
             alert = await expectDestructiveAlert(page, 'discard');
             await alert.locator('[data-response="discard"]').click();
             await expect.poll(() => configReads).toBe(initialConfigReads + 1);
@@ -200,7 +200,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             });
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'data-security'));
             const panel = page.locator('[data-sb-panel="data-security"]');
-            await panel.getByRole('button', { name: 'Clear cache only', exact: true }).click();
+            await panel.getByRole('button', { name: 'Clear Cache Only', exact: true }).click();
 
             const alert = await expectAlert(page);
             const clear = alert.locator('[data-response="clear"]');

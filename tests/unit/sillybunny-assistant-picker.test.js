@@ -207,7 +207,7 @@ describe('searching the picker', () => {
 
     test('shows No results only while no row matches', async () => {
         const { frame } = await open();
-        const noResults = () => [...frame.body.querySelectorAll('.sb-status-page')].find(page => page.textContent === 'No results');
+        const noResults = () => [...frame.body.querySelectorAll('.sb-status-page')].find(page => page.textContent === 'No Results');
 
         expect(noResults().hidden).toBe(true);
         frame.options.search.onChange('zzz');
@@ -239,7 +239,7 @@ describe('a library with no character to offer', () => {
 
         frame.options.search.onChange('x');
 
-        expect([...frame.body.querySelectorAll('.sb-status-page')].filter(page => !page.hidden && page.textContent === 'No results')).toEqual([]);
+        expect([...frame.body.querySelectorAll('.sb-status-page')].filter(page => !page.hidden && page.textContent === 'No Results')).toEqual([]);
     });
 });
 
@@ -353,7 +353,7 @@ describe('a library with many characters', () => {
 
     test('shows No results for a query that only matches nothing, though rows are still to come', async () => {
         const { frame } = await open({ getEntries: () => manyEntries(300) });
-        const noResults = [...frame.body.querySelectorAll('.sb-status-page')].find(page => page.textContent === 'No results');
+        const noResults = [...frame.body.querySelectorAll('.sb-status-page')].find(page => page.textContent === 'No Results');
 
         frame.options.search.onChange('zzz');
 

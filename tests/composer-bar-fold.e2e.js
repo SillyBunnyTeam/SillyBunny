@@ -169,7 +169,7 @@ test.describe('composer row and bottom chat bar on a desktop window', () => {
         const narrow = await measureBar(page);
         expect(narrow.overflowShown).toBe(true);
         const trigger = page.locator('#sb-bottom-chat-bar .sb-bottom-chat-overflow');
-        await expect(trigger).toHaveAccessibleName('Chat actions');
+        await expect(trigger).toHaveAccessibleName('Chat Actions');
         await trigger.click();
         const items = page.locator('.sb-action-popover [role="menuitem"]');
         await expect(items).toHaveCount(narrow.foldedButtons);

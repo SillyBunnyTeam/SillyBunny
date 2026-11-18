@@ -35,7 +35,7 @@ export async function openMassDeleteChatDialog(files, currentChatId, { getOlderC
     const status = element('small', 'sb-chat-delete-status');
     status.setAttribute('aria-live', 'polite');
     const note = element('p', 'sb-chat-delete-note', t`Delete saved chats for the current character or group. The open chat is protected.`);
-    const compatibilityTitle = element('h3', '', t`Mass delete chats`);
+    const compatibilityTitle = element('h3', '', t`Mass Delete Chats`);
     compatibilityTitle.id = 'sb-chat-delete-title';
     compatibilityTitle.hidden = true;
     const selectableFiles = files.filter(chatFile => chatFile.fileName !== currentChatId);

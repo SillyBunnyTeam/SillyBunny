@@ -457,7 +457,7 @@ describe('World Info shell', () => {
         expect(container.querySelector('.sb-wi-list-status').hidden).toBe(true);
         expect(container.querySelector('.sb-wi-empty-detail')).toBeNull();
         expect(container.querySelector('.sb-wi-detail').hidden).toBe(true);
-        expect(container.querySelector('.sb-wi-list-heading').textContent).toBe('Lorebook entries');
+        expect(container.querySelector('.sb-wi-list-heading').textContent).toBe('Lorebook Entries');
         expect(container.querySelector('.sb-wi-list-heading').tabIndex).toBe(-1);
         expect(container.querySelector('.sb-wi-list-heading').hidden).toBe(false);
     });

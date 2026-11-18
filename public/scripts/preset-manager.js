@@ -805,7 +805,7 @@ class PresetManager {
             ? t`You have unsaved changes to this preset. Discard them?`
             : t`You have unsaved changes to this template. Discard them?`;
         // SillyBunny: unsaved-change confirmation names the discard action.
-        const confirm = await Popup.show.confirm(t`Unsaved changes`, bodyText, {
+        const confirm = await Popup.show.confirm(t`Unsaved Changes`, bodyText, {
             okButton: t`Discard`,
             defaultResult: POPUP_RESULT.NEGATIVE,
             onOpening: popup => popup.okButton.classList.add('is-destructive'),

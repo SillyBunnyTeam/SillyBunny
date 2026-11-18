@@ -849,7 +849,7 @@ export function initializePromptEditor(column) {
 
     function openAddMenu(trigger) {
         const count = state.prompts.filter(prompt => !state.order.some(entry => entry.identifier === prompt.identifier)).length;
-        menu(trigger, t`Add prompt`, [[
+        menu(trigger, t`Add Prompt`, [[
             menuItem(t`New prompt`, 'plus', async () => {
                 if (!(await allowLeave())) return;
                 await openDraft(model.newDraft(), 'prompt', 'edit', true);
@@ -865,7 +865,7 @@ export function initializePromptEditor(column) {
     }
 
     function openListMenu(trigger) {
-        menu(trigger, t`Prompt list`, [
+        menu(trigger, t`Prompt List`, [
             [menuItem(t`Import Prompt List`, 'file-import', async () => { if (await allowLeave()) model.importList(); }), menuItem(t`Export Prompt List`, 'file-export', () => model.exportList()), state.strategy === 'character' && state.character && menuItem(t`Export Character Prompts`, 'file-export', () => model.exportCharacter())],
             [menuItem(t`Select`, 'list-check', () => selection.enter(null, trigger)), menuItem(t`Reset Order`, 'rotate-left', async () => { if (await allowLeave()) model.resetOrder(); })],
         ]);
@@ -1296,10 +1296,10 @@ export function initializePromptEditor(column) {
         const summary = editor.querySelector('.sb-prompt-property-summary');
         if (!summary) return;
         if (kind === 'text-completion') {
-            setSummaryText(summary, t`Prompt properties`, textCompletionSummary());
+            setSummaryText(summary, t`Prompt Properties`, textCompletionSummary());
             return;
         }
-        setSummaryText(summary, t`Prompt properties`, `${capitalized(draft.role ?? 'system')} · ${Number(draft.injection_position) === 1 ? `${t`In-chat`} @ ${draft.injection_depth ?? 4}` : t`Relative`} · ${triggerSummary()}`);
+        setSummaryText(summary, t`Prompt Properties`, `${capitalized(draft.role ?? 'system')} · ${Number(draft.injection_position) === 1 ? `${t`In-chat`} @ ${draft.injection_depth ?? 4}` : t`Relative`} · ${triggerSummary()}`);
     }
 
     function refreshProperties() {
@@ -1310,7 +1310,7 @@ export function initializePromptEditor(column) {
 
     function openProperties(trigger) {
         closeOverlays();
-        const heading = element('h2', '', t`Prompt properties`);
+        const heading = element('h2', '', t`Prompt Properties`);
         heading.id = 'sb-prompt-properties-title';
         heading.tabIndex = -1;
         const content = document.createDocumentFragment();
@@ -1381,7 +1381,7 @@ export function initializePromptEditor(column) {
 
     // The label row of a text field: its name, with Expand at the inline end while the field can be edited. A prompt has one
     // such field, its content; a template has one for each of its sequences.
-    function contentField(textarea, body, name = t`Prompt content`) {
+    function contentField(textarea, body, name = t`Prompt Content`) {
         const field = element('div', 'sb-prompt-content-field');
         const labelRow = element('div', 'sb-prompt-label-row ds-row-textarea__label-row sb-editor-label-row');
         const label = element(textarea ? 'label' : 'span', 'sb-prompt-field-label ds-row-textarea__label', name);
@@ -1407,7 +1407,7 @@ export function initializePromptEditor(column) {
         editor.dataset.disabled = String(kind === 'text-completion' && draft.disabled);
         editor.replaceChildren();
         const header = element('header', 'sb-editor-header sb-prompt-detail-header');
-        const back = headerIconButton(t`Back to prompt list`, 'chevron-left', 'sb-prompt-back');
+        const back = headerIconButton(t`Back to Prompt List`, 'chevron-left', 'sb-prompt-back');
         let title;
         if (kind === 'prompt' && model.permissions(draft).rename) {
             title = element('input', 'sb-prompt-title');

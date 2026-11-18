@@ -227,7 +227,7 @@ export function mountWorldInfoEditor(container) {
     searchInput.value = transport('world_info_search')?.value ?? '';
 
     const listBody = element('div', 'sb-wi-list-body');
-    const entriesHeading = element('h3', 'sb-wi-list-heading', t`Lorebook entries`);
+    const entriesHeading = element('h3', 'sb-wi-list-heading', t`Lorebook Entries`);
     entriesHeading.tabIndex = -1;
     const entryBox = element('div', 'sb-wi-list-box ds-entity-list');
     entryBox.setAttribute('role', 'list');

@@ -194,7 +194,7 @@ describe('Prompt editor header', () => {
         ]);
         const back = header.querySelector('.sb-prompt-back');
         expect(back.title).toBe('Back');
-        expect(back.getAttribute('aria-label')).toBe('Back to prompt list');
+        expect(back.getAttribute('aria-label')).toBe('Back to Prompt List');
         const more = header.querySelector('.sb-prompt-more');
         expect(more.title).toBe('Prompt Actions');
         expect(more.getAttribute('aria-label')).toBe('Prompt Actions');
@@ -358,7 +358,7 @@ describe('Prompt editor token count and Expand', () => {
         const field = detail.querySelector('.sb-prompt-content > .sb-prompt-content-field');
         const textarea = field.querySelector('#sb-prompt-form_prompt');
         const labelRow = field.querySelector(':scope > .sb-editor-label-row');
-        expect(labelRow.querySelector('label').textContent).toBe('Prompt content');
+        expect(labelRow.querySelector('label').textContent).toBe('Prompt Content');
         expect(labelRow.querySelector('label').htmlFor).toBe(textarea.id);
         const expand = labelRow.querySelector(':scope > .editor_maximize');
         expect(expand.dataset.for).toBe('sb-prompt-form_prompt');

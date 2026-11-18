@@ -28,9 +28,9 @@ export const SKIP_SELECTORS = Object.freeze({
 const READY_EXTRAS = Object.freeze({
     'settings.customize.data-security': [
         '#sb-branch-select',
-        '[data-sb-panel="data-security"] button:has-text("Restart server"):enabled',
-        '[data-sb-panel="data-security"] button:has-text("Save thumbnails"):enabled',
-        '[data-sb-panel="data-security"] button:has-text("Save config"):enabled',
+        '[data-sb-panel="data-security"] button:has-text("Restart Server"):enabled',
+        '[data-sb-panel="data-security"] button:has-text("Save Thumbnails"):enabled',
+        '[data-sb-panel="data-security"] button:has-text("Save Config"):enabled',
     ],
 });
 

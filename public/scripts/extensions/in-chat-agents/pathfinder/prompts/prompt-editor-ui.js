@@ -100,7 +100,7 @@ const EDITOR_HTML = `
             <label for="pf-pipeline-id">Pipeline</label>
             <select id="pf-pipeline-id" class="text_pole">
                 <option value="default">Two-stage predictive retrieval</option>
-                <option value="single-pass">Single-Pass Selection</option>
+                <option value="single-pass">Single-pass selection</option>
             </select>
         </div>
 

@@ -4736,7 +4736,7 @@
       "gates": [
         "data-source=custom"
       ],
-      "label": "Auto-detect message icon from model name Match message icons to recognized model"
+      "label": "Auto-Detect Message Icon From Model Name Match message icons to recognized model"
     },
     "xai_form>a": {
       "id": null,

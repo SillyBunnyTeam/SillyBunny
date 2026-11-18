@@ -893,7 +893,7 @@ for (const { name, portrait, options } of VIEWPORTS) {
 
                     await searchInputOf(host).fill('zzz');
                     await expect(host.locator('.ds-row:not([hidden])')).toHaveCount(0);
-                    await expect(host.locator('.sb-status-page__title', { hasText: 'No results' })).toBeVisible();
+                    await expect(host.locator('.sb-status-page__title', { hasText: 'No Results' })).toBeVisible();
 
                     await page.keyboard.press('Escape');
                     await expect(searchInputOf(host)).toHaveValue('');

@@ -418,7 +418,7 @@ async function showReportPopup() {
         });
 
         const content = el('div', 'sbdbg-report');
-        content.appendChild(el('h3', undefined, 'Diagnostic report'));
+        content.appendChild(el('h3', undefined, 'Diagnostic Report'));
         const actions = el('div', 'sbdbg-actions');
         const copyButton = button('menu_button', 'Copy to Clipboard', async () => {
             flashButtonText(copyButton, await copyToClipboard(report) ? 'Copied!' : 'Copy failed — select the text below');

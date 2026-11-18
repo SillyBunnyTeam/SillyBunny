@@ -978,7 +978,7 @@ export function renderConversationTimeline() {
             role: pendingParticipant && pendingAvatar !== getCurrentCharAvatar() ? 'partner' : 'character',
             extraClass: 'sb-conversation-image-pending',
             avatarSrc: getThumbnailUrl('avatar', pendingAvatar) || default_user_avatar,
-            nameHtml: 'Image generation',
+            nameHtml: 'Image Generation',
             textHtml: `
                 <div class="sb-conversation-message-text sb-conversation-typing-dots"><span></span><span></span><span></span></div>
                 <button type="button" class="sb-conversation-stop-image" data-sb-conversation-action="stop-image-generation">Stop</button>
@@ -2053,7 +2053,7 @@ export function ensureConversationChrome() {
                     </button>
                     <input id="${CHROME_IDS.fileInput}" class="displayNone" type="file" accept="${CONVERSATION_ATTACHMENT_ACCEPT}" multiple aria-label="Conversation Attachments" />
                     <label class="sr-only" for="${CHROME_IDS.input}">Conversation Message</label>
-                    <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Type your message..."></textarea>
+                    <textarea id="${CHROME_IDS.input}" class="text_pole" rows="1" placeholder="Type your message…"></textarea>
                     <div class="sb-conversation-composer-actions" role="group" aria-label="Message Tools">
                         <button type="button" class="sb-conversation-flat-button sb-conversation-composer-quick" data-sb-conversation-action="quick-selfie" title="Send a Selfie" aria-label="Send a Selfie">
                             <i class="fa-solid fa-camera" aria-hidden="true"></i>

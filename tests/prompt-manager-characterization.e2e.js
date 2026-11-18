@@ -321,7 +321,7 @@ function promptEditorDriver(page) {
         },
 
         async close() {
-            await editor.getByRole('button', { name: 'Back to prompt list', exact: true }).click();
+            await editor.getByRole('button', { name: 'Back to Prompt List', exact: true }).click();
             await expect(editor).toBeHidden();
         },
 
@@ -802,11 +802,11 @@ test.describe('Prompt Manager characterization', () => {
         await ui.openEditor('sbFixtureRelative');
         await ui.fill({ content: 'Unsaved local draft' });
         const saves = store.settingsSaves.length;
-        await page.getByRole('button', { name: 'Back to prompt list', exact: true }).click();
+        await page.getByRole('button', { name: 'Back to Prompt List', exact: true }).click();
         await page.locator('dialog.popup[open] .popup-button-cancel').click();
         await expect(page.locator(`${FORM}_prompt`)).toHaveValue('Unsaved local draft');
         expect((await readLiveOai(page)).prompts).toEqual(baseline.prompts);
-        await page.getByRole('button', { name: 'Back to prompt list', exact: true }).click();
+        await page.getByRole('button', { name: 'Back to Prompt List', exact: true }).click();
         await page.locator('dialog.popup[open]').getByRole('button', { name: 'Discard', exact: true }).click();
         await expect(page.locator('.sb-prompt-detail')).toBeHidden();
         for (const saved of store.settingsSaves.slice(saves)) {
@@ -974,7 +974,7 @@ test.describe('Prompt Manager characterization', () => {
         const { store, ui } = await setup(page);
         await ui.openEditor('sbFixtureRelative');
         await ui.fill({ content: 'Saved through the leave guard' });
-        await page.getByRole('button', { name: 'Back to prompt list', exact: true }).click();
+        await page.getByRole('button', { name: 'Back to Prompt List', exact: true }).click();
         await acceptPopup(page.locator('dialog.popup[open]'));
         await waitForSavedOai(store, oai => promptFor(oai, 'sbFixtureRelative')?.content === 'Saved through the leave guard');
         await expect(page.locator('.sb-prompt-editor')).toHaveAttribute('data-open', 'false');
@@ -1270,8 +1270,8 @@ test.describe('Prompt editor mobile interaction', () => {
         await ui.openEditor('sbFixtureInChat');
         const editor = page.locator('.sb-prompt-detail');
         await expect(page.locator('.sb-prompt-owned > .sb-backend-section-header')).toBeHidden();
-        await editor.getByRole('button', { name: 'Prompt properties: User · In-chat @ 2 · Swipe, Quiet', exact: true }).click();
-        const sheet = page.getByRole('dialog', { name: 'Prompt properties', exact: true });
+        await editor.getByRole('button', { name: 'Prompt Properties: User · In-chat @ 2 · Swipe, Quiet', exact: true }).click();
+        const sheet = page.getByRole('dialog', { name: 'Prompt Properties', exact: true });
         await sheet.getByRole('button', { name: /^Role:/ }).click();
         await page.getByRole('menuitemradio', { name: 'Assistant', exact: true }).click();
         await sheet.getByRole('spinbutton', { name: 'Depth', exact: true }).fill('6');
@@ -1302,8 +1302,8 @@ test.describe('Prompt editor mobile interaction', () => {
         for (const name of names) expect(name, name.text).toMatchObject({ wraps: true, cut: false });
 
         await ui.openEditor('main');
-        await page.locator('.sb-prompt-detail').getByRole('button', { name: /^Prompt properties:/ }).click();
-        const sheet = page.getByRole('dialog', { name: 'Prompt properties', exact: true });
+        await page.locator('.sb-prompt-detail').getByRole('button', { name: /^Prompt Properties:/ }).click();
+        const sheet = page.getByRole('dialog', { name: 'Prompt Properties', exact: true });
         await expect(sheet.getByRole('switch', { name: 'Forbid Overrides', exact: true })).toBeVisible();
         const geometry = await sheet.evaluate(node => {
             const frame = node.getBoundingClientRect();

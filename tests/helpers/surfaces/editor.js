@@ -300,7 +300,7 @@ const PROMPT = {
     row: '.sb-prompt-row[data-prompt-id="main"]',
     dirty: '.sb-prompt-detail .sb-prompt-dirty:not([hidden])',
     cancel: '.sb-prompt-detail .sb-prompt-cancel',
-    back: '.sb-prompt-detail .sb-prompt-detail-header [aria-label="Back to prompt list"]',
+    back: '.sb-prompt-detail .sb-prompt-detail-header [aria-label="Back to Prompt List"]',
     textarea: '#sb-prompt-form_prompt',
 };
 

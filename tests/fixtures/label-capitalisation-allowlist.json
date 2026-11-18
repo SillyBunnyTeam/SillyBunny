@@ -1,0 +1,26 @@
+[
+    {
+        "file": "public/scripts/templates/migrateInstructPrompt.html",
+        "text": "Import the Template’s System Prompt?",
+        "role": "heading",
+        "reason": "A heading the user signed off with a test on its text. It has an article, so the rule gives sentence capitalisation; the signed-off form is header capitalisation."
+    },
+    {
+        "file": "public/scripts/extensions.js",
+        "text": "Clean extension data",
+        "role": "heading",
+        "reason": "Upstream wording on a line that SillyBunny touched only to name the response with a verb; no locale translates it, so the translation rule does not skip it."
+    },
+    {
+        "file": "public/scripts/extensions/quick-reply/src/ui/SettingsUi.js",
+        "text": "Replace existing Quick Reply Set",
+        "role": "heading",
+        "reason": "Upstream wording (the base writes 'Replace existing Quick Reply set') on lines that SillyBunny touched only to name the response with a verb; no locale translates it."
+    },
+    {
+        "file": "public/scripts/tags.js",
+        "text": "Prune ${} tags and ${} references",
+        "role": "heading",
+        "reason": "Upstream wording on a line that SillyBunny touched only to name the response with a verb; no locale translates it."
+    }
+]

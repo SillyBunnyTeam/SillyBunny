@@ -124,7 +124,7 @@ test('server admin reload and thumbnail cache actions wait for Alert responses',
         body: 'They will be rebuilt as images are loaded.',
         responses: [
             { id: 'cancel', label: 'Cancel' },
-            { id: 'clear', label: 'Clear cache', appearance: 'suggested' },
+            { id: 'clear', label: 'Clear Cache', appearance: 'suggested' },
         ],
         defaultResponse: 'clear',
     }));

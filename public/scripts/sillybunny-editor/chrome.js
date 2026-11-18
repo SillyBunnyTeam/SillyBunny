@@ -125,7 +125,7 @@ export function nameByValue(control, label, value) {
  * Writes the text of a property-summary button and names the button `<label>: <text>`. The chevron that ends the text is
  * decoration: it is hidden from assistive technology and left out of the name.
  * @param {HTMLElement} summary
- * @param {string} label  What the summary opens ("Persona", "Prompt properties").
+ * @param {string} label  What the summary opens ("Persona", "Prompt Properties").
  * @param {string} text  The visible text, without the chevron.
  */
 export function setSummaryText(summary, label, text) {

@@ -148,7 +148,7 @@ function moveTo(trigger, keys, after = () => {}) {
         trigger,
         title: t`Move to Folder`,
         sections: [{ items: [
-            item(t`No folder`, 'folder', place(null), { kind: 'radio', checked: inFolder(null) }),
+            item(t`No Folder`, 'folder', place(null), { kind: 'radio', checked: inFolder(null) }),
             ...folders.map(folder => item(folder.name, 'folder', place(folder.id), { kind: 'radio', checked: inFolder(folder.id) })),
         ] }],
     });
