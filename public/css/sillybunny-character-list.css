@@ -621,7 +621,7 @@ body.charListGrid .sb-character-list .ds-entity-row:not(.sb-folder-row) .ds-enti
 @media (hover: hover) {
     .sb-character-list .ds-entity-row--activatable:hover,
     body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row--activatable:hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 
     .sb-character-list .ds-entity-row:is(.is-selected, .is-selection-selected):hover,
@@ -633,16 +633,19 @@ body.charListGrid .sb-character-list .ds-entity-row:not(.sb-folder-row) .ds-enti
 /* The tint of a folder header outranks the state fills, so hover and press lay their fill over it as an image. */
 @media (hover: hover) {
     body:not(.charListGrid) .sb-character-list #rm_print_characters_block > .sb-folder-row:hover {
-        background-image: linear-gradient(var(--sb-flat-hover-bg), var(--sb-flat-hover-bg));
+        background-image: linear-gradient(var(--sb-row-hover-bg), var(--sb-row-hover-bg));
     }
 }
 
 body:not(.charListGrid) .sb-character-list #rm_print_characters_block > .sb-folder-row:active {
-    background-image: linear-gradient(var(--sb-flat-active-bg), var(--sb-flat-active-bg));
+    background-image: linear-gradient(var(--sb-row-active-bg), var(--sb-row-active-bg));
 }
 
 .sb-character-list .ds-entity-row--activatable:active,
-body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row--activatable:active,
+body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row--activatable:active {
+    background: var(--sb-row-active-bg);
+}
+
 .sb-character-list .ds-entity-row:is(.is-selected, .is-selection-selected):active,
 body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row:is(.is-selected, .is-selection-selected):active {
     background: var(--sb-flat-active-bg);

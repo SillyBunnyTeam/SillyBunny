@@ -17,7 +17,6 @@
     /* Snapshot of the upstream bar height under a name this fork never overrides, so a rule can
        scope --topBarBlockSize on an element without a self-reference cycle. */
     --sb-host-topbar-block-size: var(--topBarBlockSize);
-    --sb-topbar-padding-x-base: 10px;
     --sb-topbar-stack-gap-base: 4px;
     --sb-topbar-bottom-padding-base: 4px;
     --sb-topbar-inline-gap-base: 10px;
@@ -41,7 +40,8 @@
     --sb-mobile-toggle-size-base: 40px;
     --sb-home-toggle-min-width-base: 92px;
     --sb-topbar-compact-icon-scale-base: 0.84;
-    --sb-topbar-padding-x: calc(var(--sb-topbar-padding-x-base) * var(--sb-topbar-scale-active));
+    /* One inset for every header bar, as the bar rule of DESIGN.md Header Bars; it does not follow the bar scale. */
+    --sb-topbar-padding-x: 6px;
     --sb-topbar-stack-gap: calc(var(--sb-topbar-stack-gap-base) * var(--sb-topbar-scale-active));
     --sb-topbar-bottom-padding: calc(var(--sb-topbar-bottom-padding-base) * var(--sb-topbar-scale-active));
     --sb-topbar-inline-gap: calc(var(--sb-topbar-inline-gap-base) * var(--sb-topbar-scale-active));
@@ -93,7 +93,6 @@
 :root[data-sb-compact-mode='true'] {
     --sb-density-scale: var(--sb-density-compact-scale);
     --sb-topbar-primary-height-base: 34px;
-    --sb-topbar-padding-x-base: 7px;
     --sb-topbar-stack-gap-base: 3px;
     --sb-topbar-inline-gap-base: 7px;
     --sb-topbar-search-row-height-base: 36px;
@@ -192,8 +191,9 @@
     z-index: var(--sb-z-shell);
     pointer-events: none;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
+    gap: 6px;
     height: var(--sb-topbar-layout-offset);
     padding: max(env(safe-area-inset-top), 0px) var(--sb-topbar-padding-x) 0;
     overflow: visible;
@@ -227,6 +227,8 @@ body.sb-topbar-dragging {
 
 #sb-topbar-stack {
     position: relative;
+    /* The stack is the bar's only child and keeps the top edge, so a taller bar (safe-area inset, open search row) does not centre it. */
+    align-self: flex-start;
     width: min(100%, var(--sb-topbar-max-width));
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -1055,7 +1057,7 @@ body:not(.movingUI) .drawer-content.maximized {
     border: 1px solid transparent;
     border-radius: var(--sb-shell-control-radius);
     min-height: 44px;
-    padding: 8px 14px;
+    padding: 9px 12px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1618,7 +1620,7 @@ body:not(.movingUI) .drawer-content.maximized {
 }
 
 .sb-data-security-group .ds-row.ds-button-row:disabled {
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
 }
 
@@ -3324,11 +3326,11 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    padding: 0 8px 0 16px;
-    min-height: 68px;
+    padding: 0 6px;
+    min-height: 60px;
     height: auto;
     border-bottom: 1px solid var(--sb-shell-border);
-    gap: 4px;
+    gap: 6px;
     box-sizing: border-box;
     /* Sidebar rail tone, not the shell header bar: the settings page must read as its own
        surface rather than continuing the top bar. */
@@ -3337,6 +3339,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 
 #sb-settings-sidebar-title {
     flex: 1;
+    padding-inline: 6px;
     font-size: var(--sb-type-title);
     font-weight: 700;
     overflow: hidden;
@@ -3446,7 +3449,7 @@ body > #sb-settings-page:not([hidden]) ~ .zoomed_avatar[forchar] {
 }
 
 .sb-search-entry:has(> input:disabled) {
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
 }
 
@@ -3674,10 +3677,10 @@ body.reduced-motion .sb-search-entry {
     display: flex;
     align-items: center;
     flex-shrink: 0;
-    padding: 8px 16px;
-    min-height: 68px;
+    padding: 8px 6px;
+    min-height: 60px;
     border-bottom: 1px solid var(--sb-shell-border);
-    gap: 12px;
+    gap: 6px;
     box-sizing: border-box;
     /* Window tone, so the content header sits a step away from both the rail and the top bar. */
     background-color: var(--sb-layer-window);
@@ -3861,7 +3864,7 @@ body.reduced-motion .sb-search-entry {
 :root[data-sb-compact-mode='true'] #sb-settings-content-header {
     min-height: 52px;
     height: 52px;
-    padding: 0 12px;
+    padding: 0 6px;
 }
 
 :root[data-sb-compact-mode='true'] #sb-settings-tab-list {
@@ -4204,13 +4207,7 @@ body.reduced-motion .sb-search-entry {
 
 .ds-spin-btn:disabled {
     cursor: default;
-    opacity: 0.5;
-}
-
-@media (prefers-contrast: more) {
-    .ds-spin-btn:disabled {
-        opacity: 0.4;
-    }
+    opacity: var(--sb-disabled-opacity);
 }
 
 /* Forced colours paint no shadow and no fill: the circle and the focus ring become outlines. */
@@ -4366,7 +4363,7 @@ body.reduced-motion .sb-search-entry {
 /* Hover fills the row until the text has focus. */
 @media (hover: hover) {
     .ds-row.ds-row-entry--floating:hover:not(:has(.ds-row-entry__field > :is(input, textarea):focus, .ds-row-entry__field > :is(input, textarea):disabled), .is-insensitive) {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
@@ -4388,7 +4385,7 @@ body.reduced-motion .sb-search-entry {
 
 /* The row fades, the pencil again to 30%. */
 .ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > :is(input, textarea):disabled)) {
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
 }
 
@@ -4401,10 +4398,6 @@ body.reduced-motion .sb-search-entry {
 }
 
 @media (prefers-contrast: more) {
-    .ds-row.ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > :is(input, textarea):disabled)) {
-        opacity: 0.4;
-    }
-
     .ds-row-entry--floating:is(.is-insensitive, :has(.ds-row-entry__field > :is(input, textarea):disabled)) .ds-row-entry__edit {
         opacity: 0.75;
     }
@@ -4689,12 +4682,12 @@ body.reduced-motion :is(.ds-row.ds-row-entry--floating, .ds-row-entry--floating 
 
 .ds-select-row__trigger:disabled {
     cursor: not-allowed;
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
 }
 
 @media (hover: hover) {
     .ds-row.ds-select-row:not(:has(.ds-select-row__trigger:disabled)):hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 
     .ds-select-row__menu:not(:disabled):hover {
@@ -4723,12 +4716,12 @@ body.reduced-motion :is(.ds-row.ds-row-entry--floating, .ds-row-entry--floating 
 
 @media (hover: hover) {
     #sb-settings-page .ds-row.ds-select-row:not(:has(.ds-select-row__trigger:disabled)):hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
 #sb-settings-page .ds-row.ds-select-row:has(.ds-select-row__trigger:not(:disabled)):active {
-    background: var(--sb-flat-active-bg);
+    background: var(--sb-row-active-bg);
 }
 
 @media (pointer: coarse) {
@@ -4831,17 +4824,17 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 
 /* Upstream marks these blocks while Instruct Mode or the System Prompt is off; the rows stay usable and show the state. */
 :is(#instructSettingsBlock, #SystemPromptBlock).disabled .ds-row {
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
 }
 
 @media (hover: hover) {
     :is(.ds-row-switch, .ds-row-check):not(:has(input:disabled)):hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
 :is(.ds-row-switch, .ds-row-check):not(:has(input:disabled)):active {
-    background: var(--sb-flat-active-bg);
+    background: var(--sb-row-active-bg);
 }
 
 /* A slider's range and number field stay together; they move under the title as one. The basis leaves the range
@@ -4913,12 +4906,12 @@ body.reduced-motion :is(.ds-select-row__trigger, .ds-select-row__menu) {
 
 @media (hover: hover) {
     .ds-row-expander__toggle:hover::after {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
 .ds-row-expander__toggle:active::after {
-    background: var(--sb-flat-active-bg);
+    background: var(--sb-row-active-bg);
 }
 
 .ds-row-expander__toggle:focus-visible {
@@ -5160,7 +5153,7 @@ body.reduced-motion .ds-row-expander__toggle::after {
 
 /* Bundled presets: Update stays focusable for its tooltip, but reads and acts as unavailable. */
 .menu_button.sb-preset-update-read-only {
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
 }
 
@@ -5310,12 +5303,12 @@ body.reduced-motion .ds-row-expander__toggle::after {
 
 @media (hover: hover) {
     #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) :is(.ds-row--activatable, .ds-button-row):not(:disabled):hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
 #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) :is(.ds-row--activatable, .ds-button-row):not(:disabled):active {
-    background: var(--sb-flat-active-bg);
+    background: var(--sb-row-active-bg);
 }
 
 #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row__chevron {
@@ -5801,12 +5794,12 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
        wrappers. Keep hover feedback on the row that owns the control rather than tinting its whole
        parent card. */
     #sb-settings-page .sb-settings-mounted-shell .checkbox_label:not(.ds-row-switch):hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 
     .sb-settings-mounted-shell .sb-settings-flat-section > .checkbox_label:not(.ds-row-switch):hover,
     .sb-settings-mounted-shell .sb-settings-flat-section > .flex-container:not(.flexFlowColumn):has(> .checkbox_label, > input, > select, > textarea, > .menu_button, > .menu_button_icon):hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
@@ -5834,7 +5827,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 @media (hover: hover) {
     .sb-settings-mounted-shell .sb-settings-subdrawer-body > .checkbox_label:not(.ds-row-switch):hover,
     .sb-settings-mounted-shell .sb-settings-subdrawer-body > .flex-container > .checkbox_label:not(.ds-row-switch):hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
@@ -5857,7 +5850,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 @media (hover: hover) {
     .sb-settings-mounted-shell .ds-pref-group .checkbox_label:not(.ds-row-switch):hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
@@ -6843,11 +6836,11 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 .sb-subpage-detail-bar {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 6px;
     flex: 0 0 auto;
-    min-height: 52px;
+    min-height: 56px;
     margin: 0 0 12px;
-    padding: 0 4px;
+    padding: 0 6px;
 }
 
 .sb-subpage-detail-heading {
@@ -7343,12 +7336,12 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 @media (hover: hover) {
     #sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle:hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
 #sb-settings-page .sb-connections-panel .sb-connections-expander > .inline-drawer-toggle:active {
-    background: var(--sb-flat-active-bg);
+    background: var(--sb-row-active-bg);
 }
 
 .sb-connections-provider .sb-connections-expander > .inline-drawer-content {

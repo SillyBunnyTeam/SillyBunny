@@ -1555,6 +1555,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6g). |
 | Owner | `TODO(copy)` |
 
+### `public/style.css` - the disabled strength and a card's padding
+
+| Field | Value |
+| --- | --- |
+| File | `public/style.css` (`input[type="checkbox"]:disabled` takes `--sb-disabled-opacity`; `.sb-chat-completion-config-section` pads `12px`). `public/index.html` carries cache keys only. |
+| Area | Disabled controls; the Chat Completion configuration card. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `--sb-disabled-opacity` in `public/css/sillybunny-theme.css` (50%, 40% under `prefers-contrast: more`). |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6f, F-262 and the spacing scale): one declaration each, under a `SillyBunny:` marker. |
+| Protecting tests | `tests/libadwaita-states-css.test.js`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of the header, list, editor, settings, menu, dialog, status and panel families, the settings inventory, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6f). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |

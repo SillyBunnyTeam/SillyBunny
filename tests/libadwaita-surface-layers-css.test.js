@@ -86,7 +86,7 @@ describe('libadwaita surface and layer foundations', () => {
     test('floating entry rows draw an error in Destructive Red and fade when disabled', () => {
         expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:has\(\.ds-row-entry__field > :is\(input, textarea\)\[aria-invalid='true'\]\) \{[^}]*outline: 2px solid var\(--sb-color-danger\);/);
         expect(tabsCss).toMatch(/\.ds-row-entry__error \{[^}]*color: var\(--sb-color-danger\);/);
-        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > :is\(input, textarea\):disabled\)\) \{[^}]*opacity: 0\.5;[^}]*cursor: not-allowed;/);
+        expect(tabsCss).toMatch(/\.ds-row\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > :is\(input, textarea\):disabled\)\) \{[^}]*opacity: var\(--sb-disabled-opacity\);[^}]*cursor: not-allowed;/);
         expect(tabsCss).toMatch(/\.ds-row-entry--floating:is\(\.is-insensitive, :has\(\.ds-row-entry__field > :is\(input, textarea\):disabled\)\) \.ds-row-entry__edit \{[^}]*opacity: 0\.6;/);
     });
 });

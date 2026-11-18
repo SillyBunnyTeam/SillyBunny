@@ -518,7 +518,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 @media screen and (max-width: 768px) {
     :root {
         --sb-topbar-scale-active: var(--sb-topbar-scale-mobile);
-        --sb-topbar-padding-x-base: 8px;
         --sb-topbar-inline-gap-base: 6px;
         --sb-topbar-search-row-height-base: 36px;
         --sb-topbar-group-gap-base: 4px;
@@ -531,7 +530,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     :root[data-sb-compact-mode='true'] {
         --sb-topbar-primary-height-base: 34px;
-        --sb-topbar-padding-x-base: 6px;
         --sb-topbar-inline-gap-base: 5px;
         --sb-topbar-search-row-height-base: 32px;
         --sb-topbar-group-gap-base: 3px;
@@ -1003,7 +1001,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 @media screen and (max-width: 768px) {
     :root {
         --sb-topbar-primary-height-base: 28px;
-        --sb-topbar-padding-x-base: 6px;
         --sb-topbar-stack-gap-base: 2px;
         --sb-topbar-bottom-padding-base: 2px;
         --sb-topbar-inline-gap-base: 4px;
@@ -1022,7 +1019,6 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
 
     :root[data-sb-compact-mode='true'] {
         --sb-topbar-primary-height-base: 26px;
-        --sb-topbar-padding-x-base: 5px;
         --sb-topbar-inline-gap-base: 3px;
         --sb-topbar-search-row-height-base: 28px;
         --sb-chatbar-button-size-base: 21px;

@@ -14,7 +14,7 @@ import { adoptSamplingFieldRows, bindDependentSets, carryGatingAttributes, readL
  */
 
 /** The row rules of the entity lists: the sampler order and the logit bias entries are rows of that pattern. */
-const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' };
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261118zo', id: 'deferred-entity-list-css' };
 
 /** The sheet has to apply before the Sampling page shows its lists, or their rows change look when it arrives. */
 export function loadSamplingStyles() {

@@ -214,10 +214,10 @@ body.reduced-motion .sb-folder-row .ds-entity-row__chevron {
 }
 
 @media (hover: hover) {
-    .ds-entity-row--surface:hover { background: var(--sb-flat-hover-bg); }
+    .ds-entity-row--surface:hover { background: var(--sb-row-hover-bg); }
 }
 
-.ds-entity-row--surface:active { background: var(--sb-flat-active-bg); }
+.ds-entity-row--surface:active { background: var(--sb-row-active-bg); }
 
 .ds-entity-row.is-selected {
     background: var(--sb-flat-selected-bg);
@@ -245,7 +245,7 @@ body.reduced-motion .sb-folder-row .ds-entity-row__chevron {
 }
 
 .ds-entity-row.disabled :is(.ds-entity-row__avatar, .ds-entity-row__text) {
-    opacity: 0.58;
+    opacity: var(--sb-disabled-opacity);
     transition: opacity var(--sb-transition-fast);
 }
 
@@ -769,8 +769,11 @@ body.reduced-motion .sb-folder-row .ds-entity-row__chevron {
         background: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor, var(--SmartThemeQuoteColor)) 30%, transparent);
     }
 
+    .ds-entity-row--activatable:hover {
+        background: var(--sb-row-hover-bg);
+    }
+
     .ds-entity-row .ds-entity-row__button:hover,
-    .ds-entity-row--activatable:hover,
     .ds-entity-list__footer .sb-list-show-more__button:hover,
     .ds-entity-list__footer .sb-list-pagination :is(.sb-list-pagination__prev, .sb-list-pagination__next):not(:disabled):hover,
     .ds-entity-list__footer .paginationjs-pages ul li:not(.disabled) a:hover {
@@ -801,8 +804,11 @@ body.reduced-motion .sb-folder-row .ds-entity-row__chevron {
     }
 }
 
+.ds-entity-row--activatable:active {
+    background: var(--sb-row-active-bg);
+}
+
 .ds-entity-row .ds-entity-row__button:active,
-.ds-entity-row--activatable:active,
 .ds-entity-row.is-selected:active {
     background: var(--sb-flat-active-bg);
 }
@@ -985,7 +991,7 @@ body.reduced-motion :is(.ds-tag-chips .tag, .ds-tag-chips .tag .tag_remove, .ds-
 }
 
 .group_member.disabled .ds-entity-row__avatar {
-    opacity: 0.55;
+    opacity: var(--sb-disabled-opacity);
 }
 
 .group_member .sb-group-member-legacy,

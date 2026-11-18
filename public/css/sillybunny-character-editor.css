@@ -123,7 +123,7 @@
     background: var(--sb-layer-view);
     border-bottom: 0;
     flex-shrink: 0;
-    min-height: 52px;
+    min-height: 60px;
 }
 
 /* Every explicit-save editor header is a size container, so the Cancel icon form below is one rule at one width, and the
@@ -388,14 +388,8 @@
 }
 
 .sb-editor-action.sb-editor-action:disabled {
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
     cursor: default;
-}
-
-@media (prefers-contrast: more) {
-    .sb-editor-action.sb-editor-action:disabled {
-        opacity: 0.4;
-    }
 }
 
 .sb-editor-action.sb-editor-action:focus-visible {
@@ -723,12 +717,12 @@
 
 @media (hover: hover) {
     .ds-row-button:hover {
-        background: var(--sb-flat-hover-bg);
+        background: var(--sb-row-hover-bg);
     }
 }
 
 .ds-row-button:active {
-    background: var(--sb-flat-active-bg);
+    background: var(--sb-row-active-bg);
 }
 
 .sb-editor-icon-button:focus-visible,
@@ -1100,7 +1094,7 @@
 }
 
 .sb-greeting-row__btn:disabled {
-    opacity: 0.4;
+    opacity: var(--sb-disabled-opacity);
     cursor: default;
 }
 

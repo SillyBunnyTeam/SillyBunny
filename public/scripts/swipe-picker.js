@@ -15,7 +15,7 @@ import { addLongPressEvent, clamp, copyText, timestampToMoment } from './utils.j
 import { chat, deleteSwipe, ensureSwipes, isMessageSwipeable, isSwipingAllowed, swipe, syncMesToSwipe } from '/script.js';
 
 // SillyBunny: the rows are shared entity rows, which a deferred sheet styles.
-const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' };
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261118zo', id: 'deferred-entity-list-css' };
 
 /**
  * Returns whether a swipe picker can be opened for the message.

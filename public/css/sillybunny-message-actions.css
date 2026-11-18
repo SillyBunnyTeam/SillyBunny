@@ -418,7 +418,7 @@ body #chat .mes:not(.last_swipe) :is(.swipe_left, .swipe_right, .swipes-counter)
 }
 
 .sb-action-menu-item[aria-disabled='true'] {
-    opacity: 0.45;
+    opacity: var(--sb-disabled-opacity);
     cursor: default;
 }
 

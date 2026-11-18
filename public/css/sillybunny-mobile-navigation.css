@@ -314,7 +314,7 @@ html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-ac
 }
 
 html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:is(:disabled, .is-disabled):not(#sb-specificity) {
-    opacity: 0.42;
+    opacity: var(--sb-disabled-opacity);
 }
 
 html[data-sb-mobile-ui] .sb-dialog.sb-bottom-chat-sheet .sb-bottom-chat-sheet-actions .sb-bottom-chat-btn:has(> .fa-trash):not(#sb-specificity) {

@@ -66,22 +66,6 @@
     background: var(--sb-flat-selected-bg);
 }
 
-.sb-wi-list-header {
-    display: flex;
-    align-items: center;
-    flex: none;
-    flex-wrap: nowrap;
-    box-sizing: border-box;
-    height: 60px;
-    min-height: 60px;
-    max-height: 60px;
-    gap: 6px;
-    padding: 6px;
-    min-width: 0;
-    overflow: hidden;
-    background: transparent;
-}
-
 /* The title button takes the free space (its end margin, in the rule below), so the spacer and its two gaps do not cost the name 12px. */
 .sb-wi-list-header .sb-list-header__spacer {
     display: none;
@@ -204,6 +188,7 @@
     color: var(--sb-muted-fg);
 }
 
+/* An entry that is switched off is not an insensitive control. At the 50% disabled strength its title falls under 4.5:1. */
 .sb-wi-row.is-disabled .ds-entity-row__text {
     opacity: 0.6;
 }
@@ -250,10 +235,13 @@
 
 @media (hover: hover) {
     #WorldInfo .sb-wi-editor .menu_button:where(:not(.menu_button_primary):not(:disabled):not(.sb-header-icon-button):not(.sb-status-page__action)):hover,
-    #WorldInfo .sb-wi-editor .sb-wi-row:hover,
     #WorldInfo .sb-wi-editor .sb-wi-book-switcher:hover,
     .sb-wi-editor .sb-wi-row-menu:hover {
         background: var(--sb-flat-hover-bg);
+    }
+
+    #WorldInfo .sb-wi-editor .sb-wi-row:hover {
+        background: var(--sb-row-hover-bg);
     }
 
     #WorldInfo .sb-wi-editor .sb-wi-row:is(.is-selected, .is-selection-selected):hover {
@@ -262,7 +250,10 @@
 }
 
 /* Pressed fills: each resting rule above and below names an id, so the shared :active rule would lose to it. */
-#WorldInfo .sb-wi-editor .sb-wi-row.sb-wi-row:active,
+#WorldInfo .sb-wi-editor .sb-wi-row.sb-wi-row:active {
+    background: var(--sb-row-active-bg);
+}
+
 #WorldInfo .sb-wi-editor .sb-wi-book-switcher:active,
 .sb-wi-editor .sb-wi-row-menu:active,
 #WorldInfo .sb-wi-editor .menu_button:where(:not(.sb-header-icon-button):not(.sb-status-page__action):not(.menu_button_primary):not(:disabled)):active,
@@ -279,7 +270,7 @@
 #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-button):disabled {
     background: var(--sb-raised-bg);
     color: var(--sb-muted-fg);
-    opacity: 0.6;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
 }
 

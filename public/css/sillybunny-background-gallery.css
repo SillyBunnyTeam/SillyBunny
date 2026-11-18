@@ -217,7 +217,7 @@
 }
 
 #Backgrounds[data-selection-mode='true'] .sb-folder-row[aria-disabled='true'] {
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
 }
 
 #bg_menu_content .bg_example > .sb-selection-check {

@@ -752,8 +752,8 @@ export function mountAgentsPanel(column) {
             // surface already loaded earlier is moved after its predecessor.
             let previous = null;
             for (const href of [
-                'css/sillybunny-persona-detail.css?v=20261118zm',
-                'css/sillybunny-prompt-editor.css?v=20261118zr',
+                'css/sillybunny-persona-detail.css?v=20261118zo',
+                'css/sillybunny-prompt-editor.css?v=20261118zt',
                 'scripts/extensions/in-chat-agents/ui/agent-editor.css',
             ]) {
                 let link = document.querySelector(`link[href="${href}"]`);

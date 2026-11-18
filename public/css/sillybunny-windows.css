@@ -621,7 +621,7 @@ body.reduced-motion .sbHomeFlatButton {
     inline-size: fit-content;
     min-height: 38px;
     margin: 0;
-    padding: 10px 14px;
+    padding: 9px 12px;
 }
 
 @media (pointer: coarse) {

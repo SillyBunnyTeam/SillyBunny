@@ -98,8 +98,8 @@ import { setLastConversationPreview } from './typing.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
 import { openActionMenu } from '../sillybunny-action-menu.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261118t';
-const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261118zp';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261118zo';
+const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261118zt';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
 /**

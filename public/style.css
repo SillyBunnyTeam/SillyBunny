@@ -4294,7 +4294,8 @@ input[type='checkbox']:focus-visible {
 input[type="checkbox"]:disabled {
     color: grey;
     cursor: not-allowed;
-    opacity: 0.55;
+    /* SillyBunny: every disabled control takes the shared disabled strength. */
+    opacity: var(--sb-disabled-opacity);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6912,7 +6913,8 @@ body:not(.movingUI) .drawer-content.maximized {
     flex-direction: column;
     gap: 10px;
     min-width: 0;
-    padding: 14px;
+    /* SillyBunny: card padding on the spacing scale. */
+    padding: 12px;
     border-radius: 16px;
     border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 72%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 4%, transparent);

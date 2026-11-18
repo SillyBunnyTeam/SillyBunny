@@ -110,7 +110,7 @@
 
 #sheld[data-sb-conversation-mode='on'] .sb-conversation-flat-button:disabled {
     cursor: default;
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
 }
 
 /* ---------- Header bars ---------- */
@@ -763,13 +763,7 @@ body.movingUI #sheld[data-sb-conversation-mode='on'] #sb_conversation_header {
 /* libadwaita insensitive suggested-action: the accent at the disabled opacity, 50% and 40% under prefers-contrast: more. */
 #sheld[data-sb-conversation-mode='on'] #sb_conversation_send:disabled {
     cursor: default;
-    opacity: 0.5;
-}
-
-@media (prefers-contrast: more) {
-    #sheld[data-sb-conversation-mode='on'] #sb_conversation_send:disabled {
-        opacity: 0.4;
-    }
+    opacity: var(--sb-disabled-opacity);
 }
 
 @media (hover: hover) {

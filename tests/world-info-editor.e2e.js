@@ -475,15 +475,21 @@ for (const width of [1440, 390]) {
 test.describe('World Info pressed fills', () => {
     test('rows, the row menu and the book button show the shared pressed fill while the pointer is down', async ({ page }) => {
         const editor = await openBook(page);
-        const pressed = await page.evaluate(() => {
+        const paint = token => page.evaluate(token => {
             const probe = document.createElement('i');
-            probe.style.background = 'var(--sb-flat-active-bg)';
+            probe.style.background = `var(${token})`;
             document.body.append(probe);
             const color = getComputedStyle(probe).backgroundColor;
             probe.remove();
             return color;
-        });
-        for (const target of [row(editor, 'Beta'), row(editor, 'Beta').locator('.sb-wi-row-menu'), editor.locator('.sb-wi-book-switcher')]) {
+        }, token);
+        // A row that activates presses at the boxed-row fill (8%); the buttons in the list press at the flat fill (16%).
+        const targets = [
+            [row(editor, 'Beta'), await paint('--sb-row-active-bg')],
+            [row(editor, 'Beta').locator('.sb-wi-row-menu'), await paint('--sb-flat-active-bg')],
+            [editor.locator('.sb-wi-book-switcher'), await paint('--sb-flat-active-bg')],
+        ];
+        for (const [target, pressed] of targets) {
             const box = await target.boundingBox();
             await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
             await page.mouse.down();

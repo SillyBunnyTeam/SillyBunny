@@ -4,7 +4,7 @@ import { BOOK, bootImport, currentAvatar, protectImportFixtures, upload } from '
 const fixtures = new WeakMap();
 test.beforeEach(async ({ page }) => { fixtures.set(page, await protectImportFixtures(page)); });
 
-for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+for (const viewport of [{ width: 1440, height: 800 }, { width: 390, height: 844 }]) {
     test.describe(`Import at ${viewport.width}px`, () => {
         test.use({ viewport });
 

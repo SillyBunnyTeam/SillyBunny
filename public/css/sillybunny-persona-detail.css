@@ -86,7 +86,7 @@
 }
 
 #sb-settings-page .sb-persona-entry .menu_button:disabled {
-    opacity: 0.4;
+    opacity: var(--sb-disabled-opacity);
     background: transparent;
     cursor: not-allowed;
 }

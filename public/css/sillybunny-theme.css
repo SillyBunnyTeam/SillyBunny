@@ -33,6 +33,10 @@
     --sb-switch-thumb: 20px;
     --sb-switch-padding: 3px;
     --sb-switch-border: 1px;
+    /* libadwaita draws the slider white on both tones, so an off thumb stays light on the light tone's pale trough. */
+    --sb-switch-thumb-bg: #fff;
+    /* Disabled strength: libadwaita's 50%, and 40% under prefers-contrast: more so a disabled control stays apart from the stronger enabled one. */
+    --sb-disabled-opacity: 0.5;
     --sb-switch-inset: calc(var(--sb-switch-padding) - var(--sb-switch-border));
     --sb-switch-inset-on: calc(var(--sb-switch-width) - var(--sb-switch-thumb) - var(--sb-switch-padding) - var(--sb-switch-border));
     /* Kept for existing rules and user CSS */
@@ -104,7 +108,7 @@
     --sb-inline-drawer-icon-size: max(var(--sb-density-floor), calc(2rem - 0.15rem * var(--sb-density-t)));
     --sb-control-icon-physical-size: max(var(--sb-icon-control-size), var(--sb-control-min-height));
     --sb-field-padding-x: 12px;
-    --sb-settings-card-padding: var(--sb-density-container-padding) calc(var(--sb-density-container-padding) + 2px);
+    --sb-settings-card-padding: var(--sb-density-container-padding);
     --sb-message-icon-size: clamp(24px, calc(var(--bottomFormBlockSize, 36px) * 0.78), 30px);
     --sb-message-hit-size: max(var(--sb-message-icon-size), var(--sb-density-floor));
     --sb-message-glyph-size: calc(var(--sb-message-icon-size) * 0.52);
@@ -233,6 +237,9 @@
     --sb-flat-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 16%, transparent);
     --sb-flat-selected-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     --sb-flat-selected-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 13%, transparent);
+    /* libadwaita boxed-list rows: a row that activates fills lighter than a flat button, 3% on hover and 8% pressed. */
+    --sb-row-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 3%, transparent);
+    --sb-row-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     --sb-raised-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
     --sb-raised-hover-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 15%, transparent);
     --sb-raised-active-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
@@ -376,13 +383,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:']):active {
 }
 
 a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='true'] {
-    opacity: 0.5;
-}
-
-@media (prefers-contrast: more) {
-    a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='true'] {
-        opacity: 0.4;
-    }
+    opacity: var(--sb-disabled-opacity);
 }
 
 /* On a dark overlay a link is Accent mixed with white. */
@@ -569,6 +570,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     :root,
     :root[data-sb-theme='clean-minimal'],
     :root[data-sb-surface-tone='light'] {
+        --sb-disabled-opacity: 0.4;
         --sb-muted-fg: color-mix(in srgb, var(--SmartThemeBodyColor) 90%, transparent);
         --sb-shell-border: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
         --sb-input-border: color-mix(in srgb, var(--SmartThemeBodyColor) 50%, transparent);
@@ -962,7 +964,7 @@ input[type="checkbox"]:is(.sb-switch, .checkbox_label > *)::after {
     inline-size: var(--sb-switch-thumb);
     block-size: var(--sb-switch-thumb);
     border-radius: var(--sb-radius-pill);
-    background: var(--SmartThemeBodyColor);
+    background: var(--sb-switch-thumb-bg);
     box-shadow: var(--sb-shadow-control);
     transition: inset-inline-start var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
@@ -998,7 +1000,7 @@ input[type="checkbox"]:is(.sb-switch, .checkbox_label > *):focus-visible {
 .checkbox_label > input[type="checkbox"].checkbox_disabled,
 input[type="checkbox"].sb-switch:disabled,
 input[type="checkbox"].sb-switch.checkbox_disabled {
-    opacity: 0.55;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
 }
 
@@ -1064,7 +1066,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 }
 
 :where(input[type='radio']:not(.sb-boolean-radio-option > input)):disabled {
-    opacity: 0.55;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
 }
 
@@ -1371,7 +1373,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.disabled, .is-disabled, [disabled], [aria-disabled='true']):not(.is-busy):not([aria-busy='true']) {
-    opacity: 0.58;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
     -webkit-user-select: none;
     user-select: none;
@@ -1382,13 +1384,7 @@ input[type="checkbox"].sb-switch.checkbox_disabled {
 .menu_button:is(.menu_button_primary, .popup-button-ok, .suggested-action, .is-suggested):not(.is-destructive):is(.disabled, .is-disabled, [disabled], [aria-disabled='true']):not(.is-busy):not([aria-busy='true']) {
     background: var(--color-primary, var(--sb-accent));
     color: var(--sb-on-solid-accent);
-    opacity: 0.5;
-}
-
-@media (prefers-contrast: more) {
-    .menu_button:is(.menu_button_primary, .popup-button-ok, .suggested-action, .is-suggested):not(.is-destructive):is(.disabled, .is-disabled, [disabled], [aria-disabled='true']):not(.is-busy):not([aria-busy='true']) {
-        opacity: 0.4;
-    }
+    opacity: var(--sb-disabled-opacity);
 }
 
 :is(.menu_button, .menu_button_icon, .right_menu_button):is(.is-busy, [aria-busy='true'])::after {
@@ -2326,7 +2322,7 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
 
 #chat .mes_edit_buttons .menu_button:is(.disabled, .is-disabled, [disabled]),
 #chat .mes_reasoning_actions .edit_button:is(.disabled, .is-disabled, [disabled]) {
-    opacity: 0.42;
+    opacity: var(--sb-disabled-opacity);
     color: color-mix(in srgb, var(--SmartThemeBodyColor) 52%, transparent);
     border-color: transparent;
     background: transparent;
@@ -3071,7 +3067,7 @@ input[type='range'].neo-range-slider:focus-visible {
 
 input[type='range']:disabled,
 input[type='range'].neo-range-slider:disabled {
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
 }
 
@@ -4741,7 +4737,7 @@ body.reduced-motion *::after {
     .sb-shell-panel-scroller button.menu_button:where(:not(.sb-status-page__action)),
     .sb-shell-panel-scroller button.menu_button_icon:where(:not(.sb-status-page__action)) {
         min-height: max(38px, var(--sb-control-min-height));
-        padding: 8px 12px;
+        padding: 9px 12px;
         border-radius: var(--sb-radius-card);
         font-size: var(--sb-type-control);
         line-height: 1.25;
@@ -5011,6 +5007,8 @@ body.reduced-motion #extensionsMenu {
         max-block-size: min(80dvh, 40rem);
         padding: 6px 6px calc(12px + env(safe-area-inset-bottom, 0px));
         overflow-y: auto;
+        /* The handle's cover strip reaches past the handle on both sides and the sheet must not scroll sideways to it. */
+        overflow-x: hidden;
         overscroll-behavior: contain;
         box-shadow: var(--sb-shadow-dialog), var(--sb-shadow-dialog-highlight);
         animation: none;
@@ -5028,11 +5026,20 @@ body.reduced-motion #extensionsMenu {
         inset-block-start: 0;
         z-index: 2;
         flex: none;
+        inline-size: 80px;
         block-size: 20px;
-        margin: -6px -6px 0;
+        margin: -6px auto 0;
         opacity: 1;
-        background: var(--sb-layer-drawer);
         touch-action: none;
+    }
+
+    /* The handle is the same 80px grab area as every other sheet's. This strip behind it keeps the opaque top edge that hides the rows scrolling under it. */
+    :is(#options, #extensionsMenu, #sd_dropdown, .actionButtonsModal)[data-sb-menu-sheet] > .sb-dialog__handle::after {
+        content: '';
+        position: absolute;
+        inset: 0 -100vw;
+        z-index: -1;
+        background: var(--sb-layer-drawer);
     }
 
     :is(#options, #extensionsMenu, #sd_dropdown, .actionButtonsModal)[data-sb-menu-sheet] > .sb-dialog__handle::before {
@@ -6286,7 +6293,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
     box-sizing: border-box;
     min-height: 38px;
     margin: 0;
-    padding: 8px 14px;
+    padding: 9px 12px;
     font-size: var(--sb-type-control);
     font-weight: var(--sb-weight-control, 600);
     line-height: 1.2;
@@ -6308,7 +6315,7 @@ dialog.popup.sb-dialog:is(.sb-dialog--dialog, .sb-dialog--window) .popup-content
 }
 
 .sb-dialog .sb-dialog__response:disabled {
-    opacity: 0.5;
+    opacity: var(--sb-disabled-opacity);
     cursor: not-allowed;
 }
 
@@ -7192,14 +7199,7 @@ body.no-blur #send_form {
     background: var(--sb-accent) !important;
     color: var(--sb-on-solid-accent) !important;
     cursor: not-allowed !important;
-    opacity: 0.5 !important;
-}
-
-@media (prefers-contrast: more) {
-    #rightSendForm > #send_but:is(:disabled, .disabled, [aria-disabled='true']),
-    #send_form.no-connection #rightSendForm > #send_but {
-        opacity: 0.4 !important;
-    }
+    opacity: var(--sb-disabled-opacity) !important;
 }
 
 /* Flat composer buttons; send and stop stay circles, Quick Reply buttons are raised (below). */

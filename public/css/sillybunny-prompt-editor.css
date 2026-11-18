@@ -89,7 +89,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 }
 
 #sb-settings-page .sb-prompt-editor .menu_button:disabled {
-    opacity: 0.6;
+    opacity: var(--sb-disabled-opacity);
     background: var(--sb-raised-bg);
     color: var(--sb-muted-fg);
     cursor: not-allowed;
@@ -97,22 +97,6 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 /* The list header takes the entity-list header anatomy: title and subtitle at the start, icon buttons at the end. The title, the
    Caption subtitle and the spacer are the shared rules of sillybunny-editor-shell.css. */
-.sb-prompt-list-header {
-    display: flex;
-    align-items: center;
-    flex: none;
-    flex-wrap: nowrap;
-    box-sizing: border-box;
-    height: 60px;
-    min-height: 60px;
-    max-height: 60px;
-    gap: 2px;
-    min-width: 0;
-    padding: 6px 10px;
-    overflow: hidden;
-    background: transparent;
-}
-
 .sb-prompt-list-header .sb-list-header__titles {
     line-height: 1.2;
 }
@@ -239,7 +223,7 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
 
 .sb-prompt-grip[aria-disabled='true'] {
     cursor: not-allowed;
-    opacity: 0.45;
+    opacity: var(--sb-disabled-opacity);
 }
 
 .sb-prompt-grip:focus-visible {
