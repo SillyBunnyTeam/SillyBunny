@@ -14,6 +14,10 @@ const COLOR_KEYS = [
     'blur_tint_color', 'chat_tint_color', 'user_mes_blur_tint_color', 'bot_mes_blur_tint_color', 'shadow_color', 'border_color',
 ];
 const TEXT_KEYS = COLOR_KEYS.slice(0, 4);
+const TINT_KEYS = ['chat_tint_color', 'user_mes_blur_tint_color', 'bot_mes_blur_tint_color'];
+/** The keys a revision replaces, and the three colors it leaves as they were saved. */
+const REVISED_KEYS = [...TEXT_KEYS, ...TINT_KEYS];
+const UNTOUCHED_KEYS = COLOR_KEYS.filter(key => !REVISED_KEYS.includes(key));
 const THEME = 'Everforest Dark';
 
 const readTheme = url => JSON.parse(readFileSync(url, 'utf8'));
@@ -96,13 +100,13 @@ const applied = page => page.evaluate(keys => {
         bodyVariable: root.getPropertyValue('--SmartThemeBodyColor').trim(),
         appliedStyle: document.getElementById('custom-style')?.innerHTML ?? '',
     };
-}, TEXT_KEYS);
+}, REVISED_KEYS);
 
 /** Picks another theme the way the theme list does. */
 const pickTheme = (page, name) => page.evaluate((themeName) => { window.$('#themes').val(themeName).trigger('change'); }, name);
 const currentTheme = page => page.evaluate(() => window.SillyTavern.getContext().powerUserSettings.theme);
 
-const textOf = theme => Object.fromEntries(TEXT_KEYS.map(key => [key, theme[key]]));
+const textOf = theme => Object.fromEntries(REVISED_KEYS.map(key => [key, theme[key]]));
 const lastSave = saves => saves.at(-1)?.power_user;
 
 test.describe('saved text colors of a theme that was revised', () => {
@@ -120,8 +124,9 @@ test.describe('saved text colors of a theme that was revised', () => {
         expect(state.css).toBe(revised.custom_css);
         expect(state.marker).toBe(1);
         expect(emptyKeyNotes).toEqual([]);
-        // The six colors the repair leaves alone are written back as they were saved.
-        expect(await page.evaluate(keys => keys.map(key => window.SillyTavern.getContext().powerUserSettings[key]), COLOR_KEYS.slice(4))).toEqual(COLOR_KEYS.slice(4).map(key => previous[key]));
+        // The three colors the repair leaves alone are written back as they were saved.
+        expect(await page.evaluate(keys => keys.map(key => window.SillyTavern.getContext().powerUserSettings[key]), UNTOUCHED_KEYS)).toEqual(UNTOUCHED_KEYS.map(key => previous[key]));
+        expect(revised.bot_mes_blur_tint_color).not.toBe(previous.bot_mes_blur_tint_color);
         expect(state.emVariable.replace(/\s/g, '')).toBe(revised.italics_text_color.replace(/\s/g, ''));
         expect(state.appliedStyle).toContain('--customThemeColor-hover-text');
 

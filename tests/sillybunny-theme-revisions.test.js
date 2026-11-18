@@ -3,7 +3,9 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 import {
     THEME_COLOR_KEYS,
+    THEME_REVISED_KEYS,
     THEME_TEXT_KEYS,
+    THEME_TINT_KEYS,
     REVISED_THEMES,
     THEME_TEXT_REVISION,
     hashThemeCss,
@@ -29,13 +31,10 @@ function managedThemeNames() {
     if (!contrastBlock) {
         throw new Error('CONTRAST_REVISED_THEME_HASHES not found in content-manager.js');
     }
-    const contrastNames = [...contrastBlock.matchAll(/^ {4}(?:'([^']+)'|([\w-]+)): '[0-9a-f]{64}',$/gm)].map(match => match[1] ?? match[2]);
+    const contrastNames = [...contrastBlock.matchAll(/^ {4}(?:'([^']+)'|([\w-]+)): (?:'[0-9a-f]{64}',|\[)$/gm)].map(match => match[1] ?? match[2]);
     const listedNames = [...contentManagerSource.matchAll(/bundledPath: 'themes\/([^']+)\.json'/g)].map(match => match[1]);
     return [...listedNames, ...contrastNames];
 }
-
-/** The colors under a message: the chat column tint and both message tints. */
-const MESSAGE_SURFACE_KEYS = Object.freeze(['chat_tint_color', 'user_mes_blur_tint_color', 'bot_mes_blur_tint_color']);
 
 const paletteOf = theme => Object.fromEntries(THEME_COLOR_KEYS.map(key => [key, theme[key]]));
 
@@ -56,7 +55,7 @@ describe('revised theme text colors: matching', () => {
         const revised = bundled('Everforest Dark');
 
         expect(planThemeTextRepair(savedEverforestDark())).toEqual({
-            text: Object.fromEntries(THEME_TEXT_KEYS.map(key => [key, revised[key]])),
+            text: Object.fromEntries(THEME_REVISED_KEYS.map(key => [key, revised[key]])),
             css: revised.custom_css,
         });
         expect(revised.italics_text_color).not.toBe(previous('Everforest Dark').italics_text_color);
@@ -132,22 +131,32 @@ describe('revised theme text colors: the data', () => {
         const theme = bundled(name);
         const revision = REVISED_THEMES[name];
 
-        expect(revision.text).toEqual(Object.fromEntries(THEME_TEXT_KEYS.map(key => [key, theme[key]])));
+        expect(revision.text).toEqual(Object.fromEntries(THEME_REVISED_KEYS.map(key => [key, theme[key]])));
         expect(hashThemeCss(theme.custom_css)).toBe(revision.newCss);
-        // The six colors a revision does not touch are the ones the file still has, except the chat and message tints, which the
-        // file may have moved after the revision to keep message text at 4.5:1 over a background picture (see below).
-        for (const key of THEME_COLOR_KEYS.slice(THEME_TEXT_KEYS.length).filter(key => !MESSAGE_SURFACE_KEYS.includes(key))) {
+        // The three colors a revision does not touch are the ones the file still has.
+        for (const key of THEME_COLOR_KEYS.filter(key => !THEME_REVISED_KEYS.includes(key))) {
             expect([key, revision.old[key]]).toEqual([key, theme[key]]);
         }
     });
 
-    test('a saved palette keeps the message tints that the bundled file moved after the revision, because the repair replaces text colors only', () => {
+    test('a saved palette takes the message tints that the bundled file moved after the text colors', () => {
         const dracula = bundled('Dracula');
         const old = REVISED_THEMES.Dracula.old;
         const plan = planThemeTextRepair({ themeName: 'Dracula', palette: old, customCss: dracula.custom_css, themes: [dracula] });
 
-        expect(Object.keys(plan.text)).toEqual([...THEME_TEXT_KEYS]);
+        expect(Object.keys(plan.text)).toEqual([...THEME_REVISED_KEYS]);
         expect(old.user_mes_blur_tint_color).not.toBe(dracula.user_mes_blur_tint_color);
+        expect(plan.text.user_mes_blur_tint_color).toBe(dracula.user_mes_blur_tint_color);
+        expect(plan.text.bot_mes_blur_tint_color).toBe(dracula.bot_mes_blur_tint_color);
+    });
+
+    test('a user who changed one message tint, or the chat tint, keeps the whole saved palette', () => {
+        const dracula = bundled('Dracula');
+        for (const key of THEME_TINT_KEYS) {
+            const palette = { ...REVISED_THEMES.Dracula.old, [key]: 'rgba(1, 2, 3, 0.5)' };
+
+            expect([key, planThemeTextRepair({ themeName: 'Dracula', palette, customCss: dracula.custom_css, themes: [dracula] })]).toEqual([key, null]);
+        }
     });
 
     test.each(Object.keys(REVISED_THEMES))('%s changed a text color or its CSS', (name) => {

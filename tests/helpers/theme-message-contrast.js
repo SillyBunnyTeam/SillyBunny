@@ -90,6 +90,11 @@ function pageTone(blur, body) {
  * @returns {number[][]} One surface per speaker.
  */
 export function messageSurfaces(theme, styleId, picture) {
+    return surfacesOf(theme, styleId, picture, 1);
+}
+
+/** The surfaces of `messageSurfaces`, with each message tint painted `layers` times. */
+function surfacesOf(theme, styleId, picture, layers) {
     const recipe = STYLE_SURFACES[styleId];
     if (!recipe) {
         throw new Error(`Unknown chat style "${styleId}".`);
@@ -97,13 +102,64 @@ export function messageSurfaces(theme, styleId, picture) {
     const body = parseColor(theme.main_text_color);
     const under = picture ?? pageTone(parseColor(theme.blur_tint_color), body);
     const column = paint(parseColor(theme.chat_tint_color), under);
+    const layered = (tint) => {
+        let surface = column;
+        for (let layer = 0; layer < layers; layer++) {
+            surface = paint(tint, surface);
+        }
+        return surface;
+    };
     const botTint = parseColor(theme.bot_mes_blur_tint_color);
     const userTint = parseColor(theme.user_mes_blur_tint_color);
 
     if (recipe === 'column') {
-        return [paint(botTint, column)];
+        return [layered(botTint)];
     }
-    return [paint(botTint, column), paint(userTint, column)];
+    return [layered(botTint), layered(userTint)];
+}
+
+/**
+ * The chat styles whose name row has no card of its own. `public/css/sillybunny-chat-styles.css` gives the name the message
+ * tint as its own surface there, painted twice over the chat column, so a name sits on the message surface of its speaker with
+ * a second layer of the tint.
+ */
+export const NAME_STYLES = Object.freeze(['echo', 'whisper', 'hush', 'ripple', 'tide']);
+
+/**
+ * The name colour of each speaker, bot first. A bot's name takes the main text colour; a user's name takes the colour that
+ * the theme's Custom CSS gives to `.name_text` of a user message, which is a `--customThemeColor-*` variable that the same
+ * CSS defines, or the main text colour when the CSS does not set one.
+ * @param {object} theme A theme file.
+ * @returns {object[]} Two parsed colours: bot, user.
+ */
+export function nameColours(theme) {
+    const css = theme.custom_css ?? '';
+    const variable = /\.name_text\s*\{\s*color:\s*var\((--[\w-]+)\)/.exec(css)?.[1];
+    const defined = variable && new RegExp(`${variable}\\s*:\\s*([^;]+);`).exec(css)?.[1];
+    return [parseColor(theme.main_text_color), parseColor(defined ?? theme.main_text_color)];
+}
+
+/**
+ * The lowest contrast of a character name in a chat style whose names sit on their own surface, over one picture (or none).
+ * @param {object} theme A theme file.
+ * @param {string} styleId One of `NAME_STYLES`.
+ * @param {number[] | null} picture
+ * @returns {{ ratio: number, speaker: string }}
+ */
+export function lowestNameContrast(theme, styleId, picture) {
+    if (!NAME_STYLES.includes(styleId)) {
+        throw new Error(`Chat style "${styleId}" has no name surface.`);
+    }
+    const surfaces = surfacesOf(theme, styleId, picture, 2);
+    const colours = nameColours(theme);
+    let lowest = { ratio: Infinity, speaker: '' };
+    surfaces.forEach((surface, index) => {
+        const ratio = contrast(paint(colours[index], surface), surface);
+        if (ratio < lowest.ratio) {
+            lowest = { ratio, speaker: index === 0 ? 'bot' : 'user' };
+        }
+    });
+    return lowest;
 }
 
 /** The text colours that sit in a message: body, italics and quotes. */

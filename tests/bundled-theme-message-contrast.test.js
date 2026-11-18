@@ -1,12 +1,13 @@
 import { describe, expect, test } from '@jest/globals';
 import { readdirSync, readFileSync } from 'node:fs';
 
-import { MESSAGE_TEXT_CONTRAST, PICTURE_STAND_INS, STYLE_SURFACES, lowestMessageContrast, messageSurfaces } from './helpers/theme-message-contrast.js';
+import { MESSAGE_TEXT_CONTRAST, NAME_STYLES, PICTURE_STAND_INS, STYLE_SURFACES, lowestMessageContrast, lowestNameContrast, messageSurfaces, nameColours } from './helpers/theme-message-contrast.js';
 
 const themesDirectory = new URL('../default/content/themes/', import.meta.url);
 const themes = readdirSync(themesDirectory).filter(file => file.endsWith('.json')).sort()
     .map(file => JSON.parse(readFileSync(new URL(file, themesDirectory), 'utf8')));
 const powerUserSource = readFileSync(new URL('../public/scripts/power-user.js', import.meta.url), 'utf8');
+const chatStylesSource = readFileSync(new URL('../public/css/sillybunny-chat-styles.css', import.meta.url), 'utf8');
 
 /** The body class that each chat style puts on `<body>` (`CHAT_STYLE_BODY_CLASSES` in power-user.js), by the style's name in `STYLE_SURFACES`. */
 const STYLE_BODY_CLASSES = Object.freeze({
@@ -30,6 +31,19 @@ function weakCellsOf(theme) {
             const { ratio, role } = lowestMessageContrast(theme, style, picture);
             if (ratio < MESSAGE_TEXT_CONTRAST) {
                 weak.push(`${theme.name}: ${role} in ${style}, ${label}, is ${ratio.toFixed(2)}:1`);
+            }
+        }
+    }
+    return weak;
+}
+
+function weakNamesOf(theme) {
+    const weak = [];
+    for (const style of NAME_STYLES) {
+        for (const [label, picture] of CASES) {
+            const { ratio, speaker } = lowestNameContrast(theme, style, picture);
+            if (ratio < MESSAGE_TEXT_CONTRAST) {
+                weak.push(`${theme.name}: the ${speaker} name in ${style}, ${label}, is ${ratio.toFixed(2)}:1`);
             }
         }
     }
@@ -70,6 +84,45 @@ describe('bundled theme message text contrast', () => {
         const theme = themes.find(theme => theme.name === 'Dracula');
 
         expect(messageSurfaces(theme, 'bubbles', null)).toEqual(messageSurfaces(theme, 'document', null));
+    });
+
+    test.each(themes.map(theme => [theme.name, theme]))('%s keeps character names at 4.5:1 in the chat styles where a name has no card of its own', (_name, theme) => {
+        expect(weakNamesOf(theme)).toEqual([]);
+    });
+
+    test('a user name takes the colour that the theme CSS gives it, and a bot name the main text colour', () => {
+        const amber = themes.find(theme => theme.name === 'Amber Dusk');
+        const dracula = themes.find(theme => theme.name === 'Dracula');
+        const plain = themes.find(theme => theme.name === 'Libadwaita');
+
+        expect(nameColours(amber)[1].rgb).toEqual([250, 189, 47]);
+        expect(nameColours(dracula)[0]).toEqual({ rgb: [225, 215, 239], alpha: 0.74 });
+        expect(nameColours(dracula)[1].rgb).toEqual([200, 163, 255]);
+        expect(nameColours(plain)[1]).toEqual(nameColours(plain)[0]);
+    });
+
+    test('a name on a translucent tint over a bright picture fails, which is why the name has its own surface', () => {
+        const glass = { ...themes.find(theme => theme.name === 'Amber Dusk'), user_mes_blur_tint_color: 'rgba(67, 40, 33, 0)', bot_mes_blur_tint_color: 'rgba(58, 31, 24, 0)' };
+
+        expect(weakNamesOf(glass).some(line => line.includes('bright picture, bright end'))).toBe(true);
+    });
+
+    test('the chat styles stylesheet paints the message tints under the names that the name guard assumes a surface for', () => {
+        const selectorList = NAME_STYLES.map(style => `.${STYLE_BODY_CLASSES[style]}`).join(', ');
+        const rule = /body:is\(([^)]*)\) #chat \.mes \.name_text \{([^}]*)\}/.exec(chatStylesSource);
+        const userRule = /body:is\(([^)]*)\) #chat \.mes\[is_user="true"\] \.name_text \{([^}]*)\}/.exec(chatStylesSource.slice(chatStylesSource.indexOf(rule?.[0] ?? '')));
+
+        expect(rule?.[1]).toBe(selectorList);
+        expect(rule?.[2]).toContain('--moonlit-sb-name-surface: var(--moonlit-sb-bot-message-bg);');
+        expect(rule?.[2]).toContain('background: linear-gradient(var(--moonlit-sb-name-surface), var(--moonlit-sb-name-surface)), var(--moonlit-sb-name-surface);');
+        expect(userRule?.[1]).toBe(selectorList);
+        expect(userRule?.[2]).toContain('--moonlit-sb-name-surface: var(--moonlit-sb-user-message-bg);');
+        expect(chatStylesSource).toContain('--moonlit-sb-bot-message-bg: color-mix(in srgb, var(--SmartThemeBotMesBlurTintColor)');
+        expect(chatStylesSource).toContain('--moonlit-sb-user-message-bg: color-mix(in srgb, var(--SmartThemeUserMesBlurTintColor)');
+    });
+
+    test('rejects a chat style without a name surface', () => {
+        expect(() => lowestNameContrast(themes[0], 'flat', null)).toThrow('no name surface');
     });
 
     test('rejects a chat style it has no recipe for', () => {

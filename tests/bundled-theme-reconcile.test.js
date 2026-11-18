@@ -151,3 +151,36 @@ describe('bundled theme text contrast revision', () => {
         expect(fs.existsSync(path.join(directories.themes, themeFile))).toBe(false);
     });
 });
+
+describe('bundled theme revisions that only pre-release builds shipped', () => {
+    const stalePath = (...parts) => path.join(process.cwd(), 'fixtures', ...parts);
+
+    test.each([
+        ['Everforest Dark.json', stalePath('stale-bundled-themes', 'pre-release', 'Everforest Dark.json')],
+        ['Libadwaita.json', stalePath('stale-libadwaita-themes', 'pre-release', 'Libadwaita.json')],
+        ['Libadwaita Light.json', stalePath('stale-libadwaita-themes', 'pre-release', 'Libadwaita Light.json')],
+    ])('replaces an unmodified pre-release copy of %s with the bundled theme', (themeFile, fixturePath) => {
+        const directories = makeThemesDirectory();
+        const targetPath = path.join(directories.themes, themeFile);
+        fs.copyFileSync(fixturePath, targetPath);
+
+        contentManager.reconcileManagedBundledThemes(directories);
+
+        const bundled = fs.readFileSync(path.join(bundledThemesDirectory, themeFile));
+        expect(sha256(fs.readFileSync(targetPath))).toBe(sha256(bundled));
+        expect(sha256(fs.readFileSync(fixturePath))).not.toBe(sha256(bundled));
+    });
+
+    test('leaves an edited pre-release copy untouched', () => {
+        const directories = makeThemesDirectory();
+        const targetPath = path.join(directories.themes, 'Everforest Dark.json');
+        const edited = JSON.parse(fs.readFileSync(stalePath('stale-bundled-themes', 'pre-release', 'Everforest Dark.json'), 'utf8'));
+        edited.bot_mes_blur_tint_color = 'rgba(1, 2, 3, 0.5)';
+        const userContent = `${JSON.stringify(edited, null, 4)}\n`;
+        fs.writeFileSync(targetPath, userContent);
+
+        contentManager.reconcileManagedBundledThemes(directories);
+
+        expect(fs.readFileSync(targetPath, 'utf8')).toBe(userContent);
+    });
+});

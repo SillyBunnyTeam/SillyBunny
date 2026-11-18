@@ -1283,6 +1283,21 @@ body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .
     font-size: var(--userNameFontSize, 0.95rem) !important;
 }
 
+/* In these styles the name row has no card of its own, so a name sits on the background picture or on a banner image.
+   The name takes the message tint as its own surface, which keeps the name colour at the ratio the message text has.
+   The tint is painted twice: a tint at 0.96 alpha lets 4% of a bright picture through, which is enough to take a name colour that is
+   not the main text colour under 4.5:1. */
+body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .mes .name_text {
+    --moonlit-sb-name-surface: var(--moonlit-sb-bot-message-bg);
+    background: linear-gradient(var(--moonlit-sb-name-surface), var(--moonlit-sb-name-surface)), var(--moonlit-sb-name-surface);
+    border-radius: var(--moonlit-sb-bubble-radius);
+    box-sizing: border-box;
+    padding: 3px 9px;
+}
+body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .mes[is_user="true"] .name_text {
+    --moonlit-sb-name-surface: var(--moonlit-sb-user-message-bg);
+}
+
 body:is(.echostyle, .whisperstyle, .hushstyle, .ripplestyle, .tidestyle) #chat .mes_text p {
     letter-spacing: var(--messageTextLetterSpacing, 0em) !important;
     line-height: var(--messageLineHeight, 1.55em) !important;

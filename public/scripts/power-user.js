@@ -315,7 +315,7 @@ const CHAT_STYLE_BODY_CLASSES = Object.freeze({
 
 const LEGACY_CHAT_STYLE_BODY_CLASSES = Object.freeze([]);
 const NATIVE_CHAT_STYLE_STYLESHEET_ID = 'sillybunny-native-chat-styles';
-const NATIVE_CHAT_STYLE_STYLESHEET_HREF = 'css/sillybunny-chat-styles.css?v=20261117zr';
+const NATIVE_CHAT_STYLE_STYLESHEET_HREF = 'css/sillybunny-chat-styles.css?v=20261118j';
 
 function ensureNativeChatStyleStylesheet() {
     if (document.getElementById(NATIVE_CHAT_STYLE_STYLESHEET_ID)) {
@@ -2400,8 +2400,8 @@ export async function loadPowerUserSettings(settings, data) {
         saveSettingsDebounced();
     }
 
-    // SillyBunny: once per settings file, a theme the user selected before its text colors were raised takes the new
-    // colors (and the new Custom CSS, when the saved CSS is the old bundled CSS). The rule is in sillybunny-theme-revisions.js.
+    // SillyBunny: once per settings file, a theme the user selected before its text colors and message tints were raised takes
+    // the new colors (and the new Custom CSS, when the saved CSS is the old bundled CSS). The rule is in sillybunny-theme-revisions.js.
     if (!(Number.isInteger(savedPowerUserSettings.sb_theme_text_revision) && savedPowerUserSettings.sb_theme_text_revision >= SB_THEME_TEXT_REVISION)) {
         // A failed load leaves the marker unset, so the repair is tried again on the next start.
         try {
