@@ -112,10 +112,10 @@
             "radius-literal": 9,
             "shadow-literal": 7,
             "duration-literal": 1,
-            "important": 269,
+            "important": 264,
             "breakpoint-off-set": 10,
             "focus-outline": 1,
-            "spacing-off-scale": 144,
+            "spacing-off-scale": 138,
             "spacing-off-scale-fallback": 2
         },
         "public/css/sillybunny-tag-manager.css": {
@@ -127,11 +127,11 @@
         "public/css/sillybunny-theme.css": {
             "radius-literal": 1,
             "shadow-literal": 25,
-            "important": 188,
+            "important": 187,
             "hover-ungated": 4,
             "breakpoint-off-set": 4,
             "focus-outline": 1,
-            "spacing-off-scale": 172,
+            "spacing-off-scale": 168,
             "spacing-off-scale-fallback": 4
         },
         "public/css/sillybunny-windows.css": {

@@ -396,7 +396,6 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
 }
 
 .zoomed_avatar_container,
-.avatar_zoom_container,
 .zoomed_avatar {
     z-index: var(--sb-z-zoomed-avatar) !important;
 }
@@ -411,7 +410,7 @@ a[href]:not([class], [role], [href^='#'], [href^='javascript:'])[aria-disabled='
     }
 }
 
-.zoomed_avatar > :is(.zoomed_avatar_container, .avatar_zoom_container) {
+.zoomed_avatar > :is(.zoomed_avatar_container) {
     position: relative;
     z-index: 0 !important;
 }
@@ -687,13 +686,8 @@ body.no-blur #top-bar {
  * the top-bar stack, which shows up as a dark block in the center header area.
  * Keep the header surface simple for those platform/browser combinations.
  */
-body:is(.firefox-macos, .chrome-macos, .safari-macos) #sb-topbar-stack,
-body:is(.firefox-macos, .chrome-macos, .safari-macos) #sb-chatbar-layer {
+body:is(.firefox-macos, .chrome-macos, .safari-macos) #sb-topbar-stack {
     contain: none !important;
-}
-
-body:is(.firefox-macos, .chrome-macos) #sb-chatbar-layer {
-    will-change: auto !important;
 }
 
 hr {
@@ -2835,9 +2829,7 @@ body.bubblechat .mes[is_user='true'] .mes_block {
     }
 
     :root:not([data-sb-theme]) #send_form::before,
-    :root:not([data-sb-theme]) #sb-chatbar::before,
-    :root[data-sb-theme='clean-minimal'] #send_form::before,
-    :root[data-sb-theme='clean-minimal'] #sb-chatbar::before {
+    :root[data-sb-theme='clean-minimal'] #send_form::before {
         opacity: var(--sb-shell-surface-opacity) !important;
     }
 
@@ -4612,12 +4604,6 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 /* Make Prompt Manager header match other openai settings drawer sections */
 
-.sb-openai-settings-subdrawer .completion_prompt_manager_header_description {
-    margin-left: 0;
-    margin-top: 2px;
-    color: var(--sb-contrast-muted, var(--SmartThemeEmColor));
-}
-
 .sb-settings-subdrawer-body {
     padding: 14px 4px 4px;
 }
@@ -5927,21 +5913,6 @@ dialog.popup.sb-dialog .extensions_info {
     max-width: 1120px;
     margin: 0 auto;
     text-align: start;
-}
-
-dialog.popup.sb-dialog .extensions_toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    top: 0;
-    margin-bottom: 16px;
-    border: 1px solid color-mix(in srgb, var(--sb-shell-border) 72%, transparent);
-    border-radius: var(--sb-radius-card);
-    /* SillyBunny: keep the sticky toolbar opaque while it overlays extension rows. */
-    background: var(--sb-layer-window);
-    box-shadow: none;
 }
 
 /* SillyBunny: lay the debug menu's preserved table/action contract out as shared preference rows. */
@@ -7422,7 +7393,6 @@ input::placeholder {
         max-height: 44px;
     }
 
-    .sb-theme-preset-button,
     .sb-dialog__search-entry,
     :is(#select2-world_info-results, #select2-world_editor_select-results) .select2-results__option,
     .sb-world-info-select2-dropdown .select2-results__option {

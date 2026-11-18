@@ -1,8 +1,7 @@
 
 /* Characters sheet: same inset, radius and top edge as the Workspace/Customize sheets. */
 /* Production sets full-bleed geometry on #top-settings-holder #right-nav-panel (two IDs). */
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #top-settings-holder #right-nav-panel.openDrawer,
-html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'][data-sb-character-drawer-lock='right'] #top-settings-holder #right-nav-panel.openDrawer {
+html[data-sb-mobile-ui][data-sb-mobile-ui-mode='mobile'] #top-settings-holder #right-nav-panel.openDrawer {
     inset-inline: 8px !important;
     --sb-mobile-shell-gap: 0px;
     left: 8px !important;
