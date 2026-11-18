@@ -13,8 +13,8 @@ const LEXICON_URL = new URL('../../default/content/SillyBunny Lexicon.json', imp
 const raw = readFileSync(LEXICON_URL, 'utf8');
 const entries = Object.values(JSON.parse(raw).entries);
 
-/** The inventory ids of the lexicon: A0 is the overview, and the last one is A80. */
-const INVENTORY_SIZE = 81;
+/** The inventory ids of the lexicon: A0 is the overview, and the last one is A82. */
+const INVENTORY_SIZE = 83;
 /** `world_info_position` before and after the character definitions, the only places that Conversation reads. */
 const ALLOWED_POSITIONS = [0, 1];
 const REMOVED_NAMES = ['Pura', 'Bunny Guide', 'Nahida', 'Launchpad', 'Platberlitz', 'Mobile Quick Actions'];
