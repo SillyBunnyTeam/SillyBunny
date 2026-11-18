@@ -144,7 +144,7 @@ components:
     backgroundColor: "{colors.toast}"
     textColor: "{colors.foreground}"
     rounded: "{rounded.pill}"
-    padding: "6px; 12px at the start"
+    padding: "9px above and below, 36px at the start, 24px at the end (a deviation: see Toasts)"
   chip-enabled:
     backgroundColor: "color-mix(in srgb, {colors.accent} 16%, transparent)"
     textColor: "{colors.foreground}"
