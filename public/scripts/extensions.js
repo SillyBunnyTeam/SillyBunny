@@ -1384,7 +1384,8 @@ function generateExtensionHtml(name, manifest, isActive, isDisabled, isExternal,
     let updateButton = isExternal ? `<button class="btn_update menu_button displayNone" data-name="${externalId}" title="Update available"><i class="fa-solid fa-download fa-fw"></i></button>` : '';
     let moveButton = isExternal && isUserAdmin ? `<button class="btn_move menu_button" data-name="${externalId}" data-i18n="[title]Move" title="Move"><i class="fa-solid fa-folder-tree fa-fw"></i></button>` : '';
     let branchButton = isExternal && isUserAdmin ? `<button class="btn_branch menu_button" data-name="${externalId}" data-i18n="[title]Switch branch" title="Switch branch"><i class="fa-solid fa-code-branch fa-fw"></i></button>` : '';
-    let syncButton = manifest.auto_update === true && !isExternal && isUserAdmin ? `<button class="btn_sync menu_button" data-name="${externalId}" title="Sync from upstream"><i class="fa-solid fa-arrows-rotate fa-fw"></i></button>` : '';
+    // SillyBunny: capitalisation by DESIGN.md
+    let syncButton = manifest.auto_update === true && !isExternal && isUserAdmin ? `<button class="btn_sync menu_button" data-name="${externalId}" title="Sync From Upstream"><i class="fa-solid fa-arrows-rotate fa-fw"></i></button>` : '';
     let modulesInfo = '';
 
     if (isActive && Array.isArray(manifest.optional)) {
@@ -1740,7 +1741,8 @@ async function onSyncClick() {
 
         if (!response.ok) {
             const text = await response.text();
-            toastr.error(text || response.statusText, t`Extension sync failed`, { timeOut: 5000 });
+            // SillyBunny: capitalisation by DESIGN.md
+            toastr.error(text || response.statusText, t`Extension Sync Failed`, { timeOut: 5000 });
             return;
         }
 
@@ -1909,7 +1911,8 @@ async function onReinstallClick() {
 
     try {
         // Delete the extension
-        toastr.info(t`Deleting ${extensionName}...`, t`Reinstalling extension`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.info(t`Deleting ${extensionName}…`, t`Reinstalling Extension`);
         await callExtensionHook(extensionName, 'delete');
 
         const deleteResponse = await fetch('/api/extensions/delete', {
@@ -1927,14 +1930,16 @@ async function onReinstallClick() {
         }
 
         // Reinstall the extension
-        toastr.info(t`Installing ${extensionName}...`, t`Reinstalling extension`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.info(t`Installing ${extensionName}…`, t`Reinstalling Extension`);
         await installExtension(repoUrl, isGlobal);
 
         toastr.success(t`Extension ${extensionName} reinstalled successfully`);
         delay(1000).then(() => location.reload());
     } catch (error) {
         console.error('Reinstall failed:', error);
-        toastr.error(t`Failed to reinstall ${extensionName}: ${error.message}`, t`Reinstall failed`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.error(t`Failed to reinstall ${extensionName}: ${error.message}`, t`Reinstall Failed`);
     }
 }
 

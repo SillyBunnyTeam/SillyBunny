@@ -617,7 +617,7 @@ export function createTagManager(adapter) {
         empty.hidden = Boolean(shown);
         if (!shown) {
             empty.replaceChildren(createStatusPage({
-                state: query ? 'no-results' : 'empty', icon: 'tags', title: query ? t`No results` : t`Create a new tag`, compact: true,
+                state: query ? 'no-results' : 'empty', icon: 'tags', title: query ? t`No Results` : t`Create a new tag`, compact: true,
                 actions: query ? [] : [{ label: t`New`, primary: true, onActivate: () => openCreatePopover(addButton) }],
             }).element);
         }

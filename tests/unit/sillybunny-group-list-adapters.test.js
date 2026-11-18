@@ -214,7 +214,7 @@ describe('group rows on the shared factory', () => {
         expect(row.querySelector('.queue_position').textContent).toBe('1');
         expect(row.querySelector('.sb-group-member-switch')).toBe(control);
         expect(control.checked).toBe(true);
-        expect(control.getAttribute('aria-label')).toBe('Replies from Alicia');
+        expect(control.getAttribute('aria-label')).toBe('Replies From Alicia');
         expect(control.dataset.action).toBe('disable');
         expect(row.querySelector('.tag').textContent).toBe('New tag');
     });

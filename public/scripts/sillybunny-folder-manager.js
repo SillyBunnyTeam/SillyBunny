@@ -164,7 +164,7 @@ function colorPicker(entry, folder, refresh) {
     if (!entry.picker) {
         const wrapper = element('div', 'sb-folder-manager__colors');
         const picker = element('toolcool-color-picker');
-        picker.setAttribute('aria-label', t`Folder colour`);
+        picker.setAttribute('aria-label', t`Folder Colour`);
         picker.setAttribute('color', folder.color || 'rgba(128, 128, 128, 1)');
         picker.addEventListener('change', event => {
             const color = event.detail?.rgba ?? event.detail?.color ?? picker.color ?? picker.getAttribute('color') ?? '';
@@ -392,7 +392,7 @@ export function createFolderManager(scope, adapter) {
             status.replaceChildren(markCopyPlaceholder(createStatusPage({
                 state: query ? 'no-results' : 'empty',
                 icon: 'folder-open',
-                title: query ? t`No results` : t`No Folders`,
+                title: query ? t`No Results` : t`No Folders`,
                 description: query ? '' : scopeCopy(scope).empty,
                 compact: true,
                 actions: query ? [] : [{ label: t`New Folder`, primary: true, onActivate: () => openCreatePopover(addButton) }],

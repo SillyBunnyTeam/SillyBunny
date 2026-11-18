@@ -105,7 +105,7 @@ for (const viewport of [
         } else {
             await expect(singleRow).toHaveClass(/sb-extension-actions-collapsed/);
             await singleRow.locator('.sb-extension-actions-menu').click();
-            await expect(page.getByRole('menu', { name: 'Extension Actions' }).getByRole('menuitem', { name: 'Sync from upstream' })).toBeVisible();
+            await expect(page.getByRole('menu', { name: 'Extension Actions' }).getByRole('menuitem', { name: 'Sync From Upstream' })).toBeVisible();
         }
     });
 }

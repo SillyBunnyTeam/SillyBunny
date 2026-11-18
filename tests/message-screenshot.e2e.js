@@ -410,7 +410,7 @@ test.describe('desktop message screenshots', () => {
 
         await page.locator('#chat .mes').first().locator('.mes_screenshot').dispatchEvent('click');
         await page.locator('.message_screenshot_popup .popup-button-ok').click();
-        await expect(page.locator('.toast-error').filter({ hasText: 'Screenshot failed' })).toBeVisible();
+        await expect(page.locator('.toast-error').filter({ hasText: 'Screenshot Failed' })).toBeVisible();
         expect(downloads).toHaveLength(0);
         expect(await page.evaluate(() => window.screenshotClipboardImages)).toEqual([]);
 
@@ -649,7 +649,7 @@ function registerMobileScreenshotTests(profileName, targetBrowserName, useOption
             await page.locator('#message_screenshot_end_id').fill('0');
             await page.locator('.message_screenshot_popup .popup-button-ok').dispatchEvent('click');
 
-            await expect(page.locator('.toast-error').filter({ hasText: 'Screenshot failed' })).toBeVisible({ timeout: 20000 });
+            await expect(page.locator('.toast-error').filter({ hasText: 'Screenshot Failed' })).toBeVisible({ timeout: 20000 });
             expect(screenshotErrors).toHaveLength(1);
             expect(await page.locator('.html2canvas-container').count()).toBe(0);
         });

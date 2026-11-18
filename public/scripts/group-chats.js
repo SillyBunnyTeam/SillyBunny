@@ -814,7 +814,8 @@ function updateGroupSpeakerControls() {
             }
 
             const item = $('<button type="button" class="group_speaker_avatar"></button>');
-            item.attr('title', `${character.name}: speak next / now`);
+            // SillyBunny: capitalisation by DESIGN.md
+            item.attr('title', `${character.name}: Speak Next / Now`);
             item.attr('data-avatar', avatarId);
             item.toggleClass('selected', avatarId === selectedGroupSpeakerAvatar);
             // SillyBunny: the chosen speaker is also a state for assistive technology, not only a colour.
@@ -2922,7 +2923,8 @@ function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {
     const queueBadge = document.createTextNode('');
     const suffix = isMember ? [
         $('<label class="sb-group-member-replies"><input class="sb-switch sb-group-member-switch" type="checkbox" role="switch"></label>')[0],
-        $('<button class="sb-group-member-menu ds-entity-row__button" type="button" aria-haspopup="menu"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>').attr('aria-label', t`Member actions`)[0],
+        // SillyBunny: capitalisation by DESIGN.md
+        $('<button class="sb-group-member-menu ds-entity-row__button" type="button" aria-haspopup="menu"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>').attr('aria-label', t`Member Actions`)[0],
     ] : [
         $('<button class="right_menu_button ds-entity-row__button" type="button" data-action="add"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>').attr('aria-label', t`Add to group`)[0],
     ];
@@ -3006,7 +3008,8 @@ function updateGroupCharacterBlock(row, character, { draftIndex = -1, grip = fal
         .toggleClass('is_queued', queuePosition > 1).toggleClass('is_active', queuePosition === 1);
     block.find('.ch_fav').val(String(isFav));
     block.find('.sb-group-member-switch').prop('checked', repliesEnabled).attr({
-        'aria-label': t`Replies from ${character.name}`,
+        // SillyBunny: capitalisation by DESIGN.md
+        'aria-label': t`Replies From ${character.name}`,
         'aria-checked': String(repliesEnabled),
         'data-action': repliesEnabled ? 'disable' : 'enable',
     });
@@ -3582,7 +3585,7 @@ function onGroupMemberMenuClick(event) {
     if (openGroupId) actions.push(actionItem(t`Speak now`, 'comment', 'speak'));
     // SillyBunny: the row has no chevron, so the menu names the row's press — see docs/ui-migration.md
     actions.push({ label: t`View character card`, icon: 'fa-solid fa-address-card', onSelect: () => openGroupMemberEditor(avatarId) });
-    actions.push({ label: t`Model override…`, icon: 'fa-solid fa-microchip', onSelect: () => runGroupEditorAction(() => editGroupMemberModel(member)) });
+    actions.push({ label: t`Model Override…`, icon: 'fa-solid fa-microchip', onSelect: () => runGroupEditorAction(() => editGroupMemberModel(member)) });
     const title = member.find('.ch_name').text();
     // SillyBunny: the move items come from the shared reorder helper, which leaves them out at an end of the order and while a search or filter hides members
     const moves = reorderMenuItems({

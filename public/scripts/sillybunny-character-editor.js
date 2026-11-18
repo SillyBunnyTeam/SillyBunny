@@ -1231,8 +1231,8 @@ function _createGreetingRow(greeting, index, kind, greetingId) {
     // Upstream's maximize editor and extensions address greetings by these ids.
     const textareaId = kind === 'alternate' ? `alternate_greeting_inline_${index}` : `group_greeting_inline_${index}`;
     const titleText = kind === 'alternate'
-        ? t`Alternate greeting #${index + 1}`
-        : t`Group greeting #${index + 1}`;
+        ? t`Alternate Greeting #${index + 1}`
+        : t`Group Greeting #${index + 1}`;
 
     const expander = createExpanderRow({ label: titleText, subtitle: _greetingSnippet(greeting), field: `${kind}-greeting` });
     const row = expander.row;

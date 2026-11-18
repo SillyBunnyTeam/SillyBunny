@@ -26,7 +26,7 @@ export async function openMassDeleteChatDialog(files, currentChatId, { getOlderC
     ageInput.value = '30';
     ageInput.inputMode = 'numeric';
 
-    const ageEntry = createSpinRow({ label: t`Older than`, field: 'mass-delete-age', input: ageInput, normalize: false });
+    const ageEntry = createSpinRow({ label: t`Older Than`, field: 'mass-delete-age', input: ageInput, normalize: false });
     ageEntry.row.classList.add('sb-chat-delete-age-entry');
     const ageRow = element('div', 'sb-chat-delete-age');
     ageRow.append(ageEntry.row);
@@ -107,13 +107,13 @@ export async function openMassDeleteChatDialog(files, currentChatId, { getOlderC
     content.append(compatibilityTitle, note, ageRow, presets, status, list.section);
     dialog = openDialog({
         tier: 'window',
-        title: t`Mass delete chats`,
+        title: t`Mass Delete Chats`,
         content,
         className: 'sb-chat-mass-delete',
         responses: {
             cancel: { label: t`Cancel` },
-            affirmative: { id: 'delete-selected', label: t`Delete selected`, appearance: 'destructive', enabled: false },
-            extra: [{ id: 'delete-older', label: t`Delete older`, enabled: false }],
+            affirmative: { id: 'delete-selected', label: t`Delete Selected`, appearance: 'destructive', enabled: false },
+            extra: [{ id: 'delete-older', label: t`Delete Older`, enabled: false }],
         },
     });
     updateStatus();
@@ -184,7 +184,7 @@ export function openChatHistoryDialog() {
     if (datedInput instanceof HTMLInputElement && datedLabel instanceof HTMLLabelElement && !datedInput.closest('.ds-row-switch')) {
         const labelText = datedLabel.querySelector('span');
         const switchRow = createSwitchRow({
-            label: labelText?.textContent ?? t`Dated only`,
+            label: labelText?.textContent ?? t`Dated Only`,
             field: 'chat-cleanup-dated-only',
             input: datedInput,
         });
@@ -229,8 +229,8 @@ export function openChatHistoryDialog() {
     const menuItems = () => [{ items: [
         { label: t`Import Chat`, icon: 'fa-solid fa-file-import', onSelect: () => popup.querySelector('#chat_import_button')?.click() },
         { label: t`Backups`, icon: 'fa-solid fa-box-archive', onSelect: () => popup.querySelector('[aria-controls="chat_backups_list"]')?.click() },
-        { label: t`Label current`, icon: 'fa-solid fa-wand-magic-sparkles', onSelect: () => popup.querySelector('#chat_auto_label_current')?.click() },
-        { label: t`Label dated`, icon: 'fa-solid fa-tags', onSelect: () => popup.querySelector('#chat_auto_label_dated')?.click() },
+        { label: t`Label Current`, icon: 'fa-solid fa-wand-magic-sparkles', onSelect: () => popup.querySelector('#chat_auto_label_current')?.click() },
+        { label: t`Label Dated`, icon: 'fa-solid fa-tags', onSelect: () => popup.querySelector('#chat_auto_label_dated')?.click() },
         { label: cleanupTitle, icon: 'fa-solid fa-broom', onSelect: () => cleanupToggle() },
         { label: t`Help`, icon: 'fa-solid fa-circle-question', onSelect: () => {
             const helpUrl = popup.querySelector('.notes-link')?.href;
@@ -289,9 +289,9 @@ export function openChatHistoryDialog() {
     [ageInput, unitSelect, keepInput, previewButton, cleanButton].forEach(rememberPosition);
     if (ageInput instanceof HTMLInputElement && unitSelect instanceof HTMLSelectElement && keepInput instanceof HTMLInputElement && onlyDatedRow instanceof HTMLElement) {
         const rows = [
-            createSpinRow({ label: t`Older than`, field: 'chat-cleanup-age', input: ageInput, min: Number(ageInput.min), max: Number(ageInput.max), normalize: false }),
+            createSpinRow({ label: t`Older Than`, field: 'chat-cleanup-age', input: ageInput, min: Number(ageInput.min), max: Number(ageInput.max), normalize: false }),
             createComboCleanupRow(unitSelect),
-            createSpinRow({ label: t`Keep newest`, field: 'chat-cleanup-keep', input: keepInput, min: Number(keepInput.min), max: Number(keepInput.max), normalize: false }),
+            createSpinRow({ label: t`Keep Newest`, field: 'chat-cleanup-keep', input: keepInput, min: Number(keepInput.min), max: Number(keepInput.max), normalize: false }),
         ];
         const group = createPrefGroup({ rows });
         group.section.classList.add('sb-chat-history-cleanup-group');
@@ -403,7 +403,7 @@ export function openChatHistoryDialog() {
             emptyState.update({
                 state: searching ? 'no-results' : 'empty',
                 icon: searching ? 'magnifying-glass' : 'comments',
-                title: searching ? t`No results` : t`No Chats`,
+                title: searching ? t`No Results` : t`No Chats`,
                 description: searching ? '' : t`Saved chats appear here.`,
             });
         }
@@ -517,7 +517,7 @@ function createComboCleanupRow(select) {
     row.className = 'ds-row ds-chat-history-unit-row';
     const label = document.createElement('span');
     label.className = 'ds-row-text ds-row-label';
-    label.textContent = select.getAttribute('aria-label') || t`Cleanup age unit`;
+    label.textContent = select.getAttribute('aria-label') || t`Cleanup Age Unit`;
     const suffix = document.createElement('span');
     suffix.className = 'ds-row-suffix';
     const arrow = document.createElement('i');

@@ -333,16 +333,18 @@ const MODEL_ID_SEARCH_CONTROLS = [
 
 const INLINE_SELECT_PICKER_CONTROLS = [
     { source: 'nanogpt-model', select: '#model_nanogpt_select', label: 'NanoGPT Model' },
-    { source: 'nanogpt-allowed-providers', select: '#nanogpt_allowed_providers', label: 'Allowed providers', multiple: true },
-    { source: 'nanogpt-ignored-providers', select: '#nanogpt_ignored_providers', label: 'Ignored providers', multiple: true },
-    { source: 'openrouter-model-chat', select: '#model_openrouter_select', label: 'OpenRouter model' },
-    { source: 'openrouter-sort-models', select: '#openrouter_sort_models', label: 'OpenRouter model sorting' },
-    { source: 'openrouter-providers-chat', select: '#openrouter_providers_chat', label: 'OpenRouter providers', multiple: true },
-    { source: 'openrouter-quantizations-chat', select: '#openrouter_quantizations_chat', label: 'OpenRouter quantizations', multiple: true },
-    { source: 'openrouter-model-text', select: '#openrouter_model', label: 'OpenRouter model' },
-    { source: 'openrouter-middleout', select: '#openrouter_middleout', label: 'OpenRouter middle-out transform' },
-    { source: 'openrouter-providers-text', select: '#openrouter_providers_text', label: 'OpenRouter providers', multiple: true },
-    { source: 'openrouter-quantizations-text', select: '#openrouter_quantizations_text', label: 'OpenRouter quantizations', multiple: true },
+    // SillyBunny: capitalisation by DESIGN.md
+    { source: 'nanogpt-allowed-providers', select: '#nanogpt_allowed_providers', label: 'Allowed Providers', multiple: true },
+    { source: 'nanogpt-ignored-providers', select: '#nanogpt_ignored_providers', label: 'Ignored Providers', multiple: true },
+    { source: 'openrouter-model-chat', select: '#model_openrouter_select', label: 'OpenRouter Model' },
+    { source: 'openrouter-sort-models', select: '#openrouter_sort_models', label: 'OpenRouter Model Sorting' },
+    { source: 'openrouter-providers-chat', select: '#openrouter_providers_chat', label: 'OpenRouter Providers', multiple: true },
+    // SillyBunny: capitalisation by DESIGN.md
+    { source: 'openrouter-quantizations-chat', select: '#openrouter_quantizations_chat', label: 'OpenRouter Quantizations', multiple: true },
+    { source: 'openrouter-model-text', select: '#openrouter_model', label: 'OpenRouter Model' },
+    { source: 'openrouter-middleout', select: '#openrouter_middleout', label: 'OpenRouter Middle-Out Transform' },
+    { source: 'openrouter-providers-text', select: '#openrouter_providers_text', label: 'OpenRouter Providers', multiple: true },
+    { source: 'openrouter-quantizations-text', select: '#openrouter_quantizations_text', label: 'OpenRouter Quantizations', multiple: true },
 ];
 
 // SillyBunny: touch browsers can open Select2 search as a keyboard-only field.
@@ -2697,7 +2699,8 @@ function openInlineModelSelectPicker(select, { input = null, source = select.id 
     let currentGroup = null;
 
     menu.innerHTML = '';
-    menu.setAttribute('aria-label', t`Available models`);
+    // SillyBunny: capitalisation by DESIGN.md
+    menu.setAttribute('aria-label', t`Available Models`);
 
     if (entries.length === 0) {
         const empty = document.createElement('div');
@@ -3030,8 +3033,9 @@ function ensureOpenAIModelPickerButton() {
         input.insertAdjacentElement('afterend', button);
     }
 
-    button.title = t`Open model list`;
-    button.setAttribute('aria-label', t`Open model list`);
+    // SillyBunny: capitalisation by DESIGN.md
+    button.title = t`Open Model List`;
+    button.setAttribute('aria-label', t`Open Model List`);
     button.disabled = select.disabled || select.options.length === 0;
     setModelIdPickerTouchTarget(button);
 }
@@ -3067,10 +3071,11 @@ function updateOpenAIModelFavoriteButton() {
     const currentModel = String($('#openai_model_id').val() || oai_settings.openai_model || $('#model_openai_select').val() || '');
     const isFavorite = currentModel.length > 0 && getModelFavoritesForSource(chat_completion_sources.OPENAI).includes(currentModel);
     const title = currentModel.length === 0
-        ? t`Select a model first`
+        // SillyBunny: capitalisation by DESIGN.md
+        ? t`Select a Model First`
         : isFavorite
-            ? t`Remove current model from favorites`
-            : t`Add current model to favorites`;
+            ? t`Remove Current Model From Favorites`
+            : t`Add Current Model to Favorites`;
 
     $favoriteButton.prop('disabled', currentModel.length === 0);
     $favoriteButton.attr('title', title);
@@ -3503,10 +3508,11 @@ function updateModelIdSearchFavoriteButton(control) {
     const modelId = normalizeModelIdSearchValue(input.value || oai_settings[control.setting] || '');
     const isFavorite = modelId.length > 0 && getModelFavoritesForSource(control.source).includes(modelId);
     const title = modelId.length === 0
-        ? t`Enter a model first`
+        // SillyBunny: capitalisation by DESIGN.md
+        ? t`Enter a Model First`
         : isFavorite
-            ? t`Remove current model from favorites`
-            : t`Add current model to favorites`;
+            ? t`Remove Current Model From Favorites`
+            : t`Add Current Model to Favorites`;
 
     button.disabled = modelId.length === 0;
     button.title = title;
@@ -3617,8 +3623,9 @@ function ensureModelIdSearchPickerButton(control) {
         input.insertAdjacentElement('afterend', button);
     }
 
-    button.title = t`Open model list`;
-    button.setAttribute('aria-label', t`Open model list`);
+    // SillyBunny: capitalisation by DESIGN.md
+    button.title = t`Open Model List`;
+    button.setAttribute('aria-label', t`Open Model List`);
     button.disabled = select.disabled || select.options.length === 0;
     setModelIdPickerTouchTarget(button);
 }
@@ -4265,7 +4272,8 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
         fillServerChatCompletionConfigForm(result?.settings);
         serverChatCompletionConfigState.lastModifiedMs = Number(result?.lastModifiedMs ?? 0) || serverChatCompletionConfigState.lastModifiedMs;
         setServerChatCompletionConfigMessage(result?.message || 'Chat completion server config saved.');
-        toastr.success(result?.message || 'Chat completion server config saved.', 'Server config');
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.success(result?.message || 'Chat completion server config saved.', 'Server Config');
 
         if (restart) {
             serverChatCompletionConfigState.busy = false;
@@ -4276,13 +4284,15 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
             if (!restarted) {
                 serverChatCompletionConfigState.restarting = false;
                 setServerChatCompletionConfigMessage('Restart is taking longer than expected. Refresh the page once the server is back.');
-                toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
+                // SillyBunny: capitalisation by DESIGN.md
+                toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
             }
         }
     } catch (error) {
         console.error('Failed to save chat completion server config.', error);
         setServerChatCompletionConfigMessage(error.message || 'Failed to save chat completion server config.');
-        toastr.error(error.message || 'Failed to save chat completion server config.', 'Server config');
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.error(error.message || 'Failed to save chat completion server config.', 'Server Config');
     } finally {
         if (!serverChatCompletionConfigState.restarting) {
             serverChatCompletionConfigState.busy = false;
@@ -4291,11 +4301,12 @@ async function saveServerChatCompletionConfig({ restart = false } = {}) {
     }
 }
 
+// SillyBunny: capitalisation by DESIGN.md
 function buildServerChatCompletionConfigCard({ nested = false } = {}) {
     const headerLead = nested
         ? `
             <div class="sb-chat-completion-config-inline-copy">
-                <strong>Claude & Gemini flags</strong>
+                <strong>Claude & Gemini Flags</strong>
                 <small>These values are saved into <code>config.yaml</code> and need a restart after saving.</small>
             </div>
         `
@@ -4329,7 +4340,7 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                         <small class="ds-row-subtitle" data-i18n="Let supported Claude models adjust their thinking based on your chosen reasoning effort.">Let supported Claude models adjust their thinking based on your chosen reasoning effort.</small>
                     </label>
                     <label class="sb-chat-completion-config-field" for="sb-config-claude-caching-depth">
-                        <span>Caching at depth</span>
+                        <span>Caching at Depth</span>
                         <small class="ds-row-subtitle" data-i18n="Higher values place cache markers earlier in the chat. Set to -1 to disable.">Higher values place cache markers earlier in the chat. Set to -1 to disable.</small>
                         <input id="sb-config-claude-caching-depth" class="text_pole" type="number" step="1" min="-1">
                     </label>
@@ -4340,7 +4351,7 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                 <section class="sb-chat-completion-config-section" data-source="makersuite,vertexai">
                     <strong class="sb-chat-completion-config-title">Gemini</strong>
                     <label class="sb-chat-completion-config-field" for="sb-config-gemini-api-version">
-                        <span>API version</span>
+                        <span>API Version</span>
                         <small class="ds-row-subtitle" data-i18n="Set the Google AI Studio API version. Leave blank to use v1beta.">Set the Google AI Studio API version. Leave blank to use v1beta.</small>
                         <input id="sb-config-gemini-api-version" class="text_pole" type="text" placeholder="v1beta">
                     </label>
@@ -4362,7 +4373,7 @@ function buildServerChatCompletionConfigCard({ nested = false } = {}) {
                     <span>Reload</span>
                 </button>
                 <button id="sb-chat-completion-config-save" class="menu_button menu_button_icon" type="button">
-                    <span>Save server config</span>
+                    <span>Save Server Config</span>
                 </button>
                 <button id="sb-chat-completion-config-save-restart" class="menu_button menu_button_icon menu_button_primary" type="button">
                     <span>Save & Restart</span>
@@ -7572,7 +7583,8 @@ function applySamplingSettings(profile) {
 function saveSamplingProfileForCurrentModel() {
     const profileKey = getModelSamplingProfileKey();
     if (!profileKey) {
-        toastr.warning(t`No model is currently selected.`, t`Cannot save sampling profile`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.warning(t`No model is currently selected.`, t`Cannot Save Sampling Profile`);
         return;
     }
     oai_settings.model_sampling_profiles ??= {};
@@ -7592,13 +7604,15 @@ function saveSamplingProfileForCurrentModel() {
         $saveButton.removeClass('success-flash');
     }, 1200);
 
-    toastr.success(t`Saved sampling settings for ${modelLabel}.`, t`Model sampling profile saved`);
+    // SillyBunny: capitalisation by DESIGN.md
+    toastr.success(t`Saved sampling settings for ${modelLabel}.`, t`Model Sampling Profile Saved`);
 }
 
 function clearSamplingProfileForCurrentModel() {
     const profileKeys = getModelSamplingProfileKeys();
     if (!profileKeys.length) {
-        toastr.warning(t`No model is currently selected.`, t`Cannot clear sampling profile`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.warning(t`No model is currently selected.`, t`Cannot Clear Sampling Profile`);
         return;
     }
     const profiles = oai_settings.model_sampling_profiles;
@@ -7610,10 +7624,11 @@ function clearSamplingProfileForCurrentModel() {
         }
         saveSettingsDebounced();
         const modelLabel = getChatCompletionModel();
-        toastr.info(t`Cleared sampling profile for ${modelLabel}.`, t`Model sampling profile removed`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.info(t`Cleared sampling profile for ${modelLabel}.`, t`Model Sampling Profile Removed`);
     } else {
         const modelLabel = getChatCompletionModel();
-        toastr.info(t`No saved sampling profile exists for ${modelLabel}.`, t`No sampling profile to clear`);
+        toastr.info(t`No saved sampling profile exists for ${modelLabel}.`, t`No Sampling Profile to Clear`);
     }
 }
 
@@ -10504,7 +10519,7 @@ $('#save_custom_endpoint').on('click', async function () {
     if (await saveSettings(0, { returnResult: true }) !== true) {
         return;
     }
-    toastr.success(t`Custom Endpoint Profile Saved`);
+    toastr.success(t`Custom endpoint profile saved`);
 });
 
 $('#delete_custom_endpoint').on('click', async function () {
@@ -10532,7 +10547,8 @@ $('#delete_custom_endpoint').on('click', async function () {
 
         saveSettingsDebounced();
         $('#custom_endpoint_preset').val(selected_custom_endpoint_preset.name);
-        toastr.success(t`Custom Endpoint Profile Deleted`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.success(t`Custom endpoint profile deleted`);
     } else {
         toastr.error(t`Could not find custom endpoint profile with name '${presetName}'`);
     }

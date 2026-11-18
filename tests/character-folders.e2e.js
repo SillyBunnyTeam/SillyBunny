@@ -135,7 +135,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await expectSharedDialogEntryStyles(managerSearch);
             await managerSearch.fill('no-folder-matches-this');
             await expect(manager.locator('.sb-folder-manager__folder-row:not([hidden])')).toHaveCount(0);
-            await expect(manager.getByRole('heading', { name: 'No results', exact: true })).toBeVisible();
+            await expect(manager.getByRole('heading', { name: 'No Results', exact: true })).toBeVisible();
             await managerSearch.fill('QA Folder');
             await expect(manager.locator(`[data-folder-id="${folderId}"]`)).toBeVisible();
             await expect(manager.locator('.sb-folder-manager__folder-row:not([hidden])')).toHaveCount(1);
@@ -233,7 +233,7 @@ for (const { label, width } of [{ label: 'desktop', width: 1440 }, { label: 'mob
             await page.getByRole('menuitem', { name: 'Select', exact: true }).click();
             await list.locator('[data-sb-list-key="character:folder-qa-1.png"] .ch_name').click();
             await list.locator('[data-action-id="folder"]').click();
-            await page.getByRole('menuitemradio', { name: 'No folder', exact: true }).click();
+            await page.getByRole('menuitemradio', { name: 'No Folder', exact: true }).click();
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolderId('characters', 'folder-qa-1.png'))).toBeNull();
 
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/sillybunny-folders.js')).getFolderId('characters', 'folder-qa-1.png'))).toBeNull();

@@ -139,7 +139,7 @@ export function mountWorldInfoSettings({ host, onClose }) {
         onInput: () => { if (!destroyed) filterBooks(); },
     });
     const search = searchEntry.input;
-    const empty = createStatusPage({ state: 'empty', icon: 'globe', title: t`No results`, compact: true });
+    const empty = createStatusPage({ state: 'empty', icon: 'globe', title: t`No Results`, compact: true });
     empty.element.classList.add('sb-wi-settings-empty');
     books.section.append(empty.element);
     const bookRows = new Map();

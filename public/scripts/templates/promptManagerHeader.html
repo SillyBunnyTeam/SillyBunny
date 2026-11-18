@@ -9,7 +9,8 @@
                 <small class="sb-group-meta"><span data-i18n="Inspect, reorder, toggle, and edit injected prompts">Inspect, reorder, toggle, and edit injected prompts</span> &middot; <span data-i18n="Total Tokens:">Total Tokens:</span> {{totalActiveTokens}}{{#if totalAgentTokens}} &middot; <span data-i18n="Agent Tokens:">Agent Tokens:</span> {{totalAgentTokens}}{{/if}}</small>
             </div>
             <div class="prompt_manager_header_controls {{prefix}}prompt_manager_header_controls">
-                <button type="button" id="{{prefix}}prompt_manager_drag_lock" class="menu_button menu_button_icon toggleable prompt_manager_drag_lock_button {{#if dragLocked}}toggled{{/if}}" title="Lock/unlock prompt reordering" aria-label="Lock/unlock prompt reordering" aria-pressed="{{#if dragLocked}}true{{else}}false{{/if}}" data-i18n="[title]Lock/unlock prompt reordering;[aria-label]Lock/unlock prompt reordering">
+                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                <button type="button" id="{{prefix}}prompt_manager_drag_lock" class="menu_button menu_button_icon toggleable prompt_manager_drag_lock_button {{#if dragLocked}}toggled{{/if}}" title="Lock/Unlock Prompt Reordering" aria-label="Lock/Unlock Prompt Reordering" aria-pressed="{{#if dragLocked}}true{{else}}false{{/if}}" data-i18n="[title]Lock/Unlock Prompt Reordering;[aria-label]Lock/Unlock Prompt Reordering">
                     <i class="fa-solid fa-fw {{#if dragLocked}}fa-lock{{else}}fa-unlock{{/if}}" aria-hidden="true"></i>
                 </button>
             </div>
@@ -21,7 +22,8 @@
                     <ul id="{{prefix}}prompt_manager_list" class="text_pole"></ul>
                     <div class="{{prefix}}prompt_manager_footer_slot"></div>
                 </div>
-                <div class="pm-workspace-divider" role="separator" aria-orientation="vertical" aria-label="Resize panes"></div>
+                <!-- SillyBunny: capitalisation by DESIGN.md -->
+                <div class="pm-workspace-divider" role="separator" aria-orientation="vertical" aria-label="Resize Panes"></div>
                 <aside class="{{prefix}}prompt_manager_editor_pane sb-workspace-pane sb-workspace-editor-pane" aria-live="polite">
                     <div class="{{prefix}}prompt_manager_editor_empty sb-workspace-empty" data-i18n="Select a prompt to edit or inspect">
                         Select a prompt to edit or inspect

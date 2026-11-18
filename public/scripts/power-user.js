@@ -1315,7 +1315,8 @@ function switchUiMode() {
     $('#fast_ui_mode').prop('checked', power_user.fast_ui_mode);
     if (power_user.fast_ui_mode) {
         $('#blur-strength-block').css('opacity', '0.2');
-        $('#blur_strength').prop('disabled', true).attr('title', 'Disabled — Fast UI Mode is on');
+        // SillyBunny: capitalisation by DESIGN.md
+        $('#blur_strength').prop('disabled', true).attr('title', 'Disabled — Fast UI Mode Is On');
     } else {
         $('#blur-strength-block').css('opacity', '1');
         $('#blur_strength').prop('disabled', false).attr('title', '');
@@ -1385,7 +1386,8 @@ function applyNoShadows() {
     $('#noShadowsmode').prop('checked', power_user.noShadows);
     if (power_user.noShadows) {
         $('#shadow-width-block').css('opacity', '0.2');
-        $('#shadow_width').prop('disabled', true).attr('title', 'Disabled — No Shadows mode is on');
+        // SillyBunny: capitalisation by DESIGN.md
+        $('#shadow_width').prop('disabled', true).attr('title', 'Disabled — No Shadows Mode Is On');
     } else {
         $('#shadow-width-block').css('opacity', '1');
         $('#shadow_width').prop('disabled', false).attr('title', '');
@@ -1702,13 +1704,13 @@ function applySillyBunnyPalettePreset(presetId) {
     applyBlurStrength();
     applyShadowWidth();
     saveSettingsDebounced();
-    toastr.success(`${preset.label} applied.`, 'SillyBunny palette');
+    toastr.success(`${preset.label} applied.`, 'SillyBunny Palette');
 
     if (power_user.fast_ui_mode && preset.values.blur_strength !== undefined) {
-        toastr.warning('Blur effects are disabled while Fast UI Mode is on.', 'SillyBunny palette', { timeOut: 4000 });
+        toastr.warning('Blur effects are disabled while Fast UI Mode is on.', 'SillyBunny Palette', { timeOut: 4000 });
     }
     if (power_user.noShadows && preset.values.shadow_width !== undefined) {
-        toastr.warning('Text shadows are disabled while No Shadows mode is on.', 'SillyBunny palette', { timeOut: 4000 });
+        toastr.warning('Text shadows are disabled while No Shadows mode is on.', 'SillyBunny Palette', { timeOut: 4000 });
     }
 }
 
@@ -1872,7 +1874,7 @@ async function handleCustomCssAiWandClick() {
     // SillyBunny: Custom CSS stays editable during generation, so the result is checked against the CSS the AI saw.
     const startCss = String(power_user.custom_css ?? '');
     setCustomCssAiWandBusy(true);
-    globalThis.toastr?.info?.('Generating custom CSS...', '', { timeOut: 0, extendedTimeOut: 0 });
+    globalThis.toastr?.info?.('Generating custom CSS…', '', { timeOut: 0, extendedTimeOut: 0 });
     deactivateSendButtons({ markBodyGenerating: false });
 
     try {
@@ -5364,7 +5366,7 @@ jQuery(async () => {
         // SillyBunny: Reset restores colors only and leaves Custom CSS alone.
         applyTheme('Libadwaita', { applyCss: false });
         saveSettingsDebounced();
-        toastr.info('Theme colors reset to Libadwaita.', 'SillyBunny palette');
+        toastr.info('Theme colors reset to Libadwaita.', 'SillyBunny Palette');
     });
 
     // Accent color presets
@@ -5413,7 +5415,7 @@ jQuery(async () => {
 
         if (quoteColor && underlineColor) {
             applyAccentColors(quoteColor, underlineColor);
-            toastr.info('Accent colors applied.', 'SillyBunny palette');
+            toastr.info('Accent colors applied.', 'SillyBunny Palette');
         }
     });
 

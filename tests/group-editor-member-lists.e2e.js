@@ -74,7 +74,7 @@ async function openCreateGroup(page, mobile) {
     await page.addStyleTag({ content: '#toast-container { display: none !important; }' });
     await page.locator('#sb-character-toggle').click();
     if (mobile) {
-        await page.getByRole('button', { name: 'Back to settings navigation', exact: true }).click();
+        await page.getByRole('button', { name: 'Back to Settings Navigation', exact: true }).click();
     }
     await page.getByRole('complementary', { name: 'Settings navigation' }).getByRole('tab', { name: 'Groups' }).click();
     await expect(page.locator('.sb-character-list')).toHaveAttribute('data-view', 'groups');
@@ -98,7 +98,7 @@ async function addFirstCandidate(page) {
 async function openMemberMenu(page, row) {
     // Desktop closing animation briefly leaves the previous menu in the DOM.
     await expect(page.getByRole('menu')).toHaveCount(0);
-    await row.getByRole('button', { name: 'Member actions', exact: true }).click();
+    await row.getByRole('button', { name: 'Member Actions', exact: true }).click();
     await expect(page.getByRole('menu')).toBeVisible();
 }
 
@@ -247,7 +247,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await expect(replies).toBeFocused();
 
         await openMemberMenu(page, first.row);
-        await page.getByRole('menuitem', { name: 'Model override…', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Model Override…', exact: true }).click();
         const popup = page.locator('dialog.popup').last();
         await popup.getByRole('textbox').fill('qa-member-model');
         await popup.getByRole('button', { name: 'Save', exact: true }).click();
@@ -257,7 +257,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await assertRowsFit(page);
 
         await openMemberMenu(page, first.row);
-        await page.getByRole('menuitem', { name: 'Model override…', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Model Override…', exact: true }).click();
         await expect(popup.getByRole('textbox')).toHaveValue('qa-member-model');
         await popup.getByRole('textbox').fill('canceled-model');
         await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -265,7 +265,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await expect(first.row.locator('.ds-entity-row__subtitle')).toContainText('Model: qa-member-model');
 
         await openMemberMenu(page, first.row);
-        await page.getByRole('menuitem', { name: 'Model override…', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Model Override…', exact: true }).click();
         await popup.getByRole('textbox').fill('');
         await popup.getByRole('button', { name: 'Save', exact: true }).click();
         await expect(popup).toBeHidden();
@@ -348,7 +348,7 @@ test('cloned member popout keeps delegated switches and action menus', async ({ 
     await page.getByRole('menuitem', { name: 'Move Up', exact: true }).click();
     await expect(clone.locator('.sb-group-member-menu')).toBeFocused();
     await openMemberMenu(page, clone);
-    await page.getByRole('menuitem', { name: 'Model override…', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Model Override…', exact: true }).click();
     const popup = page.locator('dialog.popup').last();
     await popup.getByRole('textbox').fill('qa-popout-model');
     await popup.getByRole('button', { name: 'Save', exact: true }).click();
@@ -522,7 +522,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await expect(added.row).toHaveClass(/disabled/);
         await expect(added.row.getByRole('switch')).toBeFocused();
         await openMemberMenu(page, added.row);
-        await page.getByRole('menuitem', { name: 'Model override…', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Model Override…', exact: true }).click();
         const popup = page.locator('dialog.popup').last();
         await popup.getByRole('textbox').fill('qa-unsaved-model');
         await popup.getByRole('button', { name: 'Save', exact: true }).click();
@@ -630,7 +630,7 @@ test('member row Enter, Space and pointer activation use object navigation', asy
         await member.locator('.sb-group-member-grip').click();
         await member.getByRole('switch').uncheck();
         expect(await page.evaluate(() => window.__sbMemberNavigationCalls.length)).toBe(3);
-        await member.getByRole('button', { name: 'Member actions', exact: true }).click();
+        await member.getByRole('button', { name: 'Member Actions', exact: true }).click();
         await page.getByRole('menuitem', { name: 'View character card', exact: true }).click();
         await expect.poll(() => page.evaluate(() => window.__sbMemberNavigationCalls.length)).toBe(4);
         expect(await page.evaluate(() => window.__sbMemberNavigationCalls[3].target)).toEqual({ kind: 'character-editor', id: fixture.members[0], via: 'group-member' });

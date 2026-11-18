@@ -1454,7 +1454,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |
-| File | Batch A: `public/scripts/extensions/connection-manager/index.js`. |
+| File | Batch A: `public/scripts/extensions/connection-manager/index.js`. Batch B: `public/script.js`, `public/scripts/chat-backups.js`, `extensions.js`, `group-chats.js`, `kai-settings.js`, `nai-settings.js`, `openai.js`, `power-user.js`, `preset-manager.js`, `textgen-settings.js`, `world-info.js`, and the templates `promptManagerFooter.html`, `promptManagerHeader.html` and `wandMenu.html`; `public/index.html` (two accessible names). |
 | Area | Labels, headings, tooltips, accessible names and toast titles that SillyBunny wrote on lines it had already changed in upstream-origin files. |
 | Divergence reason | `TODO(copy)` |
 | Target seam | None: the strings are edited in place. The list of strings and the form each takes is the copy register of the UI polish sweep, built by a script from the rule in `DESIGN.md` (Capitalisation Rule). |
@@ -1462,7 +1462,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | The tests that assert each label, updated with the strings; `tests/unit/upstream-template-compatibility.test.js`. |
 | Validation | 2026-11-18, per batch: root and tests lint, the full unit run, budgets, contracts and design rules, the related e2e specs, the settings inventory of the pages changed. |
 | Rollback path | `TODO(copy)` |
-| Last reviewed | 2026-11-18, UI polish sweep (task 12.3, batch A). |
+| Last reviewed | 2026-11-18, UI polish sweep (task 12.3, batches A and B). |
 | Owner | `TODO(copy)` |
 
 ### `public/scripts/extensions/expressions/` - Character Expressions settings and sprite list

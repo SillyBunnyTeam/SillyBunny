@@ -4006,7 +4006,8 @@ export async function reloadCurrentChatUnsafe() {
             ) {
                 toastr.warning(
                     t`Generation still active. Reload cancelled to protect chat data.`,
-                    t`Reload cancelled`,
+                    // SillyBunny: capitalisation by DESIGN.md
+                    t`Reload Cancelled`,
                 );
                 return;
             }
@@ -4030,7 +4031,8 @@ export async function reloadCurrentChatUnsafe() {
             if (saved !== true) {
                 toastr.error(
                     t`Could not save pending edits before reload. Reload cancelled.`,
-                    t`Reload cancelled`,
+                    // SillyBunny: capitalisation by DESIGN.md
+                    t`Reload Cancelled`,
                 );
                 return;
             }
@@ -4038,7 +4040,8 @@ export async function reloadCurrentChatUnsafe() {
             console.error('Error aborting generation or saving partial chat:', error);
             toastr.error(
                 t`Could not safely abort generation. Reload cancelled to protect chat data.`,
-                t`Reload cancelled`,
+                // SillyBunny: capitalisation by DESIGN.md
+                t`Reload Cancelled`,
             );
             return;
         }
@@ -4062,7 +4065,8 @@ export async function reloadCurrentChatUnsafe() {
         console.error('Error flushing pending chat saves:', error);
         toastr.error(
             t`Could not save pending edits before reload. Reload cancelled.`,
-            t`Reload cancelled`,
+            // SillyBunny: capitalisation by DESIGN.md
+            t`Reload Cancelled`,
         );
         return;
     }
@@ -4070,7 +4074,8 @@ export async function reloadCurrentChatUnsafe() {
     if (!flushed) {
         toastr.error(
             t`Could not save pending edits before reload. Reload cancelled.`,
-            t`Reload cancelled`,
+            // SillyBunny: capitalisation by DESIGN.md
+            t`Reload Cancelled`,
         );
         return;
     }
@@ -4098,7 +4103,8 @@ export async function reloadCurrentChatUnsafe() {
             if (!character) {
                 toastr.error(
                     t`Character not found. Reload cancelled.`,
-                    t`Reload failed`,
+                    // SillyBunny: capitalisation by DESIGN.md
+                    t`Reload Failed`,
                 );
                 return;
             }
@@ -4133,7 +4139,8 @@ export async function reloadCurrentChatUnsafe() {
         console.error('Error fetching chat data for reload:', error);
         toastr.error(
             t`Could not reload chat data from server. Existing chat preserved.`,
-            t`Reload failed`,
+            // SillyBunny: capitalisation by DESIGN.md
+            t`Reload Failed`,
         );
         return;
     }
@@ -4151,7 +4158,8 @@ export async function reloadCurrentChatUnsafe() {
     if (!staging || !Array.isArray(staging.messages)) {
         toastr.error(
             t`Invalid chat data received from server. Existing chat preserved.`,
-            t`Reload failed`,
+            // SillyBunny: capitalisation by DESIGN.md
+            t`Reload Failed`,
         );
         return;
     }
@@ -4164,7 +4172,8 @@ export async function reloadCurrentChatUnsafe() {
     ) {
         toastr.error(
             t`Live chat state is invalid. Reload cancelled to protect data.`,
-            t`Reload failed`,
+            // SillyBunny: capitalisation by DESIGN.md
+            t`Reload Failed`,
         );
         return;
     }
@@ -4181,7 +4190,8 @@ export async function reloadCurrentChatUnsafe() {
     if (!committed) {
         toastr.error(
             t`Failed to commit reloaded chat data. Existing chat preserved.`,
-            t`Reload failed`,
+            // SillyBunny: capitalisation by DESIGN.md
+            t`Reload Failed`,
         );
         return;
     }
@@ -4532,7 +4542,7 @@ function notifyCardScriptStripped(messageElement, messageId) {
     }
 
     markCardScriptToastShown(toastKey);
-    toastr.warning(t`This message contains card scripts. SillyBunny does not run them by default.`, t`Card scripts blocked`, { timeOut: 6000, preventDuplicates: true });
+    toastr.warning(t`This message contains card scripts. SillyBunny does not run them by default.`, t`Card Scripts Blocked`, { timeOut: 6000, preventDuplicates: true });
 }
 
 /**
@@ -5539,7 +5549,8 @@ export function updateMessageMetaBadges(messageElement, message) {
     if (reasoningTokens > 0) {
         let badge = $messageElement.find('.reasoning-tokens-badge');
         if (!badge.length) {
-            badge = $('<span class="reasoning-tokens-badge" title="Thought tokens"></span>');
+            // SillyBunny: capitalisation by DESIGN.md
+            badge = $('<span class="reasoning-tokens-badge" title="Thought Tokens"></span>');
             $tokenCounter.after(badge);
         }
         badge.html(`<i class="fa-solid fa-brain" aria-hidden="true"></i><span class="reasoning-tokens-count">${reasoningTokens}</span>`);
@@ -5551,7 +5562,8 @@ export function updateMessageMetaBadges(messageElement, message) {
     if (hasTransformHistory) {
         let transformBadge = $messageElement.find('.agent-transform-badge');
         if (!transformBadge.length) {
-            transformBadge = $('<button type="button" class="agent-transform-badge" title="View agent changes" aria-label="View agent changes"></button>');
+            // SillyBunny: capitalisation by DESIGN.md
+            transformBadge = $('<button type="button" class="agent-transform-badge" title="View Agent Changes" aria-label="View Agent Changes"></button>');
             transformBadge.html('<i class="fa-solid fa-file-lines" aria-hidden="true"></i>');
             $tokenCounter.after(transformBadge);
         }
@@ -11790,7 +11802,7 @@ export async function flushPendingChatSavesForNavigation({ staying = false } = {
         // SillyBunny: preserve swipe/message edits before navigation clears the active chat.
         const didFlush = await flushPendingChatSaves({ silent: true });
         if (!didFlush) {
-            toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat save failed`);
+            toastr.error(t`Could not save the current chat before switching chats. Try again in a moment.`, t`Chat Save Failed`);
             return false;
         }
     }
@@ -11830,7 +11842,8 @@ export async function flushPendingChatSaves({ silent = false } = {}) {
     }
 
     if (!silent) {
-        toastr.info(t`Saving chat...`, t`Saving chat`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.info(t`Saving chat…`, t`Saving Chat`);
     }
 
     try {
@@ -12046,7 +12059,8 @@ async function saveChatImmediately(...args) {
 
         if (errorData?.error === 'destructive') {
             console.error(`Chat save refused as destructive (${errorData?.reason}). The file on disk was left unchanged.`);
-            toastr.error(t`This save would have wiped messages, so the chat file was left unchanged. Reload the page to resync.`, t`Chat not saved`);
+            // SillyBunny: capitalisation by DESIGN.md
+            toastr.error(t`This save would have wiped messages, so the chat file was left unchanged. Reload the page to resync.`, t`Chat Not Saved`);
             if (throwOnError) {
                 throw new Error('destructive');
             }
@@ -12822,7 +12836,7 @@ async function promptSettingsConflictReload() {
     }
 
     if (settingsConflictPromptDismissed) {
-        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings save blocked`, { preventDuplicates: true });
+        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings Save Blocked`, { preventDuplicates: true });
         return;
     }
 
@@ -12833,8 +12847,8 @@ async function promptSettingsConflictReload() {
             t`Settings changed on another device`,
             t`Another device or browser tab saved newer settings. Reload SillyBunny before saving again to prevent overwriting those changes.`,
             {
-                okButton: t`Reload now`,
-                cancelButton: t`Keep editing`,
+                okButton: t`Reload Now`,
+                cancelButton: t`Keep Editing`,
             },
         );
 
@@ -12844,7 +12858,7 @@ async function promptSettingsConflictReload() {
         }
 
         settingsConflictPromptDismissed = true;
-        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings save blocked`, { preventDuplicates: true });
+        toastr.warning(t`Settings saves are blocked until you reload SillyBunny.`, t`Settings Save Blocked`, { preventDuplicates: true });
     } finally {
         settingsConflictPromptOpen = false;
     }
@@ -13152,7 +13166,7 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
             t`Clear all cache?`,
             t`This removes browser cache, service worker data, temporary session data, and IndexedDB cache stores for SillyBunny, then reloads the page. Saved settings and account data stay intact.`,
             {
-                okButton: t`Clear cache`,
+                okButton: t`Clear Cache`,
                 cancelButton: t`Cancel`,
             },
         );
@@ -13251,7 +13265,7 @@ export async function clearFrontendCache({ skipConfirmation = false, saveBeforeC
     }
 
     if (cacheErrors.length > 0) {
-        toastr.error(t`Some cache data could not be cleared. Check the browser console for details.`, t`Cache clear incomplete`);
+        toastr.error(t`Some cache data could not be cleared. Check the browser console for details.`, t`Cache Clear Incomplete`);
         return false;
     }
 
@@ -13270,7 +13284,7 @@ async function clearAllCacheAndReload() {
         return false;
     }
 
-    toastr.success(t`Cache cleared. Reloading SillyBunny...`, t`Cache cleared`);
+    toastr.success(t`Cache cleared. Reloading SillyBunny…`, t`Cache Cleared`);
     window.setTimeout(() => window.location.reload(), 1000);
     return true;
 }
@@ -13296,7 +13310,7 @@ async function maybeAutoClearCacheOnVersionChange(isVersionChanged) {
         return false;
     }
 
-    toastr.info(t`SillyBunny updated. Clearing cached UI data and reloading...`, t`Update detected`);
+    toastr.info(t`SillyBunny updated. Clearing cached UI data and reloading…`, t`Update Detected`);
     window.setTimeout(() => window.location.reload(true), 1000);
     return true;
 }
@@ -13320,7 +13334,8 @@ async function handleClearAllCacheButtonClick(event) {
         }
     } catch (error) {
         console.error('Failed to clear cache', error);
-        toastr.error(t`Cache could not be cleared. Check the browser console for details.`, t`Cache clear failed`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.error(t`Cache could not be cleared. Check the browser console for details.`, t`Cache Clear Failed`);
         button.disabled = false;
         button.classList.remove('disabled');
         button.removeAttribute('aria-busy');
@@ -13854,10 +13869,11 @@ async function downloadMessageScreenshot(startId, endId) {
         const successText = startId === endId
             ? t`Message screenshot downloaded.`
             : t`Message range screenshot downloaded.`;
-        toastr.success(copied ? `${successText} ${t`Copied!`}` : successText, t`Screenshot ready`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.success(copied ? `${successText} ${t`Copied!`}` : successText, t`Screenshot Ready`);
     } catch (error) {
         console.error('Failed to create message screenshot', error);
-        toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot failed`);
+        toastr.error(t`Couldn't create the screenshot. Check the browser console for details.`, t`Screenshot Failed`);
     }
 }
 
@@ -13935,7 +13951,8 @@ async function showMessageScreenshotRangePopup(messageId) {
             const range = normalizeMessageScreenshotRange(startId, endId);
 
             if (!range) {
-                toastr.warning(t`Enter message IDs between 0 and ${maximumMessageId}.`, t`Screenshot messages`);
+                // SillyBunny: capitalisation by DESIGN.md
+                toastr.warning(t`Enter message IDs between 0 and ${maximumMessageId}.`, t`Screenshot Messages`);
                 if (startInput instanceof HTMLInputElement) {
                     startInput.focus({ preventScroll: true });
                     startInput.select();
@@ -13956,7 +13973,8 @@ async function showMessageScreenshotRangePopup(messageId) {
 
 async function openMessageScreenshotDialog(messageId) {
     if (!Number.isInteger(messageId) || chat.length === 0) {
-        toastr.warning(t`No messages are available to capture yet.`, t`Screenshot messages`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.warning(t`No messages are available to capture yet.`, t`Screenshot Messages`);
         return;
     }
 
@@ -14813,7 +14831,8 @@ export async function autoLabelCurrentChat() {
         });
 
         if (result.status === 'renamed') {
-            toastr.success(t`Chat renamed to ${result.newFileName}.`, t`Auto-label Chat`);
+            // SillyBunny: capitalisation by DESIGN.md
+            toastr.success(t`Chat renamed to ${result.newFileName}.`, t`Auto-Label Chat`);
             await displayPastChats([result.newFileName]);
             endChatHistoryTool(t`Renamed current chat to ${result.newFileName}.`);
             return;
@@ -14827,7 +14846,8 @@ export async function autoLabelCurrentChat() {
         }
 
         console.error('Could not auto-label current chat:', error);
-        toastr.error(String(error?.message || error), t`Auto-label Chat`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.error(String(error?.message || error), t`Auto-Label Chat`);
         endChatHistoryTool(t`Could not auto-label the current chat.`);
     }
 }
@@ -14838,7 +14858,8 @@ async function autoLabelDatedChats() {
         allChats = await searchPastChats('');
     } catch (error) {
         console.error('Could not load chats for auto-labeling:', error);
-        toastr.error(String(error?.message || error), t`Auto-label Chat`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.error(String(error?.message || error), t`Auto-Label Chat`);
         return;
     }
 
@@ -14905,7 +14926,8 @@ async function autoLabelDatedChats() {
 
         await displayPastChats(renamed.slice(-1));
         const message = `${t`Auto-labeled`} ${renamed.length}/${dirtyChats.length} ${t`chat(s).`}${skipped ? ` ${skipped} ${t`skipped.`}` : ''}`;
-        toastr.success(message, t`Auto-label Chat`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.success(message, t`Auto-Label Chat`);
         endChatHistoryTool(message);
     } catch (error) {
         if (isChatHistoryToolAbort(error)) {
@@ -14915,7 +14937,8 @@ async function autoLabelDatedChats() {
         }
 
         console.error('Could not auto-label dated chats:', error);
-        toastr.error(String(error?.message || error), t`Auto-label Chat`);
+        // SillyBunny: capitalisation by DESIGN.md
+        toastr.error(String(error?.message || error), t`Auto-Label Chat`);
         endChatHistoryTool(t`Could not finish auto-labeling chats.`);
     }
 }
@@ -16627,7 +16650,7 @@ export async function createOrEditCharacter(e, saveReceipt) {
                 );
 
                 if (confirmation !== POPUP_RESULT.AFFIRMATIVE) {
-                    toastr.warning(t`Character save cancelled to protect existing definitions. Reload the page before editing this character again.`, t`Character save blocked`);
+                    toastr.warning(t`Character save cancelled to protect existing definitions. Reload the page before editing this character again.`, t`Character Save Blocked`);
                     return;
                 }
 

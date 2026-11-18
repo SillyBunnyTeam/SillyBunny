@@ -110,7 +110,7 @@ async function openCreateGroup(page, mobile) {
     await page.addStyleTag({ content: '#toast-container { display: none !important; }' });
     await page.locator('#sb-character-toggle').click();
     if (mobile) {
-        await page.getByRole('button', { name: 'Back to settings navigation', exact: true }).click();
+        await page.getByRole('button', { name: 'Back to Settings Navigation', exact: true }).click();
     }
     await page.getByRole('complementary', { name: 'Settings navigation' }).getByRole('tab', { name: 'Groups' }).click();
     await expect(page.locator('.sb-character-list')).toHaveAttribute('data-view', 'groups');
@@ -207,7 +207,7 @@ async function prepareMemberScroll(page, row) {
 }
 
 async function openSettingsNavigation(page, mobile) {
-    if (mobile) await page.getByRole('button', { name: 'Back to settings navigation', exact: true }).click();
+    if (mobile) await page.getByRole('button', { name: 'Back to Settings Navigation', exact: true }).click();
 }
 
 async function readChatState(page) {

@@ -267,7 +267,7 @@ describe('SillyBunny boot guard', () => {
         expect(document.getElementById('loader')).toBeNull();
         expect(document.querySelector('._poly_dialog_overlay')).toBeNull();
         expect(preloader.attributes.has('aria-hidden')).toBe(false);
-        expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
+        expect(preloader.querySelector('button').textContent).toBe('Clear Frontend Cache and Reload');
     });
 
     test('defers timeout failures while the normal startup loader is active', () => {
@@ -287,7 +287,7 @@ describe('SillyBunny boot guard', () => {
         setNow(36000);
         timers.shift().callback();
 
-        expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
+        expect(preloader.querySelector('button').textContent).toBe('Clear Frontend Cache and Reload');
     });
 
     test('offers a dismiss button that removes the panel and suppresses later failures', () => {
@@ -297,7 +297,7 @@ describe('SillyBunny boot guard', () => {
         window.SillyBunnyBootGuard.showFailure('boom');
 
         const preloader = document.getElementById('preloader');
-        const dismissButton = preloader.querySelectorAll('button').find(button => button.textContent === 'Continue anyway');
+        const dismissButton = preloader.querySelectorAll('button').find(button => button.textContent === 'Continue Anyway');
         expect(dismissButton).toBeDefined();
 
         dismissButton.listeners.get('click')();
@@ -342,7 +342,7 @@ describe('SillyBunny boot guard', () => {
 
         timers.slice(initialTimerCount).forEach(timer => timer.callback());
 
-        expect(preloader.querySelector('button').textContent).toBe('Clear frontend cache and reload');
+        expect(preloader.querySelector('button').textContent).toBe('Clear Frontend Cache and Reload');
     });
 
     test('describes message-less thrown objects instead of showing [object Object]', () => {

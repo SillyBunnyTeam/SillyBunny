@@ -296,7 +296,7 @@
 
     function reloadAfterCacheClear(button) {
         button.disabled = true;
-        button.textContent = 'Clearing cache...';
+        button.textContent = 'Clearing Cache…';
 
         clearBrowserCaches()
             .catch(function (error) {
@@ -402,7 +402,7 @@
 
         var button = document.createElement('button');
         button.type = 'button';
-        button.textContent = 'Clear frontend cache and reload';
+        button.textContent = 'Clear Frontend Cache and Reload';
         button.style.cssText = 'width:100%;border:0;border-radius:12px;background:#6ee7b7;color:#0f172a;font-weight:700;font-size:16px;padding:12px 14px;cursor:pointer;';
         button.addEventListener('click', function () {
             reloadAfterCacheClear(button);
@@ -410,7 +410,7 @@
 
         var dismissButton = document.createElement('button');
         dismissButton.type = 'button';
-        dismissButton.textContent = 'Continue anyway';
+        dismissButton.textContent = 'Continue Anyway';
         dismissButton.style.cssText = 'width:100%;margin-top:10px;border:1px solid rgba(255,255,255,.3);border-radius:12px;background:transparent;color:#e2e8f0;font-weight:600;font-size:15px;padding:11px 14px;cursor:pointer;';
         dismissButton.addEventListener('click', function () {
             failureDismissed = true;
@@ -428,7 +428,7 @@
         summary.style.cssText = 'margin-top:16px;color:#d5dce8;';
 
         var summaryTitle = document.createElement('summary');
-        summaryTitle.textContent = 'Startup error details';
+        summaryTitle.textContent = 'Startup Error Details';
 
         var pre = document.createElement('pre');
         pre.textContent = details || lastFailure || 'Startup timed out before SillyBunny removed the preloader.';

@@ -207,7 +207,7 @@ const charactersNoResults = status({
     title: 'Characters: no results for a search, and the same in Groups as a state',
     component: 'shared',
     root: characterStatus,
-    ready: `${titled(characterStatus, 'No results')}:not(:has(.sb-status-page__description))`,
+    ready: `${titled(characterStatus, 'No Results')}:not(:has(.sb-status-page__description))`,
     async open(page) {
         await showCharacterView(page, 'characters');
         await searchCharacterList(page, NO_MATCH);
@@ -216,7 +216,7 @@ const charactersNoResults = status({
     },
     states: [{
         id: 'groups',
-        ready: `${titled(groupStatus, 'No results')}:not(:has(.sb-status-page__description))`,
+        ready: `${titled(groupStatus, 'No Results')}:not(:has(.sb-status-page__description))`,
         async open(page) {
             await showCharacterView(page, 'groups');
             await searchCharacterList(page, NO_MATCH);
@@ -409,7 +409,7 @@ const worldInfoSettingsNoResults = status({
     title: 'World Info Global Settings: no results for a book search',
     component: 'shared',
     root: worldInfoSettingsStatus,
-    ready: titled(worldInfoSettingsStatus, 'No results'),
+    ready: titled(worldInfoSettingsStatus, 'No Results'),
     async open(page) {
         await openWorldInfoSettings(page);
         await page.locator(`${WORLD_INFO} .sb-wi-settings-search`).fill(NO_MATCH);
@@ -464,7 +464,7 @@ const foldersNoResults = status({
     component: 'shared',
     overlay: true,
     root: FOLDER_STATUS,
-    ready: titled(FOLDER_STATUS, 'No results'),
+    ready: titled(FOLDER_STATUS, 'No Results'),
     async open(page) {
         await openFolderManager(page);
         await page.locator(`${FOLDER_HOST} .sb-folder-manager__folder-row`).first().waitFor({ state: 'visible' });
@@ -538,7 +538,7 @@ const tagsNoResults = status({
     component: 'shared',
     overlay: true,
     root: '#tag_view_list .sb-tag-manager__empty .sb-status-page',
-    ready: titled('#tag_view_list .sb-tag-manager__empty .sb-status-page', 'No results'),
+    ready: titled('#tag_view_list .sb-tag-manager__empty .sb-status-page', 'No Results'),
     async open(page) {
         await openTagManager(page);
         await page.locator('#tag_view_list .tag_view_item').first().waitFor({ state: 'visible' });
@@ -609,7 +609,7 @@ const chatHistoryNoResults = status({
     component: 'shared',
     overlay: true,
     root: CHAT_HISTORY_STATUS,
-    ready: titled(CHAT_HISTORY_STATUS, 'No results'),
+    ready: titled(CHAT_HISTORY_STATUS, 'No Results'),
     async open(page) {
         await openChatHistory(page);
         await page.locator(`${CHAT_HISTORY_HOST} .select_chat_block`).first().waitFor({ state: 'visible' });
@@ -733,7 +733,7 @@ const dataBankNoResults = status({
     component: 'shared',
     overlay: true,
     root: DATA_BANK_NO_RESULTS,
-    ready: titled(DATA_BANK_NO_RESULTS, 'No results'),
+    ready: titled(DATA_BANK_NO_RESULTS, 'No Results'),
     async open(page) {
         await page.locator('#manageAttachments').dispatchEvent('click');
         await page.locator('dialog.popup[open] .dataBankAttachments .attachmentListItem[data-attachment-url]').first().waitFor({ state: 'visible' });
@@ -926,7 +926,7 @@ const promptsNoResults = status({
     async open(page) {
         await openSettingsTab(page, { shell: 'left', tab: 'editor' });
         await page.locator('.sb-prompt-editor').waitFor({ state: 'visible' });
-        await typeInto(page, '.sb-prompt-editor button[aria-label="Search prompts"]', '.sb-prompt-editor input[aria-label="Search prompts"]', NO_MATCH);
+        await typeInto(page, '.sb-prompt-editor button[aria-label="Search Prompts"]', '.sb-prompt-editor input[aria-label="Search Prompts"]', NO_MATCH);
         await page.locator('.sb-prompt-editor .sb-prompt-list-body > .sb-status-page').waitFor({ state: 'visible' });
         await settle(page);
     },

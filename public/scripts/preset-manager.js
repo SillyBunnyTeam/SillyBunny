@@ -193,8 +193,9 @@ function injectRestoreDefaultPresetButtons() {
 
         const button = $('<div></div>', {
             class: 'menu_button menu_button_icon',
-            title: t`Restore default presets`,
-            'aria-label': t`Restore default presets`,
+            // SillyBunny: capitalisation by DESIGN.md
+            title: t`Restore Default Presets`,
+            'aria-label': t`Restore Default Presets`,
             'data-i18n': '[title]Restore default presets',
             'data-preset-manager-restore-defaults': apiId,
             html: '<i class="fa-solid fa-box-open" aria-hidden="true"></i>',
@@ -1318,7 +1319,7 @@ class PresetManager {
             // SillyBunny: trailing checks, Select All and a Cancel-focused destructive response.
             ...presetChoicesOptions(html[0], { deletion: true }),
             defaultResult: POPUP_RESULT.NEGATIVE,
-            okButton: t`Delete selected`,
+            okButton: t`Delete Selected`,
             cancelButton: t`Cancel`,
             wide: true,
         }).show();

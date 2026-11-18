@@ -233,7 +233,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 refs.verboseLoggingStatus.textContent = result?.message || 'Logging config saved.';
                 refs.verboseLoggingStatus.dataset.state = 'saved';
             }
-            globalThis.toastr?.success?.('Logging config saved. Restart SillyBunny to apply it.', 'Console logs');
+            globalThis.toastr?.success?.('Logging config saved. Restart SillyBunny to apply it.', 'Console Logs');
         } catch (error) {
             setConsoleLogsVerboseLoggingUI(state.verboseLoggingEnabled ? 0 : 1);
             console.error('Failed to save logging config for Console Logs.', error);
@@ -241,7 +241,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 refs.verboseLoggingStatus.textContent = error?.message || 'Failed to save logging config.';
                 refs.verboseLoggingStatus.dataset.state = 'danger';
             }
-            globalThis.toastr?.error?.(error?.message || 'Failed to save logging config.', 'Console logs');
+            globalThis.toastr?.error?.(error?.message || 'Failed to save logging config.', 'Console Logs');
         } finally {
             state.configBusy = false;
             updateConsoleLogsInteractivity();
@@ -1088,7 +1088,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             syncSavedAutoStash(normalizedContent);
             updateServerConfigDirtyState();
             setServerAdminMessage(refs.configNote, result?.message || 'Config saved.', restart ? 'warn' : 'good');
-            toastr.success(result?.message || 'Config saved.', 'Server config');
+            toastr.success(result?.message || 'Config saved.', 'Server Config');
 
             if (restart) {
                 state.busy = false;
@@ -1099,13 +1099,13 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 if (!restarted) {
                     state.restarting = false;
                     setServerAdminMessage(refs.configNote, 'Restart is taking longer than expected. Refresh the page once the server is back.', 'warn');
-                    toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
+                    toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
                 }
             }
         } catch (error) {
             console.error('Failed to save config.yaml.', error);
             setServerAdminMessage(refs.configNote, error.message || 'Failed to save config.yaml.', 'danger');
-            toastr.error(error.message || 'Failed to save config.yaml.', 'Server config');
+            toastr.error(error.message || 'Failed to save config.yaml.', 'Server Config');
         } finally {
             if (!state.restarting) {
                 state.busy = false;
@@ -1241,7 +1241,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 min: '1',
                 max: '4096',
                 step: '1',
-                'aria-label': `${label} thumbnail width`,
+                'aria-label': `${label} Thumbnail Width`,
             },
         });
         const separator = createElement('span', { className: 'sb-thumbnail-size-separator', text: 'x' });
@@ -1254,7 +1254,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 min: '1',
                 max: '4096',
                 step: '1',
-                'aria-label': `${label} thumbnail height`,
+                'aria-label': `${label} Thumbnail Height`,
             },
         });
 
@@ -1320,7 +1320,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             if (!restarted) {
                 state.restarting = false;
                 setServerAdminMessage(refs.updateNote, 'Restart is taking longer than expected. Refresh the page once the server is back.', 'warn');
-                toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
+                toastr.warning('Restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
             }
         } catch (error) {
             console.error('Failed to restart SillyBunny.', error);
@@ -1364,9 +1364,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
                 const stashMessage = describeAutoStashState(result);
                 setServerAdminMessage(refs.updateNote, [result?.message || 'Already up to date.', stashMessage].filter(Boolean).join('\n'), stashMessage ? 'warn' : 'good');
                 if (stashMessage) {
-                    toastr.info(stashMessage, 'Auto-stash');
+                    toastr.info(stashMessage, 'Auto-Stash');
                 }
-                toastr.success(result?.message || 'Already up to date.', 'Server update');
+                toastr.success(result?.message || 'Already up to date.', 'Server Update');
                 return;
             }
 
@@ -1374,9 +1374,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
             const stashMessage = describeAutoStashState(result);
             if (result?.stashPopWarning) {
-                toastr.warning(stashMessage, 'Auto-stash warning', { timeOut: 10000 });
+                toastr.warning(stashMessage, 'Auto-Stash Warning', { timeOut: 10000 });
             } else if (stashMessage) {
-                toastr.info(stashMessage, 'Auto-stash');
+                toastr.info(stashMessage, 'Auto-Stash');
             }
 
             if (result?.install?.stdout || result?.install?.stderr) {
@@ -1390,7 +1390,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             state.restarting = true;
             updateServerAdminInteractivity();
             setServerAdminMessage(refs.updateNote, result?.message || 'Update applied. Restarting SillyBunny…', 'warn');
-            toastr.info(result?.message || 'Update applied. Restarting SillyBunny…', 'Server update');
+            toastr.info(result?.message || 'Update applied. Restarting SillyBunny…', 'Server Update');
 
             const expectedRevision = String(result?.version?.gitRevision ?? result?.repository?.currentCommit ?? '').trim();
             const autoClearCacheEnabled = Boolean(document.getElementById('auto_clear_cache_on_update')?.checked);
@@ -1399,17 +1399,17 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             if (!restarted) {
                 state.restarting = false;
                 setServerAdminMessage(refs.updateNote, 'Update completed, but restart is taking longer than expected. Refresh manually once the server is back.', 'warn');
-                toastr.warning('Update finished, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
+                toastr.warning('Update finished, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
             }
         } catch (error) {
             console.error('Failed to update SillyBunny.', error);
             state.busy = false;
             const stashMessage = describeAutoStashState(error?.data);
             if (stashMessage) {
-                toastr.warning(stashMessage, 'Auto-stash warning', { timeOut: 10000 });
+                toastr.warning(stashMessage, 'Auto-Stash Warning', { timeOut: 10000 });
             }
             setServerAdminMessage(refs.updateNote, [error.message || 'Failed to update SillyBunny.', stashMessage].filter(Boolean).join('\n'), 'danger');
-            toastr.error(error.message || 'Failed to update SillyBunny.', 'Server update');
+            toastr.error(error.message || 'Failed to update SillyBunny.', 'Server Update');
         } finally {
             setServerAdminButtonLabel(refs.updateButton, false, 'Updating…');
 
@@ -1468,8 +1468,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             : '';
 
         const confirmHeading = hasLocalChanges
-            ? 'You have local changes.'
-            : `Switch to branch "${targetBranch}"?`;
+            ? 'You have local changes'
+            : `Switch to Branch "${targetBranch}"?`;
         const confirmBody = hasLocalChanges
             ? `${changedFilesText}\n\nDo you want to auto-stash your changes and switch to "${targetBranch}"?\n\nThe server will restart after switching.`
             : 'The server will restart after switching.';
@@ -1520,7 +1520,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             if (!restarted) {
                 state.restarting = false;
                 setServerAdminMessage(refs.updateNote, 'Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'warn');
-                toastr.warning('Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart pending');
+                toastr.warning('Branch switched, but restart is taking longer than expected. Refresh manually once the server is back.', 'Restart Pending');
             }
         } catch (error) {
             clearTimeout(abortTimeout);
@@ -1566,8 +1566,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         statusSection.append(statusNote, installLink);
 
         const updateSection = createServerSection('Updates & Restart', t`Updates use Git and only run when the repository can fast-forward cleanly.`, 'updates-restart');
-        const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull', 'aria-label': 'Auto-stash local changes before pulling' } });
-        const autoStashRow = createSwitchRow({ label: 'Auto-stash local changes before pulling', field: 'auto-stash', input: autoStashCheckbox });
+        const autoStashCheckbox = createElement('input', { attrs: { type: 'checkbox', id: 'auto_stash_before_pull', 'aria-label': 'Auto-Stash Local Changes Before Pulling' } });
+        const autoStashRow = createSwitchRow({ label: 'Auto-Stash Local Changes Before Pulling', field: 'auto-stash', input: autoStashCheckbox });
         const refreshButton = createServerButtonRow('Check for updates', 'check-for-updates', () => refreshServerAdminPanel({ includeConfig: false }));
         const updateButton = createServerButtonRow('Update & Restart', 'update-restart', handleServerAdminUpdate);
         const restartButton = createServerButtonRow('Restart server', 'restart-server', handleServerAdminRestart);
@@ -1577,8 +1577,8 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         updateSection.append(autoStashRow, refreshButton, updateButton, restartButton, updateNote, updateOutput);
 
         const thumbnailSection = createServerSection('Thumbnail Quality', 'Set thumbnail format, quality, and generated sizes without hand-editing config.yaml.', 'thumbnail-quality');
-        const thumbnailEnabled = createElement('input', { attrs: { type: 'checkbox', 'aria-label': 'Generate thumbnails' } });
-        const thumbnailEnabledRow = createSwitchRow({ label: 'Generate thumbnails', field: 'thumbnail-enabled', input: thumbnailEnabled });
+        const thumbnailEnabled = createElement('input', { attrs: { type: 'checkbox', 'aria-label': 'Generate Thumbnails' } });
+        const thumbnailEnabledRow = createSwitchRow({ label: 'Generate Thumbnails', field: 'thumbnail-enabled', input: thumbnailEnabled });
         const { select: thumbnailFormat, row: thumbnailFormatRow } = createThumbnailFormatRow('Format', 'thumbnail-format');
         const { input: thumbnailQuality, row: thumbnailQualityRow } = createThumbnailQualityRow('Quality', 'thumbnail-quality');
         const bgSize = createThumbnailSizeRow('Background', 'bg');
@@ -1586,9 +1586,9 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const personaSize = createThumbnailSizeRow('Persona', 'persona');
         thumbnailSection.append(thumbnailEnabledRow, thumbnailFormatRow, thumbnailQualityRow, bgSize, avatarSize, personaSize);
 
-        const mobileSection = createServerSection('Mobile preset', 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.', 'thumbnail-mobile');
-        const thumbnailMobileEnabled = createElement('input', { attrs: { type: 'checkbox', 'aria-label': 'Generate mobile thumbnails' } });
-        const thumbnailMobileEnabledRow = createSwitchRow({ label: 'Generate mobile thumbnails', field: 'thumbnail-mobile-enabled', input: thumbnailMobileEnabled });
+        const mobileSection = createServerSection('Mobile Preset', 'Desktop thumbnails default to PNG at full resolution. Enable the mobile preset to serve smaller JPG thumbnails to phone-sized screens.', 'thumbnail-mobile');
+        const thumbnailMobileEnabled = createElement('input', { attrs: { type: 'checkbox', 'aria-label': 'Generate Mobile Thumbnails' } });
+        const thumbnailMobileEnabledRow = createSwitchRow({ label: 'Generate Mobile Thumbnails', field: 'thumbnail-mobile-enabled', input: thumbnailMobileEnabled });
         const { select: thumbnailMobileFormat, row: thumbnailMobileFormatRow } = createThumbnailFormatRow('Mobile format', 'thumbnail-mobile-format');
         const { input: thumbnailMobileQuality, row: thumbnailMobileQualityRow } = createThumbnailQualityRow('Mobile quality', 'thumbnail-mobile-quality');
         const mobileBgSize = createThumbnailSizeRow('Mobile background', 'mobile-bg');
@@ -1619,7 +1619,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
             attrs: {
                 spellcheck: 'false',
                 rows: '22',
-                'aria-label': 'config.yaml editor',
+                'aria-label': 'config.yaml Editor',
             },
         });
         const configSection = createServerSection('config.yaml Editor', 'Edit the live config file directly here. Saves validate YAML before writing anything to disk.', 'config-editor');

@@ -159,7 +159,7 @@ test('server branch switching resets the select on Cancel and runs only after co
     expect(select.value).toBe(currentBranch);
     expect(requestServerAdmin).not.toHaveBeenCalled();
     expect(openAlert).toHaveBeenLastCalledWith(expect.objectContaining({
-        heading: 'You have local changes.',
+        heading: 'You have local changes',
         body: expect.stringContaining('auto-stash your changes and switch to "release"?'),
         defaultResponse: null,
     }));
@@ -181,7 +181,7 @@ test('cookie and cache confirmation resolves only from the shared alert response
     });
     await expect(confirm()).resolves.toBe(false);
     expect(openAlert).toHaveBeenLastCalledWith(expect.objectContaining({
-        heading: 'Clear cookies & cache?',
+        heading: 'Clear Cookies & Cache?',
         body: 'This removes browser cache, service worker data, temporary session data, and IndexedDB cache stores for SillyBunny, then reloads the page. Saved settings and account data stay intact. Clearing browser cookies may require you to sign in again.',
     }));
     openAlert.mockResolvedValueOnce('clear');

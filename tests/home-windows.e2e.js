@@ -55,7 +55,7 @@ const ACKNOWLEDGEMENTS = [
     { title: 'ZUN', subtitle: 'For Reisen and Tewi from the Touhou Project' },
     { title: 'RivelleDays', subtitle: 'For the usage of Moonlit Echoes\' chat styles' },
     { title: 'Cohee, Wolfsblvt and RossAscends', subtitle: 'For their work on SillyTavern, without which SillyBunny wouldn\'t be possible' },
-    { title: 'Other SillyTavern contributors', subtitle: null },
+    { title: 'Other SillyTavern Contributors', subtitle: null },
 ];
 const CONTRIBUTORS_URL = 'https://github.com/SillyTavern/SillyTavern/graphs/contributors';
 const LEGAL_GROUPS = ['Fan Work', 'Art Licence', 'Third-Party Software'];
@@ -1829,7 +1829,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                     await expect(row.locator('.ds-row-label')).toHaveText(title);
                     await expect(row.locator('.ds-row-subtitle')).toHaveText(subtitle ?? []);
                 }
-                const contributors = section('Acknowledgements').getByRole('link', { name: 'Other SillyTavern contributors', exact: true });
+                const contributors = section('Acknowledgements').getByRole('link', { name: 'Other SillyTavern Contributors', exact: true });
                 await expect(contributors).toHaveAttribute('href', CONTRIBUTORS_URL);
                 await expect(contributors).toHaveAttribute('target', '_blank');
                 await expect(contributors).toHaveAttribute('rel', 'noopener noreferrer');

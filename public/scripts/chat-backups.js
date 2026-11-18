@@ -400,7 +400,8 @@ class BackupsBrowser {
         const ageField = document.createElement('label');
         ageField.classList.add('chatBackupsCleanupField', 'chatBackupsCleanupAgeField');
         const ageLabel = document.createElement('span');
-        ageLabel.textContent = t`Older than`;
+        // SillyBunny: capitalisation by DESIGN.md
+        ageLabel.textContent = t`Older Than`;
         const ageInput = document.createElement('input');
         ageInput.classList.add('text_pole');
         ageInput.type = 'number';
@@ -415,7 +416,8 @@ class BackupsBrowser {
 
         const unitSelect = document.createElement('select');
         unitSelect.classList.add('text_pole');
-        unitSelect.setAttribute('aria-label', t`Backup cleanup age unit`);
+        // SillyBunny: capitalisation by DESIGN.md
+        unitSelect.setAttribute('aria-label', t`Backup Cleanup Age Unit`);
         unitSelect.setAttribute('data-chat-backups-cleanup-unit', '');
         for (const unit of BACKUP_CLEANUP_UNITS) {
             const option = document.createElement('option');
@@ -427,7 +429,8 @@ class BackupsBrowser {
         const keepField = document.createElement('label');
         keepField.classList.add('chatBackupsCleanupField', 'chatBackupsCleanupKeepField');
         const keepLabel = document.createElement('span');
-        keepLabel.textContent = t`Keep newest`;
+        // SillyBunny: capitalisation by DESIGN.md
+        keepLabel.textContent = t`Keep Newest`;
         const keepInput = document.createElement('input');
         keepInput.classList.add('text_pole');
         keepInput.type = 'number';

@@ -742,7 +742,7 @@ describe('World Info shell', () => {
         expect(detail.rebaseKey).toHaveBeenCalledWith('disable');
         expect(detail.sync).toHaveBeenLastCalledWith({ name: 'Book A', data });
         expect(detail.destroy).not.toHaveBeenCalled();
-        expect(globalThis.toastr.error).toHaveBeenCalledWith('World Info Save Failed');
+        expect(globalThis.toastr.error).toHaveBeenCalledWith('World Info save failed');
     });
 
     test('failed reorder restores held row order and the affected detail baseline', async () => {

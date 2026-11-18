@@ -128,7 +128,7 @@ function historyMarkup() {
     }
     const cleanupGroup = document.createElement('div');
     cleanupGroup.className = 'chat_cleanup_group';
-    cleanupGroup.setAttribute('aria-label', 'Chat cleanup tools');
+    cleanupGroup.setAttribute('aria-label', 'Chat Cleanup Tools');
     for (const [id, value] of [['chat_cleanup_age', '90'], ['chat_cleanup_keep', '25']]) {
         const input = document.createElement('input');
         input.id = id;
@@ -184,7 +184,7 @@ test('mass delete keeps live checkbox values, current-chat protection and dialog
     const checkboxes = [...frame.root.querySelectorAll('.sb-chat-delete-row input[type="checkbox"]')];
     const selectAll = frame.root.querySelector('[data-sb-editor-field="mass-delete-select-all"] input');
 
-    expect(frame.options).toMatchObject({ tier: 'window', title: 'Mass delete chats', className: 'sb-chat-mass-delete' });
+    expect(frame.options).toMatchObject({ tier: 'window', title: 'Mass Delete Chats', className: 'sb-chat-mass-delete' });
     expect(frame.options.responses.cancel.label).toBe('Cancel');
     expect(frame.options.responses.affirmative).toMatchObject({ id: 'delete-selected', appearance: 'destructive', enabled: false });
     expect(frame.options.responses.extra[0]).toMatchObject({ id: 'delete-older', enabled: false });
@@ -249,7 +249,7 @@ test('Chat History moves the source nodes, proxies frame search and restores its
     expect(frame.search.open).toHaveBeenCalledTimes(1);
 
     frame.header.querySelector('.sb-chat-history-menu').click();
-    const cleanupItem = openActionMenu.mock.lastCall[0].sections[0].items.find(item => item.label === 'Chat cleanup tools');
+    const cleanupItem = openActionMenu.mock.lastCall[0].sections[0].items.find(item => item.label === 'Chat Cleanup Tools');
     cleanupItem.onSelect();
     const switchRow = frame.root.querySelector('.chat_cleanup_checkbox');
     expect(switchRow.querySelector('#chat_cleanup_only_dated')).toBe(source.dated);

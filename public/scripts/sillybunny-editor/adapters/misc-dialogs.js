@@ -128,7 +128,7 @@ export function customCssAiOptions(source) {
 export function messageScreenshotOptions({ startId, endId }) {
     return {
         tier: 'dialog',
-        title: t`Screenshot messages`,
+        title: t`Screenshot Messages`,
         onOpening(popup) {
             const labels = [...popup.inputControls.querySelectorAll(':scope > label.text_label')];
             const rows = labels.map(label => {

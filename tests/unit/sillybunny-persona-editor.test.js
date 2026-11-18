@@ -683,10 +683,10 @@ describe('Persona editor shell', () => {
         container.querySelector('.sb-persona-row-menu').click();
         await settle();
         const actions = actionMenu.sections.flatMap(section => section.items);
-        expect(actions.map(({ label }) => label)).toEqual(['Use this persona', 'Duplicate', 'Delete']);
+        expect(actions.map(({ label }) => label)).toEqual(['Use This Persona', 'Duplicate', 'Delete']);
         expect(actions.at(-1).danger).toBe(true);
         expect(mountDetail).not.toHaveBeenCalled();
-        await menuAction('Use this persona', '.sb-persona-row-menu');
+        await menuAction('Use This Persona', '.sb-persona-row-menu');
         expect(usePersona).toHaveBeenCalledWith(avatarIds[0]);
         container.querySelector('.sb-persona-row-menu').click();
         await settle();
@@ -995,7 +995,7 @@ describe('Persona editor shell', () => {
             bar('folder').click();
             await settle();
             const items = actionMenu.sections.flatMap(section => section.items);
-            expect(items.map(item => item.label)).toEqual(['No folder', 'Cast']);
+            expect(items.map(item => item.label)).toEqual(['No Folder', 'Cast']);
             items[1].onSelect();
             await settle();
             expect(folderStore.getFolderId('personas', 'avatar-0.png')).toBe(folder.id);

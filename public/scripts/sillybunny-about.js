@@ -219,7 +219,7 @@ function createAcknowledgements() {
         field: 'about-credits-acknowledgements',
         rows: [
             ...people.map(({ name, note }) => createRow({ label: name, subtitle: note, field: `about-credits-acknowledgements-${slugOf(name)}` })),
-            createLinkRow({ label: t`Other SillyTavern contributors`, href: CONTRIBUTORS_URL, field: 'about-credits-acknowledgements-contributors' }),
+            createLinkRow({ label: t`Other SillyTavern Contributors`, href: CONTRIBUTORS_URL, field: 'about-credits-acknowledgements-contributors' }),
         ],
     });
 }

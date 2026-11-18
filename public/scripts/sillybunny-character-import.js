@@ -94,7 +94,7 @@ export function mountCharacterImport(host) {
     drop.row.classList.add('sb-import-drop');
     const zone = drop.row;
     const { section: fileSection } = group({
-        label: t`Import from file`, field: 'file', rows: [drop],
+        label: t`Import From File`, field: 'file', rows: [drop],
         subtitle: `${t`Drop the associated character file here, or click to browse for it.`} ${t`Upload PNG, JSON, YAML, CHARX, or BYAF character files.`}`,
     });
     fileSection.append(picker);
@@ -132,7 +132,7 @@ export function mountCharacterImport(host) {
         },
     });
     // The providers are a description of the group, filled in once the template that names them has loaded.
-    const { section: urlSection, subtitle: sources } = group({ label: t`Import from URL`, field: 'url', rows: [entry, submit], subtitle: '\u00a0' });
+    const { section: urlSection, subtitle: sources } = group({ label: t`Import From URL`, field: 'url', rows: [entry, submit], subtitle: '\u00a0' });
     sources.classList.add('sb-import-sources');
     sources.replaceChildren();
 
@@ -147,7 +147,7 @@ export function mountCharacterImport(host) {
     libraryGroup.group.setAttribute('aria-label', t`Browse Characters`);
     const library = libraryGroup.section;
 
-    const resultsGroup = group({ label: t`Results.`, field: 'results', subtitle: '\u00a0' });
+    const resultsGroup = group({ label: t`Results`, field: 'results', subtitle: '\u00a0' });
     const resultsSection = resultsGroup.section;
     resultsSection.id = 'sb_character_import_results';
     resultsSection.hidden = true;

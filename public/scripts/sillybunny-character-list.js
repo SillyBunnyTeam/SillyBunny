@@ -823,7 +823,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             return folderId && folders.some(folder => folder.id === folderId) ? folderId : null;
         };
         const items = [
-            makeMenuItem(t`No folder`, 'folder', () => {
+            makeMenuItem(t`No Folder`, 'folder', () => {
                 setFolder(state.view, keys, null);
                 selection.exit();
             }, { kind: 'radio', checked: keys.every(key => currentFolder(key) === null) }),
@@ -1025,7 +1025,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             const empty = createStatusPage({
                 state: 'empty',
                 icon: 'address-card',
-                title: legacyTitle || t`No results`,
+                title: legacyTitle || t`No Results`,
                 description: t`There are no items to display.`,
                 compact: true,
                 actions: [{ label: t`New`, primary: true, onActivate: () => {
@@ -1035,7 +1035,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             });
             content = empty.element;
         } else if (!model.entities.length && !hasVisibleFolder) {
-            const empty = createStatusPage({ state: 'no-results', title: t`No results`, compact: true, actions: [{ label: t`Clear all filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
+            const empty = createStatusPage({ state: 'no-results', title: t`No Results`, compact: true, actions: [{ label: t`Clear all filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
             content = empty.element;
         }
         if (revision !== renderRevision) return;

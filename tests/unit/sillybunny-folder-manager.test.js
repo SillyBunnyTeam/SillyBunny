@@ -222,7 +222,7 @@ describe('Folder Manager', () => {
         search.value = 'zzz';
         search.dispatchEvent(new Event('input'));
         jest.advanceTimersByTime(300);
-        expect(manager.root.querySelector('.sb-status-page__title').textContent).toBe('No results');
+        expect(manager.root.querySelector('.sb-status-page__title').textContent).toBe('No Results');
         expect(manager.root.querySelector('.sb-status-page__action')).toBeNull();
         jest.useRealTimers();
     });

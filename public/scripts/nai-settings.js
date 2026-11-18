@@ -77,8 +77,9 @@ function initNovelSamplerOrderLock() {
         button.classList.toggle('fa-lock', locked);
         button.classList.toggle('fa-lock-open', !locked);
         button.setAttribute('aria-pressed', String(locked));
-        button.setAttribute('aria-label', locked ? 'Sampler reordering locked' : 'Sampler reordering unlocked');
-        button.title = locked ? 'Unlock sampler reordering' : 'Lock sampler reordering';
+        // SillyBunny: capitalisation by DESIGN.md
+        button.setAttribute('aria-label', locked ? 'Sampler Reordering Locked' : 'Sampler Reordering Unlocked');
+        button.title = locked ? 'Unlock Sampler Reordering' : 'Lock Sampler Reordering';
         $sortable.sortable(locked ? 'disable' : 'enable');
         $sortable.toggleClass('is-sampler-order-locked', locked);
     };

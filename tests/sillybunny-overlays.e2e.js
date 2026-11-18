@@ -126,7 +126,7 @@ for (const width of [1440, 390]) {
         test('mass delete preserves its Dialog tier, leading checks and a Cancel-default destructive alert', async ({ page }) => {
             const { context, deleteRequests } = await prepareChat(page);
             const actions = await openChatActions(page, width);
-            await actions.getByRole('button', { name: 'Mass delete chats', exact: true }).click();
+            await actions.getByRole('button', { name: 'Mass Delete Chats', exact: true }).click();
 
             const frame = massDeleteFrame(page, width);
             await expect(frame).toBeVisible();
@@ -138,7 +138,7 @@ for (const width of [1440, 390]) {
             const selectAll = frame.locator('[data-sb-editor-field="mass-delete-select-all"]');
             await expect(selectAll).toBeVisible();
             await expect(frame.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
-            await expect(frame.getByRole('button', { name: 'Delete older', exact: true })).toBeVisible();
+            await expect(frame.getByRole('button', { name: 'Delete Older', exact: true })).toBeVisible();
             // The age presets meet the touch floor of the pointer (44px coarse, 32px fine), and the footer label stays on one line.
             const floor = width === 390 ? 44 : 32;
             for (const chip of await frame.locator('.sb-chat-delete-presets .menu_button').all()) {
@@ -146,7 +146,7 @@ for (const width of [1440, 390]) {
                 expect(box.width, 'a preset chip is not narrower than the floor').toBeGreaterThanOrEqual(floor - 0.5);
                 expect(box.height, 'a preset chip is not shorter than the floor').toBeGreaterThanOrEqual(floor - 0.5);
             }
-            const olderLines = await frame.getByRole('button', { name: 'Delete older', exact: true }).evaluate(node => {
+            const olderLines = await frame.getByRole('button', { name: 'Delete Older', exact: true }).evaluate(node => {
                 const range = document.createRange();
                 range.selectNodeContents(node);
                 return new Set([...range.getClientRects()].filter(rect => rect.width > 0).map(rect => Math.round(rect.top))).size;
@@ -163,7 +163,7 @@ for (const width of [1440, 390]) {
             expect(rowGeometry.checkboxRight).toBeLessThanOrEqual(rowGeometry.labelLeft);
             expect(rowGeometry.firstChildIsCheckbox).toBe(true);
             await first.click();
-            await frame.getByRole('button', { name: 'Delete selected', exact: true }).click();
+            await frame.getByRole('button', { name: 'Delete Selected', exact: true }).click();
 
             const confirm = page.locator('dialog[role="alertdialog"]');
             await expect(confirm).toBeVisible();
@@ -172,18 +172,18 @@ for (const width of [1440, 390]) {
             await expect(confirm).toHaveCount(0);
             expect(deleteRequests).toHaveLength(0);
 
-            await actions.getByRole('button', { name: 'Mass delete chats', exact: true }).click();
+            await actions.getByRole('button', { name: 'Mass Delete Chats', exact: true }).click();
             const reopened = massDeleteFrame(page, width);
             await reopened.locator('.sb-chat-delete-row').filter({ hasText: 'QA History Chat 01' }).click();
-            await reopened.getByRole('button', { name: 'Delete selected', exact: true }).click();
+            await reopened.getByRole('button', { name: 'Delete Selected', exact: true }).click();
             await page.locator('dialog[role="alertdialog"] [data-response="delete"]').click();
             await expect.poll(() => deleteRequests.length).toBe(1);
             expect(deleteRequests[0].chatfile).toBe('QA History Chat 01.jsonl');
 
-            await actions.getByRole('button', { name: 'Mass delete chats', exact: true }).click();
+            await actions.getByRole('button', { name: 'Mass Delete Chats', exact: true }).click();
             const olderFrame = massDeleteFrame(page, width);
             await expect(olderFrame).toBeVisible();
-            await olderFrame.getByRole('button', { name: 'Delete older', exact: true }).click();
+            await olderFrame.getByRole('button', { name: 'Delete Older', exact: true }).click();
             const olderConfirm = page.locator('dialog[role="alertdialog"]');
             await expect(olderConfirm).toBeVisible();
             await expect(olderConfirm.locator('[data-response="cancel"]')).toBeFocused();
@@ -291,13 +291,13 @@ for (const width of [1440, 390]) {
             await expect(banner).toBeVisible();
             await expect(banner.locator('#chat_cleanup_status')).toHaveAttribute('aria-live', 'polite');
             await frame.getByRole('button', { name: 'Menu', exact: true }).click();
-            for (const name of ['Import Chat', 'Backups', 'Label current', 'Label dated', 'Chat cleanup tools', 'Help']) {
+            for (const name of ['Import Chat', 'Backups', 'Label Current', 'Label Dated', 'Chat Cleanup Tools', 'Help']) {
                 await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible();
             }
-            await frame.getByRole('menuitem', { name: 'Chat cleanup tools', exact: true }).click();
+            await frame.getByRole('menuitem', { name: 'Chat Cleanup Tools', exact: true }).click();
             const cleanup = frame.locator('.sb-dialog__page.sb-chat-history-cleanup-page');
             await expect(cleanup).toBeVisible();
-            await expect(cleanup.locator('.sb-dialog__title')).toHaveText('Chat cleanup tools');
+            await expect(cleanup.locator('.sb-dialog__title')).toHaveText('Chat Cleanup Tools');
             await expect(banner).toBeVisible();
             const cleanupFooter = cleanup.locator(':scope > .sb-dialog__bottom-bar');
             await expect(cleanupFooter.locator('#chat_cleanup_preview')).toBeVisible();
@@ -395,7 +395,7 @@ for (const width of [1440, 390]) {
                 const frame = page.locator('.sb-dialog-host[data-tier="window"]:has(.sb-chat-history-dialog)');
                 await expect(frame).toBeVisible();
                 await frame.locator('.sb-chat-history-menu').click();
-                await frame.getByRole('menuitem', { name: 'Chat cleanup tools', exact: true }).click();
+                await frame.getByRole('menuitem', { name: 'Chat Cleanup Tools', exact: true }).click();
                 const cleanup = frame.locator('.sb-dialog__page.sb-chat-history-cleanup-page');
                 await cleanup.locator('#chat_cleanup_preview').click();
                 await cleanup.getByRole('button', { name: 'Back', exact: true }).click();
@@ -469,7 +469,7 @@ for (const width of [1440, 390]) {
             await chooserPromise;
 
             await frame.locator('.sb-chat-history-menu').click();
-            await page.getByRole('menuitem', { name: 'Label current', exact: true }).click();
+            await page.getByRole('menuitem', { name: 'Label Current', exact: true }).click();
             await expect.poll(() => generationRequests).toBe(1);
             await expect(frame.locator('.sb-chat-history-banner')).toBeVisible();
             await frame.locator('#chat_tools_cancel').click();
@@ -478,7 +478,7 @@ for (const width of [1440, 390]) {
 
             fixtures[1].file_name = '2026-01-01@00h00m00s000ms';
             await frame.locator('.sb-chat-history-menu').click();
-            await page.getByRole('menuitem', { name: 'Label dated', exact: true }).click();
+            await page.getByRole('menuitem', { name: 'Label Dated', exact: true }).click();
             await page.locator('dialog.popup[open]').last().locator('.popup-button-ok').click();
             await expect.poll(() => generationRequests).toBe(2);
             await expect(frame.locator('.sb-chat-history-banner')).toBeVisible();
@@ -486,7 +486,7 @@ for (const width of [1440, 390]) {
             releaseGeneration?.();
 
             await frame.locator('.sb-chat-history-menu').click();
-            await page.getByRole('menuitem', { name: 'Chat cleanup tools', exact: true }).click();
+            await page.getByRole('menuitem', { name: 'Chat Cleanup Tools', exact: true }).click();
             const cleanup = frame.locator('.sb-dialog__page.sb-chat-history-cleanup-page');
             await cleanup.locator('#chat_cleanup_age').fill('30');
             await cleanup.locator('#chat_cleanup_keep').fill('0');
@@ -535,7 +535,7 @@ for (const width of [1440, 390]) {
 
             await frame.locator('.sb-dialog__search-toggle').click();
             await frame.getByRole('searchbox', { name: 'Search', exact: true }).fill('missing');
-            await expect(statusPage).toContainText('No results');
+            await expect(statusPage).toContainText('No Results');
             await expect(statusPage).not.toContainText('No Chats');
             await frame.locator('.sb-dialog__close').click();
             await expect(frame).toHaveCount(0);
@@ -552,7 +552,7 @@ for (const width of [1440, 390]) {
             const search = frame.getByRole('searchbox', { name: 'Search', exact: true });
             await frame.locator('.sb-dialog__search-toggle').click();
             await search.fill('no-chat-matches-this');
-            await expect(frame.locator('#select_chat_div .sb-status-page')).toContainText('No results');
+            await expect(frame.locator('#select_chat_div .sb-status-page')).toContainText('No Results');
             const filteredHeight = await frame.evaluate(node => node.querySelector('.sb-dialog').getBoundingClientRect().height);
             expect(filteredHeight).toBe(openedHeight);
         });

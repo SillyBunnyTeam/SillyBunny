@@ -332,7 +332,7 @@ export function mountWorldInfoEditor(container) {
 
     function committed(result) {
         if (result.ok) return true;
-        globalThis.toastr?.error(t`World Info Save Failed`);
+        globalThis.toastr?.error(t`World Info save failed`);
         return false;
     }
 
@@ -620,7 +620,7 @@ export function mountWorldInfoEditor(container) {
             slots.grip.removeAttribute('aria-hidden');
             slots.grip.setAttribute('role', 'button');
             slots.grip.setAttribute('aria-disabled', 'false');
-            slots.grip.setAttribute('aria-label', t`Drag to reorder ${title}`);
+            slots.grip.setAttribute('aria-label', t`Drag to Reorder ${title}`);
         }
         return row;
     }

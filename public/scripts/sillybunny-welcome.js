@@ -200,7 +200,7 @@ function fillImport(body, { importer, canImportFolder }) {
     if (canImportFolder) {
         actions.prepend(folderButton);
         body.append(
-            createTextBlock(t`Please enter the path of a SillyTavern folder on the computer running SillyBunny, or upload a backup ZIP. We'll try to transfer everything over right away. Just be careful... files with the same name will be replaced.`),
+            createTextBlock(t`Please enter the path of a SillyTavern folder on the computer running SillyBunny, or upload a backup ZIP. We'll try to transfer everything over right away. Just be careful… files with the same name will be replaced.`),
             createPrefGroup({ field: 'welcome-import-group', rows: [folder] }).section,
         );
     } else {

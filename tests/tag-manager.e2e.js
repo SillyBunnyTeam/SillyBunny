@@ -182,7 +182,7 @@ for (const width of [1440, 390]) {
             await search.fill('no-tag-matches-this');
             await expect(row(page, 'qa-tag-alpha')).toBeHidden();
             await expect(row(page, 'qa-tag-beta')).toBeHidden();
-            await expect(manager(page).getByRole('heading', { name: 'No results', exact: true })).toBeVisible();
+            await expect(manager(page).getByRole('heading', { name: 'No Results', exact: true })).toBeVisible();
             await search.fill('Beta');
             await expect(row(page, 'qa-tag-alpha')).toBeHidden();
             await expect(row(page, 'qa-tag-beta')).toBeVisible();
@@ -310,7 +310,7 @@ for (const width of [1440, 390]) {
             const search = manager(page).getByRole('button', { name: 'Search', exact: true });
             await search.click();
             await manager(page).getByRole('searchbox', { name: 'Search', exact: true }).fill('no-tag-matches-this');
-            await expect(manager(page).getByRole('heading', { name: 'No results', exact: true })).toBeVisible();
+            await expect(manager(page).getByRole('heading', { name: 'No Results', exact: true })).toBeVisible();
             const filteredHeight = await manager(page).evaluate(node => node.getBoundingClientRect().height);
             expect(filteredHeight).toBe(openedHeight);
         });

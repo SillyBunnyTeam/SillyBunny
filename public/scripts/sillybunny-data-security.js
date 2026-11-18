@@ -188,7 +188,7 @@ export function buildImportGroup() {
     pathInput.placeholder = '/path/to/SillyTavern';
     pathInput.autocomplete = 'off';
     pathInput.spellcheck = false;
-    pathInput.setAttribute('aria-label', 'SillyTavern folder path');
+    pathInput.setAttribute('aria-label', 'SillyTavern Folder Path');
     pathInput.title = 'You can paste a full SillyTavern install path, its data folder, or a specific user folder.';
     const caption = 'Paste the path to your SillyTavern install, its data folder, or the specific user folder you want to import. Use the full import for everything, or sync just your third-party extensions with a detailed report.';
     const pathRow = createEntryRow({ label: 'Import From Folder Path', subtitle: caption, field: 'import-folder-path', input: pathInput, floating: true });
@@ -205,7 +205,7 @@ export function buildImportGroup() {
     zipFileInput.id = 'sb-import-zip-input';
     zipFileInput.type = 'file';
     zipFileInput.accept = '.zip,application/zip,application/x-zip-compressed';
-    zipFileInput.setAttribute('aria-label', 'Choose a SillyTavern backup ZIP');
+    zipFileInput.setAttribute('aria-label', 'Choose a SillyTavern Backup ZIP');
     const zipRow = createRow({
         label: 'Import From Backup ZIP',
         subtitle: 'Use the backup ZIP that SillyTavern exports. Pick the file here and SillyBunny will import it into this account.',

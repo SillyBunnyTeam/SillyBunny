@@ -326,7 +326,7 @@ export function mountPersonaEditor(container) {
             selection.exit();
         };
         menu(trigger, t`Move to Folder`, [[
-            { ...menuItem(t`No folder`, 'folder', place(null)), kind: 'radio', checked: inFolder(null) },
+            { ...menuItem(t`No Folder`, 'folder', place(null)), kind: 'radio', checked: inFolder(null) },
             ...folders.map(folder => ({ ...menuItem(folder.name, 'folder', place(folder.id)), kind: 'radio', checked: inFolder(folder.id) })),
         ]]);
     }
@@ -368,7 +368,7 @@ export function mountPersonaEditor(container) {
         if (!record) return;
         menu(trigger, record.name, [
             // HUMAN: replace — Use this persona action.
-            [menuItem(t`Use this persona`, 'circle-check', () => usePersona(avatarId), false, getPersonaEditorStates(avatarId).inUse)],
+            [menuItem(t`Use This Persona`, 'circle-check', () => usePersona(avatarId), false, getPersonaEditorStates(avatarId).inUse)],
             [menuItem(t`Duplicate`, 'copy', () => duplicatePersona(avatarId))],
             [menuItem(t`Delete`, 'trash', () => deletePersona(avatarId), true)],
         ]);

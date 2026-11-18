@@ -103,7 +103,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await button.click();
 
             const alert = await expectAlert(page);
-            await expect(alert.locator('.sb-dialog__heading')).toHaveText('Clear cookies & cache?');
+            await expect(alert.locator('.sb-dialog__heading')).toHaveText('Clear Cookies & Cache?');
             await expect(alert).toContainText('browser cache, service worker data, temporary session data, and IndexedDB cache stores for SillyBunny');
             await expect(alert).toContainText('Saved settings and account data stay intact.');
             await expect(alert).toContainText('may require you to sign in again.');
