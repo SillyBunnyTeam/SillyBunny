@@ -476,8 +476,8 @@ test.describe('Settings header consistency', () => {
         await expect(dataSecurity.locator('[data-sb-editor-field="updates-restart"] .ds-pref-group-subtitle'))
             .toHaveText('Updates use Git and only run when the repository can fast-forward cleanly.');
         const actions = dataSecurity.locator('[data-sb-editor-field="thumbnail-actions"]');
-        await expect(actions.locator('.ds-pref-group-heading')).toHaveText('TODO(copy)');
-        await expect(actions.locator('.ds-pref-group-heading')).toHaveAttribute('data-sb-copy-placeholder', 'true');
+        await expect(actions.locator('.ds-pref-group-heading')).toHaveText('Thumbnail Actions');
+        await expect(actions.locator('.ds-pref-group-heading')).not.toHaveAttribute('data-sb-copy-placeholder', /.*/);
         await expect(actions.locator('.ds-pref-group-subtitle')).toHaveCount(0);
         await expect(actions.locator('.ds-button-row')).toHaveText(['Use desktop recommended', 'Use mobile recommended', 'Save thumbnails', 'Save & Clear Cache', 'Clear cache only']);
     });

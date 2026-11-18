@@ -582,7 +582,7 @@ async function onDeleteBackgroundClick(e) {
     const bg = bgToDelete.attr('bgfile');
 
     if (confirm && !await removeBackground(bg, { isCustom, deleteFromServer, element: bgToDelete })) {
-        toastr.error(t`TODO(copy)`);
+        toastr.error(t`Background not deleted`);
     }
 }
 
@@ -1464,7 +1464,7 @@ export function attachBackgroundGallery(host) {
             const { confirm } = await confirmBackgroundDeletion(false);
             if (!confirm) return;
             const element = $('#bg_menu_content .bg_example').filter(function () { return this.getAttribute('bgfile') === file; }).first();
-            if (!await removeBackground(file, { isCustom: false, element })) toastr.error(t`TODO(copy)`);
+            if (!await removeBackground(file, { isCustom: false, element })) toastr.error(t`Background not deleted`);
         },
         deleteBackgrounds: removeSystemBackgrounds,
         reload: getBackgrounds,

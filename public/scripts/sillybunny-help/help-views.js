@@ -301,8 +301,7 @@ export function getViewFocusTarget(root) {
 }
 
 export function createNoMatchPage() {
-    const { element } = createStatusPage({ state: 'no-results', title: COPY_PLACEHOLDER, description: COPY_PLACEHOLDER, compact: true });
-    markCopyPlaceholder(element.querySelector('.sb-status-page__title'), 'HELP-SEARCH-EMPTY-HEAD');
+    const { element } = createStatusPage({ state: 'no-results', title: t`No Results Found`, description: COPY_PLACEHOLDER, compact: true });
     markCopyPlaceholder(element.querySelector('.sb-status-page__description'), 'HELP-SEARCH-EMPTY-BODY');
     // The search announces "No results" itself, so the page must not announce a second time.
     element.removeAttribute('role');

@@ -277,7 +277,7 @@ function presentFont(container) {
             await fonts.importFontFiles(files, host);
         } catch (error) {
             console.error('Could not import the font.', error);
-            globalThis.toastr?.error(t`TODO(copy)`);
+            globalThis.toastr?.error(t`Import failed`);
         }
     });
 

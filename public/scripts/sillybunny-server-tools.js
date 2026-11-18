@@ -1594,8 +1594,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         const mobileBgSize = createThumbnailSizeRow('Mobile background', 'mobile-bg');
         const mobileAvatarSize = createThumbnailSizeRow('Mobile character', 'mobile-avatar');
         const mobilePersonaSize = createThumbnailSizeRow('Mobile persona', 'mobile-persona');
-        const actionsSection = createServerSection(t`TODO(copy)`, undefined, 'thumbnail-actions');
-        actionsSection.section.querySelector('.ds-pref-group-heading').dataset.sbCopyPlaceholder = 'true';
+        const actionsSection = createServerSection(t`Thumbnail Actions`, undefined, 'thumbnail-actions');
         const thumbnailUseRecommendedButton = createServerButtonRow('Use desktop recommended', 'thumbnail-use-recommended', handleUseRecommendedThumbnailSettings);
         const thumbnailUseRecommendedMobileButton = createServerButtonRow('Use mobile recommended', 'thumbnail-use-recommended-mobile', handleUseRecommendedMobileThumbnailSettings);
         const thumbnailSaveButton = createServerButtonRow('Save thumbnails', 'thumbnail-save', () => handleServerThumbnailSave({ clearCache: false }));

@@ -774,7 +774,7 @@ export async function importFontFiles(files, host) {
     host.save();
     host.apply();
     for (const entry of replaced) await deleteFontFile(host, entry);
-    for (const family of listImportedFamilies(added)) toastr.success(t`TODO(copy)`, family);
+    for (const family of listImportedFamilies(added)) toastr.success(t`Font imported`, family);
     return added;
 }
 
@@ -804,6 +804,6 @@ export async function removeFontFamily(family, host) {
     host.save();
     host.apply();
     const results = await Promise.all(entries.map(entry => deleteFontFile(host, entry)));
-    if (results.includes(false)) toastr.error(t`TODO(copy)`, family);
+    if (results.includes(false)) toastr.error(t`Font not removed`, family);
     return true;
 }

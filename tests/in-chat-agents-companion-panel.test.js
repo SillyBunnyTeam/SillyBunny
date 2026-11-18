@@ -69,6 +69,8 @@ describe('companion tracker panel', () => {
             },
         }));
 
+        await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({ t: (parts, ...values) => parts.reduce((text, part, index) => text + part + (values[index] ?? ''), '') }));
+
         await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
             escapeHtml: jest.fn(value => String(value ?? '')
                 .replace(/&/g, '&amp;')

@@ -2509,7 +2509,8 @@ test.describe('Home Recent Chats when the request fails', () => {
         await expect(failed.locator('.sb-status-page[data-state="error"]')).toBeVisible();
         await expect(page.locator('.welcomePanel [data-sb-home-empty="all"]')).toHaveCount(0);
         await expect(failed.getByRole('button', { name: 'Try Again' })).toBeVisible();
-        await expect(failed.locator('[data-sb-copy-placeholder="true"]')).toHaveText(['TODO(copy)', 'TODO(copy)']);
+        await expect(failed.locator('.sb-status-page__title')).toHaveText('Chats Not Loaded');
+        await expect(failed.locator('[data-sb-copy-placeholder="true"]')).toHaveText(['TODO(copy)']);
 
         const before = requests;
         answer = route => route.fulfill({ json: [] });

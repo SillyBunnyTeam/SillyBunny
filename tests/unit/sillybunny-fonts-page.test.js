@@ -228,7 +228,7 @@ describe('importing files', () => {
         expect(host.getFonts()).toEqual([expect.objectContaining({ family: 'Made Up', weight: 700, style: 'italic', format: 'truetype', file: `/user/files/${uploads[0].name}` })]);
         expect(host.save).toHaveBeenCalledTimes(1);
         expect(host.apply).toHaveBeenCalledTimes(1);
-        expect(global.toastr.success).toHaveBeenCalledWith('TODO(copy)', 'Made Up');
+        expect(global.toastr.success).toHaveBeenCalledWith('Font imported', 'Made Up');
     });
 
     test('a file that fails the checks is named in one error and is never uploaded', async () => {
@@ -379,7 +379,7 @@ describe('deleting', () => {
         alertResponse.mockResolvedValueOnce('delete');
         await fonts.removeFontFamily('Test Face', host);
         expect(host.getFonts()).toEqual([]);
-        expect(global.toastr.error).toHaveBeenCalledWith('TODO(copy)', 'Test Face');
+        expect(global.toastr.error).toHaveBeenCalledWith('Font not removed', 'Test Face');
     });
 
     test('a family that is not in the list asks nothing', async () => {

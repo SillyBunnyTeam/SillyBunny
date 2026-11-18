@@ -437,9 +437,9 @@ for (const { name, portrait, options } of VIEWPORTS) {
                 const reisen = cardOf(page, 'assistant-reisen');
 
                 await expect(reisen.locator('.sbHomeCardName')).toHaveText('Reisen');
-                await expect(reisen.locator('.sbHomeCardSub')).toHaveText('TODO(copy)');
+                await expect(reisen.locator('.sbHomeCardSub')).toHaveText('Unavailable');
                 await expect(reisen.locator('.sbHomeFootLabel')).toHaveCount(0);
-                await expect(reisen.locator('[data-sb-copy-placeholder="true"]')).toHaveCount(1);
+                await expect(reisen.locator('[data-sb-copy-placeholder="true"]')).toHaveCount(0);
             });
 
             sizeFreeTest('opens nothing when it is pressed', async ({ page }) => {

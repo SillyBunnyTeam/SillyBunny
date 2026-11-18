@@ -308,8 +308,7 @@ function buildSection({ folder, files, total, expanded }, searching) {
     // A closed folder builds no thumbnails: they appear on the first open.
     if (expanded && files.length) body.append(buildGrid(files));
     if (expanded && !total && !searching) {
-        const empty = el('p', 'sb-bg-section__empty', PLACEHOLDER_COPY);
-        empty.setAttribute('data-sb-copy-placeholder', 'true');
+        const empty = el('p', 'sb-bg-section__empty', t`No backgrounds`);
         body.append(empty);
     }
     body.hidden = !expanded;
@@ -322,8 +321,7 @@ function buildSection({ folder, files, total, expanded }, searching) {
             row.setAttribute('aria-expanded', String(next));
             body.hidden = !next;
             if (next && !body.firstElementChild) {
-                const empty = el('p', 'sb-bg-section__empty', PLACEHOLDER_COPY);
-                empty.setAttribute('data-sb-copy-placeholder', 'true');
+                const empty = el('p', 'sb-bg-section__empty', t`No backgrounds`);
                 body.append(empty);
             }
             setFolderExpanded(SCOPE, folder.id, next);
@@ -491,7 +489,7 @@ async function deleteSelected(keys) {
         if (!await confirmDestructiveAction({ text, confirmLabel: t`Delete`, copyPlaceholder: true })) return;
         const { failed } = await hooks.deleteBackgrounds(keys);
         selection.exit();
-        if (failed.length) globalThis.toastr?.error(failed.join(', '), t`TODO(copy)`);
+        if (failed.length) globalThis.toastr?.error(failed.join(', '), t`Delete failed`);
     } finally {
         bulkBusy = false;
     }

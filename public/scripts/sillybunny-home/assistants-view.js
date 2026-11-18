@@ -115,18 +115,11 @@ function createConnectButton() {
     return button;
 }
 
-/** The slot of the guidance line that a card without a file shows in place of its subtitle. */
-const UNAVAILABLE_SLOT = 'AS-UNAVAILABLE';
-
-function createCardText({ name, titleId, subtitleId, subtitle: subtitleText, connect = false, unavailable = false }) {
+function createCardText({ name, titleId, subtitleId, subtitle: subtitleText, connect = false }) {
     const text = createElement('div', 'sbHomeCardText');
     const title = createElement('strong', 'sbHomeCardName', name);
     title.id = titleId;
     const subtitle = createElement('span', 'sbHomeCardSub', subtitleText);
-    if (unavailable) {
-        subtitle.dataset.sbCopyPlaceholder = 'true';
-        subtitle.dataset.sbCopySlot = UNAVAILABLE_SLOT;
-    }
     subtitle.id = subtitleId;
     text.append(title, subtitle);
     if (connect) {
@@ -219,7 +212,7 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker
             onActivate: () => void actions.newChat(card),
         }),
         createCardArt(card, getThumbnailUrl),
-        createCardText({ name: card.name, titleId, subtitleId, subtitle: disabled ? t`TODO(copy)` : getAssistantSubtitle(card.id), connect: !disabled, unavailable: disabled }),
+        createCardText({ name: card.name, titleId, subtitleId, subtitle: disabled ? t`Unavailable` : getAssistantSubtitle(card.id), connect: !disabled }),
     );
     if (footer.childElementCount > 0) {
         element.append(footer);

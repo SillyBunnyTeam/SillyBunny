@@ -190,15 +190,15 @@ describe.each([['missing', MISSING_TEWI], ['deleted', DELETED_TEWI]])('a card wh
         expect(element.querySelector('.sbHomeCardFooter')).toBeNull();
     });
 
-    test('keeps its name and states that it is unavailable in place of its subtitle, as a copy placeholder', () => {
+    test('keeps its name and states that it is unavailable in place of its subtitle, in plain text, not as a copy placeholder', () => {
         const { panel } = render([card]);
         const element = cardOf(panel, 'assistant-tewi');
         const subtitle = element.querySelector('.sbHomeCardSub');
 
         expect(element.querySelector('.sbHomeCardName').textContent).toBe('Tewi');
-        expect(subtitle.textContent).toBe('TODO(copy)');
-        expect(subtitle.dataset.sbCopyPlaceholder).toBe('true');
-        expect(subtitle.dataset.sbCopySlot).toBe('AS-UNAVAILABLE');
+        expect(subtitle.textContent).toBe('Unavailable');
+        expect(subtitle.dataset.sbCopyPlaceholder).toBeUndefined();
+        expect(subtitle.dataset.sbCopySlot).toBeUndefined();
         expect(element.querySelector('.sbHomeFootLabel')).toBeNull();
         expect(element.hasAttribute('title')).toBe(false);
     });
@@ -293,8 +293,8 @@ describe('a card whose bundled file can be restored', () => {
             const element = cardOf(panel, 'assistant-tewi');
 
             expect(element.querySelector('.sbHomeCardName').textContent).toBe('Tewi');
-            expect(element.querySelector('.sbHomeCardSub').textContent).toBe('TODO(copy)');
-            expect([...element.querySelectorAll('[data-sb-copy-placeholder="true"]')]).toEqual([element.querySelector('.sbHomeCardSub')]);
+            expect(element.querySelector('.sbHomeCardSub').textContent).toBe('Unavailable');
+            expect(element.querySelectorAll('[data-sb-copy-placeholder="true"]')).toHaveLength(0);
         });
     });
 

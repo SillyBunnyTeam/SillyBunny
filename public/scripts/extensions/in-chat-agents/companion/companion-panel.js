@@ -2,6 +2,7 @@ import { chat } from '../../../../script.js';
 import { hideChatMessageRange } from '../../../chats.js';
 import { captureVisibleMessageAnchor, restoreVisibleMessageAnchor } from '../../../chat-render-lifecycle/anchor.js';
 import { eventSource, event_types } from '../../../events.js';
+import { t } from '../../../i18n.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { registerSidePanel } from '../../../sillybunny-editor/side-panel.js';
 import { createStatusPage } from '../../../sillybunny-editor/status-page.js';
@@ -782,9 +783,7 @@ export function buildPanelHtml() {
 function mountPanelStatusPage(panel) {
     const placeholder = panel?.querySelector?.('.ica--tpanel-body > .ica--cdash-empty');
     if (!placeholder) return;
-    // HUMAN: replace — the title that names the state, in header capitalisation; there was only the description.
-    const { element } = createStatusPage({ state: 'empty', icon: 'user-group', title: 'TODO(copy)', description: placeholder.textContent, compact: true });
-    element.querySelector('.sb-status-page__title').dataset.sbCopyPlaceholder = 'true';
+    const { element } = createStatusPage({ state: 'empty', icon: 'user-group', title: t`No Companion State`, description: placeholder.textContent, compact: true });
     placeholder.replaceWith(element);
 }
 

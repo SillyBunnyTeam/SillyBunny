@@ -101,15 +101,14 @@ function mountFailedState(panel, retry) {
 
     const { element } = createStatusPage({
         state: 'error',
-        title: t`TODO(copy)`,
+        title: t`Chats Not Loaded`,
         description: t`TODO(copy)`,
         actions: retry ? [{ label: t`Try Again`, primary: true, onActivate: () => void retry() }] : [],
         compact: true,
     });
-    element.querySelectorAll('h3, .sb-status-page__description').forEach((text, index) => {
-        text.dataset.sbCopyPlaceholder = 'true';
-        text.dataset.sbCopySlot = index === 0 ? 'HOME-RECENT-FAILED-TITLE' : 'HOME-RECENT-FAILED-DESCRIPTION';
-    });
+    const description = element.querySelector('.sb-status-page__description');
+    description.dataset.sbCopyPlaceholder = 'true';
+    description.dataset.sbCopySlot = 'HOME-RECENT-FAILED-DESCRIPTION';
     container.append(element);
     container.style.visibility = 'hidden';
     loadListEditorStyles()
