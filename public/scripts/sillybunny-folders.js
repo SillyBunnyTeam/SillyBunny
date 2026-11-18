@@ -1,13 +1,50 @@
-const SCOPES = new Set(['characters', 'groups', 'personas']);
-// Settings saved before persona folders existed have no `personas` scope; it is created on the first write so they load unchanged.
-const LAZY_SCOPES = new Set(['personas']);
+/**
+ * Joins the folders in upstream's image-metadata index with the presentation records in `power_user.sb_folders.backgrounds`.
+ * The index decides which folders exist and what they are called. The scope decides their order, colour and expanded state.
+ * A scope record whose folder the index no longer has is skipped, and an indexed folder with no record gets the defaults.
+ * It lives in this file, which loads at startup, because the gallery's own modules load with the Appearance page.
+ * @param {Array<{ id: string, color?: string, expanded?: boolean }>} stored
+ * @param {Array<{ id: string, name: string }>} indexed
+ * @returns {Array<{ id: string, name: string, color: string, expanded: boolean }>}
+ */
+export function mergeBackgroundFolders(stored, indexed) {
+    const byId = new Map(indexed.map(folder => [folder.id, folder]));
+    const merged = [];
+    const seen = new Set();
+    for (const record of stored) {
+        const folder = byId.get(record?.id);
+        if (!folder || seen.has(folder.id)) continue;
+        seen.add(folder.id);
+        merged.push({ id: folder.id, name: folder.name, color: typeof record.color === 'string' ? record.color : '', expanded: record.expanded !== false });
+    }
+    for (const folder of indexed) {
+        if (seen.has(folder.id)) continue;
+        seen.add(folder.id);
+        merged.push({ id: folder.id, name: folder.name, color: '', expanded: true });
+    }
+    return merged;
+}
+
+const SCOPES = new Set(['characters', 'groups', 'personas', 'backgrounds']);
+// Settings saved before persona or background folders existed have no such scope; it is created on the first write so they load unchanged.
+const LAZY_SCOPES = new Set(['personas', 'backgrounds']);
 const FOLDER_TYPES = new Set(['OPEN', 'CLOSED']);
 const listeners = new Set();
 const EMPTY_STORE = Object.freeze({
     characters: Object.freeze({ folders: Object.freeze([]), members: Object.freeze({}) }),
     groups: Object.freeze({ folders: Object.freeze([]), members: Object.freeze({}) }),
     personas: Object.freeze({ folders: Object.freeze([]), members: Object.freeze({}) }),
+    backgrounds: Object.freeze({ folders: Object.freeze([]), members: Object.freeze({}) }),
 });
+/*
+ * The Backgrounds scope keeps only what upstream's image-metadata index has no field for: order, colour and the expanded state.
+ * The folders' names and the files' memberships stay in that index, which the gallery reads and writes through upstream's routes.
+ * `backgroundIndex` is the in-memory copy of it (a file maps to the ids of every folder it is in), and `backgroundBridge`
+ * sends each change to those routes. The scope's own `members` stay empty.
+ */
+let backgroundIndex = { folders: [], members: {} };
+let backgroundBridge = null;
+
 let powerUser;
 let saveSettings = () => {};
 let createId = fallbackId;
@@ -31,7 +68,23 @@ function currentFolders() {
 }
 
 function readFolderScope(scope) {
-    return powerUser?.sb_folders?.[requireScope(scope)] ?? EMPTY_STORE[scope];
+    const stored = powerUser?.sb_folders?.[requireScope(scope)] ?? EMPTY_STORE[scope];
+    if (scope !== 'backgrounds') return stored;
+    return { folders: mergeBackgroundFolders(stored.folders, backgroundIndex.folders), members: {} };
+}
+
+function backgroundMemberIds(file) {
+    const known = new Set(backgroundIndex.folders.map(folder => folder.id));
+    return (backgroundIndex.members[file] ?? []).filter(id => known.has(id));
+}
+
+/** Writes the merged folder list into settings, so a change to one folder's state keeps the order the user sees. Records of folders the index lost stay at the end. */
+function writeBackgroundRecords(mutate) {
+    const merged = readFolderScope('backgrounds').folders;
+    mutate(merged);
+    const store = writableScope('backgrounds');
+    const stale = store.folders.filter(record => !backgroundIndex.folders.some(folder => folder.id === record.id));
+    store.folders = [...merged.map(folder => ({ id: folder.id, name: folder.name, color: folder.color, expanded: folder.expanded })), ...stale];
 }
 
 function writableScope(scope) {
@@ -217,15 +270,19 @@ export function getFolders(scope) {
 
 /** Returns the folder id for a member, or null when it is unfiled. */
 export function getFolderId(scope, key) {
-    const store = readFolderScope(scope);
     if (typeof key !== 'string' || !key) return null;
-    return store.members[key] ?? null;
+    // A background that upstream data placed in several folders reports the first; the gallery shows it in each until it is moved.
+    if (requireScope(scope) === 'backgrounds') return backgroundMemberIds(key)[0] ?? null;
+    return readFolderScope(scope).members[key] ?? null;
 }
 
 /** Returns the member keys assigned to a folder in key insertion order. */
 export function getFolderMembers(scope, folderId) {
-    const store = readFolderScope(scope);
     const id = String(folderId);
+    if (requireScope(scope) === 'backgrounds') {
+        return Object.keys(backgroundIndex.members).filter(file => backgroundMemberIds(file).includes(id));
+    }
+    const store = readFolderScope(scope);
     return Object.entries(store.members)
         .filter(([, memberFolderId]) => memberFolderId === id)
         .map(([key]) => key);
@@ -235,6 +292,7 @@ export function getFolderMembers(scope, folderId) {
 export function setFolder(scope, keys, folderIdOrNull) {
     requireScope(scope);
     const normalizedKeys = parseKeys(keys);
+    if (scope === 'backgrounds') return moveBackgrounds(normalizedKeys, folderIdOrNull);
     let folderId = null;
     if (folderIdOrNull !== null && folderIdOrNull !== undefined) {
         folderId = String(folderIdOrNull);
@@ -260,8 +318,9 @@ export function setFolder(scope, keys, folderIdOrNull) {
 }
 
 /** Creates a folder and returns its persisted record. */
-export function createFolder(scope, name, { color = '', expanded = true } = {}) {
+export function createFolder(scope, name, { color = '', expanded = true, id = '' } = {}) {
     requireScope(scope);
+    if (scope === 'backgrounds') return createBackgroundFolder(name, { color, expanded, id });
     const store = writableScope(scope);
     const existingIds = new Set(store.folders.map(entry => entry.id));
     const folder = {
@@ -282,6 +341,7 @@ export function renameFolder(scope, folderId, name) {
     if (!folder) return false;
     const nextName = parseFolderName(name);
     if (folder.name === nextName) return false;
+    if (scope === 'backgrounds') return renameBackgroundFolder(folder.id, nextName);
     folder.name = nextName;
     persistChange(scope, 'rename-folder');
     return true;
@@ -291,6 +351,7 @@ export function renameFolder(scope, folderId, name) {
 export function deleteFolder(scope, folderId) {
     requireScope(scope);
     currentFolders();
+    if (scope === 'backgrounds') return deleteBackgroundFolder(String(folderId));
     const store = readFolderScope(scope);
     const id = String(folderId);
     const index = store.folders.findIndex(folder => folder.id === id);
@@ -308,6 +369,7 @@ export function moveFolder(scope, folderId, delta) {
     requireScope(scope);
     if (!Number.isInteger(delta)) throw new TypeError('Folder order delta must be an integer.');
     currentFolders();
+    if (scope === 'backgrounds') return moveBackgroundFolder(String(folderId), delta);
     const folders = readFolderScope(scope).folders;
     const index = folders.findIndex(folder => folder.id === String(folderId));
     const target = index + delta;
@@ -325,6 +387,7 @@ export function setFolderColor(scope, folderId, color) {
     if (!folder) return false;
     const nextColor = typeof color === 'string' ? color.trim() : '';
     if (folder.color === nextColor) return false;
+    if (scope === 'backgrounds') return changeBackgroundFolder(folder.id, { color: nextColor }, 'set-folder-color');
     folder.color = nextColor;
     persistChange(scope, 'set-folder-color');
     return true;
@@ -337,6 +400,7 @@ export function setFolderExpanded(scope, folderId, expanded) {
     if (!folder) return false;
     const nextExpanded = Boolean(expanded);
     if (folder.expanded === nextExpanded) return false;
+    if (scope === 'backgrounds') return changeBackgroundFolder(folder.id, { expanded: nextExpanded }, 'set-folder-expanded');
     folder.expanded = nextExpanded;
     persistChange(scope, 'set-folder-expanded');
     return true;
@@ -357,6 +421,7 @@ export function removeEntityKey(scope, key) {
     requireScope(scope);
     if (typeof key !== 'string' || !key) return false;
     currentFolders();
+    if (scope === 'backgrounds') return removeBackgroundFromFolders(key);
     const members = readFolderScope(scope).members;
     if (!Object.hasOwn(members, key)) return false;
     delete members[key];
@@ -436,4 +501,135 @@ export function convertLegacyTagFolders({
     persistChange(null, 'migrate-tags');
     if (convertedCount > 0) notify?.();
     return convertedCount > 0;
+}
+
+/** Takes keys out of one folder and leaves any other folder they are in. For the single-folder scopes this is the same as unfiling them. */
+export function removeFromFolder(scope, keys, folderId) {
+    requireScope(scope);
+    const normalizedKeys = parseKeys(keys);
+    const id = String(folderId);
+    if (scope !== 'backgrounds') {
+        const inFolder = normalizedKeys.filter(key => getFolderId(scope, key) === id);
+        return inFolder.length > 0 && setFolder(scope, inFolder, null);
+    }
+    const previous = {};
+    for (const key of normalizedKeys) {
+        const ids = backgroundMemberIds(key);
+        if (!ids.includes(id)) continue;
+        previous[key] = ids;
+        const rest = ids.filter(candidate => candidate !== id);
+        if (rest.length) backgroundIndex.members[key] = rest;
+        else delete backgroundIndex.members[key];
+    }
+    if (!Object.keys(previous).length) return false;
+    notifyChange(scope, 'set-members');
+    backgroundBridge?.unassign?.(previous, id);
+    return true;
+}
+
+/**
+ * Loads upstream's folders and file memberships into the Backgrounds scope. Nothing is written to settings.
+ * @param {{ folders: Array<{ id: string, name: string }>, imageFolderMap: Record<string, string[]> }} index
+ */
+export function hydrateBackgroundIndex({ folders, imageFolderMap }) {
+    backgroundIndex = {
+        folders: (folders ?? []).filter(folder => folder && typeof folder.id === 'string' && typeof folder.name === 'string').map(folder => ({ id: folder.id, name: folder.name })),
+        members: Object.fromEntries(Object.entries(imageFolderMap ?? {}).filter(([, ids]) => Array.isArray(ids) && ids.length).map(([file, ids]) => [file, [...ids]])),
+    };
+    notifyChange('backgrounds', 'hydrate');
+}
+
+/**
+ * Connects the Backgrounds scope to upstream's routes. Each hook gets the change after the scope took it.
+ * @param {{ move?: Function, unassign?: Function, rename?: Function, remove?: Function }|null} bridge
+ */
+export function attachBackgroundBridge(bridge) {
+    backgroundBridge = bridge;
+}
+
+function moveBackgrounds(keys, folderIdOrNull) {
+    const target = folderIdOrNull === null || folderIdOrNull === undefined ? null : String(folderIdOrNull);
+    if (target && !backgroundIndex.folders.some(folder => folder.id === target)) throw new RangeError(`Unknown folder id: ${target}`);
+    const previous = {};
+    for (const key of keys) {
+        const ids = backgroundMemberIds(key);
+        if (target ? ids.length === 1 && ids[0] === target : ids.length === 0) continue;
+        previous[key] = ids;
+        if (target) backgroundIndex.members[key] = [target];
+        else delete backgroundIndex.members[key];
+    }
+    if (!Object.keys(previous).length) return false;
+    notifyChange('backgrounds', 'set-members');
+    backgroundBridge?.move?.(previous, target);
+    return true;
+}
+
+function removeBackgroundFromFolders(file) {
+    if (!Object.hasOwn(backgroundIndex.members, file)) return false;
+    delete backgroundIndex.members[file];
+    notifyChange('backgrounds', 'delete-member');
+    return true;
+}
+
+function createBackgroundFolder(name, { color, expanded, id }) {
+    const folderId = typeof id === 'string' ? id.trim() : '';
+    // The id is upstream's. A folder that no route has created yet must not exist here, or a later write would name an id the index does not know.
+    if (!folderId) throw new TypeError('A background folder needs the id that the image-metadata route issued.');
+    if (backgroundIndex.folders.some(folder => folder.id === folderId)) throw new RangeError(`Duplicate folder id: ${folderId}`);
+    const record = { id: folderId, name: parseFolderName(name), color: typeof color === 'string' ? color.trim() : '', expanded: Boolean(expanded) };
+    backgroundIndex.folders.push({ id: record.id, name: record.name });
+    writeBackgroundRecords(folders => {
+        const at = folders.findIndex(folder => folder.id === record.id);
+        if (at >= 0) folders[at] = record;
+        else folders.push(record);
+    });
+    persistChange('backgrounds', 'create-folder');
+    return { ...record };
+}
+
+function renameBackgroundFolder(folderId, name) {
+    const indexed = backgroundIndex.folders.find(folder => folder.id === folderId);
+    if (!indexed) return false;
+    indexed.name = name;
+    const recorded = powerUser?.sb_folders?.backgrounds?.folders?.find(record => record.id === folderId);
+    if (recorded) recorded.name = name;
+    if (recorded) persistChange('backgrounds', 'rename-folder');
+    else notifyChange('backgrounds', 'rename-folder');
+    backgroundBridge?.rename?.(folderId, name);
+    return true;
+}
+
+function deleteBackgroundFolder(folderId) {
+    const at = backgroundIndex.folders.findIndex(folder => folder.id === folderId);
+    if (at < 0) return false;
+    backgroundIndex.folders.splice(at, 1);
+    for (const [file, ids] of Object.entries(backgroundIndex.members)) {
+        const rest = ids.filter(id => id !== folderId);
+        if (rest.length) backgroundIndex.members[file] = rest;
+        else delete backgroundIndex.members[file];
+    }
+    const store = powerUser?.sb_folders?.backgrounds;
+    if (store) store.folders = store.folders.filter(record => record.id !== folderId);
+    persistChange('backgrounds', 'delete-folder');
+    backgroundBridge?.remove?.(folderId);
+    return true;
+}
+
+function moveBackgroundFolder(folderId, delta) {
+    const folders = readFolderScope('backgrounds').folders;
+    const index = folders.findIndex(folder => folder.id === folderId);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= folders.length || delta === 0) return false;
+    writeBackgroundRecords(list => {
+        const [folder] = list.splice(index, 1);
+        list.splice(target, 0, folder);
+    });
+    persistChange('backgrounds', 'move-folder');
+    return true;
+}
+
+function changeBackgroundFolder(folderId, changes, reason) {
+    writeBackgroundRecords(list => Object.assign(list.find(folder => folder.id === folderId) ?? {}, changes));
+    persistChange('backgrounds', reason);
+    return true;
 }

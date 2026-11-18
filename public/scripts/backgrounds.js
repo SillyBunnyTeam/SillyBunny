@@ -6,7 +6,7 @@ import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { createThumbnail, flashHighlight, getBase64Async, stringFormat, debounce, saveBase64AsFile, getFileExtension, sortIgnoreCaseAndAccents } from './utils.js';
 import { debounce_timeout } from './constants.js';
 import { t } from './i18n.js';
-import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { Popup, POPUP_RESULT } from './popup.js';
 import { groups, selected_group } from './group-chats.js';
 import { humanizedDateTime } from './RossAscends-mods.js';
 import { deleteMediaFromServer } from './chats.js';
@@ -14,16 +14,12 @@ import { deleteMediaFromServer } from './chats.js';
 const BG_METADATA_KEY = 'custom_background';
 const LIST_METADATA_KEY = 'chat_backgrounds';
 
-/** @type {Array<{id: string, name: string, thumbnailFile: string}>} */
-let folderList = [];
-/** @type {Object.<string, string[]>} filename → folderIds */
-let imageFolderMap = {};
-/** @type {string|null} Currently active folder drill-in, or null for root */
-let activeFolderId = null;
-/** @type {Set<string>} Selected system backgrounds for group folder actions */
-const selectedSystemBackgroundFiles = new Set();
-/** @type {boolean} Whether click-to-select mode is active for system backgrounds */
-let isBackgroundSelectionMode = false;
+// SillyBunny: the folders and the file-to-folder map are upstream's, read from its image-metadata index. The gallery module
+// (sillybunny-background-gallery.js) draws them as sections and owns selection, so this file keeps only the last index it read.
+/** @type {{folders: Array<{id: string, name: string, thumbnailFile: string}>, imageFolderMap: Object.<string, string[]>}} */
+let folderIndex = { folders: [], imageFolderMap: {} };
+/** @type {{render: () => void, setQuery: (value: string) => void, setIndex: (index: object) => void, filesRemoved: (files: string[]) => void}|null} */
+let galleryHost = null;
 
 // A single transparent PNG pixel used as a placeholder for errored backgrounds
 const PNG_PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
@@ -179,13 +175,16 @@ function createThumbnailElement(imageData) {
         }
     }
 
+    // SillyBunny: a thumbnail in the folder gallery has its own menu, so the hover strip and its toggle are not built.
+    if (imageData.withMenu === false) thumbnail.find('.jg-menu, .mobile-only-menu-toggle').remove();
+
     const titleElement = thumbnail.find('.BGSampleTitle');
     clipper.appendChild(titleElement.get(0));
     thumbnail.append(clipper);
 
     const url = generateUrlParameter(bg, isCustom);
     const title = isCustom ? bg.split('/').pop() : bg;
-    const friendlyTitle = String(title || '').slice(0, title.lastIndexOf('.'));
+    const friendlyTitle = getFriendlyBackgroundTitle(title);
 
     thumbnail.attr('title', title);
     thumbnail.attr('bgfile', bg);
@@ -196,6 +195,12 @@ function createThumbnailElement(imageData) {
     titleElement.text(friendlyTitle);
 
     return thumbnail.get(0);
+}
+
+// SillyBunny: shared by the thumbnail and by Auto-select, which no longer reads titles from the DOM.
+/** The name a thumbnail shows: the file name without its extension. */
+function getFriendlyBackgroundTitle(title) {
+    return String(title || '').slice(0, title.lastIndexOf('.'));
 }
 
 function getMobileThumbnailColumnsQuery() {
@@ -317,17 +322,6 @@ export function getBackgroundPath(fileUrl) {
     return `backgrounds/${encodeURIComponent(fileUrl)}`;
 }
 
-/**
- * Gets the raw server-side relative path for a background image (no URL encoding).
- * Used when communicating paths to the API (stored as plain strings in metadata).
- * @param {string} file File name of the background image
- * @returns {string} Raw relative path, e.g. "backgrounds/my file.jpg"
- */
-function getBackgroundRelativePath(file) {
-    return `backgrounds/${file}`;
-}
-
-
 function highlightLockedBackground() {
     $('.bg_example.locked-background').removeClass('locked-background');
 
@@ -351,7 +345,15 @@ function onLockBackgroundClick(event = null) {
     }
 
     // Take the global background's URL and save it to the chat's metadata.
-    const urlToLock = event ? $(event.target).closest('.bg_example').data('url') : background_settings.url;
+    lockBackgroundUrl(event ? $(event.target).closest('.bg_example').data('url') : background_settings.url);
+}
+
+// SillyBunny: split out of onLockBackgroundClick, so a thumbnail menu can lock a background by file name.
+/**
+ * Locks a background URL to the current chat and shows it.
+ * @param {string} urlToLock
+ */
+function lockBackgroundUrl(urlToLock) {
     saveBackgroundMetadata(urlToLock);
     $('#bg1').css('background-image', urlToLock);
 
@@ -397,14 +399,19 @@ function removeBackgroundMetadata() {
 function onSelectBackgroundClick(e) {
     const bgFile = $(this).attr('bgfile');
     const isCustom = $(this).attr('custom') === 'true';
-    if (isBackgroundSelectionMode && !isCustom) {
-        toggleBackgroundGroupSelection(bgFile);
-        return;
-    }
+    applyBackgroundChoice({ bgFile, isCustom, backgroundCssUrl: getUrlParameter(this), bypassGlobalLock: !isCustom && e.shiftKey });
+}
 
-    const backgroundCssUrl = getUrlParameter(this);
-    const bypassGlobalLock = !isCustom && e.shiftKey;
-
+// SillyBunny: split out of onSelectBackgroundClick, so the folder gallery and the commands can choose a background that has no thumbnail built.
+/**
+ * Makes a background the current one, as a click on its thumbnail does.
+ * @param {object} choice
+ * @param {string} choice.bgFile
+ * @param {boolean} choice.isCustom
+ * @param {string} choice.backgroundCssUrl
+ * @param {boolean} [choice.bypassGlobalLock]
+ */
+function applyBackgroundChoice({ bgFile, isCustom, backgroundCssUrl, bypassGlobalLock = false }) {
     if ((isChatBackgroundLocked() || isCustom) && !bypassGlobalLock) {
         // If a background is locked, update the locked background directly
         saveBackgroundMetadata(backgroundCssUrl);
@@ -499,9 +506,17 @@ async function getThumbnailFromStorage(bg, isCustom) {
  * */
 async function getNewBackgroundName(referenceElement) {
     const exampleBlock = $(referenceElement).closest('.bg_example');
-    const isCustom = exampleBlock.attr('custom') === 'true';
-    const oldBg = exampleBlock.attr('bgfile');
+    return promptNewBackgroundName(exampleBlock.attr('bgfile'), exampleBlock.attr('custom') === 'true');
+}
 
+// SillyBunny: split out of getNewBackgroundName, so the folder gallery can rename a background by its file name.
+/**
+ * Asks for a new name for a background.
+ * @param {string|undefined} oldBg File name, or the stored path of a chat background.
+ * @param {boolean} isCustom
+ * @returns {Promise<{oldBg: string, newBg: string}|undefined>}
+ */
+async function promptNewBackgroundName(oldBg, isCustom) {
     if (!oldBg) {
         console.debug('no bgfile');
         return;
@@ -530,8 +545,15 @@ async function getNewBackgroundName(referenceElement) {
 async function onRenameBackgroundClick(e) {
     e.stopPropagation();
 
-    const bgNames = await getNewBackgroundName(this);
+    await renameBackgroundFile(await getNewBackgroundName(this));
+}
 
+// SillyBunny: split out of onRenameBackgroundClick for the same reason.
+/**
+ * Renames a system background on the server and reloads the gallery.
+ * @param {{oldBg: string, newBg: string}|undefined} bgNames
+ */
+async function renameBackgroundFile(bgNames) {
     if (!bgNames) {
         return;
     }
@@ -555,8 +577,22 @@ async function onRenameBackgroundClick(e) {
 async function onDeleteBackgroundClick(e) {
     e.stopPropagation();
     const bgToDelete = $(this).closest('.bg_example');
-    const url = bgToDelete.data('url');
     const isCustom = bgToDelete.attr('custom') === 'true';
+    const { confirm, deleteFromServer } = await confirmBackgroundDeletion(isCustom);
+    const bg = bgToDelete.attr('bgfile');
+
+    if (confirm && !await removeBackground(bg, { isCustom, deleteFromServer, element: bgToDelete })) {
+        toastr.error(t`TODO(copy)`);
+    }
+}
+
+// SillyBunny: the delete confirmation and the delete itself are split out of onDeleteBackgroundClick, so a menu, a selection and the click handler share one path.
+/**
+ * Asks whether to delete a background.
+ * @param {boolean} isCustom A chat background also offers to delete its file from the server.
+ * @returns {Promise<{confirm: boolean, deleteFromServer: boolean}>}
+ */
+async function confirmBackgroundDeletion(isCustom) {
     const deleteFromServerId = 'delete_bg_from_server';
     /** @type {import('./popup.js').CustomPopupInput[]} */
     const customInputs = [{
@@ -578,85 +614,127 @@ async function onDeleteBackgroundClick(e) {
             }
         },
     });
-    const bg = bgToDelete.attr('bgfile');
+    return { confirm: Boolean(confirm), deleteFromServer };
+}
 
-    if (confirm) {
-        // If it's not custom, it's a built-in background. Delete it from the server
-        if (!isCustom) {
-            await delBackground(bg);
-            // Remove from cache to prevent reappearing on sort change
-            const cacheIndex = cachedSystemBackgrounds.findIndex(s => s.filename === bg);
-            if (cacheIndex !== -1) {
-                cachedSystemBackgrounds.splice(cacheIndex, 1);
-            }
-        } else {
-            const list = chat_metadata[LIST_METADATA_KEY] || [];
-            const index = list.indexOf(bg);
-            list.splice(index, 1);
-        }
-
-        if (bg === background_settings.name || url === chat_metadata[BG_METADATA_KEY]) {
-            const siblingSelector = '.bg_example';
-            const nextBg = bgToDelete.next(siblingSelector);
-            const prevBg = bgToDelete.prev(siblingSelector);
-
-            if (nextBg.length > 0) {
-                nextBg.trigger('click');
-            } else if (prevBg.length > 0) {
-                prevBg.trigger('click');
-            } else {
-                const anyOtherBg = $('.bg_example').not(bgToDelete).first();
-                if (anyOtherBg.length > 0) {
-                    anyOtherBg.trigger('click');
-                }
-            }
-        }
-
-        // Remove from local image list so it doesn't reappear on re-render
-        const deletedBg = bgToDelete.attr('bgfile');
-        if (deletedBg) {
-            const cachedIdx = cachedSystemBackgrounds.findIndex(img => img.filename === deletedBg);
-            if (cachedIdx !== -1) cachedSystemBackgrounds.splice(cachedIdx, 1);
-            selectedSystemBackgroundFiles.delete(deletedBg);
-
-            // Update folder map and clear folder thumbnail if it referenced this image
-            if (imageFolderMap[deletedBg]) {
-                delete imageFolderMap[deletedBg];
-            }
-            for (const folder of folderList) {
-                if (folder.thumbnailFile === deletedBg) {
-                    folder.thumbnailFile = '';
-                }
-            }
-            renderFolderGrid();
-        }
-
-        bgToDelete.remove();
-
-        if (url === chat_metadata[BG_METADATA_KEY]) {
-            removeBackgroundMetadata();
-        }
-
-        if (isCustom) {
-            if (deleteFromServer) {
-                await deleteMediaFromServer(bg);
-            }
-            renderChatBackgrounds();
-            await saveMetadata();
-        }
-
-        highlightLockedBackground();
-        highlightSelectedBackground();
-        syncGroupSelectionUi();
+/**
+ * Removes one background: a system file from the server, or a chat background from the chat's list. A background that is
+ * the current one, or the chat's lock, is replaced by a neighbour first, so the page never keeps a picture that is gone.
+ * The caller has already asked the user.
+ * @param {string} bg File name, or the stored path of a chat background.
+ * @param {object} options
+ * @param {boolean} options.isCustom
+ * @param {boolean} [options.deleteFromServer] Also delete a chat background's file from the server.
+ * @param {JQuery<HTMLElement>|null} [options.element] The background's thumbnail, when one is built.
+ * @param {boolean} [options.redraw] Draw the gallery again afterwards; a caller that deletes many files draws once at the end.
+ * @param {boolean} [options.replace] Pick a neighbour when this is the current background; a caller that deletes many files picks once, before the first.
+ * @returns {Promise<boolean>} False when the server refused the deletion.
+ */
+async function removeBackground(bg, { isCustom, deleteFromServer = false, element = null, redraw = true, replace = true }) {
+    const bgToDelete = element ?? $();
+    const url = isCustom ? generateUrlParameter(bg, true) : generateUrlParameter(bg, false);
+    // If it's not custom, it's a built-in background. Delete it from the server
+    if (!isCustom) {
+        if (!await delBackground(bg)) return false;
+    } else {
+        const list = chat_metadata[LIST_METADATA_KEY] || [];
+        const index = list.indexOf(bg);
+        list.splice(index, 1);
     }
+
+    // Remove from cache to prevent reappearing on sort change
+    const cachedIdx = cachedSystemBackgrounds.findIndex(img => img.filename === bg);
+    if (!isCustom && cachedIdx !== -1) cachedSystemBackgrounds.splice(cachedIdx, 1);
+
+    if (replace && (bg === background_settings.name || url === chat_metadata[BG_METADATA_KEY])) {
+        const siblingSelector = '.bg_example';
+        const nextBg = bgToDelete.next(siblingSelector);
+        const prevBg = bgToDelete.prev(siblingSelector);
+
+        if (nextBg.length > 0) {
+            nextBg.trigger('click');
+        } else if (prevBg.length > 0) {
+            prevBg.trigger('click');
+        } else {
+            // SillyBunny: a system background is replaced by another system background, never by the hidden template or a chat thumbnail.
+            const anyOtherBg = $(isCustom ? '.bg_example' : '#bg_menu_content .bg_example').not(bgToDelete).first();
+            if (anyOtherBg.length > 0) {
+                anyOtherBg.trigger('click');
+            } else if (!isCustom && cachedSystemBackgrounds.length > 0) {
+                // SillyBunny: a collapsed folder builds no thumbnails, so the replacement can come from the list the server gave.
+                selectSystemBackground(cachedSystemBackgrounds[0].filename);
+            }
+        }
+    }
+
+    if (!isCustom) {
+        // Clear the folder cover that referenced this image; the server keeps its own copy of the folders consistent.
+        for (const folder of folderIndex.folders) {
+            if (folder.thumbnailFile === bg) folder.thumbnailFile = '';
+        }
+        delete folderIndex.imageFolderMap[bg];
+        galleryHost?.filesRemoved([bg]);
+    }
+
+    bgToDelete.remove();
+
+    if (url === chat_metadata[BG_METADATA_KEY]) {
+        removeBackgroundMetadata();
+    }
+
+    if (isCustom) {
+        if (deleteFromServer) {
+            await deleteMediaFromServer(bg);
+        }
+        renderChatBackgrounds();
+        await saveMetadata();
+    }
+
+    highlightLockedBackground();
+    highlightSelectedBackground();
+    if (redraw) galleryHost?.render();
+    return true;
+}
+
+/**
+ * Deletes several system backgrounds, each through the path of a single delete. The caller has already asked the user.
+ * @param {string[]} files
+ * @returns {Promise<{deleted: string[], failed: string[]}>}
+ */
+async function removeSystemBackgrounds(files) {
+    const deleted = [];
+    const failed = [];
+    // The current background, or the chat's lock, moves to a file that stays before any file goes, so it never lands on one that is about to be deleted.
+    const doomed = new Set(files);
+    const inUse = files.some(file => file === background_settings.name || generateUrlParameter(file, false) === chat_metadata[BG_METADATA_KEY]);
+    const staying = cachedSystemBackgrounds.find(img => !doomed.has(img.filename));
+    if (inUse && staying) selectSystemBackground(staying.filename);
+    for (const file of files) {
+        const element = $('#bg_menu_content .bg_example').filter(function () { return this.getAttribute('bgfile') === file; });
+        let ok = false;
+        try {
+            ok = await removeBackground(file, { isCustom: false, element: element.length ? element.first() : null, redraw: false, replace: false });
+        } catch (error) {
+            console.error('Error deleting background:', file, error);
+        }
+        (ok ? deleted : failed).push(file);
+    }
+    galleryHost?.render();
+    return { deleted, failed };
+}
+
+/** Makes a system background the current one, as a click on its thumbnail does. */
+function selectSystemBackground(file, bypassGlobalLock = false) {
+    applyBackgroundChoice({ bgFile: file, isCustom: false, backgroundCssUrl: generateUrlParameter(file, false), bypassGlobalLock });
 }
 
 const autoBgPrompt = 'Ignore previous instructions and choose a location ONLY from the provided list that is the most suitable for the current scene. Do not output any other text:\n{0}';
 
 async function autoBackgroundCommand() {
-    /** @type {HTMLElement[]} */
-    const bgTitles = Array.from(document.querySelectorAll('#bg_menu_content .BGSampleTitle'));
-    const options = bgTitles.map(x => ({ element: x, text: x.innerText.trim() })).filter(x => x.text.length > 0);
+    // SillyBunny: the choices come from the server's list, because a collapsed folder builds no thumbnails to read titles from.
+    const options = cachedSystemBackgrounds
+        .map(img => ({ element: { click: () => selectSystemBackground(img.filename) }, text: getFriendlyBackgroundTitle(img.filename).trim() }))
+        .filter(x => x.text.length > 0);
     if (options.length == 0) {
         toastr.warning('No backgrounds to choose from. Please upload some images to the "backgrounds" folder.');
         return '';
@@ -691,12 +769,16 @@ async function autoBackgroundCommand() {
  * @param {Array<{filename: string, isAnimated: boolean, mediaType?: string}>} [backgrounds] - Optional filtered list of backgrounds with metadata.
  */
 function renderSystemBackgrounds(backgrounds) {
+    // SillyBunny: once the gallery module has loaded, it draws the Global tab as folder sections.
+    if (galleryHost) {
+        galleryHost.render();
+        return;
+    }
     const sourceList = backgrounds || [];
     const container = $('#bg_menu_content');
     container.empty();
 
     if (sourceList.length === 0) {
-        syncGroupSelectionUi();
         return;
     }
 
@@ -714,7 +796,6 @@ function renderSystemBackgrounds(backgrounds) {
         container.append(thumbnail);
     });
 
-    syncGroupSelectionUi();
     activateLazyLoader();
 }
 
@@ -757,20 +838,13 @@ export async function getBackgrounds() {
         const { images, config } = await response.json();
         Object.assign(THUMBNAIL_CONFIG, config);
         cachedSystemBackgrounds = images;
-        const existingFiles = new Set(images.map(x => x.filename));
-        for (const selectedFile of selectedSystemBackgroundFiles) {
-            if (!existingFiles.has(selectedFile)) {
-                selectedSystemBackgroundFiles.delete(selectedFile);
-            }
-        }
 
-        // Load folders first so getFilteredImages() works correctly in folder view
+        // SillyBunny: folders load first, so the gallery module has the index when it draws the sections.
         await loadFolders();
 
         await preloadImageMetadata();
 
-        // Render only filtered images if inside a folder, otherwise all
-        renderSystemBackgrounds(getFilteredImages());
+        renderSystemBackgrounds(cachedSystemBackgrounds);
         highlightSelectedBackground();
     }
 }
@@ -812,8 +886,9 @@ async function loadFolders() {
         });
         if (response.ok) {
             const data = await response.json();
-            folderList = data.folders || [];
-            imageFolderMap = data.imageFolderMap || {};
+            const folderList = data.folders || [];
+            const imageFolderMap = data.imageFolderMap || {};
+            folderIndex = { folders: folderList, imageFolderMap };
 
             // Auto-assign thumbnail for folders that don't have one, then persist
             const allImages = cachedSystemBackgrounds.map(img => img.filename);
@@ -839,563 +914,13 @@ async function loadFolders() {
                 }).catch(err => console.debug('Auto-thumbnail save failed:', err));
             }
 
-            renderFolderGrid();
+            galleryHost?.setIndex(folderIndex);
         }
     } catch (error) {
         console.error('Error loading folders:', error);
     }
 }
 
-/**
- * Renders the folder grid inside #bg_folder_grid.
- */
-function renderFolderGrid() {
-    const container = $('#bg_folder_grid');
-    container.empty();
-
-    if (folderList.length === 0 && !activeFolderId) {
-        return;
-    }
-
-    for (const folder of folderList) {
-        const tile = createFolderTileElement(folder);
-        container.append(tile);
-    }
-}
-
-/**
- * Creates a single folder tile DOM element.
- * @param {{id: string, name: string, thumbnailFile: string}} folder
- * @returns {HTMLElement}
- */
-function createFolderTileElement(folder) {
-    const tile = $('#bg_folder_tile_template .bg_folder_tile').clone();
-    tile.attr('data-folder-id', folder.id);
-    tile.find('.bg_folder_tile_name').text(folder.name);
-
-    // Set cover image (async, update when resolved)
-    getFolderCoverUrl(folder).then(coverUrl => {
-        if (coverUrl) {
-            tile.find('.bg_folder_tile_cover').css('background-image', `url("${coverUrl}")`);
-        }
-    });
-
-    return tile.get(0);
-}
-
-/**
- * Gets the cover image URL for a folder.
- * Uses thumbnailFile if set, otherwise falls back to the first image in the folder.
- * @param {{id: string, name: string, thumbnailFile: string}} folder
- * @returns {Promise<string|null>}
- */
-async function getFolderCoverUrl(folder) {
-    const file = folder.thumbnailFile || cachedSystemBackgrounds.find(img => {
-        const fids = imageFolderMap[img.filename];
-        return fids && fids.includes(folder.id);
-    })?.filename;
-    if (!file) return null;
-
-    if (isAnimatedBackgroundExtension(file) && !background_settings.animation) {
-        return getThumbnailFromStorage(file, false);
-    }
-    return getThumbnailUrl('bg', file);
-}
-
-/**
- * Gets images filtered by the active folder.
- * @returns {Array<{filename: string, isAnimated: boolean}>}
- */
-function getFilteredImages() {
-    if (!activeFolderId) return cachedSystemBackgrounds;
-    return cachedSystemBackgrounds.filter(img => {
-        const fids = imageFolderMap[img.filename];
-        return fids && fids.includes(activeFolderId);
-    });
-}
-
-/**
- * Drills into a folder — hides folder grid, shows breadcrumb, filters images.
- * @param {string} folderId
- */
-function onFolderDrillIn(folderId) {
-    const folder = folderList.find(f => f.id === folderId);
-    if (!folder) return;
-
-    clearBackgroundGroupSelection();
-    activeFolderId = folderId;
-    $('#Backgrounds').addClass('in-folder-view');
-
-    // Hide folder grid, show breadcrumb
-    $('#bg_folder_grid').hide();
-    $('#bg_folder_breadcrumb').show();
-    $('#bg_current_folder_name').text(folder.name);
-
-    // Render only this folder's images
-    renderSystemBackgrounds(getFilteredImages());
-    highlightSelectedBackground();
-}
-
-/**
- * Returns to the root folder overview.
- */
-function onBackToFolders() {
-    clearBackgroundGroupSelection();
-    activeFolderId = null;
-    $('#Backgrounds').removeClass('in-folder-view');
-
-    // Show folder grid, hide breadcrumb
-    $('#bg_folder_grid').show();
-    $('#bg_folder_breadcrumb').hide();
-    $('#bg_current_folder_name').text('');
-
-    // Show all images
-    renderSystemBackgrounds(getFilteredImages());
-    highlightSelectedBackground();
-}
-
-/**
- * Refreshes click-to-select and group action UI state.
- */
-function syncGroupSelectionUi() {
-    const selectedCount = selectedSystemBackgroundFiles.size;
-    const isGlobalTab = getActiveBackgroundTab() === BG_SOURCES.GLOBAL;
-    const showAddButton = isGlobalTab && isBackgroundSelectionMode && selectedCount > 0;
-    const showRemoveFromCurrentFolderButton = isGlobalTab && Boolean(activeFolderId) && isBackgroundSelectionMode && selectedCount > 0;
-
-    $('#Backgrounds').toggleClass('bg-selection-mode', isBackgroundSelectionMode);
-    $('#bg_selection_mode_button').toggleClass('active', isBackgroundSelectionMode);
-    $('#bg_group_select_count').text(selectedCount > 0 ? ` (${selectedCount})` : '').toggle(selectedCount > 0);
-
-    $('#bg_group_add_to_folder_button').toggle(showAddButton);
-    $('#bg_folder_remove_selected_button').toggle(showRemoveFromCurrentFolderButton);
-
-    $('#bg_menu_content .bg_example').each(function () {
-        const bgFile = String($(this).attr('bgfile') || '');
-        $(this).toggleClass('folder-group-selected', selectedSystemBackgroundFiles.has(bgFile));
-    });
-}
-
-/**
- * Enables/disables click-to-select mode for system backgrounds.
- * @param {boolean} enabled
- */
-function setBackgroundSelectionMode(enabled) {
-    isBackgroundSelectionMode = enabled;
-    if (!enabled) {
-        selectedSystemBackgroundFiles.clear();
-    }
-    // Clear any open mobile menus
-    $('#bg_menu_content .bg_example.mobile-menu-open').removeClass('mobile-menu-open');
-    syncGroupSelectionUi();
-}
-
-/**
- * Toggles selected state of a system background for group folder actions.
- * @param {string} bgFile
- */
-function toggleBackgroundGroupSelection(bgFile) {
-    if (!bgFile) return;
-    if (selectedSystemBackgroundFiles.has(bgFile)) {
-        selectedSystemBackgroundFiles.delete(bgFile);
-    } else {
-        selectedSystemBackgroundFiles.add(bgFile);
-    }
-    syncGroupSelectionUi();
-}
-
-/**
- * Clears all selected system backgrounds for group folder actions.
- */
-function clearBackgroundGroupSelection() {
-    selectedSystemBackgroundFiles.clear();
-    syncGroupSelectionUi();
-}
-
-/**
- * Updates selection/folder action control visibility for the active tab.
- */
-function updateGroupFolderControlsVisibility() {
-    const isGlobalTab = getActiveBackgroundTab() === BG_SOURCES.GLOBAL;
-    $('#bg_selection_mode_button').toggle(isGlobalTab);
-
-    if (!isGlobalTab && isBackgroundSelectionMode) {
-        setBackgroundSelectionMode(false);
-        return;
-    }
-    syncGroupSelectionUi();
-}
-
-/**
- * Shows a folder selection popup and returns the selected folder id.
- * @param {string} headingText
- * @returns {Promise<string[]|null>} Array of selected folder IDs, or null if cancelled
- */
-async function selectFoldersForGroupAction(headingText) {
-    if (folderList.length === 0) {
-        toastr.info(t`Create a folder first`);
-        return null;
-    }
-
-    const contentEl = document.createElement('div');
-    const heading = document.createElement('h3');
-    heading.textContent = headingText;
-    contentEl.appendChild(heading);
-
-    for (const folder of folderList) {
-        const label = document.createElement('label');
-        label.className = 'checkbox_label flexGap5';
-        label.style.margin = '4px 0';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.dataset.folderId = folder.id;
-
-        const span = document.createElement('span');
-        span.textContent = folder.name;
-
-        label.appendChild(checkbox);
-        label.appendChild(span);
-        contentEl.appendChild(label);
-    }
-
-    const content = $(contentEl);
-    const result = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', {
-        okButton: t`Apply`,
-        cancelButton: t`Cancel`,
-        allowVerticalScrolling: true,
-        leftAlign: true,
-    });
-    if (!result) return null;
-
-    const selectedIds = [];
-    content.find('input[type="checkbox"]:checked').each(function () {
-        selectedIds.push($(this).data('folderId'));
-    });
-    return selectedIds.length > 0 ? selectedIds : null;
-}
-
-/**
- * Sends a folder assign/unassign request and updates local imageFolderMap state.
- * @param {string[]} bgFiles - Background filenames to update
- * @param {string} folderId - Target folder ID
- * @param {boolean} isRemove - Whether to remove (unassign) or add (assign)
- */
-async function updateFolderAssignments(bgFiles, folderId, isRemove) {
-    const paths = bgFiles.map(getBackgroundRelativePath);
-    const endpoint = isRemove ? '/api/image-metadata/folders/unassign' : '/api/image-metadata/folders/assign';
-
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify({ id: folderId, paths }),
-    });
-
-    if (!response.ok) {
-        throw new Error(`Folder ${isRemove ? 'unassign' : 'assign'} failed: ${response.status}`);
-    }
-
-    for (const bgFile of bgFiles) {
-        const currentFolderIds = imageFolderMap[bgFile] || [];
-        if (isRemove) {
-            const nextFolderIds = currentFolderIds.filter(id => id !== folderId);
-            if (nextFolderIds.length > 0) {
-                imageFolderMap[bgFile] = nextFolderIds;
-            } else {
-                delete imageFolderMap[bgFile];
-            }
-        } else if (!currentFolderIds.includes(folderId)) {
-            imageFolderMap[bgFile] = [...currentFolderIds, folderId];
-        }
-    }
-}
-
-/**
- * Adds selected system backgrounds to a chosen folder.
- */
-async function onAddSelectedToFolder() {
-    if (getActiveBackgroundTab() !== BG_SOURCES.GLOBAL) {
-        toastr.warning(t`Folder actions are only available in the Global tab`);
-        return;
-    }
-
-    const bgFiles = Array.from(selectedSystemBackgroundFiles);
-    if (bgFiles.length === 0) {
-        toastr.info(t`Select one or more backgrounds first`);
-        return;
-    }
-
-    const folderIds = await selectFoldersForGroupAction(t`Add selected backgrounds to folders`);
-    if (!folderIds) return;
-
-    try {
-        let totalAdded = 0;
-        for (const folderId of folderIds) {
-            const actionableBgFiles = bgFiles.filter(bgFile => {
-                const currentFolderIds = imageFolderMap[bgFile] || [];
-                return !currentFolderIds.includes(folderId);
-            });
-            if (actionableBgFiles.length > 0) {
-                await updateFolderAssignments(actionableBgFiles, folderId, false);
-                totalAdded += actionableBgFiles.length;
-            }
-        }
-
-        renderFolderGrid();
-
-        if (activeFolderId) {
-            renderSystemBackgrounds(getFilteredImages());
-            highlightSelectedBackground();
-        }
-
-        setBackgroundSelectionMode(false);
-        if (totalAdded > 0) {
-            toastr.success(t`Added backgrounds to ${folderIds.length} folder(s)`);
-        } else {
-            toastr.info(t`Selected backgrounds are already in the chosen folders`);
-        }
-    } catch (error) {
-        console.error('Error adding selected backgrounds to folder:', error);
-        toastr.error(t`Failed to update folder assignment`);
-    }
-}
-
-/**
- * Removes selected system backgrounds from the currently drilled-in folder.
- */
-async function onRemoveSelectedFromCurrentFolder() {
-    if (getActiveBackgroundTab() !== BG_SOURCES.GLOBAL) {
-        toastr.warning(t`Folder actions are only available in the Global tab`);
-        return;
-    }
-
-    if (!activeFolderId) {
-        toastr.info(t`Open a folder first`);
-        return;
-    }
-
-    const bgFiles = Array.from(selectedSystemBackgroundFiles);
-    if (bgFiles.length === 0) {
-        toastr.info(t`Select one or more backgrounds first`);
-        return;
-    }
-
-    try {
-        await updateFolderAssignments(bgFiles, activeFolderId, true);
-        renderFolderGrid();
-        renderSystemBackgrounds(getFilteredImages());
-        highlightSelectedBackground();
-        setBackgroundSelectionMode(false);
-        toastr.success(t`Removed ${bgFiles.length} background(s) from folder`);
-    } catch (error) {
-        console.error('Error removing selected backgrounds from current folder:', error);
-        toastr.error(t`Failed to update folder assignment`);
-    }
-}
-
-/**
- * Creates a new folder via API.
- */
-async function onCreateFolder() {
-    const currentTab = getActiveBackgroundTab();
-    if (currentTab !== BG_SOURCES.GLOBAL) {
-        toastr.warning(t`Folders can only be created in the Global tab`);
-        return;
-    }
-
-    const name = await Popup.show.input(t`Enter folder name:`);
-    if (!name || !name.trim()) return;
-
-    try {
-        const response = await fetch('/api/image-metadata/folders/create', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ name: name.trim() }),
-        });
-        if (response.ok) {
-            const folder = await response.json();
-            folderList.push(folder);
-            renderFolderGrid();
-            toastr.success(t`Folder created: ${folder.name}`);
-        }
-    } catch (error) {
-        console.error('Error creating folder:', error);
-        toastr.error(t`Failed to create folder`);
-    }
-}
-
-/**
- * Renames a folder via API.
- * @param {string} folderId
- */
-async function onRenameFolder(folderId) {
-    const folder = folderList.find(f => f.id === folderId);
-    if (!folder) return;
-
-    const newName = await Popup.show.input(t`Enter new folder name:`, null, folder.name);
-    if (!newName || !newName.trim() || newName.trim() === folder.name) return;
-
-    try {
-        const response = await fetch('/api/image-metadata/folders/update', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ id: folderId, name: newName.trim() }),
-        });
-        if (response.ok) {
-            folder.name = newName.trim();
-            renderFolderGrid();
-            toastr.success(t`Folder renamed`);
-        }
-    } catch (error) {
-        console.error('Error renaming folder:', error);
-        toastr.error(t`Failed to rename folder`);
-    }
-}
-
-/**
- * Deletes a folder via API.
- * @param {string} folderId
- */
-async function onDeleteFolder(folderId) {
-    const folder = folderList.find(f => f.id === folderId);
-    if (!folder) return;
-
-    // SillyBunny: folder deletion uses an explicit destructive action.
-    const confirm = await Popup.show.confirm(t`Delete folder "${folder.name}"?`, t`Images will not be deleted, only the folder grouping.`, { okButton: t`Delete`, defaultResult: POPUP_RESULT.NEGATIVE, onOpening: popup => popup.okButton.classList.add('is-destructive') });
-    if (!confirm) return;
-
-    try {
-        const response = await fetch('/api/image-metadata/folders/delete', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ id: folderId }),
-        });
-        if (response.ok) {
-            folderList = folderList.filter(f => f.id !== folderId);
-            // Clean imageFolderMap
-            for (const fids of Object.values(imageFolderMap)) {
-                const idx = fids.indexOf(folderId);
-                if (idx !== -1) fids.splice(idx, 1);
-            }
-            // If we were inside this folder, go back
-            if (activeFolderId === folderId) {
-                onBackToFolders();
-            }
-            renderFolderGrid();
-            toastr.success(t`Folder deleted`);
-        }
-    } catch (error) {
-        console.error('Error deleting folder:', error);
-        toastr.error(t`Failed to delete folder`);
-    }
-}
-
-/**
- * Shows a folder assignment popup for an image.
- * @param {string} bgFile - The background filename
- */
-async function onAssignToFolder(bgFile) {
-    if (folderList.length === 0) {
-        toastr.info(t`Create a folder first`);
-        return;
-    }
-
-    const currentFolderIds = imageFolderMap[bgFile] || [];
-
-    // Build checkbox inputs for Popup using DOM construction (avoids HTML injection)
-    const contentEl = document.createElement('div');
-    const heading = document.createElement('h3');
-    heading.textContent = t`Assign to folders`;
-    contentEl.appendChild(heading);
-
-    for (const f of folderList) {
-        const label = document.createElement('label');
-        label.className = 'checkbox_label flexGap5';
-        label.style.margin = '4px 0';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.dataset.folderId = f.id;
-        checkbox.checked = currentFolderIds.includes(f.id);
-
-        const span = document.createElement('span');
-        span.textContent = f.name;
-
-        label.appendChild(checkbox);
-        label.appendChild(span);
-        contentEl.appendChild(label);
-    }
-
-    const content = $(contentEl);
-
-    const result = await callGenericPopup(content, POPUP_TYPE.CONFIRM, '', { okButton: t`Save`, cancelButton: t`Cancel` });
-    if (!result) return;
-
-    // Determine which folders were toggled on/off
-    const toAssign = [];
-    const toUnassign = [];
-    content.find('input[type="checkbox"]').each(function () {
-        const fid = $(this).data('folder-id');
-        const isChecked = $(this).prop('checked');
-        const wasChecked = currentFolderIds.includes(fid);
-        if (isChecked && !wasChecked) toAssign.push(fid);
-        if (!isChecked && wasChecked) toUnassign.push(fid);
-    });
-
-    try {
-        for (const fid of toAssign) {
-            await updateFolderAssignments([bgFile], fid, false);
-        }
-        for (const fid of toUnassign) {
-            await updateFolderAssignments([bgFile], fid, true);
-        }
-
-        renderFolderGrid();
-
-        // Re-render filtered image list if currently inside a folder view
-        if (activeFolderId) {
-            renderSystemBackgrounds(getFilteredImages());
-            highlightSelectedBackground();
-        }
-
-        toastr.success(t`Folder assignment updated`);
-    } catch (error) {
-        console.error('Error assigning to folder:', error);
-        toastr.error(t`Failed to update folder assignment`);
-    }
-}
-
-/**
- * Sets an image as the folder cover.
- * @param {string} bgFile - The background filename
- */
-async function onSetFolderCover(bgFile) {
-    if (!activeFolderId) return;
-
-    try {
-        const response = await fetch('/api/image-metadata/folders/update', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify({ id: activeFolderId, thumbnailFile: bgFile }),
-        });
-        if (response.ok) {
-            const folder = folderList.find(f => f.id === activeFolderId);
-            if (folder) {
-                folder.thumbnailFile = bgFile;
-                // Update the DOM tile cover image
-                const coverUrl = await getFolderCoverUrl(folder);
-                if (coverUrl) {
-                    $(`.bg_folder_tile[data-folder-id="${folder.id}"] .bg_folder_tile_cover`)
-                        .css('background-image', `url('${coverUrl}')`);
-                }
-            }
-            toastr.success(t`Folder cover updated`);
-        }
-    } catch (error) {
-        console.error('Error setting folder cover:', error);
-        toastr.error(t`Failed to set folder cover`);
-    }
-}
 
 function activateLazyLoader() {
     // Disconnect previous observer to prevent memory leaks
@@ -1514,19 +1039,22 @@ async function setBackground(bg, url) {
 }
 
 async function delBackground(bg) {
-    await fetch('/api/backgrounds/delete', {
+    const response = await fetch('/api/backgrounds/delete', {
         method: 'POST',
         headers: getRequestHeaders(),
         body: JSON.stringify({
             bg: bg,
         }),
     });
+    // SillyBunny: a refused deletion keeps the background in the gallery and is reported by the caller.
+    if (!response.ok) return false;
 
     await THUMBNAIL_STORAGE.removeItem(bg);
     if (THUMBNAIL_BLOBS.has(bg)) {
         URL.revokeObjectURL(THUMBNAIL_BLOBS.get(bg));
         THUMBNAIL_BLOBS.delete(bg);
     }
+    return true;
 }
 
 /**
@@ -1686,6 +1214,8 @@ async function uploadChatBackground(formData) {
  */
 function highlightNewBackground(bg) {
     const newBg = $(`.bg_example[bgfile="${bg}"]`);
+    // SillyBunny: a file in a collapsed folder has no thumbnail to show.
+    if (!newBg.length) return;
     const scrollOffset = newBg.offset().top - newBg.parent().offset().top;
     $('#Backgrounds').scrollTop(scrollOffset);
     flashHighlight(newBg);
@@ -1719,27 +1249,15 @@ function highlightSelectedBackground() {
 
 function onBackgroundFilterInput() {
     const filterValue = String($('#bg-filter').val()).toLowerCase();
-    $('#bg_menu_content > .bg_example, #bg_custom_content > .bg_example').each(function () {
+    // SillyBunny: the gallery module filters the Global tab itself, because it draws sections and not a flat list.
+    const filtered = galleryHost ? '#bg_custom_content > .bg_example' : '#bg_menu_content > .bg_example, #bg_custom_content > .bg_example';
+    $(filtered).each(function () {
         const $bg = $(this);
         const title = $bg.attr('title') || '';
         const hasMatch = title.toLowerCase().includes(filterValue);
         $bg.toggle(hasMatch);
     });
-
-    // Show/hide folder tiles based on whether folder name matches the filter
-    if (!activeFolderId) {
-        $('#bg_folder_grid .bg_folder_tile').each(function () {
-            const $tile = $(this);
-            const folderId = $tile.attr('data-folder-id');
-            if (!folderId || !filterValue) {
-                $tile.show();
-                return;
-            }
-            const folder = folderList.find(f => f.id === folderId);
-            const folderName = folder ? folder.name.toLowerCase() : '';
-            $tile.toggle(folderName.includes(filterValue));
-        });
-    }
+    galleryHost?.setQuery(filterValue);
 }
 
 const debouncedOnBackgroundFilterInput = debounce(onBackgroundFilterInput, debounce_timeout.standard);
@@ -1779,41 +1297,6 @@ export function initBackgrounds() {
 
     getMobileThumbnailColumnsQuery()?.addEventListener?.('change', updateThumbnailColumnsControls);
 
-    // Folder event handlers
-    $(document)
-        .on('click', '.bg_folder_tile:not(.bg_new_folder_tile)', function (e) {
-            if ($(e.target).closest('.jg-button').length) return; // let button handler run
-            const folderId = $(this).attr('data-folder-id');
-            if (folderId) onFolderDrillIn(folderId);
-        })
-        .on('click', '#bg_add_folder_button', function () {
-            onCreateFolder();
-        })
-        .on('click', '#bg_back_to_folders', function () {
-            onBackToFolders();
-        })
-        .on('click', '.bg_folder_tile [data-action="rename-folder"]', function (e) {
-            e.stopPropagation();
-            const folderId = $(this).closest('.bg_folder_tile').attr('data-folder-id');
-            if (folderId) onRenameFolder(folderId);
-        })
-        .on('click', '.bg_folder_tile [data-action="delete-folder"]', function (e) {
-            e.stopPropagation();
-            const folderId = $(this).closest('.bg_folder_tile').attr('data-folder-id');
-            if (folderId) onDeleteFolder(folderId);
-        })
-        .on('click', '.bg_folder_tile .mobile-only-menu-toggle', function (e) {
-            e.stopPropagation();
-            const $context = $(this).closest('.bg_folder_tile');
-            const wasOpen = $context.hasClass('mobile-menu-open');
-            // Close all other open menus before opening a new one.
-            $('.bg_folder_tile.mobile-menu-open').removeClass('mobile-menu-open');
-            $('.bg_example.mobile-menu-open').removeClass('mobile-menu-open');
-            if (!wasOpen) {
-                $context.addClass('mobile-menu-open');
-            }
-        });
-
     $(document)
         .off('click', '.bg_example').on('click', '.bg_example', onSelectBackgroundClick)
         .off('click', '.bg_example .mobile-only-menu-toggle').on('click', '.bg_example .mobile-only-menu-toggle', function (e) {
@@ -1822,7 +1305,6 @@ export function initBackgrounds() {
             const wasOpen = $context.hasClass('mobile-menu-open');
             // Close all other open menus before opening a new one.
             $('.bg_example.mobile-menu-open').removeClass('mobile-menu-open');
-            $('.bg_folder_tile.mobile-menu-open').removeClass('mobile-menu-open');
             if (!wasOpen) {
                 $context.addClass('mobile-menu-open');
             }
@@ -1834,9 +1316,6 @@ export function initBackgrounds() {
         })
         .off('click', '.jg-button').on('click', '.jg-button', function (e) {
             e.stopPropagation();
-            if (isBackgroundSelectionMode && $(this).closest('#bg_menu_content').length) {
-                return;
-            }
             const action = $(this).data('action');
 
             switch (action) {
@@ -1855,20 +1334,6 @@ export function initBackgrounds() {
                 case 'copy':
                     onCopyToSystemBackgroundClick.call(this, e.originalEvent);
                     break;
-                case 'folder': {
-                    const bgEl = $(this).closest('.bg_example');
-                    if (bgEl.attr('custom') === 'true') break; // Only system backgrounds
-                    const bgFile = bgEl.attr('bgfile');
-                    if (bgFile) onAssignToFolder(bgFile);
-                    break;
-                }
-                case 'set-cover': {
-                    const bgEl = $(this).closest('.bg_example');
-                    if (bgEl.attr('custom') === 'true') break; // Only system backgrounds
-                    const bgFile = bgEl.attr('bgfile');
-                    if (bgFile) onSetFolderCover(bgFile);
-                    break;
-                }
             }
         });
 
@@ -1879,16 +1344,13 @@ export function initBackgrounds() {
         applyThumbnailColumns(getEffectiveThumbnailColumns() + 1);
     });
     $('#auto_background').on('click', autoBackgroundCommand);
-    $('#bg_selection_mode_button').on('click', () => setBackgroundSelectionMode(!isBackgroundSelectionMode));
-    $('#bg_group_add_to_folder_button').on('click', onAddSelectedToFolder);
-    $('#bg_folder_remove_selected_button').on('click', onRemoveSelectedFromCurrentFolder);
     $('#add_bg_button').on('change', (e) => onBackgroundUploadSelected(e.originalEvent));
     $('#bg-filter').on('input', () => debouncedOnBackgroundFilterInput());
     $('#bg-sort').on('change', function () {
         background_settings.sortOrder = String($(this).val());
         saveSettingsDebounced();
         // Re-render both galleries with new sort order (respecting active folder filter)
-        renderSystemBackgrounds(getFilteredImages());
+        renderSystemBackgrounds(cachedSystemBackgrounds);
         renderChatBackgrounds();
         highlightSelectedBackground();
         highlightLockedBackground();
@@ -1949,7 +1411,63 @@ export function initBackgrounds() {
         // Upstream's global Enter handler also clicks native buttons, doubling their activation.
         if (event.key === 'Enter' && event.target instanceof HTMLElement && event.target.closest('button')) event.stopPropagation();
     });
-    $('#bg_tabs').on('tabsactivate', () => updateGroupFolderControlsVisibility());
-    updateGroupFolderControlsVisibility();
-    syncGroupSelectionUi();
+}
+
+// SillyBunny: used by /bg and its enum, which read the DOM for thumbnails before folders could leave some unbuilt.
+/**
+ * Every background a command can pick, whether or not its thumbnail is built: a collapsed folder in the gallery builds none.
+ * @returns {Array<{bgfile: string, select: () => void}>}
+ */
+export function getBackgroundTargets() {
+    const built = Array.from(document.querySelectorAll('.bg_example'), element => ({ bgfile: element.getAttribute('bgfile') ?? '', select: () => element.click() }));
+    const builtSystem = new Set(Array.from(document.querySelectorAll('#bg_menu_content .bg_example'), element => element.getAttribute('bgfile')));
+    const unbuilt = cachedSystemBackgrounds
+        .filter(img => !builtSystem.has(img.filename))
+        .map(img => ({ bgfile: img.filename, select: () => selectSystemBackground(img.filename) }));
+    return [...built, ...unbuilt];
+}
+
+// SillyBunny: the folder gallery (sillybunny-background-gallery.js) reads and drives the Global tab through this object.
+/**
+ * The folder gallery's way into this file. It reads what the gallery shows through these and takes over the Global tab by
+ * attaching a host; nothing else in the app calls it.
+ * @param {{render: () => void, setQuery: (value: string) => void, setIndex: (index: object) => void, filesRemoved: (files: string[]) => void}} host
+ */
+export function attachBackgroundGallery(host) {
+    galleryHost = host;
+    return {
+        getImages: () => cachedSystemBackgrounds,
+        getFolderIndex: () => folderIndex,
+        sortFiles: files => sortBackgrounds(files, false),
+        createThumbnail: imageData => createThumbnailElement({ ...imageData, isCustom: false, withMenu: false }),
+        activateLazyLoader,
+        refreshHighlights: () => {
+            highlightSelectedBackground();
+            highlightLockedBackground();
+        },
+        isVideo: isVideoBackgroundExtension,
+        getThumbnailUrl: file => getThumbnailUrl('bg', file),
+        getActiveTab: getActiveBackgroundTab,
+        getTabs: () => BG_SOURCES,
+        selectBackground: selectSystemBackground,
+        isLocked: file => Boolean(chat_metadata[BG_METADATA_KEY]) && chat_metadata[BG_METADATA_KEY] === generateUrlParameter(file, false),
+        lockBackground: file => {
+            if (!getCurrentChatId()) {
+                toastr.warning(t`Select a chat to lock the background for it`);
+                return;
+            }
+            lockBackgroundUrl(generateUrlParameter(file, false));
+        },
+        unlockBackground: () => onUnlockBackgroundClick(),
+        renameBackground: async file => renameBackgroundFile(await promptNewBackgroundName(file, false)),
+        deleteBackgroundWithConfirmation: async file => {
+            const { confirm } = await confirmBackgroundDeletion(false);
+            if (!confirm) return;
+            const element = $('#bg_menu_content .bg_example').filter(function () { return this.getAttribute('bgfile') === file; }).first();
+            if (!await removeBackground(file, { isCustom: false, element })) toastr.error(t`TODO(copy)`);
+        },
+        deleteBackgrounds: removeSystemBackgrounds,
+        reload: getBackgrounds,
+        getRequestHeaders,
+    };
 }

@@ -1008,7 +1008,7 @@ test.describe('Backgrounds settings consistency', () => {
                 const gallery = appearance.locator('#Backgrounds');
                 const radiusFailures = await gallery.locator([
                     '#bg-filter', '#bg-sort',
-                    '#auto_background', '#bg_add_folder_button', '#add_background_button_top', '#bg_tabs .heading-controls .menu_button',
+                    '.sb-bg-sort-button', '#add_background_button_top', '#bg_tabs .heading-controls .menu_button',
                 ].map(selector => `${selector}:visible`).join(', ')).evaluateAll((controls, minimumHeight) => controls.flatMap(control => {
                     const style = getComputedStyle(control);
                     const bounds = control.getBoundingClientRect();
@@ -1020,7 +1020,7 @@ test.describe('Backgrounds settings consistency', () => {
                     return Object.entries(checks).filter(([, pass]) => !pass).map(([check]) => `${control.id}: ${check}`);
                 }), mobile ? 44 : 40);
                 expect(radiusFailures).toEqual([]);
-                const circleFailures = await gallery.locator('#bg_selection_mode_button, #bg_thumb_zoom_out, #bg_thumb_zoom_in, #bg-scroll-top')
+                const circleFailures = await gallery.locator('#add_background_button_top, #bg_thumb_zoom_out, #bg_thumb_zoom_in, #bg-scroll-top, .sb-bg-list-menu, .sb-bg-sort-button')
                     .evaluateAll(buttons => buttons.flatMap(button => {
                         const bounds = button.getBoundingClientRect();
                         return Math.abs(bounds.width - bounds.height) <= 1 ? [] : [button.id];

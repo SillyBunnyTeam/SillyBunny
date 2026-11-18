@@ -1451,6 +1451,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05, PR #870 (stand-in expression packs). |
 | Owner | Defaults and release integrator. |
 
+### `public/scripts/backgrounds.js`, `public/index.html`, the `/bg` command files and two stylesheets - Backgrounds gallery with folder sections
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/backgrounds.js` (the folder tiles, the drill-in and breadcrumb, the old selection mode, the assign and unassign popups and the cover button are removed with their handlers; `folderIndex` stays for the automatic `thumbnailFile`; `attachBackgroundGallery()` hands the Global tab to the gallery; select, rename, lock and delete are callable by file name; `getBackgroundTargets()`; `delBackground()` returns whether the server accepted); `public/index.html` (the folder tile and new-folder templates, New Folder, the bulk and breadcrumb controls and the per-thumbnail folder and cover buttons removed; `#bg_menu_content`, `#bg-filter`, `#bg-sort`, `#auto_background`, `#add_background_button_top` and the zoom buttons keep their ids); `public/scripts/slash-commands.js` and `public/scripts/slash-commands/SlashCommandCommonEnumsProvider.js` (`/bg` and its enum read `getBackgroundTargets()`); `public/css/backgrounds.css` and `public/css/mobile-styles.css` (the rules of the folder tiles, breadcrumb, cover buttons and old selection mode removed); `public/style.css` (the cache key of the `backgrounds.css` import). |
+| Area | Customize, Appearance, Backgrounds: the gallery's folders, search, per-background actions and selection. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `public/scripts/sillybunny-background-gallery.js` with `public/scripts/sillybunny-background-sections.js` and `public/css/sillybunny-background-gallery.css`, loaded with the Appearance page; the `backgrounds` scope in `public/scripts/sillybunny-folders.js` and `public/scripts/sillybunny-folder-manager.js`. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 13.7b): folder names, memberships and `thumbnailFile` stay in upstream's image-metadata index and go only through upstream's routes (`/api/backgrounds/folders`, `/api/image-metadata/folders/*`); no field is added to upstream's records. A folder's order, colour and expanded state are in `power_user.sb_folders.backgrounds`, keyed by upstream's folder id. The interface files a background in one folder; a background that the index holds in several shows in each until it is moved. A closed folder builds no thumbnails, so commands read the cached server list. The Chat tab is unchanged. |
+| Protecting tests | `tests/background-folders.e2e.js`; `tests/backgrounds-tabs-query.e2e.js`; `tests/unit/sillybunny-background-sections.test.js`; `tests/unit/sillybunny-folders.test.js`; `tests/unit/sillybunny-folder-manager.test.js`; `tests/sillybunny-settings-consistency.e2e.js`; the settings inventory of Appearance; `tests/frontend/MacroSlashCommands.e2e.js`. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, `background-folders.e2e.js` in Chromium, WebKit and Firefox, the audits of `list.backgrounds`, the Appearance page, the Folder Manager and the Characters, Groups and persona lists, the settings inventory of Appearance, a gallery of 303 backgrounds with a folder of 100. No real video background and no iOS device. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 13.7b). |
+| Owner | `TODO(copy)` |
+
 ### `public/index.html`, `public/style.css`, `public/css/mobile-styles.css` and six scripts and templates - a button shows an icon or a label
 | Field | Value |
 | --- | --- |

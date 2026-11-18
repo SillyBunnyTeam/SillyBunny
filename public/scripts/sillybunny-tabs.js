@@ -107,6 +107,7 @@ const sbSearchRenderRequests = new WeakMap();
 const loadServerToolsModule = createDeferredModule(new URL('./sillybunny-server-tools.js', import.meta.url));
 const loadDataSecurityModule = createDeferredModule(new URL('./sillybunny-data-security.js', import.meta.url));
 const loadAppearanceModule = createDeferredModule(new URL('./sillybunny-appearance.js', import.meta.url));
+const loadBackgroundGalleryModule = createDeferredModule(new URL('./sillybunny-background-gallery.js', import.meta.url));
 const loadBackendPagesModule = createDeferredModule(new URL('./sillybunny-backend-pages.js', import.meta.url));
 const loadSamplingModule = createDeferredModule(new URL('./sillybunny-sampling.js', import.meta.url));
 /** Set once the Formatting and Presets rows have been built; the Backend updates below call into it. */
@@ -129,6 +130,8 @@ async function presentAppearancePage() {
         module.presentAppearance(container);
         appearanceModule = module;
         setAnimatedBackgroundPresenter(module.presentAnimatedBackgrounds);
+        // The folder gallery loads with the Appearance page, which stays busy until it has taken over the Global tab, so the header does not change under a reader.
+        await loadBackgroundGalleryModule().then(gallery => gallery.initBackgroundGallery()).catch(error => console.error('[Backgrounds] The folder gallery did not load:', error));
     } finally {
         container?.removeAttribute('aria-busy');
     }

@@ -85,7 +85,8 @@ import { decodeTextTokens, getAvailableTokenizers, getFriendlyTokenizerName, get
 import { debounce, delay, equalsIgnoreCaseAndAccents, findChar, getCharIndex, isFalseBoolean, isTrueBoolean, onlyUnique, regexFromString, showFontAwesomePicker, stringToRange, trimToEndSentence, trimToStartSentence, waitUntilCondition } from './utils.js';
 import { registerVariableCommands, resolveVariable } from './variables.js';
 import { registerActionLoaderSlashCommands } from './action-loader-slashcommands.js';
-import { background_settings } from './backgrounds.js';
+// SillyBunny: commands pick from every background, built or not
+import { background_settings, getBackgroundTargets } from './backgrounds.js';
 import { SlashCommandClosure } from './slash-commands/SlashCommandClosure.js';
 import { SlashCommandClosureResult } from './slash-commands/SlashCommandClosureResult.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
@@ -6283,7 +6284,8 @@ function setBackgroundCallback(_, bg) {
 
     console.log('Set background to ' + bg);
 
-    const bgElements = Array.from(document.querySelectorAll('.bg_example')).map((x) => ({ element: x, bgfile: x.getAttribute('bgfile') }));
+    // SillyBunny: a collapsed folder in the gallery builds no thumbnails, so the targets are not read from the DOM alone.
+    const bgElements = getBackgroundTargets();
 
     const fuse = new Fuse(bgElements, { keys: ['bgfile'] });
     const result = fuse.search(bg);
@@ -6293,11 +6295,7 @@ function setBackgroundCallback(_, bg) {
         return '';
     }
 
-    const bgElement = result[0].item.element;
-
-    if (bgElement instanceof HTMLElement) {
-        bgElement.click();
-    }
+    result[0].item.select();
 
     return '';
 }

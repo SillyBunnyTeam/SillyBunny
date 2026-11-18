@@ -3855,6 +3855,52 @@
                 ],
                 "tags": []
             }
+        },
+        "80": {
+            "uid": 80,
+            "key": [
+                "background folders",
+                "background folder",
+                "move background to folder",
+                "file a background in a folder",
+                "background gallery",
+                "delete several backgrounds",
+                "choose a background",
+                "change the background"
+            ],
+            "keysecondary": [],
+            "comment": "A80 Backgrounds and background folders",
+            "content": "Backgrounds are picked in Customize ▸ Appearance ▸ Background, in a gallery with a Global tab and a Chat tab. A click or tap on a thumbnail sets it as the background. The Search field filters the gallery and the Sort button beside it changes the order. Under the tabs are Add Background, two zoom buttons that make the thumbnails smaller or larger, and a ⋮ menu with Select, Manage Folders and Auto-select. In the Global tab a background can be in a folder. Each folder is a section with its name and a count, that opens and closes, and the backgrounds in no folder follow under the heading \"No Folder\". A background is in one folder: \"Move to Folder\" in its menu files it there, and \"No folder\" takes it out. The menu of a background (Set as Background, Lock, Rename, Move to Folder, Delete) opens from the ⋮ button in the thumbnail's corner when the pointer is over it, with a long press on a touch screen, or with Shift+F10 or the Menu key on a focused thumbnail. Select, in the ⋮ menu, picks several backgrounds to move to a folder or delete; Delete asks first and says how many. Manage Folders creates, renames, recolours, reorders and deletes folders, and deleting a folder keeps its backgrounds. The Chat tab has no folders.",
+            "constant": false,
+            "selective": false,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 990,
+            "position": 0,
+            "disable": false,
+            "displayIndex": 80,
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "sticky": 0,
+            "cooldown": 0,
+            "delay": 0,
+            "probability": 100,
+            "depth": 4,
+            "useProbability": true,
+            "role": null,
+            "vectorized": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "delayUntilRecursion": false,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": true,
+            "useGroupScoring": null,
+            "automationId": "",
+            "extensions": {
+                "sb_topic": []
+            }
         }
     }
 }

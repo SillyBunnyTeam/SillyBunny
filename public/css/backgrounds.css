@@ -175,7 +175,6 @@ body.sb-bg-blur #bg_custom {
 }
 
 #auto_background,
-#bg_add_folder_button,
 #add_background_button_top {
     flex: 0 1 auto;
     min-height: 42px;
@@ -198,8 +197,7 @@ body.sb-bg-blur #bg_custom {
     opacity: 1;
 }
 
-.bg_example .mobile-only-menu-toggle,
-.bg_folder_tile .mobile-only-menu-toggle {
+.bg_example .mobile-only-menu-toggle {
     display: none;
 }
 
@@ -228,8 +226,7 @@ body.sb-bg-blur #bg_custom {
 }
 
 .bg_example.locked-background::after,
-.bg_example.selected-background::before,
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example.folder-group-selected::before {
+.bg_example.selected-background::before {
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
     position: absolute;
@@ -238,8 +235,7 @@ body.sb-bg-blur #bg_custom {
     pointer-events: none;
 }
 
-.bg_example.selected-background::before,
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example.folder-group-selected::before {
+.bg_example.selected-background::before {
     content: '\f00c';
     top: 5px;
     color: var(--white100);
@@ -269,27 +265,7 @@ body.sb-bg-blur #bg_custom {
     left: 5px;
 }
 
-#bg_selection_mode_button.active {
-    color: var(--golden);
-}
-
-#bg_group_select_count {
-    font-weight: 700;
-}
-
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example .jg-menu {
-    display: none;
-}
-
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example.folder-group-selected {
-    outline: 2px solid var(--interactable-outline-color);
-    outline-offset: 0;
-}
-
-#Backgrounds.bg-selection-mode #bg_menu_content .bg_example.folder-group-selected::before {
-    right: 5px;
-}
-
+/* SillyBunny: the old click-to-select mode and its folder tiles, breadcrumb and cover buttons are gone; selection mode and folders are in sillybunny-background-gallery.css. */
 .bg_example .jg-menu {
     display: flex;
     position: absolute;
@@ -502,177 +478,7 @@ body.sb-bg-blur #bg_custom {
     display: none;
 }
 
-.bg_folder_grid.bg_list {
-    display: grid;
-    gap: 5px;
-    width: 100%;
-    grid-template-columns: repeat(calc(var(--bg-thumb-columns, 5) + 2), minmax(0, 1fr));
-    margin-bottom: 10px;
-}
-
-.bg_folder_grid:empty {
-    display: none;
-}
-
-.bg_folder_tile {
-    cursor: pointer;
-    position: relative;
-    overflow: hidden;
-    border-radius: 8px;
-    height: auto;
-    aspect-ratio: 1 / 1;
-    outline: 2px solid var(--SmartThemeBorderColor);
-    outline-offset: -1px;
-    box-shadow: 0 0 7px var(--black50a);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--SmartThemeBlurTintColor);
-    transition: filter var(--sb-transition);
-}
-
-.bg_folder_tile:hover {
-    filter: brightness(1.1);
-}
-
-.bg_folder_tile_cover {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-size: cover;
-    background-position: center;
-    border-radius: inherit;
-}
-
-.bg_folder_tile_overlay {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.85));
-    color: #fff;
-    padding: 6px 8px 4px;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
-    font-weight: 600;
-    pointer-events: none;
-    border-radius: 0 0 8px 8px;
-}
-
-.bg_folder_tile_overlay i {
-    font-size: 0.9em;
-    opacity: 0.8;
-}
-
-.bg_folder_tile_name {
-    white-space: normal;
-    overflow: hidden;
-    text-overflow: clip;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-}
-
-/* Folder tile action menu */
-.bg_folder_tile .bg_folder_tile_menu {
-    display: flex;
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    background-color: rgba(0, 0, 0, 0.5);
-    border-radius: 5px;
-    padding: 3px;
-    z-index: 3;
-    -webkit-backdrop-filter: blur(4px);
-    backdrop-filter: blur(4px);
-    border: 1px solid var(--SmartThemeBorderColor);
-    align-items: center;
-
-    opacity: 0;
-    visibility: hidden;
-    transform: scale(0.9);
-    transform-origin: center;
-    transition: opacity var(--sb-transition), visibility var(--sb-transition), transform var(--sb-transition);
-}
-
-.bg_folder_tile:hover .bg_folder_tile_menu,
-.bg_folder_tile:focus-within .bg_folder_tile_menu {
-    opacity: 1;
-    visibility: visible;
-    transform: scale(1);
-}
-
-.bg_folder_tile .jg-button {
-    display: flex;
-    width: 24px;
-    height: 24px;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    padding: 5px;
-    font-size: 1.1em;
-    border-radius: 5px;
-    transition: background-color var(--sb-transition);
-}
-
-.bg_folder_tile .jg-button:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-}
-
-/* New Folder placeholder tile */
-.bg_new_folder_tile {
-    border: 2px dashed var(--SmartThemeBorderColor);
-    outline: none;
-    color: var(--SmartThemeBodyColor);
-    opacity: 0.6;
-    gap: 6px;
-    font-size: var(--sb-type-control); /* SillyBunny: snapped to --sb-type-* tokens */
-    font-weight: 600;
-}
-
-.bg_new_folder_tile:hover {
-    opacity: 1;
-    transform: scale(1.03);
-}
-
-/* Breadcrumb bar */
-.bg_folder_breadcrumb {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 5px 0;
-    margin-bottom: 5px;
-}
-
-.bg_current_folder_name {
-    font-weight: 600;
-    font-size: var(--sb-type-body); /* SillyBunny: snapped to --sb-type-* tokens */
-    color: var(--SmartThemeBodyColor);
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-}
-
-#Backgrounds:not(.in-folder-view) .jg-set-cover {
-    display: none !important;
-}
-
-#Backgrounds.in-folder-view .jg-set-cover {
-    display: flex !important;
-}
-
-/* Hide folder actions on custom (chat-specific) backgrounds */
-.bg_example[custom="true"] .jg-folder,
-.bg_example[custom="true"] .jg-set-cover {
-    display: none !important;
-}
+/* SillyBunny: the folder tiles, the breadcrumb and the folder buttons on thumbnails are gone; folders are sections drawn by sillybunny-background-gallery.css. */
 
 @media screen and (max-width: 620px) {
     /* SillyBunny: the Background Fitting row wraps by content (`.ds-row` in sillybunny-tabs.css), so no width rule stacks it. */
@@ -681,8 +487,7 @@ body.sb-bg-blur #bg_custom {
     }
 
     #bg_menu_content,
-    #bg_custom_content,
-    .bg_folder_grid.bg_list {
+    #bg_custom_content {
         grid-template-columns: repeat(min(var(--bg-thumb-columns, 5), 3), minmax(0, 1fr));
     }
 

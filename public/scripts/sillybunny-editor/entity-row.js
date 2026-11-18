@@ -1,5 +1,5 @@
 const warnedSuffixKeys = new Set();
-const entityKinds = new Set(['character', 'group', 'tag', 'persona', 'agent', 'agent-template']);
+const entityKinds = new Set(['character', 'group', 'tag', 'persona', 'background', 'agent', 'agent-template']);
 const rowSlotOrder = ['grip', 'avatar', 'text', 'badge', 'suffix', 'chevron'];
 const textSlotOrder = ['title', 'subtitle', 'preview', 'tags'];
 const tagStrips = new WeakMap();

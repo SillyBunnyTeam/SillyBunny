@@ -16,6 +16,7 @@ import {
     getFolderMembers,
     getFolders,
     moveFolder,
+    removeFromFolder,
     renameFolder,
     setFolder,
     setFolderColor,
@@ -29,13 +30,13 @@ const STYLESHEETS = [
     { href: 'css/sillybunny-folder-manager.css?v=20261117h', id: 'deferred-folder-manager-css' },
 ];
 
-const MEMBER_KINDS = Object.freeze({ characters: 'character', groups: 'group', personas: 'persona' });
+const MEMBER_KINDS = Object.freeze({ characters: 'character', groups: 'group', personas: 'persona', backgrounds: 'background' });
 const PLACEHOLDER_COPY = 'TODO(copy)';
 
 let activeManager = null;
 let opening = null;
 
-/** Persona wording is not written yet, so it shows the placeholder and says so in markup. */
+/** Persona and background wording is not written yet, so it shows the placeholder and says so in markup. */
 function scopeCopy(scope) {
     if (scope === 'groups') {
         return {
@@ -44,7 +45,7 @@ function scopeCopy(scope) {
             deleteBody: t`The groups in this folder stay in your library. They are no longer in a folder.`,
         };
     }
-    if (scope === 'personas') return { empty: PLACEHOLDER_COPY, noMembers: PLACEHOLDER_COPY, deleteBody: PLACEHOLDER_COPY };
+    if (scope === 'personas' || scope === 'backgrounds') return { empty: PLACEHOLDER_COPY, noMembers: PLACEHOLDER_COPY, deleteBody: PLACEHOLDER_COPY };
     return {
         empty: t`Create a folder to sort characters in the list.`,
         noMembers: t`Add characters to this folder to list them under it.`,
@@ -103,6 +104,10 @@ async function loadDefaultAdapter(scope) {
             getName: group => String(group.name ?? group.id ?? ''),
             getAvatar: group => groups.getGroupAvatarElement?.(group) ?? null,
         };
+    }
+    if (scope === 'backgrounds') {
+        const gallery = await import('./sillybunny-background-gallery.js');
+        return gallery.createBackgroundFolderAdapter();
     }
     if (scope === 'personas') {
         const [script, powerUser] = await Promise.all([import('../script.js'), import('./power-user.js')]);
@@ -186,7 +191,7 @@ function colorPicker(entry, folder, refresh) {
  * folder UI can be exercised with an in-memory entity source as well as the app.
  */
 export function createFolderManager(scope, adapter) {
-    if (!['characters', 'groups', 'personas'].includes(scope)) throw new TypeError(`Invalid folder manager scope: ${scope}`);
+    if (!['characters', 'groups', 'personas', 'backgrounds'].includes(scope)) throw new TypeError(`Invalid folder manager scope: ${scope}`);
     const layout = window.matchMedia?.(LAYOUT_MOBILE_QUERY) ?? { matches: false };
     const cache = new Map();
     const entries = new Map();
@@ -230,8 +235,9 @@ export function createFolderManager(scope, adapter) {
         const key = String(adapter.getKey(item));
         const name = String(adapter.getName(item) ?? key);
         const avatar = adapter.getAvatar?.(item) ?? null;
+        // A member may be in several folders (a background); Remove takes it out of this one only.
         const remove = rowButton(t`Remove`, 'minus', () => {
-            setFolder(scope, [key], null);
+            removeFromFolder(scope, [key], members?.folderId);
             refresh();
         }, 'sb-folder-manager__remove');
         const entity = createEntityRow({
@@ -496,7 +502,7 @@ export function createFolderManager(scope, adapter) {
         else refresh();
     }
 
-    function createPending(input, error, popover) {
+    async function createPending(input, error, popover) {
         const parsed = folderName(input.value);
         if (!parsed.ok) {
             error.textContent = parsed.error;
@@ -505,7 +511,22 @@ export function createFolderManager(scope, adapter) {
             input.focus({ preventScroll: true });
             return;
         }
-        const folder = createFolder(scope, parsed.name);
+        // A scope whose folders live on the server gets the folder's id from the server before anything refers to the folder.
+        let options = {};
+        if (adapter?.createFolder) {
+            input.disabled = true;
+            try {
+                options = { id: (await adapter.createFolder(parsed.name))?.id };
+            } catch (failure) {
+                error.textContent = String(failure?.message ?? failure);
+                error.hidden = false;
+                return;
+            } finally {
+                input.disabled = false;
+            }
+            if (disposed) return;
+        }
+        const folder = createFolder(scope, parsed.name, options);
         refresh();
         popover.close();
         entries.get(folder.id)?.input.focus({ preventScroll: true });

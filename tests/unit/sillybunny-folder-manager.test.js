@@ -284,6 +284,71 @@ describe('Folder Manager persona scope', () => {
     });
 });
 
+describe('Folder Manager backgrounds scope', () => {
+    const files = ['a.png', 'b.png'];
+    const backgroundAdapter = (extra = {}) => ({
+        getItems: () => files,
+        getKey: file => file,
+        getName: file => file.replace(/\.png$/, ''),
+        ...extra,
+    });
+
+    beforeEach(() => {
+        folders.attachBackgroundBridge({ move: jest.fn(), unassign: jest.fn(), rename: jest.fn(), remove: jest.fn() });
+        folders.hydrateBackgroundIndex({ folders: [{ id: 'u1', name: 'One' }, { id: 'u2', name: 'Two' }], imageFolderMap: { 'a.png': ['u1', 'u2'], 'gone.png': ['u1'] } });
+    });
+
+    test('counts the backgrounds that exist, and Remove takes a member out of that folder only', () => {
+        mount('backgrounds', backgroundAdapter());
+        expect(manager.root.querySelector('[data-folder-id="u1"] .sb-folder-manager__count').textContent).toBe('1 background');
+        manager.root.querySelector('[data-folder-id="u1"]').click();
+        expect(manager.root.querySelectorAll('.sb-folder-manager__member-row')).toHaveLength(1);
+        manager.root.querySelector('.sb-folder-manager__remove').click();
+        expect(folders.getFolderMembers('backgrounds', 'u1')).toEqual(['gone.png']);
+        expect(folders.getFolderMembers('backgrounds', 'u2')).toEqual(['a.png']);
+    });
+
+    test('a folder made in the manager takes the id that the adapter got from the server before anything refers to it', async () => {
+        let issue;
+        const createFolder = jest.fn(() => new Promise(resolve => { issue = resolve; }));
+        mount('backgrounds', backgroundAdapter({ createFolder }));
+        manager.root.querySelector('.sb-folder-manager__add').click();
+        const input = popoverOptions.content.querySelector('input');
+        input.value = 'Fresh';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        expect(createFolder).toHaveBeenCalledWith('Fresh');
+        expect(folders.getFolders('backgrounds').map(folder => folder.id)).toEqual(['u1', 'u2']);
+        issue({ id: 'server-9', name: 'Fresh', thumbnailFile: '' });
+        await settle();
+        expect(folders.getFolders('backgrounds').map(folder => folder.id)).toEqual(['u1', 'u2', 'server-9']);
+        expect(manager.root.querySelector('[data-folder-id="server-9"]')).not.toBeNull();
+    });
+
+    test('a refused create leaves no folder and says why', async () => {
+        mount('backgrounds', backgroundAdapter({ createFolder: jest.fn(async () => { throw new Error('refused'); }) }));
+        manager.root.querySelector('.sb-folder-manager__add').click();
+        const input = popoverOptions.content.querySelector('input');
+        input.value = 'Fresh';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        await settle();
+        expect(folders.getFolders('backgrounds').map(folder => folder.id)).toEqual(['u1', 'u2']);
+        expect(popoverOptions.content.querySelector('.sb-folder-manager__error').textContent).toBe('refused');
+    });
+
+    test('deleting a folder leaves its backgrounds unfiled, and its wording is the marked placeholder', async () => {
+        mount('backgrounds', backgroundAdapter());
+        manager.root.querySelector('[data-folder-id="u2"] .sb-folder-manager__row-menu').click();
+        menuOptions.sections.flatMap(section => section.items).find(item => item.label === 'Delete').onSelect();
+        const body = document.querySelector('.sb-dialog-host[role="alertdialog"] .sb-dialog__message');
+        expect(body.textContent).toBe('TODO(copy)');
+        expect(body.querySelector('[data-sb-copy-placeholder="true"]')).not.toBeNull();
+        document.querySelector('.sb-dialog-host[role="alertdialog"] [data-response="delete"]').click();
+        await settle();
+        expect(folders.getFolders('backgrounds').map(folder => folder.id)).toEqual(['u1']);
+        expect(folders.getFolderMembers('backgrounds', 'u1')).toEqual(['a.png', 'gone.png']);
+    });
+});
+
 describe('Folder Manager selection mode', () => {
     const checks = () => [...manager.root.querySelectorAll('.sb-folder-manager__folder-row > .sb-selection-check')];
     const deleteButton = () => manager.root.querySelector('.sb-folder-manager__selection-bar [data-action-id="delete"]');

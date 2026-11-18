@@ -269,3 +269,117 @@ describe('SillyBunny folder store', () => {
         expect(save.mock.calls.length).toBe(saveCount);
     });
 });
+
+describe('Backgrounds scope', () => {
+    const index = (map = {}, list = [{ id: 'u1', name: 'One' }, { id: 'u2', name: 'Two' }]) => folders.hydrateBackgroundIndex({ folders: list, imageFolderMap: map });
+    let bridge;
+
+    beforeEach(() => {
+        bridge = { move: jest.fn(), unassign: jest.fn(), rename: jest.fn(), remove: jest.fn() };
+        folders.attachBackgroundBridge(bridge);
+        index();
+    });
+
+    test('settings saved before the scope existed load unchanged and gain nothing from loading the index', () => {
+        expect(Object.keys(settings.sb_folders)).not.toContain('backgrounds');
+        expect(folders.normalizeFolders()).toBe(false);
+        expect(folders.getFolders('backgrounds').map(folder => [folder.id, folder.name, folder.expanded, folder.color])).toEqual([
+            ['u1', 'One', true, ''], ['u2', 'Two', true, ''],
+        ]);
+        expect(Object.keys(settings.sb_folders)).not.toContain('backgrounds');
+        expect(save).not.toHaveBeenCalled();
+    });
+
+    test('a file is in one folder: moving unassigns every folder it was in and assigns the one chosen', () => {
+        index({ 'a.png': ['u1', 'u2'], 'b.png': ['u1'] });
+        expect(folders.setFolder('backgrounds', ['a.png', 'b.png'], 'u2')).toBe(true);
+        expect(folders.getFolderId('backgrounds', 'a.png')).toBe('u2');
+        expect(folders.getFolderMembers('backgrounds', 'u1')).toEqual([]);
+        expect(bridge.move).toHaveBeenCalledWith({ 'a.png': ['u1', 'u2'], 'b.png': ['u1'] }, 'u2');
+        expect(save).not.toHaveBeenCalled();
+    });
+
+    test('a file that upstream data placed in two folders is a member of each until it is moved, and getFolderId names the first', () => {
+        index({ 'a.png': ['u1', 'u2'] });
+        expect(folders.getFolderMembers('backgrounds', 'u1')).toEqual(['a.png']);
+        expect(folders.getFolderMembers('backgrounds', 'u2')).toEqual(['a.png']);
+        expect(folders.getFolderId('backgrounds', 'a.png')).toBe('u1');
+        expect(folders.setFolder('backgrounds', ['a.png'], 'u1')).toBe(true);
+        expect(folders.getFolderMembers('backgrounds', 'u2')).toEqual([]);
+        expect(bridge.move).toHaveBeenCalledWith({ 'a.png': ['u1', 'u2'] }, 'u1');
+    });
+
+    test('moving a file where it already is changes nothing, and No folder unfiles it', () => {
+        index({ 'a.png': ['u1'] });
+        expect(folders.setFolder('backgrounds', ['a.png'], 'u1')).toBe(false);
+        expect(bridge.move).not.toHaveBeenCalled();
+        expect(folders.setFolder('backgrounds', ['a.png'], null)).toBe(true);
+        expect(folders.getFolderId('backgrounds', 'a.png')).toBeNull();
+        expect(bridge.move).toHaveBeenCalledWith({ 'a.png': ['u1'] }, null);
+        expect(() => folders.setFolder('backgrounds', ['a.png'], 'unknown')).toThrow(RangeError);
+    });
+
+    test('removing from one folder leaves the others', () => {
+        index({ 'a.png': ['u1', 'u2'] });
+        expect(folders.removeFromFolder('backgrounds', ['a.png'], 'u1')).toBe(true);
+        expect(folders.getFolderMembers('backgrounds', 'u1')).toEqual([]);
+        expect(folders.getFolderMembers('backgrounds', 'u2')).toEqual(['a.png']);
+        expect(bridge.unassign).toHaveBeenCalledWith({ 'a.png': ['u1', 'u2'] }, 'u1');
+        expect(folders.removeFromFolder('backgrounds', ['a.png'], 'u1')).toBe(false);
+    });
+
+    test('a stale folder id in the scope is ignored at render and not rewritten at load, and a folder the scope lacks shows with defaults', () => {
+        settings.sb_folders.backgrounds = { folders: [{ id: 'gone', name: 'Gone', color: 'red', expanded: false }, { id: 'u2', name: 'Two', color: 'blue', expanded: false }], members: {} };
+        index();
+        expect(folders.getFolders('backgrounds').map(folder => [folder.id, folder.color, folder.expanded])).toEqual([['u2', 'blue', false], ['u1', '', true]]);
+        expect(folders.normalizeFolders()).toBe(false);
+        expect(settings.sb_folders.backgrounds.folders.map(folder => folder.id)).toEqual(['gone', 'u2']);
+    });
+
+    test('a membership with a folder id the index lacks is not a member of anything', () => {
+        index({ 'a.png': ['gone'], 'b.png': ['gone', 'u1'] });
+        expect(folders.getFolderId('backgrounds', 'a.png')).toBeNull();
+        expect(folders.getFolderMembers('backgrounds', 'u1')).toEqual(['b.png']);
+    });
+
+    test('expanded state, colour and order persist in the scope, keep the order the user sees, and send nothing to the routes', () => {
+        expect(folders.setFolderExpanded('backgrounds', 'u2', false)).toBe(true);
+        expect(settings.sb_folders.backgrounds.folders.map(folder => [folder.id, folder.expanded])).toEqual([['u1', true], ['u2', false]]);
+        expect(folders.setFolderColor('backgrounds', 'u1', 'red')).toBe(true);
+        expect(folders.moveFolder('backgrounds', 'u2', -1)).toBe(true);
+        expect(folders.getFolders('backgrounds').map(folder => folder.id)).toEqual(['u2', 'u1']);
+        expect(save).toHaveBeenCalledTimes(3);
+        expect(bridge.rename).not.toHaveBeenCalled();
+        expect(bridge.move).not.toHaveBeenCalled();
+    });
+
+    test('a folder is created with the id the server issued, never with a made-up one', () => {
+        expect(() => folders.createFolder('backgrounds', 'New')).toThrow(TypeError);
+        const created = folders.createFolder('backgrounds', ' New ', { id: 'server-1' });
+        expect(created).toMatchObject({ id: 'server-1', name: 'New' });
+        expect(folders.getFolders('backgrounds').map(folder => folder.id)).toEqual(['u1', 'u2', 'server-1']);
+        expect(() => folders.createFolder('backgrounds', 'Again', { id: 'server-1' })).toThrow(RangeError);
+    });
+
+    test('renaming goes to the route and the index name wins; deleting a folder leaves its files unfiled and drops its record', () => {
+        index({ 'a.png': ['u1'], 'b.png': ['u1', 'u2'] });
+        folders.setFolderColor('backgrounds', 'u1', 'red');
+        expect(folders.renameFolder('backgrounds', 'u1', ' Uno ')).toBe(true);
+        expect(bridge.rename).toHaveBeenCalledWith('u1', 'Uno');
+        expect(folders.getFolders('backgrounds')[0].name).toBe('Uno');
+        expect(folders.deleteFolder('backgrounds', 'u1')).toBe(true);
+        expect(bridge.remove).toHaveBeenCalledWith('u1');
+        expect(folders.getFolderId('backgrounds', 'a.png')).toBeNull();
+        expect(folders.getFolderMembers('backgrounds', 'u2')).toEqual(['b.png']);
+        expect(settings.sb_folders.backgrounds.folders.map(folder => folder.id)).toEqual(['u2']);
+    });
+
+    test('loading the index notifies once and a deleted file leaves its folders', () => {
+        notify.mockClear();
+        index({ 'a.png': ['u1'] });
+        expect(notify).toHaveBeenCalledTimes(1);
+        expect(notify.mock.calls[0][0]).toMatchObject({ scope: 'backgrounds', reason: 'hydrate' });
+        expect(folders.removeEntityKey('backgrounds', 'a.png')).toBe(true);
+        expect(folders.getFolderId('backgrounds', 'a.png')).toBeNull();
+    });
+});

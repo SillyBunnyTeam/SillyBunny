@@ -531,8 +531,22 @@ const backgroundsList = {
     root: '#bg_menu_content',
     ready: '#bg_menu_content .bg_example',
     open: openBackgrounds,
+    states: [
+        {
+            id: 'selection-mode',
+            ready: ['#bg_menu_content .bg_example', '#Backgrounds .sb-bg-selection-header .sb-selection-header', '#Backgrounds .sb-bg-selection-bar [data-action-id="folder"]'],
+            async open(page) {
+                await chooseMenuItem(page, '#Backgrounds .sb-bg-list-menu', 'Select');
+                await shown(page, '#Backgrounds .sb-bg-selection-header .sb-selection-header');
+                await page.locator('#bg_menu_content .bg_example .sb-selection-check').nth(0).click();
+                await page.locator('#bg_menu_content .bg_example .sb-selection-check').nth(1).click();
+                await shown(page, '#Backgrounds .sb-bg-selection-bar [data-action-id="folder"]');
+                await settle(page);
+            },
+        },
+    ],
     needs: [],
-    sources: [`${SCRIPTS}/backgrounds.js`, 'public/index.html'],
+    sources: [`${SCRIPTS}/backgrounds.js`, `${SCRIPTS}/sillybunny-background-gallery.js`, `${SCRIPTS}/sillybunny-background-sections.js`, `${CSS}/sillybunny-background-gallery.css`, 'public/index.html'],
 };
 
 const dataBankList = {

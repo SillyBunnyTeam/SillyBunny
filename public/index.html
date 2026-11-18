@@ -30,7 +30,7 @@
         }
     </script>
     <script src="scripts/sillybunny-restart-cache-clear.js?v=20261013a"></script>
-    <link rel="preload" as="style" href="style.css?v=20261118t">
+    <link rel="preload" as="style" href="style.css?v=20261118z">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
@@ -57,12 +57,12 @@
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link rel="stylesheet" type="text/css" href="style.css?v=20261118t">
+    <link rel="stylesheet" type="text/css" href="style.css?v=20261118z">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
     <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css?v=20261117d">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20261117zc">
     <!-- SillyBunny: this cache key tracks fork edits to the mobile stylesheet. -->
-    <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261118t" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/mobile-styles.css?v=20261118z" media="(max-width: 768px)">
     <!-- SillyBunny: shell stylesheet cache keys track fork CSS changes without changing upstream asset URLs. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-theme.css?v=20261118n">
     <!-- SillyBunny: the mobile surface stylesheet cache key tracks its fork-owned responsive rules. -->
@@ -6406,10 +6406,6 @@
                             <i class="fa-solid fa-wand-magic"></i>
                             <span data-i18n="Auto-select">Auto-select</span>
                         </button>
-                        <button id="bg_add_folder_button" class="menu_button menu_button_icon" data-i18n="[title]New Folder" title="New Folder">
-                            <i class="fa-solid fa-folder-plus"></i>
-                            <span data-i18n="New Folder">New Folder</span>
-                        </button>
                         <label for="add_bg_button" id="add_background_button_top" class="menu_button menu_button_icon" data-i18n="[title]Add a new background" title="Add a new background">
                             <i class="fa-solid fa-upload"></i>
                             <span data-i18n="Add Background">Add Background</span>
@@ -6440,14 +6436,6 @@
                         </li>
                     </ul>
                         <div class="heading-controls">
-                            <button id="bg_group_add_to_folder_button" class="menu_button menu_button_icon" style="display:none;" data-i18n="[title]Add selected backgrounds to folder" title="Add selected backgrounds to folder">
-                                <i class="fa-solid fa-folder-tree"></i>
-                                <span data-i18n="Add to Folder">Add to Folder</span>
-                            </button>
-                            <button id="bg_selection_mode_button" class="menu_button menu_button_icon" data-i18n="[title]Select backgrounds for bulk folder actions" title="Select backgrounds for bulk folder actions">
-                                <i class="fa-solid fa-edit"></i>
-                                <span id="bg_group_select_count" style="display:none;"></span>
-                            </button>
                             <button id="bg_thumb_zoom_out" class="menu_button menu_button_icon" title="Make thumbnails smaller" data-i18n="[title]Make thumbnails smaller">
                                 <i class="fa-solid fa-minus"></i>
                             </button>
@@ -6459,19 +6447,7 @@
                             </button>
                         </div>
                     <div id="bg_global_tab" class="bg_tab_panel">
-                        <div id="bg_folder_breadcrumb" class="bg_folder_breadcrumb" style="display:none;">
-                            <button id="bg_back_to_folders" class="menu_button menu_button_icon">
-                                <i class="fa-solid fa-arrow-left"></i>
-                                <span data-i18n="Back">Back</span>
-                            </button>
-                            <span id="bg_current_folder_name" class="bg_current_folder_name"></span>
-                            <span class="expander"></span>
-                            <button id="bg_folder_remove_selected_button" class="menu_button menu_button_icon" style="display:none;" data-i18n="[title]Remove selected backgrounds from this folder" title="Remove selected backgrounds from this folder">
-                                <i class="fa-solid fa-folder-minus"></i>
-                                <span data-i18n="Remove from Folder">Remove from Folder</span>
-                            </button>
-                        </div>
-                        <div id="bg_folder_grid" class="bg_list bg_folder_grid"></div>
+                        <!-- SillyBunny: the folder tiles, breadcrumb and bulk-action buttons are gone; the gallery module draws folders as sections inside #bg_menu_content. -->
                         <div id="bg_menu_content" class="bg_list"></div>
                     </div>
                     <div id="bg_chat_tab" class="bg_tab_panel">
@@ -7755,6 +7731,7 @@
                 <div id="select_chat_div"></div>
             </div>
         </div>
+        <!-- SillyBunny: the folder tile templates and the per-thumbnail folder buttons are gone; a thumbnail's folder actions are in its menu. -->
         <div id="background_template" class="template_element">
             <div class="bg_example flex-container" bgfile="" title="">
                 <div class="bg_example_img"></div>
@@ -7767,32 +7744,8 @@
                     <div data-action="copy" class="jg-button jg-copy fa-solid fa-file-arrow-up" data-i18n="[title]Copy to global backgrounds" title="Copy to global backgrounds"></div>
                     <div data-action="edit" class="jg-button jg-edit fa-solid fa-pen-to-square fa-fw pointer" data-i18n="[title]Rename Background" title="Rename Background"></div>
                     <div data-action="delete" class="jg-button jg-delete fa-solid fa-trash-can fa-fw pointer" data-i18n="[title]Delete Background" title="Delete Background"></div>
-                    <div data-action="folder" class="jg-button jg-folder fa-solid fa-folder fa-fw pointer" data-i18n="[title]Add to folder" title="Add to folder"></div>
-                    <div data-action="set-cover" class="jg-button jg-set-cover fa-solid fa-image fa-fw pointer" data-i18n="[title]Set as folder cover" title="Set as folder cover"></div>
                 </div>
                 <div class="BGSampleTitle"></div>
-            </div>
-        </div>
-        <div id="bg_folder_tile_template" class="template_element">
-            <div class="bg_folder_tile" data-folder-id="">
-                <div class="bg_folder_tile_cover"></div>
-                <div class="bg_folder_tile_overlay">
-                    <i class="fa-solid fa-folder"></i>
-                    <span class="bg_folder_tile_name"></span>
-                </div>
-                <div class="mobile-only-menu-toggle">
-                    <i class="fa-solid fa-ellipsis-vertical"></i>
-                </div>
-                <div class="bg_folder_tile_menu jg-menu">
-                    <div data-action="rename-folder" class="jg-button fa-solid fa-pen-to-square fa-fw pointer" data-i18n="[title]Rename folder" title="Rename folder"></div>
-                    <div data-action="delete-folder" class="jg-button fa-solid fa-trash-can fa-fw pointer" data-i18n="[title]Delete folder" title="Delete folder"></div>
-                </div>
-            </div>
-        </div>
-        <div id="bg_new_folder_template" class="template_element">
-            <div class="bg_folder_tile bg_new_folder_tile">
-                <i class="fa-solid fa-folder-plus fa-2x"></i>
-                <span data-i18n="New Folder">New Folder</span>
             </div>
         </div>
         <!-- templates for JS to reuse when needed -->
