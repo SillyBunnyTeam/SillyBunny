@@ -428,7 +428,7 @@ export const surfaces = [
     windowEntry({
         id: 'custom-endpoint-parameters',
         title: 'Custom endpoint additional parameters (YAML text areas and the reasoning parameter rows)',
-        ready: [within(WINDOW_FRAME, '#custom_include_body'), within(WINDOW_FRAME, '#custom_reasoning_preset')],
+        ready: [within(WINDOW_FRAME, '#custom_include_body'), within(WINDOW_FRAME, '[data-sb-editor-field="custom_reasoning_preset"] .ds-select-row__trigger')],
         async open(page) {
             await closeDialogs(page);
             await clickIn(page, '#customize_additional_parameters');

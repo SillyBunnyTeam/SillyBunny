@@ -101,8 +101,9 @@ async function openChatWithToastRecorder(page) {
     await testSetup.waitForAppReady({ page });
     const card = page.locator('#chat > .welcomePanel .sbHomeCard[data-sb-home-key="assistant-reisen"]');
     await expect(card.locator('.sbHomeCardOpen')).toBeEnabled({ timeout: 30000 });
-    // The card selects the character and then starts a new chat, and each of the two loads the chat once. The greeting
-    // of the first load is on screen before the second chat replaces it, which would end a generation started in between.
+    // The card selects the character, which creates its first chat when it has none, and starts a new chat only when
+    // the character already had one. The fixture server has no chat file for this assistant (saves are stubbed), so the
+    // selection is the only load; the greeting is on screen once it has happened.
     await page.evaluate(async () => {
         const { eventSource, event_types } = await import('/scripts/events.js');
         window.homeChatLoads = 0;
@@ -110,7 +111,7 @@ async function openChatWithToastRecorder(page) {
     });
     await card.locator('.sbHomeFootButton').first().click();
     await expect(page.locator('#chat .mes[mesid="0"]')).toBeVisible({ timeout: 30000 });
-    await expect.poll(() => page.evaluate(() => window.homeChatLoads), { timeout: 30000 }).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => page.evaluate(() => window.homeChatLoads), { timeout: 30000 }).toBeGreaterThanOrEqual(1);
 }
 
 /** Points the chat at the failing provider through the API path of the row, so that the next message gets the failure. */

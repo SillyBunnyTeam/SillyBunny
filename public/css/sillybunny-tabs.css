@@ -1662,9 +1662,15 @@ body:not(.movingUI) .drawer-content.maximized {
     opacity: 1;
 }
 
-.sb-server-stat-value.is-monospace,
+.ds-row-property__value.is-monospace,
 .sb-data-security-group .ds-row-textarea__label code {
     font-family: var(--monoFontFamily, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace);
+}
+
+/* The Mono role is a little smaller than Body. The label code above keeps its inherited size. */
+.ds-row-property__value.is-monospace {
+    font-size: 0.84em;
+    line-height: 1.45;
 }
 
 .sb-data-security-group .ds-row-textarea__label code {
@@ -4534,6 +4540,11 @@ body.reduced-motion :is(.ds-row.ds-row-entry--floating, .ds-row-entry--floating 
     }
 }
 
+/* A row's display would beat the hidden attribute that a select row takes while its page script hides the select. */
+.ds-select-row[hidden] {
+    display: none;
+}
+
 /* Select-mirror row (AdwComboRow): the native select stays in the row as the source of truth, hidden. */
 .ds-select-row .ds-select-row__native {
     position: absolute;
@@ -5265,24 +5276,24 @@ body.reduced-motion .ds-row-expander__toggle::after {
     border-radius: 0;
 }
 
-/* The shared activatable-row rules ship in the deferred Editor stylesheet, which this panel does not load. */
-#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable {
+/* The shared activatable and button row rules ship in the deferred Editor stylesheet, which this panel loads after it opens. */
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) :is(.ds-row--activatable, .ds-button-row) {
     cursor: pointer;
     transition: background-color var(--sb-transition-fast), box-shadow var(--sb-transition-fast);
 }
 
-#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable:focus-visible {
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) :is(.ds-row--activatable, .ds-button-row):focus-visible {
     outline: none;
     box-shadow: var(--sb-focus-ring-inset);
 }
 
 @media (hover: hover) {
-    #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable:not(:disabled):hover {
+    #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) :is(.ds-row--activatable, .ds-button-row):not(:disabled):hover {
         background: var(--sb-flat-hover-bg);
     }
 }
 
-#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable:not(:disabled):active {
+#sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) :is(.ds-row--activatable, .ds-button-row):not(:disabled):active {
     background: var(--sb-flat-active-bg);
 }
 
@@ -5294,12 +5305,12 @@ body.reduced-motion .ds-row-expander__toggle::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable {
+    #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) :is(.ds-row--activatable, .ds-button-row) {
         transition: none;
     }
 }
 
-body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) .ds-row--activatable {
+body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) :is(.ds-row--activatable, .ds-button-row) {
     transition: none;
 }
 

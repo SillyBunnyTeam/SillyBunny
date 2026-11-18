@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 
-jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join('') }));
+jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join(''), translate: text => text }));
 const { adaptProfileDeletion, adaptProfileDetails, adaptProfileFolders, createProfileChoices, profileDialogOptions, releaseProfileDialog } = await import('../../public/scripts/extensions/connection-manager/sillybunny-dialogs.js');
 
 function root(html) {
@@ -82,6 +82,7 @@ describe('Connection Manager dialog adapters', () => {
         expect(node.querySelector('.ds-pref-group-subtitle [data-i18n="Keep selected"]')).not.toBeNull();
         expect(node.querySelector('select')).toBe(folder);
         expect(folder?.value).toBe(edit ? 'folder' : undefined);
+        expect(folder?.closest('.ds-select-row')?.matches('[data-sb-editor-field="profile-folder"]') ?? false).toBe(edit);
         expect(options.title).toBe(edit ? 'Edit a connection profile' : undefined);
         options.onClose();
     });

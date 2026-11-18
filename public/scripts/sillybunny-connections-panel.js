@@ -294,6 +294,7 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
             field: 'connection-profile',
             title: t`Connection Profile`,
             searchLabel: t`Search Profiles`,
+            searchPlaceholder: t`Search profiles`,
             menuLabel: t`Profile Menu`,
             suffix: spinner ? [spinner] : [],
             onMenu: menuButton => openActionMenu({
@@ -539,6 +540,7 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
         const buttonRow = createButtonRow({
             label: t`View Hidden API Keys`,
             field: 'view-hidden-api-keys',
+            arrow: true,
             onActivate: () => originalViewSecrets.click(),
         });
         generalGroup.append(switchRow, buttonRow);

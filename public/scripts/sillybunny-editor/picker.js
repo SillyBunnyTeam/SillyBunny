@@ -197,7 +197,7 @@ function buildPickerContent(state, body) {
     input.setAttribute('aria-expanded', 'true');
     input.setAttribute('aria-autocomplete', 'list');
     input.setAttribute('aria-label', state.searchLabel);
-    input.placeholder = state.searchLabel;
+    input.placeholder = state.searchPlaceholder;
     input.id = createId('sb-picker-search');
 
     const list = document.createElement('ul');
@@ -557,7 +557,9 @@ function finishClose() {
  *     A `disabled` function is read again after every selection change.
  * @param {(() => string)|null} [options.selectionCount=null] A `multiple` picker shows this text under the list, read again after
  *     every selection change and announced politely.
- * @param {string} [options.searchLabel]
+ * @param {string} [options.searchLabel] The accessible name of the search field.
+ * @param {string} [options.searchPlaceholder] The hint in the empty field; defaults to `searchLabel`. A label takes header
+ *     capitalisation and a placeholder takes sentence capitalisation, so a label of several words needs its own form here.
  * @param {string} [options.emptyText]
  * @param {Element|null} [options.bounds=null]
  * @param {boolean} [options.matchTriggerWidth=false] Desktop: match the trigger up to 560px and align inline-start.
@@ -581,6 +583,7 @@ export function openPicker({
     footer = [],
     selectionCount = null,
     searchLabel = t`Search`,
+    searchPlaceholder = searchLabel,
     emptyText = t`No Results`,
     bounds = null,
     matchTriggerWidth = false,
@@ -615,6 +618,7 @@ export function openPicker({
         selectionCount: typeof selectionCount === 'function' ? selectionCount : null,
         countElement: null,
         searchLabel,
+        searchPlaceholder,
         emptyText,
         bounds,
         matchTriggerWidth,

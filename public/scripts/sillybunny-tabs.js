@@ -30,7 +30,7 @@ import { createPresetAutosaveToggle, initializePresetAutosave, refreshPresetProt
 import { registerSidePanel } from './sillybunny-editor/side-panel.js';
 import { adoptComposerMenus, adoptLegacyPopup } from './sillybunny-editor/sheet-gestures.js';
 import { openAlert } from './sillybunny-editor/dialog.js';
-import { createEntryRow, createExpanderRow, createRow, createSwitchRow } from './sillybunny-editor/rows.js';
+import { createButtonRow, createEntryRow, createExpanderRow, createPrefGroup, createPropertyRow, createSwitchRow } from './sillybunny-editor/rows.js';
 import { createSearchEntry } from './sillybunny-editor/search-entry.js';
 import { createProfileRow, createSelectRow } from './sillybunny-editor/select-row.js';
 import { openMassDeleteChatDialog } from './sillybunny-chat-dialogs.js';
@@ -472,6 +472,7 @@ function mountPresetRows(root) {
             field: `preset-${blockId}`,
             title,
             searchLabel: t`Search Presets`,
+            searchPlaceholder: t`Search presets`,
             menuLabel: t`Preset Menu`,
             onMenu: trigger => openActionMenu({ trigger, title, sections: getPresetMenuSections(block, isChatCompletion) }),
         });
@@ -759,7 +760,11 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-editor-shell.css?v=20261118t', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118t', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261117w', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261118zj', id: 'deferred-prompt-editor-css' },
+    ],
+    // SillyBunny: Presets builds the Edit Prompts button row, which the editor shell sheet styles.
+    'left:prompting': [
+        { href: 'css/sillybunny-editor-shell.css?v=20261118t', id: 'deferred-editor-shell-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
@@ -774,7 +779,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-character-editor.css?v=20261118t', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
-        { href: 'css/sillybunny-persona-detail.css?v=20261118zk', id: 'deferred-persona-detail-css' },
+        { href: 'css/sillybunny-persona-detail.css?v=20261118zm', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves — see docs/ui-migration.md.
@@ -8545,21 +8550,29 @@ function prepareEditorPanel(root) {
     root.dataset.sbPresentation = 'manual';
     root.classList.add('sb-prompting-panel', 'sb-editor-panel');
     const header = createBackendSectionHeader({ modeAttrs: { 'data-sb-editor-mode': '' } });
-    const meta = createElement('div', { className: 'sb-editor-meta' });
-    meta.append(
-        createElement('span', { attrs: { 'data-sb-editor-preset': '', 'aria-live': 'polite' } }),
-        // sillybunny-preset-autosave.js fills in and reveals both states.
+    // The way back to Presets and the active presets are rows of one boxed list, as the groups of the other Backend pages are.
+    const back = createButtonRow({
+        label: t`Presets`,
+        field: 'editor-presets',
+        arrow: true,
+        onActivate: () => openShell('left', 'prompting'),
+    });
+    back.row.dataset.sbEditorPresets = '';
+    const active = createPropertyRow({ label: t`Preset`, value: '', field: 'editor-preset' });
+    const names = active.row.querySelector('.ds-row-property__value');
+    names.setAttribute('aria-live', 'polite');
+    names.dataset.sbEditorPreset = '';
+    // sillybunny-preset-autosave.js fills in and reveals both states.
+    const states = createElement('span', { className: 'ds-row-subtitle sb-editor-states' });
+    states.append(
         createElement('span', { text: 'Autosave off', attrs: { 'data-sb-editor-autosave': '', 'data-i18n': 'Autosave off', hidden: '' } }),
         createElement('span', { text: 'Read-only', attrs: { 'data-sb-editor-read-only': '', 'data-i18n': 'Read-only', hidden: '' } }),
     );
-    const back = createElement('button', {
-        className: 'menu_button',
-        text: 'Presets',
-        attrs: { type: 'button', 'data-sb-editor-presets': '', 'data-i18n': 'Presets' },
-    });
-    back.addEventListener('click', () => openShell('left', 'prompting'));
-    header.querySelector('.sb-backend-title-row').append(back);
-    header.append(meta);
+    active.row.querySelector('.ds-row-text').append(states);
+    const meta = createPrefGroup({ field: 'editor-preset-state', rows: [back, active] });
+    meta.group.setAttribute('aria-label', t`Preset`);
+    meta.section.classList.add('sb-editor-meta');
+    header.append(meta.section);
     root.append(header);
     for (const [id, title] of [
         ['sb-editor-utility', 'Utility Prompts'],
@@ -8685,10 +8698,10 @@ function preparePromptingPanel(root) {
         for (const child of [...block.children].slice(1)) body.append(child);
         block.append(body);
     }
-    const editPrompts = createRow({
+    const editPrompts = createButtonRow({
         label: t`Edit Prompts`,
         field: 'edit-prompts',
-        activatable: true,
+        arrow: true,
         onActivate: () => openShell('left', 'editor'),
     });
     editPrompts.row.dataset.sbEditPrompts = '';
@@ -10695,7 +10708,7 @@ async function renderUniversalSearchResults(query) {
         renderSearchEmptyState(
             results,
             t`No Results Found`,
-            `No matches for "${trimmedQuery}" yet. ${SB_UNIVERSAL_SEARCH_EMPTY_HINT}`,
+            SB_UNIVERSAL_SEARCH_EMPTY_HINT,
         );
     } else if (!searchState.expandedAll && totalMatches > rows.length) {
         results.appendChild(createUniversalSearchShowAllRow(totalMatches - rows.length));

@@ -158,6 +158,7 @@ function rememberPosition(nodes) {
  * @param {string} [options.subtitle]
  * @param {string} [options.title=label]  Picker title.
  * @param {string} [options.searchLabel]
+ * @param {string} [options.searchPlaceholder]
  * @param {string} [options.emptyText]
  * @param {string} [options.noneLabel='']  Trigger text when nothing is selected.
  * @param {Node|Node[]} [options.suffix]  Extra trailing nodes after the trigger.
@@ -172,11 +173,13 @@ function rememberPosition(nodes) {
  * @param {{ label: string, icon?: string|Element, onSelect: () => void }[]} [options.footer=[]]  Actions under the picker's list.
  * @param {{ onCreate: (text: string) => void, label?: (text: string) => string }|null} [options.create=null]  Offers to create
  *     what the picker's search names when no option has that label (see openPicker).
+ * @param {boolean} [options.followsHidden=false]  The page's script shows and hides the select itself (`.toggle()`), so the row is
+ *     hidden while the select's inline `display` is `none`.
  * @param {((items: object[]) => string)|null} [options.summarize=null]  The trigger's text for the chosen items, in place of their
  *     labels (a count, for a multiple select whose labels the row shows elsewhere).
  * @returns {object}
  */
-export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, emptyText, noneLabel = '', suffix, ordered = false, mapItem, bounds = null, onChange, onPick, footer = [], create = null, summarize = null }) {
+export function createSelectRow({ select, label, subtitle, field, id, title = label, searchLabel, searchPlaceholder, emptyText, noneLabel = '', suffix, ordered = false, mapItem, bounds = null, onChange, onPick, footer = [], create = null, summarize = null, followsHidden = false }) {
     if (!(select instanceof HTMLSelectElement)) throw new TypeError('Expected a select element.');
     const container = select.nextElementSibling?.matches('.select2-container') ? select.nextElementSibling : null;
     const previous = { tabIndex: select.getAttribute('tabindex'), ariaHidden: select.getAttribute('aria-hidden') };
@@ -245,6 +248,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
         // Writing an unchanged value still queues a mutation, and some callers re-sync on every panel update.
         if (value.textContent !== text) value.textContent = text;
         if (trigger.disabled !== select.disabled) trigger.disabled = select.disabled;
+        if (followsHidden) row.hidden = select.style.display === 'none';
         syncDetail(items);
         const ids = describedBy();
         if ((trigger.getAttribute('aria-describedby') ?? '') !== ids) {
@@ -276,6 +280,7 @@ export function createSelectRow({ select, label, subtitle, field, id, title = la
             getItemState: item => (selectedValues(select).includes(item) ? 'selected' : null),
             onSelect: choose,
             searchLabel,
+            searchPlaceholder,
             emptyText,
             bounds,
             matchTriggerWidth: true,

@@ -1,6 +1,7 @@
 import { t } from '../../i18n.js';
 import { registerSidePanel } from '../side-panel.js';
-import { createCheckRow, createComboRow, createEntryRow, createPrefGroup, createSpinRow, createSwitchRow, createTextAreaField } from '../rows.js';
+import { createCheckRow, createEntryRow, createPrefGroup, createSpinRow, createSwitchRow, createTextAreaField } from '../rows.js';
+import { createSelectRow } from '../select-row.js';
 import { createToggleRow } from '../toggle-row.js';
 
 const controllers = new Map();
@@ -122,7 +123,7 @@ function createPositionRow({
 
     const depth = createSpinRow({ label: t`Depth`, field: `${field}-depth`, input: depthInput, normalize: false });
     setRowLabel(depth.row, 'Depth');
-    const role = createComboRow({ label: t`Role`, field: `${field}-role`, select: roleSelect });
+    const role = createSelectRow({ label: t`Role`, field: `${field}-role`, select: roleSelect, searchLabel: t`Search`, emptyText: t`No Results` });
     setRowLabel(role.row, 'Role');
 
     const refresh = () => {

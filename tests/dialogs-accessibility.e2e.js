@@ -332,13 +332,13 @@ test.describe('The Restore button of a deleted assistant card', () => {
     }
 });
 
-test.describe('One focus ring on a .menu_button', () => {
-    test('the Editor Presets button shows one ring, not an outline beside the shared ring', async ({ page, baseURL }) => {
+test.describe('One focus ring on a button', () => {
+    test('the Editor Presets row shows one ring, not an outline beside the shared ring', async ({ page, baseURL }) => {
         await bootMisc(page, baseURL, DESKTOP, { motion: false });
         await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'editor'));
         const action = page.locator('#sb-settings-page [data-sb-editor-presets]');
         await expect(action).toBeVisible();
-        await expect(action).toHaveClass(/menu_button/);
+        await expect(action).toHaveClass(/ds-button-row/);
         await expectSingleFocusRing(page, action);
     });
 });

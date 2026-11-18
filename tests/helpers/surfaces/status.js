@@ -990,7 +990,7 @@ const settingsSearchNoMatch = status({
         await page.evaluate(() => window.SillyBunnyShell.openGlobalSearch());
         await page.locator('#sb-universal-search input').fill('no-such-setting-982734');
         // The idle state shares the empty class, and the first query waits for the on-demand settings pages before it answers.
-        await page.locator('#sb-universal-search-results .sb-search-empty', { hasText: 'no-such-setting-982734' }).waitFor({ state: 'visible' });
+        await page.locator('#sb-universal-search-results .sb-search-empty', { hasText: 'No Results Found' }).waitFor({ state: 'visible' });
         await settle(page);
     },
     async close(page) {

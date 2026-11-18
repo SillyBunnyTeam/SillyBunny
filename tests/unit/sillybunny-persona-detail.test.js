@@ -330,6 +330,10 @@ describe('Persona detail structure and explicit content edits', () => {
         edit(host, 'name', '   ');
         edit(host, 'description', 'Not saved');
         expect(field(host, 'name').getAttribute('aria-invalid')).toBe('true');
+        const error = host.querySelector('.sb-persona-entry-error');
+        expect(error.hidden).toBe(false);
+        expect(error.textContent).toBe('Name required');
+        expect(field(host, 'name').getAttribute('aria-describedby')).toBe(error.id);
         expect(host.querySelector('.sb-persona-entry-save').disabled).toBe(true);
         expect(await controller.save()).toBe(false);
         host.querySelector('.sb-persona-entry-cancel').click();
@@ -417,11 +421,15 @@ describe('Scenario notes and immediate state', () => {
         expect(field(notes[1], 'appendix-name').getAttribute('aria-invalid')).toBe('true');
         expect(field(notes[0], 'appendix-name').getAttribute('aria-invalid')).toBe('false');
         expect(field(host, 'name').getAttribute('aria-invalid')).toBe('false');
+        expect(notes[1].querySelector('.ds-row-entry__error').textContent).toBe('Label required');
+        expect(notes[0].querySelector('.ds-row-entry__error')).toBeNull();
+        expect(host.querySelector('.sb-persona-entry-error').hidden).toBe(true);
         expect(host.querySelector('.sb-persona-entry-save').disabled).toBe(true);
         expect(await controller.save()).toBe(false);
         expect(deps.save).not.toHaveBeenCalled();
         edit(notes[1], 'appendix-name', ' Named ');
         expect(field(notes[1], 'appendix-name').getAttribute('aria-invalid')).toBe('false');
+        expect(notes[1].querySelector('.ds-row-entry__error')).toBeNull();
         expect(host.querySelector('.sb-persona-entry-save').disabled).toBe(false);
         expect(await controller.save()).toBe(true);
         expect(state.persona_descriptions['first.png'].appendices[1].name).toBe('Named');

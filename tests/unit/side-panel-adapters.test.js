@@ -143,6 +143,7 @@ test('Author\'s Note, CFG, and token adapters adopt source controls without chan
     expect(host.querySelector('.ds-row[data-sb-editor-field="authors-note-main-role"]').hidden).toBe(false);
     expect(host.querySelector('.ds-row[data-sb-editor-field="authors-note-default-depth"]').hidden).toBe(false);
 
+    expect(host.querySelector('.ds-row[data-sb-editor-field="authors-note-main-role"]').classList.contains('ds-select-row')).toBe(true);
     mainPositionBefore.click();
     expect(mainPositionBefore.checked).toBe(true);
     expect(mainPositionDepth.checked).toBe(false);

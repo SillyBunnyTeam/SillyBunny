@@ -901,11 +901,11 @@ export const surfaces = [
             },
             {
                 id: 'validation-error',
-                ready: `${REGEX} #regex_info_block.error`,
+                ready: `${REGEX} .find_regex[aria-invalid="true"]`,
                 async open(page) {
                     await page.locator(`${REGEX} .find_regex`).fill('/an unclosed (group/');
-                    await shown(page, `${REGEX} #regex_info_block.error`);
-                    // The info block slides in with jQuery, which `settle` cannot see.
+                    await shown(page, `${REGEX} .find_regex[aria-invalid="true"]`);
+                    // The error shows under the field. The info block that held it slides with jQuery, which `settle` cannot see.
                     await page.waitForFunction(() => !window.$(':animated').length);
                     await settle(page);
                 },

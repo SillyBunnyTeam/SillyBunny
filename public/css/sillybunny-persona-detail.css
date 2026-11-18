@@ -253,6 +253,16 @@
     border-color: var(--sb-color-danger);
 }
 
+.sb-persona-entry-error {
+    flex: none;
+    padding: 6px 12px 0;
+    color: var(--sb-color-danger);
+}
+
+.sb-persona-entry-error[hidden] {
+    display: none;
+}
+
 #sb-settings-page .sb-persona-editor .sb-persona-entry-mode-toggle {
     display: none !important;
 }

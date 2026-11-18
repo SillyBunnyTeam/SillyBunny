@@ -1544,13 +1544,18 @@ const SB_EXT_AREAS = new Map([
 ]);
 
 /**
- * Fields the extension finds by position or shows and hides itself, so a row around them would break
- * its code. Each is left as authored, with the reason.
- * @type {ReadonlyMap<string, string>}
+ * Selects that the extension shows and hides itself with `.toggle()`, so their rows follow the select's own display. The
+ * row cannot be left out of this: the extension never sees it.
+ * @type {ReadonlySet<string>}
  */
-const SB_EXT_LEFT_FIELDS = new Map([
-    ['deepl_api_endpoint', 'the extension shows and hides the field itself'],
-]);
+const SB_EXT_TOGGLED_SELECTS = new Set(['deepl_api_endpoint']);
+
+/**
+ * Controls whose only name is their tooltip, which the row shows as its title. A control with a label of its own does not
+ * need an entry here.
+ * @type {ReadonlySet<string>}
+ */
+const SB_EXT_TITLED_BY_TOOLTIP = new Set(['deepl_api_endpoint']);
 
 /** @type {WeakMap<HTMLElement, {sync?: () => void}>} */
 const sbExtensionControllers = new WeakMap();
@@ -1806,6 +1811,7 @@ function adoptExtensionField(control, kind, found) {
             emptyText: t`No Results`,
             suffix: actions,
             mapItem: describeOption,
+            followsHidden: SB_EXT_TOGGLED_SELECTS.has(control.id),
         });
         carryHint(row.row, hint);
     } else if (kind === 'textarea') {
@@ -1888,10 +1894,6 @@ export function normalizeExtensionSettings(scope) {
         if (kind === 'spin' && (control.dataset.for || control.closest('.range-block-counter'))) continue;
 
         const leave = reason => report.left.push({ id: control.id, type: kind, reason });
-        if (SB_EXT_LEFT_FIELDS.has(control.id)) {
-            leave(SB_EXT_LEFT_FIELDS.get(control.id));
-            continue;
-        }
         if (kind !== 'entry' && kind !== 'slider' && entriesOnly && control.closest(entriesOnly)) {
             leave('laid out by the provider');
             continue;
@@ -1904,7 +1906,8 @@ export function normalizeExtensionSettings(scope) {
             leave('beside other controls');
             continue;
         }
-        const found = resolveFieldLabel(control);
+        const tooltip = SB_EXT_TITLED_BY_TOOLTIP.has(control.id) ? normalizeFieldTitle(control.title) : '';
+        const found = resolveFieldLabel(control) ?? (tooltip ? { title: tooltip, nodes: [], source: 'aria-label' } : null);
         if (!found) {
             leave('no label or placeholder');
             continue;

@@ -252,13 +252,25 @@ describe('the adopter', () => {
         expect(field(container, '#speed_counter').closest('.ds-row--spin')).toBeNull();
     });
 
-    test('leaves a field its extension shows and hides itself, even when it has a label', () => {
-        const container = mount('<div><label for="deepl_api_endpoint">Endpoint</label><select id="deepl_api_endpoint"><option>a</option></select></div>', 'translation_container');
-        const before = container.innerHTML;
+    test('a select its extension shows and hides itself becomes a row that follows the select, titled by its tooltip', () => {
+        const container = mount('<div><select id="deepl_api_endpoint" title="DeepL API Endpoint"><option value="free">Free</option></select></div>', 'translation_container');
         const report = normalizeExtensionSettings(container);
 
-        expect(report.left).toEqual([{ id: 'deepl_api_endpoint', type: 'select', reason: 'the extension shows and hides the field itself' }]);
-        expect(container.innerHTML).toBe(before);
+        expect(report.left).toEqual([]);
+        expect(report.selects).toBe(1);
+        const select = field(container, '#deepl_api_endpoint');
+        const row = select.closest('.ds-select-row');
+        expect(row.querySelector('.ds-row-label').textContent).toBe('DeepL API Endpoint');
+        expect(row.hidden).toBe(false);
+
+        select.style.display = 'none';
+        return Promise.resolve().then(() => {
+            expect(row.hidden).toBe(true);
+            select.style.display = '';
+            return Promise.resolve();
+        }).then(() => {
+            expect(row.hidden).toBe(false);
+        });
     });
 
     test('reports a field that has no label and no placeholder, and leaves it as it was', () => {

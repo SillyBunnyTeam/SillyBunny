@@ -157,8 +157,8 @@ function createMainContent(server, pages) {
     // Both characters share one panel at one step, so Tewi stands at her own height beside Reisen. The logo stays in the header.
     const { panel: characters } = createArtPanel(['about-reisen', 'about-tewi']);
 
-    const branch = createPropertyRow({ label: t`Branch`, value: server.details.branch, field: 'about-branch' });
-    const commit = createPropertyRow({ label: t`Commit`, value: server.details.commit, field: 'about-commit' });
+    const branch = createPropertyRow({ label: t`Branch`, value: server.details.branch, field: 'about-branch', mono: true });
+    const commit = createPropertyRow({ label: t`Commit`, value: server.details.commit, field: 'about-commit', mono: true });
     server.onChange(() => {
         branch.setValue(server.details.branch);
         commit.setValue(server.details.commit);

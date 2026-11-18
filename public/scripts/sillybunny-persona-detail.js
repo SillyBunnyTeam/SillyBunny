@@ -148,6 +148,11 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     const saveButton = element('button', 'sb-editor-action sb-editor-action--primary sb-persona-entry-save', t`Save`);
     saveButton.type = 'button';
     header.append(back, name, dirtyDot, modes, modeToggle, actions, cancel, saveButton);
+    // The name is the header's title field, so its validation text sits under the header, where Text Fields put it.
+    const nameError = element('small', 'ds-row-subtitle sb-persona-entry-error');
+    nameError.id = `${instanceId}-name-error`;
+    nameError.hidden = true;
+    name.setAttribute('aria-describedby', nameError.id);
     const summary = button('', 'sb-persona-property-summary');
     summary.setAttribute('aria-haspopup', 'dialog');
     summary.setAttribute('aria-expanded', 'false');
@@ -163,7 +168,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         { id: 'role', label: t`Role`, options: model.ROLE_OPTIONS },
     ];
     propertyContent = createProperties();
-    root.append(header, summaryRow, propertyContent, banner, body);
+    root.append(header, nameError, summaryRow, propertyContent, banner, body);
     host.replaceChildren(root);
 
     const storage = createEditorDraftStore({ keyFor: personaDraftKey });
@@ -320,8 +325,16 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
         saveButton.disabled ||= missing || !valid;
         cancel.disabled ||= saving;
         name.setAttribute('aria-invalid', String(Boolean(errors.name)));
+        nameError.textContent = errors.name ? t`Name required` : '';
+        nameError.hidden = !errors.name;
         for (const [index, note] of draft.appendices.entries()) {
-            noteViews.get(note.id)?.name.control.setAttribute('aria-invalid', String(Boolean(errors.appendices?.[index])));
+            const label = noteViews.get(note.id)?.name;
+            if (!label) continue;
+            if (errors.appendices?.[index]) label.setError(t`Label required`);
+            else {
+                label.clearError();
+                label.control.setAttribute('aria-invalid', 'false');
+            }
         }
         root.setAttribute('aria-busy', String(saving || immediateBusy));
         for (const control of banner.querySelectorAll('button')) control.disabled = saving || !valid && control.classList.contains('sb-persona-entry-save-as-new');

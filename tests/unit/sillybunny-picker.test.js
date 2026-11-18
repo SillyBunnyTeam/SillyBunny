@@ -398,6 +398,17 @@ describe('searchable picker', () => {
         expect(list.textContent).toContain('<b>Book</b>');
     });
 
+    test('the search field takes the placeholder form apart from its accessible name, and defaults both to the label', () => {
+        const apart = makePicker({ searchLabel: 'Search Books', searchPlaceholder: 'Search books' });
+        expect(apart.input.getAttribute('aria-label')).toBe('Search Books');
+        expect(apart.input.placeholder).toBe('Search books');
+        apart.picker.close();
+
+        const { input } = makePicker({ searchLabel: 'Find a book' });
+        expect(input.getAttribute('aria-label')).toBe('Find a book');
+        expect(input.placeholder).toBe('Find a book');
+    });
+
     test('mobile opens its own bottom sheet, filters, and closes using its header control', () => {
         window.matchMedia.mockReturnValue({ matches: true });
         const { picker, surface, input, list, trigger, onClose } = makePicker();

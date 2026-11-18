@@ -1,5 +1,9 @@
 import { t } from '../../i18n.js';
-import { createCheckRow, createComboRow, createEntryRow, createPrefGroup, createPropertyRow, moveCaption, releaseRowIds } from '../../sillybunny-editor/rows.js';
+import { createCheckRow, createEntryRow, createPrefGroup, createPropertyRow, moveCaption, releaseRowIds } from '../../sillybunny-editor/rows.js';
+import { createSelectRow } from '../../sillybunny-editor/select-row.js';
+
+/** The profile properties whose values are identifiers, which a property row shows in the Mono role. */
+const PROFILE_IDENTIFIER_LABELS = new Set(['Server URL', 'Model']);
 
 /** Heading-like captions give up their content; any other node (a label with a control) moves whole. */
 function adoptCaption(row, caption, selector = '.ds-row-label') {
@@ -64,7 +68,7 @@ export function profileDialogOptions(root, { edit = false } = {}) {
     const choices = createProfileChoices(root, { title: settingsCaption?.textContent.trim(), subtitle: hint?.textContent.replace(/\s+/g, ' ').trim() });
     if (settingsCaption) adoptCaption(choices.section, settingsCaption, '.ds-pref-group-heading');
     if (hint) adoptCaption(choices.section, hint, '.ds-pref-group-subtitle');
-    const folderRow = folder ? createComboRow({ label: folderCaption.textContent.trim(), field: 'profile-folder', select: folder }) : null;
+    const folderRow = folder ? createSelectRow({ label: folderCaption.textContent.trim(), field: 'profile-folder', select: folder, searchLabel: t`Search`, emptyText: t`No Results` }) : null;
     if (folderRow) adoptCaption(folderRow.row, folderCaption);
     const identity = createPrefGroup({ field: 'profile-identity', rows: folderRow ? [folderRow] : [] });
     root.classList.add('sb-connection-dialog-content');
@@ -137,7 +141,8 @@ export function adaptProfileDetails(root) {
         const rows = [...list.querySelectorAll('li')].map((item, index) => {
             const caption = item.querySelector('.profile-summary-label');
             const value = item.querySelector('.profile-summary-value');
-            const row = createPropertyRow({ label: '', value: '', field: `profile-property-${index}` });
+            // The label's translation key is its English text, so a translated label still finds its identifier value.
+            const row = createPropertyRow({ label: '', value: '', field: `profile-property-${index}`, mono: PROFILE_IDENTIFIER_LABELS.has(caption?.dataset.i18n) });
             adoptCaption(row.row, caption, '.ds-row-subtitle');
             adoptCaption(row.row, value, '.ds-row-property__value');
             return row;

@@ -1,6 +1,7 @@
 import { t } from '../../i18n.js';
 import { openActionMenu } from '../../sillybunny-action-menu.js';
-import { createComboRow, createEntryRow, createPrefGroup, moveCaption, releaseRowIds } from '../rows.js';
+import { createEntryRow, createPrefGroup, moveCaption, releaseRowIds } from '../rows.js';
+import { createSelectRow } from '../select-row.js';
 
 function asElement(source) {
     const root = source?.jquery ? source.get(0) : source;
@@ -268,7 +269,7 @@ function createLabeledInputRow(input, label) {
 
 function createLabeledSelectRow(select, label) {
     if (!(select instanceof HTMLSelectElement) || !label) throw new TypeError('A reasoning preset needs its source select and label.');
-    const row = createComboRow({ label: textOf(label), field: select.id, select });
+    const row = createSelectRow({ label: textOf(label), field: select.id, select, searchLabel: t`Search`, emptyText: t`No Results` });
     moveCaption(row.row.querySelector('.ds-row-label'), label.querySelector('span') ?? label);
     label.replaceWith(row.row);
     return row;

@@ -313,6 +313,7 @@ export function mountAgentsPanel(column) {
             trigger: header.button('add'),
             title: companionTemplates ? t`New Companion From Template` : t`New Agent From Template`,
             searchLabel: t`Search Templates`,
+            searchPlaceholder: t`Search templates`,
             items: items.map(item => ({
                 value: item.id, label: item.label, group: item.group,
                 subtitle: item.added ? (item.description ? t`Added · ${item.description}` : t`Added`) : item.description,
@@ -750,8 +751,8 @@ export function mountAgentsPanel(column) {
             // surface already loaded earlier is moved after its predecessor.
             let previous = null;
             for (const href of [
-                'css/sillybunny-persona-detail.css?v=20261118zk',
-                'css/sillybunny-prompt-editor.css?v=20261117w',
+                'css/sillybunny-persona-detail.css?v=20261118zm',
+                'css/sillybunny-prompt-editor.css?v=20261118zj',
                 'scripts/extensions/in-chat-agents/ui/agent-editor.css',
             ]) {
                 let link = document.querySelector(`link[href="${href}"]`);

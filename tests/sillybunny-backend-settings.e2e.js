@@ -328,11 +328,16 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 const editor = await openPanel(page, 'editor');
                 await expect(editor.locator('[data-sb-editor-mode]')).toHaveText(`Backend: ${label}`);
                 await expect(editor.locator('.sb-prompt-list-header .sb-list-header__title')).toHaveText(api === 'openai' ? 'Prompts' : 'Prompt templates');
-                // The Editor line is the same unboxed line as the other Backend pages, and its button is the shared one.
+                // The Editor opens with the same unboxed line as the other Backend pages, then one boxed list: the way back to
+                // Presets is a button row with a trailing arrow, and the active presets are a property row.
                 const editorHeader = editor.locator('.sb-prompt-owned > .sb-backend-section-header');
-                const presetsButton = editorHeader.locator(':scope > .sb-backend-title-row > [data-sb-editor-presets]');
-                await expect(presetsButton).toHaveClass(/\bmenu_button\b/);
-                await expect(presetsButton).not.toHaveClass(/sb-action-btn|sb-backend-navigation-pill/);
+                await expect(editorHeader.locator(':scope > .sb-backend-title-row > [data-sb-editor-mode]')).toBeVisible();
+                const presetsButton = editorHeader.locator(':scope > .sb-editor-meta [data-sb-editor-presets]');
+                await expect(presetsButton).toHaveClass(/\bds-button-row\b/);
+                await expect(presetsButton).toHaveClass(/\bds-button-row--arrow\b/);
+                await expect(presetsButton).not.toHaveClass(/menu_button|sb-action-btn|sb-backend-navigation-pill/);
+                await expect(editorHeader.locator(':scope > .sb-editor-meta > [role="group"] > .ds-row')).toHaveCount(2);
+                await expect(editorHeader.locator(':scope > .sb-editor-meta [data-sb-editor-preset]')).toBeVisible();
                 const editorHeaderMetrics = await readBackendHeaderMetrics(editorHeader);
                 expect(editorHeaderMetrics.padding).toBe(promptingHeaderMetrics.padding);
                 expect(editorHeaderMetrics.rowGap).toBe(promptingHeaderMetrics.rowGap);

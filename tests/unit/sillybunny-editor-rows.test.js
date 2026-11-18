@@ -1522,6 +1522,13 @@ describe('createPropertyRow', () => {
         expect(text.lastChild.children).toHaveLength(0);
     });
 
+    test('a code or identifier value takes the Mono role, and no other value does', () => {
+        const code = createPropertyRow({ label: 'Commit', field: 'commit', value: 'a1b2c3d', mono: true });
+        expect(code.row.querySelector('.ds-row-property__value').classList.contains('is-monospace')).toBe(true);
+        const prose = createPropertyRow({ label: 'Name', field: 'name', value: 'Reisen' });
+        expect(prose.row.querySelector('.ds-row-property__value').classList.contains('is-monospace')).toBe(false);
+    });
+
     test('can opt out of selection', () => {
         const { row } = createPropertyRow({ label: 'Identifier', field: 'identifier', value: 0, selectable: false });
         expect(row.querySelector('.ds-row-property__value').style.userSelect).toBe('none');

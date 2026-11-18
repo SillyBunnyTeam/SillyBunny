@@ -27,24 +27,19 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     flex-wrap: nowrap;
 }
 
+/* The active presets and their states are one boxed list under the backend label, as the other Backend pages open. */
 #sb-settings-page .sb-prompt-owned .sb-editor-meta {
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
+.sb-prompt-owned .sb-editor-states {
     display: flex;
-    flex: 1;
-    gap: 12px;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    color: var(--sb-muted-fg);
-    font-size: var(--sb-type-caption);
+    flex-wrap: wrap;
+    gap: 0 12px;
 }
 
-.sb-prompt-owned .sb-editor-meta > span {
-    overflow: hidden;
-    min-width: 0;
-    text-overflow: ellipsis;
-}
-
-#sb-settings-page .sb-prompt-owned .sb-editor-meta > [data-sb-editor-read-only] {
+#sb-settings-page .sb-prompt-owned .sb-editor-states > [data-sb-editor-read-only] {
     color: var(--SmartThemeBodyColor);
     font-weight: 600;
 }
@@ -671,13 +666,9 @@ label.sb-prompt-property {
         flex-wrap: wrap;
     }
 
-    #sb-settings-page .sb-prompt-owned :is(.sb-sampling-mode-pill, .sb-backend-title-row .menu_button) {
+    #sb-settings-page .sb-prompt-owned .sb-sampling-mode-pill {
         flex: none;
         white-space: nowrap;
-    }
-
-    #sb-settings-page .sb-prompt-owned .sb-editor-meta {
-        flex: 1 1 100%;
     }
 
     #sb-settings-page .sb-prompt-editor .sb-prompt-title {

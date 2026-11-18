@@ -834,14 +834,16 @@ export function createTextAreaField({ label, subtitle, field, id, value, placeho
  * @param {string} options.field
  * @param {string} [options.id]
  * @param {boolean} [options.selectable=true]
+ * @param {boolean} [options.mono=false] The value is code or an identifier (an id, a path, a hash), which takes the Mono role.
  * @returns {object}
  */
-export function createPropertyRow({ label, value, field, id, selectable = true }) {
+export function createPropertyRow({ label, value, field, id, selectable = true, mono = false }) {
     const row = element('div', 'ds-row ds-row-property');
     markField(row, field, id);
     const text = element('span', 'ds-row-text');
     const caption = element('span', 'ds-row-subtitle', label);
     const display = element('span', 'ds-row-label ds-row-property__value', value);
+    display.classList.toggle('is-monospace', mono);
     display.style.setProperty('-webkit-user-select', selectable ? 'text' : 'none');
     display.style.setProperty('user-select', selectable ? 'text' : 'none');
     text.append(caption, display);

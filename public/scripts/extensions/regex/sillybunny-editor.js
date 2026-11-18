@@ -19,6 +19,37 @@ function titled(group, caption) {
 }
 
 /**
+ * The extension reports an invalid Find Regex in the banner at the top of the editor, away from the field. Text Fields
+ * put validation text under the field, so the message moves there and the banner is emptied. Flag hints and the empty
+ * note stay in the banner, and each of them clears the error. The extension's own code is untouched: it keeps calling
+ * `setInfoBlock`, and this observer follows the banner as `syncTestToggle` follows the test fields.
+ * @param {HTMLElement} infoBlock The banner, `#regex_info_block`.
+ * @param {{ setError: (message: string) => void, clearError: () => void }|null} findRow
+ * @returns {() => void} Stops following the banner.
+ */
+function showFindErrorUnderField(infoBlock, findRow) {
+    if (!findRow) return () => {};
+    const follow = () => {
+        if (infoBlock.classList.contains('error')) {
+            // The extension words its own message in header capitalisation, and a caption is in sentence capitalisation.
+            const message = infoBlock.textContent;
+            findRow.setError(message === t`Invalid Find Regex` ? t`Invalid find regex` : message);
+            // A running slide would show the emptied banner again, so it stops before the block is cleared. The banner
+            // loses its `info-block` class as `clearInfoBlock` does, and the next message shows it again from hidden.
+            $(infoBlock).stop(true, true);
+            infoBlock.className = '';
+            infoBlock.replaceChildren();
+        } else if (infoBlock.classList.contains('info-block')) {
+            findRow.clearError();
+        }
+    };
+    const observer = new MutationObserver(follow);
+    observer.observe(infoBlock, { attributes: true, attributeFilter: ['class'] });
+    follow();
+    return () => observer.disconnect();
+}
+
+/**
  * Puts the body of the regex editor in boxed groups, as the Quick Reply editor has them: the script's fields, what it affects,
  * its options, and its ephemerality. Every control keeps its node, name, class and listener, so the extension still reads
  * the fields by the selectors it always used; only their rows and groups are new. Call it after the extension has filled
@@ -35,6 +66,7 @@ export function adaptRegexEditor(root) {
     // The four fields of the script: two entry rows and two text-area fields.
     const fields = needed(root, '.regex_editor > .flex-container.flexFlowColumn');
     const fieldRows = [];
+    let findRow = null;
     for (const block of fields.querySelectorAll(':scope > .flex1')) {
         const input = block.querySelector('input.text_pole, textarea.text_pole');
         const caption = block.querySelector('label > small');
@@ -44,10 +76,12 @@ export function adaptRegexEditor(root) {
             ? createTextAreaField({ label: textOf(caption), field: name, input, expandLabel: t`Expand the Editor` })
             : createEntryRow({ label: textOf(caption), field: name, input, floating: true });
         moveCaption(row.row.querySelector('.ds-row-label'), caption, { keepSource: true });
+        if (name === 'find_regex') findRow = row;
         fieldRows.push(row);
     }
     const scriptGroup = createPrefGroup({ field: 'regex-script', rows: fieldRows });
     fields.replaceWith(scriptGroup.section);
+    const stopFindError = showFindErrorUnderField(needed(root, '#regex_info_block'), findRow);
 
     // The test fields, which the Test Mode button shows and hides by the class `displayNone`.
     const test = needed(root, '#regex_test_mode');
@@ -132,6 +166,7 @@ export function adaptRegexEditor(root) {
     return {
         options: {
             onClose() {
+                stopFindError();
                 releaseRowIds(root);
             },
         },

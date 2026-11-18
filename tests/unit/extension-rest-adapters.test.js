@@ -280,6 +280,35 @@ describe('the regex editor', () => {
         expect(toggle.getAttribute('aria-pressed')).toBe('false');
     });
 
+    test('an invalid Find Regex is named under its field, not in the banner, and a valid one clears it', async () => {
+        const { root } = editor();
+        const banner = root.querySelector('#regex_info_block');
+        const find = root.querySelector('.find_regex');
+        const show = (type, text) => {
+            banner.className = `info-block ${type}`;
+            banner.textContent = text;
+        };
+
+        show('error', 'Invalid Find Regex');
+        await Promise.resolve();
+        const error = find.closest('.ds-row').querySelector('.ds-row-entry__error');
+        expect(error.textContent).toBe('Invalid find regex');
+        expect(find.getAttribute('aria-invalid')).toBe('true');
+        expect(find.getAttribute('aria-describedby')).toContain(error.id);
+        expect(banner.textContent).toBe('');
+        expect(banner.classList.contains('info-block')).toBe(false);
+
+        show('error', 'Invalid regular expression: /(/: Unterminated group');
+        await Promise.resolve();
+        expect(find.closest('.ds-row').querySelector('.ds-row-entry__error').textContent).toBe('Invalid regular expression: /(/: Unterminated group');
+
+        show('hint', 'Applies to all matches');
+        await Promise.resolve();
+        expect(find.hasAttribute('aria-invalid')).toBe(false);
+        expect(find.closest('.ds-row').querySelector('.ds-row-entry__error')).toBeNull();
+        expect(banner.textContent).toBe('Applies to all matches');
+    });
+
     test('keeps every control the extension reads by its own selector', () => {
         const { root } = editor();
         for (const selector of ['.regex_script_name', '.find_regex', '.regex_replace_string', '.regex_trim_strings', 'input[name="disabled"]', 'input[name="run_on_edit"]', 'input[name="only_format_display"]', 'input[name="only_format_prompt"]', 'select[name="substitute_regex"]', 'input[name="min_depth"]', 'input[name="max_depth"]', '#regex_test_input', '#regex_test_output', '#regex_test_mode_toggle']) {

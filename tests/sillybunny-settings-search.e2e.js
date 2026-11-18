@@ -459,6 +459,15 @@ for (const viewport of VIEWPORTS) {
             await expect(results).not.toHaveAttribute('aria-busy', 'true');
         });
 
+        test('universal search shows a no-results page when a query finds nothing', async ({ page }) => {
+            await page.locator('#sb-topbar-search-toggle').click();
+            await page.locator('#sb-universal-search input').fill('no-such-setting-982734');
+            const empty = page.locator('#sb-universal-search-results .sb-search-empty');
+            await expect(empty.locator('.sb-status-page__title')).toHaveText('No Results Found');
+            await expect(empty).toContainText('Try a broader term or a different setting name.');
+            await expect(empty).not.toContainText('yet');
+        });
+
         test('the sidebar search never shows the empty message while the first query waits for the pages', async ({ page }) => {
             const input = await openSidebarSearch(page, 'left', 'sampling');
             await page.evaluate(() => {
