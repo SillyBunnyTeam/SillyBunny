@@ -11,15 +11,16 @@ const PLACEHOLDER = /^(?:TODO\(copy\)|lorum ipsum)$/i;
 /**
  * @param {string} role A role of `capitalisation.js`.
  * @param {string} text
+ * @param {{ origin?: string }} [options] `origin` is the one `copy-origin.js` gives. Only a string that SillyBunny wrote must lose the period of a one-sentence caption.
  * @returns {null | { kind: string, expected: string }} `null` when the text follows the rule. `expected` is empty for kind `words`.
  */
-export function judgeRendered(role, text) {
+export function judgeRendered(role, text, { origin } = {}) {
     const flat = text.replace(/\s+/g, ' ').trim();
     if (!/\p{L}/u.test(flat) || PLACEHOLDER.test(flat)) {
         return null;
     }
-    // The rendered strings hold upstream captions that end in a period and have no baseline record yet, so this check leaves the caption period to the source test.
-    const result = checkLabel(role, flat, { captionPeriod: false });
+    // Upstream keeps its wording and its period, and a string of unknown origin may be upstream's, so only a SillyBunny string is held to the period rule.
+    const result = checkLabel(role, flat, { captionPeriod: origin === 'sillybunny' });
     if (!result.ok) {
         return { kind: result.why, expected: result.expected };
     }

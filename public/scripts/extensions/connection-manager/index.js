@@ -905,9 +905,10 @@ async function selectConnectionProfilesForDeletion() {
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;');
 
+    // SillyBunny: a one-sentence caption ends without a period.
     const html = $(
         `<div class="flex-container flexFlowColumn flexGap10">
-            <div>${t`Select the connection profiles you want to delete.`}</div>
+            <div>${t`Select the connection profiles you want to delete`}</div>
             <div class="flex-container flexFlowColumn flexGap5">
                 ${profiles.map(profile => `
                     <label class="checkbox_label justifyStart">

@@ -213,7 +213,7 @@ export function buildImportGroup() {
         suffix: [zipButton, zipFileInput],
     });
     zipRow.row.classList.add('sb-import-pane');
-    const zipFileName = element('small', 'ds-row-subtitle sb-import-file-name', 'No ZIP selected yet.');
+    const zipFileName = element('small', 'ds-row-subtitle sb-import-file-name', 'No ZIP selected yet');
     zipRow.row.querySelector('.ds-row-text').append(zipFileName);
 
     const note = element('div', 'ds-row sb-server-note sb-import-note', 'Full imports replace matching files and reload automatically. Extension sync replaces matching third-party extension folders, then shows a report so you can review it before reloading.');

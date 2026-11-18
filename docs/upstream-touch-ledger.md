@@ -1585,6 +1585,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6j). |
 | Owner | `TODO(copy)` |
 
+### Final periods and off-scale paddings in upstream-origin files (task 14.6k)
+
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` (one-sentence captions and tooltips written by SillyBunny, each line with a `SillyBunny: no final period` marker, and their `data-i18n` keys); `public/scripts/extensions/connection-manager/index.js` (the same rule for a SillyBunny string); `public/style.css` (`.menu_button` horizontal padding `16px` to `18px`; the `@import` keys); `public/css/promptmanager.css` (`.completion_prompt_manager_tab_button` `8px 16px` to `6px 18px`); `public/scripts/swipe-picker.js` (the entity list sheet's cache key). |
+| Area | Copy (the period rule); spacing. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The marked lines; the spacing scale of `DESIGN.md` (`3, 6, 9, 12, 18, 24, 36px`). |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6k; the user's period rule and spacing-scale decision of 2026-11-18): SillyBunny-written one-sentence captions and tooltips end without a period, and upstream wording keeps its own; the two paddings move to the scale value nearest them that keeps each control's height. |
+| Protecting tests | The surface audit's `copy` check (it judges the period of SillyBunny-written strings); `tests/unit/copy-judge.test.js`; `tests/shell-panel-button-sizes.e2e.js`; the surface audit's parity check. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the `copy` check over every family (346 of 346), the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6k). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |

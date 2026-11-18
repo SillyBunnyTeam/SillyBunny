@@ -6018,7 +6018,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     flex: 0 0 auto;
     min-height: var(--sb-bg-icon-size);
     margin: 0;
-    padding: 8px 16px;
+    padding: 9px 12px;
     border: 0;
     border-radius: var(--sb-shell-control-radius);
     background: var(--sb-raised-bg);
@@ -6063,7 +6063,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     align-items: center;
     justify-content: center;
     min-height: var(--sb-bg-icon-size);
-    padding: 8px 16px;
+    padding: 9px 12px;
     font-size: var(--sb-type-control);
     line-height: 1.3;
 }

@@ -452,7 +452,7 @@ body.reduced-motion .sb-folder-row .ds-entity-row__chevron {
     align-items: center;
     gap: 4px;
     max-width: 100%;
-    padding: 3px 10px;
+    padding: 3px 9px;
     border-radius: var(--sb-radius-pill);
     border: 1px solid color-mix(in srgb, var(--sb-shell-border) 90%, transparent);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
@@ -527,7 +527,7 @@ body.reduced-motion .sb-folder-row .ds-entity-row__chevron {
     position: relative;
     gap: 4px;
     min-height: 28px;
-    padding: 3px 10px;
+    padding: 3px 9px;
     border: 1px solid transparent !important;
     border-radius: var(--sb-radius-pill);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent) !important;

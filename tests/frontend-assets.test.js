@@ -49,7 +49,7 @@ describe('frontend asset manifest rewriting', () => {
     test('rewrites built styles and fonts without moving boot modules', () => {
         const html = [
             '<link href="style.css?v=old">',
-            '<link href="css/sillybunny-mobile-shell.css?v=old">',
+            '<link href="css/sillybunny-mobile-shell.css?v=20261118zv">',
             '<link href="webfonts/AdwaitaSans/AdwaitaSans-Regular-Latin.woff2?v=old">',
             '<script type="module" src="scripts/performance-loader.js"></script>',
             '<script type="module" src="script.js?v=old"></script>',

@@ -6,7 +6,7 @@
             "important": 12,
             "breakpoint-off-set": 2,
             "breakpoint-1000": 1,
-            "spacing-off-scale": 34
+            "spacing-off-scale": 32
         },
         "public/css/sillybunny-character-import.css": {
             "important": 1,
@@ -43,13 +43,13 @@
         "public/css/sillybunny-editor-shell.css": {
             "radius-literal": 2,
             "important": 10,
-            "spacing-off-scale": 26,
+            "spacing-off-scale": 23,
             "spacing-off-scale-fallback": 1
         },
         "public/css/sillybunny-entity-list.css": {
             "radius-literal": 12,
             "important": 33,
-            "spacing-off-scale": 26,
+            "spacing-off-scale": 24,
             "spacing-off-scale-fallback": 1
         },
         "public/css/sillybunny-extensions-manager.css": {
@@ -79,7 +79,7 @@
             "radius-literal": 1,
             "shadow-literal": 2,
             "important": 295,
-            "spacing-off-scale": 58,
+            "spacing-off-scale": 55,
             "spacing-off-scale-fallback": 3
         },
         "public/css/sillybunny-paper-theme.css": {
@@ -90,7 +90,7 @@
         "public/css/sillybunny-persona-detail.css": {
             "radius-literal": 3,
             "important": 4,
-            "spacing-off-scale": 16
+            "spacing-off-scale": 15
         },
         "public/css/sillybunny-persona-editor.css": {
             "important": 11,
@@ -113,7 +113,7 @@
             "important": 264,
             "breakpoint-off-set": 6,
             "focus-outline": 1,
-            "spacing-off-scale": 129,
+            "spacing-off-scale": 125,
             "spacing-off-scale-fallback": 2
         },
         "public/css/sillybunny-tag-manager.css": {
@@ -135,11 +135,11 @@
         "public/css/sillybunny-windows.css": {
             "radius-literal": 2,
             "important": 1,
-            "spacing-off-scale": 29
+            "spacing-off-scale": 27
         },
         "public/css/sillybunny-world-info-editor.css": {
             "important": 14,
-            "spacing-off-scale": 23
+            "spacing-off-scale": 22
         },
         "public/scripts/extensions/guided-generations/style.css": {
             "shadow-literal": 1,

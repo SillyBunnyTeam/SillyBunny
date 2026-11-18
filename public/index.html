@@ -30,7 +30,7 @@
         }
     </script>
     <script src="scripts/sillybunny-restart-cache-clear.js?v=20261013a"></script>
-    <link rel="preload" as="style" href="style.css?v=20261118zu">
+    <link rel="preload" as="style" href="style.css?v=20261118zx">
     <link rel="modulepreload" href="script.js">
     <link rel="modulepreload" href="scripts/sillybunny-tabs.js">
     <link rel="modulepreload" href="scripts/sillybunny-conversation.js">
@@ -57,7 +57,7 @@
     <link rel="apple-touch-icon" sizes="114x114" href="img/apple-icon-114x114.png" />
     <link rel="apple-touch-icon" sizes="144x144" href="img/apple-icon-144x144.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="img/apple-icon-180x180.png" />
-    <link rel="stylesheet" type="text/css" href="style.css?v=20261118zu">
+    <link rel="stylesheet" type="text/css" href="style.css?v=20261118zx">
     <link rel="stylesheet" type="text/css" href="css/st-tailwind.css">
     <link rel="stylesheet" type="text/css" href="css/toggle-dependent.css?v=20261118zu">
     <link rel="stylesheet" type="text/css" href="css/select2-overrides.css?v=20261117zc">
@@ -68,16 +68,16 @@
     <!-- SillyBunny: the mobile surface stylesheet cache key tracks its fork-owned responsive rules. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-paper-theme.css?v=20261112t" media="(max-width: 768px)">
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261118zt">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261118zv">
     <!-- SillyBunny: entity lists and tag filters load after startup; the group editor activates them on open. -->
-    <link rel="preload" as="style" href="css/sillybunny-entity-list.css?v=20261118zo" data-sb-deferred-style data-sb-media="all">
+    <link rel="preload" as="style" href="css/sillybunny-entity-list.css?v=20261118zv" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: the Characters/Groups list activates this deferred stylesheet on first mount. Keep this version aligned with the runtime loader URLs. -->
     <link rel="preload" as="style" href="css/sillybunny-character-list.css?v=20261118zo" data-sb-deferred-style data-sb-media="all">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261118zo" media="(max-width: 768px)">
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261118zv" media="(max-width: 768px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261118zo">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261118zu">
     <!-- SillyBunny: the editor chrome sheet is deferred, so it stays out of the blocking-CSS budget. The editors, the lists and the windows that use it load it through loadListEditorStyles() and wait for it before they show; the character and group editors are held hidden until it applies (holdEditorsUntilStyled() in sillybunny-editor/list-shell.js). Keep this version aligned with the runtime loader URLs. -->
-    <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261118zo" data-sb-deferred-style data-sb-media="all">
+    <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261118zv" data-sb-deferred-style data-sb-media="all">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
     <link rel="preload" as="style" href="css/sillybunny-color-picker.css?v=20261118zp" data-sb-deferred-style data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
@@ -5642,7 +5642,7 @@
                                     <small data-i18n="No Text Shadows">No Text Shadows</small>
                                 </label>
                                 <!-- SillyBunny: capitalisation by DESIGN.md -->
-                                <label for="sb_auto_close_inline_drawers" class="checkbox_label" title="Automatically collapse sibling settings drawers when you open another one.">
+                                <!-- SillyBunny: no final period --><label for="sb_auto_close_inline_drawers" class="checkbox_label" title="Automatically collapse sibling settings drawers when you open another one">
                                     <input id="sb_auto_close_inline_drawers" type="checkbox" />
                                     <small>Auto-Close Setting Drawers</small>
                                 </label>
@@ -5674,11 +5674,11 @@
                                     <input id="messageModelIconEnabled" type="checkbox" />
                                     <small data-i18n="Model Icon">Model Icons</small>
                                 </label>
-                                <label for="messageModelNameEnabled" class="checkbox_label" title="Write the exact model name after the message icon." data-i18n="[title]Write the exact model name after the message icon">
+                                <!-- SillyBunny: no final period --><label for="messageModelNameEnabled" class="checkbox_label" title="Write the exact model name after the message icon" data-i18n="[title]Write the exact model name after the message icon">
                                     <input id="messageModelNameEnabled" type="checkbox" />
                                     <small data-i18n="Model Name After Icon">Model Name After Icon</small>
                                 </label>
-                                <label for="messageReasoningEffortEnabled" class="checkbox_label" title="Write the reasoning effort used after the model name." data-i18n="[title]Write the reasoning effort used after the model name">
+                                <!-- SillyBunny: no final period --><label for="messageReasoningEffortEnabled" class="checkbox_label" title="Write the reasoning effort used after the model name" data-i18n="[title]Write the reasoning effort used after the model name">
                                     <input id="messageReasoningEffortEnabled" type="checkbox" />
                                     <small data-i18n="Reasoning Effort After Model">Reasoning Effort After Model</small>
                                 </label>
@@ -5844,12 +5844,12 @@
                                     <small data-i18n="Reduce Live iOS Stream Work">Reduce Live iOS Stream Work</small>
                                 </label>
                                 <!-- SillyBunny: capitalisation by DESIGN.md -->
-                                <label class="checkbox_label" for="ios_webkit_disable_smooth_streaming" title="Use normal SSE chunks instead of per-character smooth streaming on iOS WebKit." data-i18n="[title]Use normal SSE chunks instead of per-character smooth streaming on iOS WebKit.">
+                                <!-- SillyBunny: no final period --><label class="checkbox_label" for="ios_webkit_disable_smooth_streaming" title="Use normal SSE chunks instead of per-character smooth streaming on iOS WebKit" data-i18n="[title]Use normal SSE chunks instead of per-character smooth streaming on iOS WebKit">
                                     <input id="ios_webkit_disable_smooth_streaming" type="checkbox" />
                                     <small data-i18n="Bypass iOS Smooth Streaming">Bypass iOS Smooth Streaming</small>
                                 </label>
                                 <!-- SillyBunny: capitalisation by DESIGN.md -->
-                                <label class="checkbox_label" for="ios_webkit_disable_stream_fade_in" title="Use the lighter live DOM patch path instead of stream fade-in segmentation on iOS WebKit." data-i18n="[title]Use the lighter live DOM patch path instead of stream fade-in segmentation on iOS WebKit.">
+                                <!-- SillyBunny: no final period --><label class="checkbox_label" for="ios_webkit_disable_stream_fade_in" title="Use the lighter live DOM patch path instead of stream fade-in segmentation on iOS WebKit" data-i18n="[title]Use the lighter live DOM patch path instead of stream fade-in segmentation on iOS WebKit">
                                     <input id="ios_webkit_disable_stream_fade_in" type="checkbox" />
                                     <small data-i18n="Bypass iOS Stream Fade-In">Bypass iOS Stream Fade-In</small>
                                 </label>
@@ -5879,7 +5879,7 @@
                                     <small data-i18n="Use Raw Android Stream Chunks">Use Raw Android Stream Chunks</small>
                                 </label>
                                 <!-- SillyBunny: capitalisation by DESIGN.md -->
-                                <label class="checkbox_label" for="android_disable_stream_fade_in" title="Skip Android fade-in text segmentation during live streaming." data-i18n="[title]Skip Android fade-in text segmentation during live streaming.">
+                                <!-- SillyBunny: no final period --><label class="checkbox_label" for="android_disable_stream_fade_in" title="Skip Android fade-in text segmentation during live streaming" data-i18n="[title]Skip Android fade-in text segmentation during live streaming">
                                     <input id="android_disable_stream_fade_in" type="checkbox" />
                                     <small data-i18n="Skip Android Fade-In Segmentation">Skip Android Fade-In Segmentation</small>
                                 </label>
@@ -5948,7 +5948,7 @@
                                     </small>
                                 </label>
                                 <!-- SillyBunny: a button shows a label or an icon, not both, so the icon is gone. -->
-                                <div id="movingUIreset" title="Reset MovingUI panel sizes/locations, including off-screen panels." class="menu_button margin0" data-i18n="[title]Reset MovingUI panel sizes/locations, including off-screen panels.">
+                                <!-- SillyBunny: no final period --><div id="movingUIreset" title="Reset MovingUI panel sizes/locations, including off-screen panels" class="menu_button margin0" data-i18n="[title]Reset MovingUI panel sizes/locations, including off-screen panels">
                                     <span data-i18n="mui_reset">Reset</span>
                                 </div>
                             </div>
@@ -6115,7 +6115,7 @@
                                     <!-- SillyBunny: capitalisation by DESIGN.md -->
                                     <label for="ooc_context_depth" class="flex1" title="Keep OOC ((...)) blocks in prompt context. -1 keeps all messages, 0 keeps only the active turn, N keeps through depth N." data-i18n="[title]Keep OOC blocks in prompt context. -1 keeps all messages, 0 keeps only the active turn, N keeps through depth N.">
                                         <small data-i18n="OOC Context Depth">OOC Context Depth</small>
-                                        <small class="opacity50p" data-i18n="-1 keeps all OOC blocks; 0 keeps active turn only; N keeps through depth N.">-1 keeps all OOC blocks; 0 keeps active turn only; N keeps through depth N.</small>
+                                        <!-- SillyBunny: no final period --><small class="opacity50p" data-i18n="-1 keeps all OOC blocks; 0 keeps active turn only; N keeps through depth N">-1 keeps all OOC blocks; 0 keeps active turn only; N keeps through depth N</small>
                                     </label>
                                     <input id="ooc_context_depth" class="text_pole widthUnset" type="number" min="-1" step="1" value="-1" />
                                 </div>
@@ -6123,7 +6123,7 @@
                                     <!-- SillyBunny: capitalisation by DESIGN.md -->
                                     <label for="html_context_depth" class="flex1" title="Keep raw HTML tags in prompt context. -1 keeps all messages, 0 keeps only the active turn, N keeps through depth N." data-i18n="[title]Keep raw HTML tags in prompt context. -1 keeps all messages, 0 keeps only the active turn, N keeps through depth N.">
                                         <small data-i18n="HTML Tag Context Depth">HTML Tag Context Depth</small>
-                                        <small class="opacity50p" data-i18n="-1 keeps all HTML tags; 0 keeps active turn only; N keeps through depth N.">-1 keeps all HTML tags; 0 keeps active turn only; N keeps through depth N.</small>
+                                        <!-- SillyBunny: no final period --><small class="opacity50p" data-i18n="-1 keeps all HTML tags; 0 keeps active turn only; N keeps through depth N">-1 keeps all HTML tags; 0 keeps active turn only; N keeps through depth N</small>
                                     </label>
                                     <input id="html_context_depth" class="text_pole widthUnset" type="number" min="-1" step="1" value="-1" />
                                 </div>
@@ -6981,7 +6981,7 @@
                                 <section class="sb-editor-section" data-sb-section="character-fields" aria-labelledby="sb_character_section_character_fields">
                                     <header class="ds-pref-group-header">
                                         <h3 class="ds-pref-group-heading" id="sb_character_section_character_fields" data-i18n="Character Fields">Character Fields</h3>
-                                        <p class="ds-pref-group-subtitle" data-i18n="character_fields_subtitle">How this character should be interpreted.</p>
+                                        <!-- SillyBunny: no final period --><p class="ds-pref-group-subtitle" data-i18n="character_fields_subtitle">How this character should be interpreted</p>
                                     </header>
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <div id="descriptionWrapper" class="ds-field">
@@ -6993,7 +6993,7 @@
                                                     <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="description_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                                 </span>
                                             </div>
-                                            <small class="ds-field-subtitle" data-i18n="description_subtitle">Appearance, mannerisms, background, general purpose details.</small>
+                                            <!-- SillyBunny: no final period --><small class="ds-field-subtitle" data-i18n="description_subtitle">Appearance, mannerisms, background, general purpose details</small>
                                             <textarea id="description_textarea" class="text_pole mdHotkeys" data-macros data-sb-editor-field="description" data-i18n="[placeholder]Describe your character's physical and mental traits here." placeholder="Describe your character's physical and mental traits here." name="description"></textarea>
                                             <div class="sb-preview-pane" data-sb-preview-pane="description_textarea" hidden></div>
                                             <div class="extension_token_counter">
@@ -7009,7 +7009,7 @@
                                                     <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="personality_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                                 </span>
                                             </div>
-                                            <small class="ds-field-subtitle" data-i18n="personality_subtitle">A summary of the character's temperament.</small>
+                                            <!-- SillyBunny: no final period --><small class="ds-field-subtitle" data-i18n="personality_subtitle">A summary of the character's temperament</small>
                                             <textarea id="personality_textarea" name="personality" data-macros data-sb-editor-field="personality" data-i18n="[placeholder](A brief description of the personality)" placeholder="(A brief description of the personality)" form="form_create" class="text_pole" autocomplete="off" rows="4"></textarea>
                                             <div class="sb-preview-pane" data-sb-preview-pane="personality_textarea" hidden></div>
                                             <div class="extension_token_counter">
@@ -7025,7 +7025,7 @@
                                                     <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="scenario_pole" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                                 </span>
                                             </div>
-                                            <small class="ds-field-subtitle" data-i18n="scenario_subtitle">The scenario that governs all interactions with this character.</small>
+                                            <!-- SillyBunny: no final period --><small class="ds-field-subtitle" data-i18n="scenario_subtitle">The scenario that governs all interactions with this character</small>
                                             <textarea id="scenario_pole" name="scenario" data-macros data-sb-editor-field="scenario" data-i18n="[placeholder](Circumstances and context of the interaction)" placeholder="(Circumstances and context of the interaction)" class="text_pole" autocomplete="off" form="form_create" rows="4"></textarea>
                                             <div class="sb-preview-pane" data-sb-preview-pane="scenario_pole" hidden></div>
                                             <div class="extension_token_counter">
@@ -7038,7 +7038,7 @@
                                 <section class="sb-editor-section" data-sb-section="advanced-fields" aria-labelledby="sb_character_section_advanced_fields">
                                     <header class="ds-pref-group-header">
                                         <h3 class="ds-pref-group-heading" id="sb_character_section_advanced_fields" data-i18n="Advanced Fields">Advanced Fields</h3>
-                                        <p class="ds-pref-group-subtitle" data-i18n="advanced_fields_subtitle">Prompting overrides for this character.</p>
+                                        <!-- SillyBunny: no final period --><p class="ds-pref-group-subtitle" data-i18n="advanced_fields_subtitle">Prompting overrides for this character</p>
                                     </header>
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <small class="sb-editor-section-hint" data-i18n="Insert {{original}} into either box to include the respective default prompt from system settings.">Insert <code>{{original}}</code> into either box to include the respective default prompt from system settings.</small>
@@ -7050,7 +7050,7 @@
                                                     <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="system_prompt_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                                 </span>
                                             </div>
-                                            <small class="ds-field-subtitle" data-i18n="system_prompt_subtitle">Replaces the main prompt field, when interacting with this character.</small>
+                                            <!-- SillyBunny: no final period --><small class="ds-field-subtitle" data-i18n="system_prompt_subtitle">Replaces the main prompt field, when interacting with this character</small>
                                             <textarea id="system_prompt_textarea" name="system_prompt" data-macros data-sb-editor-field="system_prompt" data-i18n="[placeholder]Any contents here will replace the default Main Prompt used for this character. (v2 spec: system_prompt)" placeholder="Any contents here will replace the default Main Prompt used for this character.&#10;(v2 spec: system_prompt)" form="form_create" class="text_pole" autocomplete="off" rows="3"></textarea>
                                             <div class="sb-preview-pane" data-sb-preview-pane="system_prompt_textarea" hidden></div>
                                             <div class="extension_token_counter">
@@ -7065,7 +7065,7 @@
                                                     <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="post_history_instructions_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                                 </span>
                                             </div>
-                                            <small class="ds-field-subtitle" data-i18n="post_history_instructions_subtitle">Replaces the post-history instructions field, when interacting with this character.</small>
+                                            <!-- SillyBunny: no final period --><small class="ds-field-subtitle" data-i18n="post_history_instructions_subtitle">Replaces the post-history instructions field, when interacting with this character</small>
                                             <textarea id="post_history_instructions_textarea" name="post_history_instructions" data-macros data-sb-editor-field="post_history_instructions" data-i18n="[placeholder]Any contents here will replace the default Post-History Instructions used for this character. (v2 spec: post_history_instructions)" placeholder="Any contents here will replace the default Post-History Instructions used for this character.&#10;(v2 spec: post_history_instructions)" form="form_create" class="text_pole" autocomplete="off" rows="3"></textarea>
                                             <div class="sb-preview-pane" data-sb-preview-pane="post_history_instructions_textarea" hidden></div>
                                             <div class="extension_token_counter">
@@ -7080,7 +7080,7 @@
                                                     <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="depth_prompt_prompt" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                                 </span>
                                             </div>
-                                            <small class="ds-field-subtitle" data-i18n="depth_prompt_subtitle">A note inserted at a specified depth with the associated role.</small>
+                                            <!-- SillyBunny: no final period --><small class="ds-field-subtitle" data-i18n="depth_prompt_subtitle">A note inserted at a specified depth with the associated role</small>
                                             <textarea id="depth_prompt_prompt" name="depth_prompt_prompt" data-macros data-sb-editor-field="depth_prompt_prompt" class="text_pole" rows="5" autocomplete="off" form="form_create" data-i18n="[placeholder](Text to be inserted in-chat @ designated depth and role)" placeholder="(Text to be inserted in-chat @ designated depth and role)"></textarea>
                                             <div class="sb-preview-pane" data-sb-preview-pane="depth_prompt_prompt" hidden></div>
                                             <div class="ds-inline-controls">
@@ -7135,7 +7135,7 @@
                                 <section class="sb-editor-section" data-sb-section="greetings" aria-labelledby="sb_character_section_greetings">
                                     <header class="ds-pref-group-header">
                                         <h3 class="ds-pref-group-heading" id="sb_character_section_greetings" data-i18n="Greetings">Greetings</h3>
-                                        <p class="ds-pref-group-subtitle" data-i18n="greetings_subtitle">Opening messages for any new chat created with this character.</p>
+                                        <!-- SillyBunny: no final period --><p class="ds-pref-group-subtitle" data-i18n="greetings_subtitle">Opening messages for any new chat created with this character</p>
                                     </header>
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <div id="firstMessageWrapper" class="ds-field">
@@ -7146,7 +7146,7 @@
                                                     <i class="editor_maximize fa-solid fa-maximize right_menu_button" data-for="firstmessage_textarea" title="Expand the editor" data-i18n="[title]Expand the editor"></i>
                                                 </span>
                                             </div>
-                                            <small class="ds-field-subtitle" data-i18n="first_message_subtitle">The opening message for every interaction with this character.</small>
+                                            <!-- SillyBunny: no final period --><small class="ds-field-subtitle" data-i18n="first_message_subtitle">The opening message for every interaction with this character</small>
                                             <textarea id="firstmessage_textarea" class="text_pole mdHotkeys" data-macros data-sb-editor-field="first_mes" data-i18n="[placeholder]This will be the first message from the character that starts every chat." placeholder="This will be the first message from the character that starts every chat." name="first_mes"></textarea>
                                             <div class="extension_token_counter">
                                                 <span data-i18n="extension_token_counter">Tokens:</span> <span data-token-counter="firstmessage_textarea">counting...</span>
@@ -7209,7 +7209,7 @@
                                 <section class="sb-editor-section" data-sb-section="metadata" aria-labelledby="sb_character_section_metadata">
                                     <header class="ds-pref-group-header">
                                         <h3 class="ds-pref-group-heading" id="sb_character_section_metadata" data-i18n="Metadata">Metadata</h3>
-                                        <p class="ds-pref-group-subtitle" data-i18n="metadata_subtitle">Creator's notes, versioning, and tagging.</p>
+                                        <!-- SillyBunny: no final period --><p class="ds-pref-group-subtitle" data-i18n="metadata_subtitle">Creator's notes, versioning, and tagging</p>
                                     </header>
                                     <div class="ds-pref-group sb-editor-section__body">
                                         <div id="spoiler_free_desc" class="sb-creator-notes-preview">

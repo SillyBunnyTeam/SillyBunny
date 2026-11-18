@@ -183,7 +183,8 @@ const LATIN = [
 ];
 // An ellipsis inside brackets or quotes is literal syntax, such as <think>...</think> or ((...)).
 const PROSE_ELLIPSIS = /(?<![([{<>"'])\.{3}(?![)\]}<>"'])/g;
-const SEVERAL_SENTENCES = /[.!?]\s+\p{Lu}/u;
+// A bullet starts a new item, so a list of items after a period is several sentences too.
+const SEVERAL_SENTENCES = /[.!?]\s+[\p{Lu}•]/u;
 
 /**
  * The writing-style faults of a label: a three-dot ellipsis, a Latin abbreviation and a trailing period.

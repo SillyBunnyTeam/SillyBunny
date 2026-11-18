@@ -87,6 +87,7 @@ describe('styleFaults', () => {
         ['Delete', []],
         ['Keep <think>...</think> blocks', []],
         ['Keep OOC ((...)) blocks', []],
+        ['Choose how it is sent: • Auto: Normal default behavior. • Send: Force the value.', []],
     ])('%s', (text, faults) => {
         expect(styleFaults(text)).toEqual(faults);
     });

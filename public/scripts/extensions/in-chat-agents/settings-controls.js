@@ -19,7 +19,7 @@ const fields = [
     },
     {
         id: 'companionExecutionMode', label: 'Companion Execution',
-        title: 'Run companion agents in parallel (faster) or sequentially (rate-limit friendly), independent of the append agents setting.',
+        title: 'Run companion agents in parallel (faster) or sequentially (rate-limit friendly), independent of the append agents setting',
     },
     {
         id: 'companionConcurrent', label: 'Run Companions Alongside Post-Gen Passes',
@@ -44,7 +44,7 @@ const fields = [
     },
     {
         id: 'pathfinderSubmoduleEnabled', label: 'Enable Pathfinder Submodule',
-        title: 'Enable or disable the built-in Pathfinder submodule without disabling shared In-Chat Agents.',
+        title: 'Enable or disable the built-in Pathfinder submodule without disabling shared In-Chat Agents',
     },
 ];
 

@@ -255,7 +255,7 @@
         flex-basis: auto !important;
         min-width: max-content !important;
         min-height: max(40px, var(--sb-control-min-height)) !important;
-        padding: 5px 9px !important;
+        padding: 6px 9px !important;
         border-radius: var(--sb-radius-control) !important;
     }
 
@@ -889,7 +889,7 @@ html.sb-ios-keyboard-inset-active #sb-settings-page .sb-shell-panel-scroller {
     }
 
     #right-nav-panel.openDrawer .sb-character-shell-nav .sb-shell-tab {
-        padding: 7px 10px;
+        padding: 6px 9px;
         border-radius: var(--sb-radius-control);
     }
 

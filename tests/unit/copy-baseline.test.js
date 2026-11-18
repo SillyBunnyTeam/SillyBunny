@@ -171,8 +171,10 @@ describe('the fixture', () => {
         if (before === null) {
             return;
         }
-        const known = new Set(before.sillybunny.map(copyKey));
-        const added = readCopyBaseline().sillybunny.filter(item => !known.has(copyKey(item)));
+        // A string that only lost its final period is the same debt, such as a sentence tooltip whose text became a row subtitle without one.
+        const periodless = item => copyKey({ ...item, text: item.text.replace(/\.$/, '') });
+        const known = new Set(before.sillybunny.map(periodless));
+        const added = readCopyBaseline().sillybunny.filter(item => !known.has(periodless(item)));
         // Records that the sillybunny section gained since HEAD: fix the strings instead, or add them with the second switch and a decision.
         expect(added.map(item => `${item.surface}: ${item.role} "${item.text}"`)).toEqual([]);
     });

@@ -565,7 +565,7 @@
     align-items: center;
     justify-content: center;
     min-height: 36px;
-    padding: 8px 16px;
+    padding: 6px 18px;
     border: 1px solid transparent;
     border-radius: 9999px;
     background: transparent;
@@ -1245,7 +1245,7 @@
         align-items: center;
         gap: 8px;
         margin-bottom: 12px;
-        padding: 6px 10px;
+        padding: 6px 9px;
         font-size: var(--sb-type-control, 0.875rem);
         border-radius: var(--sb-radius-sm, 8px);
     }

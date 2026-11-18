@@ -665,7 +665,7 @@ body.reduced-motion .sbHomeFlatButton {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border-radius: var(--sb-radius-md);
     background: color-mix(in srgb, var(--SmartThemeBodyColor) 8%, transparent);
     color: var(--sb-contrast-strong, var(--SmartThemeBodyColor));

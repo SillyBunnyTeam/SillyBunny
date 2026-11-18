@@ -20,7 +20,6 @@
     --input-padding-y: 14px;
 
     /* Card/Panel spacing */
-    --card-padding: 18px;
     --card-gap: 18px;
     --panel-padding: 18px;
     --panel-gap: 12px;
@@ -40,7 +39,6 @@
 @media screen and (max-width: 1024px) {
     :root {
         --button-size-md: 40px;
-        --card-padding: 16px;
         --panel-padding: 16px;
         --input-padding-y: 12px;
     }
@@ -49,7 +47,6 @@
 @media screen and (max-width: 620px) {
     :root {
         --button-size-md: 38px;
-        --card-padding: 14px;
         --panel-padding: 14px;
     }
 }

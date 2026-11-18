@@ -5,7 +5,7 @@ import { createSelectionMode } from '../selection-mode.js';
 import { createStatusPage } from '../status-page.js';
 
 // The rows and their lists are shared entity rows, which this deferred sheet draws. index.html preloads it.
-const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261118zo', id: 'deferred-entity-list-css' };
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261118zv', id: 'deferred-entity-list-css' };
 
 function iconButton(label, glyph, className = '', base = 'sb-dialog__icon-button') {
     const button = document.createElement('button');

@@ -454,7 +454,7 @@ async function judgeCopyCheck(surface, collected, collectErrors) {
                 remember(JSON.stringify([item.role, item.text]), { role: item.role, text: item.text, origin: where }, item.viewport);
                 continue;
             }
-            const verdict = judgeRendered(item.role, text);
+            const verdict = judgeRendered(item.role, text, { origin: where });
             remember(JSON.stringify([item.role, text]), { role: item.role, text, origin: where, ...(verdict && { kind: verdict.kind, expected: verdict.expected }) }, item.viewport);
             if (verdict) {
                 observations.push({

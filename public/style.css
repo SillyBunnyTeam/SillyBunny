@@ -2,7 +2,7 @@
 
 @import url(css/animations.css?v=20261118zp);
 @import url(css/popup.css?v=20261117za);
-@import url(css/promptmanager.css?v=20261112a);
+@import url(css/promptmanager.css?v=20261118zv);
 @import url(css/loader.css?v=20261110a);
 @import url(css/character-group-overlay.css);
 @import url(css/file-form.css);
@@ -16,7 +16,7 @@
 @import url(css/secrets.css?v=20261118zk);
 @import url(css/backgrounds.css?v=20261118s);
 @import url(css/chat-backups.css?v=20261118zh);
-@import url(css/spacing-system.css?v=20261118zp);
+@import url(css/spacing-system.css?v=20261118zv);
 @import url(css/streaming-display.css);
 
 :root {
@@ -3976,7 +3976,7 @@ grammarly-extension {
     background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: var(--sb-radius-button, 14px);
-    padding: 6px 16px;
+    padding: 6px 18px; /* SillyBunny: spacing scale */
     width: min-content;
     cursor: pointer;
     margin: 4px 0;

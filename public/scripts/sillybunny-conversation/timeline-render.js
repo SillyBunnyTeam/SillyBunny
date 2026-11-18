@@ -1867,7 +1867,7 @@ export function buildSettingsDrawerContent() {
                 label: isGroupConversation ? 'Remember Solo DMs in This Group DM' : 'Remember Group DMs in This Solo DM',
                 subtitle: isGroupConversation
                     ? 'When enabled, this group DM can reference saved memory from this character\'s solo DM.'
-                    : 'When enabled, this solo DM can reference saved memory from group DMs that include this character.',
+                    : 'When enabled, this solo DM can reference saved memory from group DMs that include this character',
                 title: 'Share saved memory summaries between this character\'s solo and group Conversation threads',
             }),
         ],

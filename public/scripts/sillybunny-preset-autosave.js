@@ -420,8 +420,8 @@ export function createPresetAutosaveToggle() {
     title.dataset.i18n = 'Autosave Presets';
     title.textContent = t`Autosave Presets`;
     const subtitle = document.createElement('small');
-    subtitle.dataset.i18n = 'Enables auto-saving functionality for presets.';
-    subtitle.textContent = t`Enables auto-saving functionality for presets.`;
+    subtitle.dataset.i18n = 'Enables auto-saving functionality for presets';
+    subtitle.textContent = t`Enables auto-saving functionality for presets`;
 
     label.append(input, title, subtitle);
     return label;

@@ -213,7 +213,7 @@
     align-items: center;
     gap: 10px;
     min-height: 40px;
-    padding: 6px 10px;
+    padding: 6px 9px;
     border-radius: var(--sb-radius-control);
     cursor: pointer;
 }

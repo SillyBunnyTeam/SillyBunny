@@ -134,7 +134,7 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
         if (refs?.verboseLoggingStatus instanceof HTMLElement) {
             refs.verboseLoggingStatus.textContent = enabled
                 ? 'Verbose logging is enabled.'
-                : 'Standard logging is enabled.';
+                : 'Standard logging is enabled';
             refs.verboseLoggingStatus.dataset.state = enabled ? 'warn' : 'neutral';
         }
 
@@ -264,22 +264,23 @@ export function createServerTools({ createElement, createShellPanel, hasServerRe
 
         const linesShown = state.entries.length;
         const totalBuffered = state.totalBuffered || linesShown;
-        const noteParts = [`Showing ${linesShown} of ${totalBuffered} recent console line${totalBuffered === 1 ? '' : 's'}.`];
+        const noteParts = [`Showing ${linesShown} of ${totalBuffered} recent console line${totalBuffered === 1 ? '' : 's'}`];
 
         if (state.captureStartedAt) {
-            noteParts.push(`Capture started ${formatConsoleLogDateTime(state.captureStartedAt)}.`);
+            noteParts.push(`Capture started ${formatConsoleLogDateTime(state.captureStartedAt)}`);
         }
 
         if (state.lastUpdatedAt) {
-            noteParts.push(`Last updated ${formatConsoleLogTime(state.lastUpdatedAt)}.`);
+            noteParts.push(`Last updated ${formatConsoleLogTime(state.lastUpdatedAt)}`);
         }
 
         noteParts.push(state.paused
-            ? 'Live polling is paused.'
-            : `Refreshes every ${(SB_CONSOLE_LOG_REFRESH_MS / 1000).toFixed(1).replace(/\.0$/, '')} seconds while this tab is open.`);
+            ? 'Live polling is paused'
+            : `Refreshes every ${(SB_CONSOLE_LOG_REFRESH_MS / 1000).toFixed(1).replace(/\.0$/, '')} seconds while this tab is open`);
 
         setServerAdminPill(refs.statusPill, state.busy ? 'Loading…' : state.paused ? 'Paused' : 'Live', state.paused ? 'warn' : 'good');
-        setServerAdminMessage(refs.statusNote, noteParts.join(' '), state.paused ? 'warn' : 'neutral');
+        // The parts carry no period of their own, so the note is one text whose sentences are joined here and not several captions.
+        setServerAdminMessage(refs.statusNote, `${noteParts.join('. ')}.`, state.paused ? 'warn' : 'neutral');
     }
 
     function renderConsoleLogsOutput({ preserveScroll = true } = {}) {

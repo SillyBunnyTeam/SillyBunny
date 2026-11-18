@@ -520,7 +520,7 @@ export function createConnectionsPanel({ createElement, getActiveApi, applyPanel
         if (footer instanceof HTMLElement) addLegacyClass(footer, 'sb-connections-legacy');
 
         const label = t`Auto-connect to Last Server`;
-        const subtitle = t`Connect to the last used server when SillyBunny opens.`;
+        const subtitle = t`Connect to the last used server when SillyBunny opens`;
         moveNode(input, generalGroup.group);
         const inputClass = input.getAttribute('class');
         const inputRole = input.getAttribute('role');
