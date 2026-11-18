@@ -4567,14 +4567,20 @@ body.reduced-motion :is(.ds-row.ds-row-entry--floating, .ds-row-entry--floating 
 }
 
 /* The wrap rule counts every control of the suffix: with a menu button beside the select, the pair moves under the
-   title when the title and the control minimum plus the button no longer fit. */
+   title when the title and the control minimum plus the button no longer fit. The suffix takes its own width, from that
+   minimum up to the larger of that minimum and 55% of the row, so a long value is cut before the control wraps. The title
+   column takes the rest, so a subtitle runs the room the control leaves. The suffix does not grow, so its auto margin keeps
+   it at the row's end when it wraps onto a line of its own. */
 .ds-row.ds-select-row:has(> .ds-row-suffix > .ds-select-row__menu) > .ds-row-text {
     flex: 1 1 var(--sb-row-title-min);
-    max-width: 180px;
+    max-width: 100%;
 }
 
 .ds-row.ds-select-row:has(> .ds-row-suffix > .ds-select-row__menu) > .ds-row-suffix {
-    flex: 1 1 calc(var(--sb-row-control-min) + 44px);
+    flex: 0 1 auto;
+    min-width: min(calc(var(--sb-row-control-min) + 44px), 100%);
+    max-width: max(calc(var(--sb-row-control-min) + 44px), 55%);
+    margin-inline-start: auto;
 }
 
 .ds-select-row__trigger {

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 import { waitForAppReady } from './helpers/app-ready.js';
 import { buildFontTables } from './helpers/font-fixtures.js';
 import { protectMaintainerServer, showToasts } from './helpers/maintainer-server.js';
@@ -41,7 +43,37 @@ async function routeSettings(page, initial = () => {}) {
     return state;
 }
 
-const stubStylesheets = page => page.route(/fonts\.googleapis\.com|\/webfonts\/(?:Inter|JetBrainsMono|Roboto|PublicSans|SourceSerif4)\/stylesheet\.css/, route => route.fulfill({ contentType: 'text/css', body: '' }));
+const PRESETS = [
+    { name: 'Inter', directory: 'Inter' },
+    { name: 'JetBrains Mono', directory: 'JetBrainsMono' },
+    { name: 'Roboto', directory: 'Roboto' },
+    { name: 'Public Sans', directory: 'PublicSans' },
+    { name: 'Source Serif 4', directory: 'SourceSerif4' },
+];
+const STACK_TAIL = '\'Adwaita Sans\', system-ui, sans-serif';
+const PRESET_SUBTITLE = 'Pick a locally saved global font for the user interface.';
+
+/**
+ * Answers Google's stylesheet with an empty one, so no test reaches the network, and records every request that goes to
+ * Google. Its font host is refused outright: nothing may ever ask it for a file.
+ * @returns {string[]} The URLs requested from either Google host, filled as requests arrive.
+ */
+async function interceptGoogle(page) {
+    const requested = [];
+    page.on('request', request => {
+        if (/fonts\.(googleapis|gstatic)\.com/.test(request.url())) requested.push(request.url());
+    });
+    await page.route(/fonts\.googleapis\.com/, route => route.fulfill({ contentType: 'text/css', body: '' }));
+    await page.route(/fonts\.gstatic\.com/, route => route.abort());
+    return requested;
+}
+
+/** The font files a preset's stylesheet names, as the paths the server serves, split into upright and italic. */
+function presetFiles(directory) {
+    const css = readFileSync(fileURLToPath(new URL(`../public/webfonts/${directory}/stylesheet.css`, import.meta.url)), 'utf8');
+    const urls = [...css.matchAll(/url\(\s*(['"]?)([^'")?]+)[^'")]*\1\s*\)/g)].map(match => `/webfonts/${directory}/${match[2]}`);
+    return { upright: urls.find(url => !/italic/i.test(url)), italic: urls.find(url => /italic/i.test(url)) };
+}
 
 async function boot(page) {
     await page.goto('/');
@@ -103,7 +135,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                 if (FONT_REJECTED.test(message.text())) rejected.push(message.text());
             });
             const state = await routeSettings(page);
-            await stubStylesheets(page);
+            await interceptGoogle(page);
             await boot(page);
             const row = await openFontRow(page);
             await expect(trigger(row)).toHaveText('Default (none)');
@@ -238,11 +270,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         });
 
         test('a saved Google Fonts name stays applied and listed under its own group until another font is picked', async ({ page }) => {
-            const googleRequests = [];
-            page.on('request', request => { if (request.url().includes('fonts.googleapis.com')) googleRequests.push(request.url()); });
+            const googleRequests = await interceptGoogle(page);
             await routeSettings(page, settings => { settings.power_user.google_font = 'Lobster Two'; });
-            await stubStylesheets(page);
             await boot(page);
+            // A name that is not a preset still asks Google for its stylesheet, and nothing else.
+            await expect.poll(() => googleRequests.length).toBeGreaterThan(0);
+            expect(googleRequests.every(url => /^https:\/\/fonts\.googleapis\.com\/css2\?family=Lobster%20Two[:&]/.test(url))).toBe(true);
             expect(await familyOf(page)).toBe('\'Lobster Two\', \'Adwaita Sans\', system-ui, sans-serif');
             await expect(page.locator('#google-font-style')).toHaveAttribute('href', /family=Lobster%20Two/);
             const row = await openFontRow(page);
@@ -266,10 +299,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         });
 
         test('a name that differs from a preset only by case becomes the preset and makes no Google request', async ({ page }) => {
-            const googleRequests = [];
-            page.on('request', request => { if (request.url().includes('fonts.googleapis.com')) googleRequests.push(request.url()); });
+            const googleRequests = await interceptGoogle(page);
             const state = await routeSettings(page, settings => { settings.power_user.google_font = 'public SANS'; });
-            await stubStylesheets(page);
             await boot(page);
             await expect.poll(async () => (await power(page)).choice).toBe('Public Sans');
             await expect.poll(() => state.saved.at(-1)?.power_user?.google_font).toBe('Public Sans');
@@ -280,6 +311,118 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         });
     });
 }
+
+/** A preset's request paths, from the page's request log, by whether they are its stylesheet, its upright file or its italic file. */
+const asked = (requests, path) => requests.some(url => new URL(url).pathname === path);
+
+function definePresetTest(viewport, preset) {
+    test.describe(`Preset ${preset.name} at ${viewport.width}px`, () => {
+        test.use({ viewport, hasTouch: viewport.width === 390, isMobile: viewport.width === 390 });
+
+        test('is requested from the app only when chosen, applied with its stack and kept over a reload', async ({ page }) => {
+            await protectMaintainerServer(page);
+            const files = presetFiles(preset.directory);
+            expect(files.upright).toBeTruthy();
+            expect(files.italic).toBeTruthy();
+            const stylesheet = `/webfonts/${preset.directory}/stylesheet.css`;
+            const requests = [];
+            page.on('request', request => requests.push(request.url()));
+            const rejected = [];
+            page.on('console', message => {
+                if (FONT_REJECTED.test(message.text())) rejected.push(message.text());
+            });
+            const external = await interceptGoogle(page);
+            const state = await routeSettings(page);
+            await boot(page);
+            const origin = new URL(page.url()).origin;
+            const row = await openFontRow(page);
+            await page.evaluate(() => document.fonts.ready);
+            expect(requests.filter(url => url.includes(`/webfonts/${preset.directory}/`))).toEqual([]);
+
+            await choose(page, row, preset.name);
+            const stack = `'${preset.name}', ${STACK_TAIL}`;
+            await expect.poll(() => familyOf(page)).toBe(stack);
+            // The browser drops the quotes of a one-word family when it serialises the list, so the quotes are not compared.
+            const unquoted = value => value.replaceAll(/['"]/g, '');
+            expect(unquoted(await page.evaluate(() => getComputedStyle(document.body).fontFamily))).toBe(unquoted(stack));
+            await expect.poll(() => asked(requests, stylesheet)).toBe(true);
+            await expect.poll(() => asked(requests, files.upright)).toBe(true);
+            expect(await page.evaluate(name => document.fonts.load(`16px '${name}'`, 'abc').then(() => document.fonts.check(`16px '${name}'`)), preset.name)).toBe(true);
+
+            // Italic text is what asks for the italic file.
+            expect(asked(requests, files.italic)).toBe(false);
+            expect(await page.evaluate(name => document.fonts.load(`italic 16px '${name}'`, 'abc').then(() => document.fonts.check(`italic 16px '${name}'`)), preset.name)).toBe(true);
+            await expect.poll(() => asked(requests, files.italic)).toBe(true);
+
+            const presetRequests = requests.filter(url => /\/webfonts\/(?:Inter|JetBrainsMono|Roboto|PublicSans|SourceSerif4)\//.test(url));
+            expect(presetRequests.length).toBeGreaterThanOrEqual(3);
+            expect(presetRequests.every(url => new URL(url).origin === origin && url.includes(`/webfonts/${preset.directory}/`))).toBe(true);
+            expect(external).toEqual([]);
+            await expect(page.locator('#google-font-style')).toHaveCount(0);
+            await expect(page.locator('#sb-preset-font-style')).toHaveAttribute('href', new RegExp(`^webfonts/${preset.directory}/stylesheet\\.css\\?v=`));
+            await expect.poll(() => state.saved.at(-1)?.power_user?.google_font).toBe(preset.name);
+
+            await page.reload();
+            await waitForAppReady(page);
+            await expect.poll(() => familyOf(page)).toBe(stack);
+            await expect.poll(() => page.evaluate(name => document.fonts.load(`16px '${name}'`, 'abc').then(() => document.fonts.check(`16px '${name}'`)), preset.name)).toBe(true);
+            await expect(trigger(await openFontRow(page))).toHaveText(preset.name);
+            expect(rejected).toEqual([]);
+            expect(external).toEqual([]);
+        });
+    });
+}
+
+for (const preset of PRESETS) definePresetTest({ width: 1440, height: 900 }, preset);
+definePresetTest({ width: 390, height: 844 }, PRESETS[3]);
+
+test('switching presets leaves one preset link, and Default leaves none', async ({ page }) => {
+    await protectMaintainerServer(page);
+    await interceptGoogle(page);
+    await routeSettings(page);
+    await boot(page);
+    const row = await openFontRow(page);
+    const links = () => page.locator('link#sb-preset-font-style');
+    await choose(page, row, 'Inter');
+    await expect(links()).toHaveCount(1);
+    await expect(links()).toHaveAttribute('href', /^webfonts\/Inter\//);
+    await choose(page, row, 'Roboto');
+    await expect(links()).toHaveCount(1);
+    await expect(links()).toHaveAttribute('href', /^webfonts\/Roboto\//);
+    await expect(page.locator('link[href*="webfonts/Inter/"]')).toHaveCount(0);
+    await choose(page, row, 'Default (none)');
+    // Adwaita's own sheets are links too, so only the preset directories count.
+    const presetLinks = () => page.locator('link[rel="stylesheet"]').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')).filter(href => /webfonts\/(?:Inter|JetBrainsMono|Roboto|PublicSans|SourceSerif4)\//.test(href)));
+    await expect.poll(presetLinks).toEqual([]);
+    await expect(links()).toHaveCount(0);
+    expect(await familyOf(page)).not.toContain('Roboto');
+});
+
+test.describe('the Preset row at 1440px', () => {
+    test.use({ viewport: { width: 1440, height: 900 } });
+
+    test('shows its subtitle on one line, as the select rows beside it do', async ({ page }) => {
+        await protectMaintainerServer(page);
+        await routeSettings(page);
+        await boot(page);
+        const row = await openFontRow(page);
+        const geometry = await row.evaluate(node => {
+            const subtitle = node.querySelector('.ds-row-text > .ds-row-subtitle');
+            const text = node.querySelector(':scope > .ds-row-text');
+            const lineHeight = parseFloat(getComputedStyle(subtitle).lineHeight);
+            return {
+                text: subtitle.textContent.trim(),
+                lines: Math.round(subtitle.getBoundingClientRect().height / lineHeight),
+                titleColumn: text.getBoundingClientRect().width,
+                row: node.getBoundingClientRect().width,
+            };
+        });
+        expect(geometry.text).toBe(PRESET_SUBTITLE);
+        expect(geometry.lines).toBe(1);
+        // The column takes what the control leaves, not a fixed width.
+        expect(geometry.titleColumn).toBeGreaterThan(geometry.row / 2);
+    });
+});
 
 test('default settings load no fonts module and request no font, preset or Google file at startup', async ({ page }) => {
     await protectMaintainerServer(page);

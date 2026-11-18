@@ -321,9 +321,19 @@ This is the largest class by a wide margin.
   - The server checks only the file name of an upload, so `validateFontFile()` checks the extension, the size (5 MB), the first four bytes against the extension and refuses collections before anything is sent, and `FontFace().load()` must resolve before the file is uploaded. The upload name is built by the client (`sb-font-<12 hex>`), never from the user's file name.
   - Data Maid skips files that start with `sb-font-`; without that it offers every imported font as a loose file.
   - The module loads on demand: `applyGoogleFont()` returns without it while no font is saved, none is imported and it has never loaded. `tests/font-import.e2e.js` asserts that default data requests no module, no preset stylesheet and nothing from Google.
+  - A preset adds one `#sb-preset-font-style` link to `webfonts/<Dir>/stylesheet.css` and removes the Google link; switching presets replaces the link, and Default removes it. `tests/font-import.e2e.js` chooses each preset and asserts that its stylesheet and upright file are requested only then and only from the app, that italic text requests the italic file, that `--mainFontFamily` and the body's computed `font-family` carry the stack, and that a reload keeps it. A browser serialises a one-word family without quotes, so the test compares the stack without quotes. A legacy Google name still requests Google's stylesheet; the test answers that request itself and refuses `fonts.gstatic.com`, so no test run reaches the network.
   - A WOFF table declares its own size, so `readWoffTables()` refuses more than 1 MB before inflating. WOFF2 metadata is read only where `DecompressionStream('brotli')` exists (`canReadWoff2()`); otherwise the naming dialog opens.
 - **Tests:** `tests/unit/sillybunny-fonts.test.js`, `tests/unit/sillybunny-fonts-page.test.js`, `tests/font-routes.test.js` (the real routes on Node.js and on Bun, through `tests/helpers/font-routes-harness.js`), `tests/data-maid-fonts.test.js`, `tests/font-import.e2e.js`, `tests/dialog-header-metrics.e2e.js`; the font builder is `tests/helpers/font-fixtures.js`.
 - **Open:** the list is saved with `saveSettingsDebounced()`, which reports no result, so a failed save leaves the uploaded files on the server; the next Data Maid run does not list them either. jsdom has no `TextDecoder`, so a jsdom test of the reader sets it from `node:util`.
+
+### Profile select rows: the title column takes the room the control leaves
+
+- **Breaks:** every row that `createProfileRow()` builds (UI Theme, Font Preset, Connection Profile, the preset rows of the Prompting page) gave its title column `max-width: 180px`, so a subtitle wrapped into a column about 190px wide at 1440px and into four lines at 390px while most of the row was empty. The plain select rows beside them let the subtitle run the row.
+- **Files:** the `.ds-row.ds-select-row:has(> .ds-row-suffix > .ds-select-row__menu)` rules in `public/css/sillybunny-tabs.css`.
+- **Guards:**
+  - The title column is `flex: 1 1 var(--sb-row-title-min)` with `max-width: 100%`. The suffix is `flex: 0 1 auto`, between `--sb-row-control-min` plus the 44px menu button and the larger of that and 55% of the row, so the value is cut before the control wraps.
+  - The suffix has `margin-inline-start: auto`. Without it a suffix that wrapped onto its own line sat at the start of the line, because it no longer grew; the audit's `content-inset` check on the Presets page caught it at 390px.
+- **Tests:** `tests/font-import.e2e.js` (the Preset row's subtitle is one line at 1440px and the title column is more than half the row), and the `content-inset` parity check of `tests/audit/surface-audit.e2e.js` for the wrapped state.
 
 ### Security and credentials
 
