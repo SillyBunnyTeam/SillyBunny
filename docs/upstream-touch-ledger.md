@@ -1451,6 +1451,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-05, PR #870 (stand-in expression packs). |
 | Owner | Defaults and release integrator. |
 
+### `public/scripts/extensions/expressions/` - Character Expressions settings and sprite list
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/expressions/index.js` (the import and the call of `adoptExpressionsSettings()` at the end of `addSettings()`; the keydown handlers of the controls that became native buttons are removed; the add dialog's response is "Add"); `settings.html` and `list-item.html` (controls that were `<i>` or `<div>` buttons or an `input type=submit` are native buttons with a name and a tooltip; row titles, headings and button labels in header capitalisation with every `data-i18n` key kept; the sprite tile is a list item whose picture is a button); `style.css` (theme tokens in place of literal colours, a grid for the sprite list, the overlaid tile actions). |
+| Area | Customize, Extensions, Character Expressions: the settings rows, the sprite actions, the custom expressions row, the sprite list and its tiles. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `adoptExpressionsSettings()` in `public/scripts/sillybunny-editor/adapters/utility-dialogs.js`, called after the controls hold their saved values. |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 10.5): the adapter builds the rows from the extension's own controls (the seven sprite actions as button rows in one group, the two prompt-strategy radios as a toggle row over the same radios, the folder override as an entry row, the agent title and status as one row); ids, handlers, stored settings and slash commands are unchanged. Markup changes only where a control had to become a native button or carry a name. |
+| Protecting tests | `tests/unit/expressions-settings-adapter.test.js`; `tests/unit/sillybunny-button-forms.test.js`; `tests/expressions-settings.e2e.js`; `tests/expression-packs.e2e.js`; `tests/extension-settings-rows.e2e.js`; the settings inventory of Extensions. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the Expressions specs at 1440x900 and 390x844, the audits of the Extensions page and the expression holder, the settings inventory of Extensions. Chromium only; hover, focus and forced-colours states not captured. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 10.5). |
+| Owner | `TODO(copy)` |
+
 ### `public/scripts/backgrounds.js`, `public/index.html`, the `/bg` command files and two stylesheets - Backgrounds gallery with folder sections
 | Field | Value |
 | --- | --- |

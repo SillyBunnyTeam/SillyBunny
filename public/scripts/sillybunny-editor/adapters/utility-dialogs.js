@@ -485,6 +485,114 @@ export function adoptSummarizeSettings(root) {
     adoptPositionRadios(root, 'memory_position');
 }
 
+// The Character Expressions extension's own controls.
+
+/** The sprite actions that follow the folder override, in the order they show. The last two destroy something, so their rows take Destructive Red. */
+const EXPRESSIONS_SPRITE_ACTIONS = Object.freeze([
+    ['expressions_generate_missing_sprites', false],
+    ['expressions_upload_sprite_sheet', false],
+    ['expressions_redo_sprite_cleanup', false],
+    ['expressions_stop_sprite_generation', false],
+    ['expression_upload_pack_button', false],
+    ['expressions_remove_all_sprites', true],
+    ['expression_override_cleanup_button', true],
+]);
+
+/**
+ * The two prompt strategies are an exclusive choice of two, so they become a toggle row over the same radios. The radios keep
+ * their ids, name and handlers; the extension keeps reading and writing them.
+ * @param {HTMLElement} root The extension's settings block.
+ */
+function adoptPromptStrategy(root) {
+    const radios = [...root.querySelectorAll('input[type="radio"][name="expression_prompt_type"]')];
+    const labels = radios.map(radio => radio.closest('label'));
+    const heading = root.querySelector('.expression_prompt_type_block > [data-i18n="LLM Prompt Strategy"]');
+    if (radios.length < 2 || labels.some(label => !label) || !heading || radios[0].closest('.ds-toggle-row')) return;
+    const row = segmentedRow(labels, heading, 'expression-prompt-type');
+    labels[0].before(row.row);
+    for (const label of labels) label.remove();
+}
+
+/**
+ * The Quick Image Gen agent block starts with a title and two lines of text: what auto-generation does and whether the
+ * companion is ready. They become one row, with the status announced when it changes.
+ * @param {HTMLElement} root The extension's settings block.
+ */
+function adoptAgentStatus(root) {
+    const status = root.querySelector('.expression_agent_status');
+    const title = status?.querySelector(':scope > label');
+    if (!status || !title || status.classList.contains('ds-row')) return;
+    const heading = document.createElement('div');
+    heading.className = 'ds-row-label';
+    moveCaption(heading, title);
+    const text = document.createElement('div');
+    text.className = 'ds-row-text';
+    const captions = [...status.querySelectorAll(':scope > small')];
+    for (const caption of captions) caption.classList.add('ds-row-subtitle');
+    text.append(heading, ...captions);
+    status.classList.remove('flex-container', 'flexFlowColumn');
+    status.classList.add('ds-row');
+    status.replaceChildren(text);
+    status.querySelector('#expressions_agent_status_text')?.setAttribute('role', 'status');
+}
+
+/**
+ * The sprite folder override and the sprite actions are one boxed group. The override is an entry row with its help as a caption
+ * and its Submit button at the end; each action is a button row made from the extension's own button, so the ids and the
+ * handlers stay. The group is named by the heading of the sprite set that it acts on.
+ * @param {HTMLElement} root The extension's settings block.
+ */
+function adoptSpriteControls(root) {
+    const input = root.querySelector('#expression_override');
+    const submit = root.querySelector('#expression_override_button');
+    const title = root.querySelector('label[for="expression_override"]');
+    const strip = root.querySelector('.expression_buttons');
+    const wrapper = input?.parentElement;
+    if (!(input instanceof HTMLInputElement) || !submit || !title || !strip || !(wrapper instanceof HTMLElement) || input.closest('.ds-row-entry--floating')) return;
+
+    const rows = [];
+    const entry = createEntryRow({ label: textOf(title), field: 'expression-override', input, floating: true, suffix: [submit] });
+    moveCaption(entry.row.querySelector('.ds-row-label'), title);
+    const hint = wrapper.previousElementSibling;
+    if (hint instanceof HTMLElement && hint.matches('small')) {
+        hint.classList.add('ds-row-subtitle', 'ds-row-entry__caption');
+        hint.id ||= 'expression_override_hint';
+        input.setAttribute('aria-describedby', hint.id);
+        entry.row.append(hint);
+    }
+    rows.push(entry.row);
+
+    for (const [id, danger] of EXPRESSIONS_SPRITE_ACTIONS) {
+        const button = root.querySelector(`#${id}`);
+        if (!(button instanceof HTMLElement)) continue;
+        // A `[title]` key on the button would hide the caption's key from the row, so it waits until the row has taken the caption's.
+        const titleKey = button.dataset.i18n;
+        if (titleKey?.startsWith('[')) delete button.dataset.i18n;
+        rows.push(createButtonRow({ label: textOf(button.querySelector('span') ?? button), field: id, danger, button }).row);
+        if (titleKey?.startsWith('[')) button.dataset.i18n = titleKey;
+    }
+
+    const group = document.createElement('div');
+    // The settings page boxes the rows it finds when it opens; this group is built here, so it takes the same classes.
+    group.className = 'ds-pref-group sb-settings-category-body';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-labelledby', 'image_list_header');
+    group.append(...rows);
+    wrapper.replaceWith(group);
+    strip.remove();
+}
+
+/**
+ * Brings the Character Expressions page's loose controls to the shared rows. Call it once the extension has set its controls from
+ * the saved settings; the rows then follow the controls.
+ * @param {HTMLElement} root The extension's settings block.
+ */
+export function adoptExpressionsSettings(root) {
+    adoptPromptStrategy(root);
+    adoptAgentStatus(root);
+    adoptSpriteControls(root);
+}
+
 // The Quick Reply rows of a set.
 
 /** The buttons of a Quick Reply row that the row's menu runs, as `[selector, icon]`, in the order the menu lists them. */

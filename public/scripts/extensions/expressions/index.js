@@ -17,6 +17,7 @@ import { commonEnumProviders } from '../../slash-commands/SlashCommandCommonEnum
 import { slashCommandReturnHelper } from '../../slash-commands/SlashCommandReturnHelper.js';
 import { generateWebLlmChatPrompt, isWebLlmSupported } from '../shared.js';
 import { Popup, POPUP_RESULT } from '../../popup.js';
+import { adoptExpressionsSettings } from '../../sillybunny-editor/adapters/utility-dialogs.js'; // SillyBunny: the page's loose controls are shared rows.
 import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { t } from '../../i18n.js';
 import { removeReasoningFromString } from '../../reasoning.js';
@@ -1979,12 +1980,6 @@ async function onClickGenerateMissingSprites(event) {
     });
 }
 
-function onExpressionGenerationKeydown(event) {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    $(event.currentTarget).trigger('click');
-}
-
 /**
  * Processes the classification text to reduce the amount of text sent to the API.
  * Quotes and asterisks are to be removed. If the text is less than 300 characters, it is returned as is.
@@ -2797,7 +2792,8 @@ function onClickExpressionImage() {
 
 async function onClickExpressionAddCustom() {
     const template = await renderExtensionTemplateAsync(MODULE_NAME, 'add-custom-expression');
-    let expressionName = await Popup.show.input(null, template);
+    // SillyBunny: names the response with a verb.
+    let expressionName = await Popup.show.input(null, template, '', { okButton: t`Add` });
 
     if (!expressionName) {
         console.debug('No custom expression name provided');
@@ -3374,21 +3370,12 @@ export async function init() {
         $('#expressions_container').append(template);
         $('#expression_override_button').on('click', onClickExpressionOverrideButton);
         $('#expression_upload_pack_button').on('click', onClickExpressionUploadPackButton);
-        $('#expressions_generate_missing_sprites')
-            .on('click', onClickGenerateMissingSprites)
-            .on('keydown', onExpressionGenerationKeydown);
-        $('#expressions_upload_sprite_sheet')
-            .on('click', onClickUploadSpriteSheet)
-            .on('keydown', onExpressionGenerationKeydown);
-        $('#expressions_redo_sprite_cleanup')
-            .on('click', onClickRedoSpriteCleanup)
-            .on('keydown', onExpressionGenerationKeydown);
-        $('#expressions_stop_sprite_generation')
-            .on('click', onClickStopExpressionGeneration)
-            .on('keydown', onExpressionGenerationKeydown);
-        $('#expressions_remove_all_sprites')
-            .on('click', onClickRemoveAllSprites)
-            .on('keydown', onExpressionGenerationKeydown);
+        // SillyBunny: the sprite actions are native buttons, which answer Enter and Space themselves, so they bind no keydown handler.
+        $('#expressions_generate_missing_sprites').on('click', onClickGenerateMissingSprites);
+        $('#expressions_upload_sprite_sheet').on('click', onClickUploadSpriteSheet);
+        $('#expressions_redo_sprite_cleanup').on('click', onClickRedoSpriteCleanup);
+        $('#expressions_stop_sprite_generation').on('click', onClickStopExpressionGeneration);
+        $('#expressions_remove_all_sprites').on('click', onClickRemoveAllSprites);
         setExpressionGenerationBusy(inSpriteGeneration);
         $('#expression_translate').prop('checked', extension_settings.expressions.translate).on('input', function () {
             extension_settings.expressions.translate = !!$(this).prop('checked');
@@ -3415,8 +3402,6 @@ export async function init() {
         $(document).on('click', '.expression_list_upload', onClickExpressionUpload);
         $(document).on('click', '.expression_list_generate', onClickExpressionGenerate);
         $(document).on('click', '.expression_list_regenerate', onClickExpressionRegenerate);
-        $(document).on('keydown', '.expression_list_generate', onExpressionGenerationKeydown);
-        $(document).on('keydown', '.expression_list_regenerate', onExpressionGenerationKeydown);
         $(document).on('click', '.expression_list_delete', onClickExpressionDelete);
         $(window).on('resize', () => updateVisualNovelModeDebounced());
         // SillyBunny: docked panels change the Visual Novel canvas width without a viewport resize.
@@ -3512,6 +3497,8 @@ export async function init() {
         $('#expression_custom_remove').on('click', onClickExpressionRemoveCustom);
         $('#expression_fallback').on('change', onExpressionFallbackChanged);
         $('#expression_api').on('change', onExpressionApiChanged);
+        // SillyBunny: the prompt strategy, the agent status, the folder override and the sprite actions are shared rows. The rows follow the controls, so this comes after they have their saved values.
+        adoptExpressionsSettings($('#expressions_container')[0]);
     }
 
     addExpressionImage();

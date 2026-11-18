@@ -65,11 +65,12 @@ body.waifuMode #visual-novel-wrapper :is(.expression-holder, img.expression) {
     justify-content: center;
 }
 
+/* SillyBunny: the empty state is body text in the placeholder tone, as the rest of the page's secondary text, not a bold line. */
 #no_chat_expressions {
     text-align: center;
-    margin: 10px 0;
-    font-weight: bold;
-    opacity: 0.8;
+    margin: 0;
+    padding: 12px;
+    color: var(--sb-input-placeholder);
 }
 
 #image_list_header_name {
@@ -111,22 +112,39 @@ img.expression.default {
     height: 0px;
 }
 
+/* SillyBunny: a sprite tile is a grid cell with the control radius and the raised fill, and its image is its own button. The literal colours of the
+   tile, its label bar and its state tints, the accent and danger tints of the action buttons, the agent block's box and the old flex layout of
+   the list and the button strip are removed below, because each one bypassed the theme's tokens. */
 .expression_list_item {
     position: relative;
-    max-width: 20%;
-    min-width: 100px;
-    max-height: 200px;
-    background-color: #515151b0;
-    border-radius: 10px;
+    min-width: 0;
+    height: 200px;
+    background-color: var(--sb-raised-bg);
+    border-radius: var(--sb-radius-control, 9px);
     cursor: pointer;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
 }
 
 .expression_list_image_container {
     overflow: hidden;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.expression_list_image_container:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
 }
 
 .expression_list_title {
@@ -135,7 +153,8 @@ img.expression.default {
     left: 0;
     text-align: center;
     font-weight: 600;
-    background-color: #000000a8;
+    background-color: var(--sb-osd-bg);
+    color: var(--sb-osd-ink);
     width: 100%;
     height: 20%;
     display: flex;
@@ -159,13 +178,18 @@ img.expression.default {
     align-items: center;
     /* height: 20%; */
     padding: 0.25rem;
+    z-index: 1;
 }
 
-.menu_button.expression_list_delete,
-.menu_button.expression_list_upload,
-.menu_button.expression_list_regenerate {
-    margin-top: 0;
-    margin-bottom: 0;
+/* SillyBunny: the buttons sit over the picture, so they are overlaid controls: the OSD fill and ink, at least the target floor. The id keeps this
+   rule above the theme's raised fill, whose :not() chain is more specific than any class selector. */
+#image_list .expression_list_buttons > .menu_button:is(.expression_list_delete, .expression_list_upload, .expression_list_regenerate, .expression_list_generate) {
+    margin: 0;
+    min-width: var(--sb-density-floor);
+    min-height: var(--sb-density-floor);
+    background: var(--sb-osd-bg);
+    color: var(--sb-osd-ink);
+    border-color: transparent;
 }
 
 .expression_list_image {
@@ -175,34 +199,28 @@ img.expression.default {
 }
 
 #image_list {
-    display: flex;
-    flex-direction: row;
-    column-gap: 1rem;
-    margin: 1rem;
-    flex-wrap: wrap;
-    justify-content: space-evenly;
-    row-gap: 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    margin: 12px 0 0;
 }
 
-#image_list .expression_list_item[data-expression-type="success"] .expression_list_title {
-    color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, white 12%);
-}
-
-#image_list .expression_list_item[data-expression-type="additional"] .expression_list_title {
-    color: color-mix(in srgb, var(--color-accent, var(--sb-accent-soft, var(--SmartThemeUnderlineColor))) 82%, var(--SmartThemeBodyColor) 18%);
-}
-#image_list .expression_list_item[data-expression-type="additional"] .expression_list_title::before {
-    content: '➕';
-    position: absolute;
-    top: -7px;
-    left: -9px;
-    font-size: 14px;
-    color: transparent;
-    text-shadow: 0 0 0 darkolivegreen;
+/* SillyBunny: the label bar sits over the picture, so its ink is the overlay ink in every state; the state shows in the bar's weight and mark. */
+#image_list .expression_list_item[data-expression-type="additional"] .expression_list_title > span::before {
+    content: '\f067';
+    font-family: 'Font Awesome 6 Free', 'Font Awesome 5 Free';
+    font-weight: 900;
+    font-size: 0.7em;
+    margin-inline-end: 4px;
 }
 
 #image_list .expression_list_item[data-expression-type="failure"] .expression_list_title {
-    color: red;
+    font-weight: 400;
+}
+
+/* SillyBunny: the placeholder picture is a light graphic; dimmed, it reads as an empty tile on both tones. */
+#image_list .expression_list_item[data-expression-type="failure"] .expression_list_image {
+    opacity: 0.3;
 }
 
 .expression_settings label {
@@ -212,34 +230,22 @@ img.expression.default {
     margin-left: 0px;
 }
 
+/* SillyBunny: the block's rows sit in the page's group, so it draws no box of its own. */
 .expression_agent_block {
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
-    padding: 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, var(--SmartThemeQuoteColor)) 42%, transparent);
-    border-radius: var(--border-radius, 12px);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor)) 72%, transparent);
 }
 
-.expression_agent_status {
-    gap: 0.2rem;
-}
-
-.expression_agent_status small {
-    opacity: 0.85;
-}
-
-.expression_agent_status small.available {
-    color: color-mix(in srgb, var(--color-success, var(--sb-success, #4caf50)) 90%, white 10%);
-}
-
-.expression_agent_status small.unavailable {
-    color: color-mix(in srgb, var(--color-warning, var(--sb-warning, #ff9800)) 90%, white 10%);
+/* SillyBunny: a state that needs attention takes the theme's warning ink; a ready state keeps the subtitle's tone. */
+.expression_agent_status .ds-row-subtitle.unavailable {
+    color: var(--sb-warning-fg);
 }
 
 .expression_agent_hint {
     margin: 0;
+    padding: 6px 12px;
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-meta, 0.85em);
 }
 
 .expression_agent_generation_controls,
@@ -251,21 +257,8 @@ img.expression.default {
     min-height: 8em;
 }
 
-#expressions_generate_missing_sprites,
-#expressions_upload_sprite_sheet,
-#expressions_redo_sprite_cleanup,
-.expression_list_generate,
-.expression_list_regenerate {
-    color: color-mix(in srgb, var(--color-primary, var(--sb-accent, var(--SmartThemeQuoteColor))) 88%, var(--SmartThemeBodyColor) 12%);
-}
-
 #expressions_stop_sprite_generation {
     display: none;
-    color: color-mix(in srgb, var(--color-danger, var(--sb-danger, #d9534f)) 88%, var(--SmartThemeBodyColor) 12%);
-}
-
-#expressions_remove_all_sprites {
-    color: color-mix(in srgb, var(--color-danger, var(--sb-danger, #d9534f)) 88%, var(--SmartThemeBodyColor) 12%);
 }
 
 #expressions_stop_sprite_generation.active {
@@ -316,12 +309,57 @@ img.expression.default {
     margin-left: 0px !important;
 }
 
-.expression_buttons .menu_button {
-    width: fit-content;
-    display: flex;
-    gap: 10px;
-    align-items: baseline;
-    flex-direction: row;
+/* SillyBunny: the sprite part of the page is not boxed into the page's first group, which the settings page does for every visible
+   block of the card: the wrapper has no box, so its children are laid out beside the first group and are the groups of their own. */
+#open_chat_expressions {
+    display: contents;
+}
+
+/* SillyBunny: groups are 24px apart. The id outranks the settings page's rule that sets a group's top margin to none. */
+#open_chat_expressions > .ds-pref-group.sb-settings-category-body,
+#open_chat_expressions > .sb-settings-flat-header {
+    margin-top: 24px;
+}
+
+/* SillyBunny: the custom expressions' select and its two buttons do not fit beside the title on a phone, and the value shrank to its first letter.
+   As for a select row with more buttons, the title takes the first line and the field and its buttons the second. */
+@media (max-width: 620px) {
+    #expressions_container .ds-select-row:has(> .ds-row-suffix > .menu_button ~ .menu_button) {
+        flex-wrap: wrap;
+    }
+
+    #expressions_container .ds-select-row:has(> .ds-row-suffix > .menu_button ~ .menu_button) > :is(.ds-row-text, .ds-row-suffix) {
+        flex: 1 1 100%;
+        max-width: none;
+    }
+
+    #expressions_container .ds-select-row:has(> .ds-row-suffix > .menu_button ~ .menu_button) > .ds-row-suffix {
+        justify-content: flex-end;
+    }
+
+    #expressions_container .ds-select-row:has(> .ds-row-suffix > .menu_button ~ .menu_button) .ds-select-row__trigger {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+}
+
+/* SillyBunny: the restore buttons are native buttons, and a flat icon button draws no fill or edge of its own at rest. */
+.expression_settings button.right_menu_button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+}
+
+/* SillyBunny: hints are captions below the group, in the placeholder tone, and are not italic. */
+#open_chat_expressions > p {
+    margin: 12px 12px 0;
+    color: var(--sb-input-placeholder);
+    font-size: var(--sb-type-meta, 0.85em);
+}
+
+#open_chat_expressions > p i {
+    font-style: normal;
 }
 
 #expressions_container:has(#expressions_allow_multiple:not(:checked)) #image_list .expression_list_item[data-expression-type="additional"],
