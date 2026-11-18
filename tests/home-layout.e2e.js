@@ -1152,13 +1152,41 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             await chooseMode(page, 'full');
 
             await setFontSize(page, 20);
-            await expectFootersFit(page, { allowCut: true });
-            expect(footerProblems(await readFooters(page), { allowCut: true }), 'at 20px').toEqual([]);
+            await expectFootersFit(page);
+            expect(footerProblems(await readFooters(page)), 'at 20px').toEqual([]);
             await setFontSize(page, 15);
+            // The smaller need changes the grid, and the cards' new widths are measured a frame later, so a read right after the first fit can still see the old columns.
+            await waitForAnimationFrames(page, 4);
             await expectFootersFit(page);
             await expectDefaultLabels(page, options.viewport.width);
 
             expect(footerProblems(await readFooters(page)), 'back at 15px').toEqual([]);
+        });
+
+        test('at 150% and 200% text the grid gives each card the width its stacked labels need, so no label is cut and the default columns come back', async ({ page }) => {
+            await chooseMode(page, 'full');
+            await expectFootersFit(page);
+            const columns = () => page.evaluate(() => new Set([...document.querySelectorAll('.welcomePanel .sbHomeCard')].map(card => Math.round(card.getBoundingClientRect().left))).size);
+            const defaultColumns = await columns();
+
+            for (const pixels of [22.5, 30]) {
+                await setFontSize(page, pixels);
+                await expectFootersFit(page);
+                expect(footerProblems(await readFooters(page)), `at ${pixels}px`).toEqual([]);
+                const widths = await page.evaluate(() => [...document.querySelectorAll('.welcomePanel .sbHomeCard:not(.sbHomeCard--choose)')].map(card => ({
+                    card: card.getBoundingClientRect().width,
+                    need: Number.parseFloat(card.parentElement.style.getPropertyValue('--sb-home-card-need')),
+                })));
+                for (const { card, need } of widths) {
+                    expect(card, `a card at ${pixels}px holds its stacked labels`).toBeGreaterThanOrEqual(need - 1);
+                }
+                expect(await columns(), `columns at ${pixels}px`).toBeLessThanOrEqual(defaultColumns);
+            }
+
+            await setFontSize(page, 15);
+            await expectFootersFit(page);
+            await expect.poll(columns, { timeout: 5000 }).toBe(defaultColumns);
+            await expectFootersFit(page);
         });
 
         test('long translated labels stack together and leave the menu button inside the card', async ({ page }) => {

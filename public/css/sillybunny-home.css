@@ -574,11 +574,14 @@
 /* ── Assistants ─────────────────────────────────────────────────────────── */
 
 .sbHomeCards {
+    --sb-home-cards-gap: 12px;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    /* footer-fit.js sets --sb-home-card-need to the card width that shows the longest footer label whole, so a grid
+       whose cards would be narrower than that has one column fewer. 100% keeps a single column inside the grid. */
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, max(220px, var(--sb-home-card-need, 0px))), 1fr));
     /* Every line is as tall as the tallest, so the card to choose from on a line of its own is as tall as a card with a footer. */
     grid-auto-rows: 1fr;
-    gap: 12px;
+    gap: var(--sb-home-cards-gap);
 }
 
 /* The card is its own container, so the footer labels drop by the card's width and not the window's. */
@@ -839,7 +842,8 @@
    one line. */
 @container welcome-home (max-width: 716px) {
     .sbHomeCards {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        /* Half the grid, less a pixel that keeps a fractional width from dropping to one column, unless a label needs more. */
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, max(var(--sb-home-card-need, 0px), calc((100% - var(--sb-home-cards-gap)) / 2 - 1px))), 1fr));
     }
 }
 

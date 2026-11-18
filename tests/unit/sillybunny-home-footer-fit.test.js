@@ -141,6 +141,98 @@ describe('footer label fit', () => {
     });
 });
 
+/**
+ * A card with two labelled buttons and a menu button. The widths are the natural ones the stacked, measuring card reports.
+ * The footer has 3px of padding at each end and the card a 1px border, as the sheet gives them.
+ */
+function renderStackedCard(labelWidths, menuWidth = 32) {
+    const card = document.createElement('article');
+    card.className = 'sbHomeCard';
+    card.style.borderInlineStartWidth = '1px';
+    card.style.borderInlineEndWidth = '1px';
+    card.style.borderInlineStartStyle = 'solid';
+    card.style.borderInlineEndStyle = 'solid';
+    const footer = document.createElement('div');
+    footer.className = 'sbHomeCardFooter';
+    footer.style.paddingInlineStart = '3px';
+    footer.style.paddingInlineEnd = '3px';
+    footer.style.columnGap = '0px';
+    for (const width of labelWidths) {
+        const button = document.createElement('button');
+        button.style.paddingInlineStart = '4px';
+        button.style.paddingInlineEnd = '4px';
+        const label = document.createElement('span');
+        label.className = 'sbHomeFootLabel';
+        Object.defineProperty(label, 'scrollWidth', { value: width });
+        button.append(label);
+        footer.append(button);
+    }
+    const menu = document.createElement('button');
+    menu.getBoundingClientRect = () => ({ width: menuWidth, left: 0, right: menuWidth });
+    footer.append(menu);
+    footer.getBoundingClientRect = () => ({ width: 300 });
+    card.append(footer);
+    card.getClientRects = () => [{}];
+    return card;
+}
+
+describe('card width a stacked footer needs', () => {
+    test('sets the widest label with its padding, the menu button, the footer padding and the card border, and a spare pixel, on the grid', () => {
+        const wide = renderStackedCard([177, 187]);
+        const narrow = renderStackedCard([88, 96]);
+        const grid = document.createElement('div');
+        grid.append(wide, narrow);
+        document.body.append(grid);
+
+        updateFooterLabels([wide, narrow]);
+
+        // 187 + 8 (button padding) + 32 (menu) + 6 (footer padding) + 2 (card border) + 1
+        expect(grid.style.getPropertyValue('--sb-home-card-need')).toBe('236px');
+    });
+
+    test('is a property of the labels alone, so a narrow card and a wide one report the same need', () => {
+        const narrowFooter = renderStackedCard([187]);
+        const wideFooter = renderStackedCard([187]);
+        wideFooter.querySelector('.sbHomeCardFooter').getBoundingClientRect = () => ({ width: 900 });
+        const first = document.createElement('div');
+        const second = document.createElement('div');
+        first.append(narrowFooter);
+        second.append(wideFooter);
+        document.body.append(first, second);
+
+        updateFooterLabels([narrowFooter, wideFooter]);
+
+        expect(first.style.getPropertyValue('--sb-home-card-need')).toBe(second.style.getPropertyValue('--sb-home-card-need'));
+    });
+
+    test('sets nothing for a footer with no labelled button', () => {
+        const { card } = renderCard({ labelsNeed: 340, footerWidth: 300 });
+        const grid = document.createElement('div');
+        grid.append(card);
+        document.body.append(grid);
+
+        updateFooterLabels([card]);
+
+        expect(grid.style.getPropertyValue('--sb-home-card-need')).toBe('');
+    });
+
+    test('leaves no stacked state behind on a card that fits in a row', () => {
+        const card = renderStackedCard([88, 96]);
+        const footer = card.querySelector('.sbHomeCardFooter');
+        const [one, two] = footer.querySelectorAll('button');
+        one.getBoundingClientRect = () => ({ left: 3, right: 100 });
+        two.getBoundingClientRect = () => ({ left: 108, right: 220 });
+        const grid = document.createElement('div');
+        grid.append(card);
+        document.body.append(grid);
+
+        updateFooterLabels([card]);
+
+        expect(card.hasAttribute(COMPACT)).toBe(false);
+        expect(card.hasAttribute(MEASURING)).toBe(false);
+    });
+});
+
 describe('footer fit observer', () => {
     test('watches every card with a footer, and measures once per frame however many sizes change', () => {
         const first = renderCard({ labelsNeed: 340, footerWidth: 300 });
