@@ -155,7 +155,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         for (const id of ['extension_floating_prompt', 'extension_floating_chara', 'extension_floating_default']) {
             const labelRow = panel.locator(`.ds-row-textarea:has(#${id}) > .ds-row-textarea__label-row`);
             const expand = labelRow.locator('> .editor_maximize');
-            await expect(expand).toHaveAccessibleName('Expand the editor');
+            await expect(expand).toHaveAccessibleName('Expand the Editor');
             await expect(expand).toHaveAttribute('data-for', id);
             expect(await labelRow.evaluate(row => row.lastElementChild.classList.contains('editor_maximize'))).toBe(true);
         }

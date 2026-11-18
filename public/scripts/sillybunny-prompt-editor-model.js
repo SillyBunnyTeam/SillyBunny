@@ -10,10 +10,10 @@ const EDIT_FIELDS = Object.freeze({
 });
 
 export const PROMPT_EDITOR_UTILITY_FIELDS = Object.freeze([
-    ['impersonation_prompt_textarea', 'Impersonation prompt'], ['wi_format_textarea', 'World Info format'],
-    ['scenario_format_textarea', 'Scenario format'], ['personality_format_textarea', 'Personality format'],
-    ['group_nudge_prompt_textarea', 'Group nudge'], ['newchat_prompt_textarea', 'New chat'],
-    ['newgroupchat_prompt_textarea', 'New group chat'], ['newexamplechat_prompt_textarea', 'New example chat'],
+    ['impersonation_prompt_textarea', 'Impersonation prompt'], ['wi_format_textarea', 'World Info Format'],
+    ['scenario_format_textarea', 'Scenario Format'], ['personality_format_textarea', 'Personality Format'],
+    ['group_nudge_prompt_textarea', 'Group Nudge'], ['newchat_prompt_textarea', 'New Chat'],
+    ['newgroupchat_prompt_textarea', 'New Group Chat'], ['newexamplechat_prompt_textarea', 'New Example Chat'],
     ['continue_nudge_prompt_textarea', 'Continue nudge'], ['send_if_empty_textarea', 'Replace empty message'],
 ]);
 
@@ -30,15 +30,15 @@ const textCompletionEntry = (id, name, section, fields, options = {}) => Object.
 export const PROMPT_EDITOR_TEXT_COMPLETION_ENTRIES = Object.freeze([
     textCompletionEntry('sysprompt_content', 'System prompt', 'System prompt', [textCompletionField('sysprompt_content', 'System prompt')], { enabledBy: 'sysprompt_enabled' }),
     textCompletionEntry('sysprompt_post_history', 'Post-history instructions', 'System prompt', [textCompletionField('sysprompt_post_history', 'Post-history instructions')], { enabledBy: 'sysprompt_enabled' }),
-    textCompletionEntry('context_story_string', 'Story string', 'Context', [textCompletionField('context_story_string', 'Story string')], {
+    textCompletionEntry('context_story_string', 'Story String', 'Context', [textCompletionField('context_story_string', 'Story String')], {
         properties: [
             textCompletionField('context_story_string_position', 'Position'),
             textCompletionField('context_story_string_depth', 'Depth'),
             textCompletionField('context_story_string_role', 'Role'),
         ],
     }),
-    textCompletionEntry('context_example_separator', 'Example separator', 'Context', [textCompletionField('context_example_separator', 'Example separator')]),
-    textCompletionEntry('context_chat_start', 'Chat start', 'Context', [textCompletionField('context_chat_start', 'Chat start')]),
+    textCompletionEntry('context_example_separator', 'Example Separator', 'Context', [textCompletionField('context_example_separator', 'Example Separator')]),
+    textCompletionEntry('context_chat_start', 'Chat Start', 'Context', [textCompletionField('context_chat_start', 'Chat Start')]),
     textCompletionEntry('tc-user', 'User', 'Instruct', [
         textCompletionField('instruct_input_sequence', 'User Message Prefix'),
         textCompletionField('instruct_input_suffix', 'User Message Suffix'),

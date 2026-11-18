@@ -2314,7 +2314,7 @@ async function onTagDeleteClick() {
         label: t`Select tag to merge into`,
         field: 'merge_tag_select',
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`, // SillyBunny: the empty-state title of the picker is in header capitalisation by DESIGN.md
         noneLabel: mergeSelect[0].options[0]?.textContent ?? '',
     });
     alertBody.append(

@@ -643,8 +643,8 @@ describe('Persona editor shell', () => {
         expect(row.querySelector('.ds-entity-row__suffix').children).toHaveLength(1);
         expect([...row.querySelectorAll('.sb-persona-row-badges i')].map(badge => [badge.getAttribute('aria-label'), badge.title])).toEqual([
             ['Current Persona', 'Current Persona'], ['Default Persona', 'Default Persona'],
-            ['Persona is locked to the current chat', 'Persona is locked to the current chat'],
-            ['Persona is locked to the current character', 'Persona is locked to the current character'],
+            ['Persona Is Locked to the Current Chat', 'Persona Is Locked to the Current Chat'],
+            ['Persona Is Locked to the Current Character', 'Persona Is Locked to the Current Character'],
         ]);
         expect(row.querySelector('.fa-pencil')).toBeNull();
     });

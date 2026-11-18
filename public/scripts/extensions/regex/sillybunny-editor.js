@@ -41,7 +41,7 @@ export function adaptRegexEditor(root) {
         if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) || !caption) throw new TypeError('A regex editor field needs its input and caption.');
         const name = input.className.split(/\s+/).find(className => className.startsWith('regex_') || className === 'find_regex');
         const row = input instanceof HTMLTextAreaElement
-            ? createTextAreaField({ label: textOf(caption), field: name, input, expandLabel: t`Expand the editor` })
+            ? createTextAreaField({ label: textOf(caption), field: name, input, expandLabel: t`Expand the Editor` })
             : createEntryRow({ label: textOf(caption), field: name, input, floating: true });
         moveCaption(row.row.querySelector('.ds-row-label'), caption, { keepSource: true });
         fieldRows.push(row);
@@ -56,7 +56,7 @@ export function adaptRegexEditor(root) {
         const input = block.querySelector('textarea');
         const caption = block.querySelector('label > small');
         if (!input || !caption) throw new TypeError('A regex test field needs its textarea and caption.');
-        const row = createTextAreaField({ label: textOf(caption), field: input.id, input, expandLabel: t`Expand the editor` });
+        const row = createTextAreaField({ label: textOf(caption), field: input.id, input, expandLabel: t`Expand the Editor` });
         moveCaption(row.row.querySelector('.ds-row-label'), caption, { keepSource: true });
         testRows.push(row);
     }
@@ -109,7 +109,7 @@ export function adaptRegexEditor(root) {
     const ephemeral = ['only_format_display', 'only_format_prompt'].map(labelOf);
     const select = substitute.querySelector('select');
     const macroCaption = substitute.querySelector('small');
-    const macroRow = createSelectRow({ select, label: textOf(macroCaption), subtitle: substitute.title || undefined, field: select.name, searchLabel: t`Search`, emptyText: t`No results` });
+    const macroRow = createSelectRow({ select, label: textOf(macroCaption), subtitle: substitute.title || undefined, field: select.name, searchLabel: t`Search`, emptyText: t`No Results` });
     moveCaption(macroRow.row.querySelector('.ds-row-label'), macroCaption.querySelector('[data-i18n]') ?? macroCaption, { keepSource: true });
     const optionsGroup = titled(createPrefGroup({ title: textOf(other.querySelector(':scope > small')), field: 'regex-options', rows: [...onOff.map(switchRow), macroRow] }), other.querySelector(':scope > small'));
 

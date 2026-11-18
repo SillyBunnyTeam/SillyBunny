@@ -105,7 +105,7 @@ test('a sampler order list moves by keyboard once unlocked, and saves through it
     await page.locator('[data-sampler-order-lock="koboldcpp_order"]').click();
     await expect(list).not.toHaveClass(/ui-sortable-disabled/);
     await expect(rows.first()).toHaveAttribute('tabindex', '0');
-    const named = list.getByRole('group', { name: /^Drag to reorder / });
+    const named = list.getByRole('group', { name: /^Drag to Reorder / });
     await expect(named).toHaveCount(before.length);
 
     await rows.first().focus();
@@ -143,7 +143,7 @@ test('the logit bias list moves by its handle, and a keyboard move is saved in t
     // The list is one tab stop, on its first handle; the others are reached by the arrow keys.
     await expect(bottom).toHaveAttribute('tabindex', '-1');
     await expect(list.locator(':scope > *').first().locator('.drag-handle')).toHaveAttribute('tabindex', '0');
-    await expect(bottom).toHaveAttribute('aria-label', 'Drag to reorder one');
+    await expect(bottom).toHaveAttribute('aria-label', 'Drag to Reorder one');
     await expect(list.locator(':scope > *').last()).not.toHaveAttribute('tabindex', /.*/);
 
     await bottom.focus();

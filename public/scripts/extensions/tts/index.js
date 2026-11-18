@@ -639,7 +639,8 @@ async function onTtsVoicesClick() {
     // SillyBunny: keep preview audio from playing after the voice Dialog closes.
     void callGenericPopup(content, POPUP_TYPE.TEXT, '', {
         tier: 'dialog',
-        title: t`Available voices`,
+        // SillyBunny: capitalisation by DESIGN.md
+        title: t`Available Voices`,
         allowVerticalScrolling: true,
         onClose: () => cleanupVoicePreviewContent(content),
     });

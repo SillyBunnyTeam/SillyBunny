@@ -930,7 +930,7 @@ export function renderConversationTimeline() {
         timeline.replaceChildren(createConversationStatusPage({
             state: 'no-results',
             title: 'No Matching Messages',
-            description: 'Clear search or switch back to Main to see the full Conversation.',
+            description: 'Clear search or switch back to Main to see the full Conversation',
         }));
         conversationState.lastRenderedAvatar = avatar;
         conversationState.lastRenderedThreadKey = renderThreadKey;
@@ -1674,7 +1674,7 @@ function createSettingsTextArea({ id, label, subtitle, placeholder, rows, scope 
         subtitle,
         rows,
         expand: !readOnly,
-        expandLabel: 'Expand the editor',
+        expandLabel: 'Expand the Editor',
     });
     if (scope) {
         appendSettingScope(controller.labelRow.querySelector('.ds-row-textarea__label'));
@@ -1778,14 +1778,14 @@ export function buildSettingsDrawerContent() {
                 label: 'Status',
                 optionsHtml: '<option value="online">Online</option><option value="idle">Idle</option><option value="dnd">Do Not Disturb</option><option value="offline">Offline</option>',
             }),
-            createSettingsSwitch({ id: 'sb_conv_idle_followup', label: 'Send Auto Follow-Up', subtitle: 'Follow-ups react to silence in the current thread.', title: 'After the user has been quiet, send a check-in tied to the current conversation.', scope: true }),
-            createSettingsSwitch({ id: 'sb_conv_idle_spontaneous', label: 'Spontaneous Ping', subtitle: 'Spontaneous Pings can start a fresh thought; when both are enabled, pings wait for a longer quiet stretch.', title: 'After a longer quiet stretch, start a casual new topic or send an ambient thought.', scope: true }),
+            createSettingsSwitch({ id: 'sb_conv_idle_followup', label: 'Send Auto Follow-Up', subtitle: 'Follow-ups react to silence in the current thread', title: 'After the user has been quiet, send a check-in tied to the current conversation.', scope: true }),
+            createSettingsSwitch({ id: 'sb_conv_idle_spontaneous', label: 'Spontaneous Ping', subtitle: 'Spontaneous Pings can start a fresh thought; when both are enabled, pings wait for a longer quiet stretch', title: 'After a longer quiet stretch, start a casual new topic or send an ambient thought.', scope: true }),
             createSettingsSpin({ id: 'sb_conv_idle_limit', label: 'Idle Minimum (Minutes)', min: 1, max: 1440, step: 1, value: 15 }),
             createSettingsEntry({ id: 'sb_conv_offline_message', label: 'Offline/DND Auto-Responder', placeholder: '[{{user}} is currently offline. Leave a message!]' }),
             createSettingsSwitch({
                 id: 'sb_conv_notifications_muted',
                 label: 'Mute This DM',
-                subtitle: 'Unread badges still update while muted or inside quiet hours.',
+                subtitle: 'Unread badges still update while muted or inside quiet hours',
                 title: 'Keep unread badges but suppress sounds and popups for this Conversation.',
                 onChange: updateConversationNotificationSettingsVisibility,
             }),
@@ -1833,8 +1833,8 @@ export function buildSettingsDrawerContent() {
             step: 64,
             value: 16000,
         }),
-        createSettingsSwitch({ id: 'sb_conv_selfie_command_enabled', label: 'Selfies Through Quick Image Gen ([selfie])', subtitle: 'Selfie commands are hidden from the chat and sent as image prompts.', title: 'Let the character turn [selfie: prompt] into a Quick Image Gen request' }),
-        createSettingsSwitch({ id: 'sb_conv_schedule_command_enabled', label: 'Character Status Updates ([schedule_update])', subtitle: 'Schedule updates let the character adjust what they are doing now.', title: 'Let the character update its current availability/activity through [schedule_update]' }),
+        createSettingsSwitch({ id: 'sb_conv_selfie_command_enabled', label: 'Selfies Through Quick Image Gen ([selfie])', subtitle: 'Selfie commands are hidden from the chat and sent as image prompts', title: 'Let the character turn [selfie: prompt] into a Quick Image Gen request' }),
+        createSettingsSwitch({ id: 'sb_conv_schedule_command_enabled', label: 'Character Status Updates ([schedule_update])', subtitle: 'Schedule updates let the character adjust what they are doing now', title: 'Let the character update its current availability/activity through [schedule_update]' }),
     ];
     const proactive = createSettingsGroup({
         title: 'Proactive Messaging',
@@ -1898,7 +1898,7 @@ export function buildSettingsDrawerContent() {
         rows: [
             createSettingsTextArea({ id: 'sb_conv_geechan_chatroom_prompt', label: 'Geechan Chatroom System Prompt', placeholder: 'Type the chatroom system prompt here…', rows: 3 }),
             createSettingsAction({ action: 'reset-prompt', label: 'Reset to Default', icon: 'rotate-left' }),
-            createSettingsTextArea({ id: 'sb_conv_custom_instructions', label: 'Custom Instructions', subtitle: 'Applies to every solo and group Conversation DM.', placeholder: 'Type any custom instructions or guidelines here…', rows: 3, scope: true }),
+            createSettingsTextArea({ id: 'sb_conv_custom_instructions', label: 'Custom Instructions', subtitle: 'Applies to every solo and group Conversation DM', placeholder: 'Type any custom instructions or guidelines here…', rows: 3, scope: true }),
             createSettingsSwitch({
                 id: 'sb_conv_grounded_dialogue_rules_enabled',
                 label: 'Grounded Dialogue Rules',
@@ -1921,9 +1921,9 @@ export function buildSettingsDrawerContent() {
         title: 'Context Overrides',
         field: 'context',
         rows: [
-            createSettingsSwitch({ id: 'sb_conv_lorebooks_enabled', label: 'Use Character Lorebooks', subtitle: 'When off, Conversation replies use no lorebooks at all, including the override below.', scope: true }),
+            createSettingsSwitch({ id: 'sb_conv_lorebooks_enabled', label: 'Use Character Lorebooks', subtitle: 'When off, Conversation replies use no lorebooks at all, including the override below', scope: true }),
             createSettingsSelect({ id: 'sb_conv_lorebook_override', label: 'Lorebook Override', optionsHtml: buildLorebookOptions(settings.lorebook_override) }),
-            createSettingsSelect({ id: 'sb_conv_connection_profile', label: 'Connection Profile', subtitle: 'Used for all Conversation Mode generations unless left on the current active connection.', optionsHtml: buildConnectionProfileOptions(settings.connection_profile), scope: true }),
+            createSettingsSelect({ id: 'sb_conv_connection_profile', label: 'Connection Profile', subtitle: 'Used for all Conversation Mode generations unless left on the current active connection', optionsHtml: buildConnectionProfileOptions(settings.connection_profile), scope: true }),
             createSettingsTextArea({ id: 'sb_conv_authors_note', label: 'Author\'s Note Override', placeholder: '[Author\'s Note: Keep responses short, direct, and conversational as if chatting in a DM.]', rows: 2 }),
         ],
     });
@@ -1946,7 +1946,7 @@ export function buildSettingsDrawerContent() {
         field: 'tweaks',
         rows: [
             createSettingsSwitch({ id: 'sb_conv_editable_messages', label: 'Enable Quick-Edit DM Actions', subtitle: 'Add quick inline edit buttons next to messages in the Conversation thread' }),
-            createSettingsSwitch({ id: 'sb_conv_prose_polisher', label: 'Character Prose Polisher', subtitle: 'Enable a magic wand icon on character replies to polish and refine their outputs.' }),
+            createSettingsSwitch({ id: 'sb_conv_prose_polisher', label: 'Character Prose Polisher', subtitle: 'Enable a magic wand icon on character replies to polish and refine their outputs' }),
         ],
     });
 
@@ -1955,7 +1955,7 @@ export function buildSettingsDrawerContent() {
     body.append(presence, schedule, proactive, memory, manual, prompts, context, images, tweaks);
 
     const fragment = document.createDocumentFragment();
-    fragment.append(createSettingsDrawerHeader(isGroupConversation ? 'Group controls' : 'DM controls'), body);
+    fragment.append(createSettingsDrawerHeader(isGroupConversation ? 'Group Controls' : 'DM Controls'), body);
     return fragment;
 }
 

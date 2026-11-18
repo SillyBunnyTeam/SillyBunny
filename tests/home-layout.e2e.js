@@ -1115,12 +1115,12 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             for (const name of ASSISTANT_NAMES) {
                 const card = assistantCard(page, name);
                 const footButtons = card.locator('.sbHomeFootButton');
-                await expect(card.locator('.sbHomeCardOpen')).toHaveAccessibleName(`New chat with ${name}`);
+                await expect(card.locator('.sbHomeCardOpen')).toHaveAccessibleName(`New Chat With ${name}`);
                 await expect(card.locator('.sbHomeCardOpen')).toHaveAttribute('title', `New Chat With ${name}`);
                 await expect(card.locator('.sbHomeCardOpen')).toHaveAccessibleDescription(SUBTITLES[name]);
-                await expect(footButtons.nth(0)).toHaveAccessibleName(`Start new chat with ${name}`);
+                await expect(footButtons.nth(0)).toHaveAccessibleName(`Start New Chat With ${name}`);
                 await expect(footButtons.nth(0)).toHaveAttribute('title', `Start New Chat With ${name}`);
-                await expect(footButtons.nth(1)).toHaveAccessibleName(`Temporary Chat with ${name}`);
+                await expect(footButtons.nth(1)).toHaveAccessibleName(`Temporary Chat With ${name}`);
                 await expect(footButtons.nth(1)).toHaveAttribute('title', `Temporary Chat With ${name}`);
                 await expect(card.locator('.sbHomeRowMenu')).toHaveAccessibleName(`Assistant Menu ${name}`);
                 await expect(card.locator('.sbHomeRowMenu')).toHaveAttribute('aria-haspopup', 'menu');

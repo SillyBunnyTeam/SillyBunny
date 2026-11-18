@@ -219,8 +219,8 @@ describe('settings pane structure and lifecycle', () => {
         expect(header.querySelector('h2').textContent).toBe('Global Settings');
         expect(root.lastElementChild.classList.contains('sb-wi-settings-body')).toBe(true);
         expect([...root.querySelectorAll('.ds-pref-group-heading')].map(heading => heading.textContent)).toEqual([
-            'Active World(s) for all chats',
-            'Global World Info/Lorebook activation settings',
+            'Active World(s) for All Chats',
+            'Global World Info/Lorebook Activation Settings',
         ]);
         expect(root.querySelectorAll('.ds-row-slider')).toHaveLength(6);
         expect(controller.focusTarget()).toBe(root.querySelector('input[type="search"]'));

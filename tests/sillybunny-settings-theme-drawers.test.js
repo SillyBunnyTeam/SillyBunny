@@ -42,8 +42,8 @@ describe('SillyBunny settings theme drawers', () => {
         expect(shellTabsSource).toContain('title: \'Background Visibility\',');
         expect(shellTabsSource).toContain('title: \'Bottom Bar Size\',');
         const contentSource = readSource('public', 'scripts', 'sillybunny-settings-content.js');
-        expect(contentSource).toContain('title: \'General\',\n                description: \'Choose the splash character and Compact Mode.\',');
-        expect(contentSource).toContain('description: \'Adjust the button size on phones.\',');
+        expect(contentSource).toContain('title: \'General\',\n                description: \'Choose the splash character and Compact Mode\',');
+        expect(contentSource).toContain('description: \'Adjust the button size on phones\',');
         expect(contentSource).toContain('title: \'Bottom Bar\',\n                body: \'#sb-bottom-bar-settings\',');
         expect(shellTabsSource).not.toContain('Change the app icon');
         expect(shellTabsSource).not.toContain('sb-shell-style-drawer');

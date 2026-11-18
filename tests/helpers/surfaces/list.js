@@ -309,7 +309,7 @@ const tagManager = {
     title: 'Tag Manager list',
     root: `${TAG_MANAGER} .sb-tag-manager__list`,
     ready: TAG_ROWS,
-    open: page => openManager(page, { item: 'Manage tags', root: TAG_MANAGER }),
+    open: page => openManager(page, { item: 'Manage Tags', root: TAG_MANAGER }),
     close: page => closeManager(page, TAG_MANAGER),
     overlay: true,
     states: [

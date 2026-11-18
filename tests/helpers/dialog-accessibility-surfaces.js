@@ -636,7 +636,7 @@ export const SURFACES = [
         async open(page) {
             await openCharacterList(page);
             const opener = await openCharacterListMenu(page);
-            const item = page.getByRole('menuitem', { name: 'Manage tags', exact: true });
+            const item = page.getByRole('menuitem', { name: 'Manage Tags', exact: true });
             await expect(item).toBeVisible();
             await item.focus();
             await pressKey(page, 'Enter');

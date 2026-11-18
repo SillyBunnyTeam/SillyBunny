@@ -184,7 +184,7 @@ export function createListEditor(config) {
         escapeCloses = true,
         rootTag = 'div',
         label = '',
-        dividerLabel = t`Resize sidebar`,
+        dividerLabel = t`Resize Sidebar`,
         classNames = {},
     } = config;
 

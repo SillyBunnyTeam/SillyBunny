@@ -153,7 +153,7 @@ export async function openAssistantPickerWindow({ getEntries, getThumbnailUrl, c
         search: {
             label: t`Search Characters`,
             toggleLabel: t`Search Characters`,
-            placeholder: t`Search...`,
+            placeholder: t`Search…`,
             collapsed: true,
             escapeClearsFirst: true,
             onChange: filter,

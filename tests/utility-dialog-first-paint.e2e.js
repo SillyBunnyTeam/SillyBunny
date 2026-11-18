@@ -49,7 +49,7 @@ const MOTION_ON = {
 const MISC_SURFACES = [
     { surface: 'screenshot', rows: ['Start ID', 'End ID'] },
     { surface: 'install', rows: ['Enter the Git URL of the extension to install'] },
-    { surface: 'branch', rows: ['Switch branch'] },
+    { surface: 'branch', rows: ['Switch Branch'] },
 ];
 
 /**

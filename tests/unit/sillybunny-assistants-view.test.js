@@ -70,9 +70,9 @@ describe('the cards of the Assistants section', () => {
         const card = cardOf(panel, 'assistant-reisen');
 
         expect(card.querySelector('.sbHomeCardName').textContent).toBe('Reisen');
-        expect(overlay(card).getAttribute('aria-label')).toBe('New chat with Reisen');
+        expect(overlay(card).getAttribute('aria-label')).toBe('New Chat With Reisen');
         expect(overlay(card).title).toBe('New Chat With Reisen');
-        expect(footButtons(card).map(button => button.getAttribute('aria-label'))).toEqual(['Start new chat with Reisen', 'Temporary Chat with Reisen']);
+        expect(footButtons(card).map(button => button.getAttribute('aria-label'))).toEqual(['Start New Chat With Reisen', 'Temporary Chat With Reisen']);
         expect(card.querySelector('.sbHomeCardSub').textContent).toBe('Did you need help with setup or troubleshooting? Leave it to me!');
         expect(card.querySelector('.sbHomeCardSub').hasAttribute('data-sb-copy-placeholder')).toBe(false);
         expect(card.querySelector('.sbHomeRowMenu').getAttribute('aria-label')).toBe('Assistant Menu');
@@ -477,7 +477,7 @@ describe('the third slot with a character chosen', () => {
         expect(card.querySelector('.sbHomeCardSub').textContent).toBe('Chosen from your character library.');
         expect(card.querySelector('.sbHomeCardArt img').getAttribute('src')).toBe('/thumb/Alice.png');
         expect([...card.querySelectorAll('button')].map(button => button.className)).toEqual([...reisen.querySelectorAll('button')].map(button => button.className));
-        expect(footButtons(card).map(button => button.getAttribute('aria-label'))).toEqual(['Start new chat with Alice', 'Temporary Chat with Alice']);
+        expect(footButtons(card).map(button => button.getAttribute('aria-label'))).toEqual(['Start New Chat With Alice', 'Temporary Chat With Alice']);
     });
 
     test('opens a new chat and a temporary chat for the chosen character', () => {

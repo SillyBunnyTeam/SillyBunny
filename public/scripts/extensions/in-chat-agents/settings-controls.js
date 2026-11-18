@@ -9,7 +9,7 @@ const fields = [
     {
         id: 'companionConnectionProfile', label: 'Companion Connection Profile',
         title: 'Which connection profile Companion agents (trackers, notes) use when they do not have their own editor profile override. Leave empty to share the default above.',
-        caption: 'Point this at a cheap, fast model — companions run on every reply.',
+        caption: 'Point this at a cheap, fast model — companions run on every reply',
         options: [['', 'Use Default Connection Profile']],
     },
     {

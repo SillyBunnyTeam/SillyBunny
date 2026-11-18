@@ -28,7 +28,7 @@ function addLaunchButton() {
     launchButton.id = 'inspectNextPromptButton';
     launchButton.classList.add('list-group-item', 'flex-container', 'flexGap5', 'interactable');
     launchButton.tabIndex = 0;
-    launchButton.title = t`Toggle prompt inspection`;
+    launchButton.title = t`Toggle Prompt Inspection`;
     const icon = document.createElement('i');
     icon.className = getIcon();
     launchButton.appendChild(icon);

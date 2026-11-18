@@ -130,12 +130,12 @@ export function mountWorldInfoSettings({ host, onClose }) {
     const body = element('div', 'sb-wi-settings-body');
     root.append(header, body);
 
-    const books = createPrefGroup({ title: t`Active World(s) for all chats`, field: 'active-worlds' });
+    const books = createPrefGroup({ title: t`Active World(s) for All Chats`, field: 'active-worlds' });
     books.section.classList.add('sb-wi-settings-books');
     const searchEntry = createSearchEntry({
         clearLabel: t`Clear Entry`,
         className: 'sb-wi-settings-search-field', inputClassName: 'sb-wi-settings-search',
-        placeholder: t`Search...`, label: t`Search...`, debounce: 300,
+        placeholder: t`Search…`, label: t`Search…`, debounce: 300,
         onInput: () => { if (!destroyed) filterBooks(); },
     });
     const search = searchEntry.input;
@@ -214,10 +214,10 @@ export function mountWorldInfoSettings({ host, onClose }) {
         return row;
     });
     // The select stays the source of truth and keeps its id and handlers; the row adopts it and opens the shared picker.
-    const strategySelect = createSelectRow({ select: strategy, label: t`Insertion Strategy`, field: strategy.id, searchLabel: t`Search`, emptyText: t`No results` });
+    const strategySelect = createSelectRow({ select: strategy, label: t`Insertion Strategy`, field: strategy.id, searchLabel: t`Search`, emptyText: t`No Results` });
     const switchRows = switches.map(({ input, label, subtitle, id }) => switchRow({ input, label, subtitle, field: id, listen }));
     activationRows.push(strategySelect.row, ...switchRows.map(({ row }) => row));
-    const activation = createPrefGroup({ title: t`Global World Info/Lorebook activation settings`, field: 'activation-settings', rows: activationRows });
+    const activation = createPrefGroup({ title: t`Global World Info/Lorebook Activation Settings`, field: 'activation-settings', rows: activationRows });
     body.append(searchEntry.element, books.section, activation.section);
     host.append(root);
 

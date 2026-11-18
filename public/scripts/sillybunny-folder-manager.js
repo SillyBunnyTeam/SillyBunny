@@ -479,7 +479,7 @@ export function createFolderManager(scope, adapter) {
             items,
             selected: null,
             searchLabel: t`Search`,
-            emptyText: t`No results`,
+            emptyText: t`No Results`,
             bounds: frame?.surface ?? null,
             onSelect: key => { setFolder(scope, [key], folder.id); refresh(); },
         });
@@ -627,7 +627,7 @@ export function createFolderManager(scope, adapter) {
                 title: t`Folders`,
                 className: 'sb-folder-manager',
                 content,
-                search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.sb-folder-manager__folder-row', debounce: 300, onChange: () => refresh() },
+                search: { placeholder: t`Search…`, label: t`Search`, collapsed: true, escapeClearsFirst: true, typeToSearchSelector: '.sb-folder-manager__folder-row', debounce: 300, onChange: () => refresh() },
                 menu: trigger => [{ items: [{
                     label: t`Select`, icon: 'fa-solid fa-check-double', disabled: bulkBusy || !getFolders(scope).length,
                     onSelect: () => selection.enter(null, trigger),

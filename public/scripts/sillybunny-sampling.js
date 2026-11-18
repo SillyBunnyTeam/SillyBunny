@@ -62,7 +62,7 @@ export function createActionRow(button, { text = '', key = '' } = {}) {
  */
 function createField(textarea, { title, titleKey = '', subtitle = '', subtitleKey = '', link = null }) {
     textarea.classList.remove('wide100p');
-    const field = createTextAreaField({ label: title, subtitle: subtitle || undefined, field: textarea.id, input: textarea, expandLabel: t`Expand the editor` });
+    const field = createTextAreaField({ label: title, subtitle: subtitle || undefined, field: textarea.id, input: textarea, expandLabel: t`Expand the Editor` });
     setKey(field.row.querySelector('.ds-row-label'), titleKey);
     setKey(field.row.querySelector('.ds-row-subtitle'), subtitleKey);
     if (link) {
@@ -105,7 +105,7 @@ function prepareChatLogitBias(block) {
         subtitle: clean(description.textContent),
         field: 'logit-bias-preset',
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
         suffix: [...form.querySelectorAll('.menu_button, input[type="file"]')],
     });
     setKey(row.querySelector('.ds-row-label'), readLabelI18nKey(title));
@@ -284,7 +284,7 @@ export function prepareSamplingBlock(selector, block, { root } = {}) {
 
 const WIRE_HELP = 'Controls how this setting is sent to the AI:\n\n• Auto: Normal default behavior.\n• Send: Force this slider\'s exact value to be sent.\n• Omit: Completely delete this setting from the request so models that reject it (like Grok or o1) won\'t crash.';
 const WIRE_CHOICES = Object.freeze([
-    ['inherit', 'Auto', 'Auto: Normal default behavior'],
+    ['inherit', 'Auto', 'Auto: Normal Default Behavior'],
     ['include', 'Send', 'Send: Force this slider\'s exact value to be sent'],
     ['omit', 'Omit', 'Omit: Completely delete this setting from the request to prevent crashes'],
 ]);

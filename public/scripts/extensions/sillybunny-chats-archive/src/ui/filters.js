@@ -101,7 +101,7 @@ function buildFilters(ctx, state, ui) {
         label: tr(ctx, 'Tag'),
         field: 'filter-tag',
         noneLabel: tr(ctx, 'None'),
-        emptyText: tr(ctx, 'No results'),
+        emptyText: tr(ctx, 'No Results'),
         bounds: ui.dialog.surface,
         onChange: value => commit({ tag: String(value).trim() }),
     });

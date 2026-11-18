@@ -125,8 +125,8 @@ export function adaptProfileFolders(root) {
     adoptCaption(list.section, note, '.ds-pref-group-subtitle');
     const input = root.querySelector('#new_profile_folder_name');
     const add = root.querySelector('#add_new_folder');
-    const entry = createEntryRow({ label: input.placeholder, field: 'new-folder', input, floating: true, suffix: add });
-    entry.row.querySelector('.ds-row-label').dataset.i18n = 'New folder name';
+    const entry = createEntryRow({ label: t`New Folder Name`, field: 'new-folder', input, floating: true, suffix: add });
+    entry.row.querySelector('.ds-row-label').dataset.i18n = 'New Folder Name';
     root.classList.add('sb-connection-dialog-content');
     root.replaceChildren(list.section, createPrefGroup({ field: 'add-folder', rows: [entry] }).section);
     return root;

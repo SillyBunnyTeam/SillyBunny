@@ -1046,7 +1046,7 @@ async function renameRecentConversationChat(avatarId, groupId, branchId, branchN
 async function deleteRecentConversationChat(avatarId, groupId, branchId, recentChat) {
     try {
         // SillyBunny: names the response with a verb (confirmVerb).
-        const confirm = await callGenericPopup(t`Delete the Chat File?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
+        const confirm = await callGenericPopup(t`Delete the chat file?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             return;
         }
@@ -1221,7 +1221,7 @@ async function deleteRecentCharacterChat(avatarId, fileName) {
     }
     try {
         // SillyBunny: names the response with a verb (confirmVerb).
-        const confirm = await callGenericPopup(t`Delete the Chat File?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
+        const confirm = await callGenericPopup(t`Delete the chat file?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             console.log('Deletion cancelled by user');
             return;
@@ -1252,7 +1252,7 @@ async function deleteRecentGroupChat(groupId, fileName) {
     }
     try {
         // SillyBunny: names the response with a verb (confirmVerb).
-        const confirm = await callGenericPopup(t`Delete the Chat File?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
+        const confirm = await callGenericPopup(t`Delete the chat file?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
         if (!confirm) {
             console.log('Deletion cancelled by user');
             return;

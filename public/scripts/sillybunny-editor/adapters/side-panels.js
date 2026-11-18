@@ -43,7 +43,7 @@ function createTextareaRow(input, label, field, counter = null) {
         field,
         input,
         ...(counter ? { count: { label: t`Tokens:`, element: counter } } : {}),
-        expandLabel: t`Expand the editor`,
+        expandLabel: t`Expand the Editor`,
     });
     return textarea.row;
 }
@@ -244,7 +244,7 @@ function adaptAuthorNote(root) {
     });
     setRowLabel(characterPosition.row, 'Position');
     const characterSwitch = createSwitchRow({
-        label: t`Use character author's note`,
+        label: t`Use Character Author's Note`,
         field: 'authors-note-use-character',
         input: useCharacterInput,
     });
@@ -385,8 +385,8 @@ function adaptCfg(root) {
     const chatParts = getSectionParts(chatContainer, 'CFG chat');
     const chatUseCharacter = requireElement(root, '#groupchat_cfg_use_chara_container', 'CFG');
     const chatUseCharacterInput = requireInput(root, '#groupchat_cfg_use_chara', 'checkbox', 'CFG');
-    const chatUseCharacterRow = createSwitchRow({ label: t`Use character CFG scales`, field: 'cfg-chat-use-character', input: chatUseCharacterInput });
-    setRowLabel(chatUseCharacterRow.row, 'Use character CFG scales');
+    const chatUseCharacterRow = createSwitchRow({ label: t`Use Character CFG Scales`, field: 'cfg-chat-use-character', input: chatUseCharacterInput });
+    setRowLabel(chatUseCharacterRow.row, 'Use Character CFG Scales');
     chatUseCharacter.replaceChildren(chatUseCharacterRow.row);
     const chatDescription = chatParts.content.querySelector('small');
     createCfgSection({

@@ -311,7 +311,7 @@ function _mountFolderField() {
         label: t`Folder`,
         field: 'folder',
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
         onChange: value => {
             callbacks.setFolderValue?.(value || null);
             callbacks.onFolderChanged?.();
@@ -499,7 +499,7 @@ function _buildActionSections() {
 
     if (isEdit && callbacks?.canRestoreAvatar()) {
         actions.push({
-            label: t`Restore collage avatar`,
+            label: t`Restore Collage Avatar`,
             icon: 'fa-solid fa-images',
             onSelect: () => _dispatchTransportClick('#rm_group_restore_avatar'),
         });

@@ -96,7 +96,7 @@ export function quickReplyTransferOptions(source) {
     const select = root.querySelector('select');
     if (!select) throw new TypeError('A Quick Reply transfer needs its source select.');
     const hint = root.querySelector('p');
-    const row = createSelectRow({ select, label: t`Quick Reply Set`, field: 'quick-reply-target', searchLabel: t`Search`, emptyText: t`No results` });
+    const row = createSelectRow({ select, label: t`Quick Reply Set`, field: 'quick-reply-target', searchLabel: t`Search`, emptyText: t`No Results` });
     const group = createPrefGroup({ field: 'quick-reply-transfer', subtitle: textOf(hint), rows: [row] });
     moveCaption(group.section.querySelector('.ds-pref-group-subtitle'), hint?.querySelector('small'));
     root.classList.add('sb-dialog-rows');
@@ -467,7 +467,7 @@ function adoptSummaryBox(root) {
     const caption = header?.querySelector(':scope > span[data-i18n="ext_sum_current_summary"]');
     if (!(textarea instanceof HTMLTextAreaElement) || !(header instanceof HTMLElement) || !caption || textarea.closest('.ds-row-textarea')) return;
 
-    const row = createTextAreaField({ label: textOf(caption).replace(/[：:]$/, ''), field: 'memory_contents', input: textarea, expandLabel: t`Expand the editor` });
+    const row = createTextAreaField({ label: textOf(caption).replace(/[：:]$/, ''), field: 'memory_contents', input: textarea, expandLabel: t`Expand the Editor` });
     const restore = header.querySelector('#memory_restore');
     if (restore) row.labelRow.insertBefore(restore, row.expand);
     header.before(row.row);
@@ -718,7 +718,7 @@ export function adoptQuickReplySetPicker(root) {
 
     const heading = textOf(title);
     const row = createProfileRow({
-        select, label: heading, field: 'qr-set', searchLabel: t`Search`, emptyText: t`No results`, menuLabel: t`Actions`,
+        select, label: heading, field: 'qr-set', searchLabel: t`Search`, emptyText: t`No Results`, menuLabel: t`Actions`,
         async onMenu(trigger) {
             const { openActionMenu } = await import('../../sillybunny-action-menu.js');
             openActionMenu({

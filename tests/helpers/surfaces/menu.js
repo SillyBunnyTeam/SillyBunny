@@ -323,7 +323,7 @@ export const surfaces = [
         needs: ['character', 'tags'],
         sources: [`${SCRIPTS}/sillybunny-tag-manager.js`, ACTION_MENU],
         async open(page) {
-            await openManagerFromList(page, 'Manage tags', TAG_MANAGER);
+            await openManagerFromList(page, 'Manage Tags', TAG_MANAGER);
             await openFrom(page, `${TAG_MANAGER} .sb-dialog__menu`);
         },
     }),
@@ -334,7 +334,7 @@ export const surfaces = [
         needs: ['character', 'tags'],
         sources: [`${SCRIPTS}/sillybunny-tag-manager.js`, ACTION_MENU],
         async open(page) {
-            await openManagerFromList(page, 'Manage tags', TAG_MANAGER);
+            await openManagerFromList(page, 'Manage Tags', TAG_MANAGER);
             // The Sort button ends the manager's search bar, so the bar opens first.
             await openSearch(page, { input: `${TAG_MANAGER} .sb-dialog__search-input`, toggle: `${TAG_MANAGER} .sb-dialog__search-toggle` });
             await openFrom(page, `${TAG_MANAGER} .sb-tag-manager__sort`);
@@ -346,7 +346,7 @@ export const surfaces = [
         needs: ['character', 'tags'],
         sources: [`${SCRIPTS}/sillybunny-tag-manager.js`, ACTION_MENU],
         async open(page) {
-            await openManagerFromList(page, 'Manage tags', TAG_MANAGER);
+            await openManagerFromList(page, 'Manage Tags', TAG_MANAGER);
             await openFrom(page, `${TAG_MANAGER} .sb-tag-manager__row-menu`);
         },
     }),
@@ -358,7 +358,7 @@ export const surfaces = [
         needs: ['character', 'tags'],
         sources: [`${SCRIPTS}/sillybunny-tag-manager.js`, ACTION_MENU],
         async open(page) {
-            await openManagerFromList(page, 'Manage tags', TAG_MANAGER);
+            await openManagerFromList(page, 'Manage Tags', TAG_MANAGER);
             await openFrom(page, `${TAG_MANAGER} .sb-tag-manager__add`, POPOVER_ROOT);
         },
     }),
@@ -369,7 +369,7 @@ export const surfaces = [
         needs: ['character', 'tags', 'characters-many'],
         sources: [`${SCRIPTS}/sillybunny-tag-manager.js`, PICKER],
         async open(page) {
-            await openManagerFromList(page, 'Manage tags', TAG_MANAGER);
+            await openManagerFromList(page, 'Manage Tags', TAG_MANAGER);
             if (!await page.locator(`${TAG_MANAGER} .sb-tag-manager__member-add`).isVisible()) {
                 const row = page.locator(`${TAG_MANAGER} .tag_view_item`).first();
                 await row.focus();

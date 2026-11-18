@@ -205,7 +205,7 @@ export function mountWorldInfoEditor(container) {
     const searchEntry = createSearchEntry({
         clearLabel: t`Clear Entry`,
         variant: 'bar', className: 'sb-wi-search-entry', inputClassName: 'sb-wi-search',
-        placeholder: t`Search...`, label: t`Search`, clearOnEscape: false,
+        placeholder: t`Search…`, label: t`Search`, clearOnEscape: false,
     });
     // HUMAN: replace — Sort control label.
     const sortLabel = t`lorum ipsum`;
@@ -343,7 +343,7 @@ export function mountWorldInfoEditor(container) {
             [menuItem(t`Used By…`, 'link', () => openUsedByPicker(trigger), false, !state.name)],
             [menuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), false, !state.name || !Object.keys(state.data?.entries ?? {}).length)],
             [action(t`Rename World Info`, 'pencil', 'world_popup_name_button'), action(t`Duplicate World Info`, 'copy', 'world_duplicate'), action(t`Export World Info`, 'file-export', 'world_popup_export')],
-            [action(t`Batch Import Embedded Lorebooks`, 'cubes-stacked', 'world_batch_import_embedded'), action(t`Fill empty Memo/Titles with Keywords`, 'notes-medical', 'world_backfill_memos'), action(t`Apply current sorting as Order`, 'arrow-down-9-1', 'world_apply_current_sorting'), action(t`Refresh`, 'arrows-rotate', 'world_refresh')],
+            [action(t`Batch Import Embedded Lorebooks`, 'cubes-stacked', 'world_batch_import_embedded'), action(t`Fill Empty Memo/Titles With Keywords`, 'notes-medical', 'world_backfill_memos'), action(t`Apply Current Sorting as Order`, 'arrow-down-9-1', 'world_apply_current_sorting'), action(t`Refresh`, 'arrows-rotate', 'world_refresh')],
             [action(t`Delete World Info`, 'trash', 'world_popup_delete', true)],
         ]);
     }
@@ -356,7 +356,7 @@ export function mountWorldInfoEditor(container) {
         picker = openPicker({
             trigger,
             title: t`Used By`,
-            emptyText: t`No results`,
+            emptyText: t`No Results`,
             items: users.map(user => ({
                 value: user.value, label: user.label,
                 icon: user.relation === 'persona' ? 'fa-solid fa-user' : 'fa-solid fa-address-card',

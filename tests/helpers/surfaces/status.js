@@ -504,7 +504,7 @@ const TAG_HOST = '.sb-dialog-host:has(> #tag_view_list)';
 async function openTagManager(page) {
     await showCharacterView(page, 'characters');
     await page.locator(`${CHARACTER_LIST} [data-action-id="more"]`).click();
-    await page.getByRole('menuitem', { name: 'Manage tags', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Manage Tags', exact: true }).click();
     await page.locator('#tag_view_list').waitFor({ state: 'visible' });
     await settle(page);
 }
@@ -515,7 +515,7 @@ const tagsEmpty = status({
     component: 'shared',
     overlay: true,
     root: '#tag_view_list .sb-tag-manager__empty .sb-status-page',
-    ready: titled('#tag_view_list .sb-tag-manager__empty .sb-status-page', 'Create a new tag'),
+    ready: titled('#tag_view_list .sb-tag-manager__empty .sb-status-page', 'Create a New Tag'),
     async open(page) {
         await page.evaluate(async () => {
             const tags = await import('/scripts/tags.js');

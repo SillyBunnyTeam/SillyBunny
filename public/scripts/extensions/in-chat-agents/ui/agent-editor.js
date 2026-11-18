@@ -225,7 +225,7 @@ export function mountAgentDetail({
         // The prompt is named by its group heading, which carries its Expand; every other area has a label row of its own.
         const view = prompt
             ? createRow({ field: path, label, stacked: true, suffix: input })
-            : createTextAreaField({ field: path, label, input, rows: 6, expandLabel: t`Expand the editor` });
+            : createTextAreaField({ field: path, label, input, rows: 6, expandLabel: t`Expand the Editor` });
         const error = prompt ? element('div', 'ica-agent-field-error') : null;
         if (error) {
             error.id = `${input.id}-error`;
@@ -336,7 +336,7 @@ export function mountAgentDetail({
     preview.tabIndex = 0;
     preview.hidden = true;
     promptView.control.parentElement.append(preview);
-    const expand = button(t`Expand the editor`, 'maximize', 'editor_maximize sb-persona-entry-expand');
+    const expand = button(t`Expand the Editor`, 'maximize', 'editor_maximize sb-persona-entry-expand');
     expand.dataset.for = promptView.control.id;
     attachToLabelRow(prompt.section, expand);
     let textareaViewportFrame = 0;

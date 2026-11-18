@@ -76,9 +76,9 @@ function actionMenuSections(holder) {
         return original ? [{ label, icon: original.querySelector('i')?.className, danger, onSelect: () => original.click() }] : [];
     };
     return [
-        { items: [...item('#ui-preset-update-button', t`Update a theme file`), ...item('#ui-preset-save-button', t`Save as a new theme`)] },
-        { items: [...item('#ui_preset_import_button', t`Import a theme file`), ...item('#ui_preset_export_button', t`Export a theme file`)] },
-        { items: item('#ui-preset-delete-button', t`Delete a theme`, true) },
+        { items: [...item('#ui-preset-update-button', t`Update a Theme File`), ...item('#ui-preset-save-button', t`Save as a New Theme`)] },
+        { items: [...item('#ui_preset_import_button', t`Import a Theme File`), ...item('#ui_preset_export_button', t`Export a Theme File`)] },
+        { items: item('#ui-preset-delete-button', t`Delete a Theme`, true) },
     ].filter(section => section.items.length);
 }
 
@@ -117,7 +117,7 @@ function presentTheme(container) {
         subtitle: copy.subtitleText,
         field: 'ui-theme',
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
         menuLabel: t`Theme Actions`,
         onMenu: trigger => openActionMenu({ trigger, title: copy.labelText, sections: actionMenuSections(holder) }),
     });
@@ -161,7 +161,7 @@ function presentCustomAccent(container) {
     const group = createAppearanceGroup({
         id: 'custom-accent',
         title: textOf(title) || 'Custom RGB Accent',
-        description: 'Choose your own primary and secondary accent colors.',
+        description: 'Choose your own primary and secondary accent colors',
         source: { title },
     });
     // The settings normaliser pointed the switch at captions that the group now holds.
@@ -243,7 +243,7 @@ function presentFont(container) {
         subtitle: presetCopy.subtitleText,
         field: 'google-font-preset',
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
         menuLabel: t`Font Actions`,
         onMenu: trigger => openActionMenu({ trigger, title: presetCopy.labelText, sections: fontMenuSections(presetSelect, importInput) }),
     });
@@ -309,7 +309,7 @@ function presentCustomCss(container) {
         label: copy.labelText || 'Custom CSS',
         field: 'custom-css',
         input: textarea,
-        expandLabel: t`Expand the editor`,
+        expandLabel: t`Expand the Editor`,
     });
     if (copy.label) moveCaption(field.row.querySelector('.ds-row-label'), copy.label, { keepSource: true });
     const indicator = container.querySelector('#custom_css_save_state');
@@ -341,7 +341,7 @@ export function presentBackgroundGallery(gallery) {
         subtitle: copy.subtitleText,
         field: 'background-fitting',
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
     });
     carryCopy(row, copy);
     // What is left of the old row is a bar of three buttons.

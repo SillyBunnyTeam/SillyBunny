@@ -32,7 +32,7 @@ function extractFunction(name) {
 }
 
 test('voice Dialog keeps its title and stops preview audio on close', () => {
-    expect(source).toContain('title: t`Available voices`');
+    expect(source).toContain('title: t`Available Voices`');
     const releaseRowIds = jest.fn();
     const cleanup = vm.runInNewContext(`(${extractFunction('cleanupVoicePreviewContent')})`, { releaseRowIds });
     const content = document.createElement('div');

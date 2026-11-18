@@ -355,7 +355,7 @@ export async function openScheduleEditorModal(initialAvatar = getCurrentCharAvat
     modal.innerHTML = `
         <h3 id="sb_schedule_modal_title" class="sb-schedule-modal-title">Weekly Routine</h3>
         <div class="sb-schedule-modal-target">
-            <label for="sb_schedule_modal_target">Editing Schedule For</label>
+            <label for="sb_schedule_modal_target">Editing schedule for</label>
             <select id="sb_schedule_modal_target" class="text_pole textarea_compact wide100p"${targets.length <= 1 ? ' disabled' : ''}>
                 ${targetOptionsHtml}
             </select>

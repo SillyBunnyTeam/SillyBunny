@@ -109,7 +109,7 @@ export function customCssAiOptions(source) {
         field: profile.id,
         title: textOf(profileCaption),
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
     });
     const applyRow = segmentedRow(applyLabels, 'custom-css-ai-apply-mode', t`Apply`);
     const notes = [...root.querySelectorAll(':scope > small')];
@@ -183,15 +183,15 @@ export function switchBranchOptions(select) {
     if (!(select instanceof HTMLSelectElement)) throw new TypeError('A branch dialog needs a select.');
     let row;
     return dialogCleanup(select, {
-        title: t`Switch branch`,
+        title: t`Switch Branch`,
         onOpening(popup) {
             row = createSelectRow({
                 select,
-                label: t`Switch branch`,
+                label: t`Switch Branch`,
                 field: 'extension-branch',
-                title: t`Switch branch`,
+                title: t`Switch Branch`,
                 searchLabel: t`Search`,
-                emptyText: t`No results`,
+                emptyText: t`No Results`,
             });
             popup.content.replaceChildren(createPrefGroup({ field: 'extension-branch-selection', rows: [row] }).section);
         },

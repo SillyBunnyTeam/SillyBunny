@@ -380,7 +380,7 @@
                             <div id="pro-settings-block" class="flex-container gap10h5v justifyCenter">
                                 <div id="amount_gen_block" class="range-block-range-and-counter alignitemscenter flex-container marginBot5 flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
                                     <small data-i18n="response legth(tokens)">Response (tokens)</small>
-                                    <small class="ds-row-subtitle" data-i18n="Set the maximum number of tokens the AI can generate in one reply.">Set the maximum number of tokens the AI can generate in one reply.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Set the maximum number of tokens the AI can generate in one reply">Set the maximum number of tokens the AI can generate in one reply</small>
                                     <input class="neo-range-slider" type="range" id="amount_gen" name="volume" min="16" max="2048" step="1">
                                     <div data-randomization-disabled="true" class="wide100p">
                                         <input class="neo-range-input" type="number" min="16" max="2048" step="1" data-for="amount_gen" id="amount_gen_counter">
@@ -412,7 +412,7 @@
                                 </div>
                                 <div id="max_context_block" class="range-block-range-and-counter alignitemscenter flex-container marginBot5 flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
                                     <small data-i18n="context size(tokens)">Context (tokens)</small>
-                                    <small class="ds-row-subtitle" data-i18n="Set how many tokens are available for instructions, chat history, and the AI's reply.">Set how many tokens are available for instructions, chat history, and the AI's reply.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Set how many tokens are available for instructions, chat history, and the AI's reply">Set how many tokens are available for instructions, chat history, and the AI's reply</small>
                                     <input class="neo-range-slider" type="range" id="max_context" name="volume" min="512" max="8192" step="64">
                                     <div data-randomization-disabled="true" class="wide100p">
                                         <input class="neo-range-input" type="number" min="512" max="8192" step="64" data-for="max_context" id="max_context_counter">
@@ -475,7 +475,7 @@
                                         <small>
                                             <span data-i18n="Rep. Pen. Slope">Repetition Penalty Slope</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Apply stronger repetition penalties to recently used tokens.">Apply stronger repetition penalties to recently used tokens.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Apply stronger repetition penalties to recently used tokens">Apply stronger repetition penalties to recently used tokens</small>
                                         <input class="neo-range-slider" type="range" id="rep_pen_slope_novel" name="volume" min="0" max="10" step="0.01">
                                         <input class="neo-range-input" type="number" min="0" max="10" step="0.01" data-for="rep_pen_slope_novel" id="rep_pen_slope_counter_novel">
                                     </div>
@@ -483,7 +483,7 @@
                                         <small>
                                             <span data-i18n="Rep. Pen. Freq.">Repetition Penalty Frequency</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage repeated tokens based on how often they appear.">Higher values discourage repeated tokens based on how often they appear.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage repeated tokens based on how often they appear">Higher values discourage repeated tokens based on how often they appear</small>
                                         <input class="neo-range-slider" type="range" id="rep_pen_freq_novel" name="volume" min="0" max="1" step="0.001">
                                         <input class="neo-range-input" type="number" min="0" max="1" step="0.001" data-for="rep_pen_freq_novel" id="rep_pen_freq_counter_novel">
                                     </div>
@@ -491,7 +491,7 @@
                                         <small>
                                             <span data-i18n="Rep. Pen. Presence">Repetition Penalty Presence</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage previously used tokens, regardless of how often they appear.">Higher values discourage previously used tokens, regardless of how often they appear.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage previously used tokens, regardless of how often they appear">Higher values discourage previously used tokens, regardless of how often they appear</small>
                                         <input class="neo-range-slider" type="range" id="rep_pen_presence_novel" name="volume" min="0" max="1" step="0.001">
                                         <input class="neo-range-input" type="number" min="0" max="1" step="0.001" data-for="rep_pen_presence_novel" id="rep_pen_presence_counter_novel">
                                     </div>
@@ -499,7 +499,7 @@
                                         <small>
                                             <span data-i18n="Min P">Min P</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Filter out tokens that are unlikely compared with the most likely token.">Filter out tokens that are unlikely compared with the most likely token.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Filter out tokens that are unlikely compared with the most likely token">Filter out tokens that are unlikely compared with the most likely token</small>
                                         <input class="neo-range-slider" type="range" id="min_p_novel" name="volume" min="0" max="1" step="0.001">
                                         <input class="neo-range-input" type="number" min="0" max="1" step="0.001" data-for="min_p_novel" id="min_p_counter_novel">
                                     </div>
@@ -531,7 +531,7 @@
                                         <small>
                                             <span data-i18n="Top K">Top K</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Limit each choice to this many of the most likely tokens.">Limit each choice to this many of the most likely tokens.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Limit each choice to this many of the most likely tokens">Limit each choice to this many of the most likely tokens</small>
                                         <input class="neo-range-slider" type="range" id="top_k_novel" name="volume" min="0" max="300" step="1">
                                         <input class="neo-range-input" type="number" min="0" max="300" step="1" data-for="top_k_novel" id="top_k_counter_novel">
                                     </div>
@@ -547,7 +547,7 @@
                                         <small>
                                             <span data-i18n="Mirostat LR">Mirostat LR</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Control how quickly Mirostat adjusts toward its target randomness.">Control how quickly Mirostat adjusts toward its target randomness.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Control how quickly Mirostat adjusts toward its target randomness">Control how quickly Mirostat adjusts toward its target randomness</small>
                                         <input class="neo-range-slider" type="range" id="mirostat_lr_novel" name="volume" min="0" max="1" step="0.01">
                                         <input class="neo-range-input" type="number" min="0" max="1" step="0.01" data-for="mirostat_lr_novel" id="mirostat_lr_counter_novel">
                                     </div>
@@ -555,7 +555,7 @@
                                         <small>
                                             <span data-i18n="Typical P">Typical P</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Filter out tokens with unusually high or low probabilities.">Filter out tokens with unusually high or low probabilities.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Filter out tokens with unusually high or low probabilities">Filter out tokens with unusually high or low probabilities</small>
                                         <input class="neo-range-slider" type="range" id="typical_p_novel" name="volume" min="0" max="1" step="0.001">
                                         <input class="neo-range-input" type="number" min="0" max="1" step="0.001" data-for="typical_p_novel" id="typical_p_counter_novel">
                                     </div>
@@ -579,7 +579,7 @@
                                         <small>
                                             <span data-i18n="Conf">Conf</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="When the AI is less certain, positive values favor predictable wording and negative values allow more variety.">When the AI is less certain, positive values favor predictable wording and negative values allow more variety.</small>
+                                        <small class="ds-row-subtitle" data-i18n="When the AI is less certain, positive values favor predictable wording and negative values allow more variety">When the AI is less certain, positive values favor predictable wording and negative values allow more variety</small>
                                         <input class="neo-range-slider" type="range" id="math1_quad_entropy_scale_novel" name="volume" min="-0.4" max="0.4" step="0.01">
                                         <input class="neo-range-input" type="number" min="-0.4" max="0.4" step="0.01" data-for="math1_quad_entropy_scale_novel" id="math1_quad_entropy_scale_counter_novel">
                                     </div>
@@ -587,7 +587,7 @@
                                         <small>
                                             <span data-i18n="Min Length">Min Length</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Set the minimum reply length in tokens before stop sequences can end it.">Set the minimum reply length in tokens before stop sequences can end it.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Set the minimum reply length in tokens before stop sequences can end it">Set the minimum reply length in tokens before stop sequences can end it</small>
                                         <input class="neo-range-slider" type="range" id="min_length_novel" name="volume" min="1" max="150" step="1">
                                         <input class="neo-range-input" type="number" min="1" max="150" step="1" data-for="min_length_novel" id="min_length_counter_novel">
                                     </div>
@@ -651,7 +651,7 @@
                                     <div class="range-block-title" data-i18n="Context Size (tokens)">
                                         Context Size (tokens)
                                     </div>
-                                    <small class="ds-row-subtitle" data-i18n="Set how many tokens are available for instructions, chat history, and the AI's reply.">Set how many tokens are available for instructions, chat history, and the AI's reply.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Set how many tokens are available for instructions, chat history, and the AI's reply">Set how many tokens are available for instructions, chat history, and the AI's reply</small>
                                     <div class="range-block-range-and-counter">
                                         <div class="range-block-range">
                                             <input type="range" id="openai_max_context" name="volume" min="512" max="4095" step="1">
@@ -665,7 +665,7 @@
                                     <div class="range-block-title" data-i18n="Max Response Length (tokens)">
                                         Max Response Length (tokens)
                                     </div>
-                                    <small class="ds-row-subtitle" data-i18n="Set the maximum number of tokens the AI can generate in one reply.">Set the maximum number of tokens the AI can generate in one reply.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Set the maximum number of tokens the AI can generate in one reply">Set the maximum number of tokens the AI can generate in one reply</small>
                                     <div class="wide100p">
                                         <input type="number" id="openai_max_tokens" name="openai_max_tokens" class="text_pole" min="1" max="128000" step="1">
                                     </div>
@@ -674,7 +674,7 @@
                                     <div class="range-block-title" data-i18n="Multiple swipes per generation">
                                         Multiple swipes per generation
                                     </div>
-                                    <small class="ds-row-subtitle" data-i18n="Set how many alternative replies are generated at once.">Set how many alternative replies are generated at once.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Set how many alternative replies are generated at once">Set how many alternative replies are generated at once</small>
                                     <div class="wide100p">
                                         <input type="number" id="n_openai" name="n_openai" class="text_pole" min="1" value="1">
                                     </div>
@@ -729,7 +729,7 @@
                                         <small>
                                             <span data-i18n="Frequency Penalty">Frequency Penalty</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage repeated tokens based on how often they appear.">Higher values discourage repeated tokens based on how often they appear.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage repeated tokens based on how often they appear">Higher values discourage repeated tokens based on how often they appear</small>
                                         <input class="neo-range-slider" type="range" id="freq_pen_openai" name="volume" min="-2" max="2" step="0.01" aria-label="Frequency Penalty" data-i18n="[aria-label]Frequency Penalty">
                                         <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="freq_pen_openai" id="freq_pen_counter_openai" aria-label="Frequency Penalty" data-i18n="[aria-label]Frequency Penalty">
                                     </div>
@@ -737,7 +737,7 @@
                                         <small>
                                             <span data-i18n="Presence Penalty">Presence Penalty</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage previously used tokens, regardless of how often they appear.">Higher values discourage previously used tokens, regardless of how often they appear.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage previously used tokens, regardless of how often they appear">Higher values discourage previously used tokens, regardless of how often they appear</small>
                                         <input class="neo-range-slider" type="range" id="pres_pen_openai" name="volume" min="-2" max="2" step="0.01" aria-label="Presence Penalty" data-i18n="[aria-label]Presence Penalty">
                                         <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="pres_pen_openai" id="pres_pen_counter_openai" aria-label="Presence Penalty" data-i18n="[aria-label]Presence Penalty">
                                     </div>
@@ -1054,7 +1054,7 @@
                                         <small>
                                             <span data-i18n="rep.pen range">Rep Pen Range</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Set how many recent tokens the repetition penalty considers.">Set how many recent tokens the repetition penalty considers.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Set how many recent tokens the repetition penalty considers">Set how many recent tokens the repetition penalty considers</small>
                                         <input class="neo-range-slider" type="range" id="rep_pen_range" name="volume" min="0" max="4096" step="1">
                                         <input class="neo-range-input" type="number" min="0" max="4096" step="1" data-for="rep_pen_range" id="rep_pen_range_counter">
                                     </div>
@@ -1062,7 +1062,7 @@
                                         <small>
                                             <span data-i18n="Rep. Pen. Slope">Repetition Penalty Slope</span>
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Control how much more strongly recent tokens are penalized.">Control how much more strongly recent tokens are penalized.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Control how much more strongly recent tokens are penalized">Control how much more strongly recent tokens are penalized</small>
                                         <input class="neo-range-slider" type="range" id="rep_pen_slope" name="volume" min="0" max="10" step="0.01">
                                         <input class="neo-range-input" type="number" min="0" max="10" step="0.01" data-for="rep_pen_slope" id="rep_pen_slope_counter">
                                     </div>
@@ -1243,7 +1243,7 @@
                                 </div>
                                 <div data-tg-type="mancer, vllm, aphrodite, tabby, infermaticai, llamacpp" data-tg-samplers="n" class="flex-container flexFlowColumn alignitemscenter flexBasis100p flexGrow flexShrink gap0">
                                     <small data-i18n="Multiple swipes per generation">Multiple swipes per generation</small>
-                                    <small class="ds-row-subtitle" data-i18n="Set how many alternative replies are generated at once.">Set how many alternative replies are generated at once.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Set how many alternative replies are generated at once">Set how many alternative replies are generated at once</small>
                                     <input type="number" id="n_textgenerationwebui" class="text_pole textAlignCenter" min="1" value="1" step="1" />
                                 </div>
                                 <div class="flex-container gap10h5v justifyCenter">
@@ -1344,19 +1344,19 @@
                                     </div>
                                     <div data-tg-type="ooba, koboldcpp, tabby, ollama, llamacpp" data-tg-samplers="rep_pen_range" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small data-i18n="rep.pen range">Rep Pen Range</small>
-                                        <small class="ds-row-subtitle" data-i18n="Set how many recent tokens the repetition penalty considers.">Set how many recent tokens the repetition penalty considers.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Set how many recent tokens the repetition penalty considers">Set how many recent tokens the repetition penalty considers</small>
                                         <input class="neo-range-slider" type="range" id="rep_pen_range_textgenerationwebui" name="volume" min="-1" max="8192" step="1">
                                         <input class="neo-range-input" type="number" min="-1" max="8192" step="1" data-for="rep_pen_range_textgenerationwebui" id="rep_pen_range_counter_textgenerationwebui">
                                     </div>
                                     <div data-tg-type="koboldcpp" data-tg-samplers="rep_pen_slope" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small data-i18n="Rep. Pen. Slope">Rep Pen Slope</small>
-                                        <small class="ds-row-subtitle" data-i18n="Adjust repetition penalties based on how recently tokens appeared.">Adjust repetition penalties based on how recently tokens appeared.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Adjust repetition penalties based on how recently tokens appeared">Adjust repetition penalties based on how recently tokens appeared</small>
                                         <input class="neo-range-slider" type="range" id="rep_pen_slope_textgenerationwebui" name="volume" min="0" max="10" step="0.01">
                                         <input class="neo-range-input" type="number" min="0" max="10" step="0.01" data-for="rep_pen_slope_textgenerationwebui" id="rep_pen_slope_counter_textgenerationwebui">
                                     </div>
                                     <div data-tg-type="tabby" data-tg-samplers="rep_pen_decay" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small data-i18n="rep.pen decay">Rep Pen Decay</small>
-                                        <small class="ds-row-subtitle" data-i18n="Gradually reduce repetition penalties over this many older tokens.">Gradually reduce repetition penalties over this many older tokens.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Gradually reduce repetition penalties over this many older tokens">Gradually reduce repetition penalties over this many older tokens</small>
                                         <input class="neo-range-slider" type="range" id="rep_pen_decay_textgenerationwebui" name="volume" min="-1" max="8192" step="1">
                                         <input class="neo-range-input" type="number" min="-1" max="8192" step="1" data-for="rep_pen_decay_textgenerationwebui" id="rep_pen_decay_counter_textgenerationwebui">
                                     </div>
@@ -1368,19 +1368,19 @@
                                     </div>
                                     <div data-tg-samplers="freq_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small data-i18n="Frequency Penalty">Frequency Penalty</small>
-                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage repeated tokens based on how often they appear.">Higher values discourage repeated tokens based on how often they appear.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage repeated tokens based on how often they appear">Higher values discourage repeated tokens based on how often they appear</small>
                                         <input class="neo-range-slider" type="range" id="freq_pen_textgenerationwebui" name="volume" min="-2" max="2" step="0.01" />
                                         <input class="neo-range-input" type="number" data-for="freq_pen_textgenerationwebui" min="-2" max="2" step="0.01" id="freq_pen_counter_textgenerationwebui">
                                     </div>
                                     <div data-tg-samplers="presence_pen" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small data-i18n="Presence Penalty">Presence Penalty</small>
-                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage previously used tokens, regardless of how often they appear.">Higher values discourage previously used tokens, regardless of how often they appear.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Higher values discourage previously used tokens, regardless of how often they appear">Higher values discourage previously used tokens, regardless of how often they appear</small>
                                         <input class="neo-range-slider" type="range" id="presence_pen_textgenerationwebui" name="volume" min="-2" max="2" step="0.01" />
                                         <input class="neo-range-input" type="number" min="-2" max="2" step="0.01" data-for="presence_pen_textgenerationwebui" id="presence_pen_counter_textgenerationwebui">
                                     </div>
                                     <div data-tg-type="aphrodite, ooba" data-tg-samplers="no_repeat_ngram_size" class="alignitemscenter flex-container flexFlowColumn flexBasis30p flexGrow flexShrink gap0">
                                         <small data-i18n="No Repeat Ngram Size">No Repeat Ngram Size</small>
-                                        <small class="ds-row-subtitle" data-i18n="Prevent repeated sequences of this many tokens.">Prevent repeated sequences of this many tokens.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Prevent repeated sequences of this many tokens">Prevent repeated sequences of this many tokens</small>
                                         <input class="neo-range-slider" type="range" id="no_repeat_ngram_size_textgenerationwebui" name="volume" min="0" max="20" step="1">
                                         <input class="neo-range-input" type="number" min="0" max="20" step="1" data-for="no_repeat_ngram_size_textgenerationwebui" id="no_repeat_ngram_size_counter_textgenerationwebui">
                                     </div>
@@ -1426,7 +1426,7 @@
                                             </div>
                                             <div data-tg-samplers="adaptive_decay" class="alignitemscenter flex-container marginBot5 flexFlowColumn flexGrow flexShrink gap0">
                                                 <small data-i18n="Decay">Decay</small>
-                                                <small class="ds-row-subtitle" data-i18n="Higher values let earlier token choices influence Adaptive-P for longer.">Higher values let earlier token choices influence Adaptive-P for longer.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Higher values let earlier token choices influence Adaptive-P for longer">Higher values let earlier token choices influence Adaptive-P for longer</small>
                                                 <input class="neo-range-slider" type="range" id="adaptive_decay_textgenerationwebui" min="0" max="0.99" step="0.01" />
                                                 <input class="neo-range-input" type="number" min="0" max="0.99" step="0.01" data-for="adaptive_decay_textgenerationwebui" id="adaptive_decay_counter_textgenerationwebui">
                                             </div>
@@ -1451,7 +1451,7 @@
                                             </div>
                                             <div data-tg-type="mancer, ooba, koboldcpp, aphrodite" data-tg-samplers="smoothing_curve" class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
                                                 <small data-i18n="Smoothing Curve">Smoothing Curve</small>
-                                                <small class="ds-row-subtitle" data-i18n="Adjust how sharply Smooth Sampling lowers the chances of unlikely tokens.">Adjust how sharply Smooth Sampling lowers the chances of unlikely tokens.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Adjust how sharply Smooth Sampling lowers the chances of unlikely tokens">Adjust how sharply Smooth Sampling lowers the chances of unlikely tokens</small>
                                                 <input class="neo-range-slider" type="range" id="smoothing_curve_textgenerationwebui" name="volume" min="1" max="10" step="0.01" />
                                                 <input class="neo-range-input" type="number" min="1" max="10" step="0.01" data-for="smoothing_curve_textgenerationwebui" id="smoothing_curve_counter_textgenerationwebui">
                                             </div>
@@ -1475,13 +1475,13 @@
                                                         <span class="fa-solid fa-circle-info opacity50p"></span>
                                                     </a>
                                                 </small>
-                                                <small class="ds-row-subtitle" data-i18n="Set how likely a token must be before XTC can exclude it.">Set how likely a token must be before XTC can exclude it.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Set how likely a token must be before XTC can exclude it">Set how likely a token must be before XTC can exclude it</small>
                                                 <input class="neo-range-slider" type="range" id="xtc_threshold_textgenerationwebui" name="volume" min="0" max="0.5" step="0.01" />
                                                 <input class="neo-range-input" type="number" min="0" max="0.5" step="0.01" data-for="xtc_threshold_textgenerationwebui" id="xtc_threshold_counter_textgenerationwebui">
                                             </div>
                                             <div class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
                                                 <small data-i18n="Probability">Probability</small>
-                                                <small class="ds-row-subtitle" data-i18n="Set the chance of XTC excluding eligible tokens when choosing the next token.">Set the chance of XTC excluding eligible tokens when choosing the next token.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Set the chance of XTC excluding eligible tokens when choosing the next token">Set the chance of XTC excluding eligible tokens when choosing the next token</small>
                                                 <input class="neo-range-slider" type="range" id="xtc_probability_textgenerationwebui" name="volume" min="0" max="1" step="0.01" />
                                                 <input class="neo-range-input" type="number" min="0" max="1" step="0.01" data-for="xtc_probability_textgenerationwebui" id="xtc_probability_counter_textgenerationwebui">
                                             </div>
@@ -1513,7 +1513,7 @@
                                             </div>
                                             <div data-tg-samplers="dry_penalty_last_n" class="alignItemsCenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0" data-tg-type="llamacpp, koboldcpp, tabby, aphrodite">
                                                 <small data-i18n="Penalty Range">Penalty Range</small>
-                                                <small class="ds-row-subtitle" data-i18n="Set how many recent tokens DRY checks for repeated sequences.">Set how many recent tokens DRY checks for repeated sequences.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Set how many recent tokens DRY checks for repeated sequences">Set how many recent tokens DRY checks for repeated sequences</small>
                                                 <input class="neo-range-slider" type="range" id="dry_penalty_last_n_textgenerationwebui" min="0" max="8192" step="1" />
                                                 <input class="neo-range-input" type="number" min="0" max="8192" step="1" data-for="dry_penalty_last_n_textgenerationwebui" id="dry_penalty_last_n_counter_textgenerationwebui">
                                             </div>
@@ -1532,7 +1532,7 @@
                                                 <label class="checkbox_label" for="dynatemp_textgenerationwebui">
                                                     <input type="checkbox" id="dynatemp_textgenerationwebui" />
                                                     <span class="textAlignCenter" data-i18n="Dynamic Temperature">Dynamic Temperature</span>
-                                                    <small class="ds-row-subtitle" data-i18n="Automatically adjust temperature within your chosen range based on how certain the AI is.">Automatically adjust temperature within your chosen range based on how certain the AI is.</small>
+                                                    <small class="ds-row-subtitle" data-i18n="Automatically adjust temperature within your chosen range based on how certain the AI is">Automatically adjust temperature within your chosen range based on how certain the AI is</small>
                                                 </label>
                                                 <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Scale Temperature dynamically per token, based on the variation of probabilities" title="Scale Temperature dynamically per token, based on the variation of probabilities."></div>
                                             </div>
@@ -1552,7 +1552,7 @@
                                             </div>
                                             <div data-tg-samplers="dynatemp_exponent" class="alignitemscenter flex-container marginBot5 flexFlowColumn flexGrow flexShrink gap0">
                                                 <small data-i18n="Exponent">Exponent</small>
-                                                <small class="ds-row-subtitle" data-i18n="Higher values favor the minimum temperature, while lower values favor the maximum.">Higher values favor the minimum temperature, while lower values favor the maximum.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Higher values favor the minimum temperature, while lower values favor the maximum">Higher values favor the minimum temperature, while lower values favor the maximum</small>
                                                 <input class="neo-range-slider" type="range" id="dynatemp_exponent_textgenerationwebui" name="volume" min="0.001" max="10" step="0.001" />
                                                 <input class="neo-range-input" type="number" min="0.001" max="10" step="0.001" data-for="dynatemp_exponent_textgenerationwebui" id="dynatemp_exponent_counter_textgenerationwebui">
                                             </div>
@@ -1582,7 +1582,7 @@
                                             </div>
                                             <div data-tg-samplers="mirostat_eta" class="alignitemscenter flex-container marginBot5 flexFlowColumn flexGrow flexShrink gap0">
                                                 <small data-i18n="Mirostat Eta">Eta</small>
-                                                <small class="ds-row-subtitle" data-i18n="Control how quickly Mirostat adjusts toward its target randomness.">Control how quickly Mirostat adjusts toward its target randomness.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Control how quickly Mirostat adjusts toward its target randomness">Control how quickly Mirostat adjusts toward its target randomness</small>
                                                 <input class="neo-range-slider" type="range" id="mirostat_eta_textgenerationwebui" name="volume" min="0" max="1" step="0.01" />
                                                 <input class="neo-range-input" type="number" min="0" max="1" step="0.01" data-for="mirostat_eta_textgenerationwebui" id="mirostat_eta_counter_textgenerationwebui">
                                             </div>
@@ -1640,7 +1640,7 @@
                                             <label data-tg-type="ooba" data-tg-samplers="do_sample" class="checkbox_label  flexGrow flexShrink" for="do_sample_textgenerationwebui">
                                                 <input type="checkbox" id="do_sample_textgenerationwebui" />
                                                 <small data-i18n="Do Sample">Do Sample</small>
-                                                <small class="ds-row-subtitle" data-i18n="Allow random token choices for more varied replies.">Allow random token choices for more varied replies.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Allow random token choices for more varied replies">Allow random token choices for more varied replies</small>
                                             </label>
                                             <label data-tg-type="ooba, tabby" data-tg-samplers="add_bos_token" class="checkbox_label  flexGrow flexShrink" for="add_bos_token_textgenerationwebui">
                                                 <input type="checkbox" id="add_bos_token_textgenerationwebui" />
@@ -1660,12 +1660,12 @@
                                             <label data-tg-type-mode="except" data-tg-type="generic" data-tg-samplers="skip_special_tokens" class="checkbox_label flexGrow flexShrink" for="skip_special_tokens_textgenerationwebui">
                                                 <input type="checkbox" id="skip_special_tokens_textgenerationwebui" />
                                                 <small data-i18n="Skip Special Tokens">Skip Special Tokens</small>
-                                                <small class="ds-row-subtitle" data-i18n="Omit special model tokens, such as end-of-text markers, from replies.">Omit special model tokens, such as end-of-text markers, from replies.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Omit special model tokens, such as end-of-text markers, from replies">Omit special model tokens, such as end-of-text markers, from replies</small>
                                             </label>
                                             <label data-tg-type="openrouter" data-tg-samplers="include_reasoning" class="checkbox_label flexGrow flexShrink" for="include_reasoning_textgenerationwebui">
                                                 <input type="checkbox" id="include_reasoning_textgenerationwebui" />
                                                 <small data-i18n="Request Model Reasoning">Request Model Reasoning</small>
-                                                <small class="ds-row-subtitle" data-i18n="Ask supported models to include reasoning with their replies.">Ask supported models to include reasoning with their replies.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Ask supported models to include reasoning with their replies">Ask supported models to include reasoning with their replies</small>
                                             </label>
                                             <label data-tg-type="ooba, aphrodite, tabby" data-tg-samplers="temperature_last" class="checkbox_label  flexGrow flexShrink" for="temperature_last_textgenerationwebui">
                                                 <input type="checkbox" id="temperature_last_textgenerationwebui" />
@@ -1680,7 +1680,7 @@
                                             <label data-tg-type="vllm, aphrodite, infermaticai" data-tg-samplers="spaces_between_special_tokens" class="checkbox_label" for="spaces_between_special_tokens_textgenerationwebui">
                                                 <input type="checkbox" id="spaces_between_special_tokens_textgenerationwebui" />
                                                 <small data-i18n="Spaces Between Special Tokens">Spaces Between Special Tokens</small>
-                                                <small class="ds-row-subtitle" data-i18n="Add spaces between special model tokens when they are included in the reply.">Add spaces between special model tokens when they are included in the reply.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Add spaces between special model tokens when they are included in the reply">Add spaces between special model tokens when they are included in the reply</small>
                                             </label>
                                         </div>
                                     </div>
@@ -2002,7 +2002,7 @@
                                         <label for="continue_prefill" class="checkbox_label widthFreeExpand">
                                             <input id="continue_prefill" type="checkbox" />
                                             <span data-i18n="Continue prefill">Continue prefill</span>
-                                            <small class="ds-row-subtitle" data-i18n="Use the last message as the starting text when continuing a reply.">Use the last message as the starting text when continuing a reply.</small>
+                                            <small class="ds-row-subtitle" data-i18n="Use the last message as the starting text when continuing a reply">Use the last message as the starting text when continuing a reply</small>
                                         </label>
                                         <div class="toggle-description justifyLeft">
                                             <span data-i18n="Continue sends the last message as assistant role instead of system message with instruction.">
@@ -2029,7 +2029,7 @@
                                             <span>
                                                 <span data-i18n="Use system prompt">Use system prompt</span>
                                             </span>
-                                            <small class="ds-row-subtitle" data-i18n="Send opening instructions as a system prompt instead of a user message.">Send opening instructions as a system prompt instead of a user message.</small>
+                                            <small class="ds-row-subtitle" data-i18n="Send opening instructions as a system prompt instead of a user message">Send opening instructions as a system prompt instead of a user message</small>
                                         </label>
                                         <div class="toggle-description justifyLeft marginBot5">
                                             <span data-i18n="Send the system prompt for supported models. If disabled, the user message is added to the beginning of the prompt.">
@@ -2041,7 +2041,7 @@
                                         <label for="openai_enable_web_search" class="checkbox_label flexWrap widthFreeExpand">
                                             <input id="openai_enable_web_search" type="checkbox" />
                                             <span data-i18n="Enable web search">Enable web search</span>
-                                            <small class="ds-row-subtitle" data-i18n="Allow supported models to search the web for information when replying.">Allow supported models to search the web for information when replying.</small>
+                                            <small class="ds-row-subtitle" data-i18n="Allow supported models to search the web for information when replying">Allow supported models to search the web for information when replying</small>
                                         </label>
                                         <div class="flexBasis100p toggle-description justifyLeft">
                                             <span data-i18n="Use search capabilities provided by the backend.">
@@ -2087,7 +2087,7 @@
                                                 <label for="tool_reasoning_mode" data-i18n="Interleaved Thinking">
                                                     Interleaved Thinking
                                                 </label>
-                                                <small class="ds-row-subtitle" data-i18n="Choose which earlier reasoning is sent back to the AI during tool use.">Choose which earlier reasoning is sent back to the AI during tool use.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Choose which earlier reasoning is sent back to the AI during tool use">Choose which earlier reasoning is sent back to the AI during tool use</small>
                                                 <select id="tool_reasoning_mode">
                                                     <option data-i18n="Disabled" value="disabled">Disabled</option>
                                                     <option data-i18n="Since Last User Message" value="since_last_user">Since Last User Message</option>
@@ -2135,7 +2135,7 @@
                                                 <label for="openai_inline_image_quality" data-i18n="Inline Image Quality">
                                                     Inline Image Quality
                                                 </label>
-                                                <small class="ds-row-subtitle" data-i18n="Choose how much detail the AI uses when reading attached images.">Choose how much detail the AI uses when reading attached images.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Choose how much detail the AI uses when reading attached images">Choose how much detail the AI uses when reading attached images</small>
                                                 <select id="openai_inline_image_quality">
                                                     <option data-i18n="openai_inline_image_quality_auto" value="auto">Auto</option>
                                                     <option data-i18n="openai_inline_image_quality_low" value="low">Low</option>
@@ -2165,7 +2165,7 @@
                                                 <label for="request_image_resolution">
                                                     <small data-i18n="Resolution">Resolution</small>
                                                 </label>
-                                                <small class="ds-row-subtitle" data-i18n="Choose the resolution of images generated by supported Gemini models.">Choose the resolution of images generated by supported Gemini models.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Choose the resolution of images generated by supported Gemini models">Choose the resolution of images generated by supported Gemini models</small>
                                                 <select id="request_image_resolution" class="text_pole">
                                                     <option value="">Auto</option>
                                                     <option value="1K">1K</option>
@@ -2177,7 +2177,7 @@
                                                 <label for="request_image_aspect_ratio">
                                                     <small data-i18n="Aspect Ratio">Aspect Ratio</small>
                                                 </label>
-                                                <small class="ds-row-subtitle" data-i18n="Choose the shape of generated images, such as square, portrait, or landscape.">Choose the shape of generated images, such as square, portrait, or landscape.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Choose the shape of generated images, such as square, portrait, or landscape">Choose the shape of generated images, such as square, portrait, or landscape</small>
                                                 <select id="request_image_aspect_ratio" class="text_pole">
                                                     <option value="">Auto</option>
                                                     <option value="1:1">1:1</option>
@@ -2198,7 +2198,7 @@
                                         <label for="openai_show_thoughts" class="checkbox_label widthFreeExpand">
                                             <input id="openai_show_thoughts" type="checkbox" />
                                             <span data-i18n="Request model reasoning">Request model reasoning</span>
-                                            <small class="ds-row-subtitle" data-i18n="Ask supported models to include reasoning with their replies.">Ask supported models to include reasoning with their replies.</small>
+                                            <small class="ds-row-subtitle" data-i18n="Ask supported models to include reasoning with their replies">Ask supported models to include reasoning with their replies</small>
                                         </label>
                                         <div class="toggle-description justifyLeft marginBot5">
                                             <span data-i18n="Allows the model to return its thinking process.">
@@ -2224,7 +2224,7 @@
                                         <label for="openai_auto_append_reasoning_tags" class="checkbox_label widthFreeExpand">
                                             <input id="openai_auto_append_reasoning_tags" type="checkbox" />
                                             <span>Auto-append visible reasoning tags</span>
-                                            <small class="ds-row-subtitle" data-i18n="Ask supported models to separate their reasoning from the final reply using your chosen tags.">Ask supported models to separate their reasoning from the final reply using your chosen tags.</small>
+                                            <small class="ds-row-subtitle" data-i18n="Ask supported models to separate their reasoning from the final reply using your chosen tags">Ask supported models to separate their reasoning from the final reply using your chosen tags</small>
                                         </label>
                                         <div class="toggle-description justifyLeft marginBot5">
                                             Ask models that hide their reasoning to place visible thinking inside XML tags before the final answer.
@@ -2233,7 +2233,7 @@
                                             <label for="openai_reasoning_tag_style">
                                                 <span>Reasoning Tag Style</span>
                                             </label>
-                                            <small class="ds-row-subtitle" data-i18n="Choose the tags the model is asked to use around visible reasoning.">Choose the tags the model is asked to use around visible reasoning.</small>
+                                            <small class="ds-row-subtitle" data-i18n="Choose the tags the model is asked to use around visible reasoning">Choose the tags the model is asked to use around visible reasoning</small>
                                             <select id="openai_reasoning_tag_style">
                                                 <option value="think">&lt;think&gt;...&lt;/think&gt;</option>
                                                 <option value="thinking">&lt;thinking&gt;...&lt;/thinking&gt;</option>
@@ -2431,12 +2431,12 @@
                                 <label for="horde_auto_adjust_context_length" class="checkbox_label">
                                     <input id="horde_auto_adjust_context_length" type="checkbox" />
                                     <span data-i18n="Adjust context size to worker capabilities">Adjust context size to worker capabilities</span>
-                                    <small class="ds-row-subtitle" data-i18n="Automatically reduce the context limit to fit available workers for your selected models.">Automatically reduce the context limit to fit available workers for your selected models.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Automatically reduce the context limit to fit available workers for your selected models">Automatically reduce the context limit to fit available workers for your selected models</small>
                                 </label>
                                 <label for="horde_auto_adjust_response_length" class="checkbox_label">
                                     <input id="horde_auto_adjust_response_length" type="checkbox" />
                                     <span data-i18n="Adjust response length to worker capabilities">Adjust response length to worker capabilities</span>
-                                    <small class="ds-row-subtitle" data-i18n="Automatically reduce the response length limit to fit available workers for your selected models.">Automatically reduce the response length limit to fit available workers for your selected models.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Automatically reduce the response length limit to fit available workers for your selected models">Automatically reduce the response length limit to fit available workers for your selected models</small>
                                 </label>
                                 <label for="horde_trusted_workers_only" class="checkbox_label" title="Can help with bad responses by queueing only the approved workers. May slowdown the response time." data-i18n="[title]Can help with bad responses by queueing only the approved workers. May slowdown the response time.">
                                     <input id="horde_trusted_workers_only" type="checkbox" />
@@ -3012,12 +3012,12 @@
                                 <label data-tg-type="ooba, generic" class="checkbox_label" for="bypass_status_check_textgenerationwebui">
                                     <input type="checkbox" id="bypass_status_check_textgenerationwebui" />
                                     <span data-i18n="Bypass status check">Bypass status check</span>
-                                    <small class="ds-row-subtitle" data-i18n="Skip the server status check and allow generation without confirming the connection.">Skip the server status check and allow generation without confirming the connection.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Skip the server status check and allow generation without confirming the connection">Skip the server status check and allow generation without confirming the connection</small>
                                 </label>
                                 <label data-tg-type="koboldcpp, llamacpp" class="checkbox_label" for="context_size_derived">
                                     <input type="checkbox" id="context_size_derived" />
                                     <span data-i18n="Derive context size from backend">Derive context size from backend</span>
-                                    <small class="ds-row-subtitle" data-i18n="Automatically use the context size reported by your server.">Automatically use the context size reported by your server.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Automatically use the context size reported by your server">Automatically use the context size reported by your server</small>
                                 </label>
                             </div>
                             <div class="flex-container">
@@ -3075,7 +3075,7 @@
                             <label class="checkbox_label" for="oai_max_context_unlocked">
                                 <input id="oai_max_context_unlocked" type="checkbox">
                                 <span data-i18n="Unlocked Context Size">Unlocked Context Size</span>
-                                <small class="ds-row-subtitle" data-i18n="Allow the context size setting to exceed the model's reported limit.">Allow the context size setting to exceed the model's reported limit.</small>
+                                <small class="ds-row-subtitle" data-i18n="Allow the context size setting to exceed the model's reported limit">Allow the context size setting to exceed the model's reported limit</small>
                             </label>
                             <div class="toggle-description justifyLeft" data-i18n="Allow context sizes above the model-provided limit.">
                                 Allow context sizes above the model-provided limit.
@@ -3334,12 +3334,12 @@
                                 <label for="openai_bypass_status_check" class="checkbox_label">
                                     <input id="openai_bypass_status_check" type="checkbox" />
                                     <span data-i18n="Bypass API status check">Bypass API status check</span>
-                                    <small class="ds-row-subtitle" data-i18n="Allow generation even if the API status check fails.">Allow generation even if the API status check fails.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Allow generation even if the API status check fails">Allow generation even if the API status check fails</small>
                                 </label>
                                 <label for="openai_show_external_models" class="checkbox_label">
                                     <input id="openai_show_external_models" type="checkbox" />
                                     <span data-i18n="Show External models (provided by API)">Show "External" models (provided by API)</span>
-                                    <small class="ds-row-subtitle" data-i18n="Show models returned by the API in the OpenAI model list.">Show models returned by the API in the OpenAI model list.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Show models returned by the API in the OpenAI model list">Show models returned by the API in the OpenAI model list</small>
                                 </label>
                             </div>
                         </form>
@@ -3430,7 +3430,7 @@
                                             <label for="openrouter_group_models" class="checkbox_label">
                                                 <input id="openrouter_group_models" type="checkbox" />
                                                 <span data-i18n="Group by vendors">Group by vendors</span>
-                                                <small class="ds-row-subtitle" data-i18n="Group models by vendor in the model selection list.">Group models by vendor in the model selection list.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Group models by vendor in the model selection list">Group models by vendor in the model selection list</small>
                                             </label>
                                             <div class="toggle-description justifyLeft wide100p">
                                                 <span data-i18n="Group by vendors Description">
@@ -3835,7 +3835,7 @@
                                             <label for="electronhub_group_models" class="checkbox_label">
                                                 <input id="electronhub_group_models" type="checkbox" />
                                                 <span data-i18n="Group by vendors">Group by vendors</span>
-                                                <small class="ds-row-subtitle" data-i18n="Group models by vendor in the model selection list.">Group models by vendor in the model selection list.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Group models by vendor in the model selection list">Group models by vendor in the model selection list</small>
                                             </label>
                                             <div class="toggle-description justifyLeft wide100p">
                                                 <span data-i18n="Group by vendors Description">
@@ -4127,7 +4127,7 @@
                                 <label class="checkbox_label widthFreeExpand" for="custom_model_icon_detection">
                                     <input id="custom_model_icon_detection" type="checkbox">
                                     <span data-i18n="Auto-Detect Message Icon From Model Name">Auto-Detect Message Icon From Model Name</span>
-                                    <small class="ds-row-subtitle" data-i18n="Match message icons to recognized model names for Custom connections.">Match message icons to recognized model names for Custom connections.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Match message icons to recognized model names for Custom connections">Match message icons to recognized model names for Custom connections</small>
                                 </label>
                                 <small data-i18n="Use the custom model name to pick a closer timestamp icon while keeping the provider label as Custom.">
                                     Use the custom model name to pick a closer timestamp icon while keeping the provider label as Custom.
@@ -4384,7 +4384,7 @@
                 <div class="flex-container alignitemscenter spaceBetween wide100p">
                     <label for="auto-connect-checkbox" class="checkbox_label"><input id="auto-connect-checkbox" type="checkbox" />
                         <span data-i18n="Auto-connect to Last Server">Auto-connect to Last Server</span>
-                        <small class="ds-row-subtitle" data-i18n="Connect to the last used server when SillyBunny opens.">Connect to the last used server when SillyBunny opens.</small>
+                        <small class="ds-row-subtitle" data-i18n="Connect to the last used server when SillyBunny opens">Connect to the last used server when SillyBunny opens</small>
                     </label>
                     <a id="viewSecrets" href="javascript:void(0);" data-i18n="[missing_key_text]Missing key;[key_saved_text]Key saved" missing_key_text="❌ Missing key" key_saved_text="✔️ Key saved">
                         <span data-i18n="View hidden API keys">View hidden API keys</span>
@@ -4533,21 +4533,21 @@
                                         <small data-i18n="Always add character's name to prompt">
                                             Always add character's name to prompt
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Add the character's name to the prompt when Instruct Mode is off.">Add the character's name to the prompt when Instruct Mode is off.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Add the character's name to the prompt when Instruct Mode is off">Add the character's name to the prompt when Instruct Mode is off</small>
                                     </label>
                                     <label class="checkbox_label" for="single_line" data-cc-null>
                                         <input id="single_line" type="checkbox" />
                                         <small data-i18n="Generate only one line per request">
                                             Generate only one line per request
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Ask the server to stop at the first line break.">Ask the server to stop at the first line break.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Ask the server to stop at the first line break">Ask the server to stop at the first line break</small>
                                     </label>
                                     <label class="checkbox_label" for="collapse-newlines-checkbox">
                                         <input id="collapse-newlines-checkbox" type="checkbox" />
                                         <small data-i18n="Collapse Consecutive Newlines">
                                             Collapse Consecutive Newlines
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Replace consecutive line breaks with a single line break.">Replace consecutive line breaks with a single line break.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Replace consecutive line breaks with a single line break">Replace consecutive line breaks with a single line break</small>
                                     </label>
                                     <label class="checkbox_label" for="trim_spaces">
                                         <input id="trim_spaces" type="checkbox" />
@@ -4559,7 +4559,7 @@
                                         <small data-i18n="Trim Incomplete Sentences">
                                             Trim Incomplete Sentences
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Trim unfinished text from the end of replies, except when a reply reaches its length limit.">Trim unfinished text from the end of replies, except when a reply reaches its length limit.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Trim unfinished text from the end of replies, except when a reply reaches its length limit">Trim unfinished text from the end of replies, except when a reply reaches its length limit</small>
                                     </label>
                                     <label class="checkbox_label" title="Add Chat Start and Example Separator to a list of stopping strings." data-i18n="[title]Add Chat Start and Example Separator to a list of stopping strings." data-cc-null>
                                         <input id="context_use_stop_strings" type="checkbox" />
@@ -4636,28 +4636,28 @@
                                 <label for="instruct_wrap" class="checkbox_label">
                                     <input id="instruct_wrap" type="checkbox" />
                                     <small data-i18n="Wrap Sequences with Newline">Wrap Sequences with Newline</small>
-                                    <small class="ds-row-subtitle" data-i18n="Add line breaks between instruct sequences and message text.">Add line breaks between instruct sequences and message text.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Add line breaks between instruct sequences and message text">Add line breaks between instruct sequences and message text</small>
                                 </label>
                                 <label for="instruct_macro" class="checkbox_label">
                                     <input id="instruct_macro" type="checkbox" />
                                     <small data-i18n="Replace Macro in Sequences">Replace Macro in Sequences</small>
-                                    <small class="ds-row-subtitle" data-i18n="Fill in placeholders such as `{{user}}` and `{{char}}` in instruct sequences.">Fill in placeholders such as <code>{{user}}</code> and <code>{{char}}</code> in instruct sequences.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Fill in placeholders such as `{{user}}` and `{{char}}` in instruct sequences">Fill in placeholders such as <code>{{user}}</code> and <code>{{char}}</code> in instruct sequences</small>
                                 </label>
                                 <label for="instruct_sequences_as_stop_strings" class="checkbox_label">
                                     <input id="instruct_sequences_as_stop_strings" type="checkbox" />
                                     <small data-i18n="Sequences as Stop Strings">Sequences as Stop Strings</small>
-                                    <small class="ds-row-subtitle" data-i18n="Stop replies when the AI generates a message prefix from the instruct template.">Stop replies when the AI generates a message prefix from the instruct template.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Stop replies when the AI generates a message prefix from the instruct template">Stop replies when the AI generates a message prefix from the instruct template</small>
                                 </label>
                                 <label for="instruct_skip_examples" class="checkbox_label">
                                     <input id="instruct_skip_examples" type="checkbox" />
                                     <small data-i18n="Skip Example Dialogues Formatting">Skip Example Dialogues Formatting</small>
-                                    <small class="ds-row-subtitle" data-i18n="Use example dialogues without adding instruct sequences.">Use example dialogues without adding instruct sequences.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Use example dialogues without adding instruct sequences">Use example dialogues without adding instruct sequences</small>
                                 </label>
                                 <div>
                                     <small data-i18n="Include Names">
                                         Include Names
                                     </small>
-                                    <small class="ds-row-subtitle" data-i18n="Choose when speaker names appear before messages in the prompt.">Choose when speaker names appear before messages in the prompt.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Choose when speaker names appear before messages in the prompt">Choose when speaker names appear before messages in the prompt</small>
                                     <select id="instruct_names_behavior">
                                         <option value="none" data-i18n="Never">Never</option>
                                         <option value="force" data-i18n="Groups and Past Personas">Groups and Past Personas</option>
@@ -4863,7 +4863,7 @@
                                 <small data-i18n="Replace Macro in Stop Strings">
                                     Replace Macro in Stop Strings
                                 </small>
-                                <small class="ds-row-subtitle" data-i18n="Fill in placeholders such as `{{user}}` and `{{char}}` in custom stop strings.">Fill in placeholders such as <code>{{user}}</code> and <code>{{char}}</code> in custom stop strings.</small>
+                                <small class="ds-row-subtitle" data-i18n="Fill in placeholders such as `{{user}}` and `{{char}}` in custom stop strings">Fill in placeholders such as <code>{{user}}</code> and <code>{{char}}</code> in custom stop strings</small>
                             </label>
                         </div>
 
@@ -5029,7 +5029,7 @@
                                         <small data-i18n="Show reply prefix in chat">
                                             Show reply prefix in chat
                                         </small>
-                                        <small class="ds-row-subtitle" data-i18n="Show the text used to start replies at the beginning of character messages.">Show the text used to start replies at the beginning of character messages.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Show the text used to start replies at the beginning of character messages">Show the text used to start replies at the beginning of character messages</small>
                                     </label>
                                 </div>
                             </div>
@@ -5267,7 +5267,7 @@
                             </div>
                         </div>
                         <div id="UI-language-block" class="ds-row">
-                            <div class="ds-row-text"><label for="ui_language_select" class="ds-row-label" data-i18n="UI Language">Language:</label><small class="ds-row-subtitle" data-i18n="Choose which language is used for menus and settings.">Choose which language is used for menus and settings.</small></div>
+                            <div class="ds-row-text"><label for="ui_language_select" class="ds-row-label" data-i18n="UI Language">Language:</label><small class="ds-row-subtitle" data-i18n="Choose which language is used for menus and settings">Choose which language is used for menus and settings</small></div>
                             <div class="ds-row-suffix">
                             <select id="ui_language_select" class="ds-control-flex margin0 text_pole" aria-label="UI Language" data-i18n="[aria-label]UI Language">
                                 <option value="" data-i18n="Default">Default</option>
@@ -5278,7 +5278,7 @@
                         <div class="ds-row">
                             <div class="ds-row-text">
                                 <span class="ds-row-label" data-i18n="Version">Version</span>
-                                <small class="ds-row-subtitle" data-i18n="Shows the current SillyBunny interface version.">Shows the current SillyBunny interface version.</small>
+                                <small class="ds-row-subtitle" data-i18n="Shows the current SillyBunny interface version">Shows the current SillyBunny interface version</small>
                             </div>
                             <div class="ds-row-suffix">
                                 <small id="version_display"></small>
@@ -5287,7 +5287,7 @@
                     </div>
                     <div name="UserSettingsRowTwo" class="flex-container flexFlowRow">
                         <div id="account_controls" class="ds-row ds-row-actions">
-                            <div class="ds-row-text"><span class="ds-row-label" data-i18n="Account">Account</span><small class="ds-row-subtitle" data-i18n="View your profile and manage your account data.">View your profile and manage your account data.</small></div>
+                            <div class="ds-row-text"><span class="ds-row-label" data-i18n="Account">Account</span><small class="ds-row-subtitle" data-i18n="View your profile and manage your account data">View your profile and manage your account data</small></div>
                             <div class="ds-row-suffix">
                             <div id="account_button" class="margin0 menu_button_icon menu_button">
                                 <i class="fa-fw fa-solid fa-user-shield"></i>
@@ -5305,7 +5305,7 @@
                         </div>
                         <!-- SillyBunny: the persona editor hides the persona header that holds the upstream Usage Stats button, so Data & Security shows Usage Stats as a row. -->
                         <div id="user_stats_controls" class="ds-row ds-row-actions">
-                            <div class="ds-row-text"><span class="ds-row-label" data-i18n="Usage Stats">Usage Stats</span><small class="ds-row-subtitle" data-i18n="See how much you've chatted across all your characters.">See how much you've chatted across all your characters.</small></div>
+                            <div class="ds-row-text"><span class="ds-row-label" data-i18n="Usage Stats">Usage Stats</span><small class="ds-row-subtitle" data-i18n="See how much you've chatted across all your characters">See how much you've chatted across all your characters</small></div>
                             <div class="ds-row-suffix">
                             <button type="button" class="margin0 menu_button menu_button_icon user_stats_button" data-i18n="Usage Stats">Usage Stats</button>
                             </div>
@@ -5331,7 +5331,7 @@
                     <div class="ds-row-text">
                         <!-- SillyBunny: capitalisation by DESIGN.md -->
                         <span class="ds-row-label">Clear All Cache</span>
-                        <small class="ds-row-subtitle">Clear browser cache and temporary UI data without resetting your saved settings.</small>
+                        <small class="ds-row-subtitle">Clear browser cache and temporary UI data without resetting your saved settings</small>
                     </div>
                     <div class="ds-row-suffix">
                     <button id="clear_all_cache_button" type="button" class="menu_button menu_button_icon sb-settings-utility-action">
@@ -5385,11 +5385,11 @@
                                 </div>
                                 <input type="file" id="ui_preset_import_file" accept=".json" hidden>
                             </h4>
-                            <small class="ds-row-subtitle" data-i18n="Manage saved themes and choose accent colors for the interface.">Manage saved themes and choose accent colors for the interface.</small>
+                            <small class="ds-row-subtitle" data-i18n="Manage saved themes and choose accent colors for the interface">Manage saved themes and choose accent colors for the interface</small>
                             <div class="ds-row">
                                 <div class="ds-row-text">
                                     <label for="themes" class="ds-row-label" data-i18n="UI Theme">UI Theme</label>
-                                    <small class="ds-row-subtitle" data-i18n="Apply a saved theme or save your current colors and effects.">Apply a saved theme or save your current colors and effects.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Apply a saved theme or save your current colors and effects">Apply a saved theme or save your current colors and effects</small>
                                 </div>
                                 <div class="ds-row-suffix">
                                 <select id="themes" class="margin0 ds-control-flex">
@@ -5430,7 +5430,7 @@
                                     <label class="checkbox_label flexBasis100p sb-custom-accent-toggle">
                                         <input type="checkbox" id="sb-custom-accent-mode" />
                                         <span data-i18n="Custom RGB Accent">Custom RGB Accent</span>
-                                        <small class="ds-row-subtitle" data-i18n="Show controls for choosing custom primary and secondary accent colors.">Show controls for choosing custom primary and secondary accent colors.</small>
+                                        <small class="ds-row-subtitle" data-i18n="Show controls for choosing custom primary and secondary accent colors">Show controls for choosing custom primary and secondary accent colors</small>
                                     </label>
                                     <div id="sb-custom-accent-pickers" style="display: none;" class="sb-custom-accent-pickers flex-container flexFlowColumn">
                                         <div class="sb-accent-picker-row flex-container">
@@ -5459,7 +5459,7 @@
                                 </div>
                                 <div class="flex-container alignItemsBaseline">
                                     <span data-i18n="Chat Style:">Chat Style:</span>
-                                    <small class="ds-row-subtitle" data-i18n="Choose the layout for chat messages and their avatars.">Choose the layout for chat messages and their avatars.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Choose the layout for chat messages and their avatars">Choose the layout for chat messages and their avatars</small>
                                     <select id="chat_display" class="widthNatural flex1 margin0 text_pole">
                                         <option value="0" data-i18n="Flat">Flat</option>
                                         <option value="1" data-i18n="Bubbles">Bubbles</option>
@@ -5480,7 +5480,7 @@
                                 </div>
                                 <div class="flex-container alignItemsBaseline">
                                     <span data-i18n="Notifications:">Notifications:</span>
-                                    <small class="ds-row-subtitle" data-i18n="Choose where pop-up notifications appear on the screen.">Choose where pop-up notifications appear on the screen.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Choose where pop-up notifications appear on the screen">Choose where pop-up notifications appear on the screen</small>
                                     <select id="toastr_position" class="widthNatural flex1 margin0 text_pole">
                                         <option value="toast-top-left" data-i18n="Top Left">Top Left</option>
                                         <option value="toast-top-center" data-i18n="Top Center">Top Center</option>
@@ -5500,19 +5500,19 @@
                                     <!-- SillyBunny: keep upstream picker IDs while presenting two flat preference lists. -->
                                     <div id="color-picker-block" data-sb-presentation="manual">
                                         <div class="ds-pref-group" role="group" aria-label="Text Colors">
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Main Text">Main Text</span><small class="ds-row-subtitle" data-i18n="Set the default text color for chats and menus.">Set the default text color for chats and menus.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="main-text-color-picker" aria-label="Main Text"></toolcool-color-picker></div></div>
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Italics Text">Italics Text</span><small class="ds-row-subtitle" data-i18n="Set the color of italic chat text and some interface descriptions.">Set the color of italic chat text and some interface descriptions.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="italics-color-picker" aria-label="Italics Text"></toolcool-color-picker></div></div>
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Underlined Text">Underlined Text</span><small class="ds-row-subtitle" data-i18n="Set the color of underlined text in chat.">Set the color of underlined text in chat.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="underline-color-picker" aria-label="Underlined Text"></toolcool-color-picker></div></div>
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Quote Text">Quote Text</span><small class="ds-row-subtitle" data-i18n="Set the color of quoted text in chat.">Set the color of quoted text in chat.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="quote-color-picker" aria-label="Quote Text"></toolcool-color-picker></div></div>
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Shadow Color">Text Shadow</span><small class="ds-row-subtitle" data-i18n="Set the color of shadows behind text.">Set the color of shadows behind text.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="shadow-color-picker" aria-label="Text Shadow"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Main Text">Main Text</span><small class="ds-row-subtitle" data-i18n="Set the default text color for chats and menus">Set the default text color for chats and menus</small></div><div class="ds-row-suffix"><toolcool-color-picker id="main-text-color-picker" aria-label="Main Text"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Italics Text">Italics Text</span><small class="ds-row-subtitle" data-i18n="Set the color of italic chat text and some interface descriptions">Set the color of italic chat text and some interface descriptions</small></div><div class="ds-row-suffix"><toolcool-color-picker id="italics-color-picker" aria-label="Italics Text"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Underlined Text">Underlined Text</span><small class="ds-row-subtitle" data-i18n="Set the color of underlined text in chat">Set the color of underlined text in chat</small></div><div class="ds-row-suffix"><toolcool-color-picker id="underline-color-picker" aria-label="Underlined Text"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Quote Text">Quote Text</span><small class="ds-row-subtitle" data-i18n="Set the color of quoted text in chat">Set the color of quoted text in chat</small></div><div class="ds-row-suffix"><toolcool-color-picker id="quote-color-picker" aria-label="Quote Text"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Shadow Color">Text Shadow</span><small class="ds-row-subtitle" data-i18n="Set the color of shadows behind text">Set the color of shadows behind text</small></div><div class="ds-row-suffix"><toolcool-color-picker id="shadow-color-picker" aria-label="Text Shadow"></toolcool-color-picker></div></div>
                                         </div>
                                         <!-- SillyBunny: capitalisation by DESIGN.md -->
                                         <div class="ds-pref-group" role="group" aria-label="UI Colors">
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Chat Background">Chat Background</span><small class="ds-row-subtitle" data-i18n="Set the background color of the chat area.">Set the background color of the chat area.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="chat-tint-color-picker" aria-label="Chat Background"></toolcool-color-picker></div></div>
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="UI Background">UI Background</span><small class="ds-row-subtitle" data-i18n="Set the base color for toolbars, panels, and pop-up windows.">Set the base color for toolbars, panels, and pop-up windows.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="blur-tint-color-picker" aria-label="UI Background"></toolcool-color-picker></div></div>
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="UI Border">UI Border</span><small class="ds-row-subtitle" data-i18n="Set the border color for panels and pop-up windows.">Set the border color for panels and pop-up windows.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="border-color-picker" aria-label="UI Border"></toolcool-color-picker></div></div>
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="User Message Blur Tint">User Message</span><small class="ds-row-subtitle" data-i18n="Set the background color of `{{user}}` messages.">Set the background color of <code>{{user}}</code> messages.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="user-mes-blur-tint-color-picker" aria-label="User Message"></toolcool-color-picker></div></div>
-                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="AI Message Blur Tint">AI Message</span><small class="ds-row-subtitle" data-i18n="Set the background color of `{{char}}` messages.">Set the background color of <code>{{char}}</code> messages.</small></div><div class="ds-row-suffix"><toolcool-color-picker id="bot-mes-blur-tint-color-picker" aria-label="AI Message"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="Chat Background">Chat Background</span><small class="ds-row-subtitle" data-i18n="Set the background color of the chat area">Set the background color of the chat area</small></div><div class="ds-row-suffix"><toolcool-color-picker id="chat-tint-color-picker" aria-label="Chat Background"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="UI Background">UI Background</span><small class="ds-row-subtitle" data-i18n="Set the base color for toolbars, panels, and pop-up windows">Set the base color for toolbars, panels, and pop-up windows</small></div><div class="ds-row-suffix"><toolcool-color-picker id="blur-tint-color-picker" aria-label="UI Background"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="UI Border">UI Border</span><small class="ds-row-subtitle" data-i18n="Set the border color for panels and pop-up windows">Set the border color for panels and pop-up windows</small></div><div class="ds-row-suffix"><toolcool-color-picker id="border-color-picker" aria-label="UI Border"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="User Message Blur Tint">User Message</span><small class="ds-row-subtitle" data-i18n="Set the background color of `{{user}}` messages">Set the background color of <code>{{user}}</code> messages</small></div><div class="ds-row-suffix"><toolcool-color-picker id="user-mes-blur-tint-color-picker" aria-label="User Message"></toolcool-color-picker></div></div>
+                                            <div class="ds-row"><div class="ds-row-text"><span class="ds-row-label" data-i18n="AI Message Blur Tint">AI Message</span><small class="ds-row-subtitle" data-i18n="Set the background color of `{{char}}` messages">Set the background color of <code>{{char}}</code> messages</small></div><div class="ds-row-suffix"><toolcool-color-picker id="bot-mes-blur-tint-color-picker" aria-label="AI Message"></toolcool-color-picker></div></div>
                                         </div>
                                     </div>
                                 </div>
@@ -5591,7 +5591,7 @@
                                         <div id="background-blur-block" class="ds-row ds-row-slider">
                                             <div class="ds-row-text">
                                                 <label for="background_blur" class="ds-row-label">Background Blur</label>
-                                                <small class="ds-row-subtitle">Blur strength for the page background image.</small>
+                                                <small class="ds-row-subtitle">Blur strength for the page background image</small>
                                             </div>
                                             <div class="ds-row-suffix">
                                             <!-- SillyBunny: capitalisation by DESIGN.md -->
@@ -5602,7 +5602,7 @@
                                         <div id="background-opacity-block" class="ds-row ds-row-slider">
                                             <div class="ds-row-text">
                                                 <label for="background_opacity" class="ds-row-label">Background Opacity</label>
-                                                <small class="ds-row-subtitle">Opacity for the page background image.</small>
+                                                <small class="ds-row-subtitle">Opacity for the page background image</small>
                                             </div>
                                             <div class="ds-row-suffix">
                                             <!-- SillyBunny: capitalisation by DESIGN.md -->
@@ -5613,7 +5613,7 @@
                                         <div id="sheld-blur-strength-block" class="ds-row ds-row-slider">
                                             <div class="ds-row-text">
                                                 <label for="sheld_blur_strength" class="ds-row-label">Chat Field Blur</label>
-                                                <small class="ds-row-subtitle">Blur strength behind the chat field.</small>
+                                                <small class="ds-row-subtitle">Blur strength behind the chat field</small>
                                             </div>
                                             <div class="ds-row-suffix">
                                             <!-- SillyBunny: capitalisation by DESIGN.md -->
@@ -5744,7 +5744,7 @@
                             <h4 data-i18n="Character Handling">
                                 Character Handling
                             </h4>
-                            <small class="ds-row-subtitle" data-i18n="Character search, card details, imported tags, prompts, and avatars.">Character search, card details, imported tags, prompts, and avatars.</small>
+                            <small class="ds-row-subtitle" data-i18n="Character search, card details, imported tags, prompts, and avatars">Character search, card details, imported tags, prompts, and avatars</small>
                             <div class="flex-container alignitemscenter" title="If set in the advanced character definitions, this field will be displayed in the characters list." data-i18n="[title]If set in the advanced character definitions, this field will be displayed in the characters list.">
                                 <label for="aux_field"><small data-i18n="Char List Subheader">Char List Subheader</small></label>
                                 <select id="aux_field" class="widthNatural flex1 margin0">
@@ -5794,7 +5794,7 @@
 
                         <div name="MiscellaneousToggles" class="ds-pref-group">
                             <h4><span data-i18n="Miscellaneous">Miscellaneous</span></h4>
-                            <small class="ds-row-subtitle" data-i18n="Adjust chat reloading, debugging, cleanup, API URL formatting, and lorebook import prompts.">Adjust chat reloading, debugging, cleanup, API URL formatting, and lorebook import prompts.</small>
+                            <small class="ds-row-subtitle" data-i18n="Adjust chat reloading, debugging, cleanup, API URL formatting, and lorebook import prompts">Adjust chat reloading, debugging, cleanup, API URL formatting, and lorebook import prompts</small>
                             <div class="flex-container flexGap2">
                                 <div id="reload_chat" class="menu_button whitespacenowrap" data-i18n="[title]Reload and redraw the currently open chat" title="Reload and redraw the currently open chat.">
                                     <small data-i18n="Reload Chat">Reload Chat</small>
@@ -5813,7 +5813,7 @@
                                         Smooth Streaming
                                     </small>
                                 </div>
-                                <small class="ds-row-subtitle" data-i18n="Reveal streamed replies character by character, with pauses at punctuation.">Reveal streamed replies character by character, with pauses at punctuation.</small>
+                                <small class="ds-row-subtitle" data-i18n="Reveal streamed replies character by character, with pauses at punctuation">Reveal streamed replies character by character, with pauses at punctuation</small>
                             </label>
                             <label id="smooth_streaming_no_think_control" class="checkbox_label" for="smooth_streaming_no_think" title="Bypass smooth streaming in reasoning blocks." data-i18n="[title]Bypass smooth streaming in reasoning blocks.">
                                 <input id="smooth_streaming_no_think" type="checkbox" />
@@ -5903,8 +5903,9 @@
                                     <small data-i18n="Enable Aggressive Unloading">Enable Aggressive Unloading</small>
                                 </label>
                                 <div class="alignitemscenter flex-container flexFlowColumn flexBasis48p flexGrow flexShrink gap0">
+                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
                                     <small>
-                                        <span data-i18n="Messages to keep">Messages to keep</span>
+                                        <span data-i18n="Messages to Keep">Messages to Keep</span>
                                         <div class="fa-solid fa-circle-info opacity50p" data-i18n="[title]Number of messages to keep rendered when aggressive unloading is enabled. Lower values use less memory." title="Number of messages to keep rendered when aggressive unloading is enabled. Lower values use less memory."></div>
                                     </small>
                                     <input class="neo-range-slider" type="range" id="aggressive_dom_window_size" name="aggressive_dom_window_size" min="1" max="25" step="1">
@@ -6018,7 +6019,7 @@
                                             Example Messages Behavior:
                                         </small>
                                     </label>
-                                    <small class="ds-row-subtitle" data-i18n="Choose whether to prioritize chat history, prioritize example messages, or leave examples out.">Choose whether to prioritize chat history, prioritize example messages, or leave examples out.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Choose whether to prioritize chat history, prioritize example messages, or leave examples out">Choose whether to prioritize chat history, prioritize example messages, or leave examples out</small>
                                     <select id="example_messages_behavior">
                                         <option value="normal" data-i18n="Gradual push-out">Gradual push-out</option>
                                         <option value="keep" data-i18n="Always include examples">Always include examples</option>
@@ -6031,7 +6032,7 @@
                                             Image Swipe Behavior:
                                         </small>
                                     </label>
-                                    <small class="ds-row-subtitle" data-i18n="Choose whether swiping past the last image requests another image or returns to the first.">Choose whether swiping past the last image requests another image or returns to the first.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Choose whether swiping past the last image requests another image or returns to the first">Choose whether swiping past the last image requests another image or returns to the first</small>
                                     <select id="image_overswipe">
                                         <option value="generate" data-i18n="Generate new">Generate new</option>
                                         <option value="rollover" data-i18n="Roll over">Roll over</option>
@@ -6081,7 +6082,7 @@
                                 <label class="checkbox_label" for="auto-load-chat-checkbox">
                                     <input id="auto-load-chat-checkbox" type="checkbox" />
                                     <small data-i18n="Auto-load Last Chat">Auto-load Last Chat</small>
-                                    <small class="ds-row-subtitle" data-i18n="Reopen your last chat when SillyBunny opens.">Reopen your last chat when SillyBunny opens.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Reopen your last chat when SillyBunny opens">Reopen your last chat when SillyBunny opens</small>
                                 </label>
                                 <label for="auto_scroll_chat_to_bottom" class="checkbox_label">
                                     <input id="auto_scroll_chat_to_bottom" type="checkbox" />
@@ -6095,12 +6096,12 @@
                                 <label class="checkbox_label" for="confirm_message_delete">
                                     <input id="confirm_message_delete" type="checkbox" />
                                     <small data-i18n="Confirm message deletion">Confirm message deletion</small>
-                                    <small class="ds-row-subtitle" data-i18n="Ask for confirmation before deleting an alternative reply in the swipe picker.">Ask for confirmation before deleting an alternative reply in the swipe picker.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Ask for confirmation before deleting an alternative reply in the swipe picker">Ask for confirmation before deleting an alternative reply in the swipe picker</small>
                                 </label>
                                 <label class="checkbox_label" for="auto_fix_generated_markdown">
                                     <input id="auto_fix_generated_markdown" type="checkbox" />
                                     <small data-i18n="Auto-fix Markdown">Auto-fix Markdown</small>
-                                    <small class="ds-row-subtitle" data-i18n="Fix common Markdown formatting issues, such as misplaced spaces and unmatched asterisks.">Fix common Markdown formatting issues, such as misplaced spaces and unmatched asterisks.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Fix common Markdown formatting issues, such as misplaced spaces and unmatched asterisks">Fix common Markdown formatting issues, such as misplaced spaces and unmatched asterisks</small>
                                 </label>
                                 <label class="checkbox_label" for="forbid_external_media" title="Disallow embedded media from other domains in chat messages." data-i18n="[title]Disallow embedded media from other domains in chat messages">
                                     <input id="forbid_external_media" type="checkbox" />
@@ -6114,27 +6115,29 @@
                                 <label class="checkbox_label" for="allow_name2_display">
                                     <input id="allow_name2_display" type="checkbox" />
                                     <small data-i18n="Allow {{char}}: in bot messages">Show <code>{{char}}</code>: in responses</small>
-                                    <small class="ds-row-subtitle" data-i18n="Keep `{{char}}:` prefixes in generated replies.">Keep <code>{{char}}</code>: prefixes in generated replies.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Keep `{{char}}:` prefixes in generated replies">Keep <code>{{char}}</code>: prefixes in generated replies</small>
                                 </label>
                                 <label class="checkbox_label" for="allow_name1_display">
                                     <input id="allow_name1_display" type="checkbox" />
                                     <small data-i18n="Allow {{user}}: in bot messages">Show <code>{{user}}</code>: in responses</small>
-                                    <small class="ds-row-subtitle" data-i18n="Keep `{{user}}:` and the text that follows it in generated replies.">Keep <code>{{user}}</code>: and the text that follows it in generated replies.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Keep `{{user}}:` and the text that follows it in generated replies">Keep <code>{{user}}</code>: and the text that follows it in generated replies</small>
                                 </label>
                                 <label class="checkbox_label" for="encode_tags" title="Skip encoding &lt; and &gt; characters in message text, allowing a subset of HTML markup as well as Markdown." data-i18n="[title]Skip encoding  and  characters in message text, allowing a subset of HTML markup as well as Markdown">
                                     <input id="encode_tags" type="checkbox" />
                                     <small data-i18n="Show tags in responses">Show &lt;tags&gt; in responses</small>
                                 </label>
                                 <div class="flex-container alignitemscenter gap10">
+                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
                                     <label for="ooc_context_depth" class="flex1" title="Keep OOC ((...)) blocks in prompt context. -1 keeps all messages, 0 keeps only the active turn, N keeps through depth N." data-i18n="[title]Keep OOC blocks in prompt context. -1 keeps all messages, 0 keeps only the active turn, N keeps through depth N.">
-                                        <small data-i18n="OOC context depth">OOC context depth</small>
+                                        <small data-i18n="OOC Context Depth">OOC Context Depth</small>
                                         <small class="opacity50p" data-i18n="-1 keeps all OOC blocks; 0 keeps active turn only; N keeps through depth N.">-1 keeps all OOC blocks; 0 keeps active turn only; N keeps through depth N.</small>
                                     </label>
                                     <input id="ooc_context_depth" class="text_pole widthUnset" type="number" min="-1" step="1" value="-1" />
                                 </div>
                                 <div class="flex-container alignitemscenter gap10">
+                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
                                     <label for="html_context_depth" class="flex1" title="Keep raw HTML tags in prompt context. -1 keeps all messages, 0 keeps only the active turn, N keeps through depth N." data-i18n="[title]Keep raw HTML tags in prompt context. -1 keeps all messages, 0 keeps only the active turn, N keeps through depth N.">
-                                        <small data-i18n="HTML tag context depth">HTML tag context depth</small>
+                                        <small data-i18n="HTML Tag Context Depth">HTML Tag Context Depth</small>
                                         <small class="opacity50p" data-i18n="-1 keeps all HTML tags; 0 keeps active turn only; N keeps through depth N.">-1 keeps all HTML tags; 0 keeps active turn only; N keeps through depth N.</small>
                                     </label>
                                     <input id="html_context_depth" class="text_pole widthUnset" type="number" min="-1" step="1" value="-1" />
@@ -6151,7 +6154,7 @@
                                 <label class="checkbox_label" for="console_log_prompts">
                                     <input id="console_log_prompts" type="checkbox" />
                                     <small data-i18n="Log prompts to console">Log prompts to console</small>
-                                    <small class="ds-row-subtitle" data-i18n="Write prompts and request details to the console for debugging.">Write prompts and request details to the console for debugging.</small>
+                                    <small class="ds-row-subtitle" data-i18n="Write prompts and request details to the console for debugging">Write prompts and request details to the console for debugging</small>
                                 </label>
                                 <label class="checkbox_label" for="request_token_probabilities" title="Requests logprobs from the API for the Token Probabilities feature." data-i18n="[title]Requests logprobs from the API for the Token Probabilities feature">
                                     <input id="request_token_probabilities" type="checkbox" />
@@ -6183,7 +6186,7 @@
                                         </div>
                                         <div class="auto_swipe">
                                             <div class="ds-row">
-                                                <div class="ds-row-text"><label for="auto_swipe_blacklist" class="ds-row-label" data-i18n="Blacklisted words">Blacklisted words</label><small class="ds-row-subtitle" data-i18n="Enter comma-separated words that trigger Auto-swipe at the chosen match count.">Enter comma-separated words that trigger Auto-swipe at the chosen match count.</small></div>
+                                                <div class="ds-row-text"><label for="auto_swipe_blacklist" class="ds-row-label" data-i18n="Blacklisted words">Blacklisted words</label><small class="ds-row-subtitle" data-i18n="Enter comma-separated words that trigger Auto-swipe at the chosen match count">Enter comma-separated words that trigger Auto-swipe at the chosen match count</small></div>
                                                 <div class="ds-row-suffix">
                                             <textarea id="auto_swipe_blacklist" name="auto_swipe_blacklist" data-i18n="[placeholder]words you dont want generated separated by comma ','" placeholder="words you don't want generated separated by comma ','" class="text_pole textarea_compact" value="" autocomplete="off" rows="3"></textarea>
                                                 </div>
@@ -6216,7 +6219,7 @@
                                                 <small data-i18n="Allow for Chat Completion APIs">
                                                     Allow for Chat Completion APIs
                                                 </small>
-                                                <small class="ds-row-subtitle" data-i18n="Include Chat Completion APIs when Auto-Continue is enabled.">Include Chat Completion APIs when Auto-Continue is enabled.</small>
+                                                <small class="ds-row-subtitle" data-i18n="Include Chat Completion APIs when Auto-Continue is enabled">Include Chat Completion APIs when Auto-Continue is enabled</small>
                                             </label>
                                         </div>
                                         <div class="auto_continue_settings_block">
@@ -6258,7 +6261,7 @@
                                     <div id="CustomCSS-textAreaBlock" class="ds-row">
                                         <div class="ds-row-text">
                                             <label for="customCSS" class="ds-row-label" data-i18n="Custom CSS">Custom CSS</label>
-                                            <small class="ds-row-subtitle" data-i18n="Apply a custom CSS style to the whole SillyBunny interface.">Apply a custom CSS style to the whole SillyBunny interface.</small>
+                                            <small class="ds-row-subtitle" data-i18n="Apply a custom CSS style to the whole SillyBunny interface">Apply a custom CSS style to the whole SillyBunny interface</small>
                                         </div>
                                         <div class="ds-row-suffix">
                                             <textarea id="customCSS" class="text_pole margin0 margin-r5 textarea_compact monospace ds-control-flex" rows="8"></textarea>
@@ -6280,7 +6283,7 @@
                                         <div class="flex-container alignitemscenter">
                                             <label for="google_font_preset"><small>Preset</small></label>
                                             <!-- SillyBunny: the subtitle follows the bundled presets and imported fonts; the Custom row is gone. -->
-                                            <small class="ds-row-subtitle" data-i18n="Pick a locally saved global font for the user interface.">Pick a locally saved global font for the user interface.</small>
+                                            <small class="ds-row-subtitle" data-i18n="Pick a locally saved global font for the user interface">Pick a locally saved global font for the user interface</small>
                                             <select id="google_font_preset" class="flex1 margin0 text_pole">
                                                 <option value="">Default (none)</option>
                                                 <optgroup label="Presets">
@@ -6393,7 +6396,7 @@
                             </div>
                             <div name="STscriptToggles">
                                 <h4 data-i18n="STscript Settings">STscript Settings</h4>
-                                <small class="ds-row-subtitle" data-i18n="Set how STscript handles escaped characters and variable macros.">Set how STscript handles escaped characters and variable macros.</small>
+                                <small class="ds-row-subtitle" data-i18n="Set how STscript handles escaped characters and variable macros">Set how STscript handles escaped characters and variable macros</small>
                                 <div title="Sets default flags for the STscript parser." data-i18n="[title]Sets default flags for the STscript parser.">
                                     <!-- SillyBunny: the "Parser Flags" label is dropped; the Interface page names the two flags directly and keeps "Parser Flags" as a search alias. -->
                                     <label class="checkbox_label" title="Switch to stricter escaping, allowing all delimiting characters to be escaped with a backslash, and backslashes to be escaped as well." data-i18n="[title]Switch to stricter escaping, allowing all delimiting characters to be escaped with a backslash, and backslashes to be escaped as well.">
@@ -6432,7 +6435,7 @@
                     <div class="bg-header-row-1 ds-row ds-row-actions">
                         <div class="ds-row-text">
                             <label for="background_fitting" class="ds-row-label" data-i18n="Background Fitting">Background Fitting</label>
-                            <small class="ds-row-subtitle" data-i18n="Choose how the background image is sized and positioned on screen.">Choose how the background image is sized and positioned on screen.</small>
+                            <small class="ds-row-subtitle" data-i18n="Choose how the background image is sized and positioned on screen">Choose how the background image is sized and positioned on screen</small>
                         </div>
                         <div class="ds-row-suffix">
                         <select id="background_fitting" class="text_pole ds-control-flex" data-i18n="[title]Background Fitting" title="Background Fitting">
@@ -6516,7 +6519,7 @@
                         <label for="extensions_notify_updates" class="checkbox_label flexNoGap">
                             <input id="extensions_notify_updates" type="checkbox">
                             <span data-i18n="Notify on extension updates">Notify on extension updates</span>
-                            <small class="ds-row-subtitle" data-i18n="Show a notice when updates are available for supported third-party extensions.">Show a notice when updates are available for supported third-party extensions.</small>
+                            <small class="ds-row-subtitle" data-i18n="Show a notice when updates are available for supported third-party extensions">Show a notice when updates are available for supported third-party extensions</small>
                         </label>
                         <div id="extensions_details" class="menu_button_icon menu_button">
                             <i class="fa-solid fa-cubes"></i>
@@ -6964,7 +6967,8 @@
                                                     <label class="ds-field-label" for="tagInput" data-i18n="Tags">Tags</label>
                                                     <div class="tag_controls">
                                                         <input id="tagInput" class="text_pole textarea_compact tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" />
-                                                        <button type="button" class="tags_view menu_button fa-solid fa-tags" title="View all tags" aria-label="View all tags" data-i18n="[title]View all tags;[aria-label]View all tags"></button>
+                                                        <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                                        <button type="button" class="tags_view menu_button fa-solid fa-tags" title="View all tags" aria-label="View All Tags" data-i18n="[title]View all tags;[aria-label]View All Tags"></button>
                                                     </div>
                                                     <div id="tagList" class="tags"></div>
                                                 </div>
@@ -7227,7 +7231,7 @@
                                             <div id="creators_notes_div" class="sb-creator-notes-preview__title">
                                                 <span class="flex1" data-i18n="Creator's Notes">Creator's Notes</span>
                                                 <!-- SillyBunny: this opens the formatted notes rather than the raw textarea value; the field's own .editor_maximize still expands the source. -->
-                                                <button type="button" id="sb_creator_notes_maximize" class="menu_button menu_button_icon margin0" title="Expand the editor" aria-label="Expand the editor" data-i18n="[title]Expand the editor;[aria-label]Expand the editor">
+                                                <button type="button" id="sb_creator_notes_maximize" class="menu_button menu_button_icon margin0" title="Expand the Editor" aria-label="Expand the Editor" data-i18n="[title]Expand the Editor;[aria-label]Expand the Editor">
                                                     <i class="fa-solid fa-maximize" aria-hidden="true"></i>
                                                 </button>
                                             </div>
@@ -7385,7 +7389,8 @@
                                                 <label class="ds-field-label" for="groupTagInput" data-i18n="Tags">Tags</label>
                                                 <div class="tag_controls">
                                                     <input id="groupTagInput" class="text_pole textarea_compact tag_input wide100p margin0" data-i18n="[placeholder]Search / Create Tags" placeholder="Search / Create tags" />
-                                                    <button type="button" class="tags_view menu_button fa-solid fa-tags" title="View all tags" aria-label="View all tags" data-i18n="[title]View all tags;[aria-label]View all tags"></button>
+                                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                                    <button type="button" class="tags_view menu_button fa-solid fa-tags" title="View all tags" aria-label="View All Tags" data-i18n="[title]View all tags;[aria-label]View All Tags"></button>
                                                 </div>
                                                 <div id="groupTagList" class="tags"></div>
                                             </div>
@@ -7586,7 +7591,8 @@
                                     <option data-field="name" data-order="desc" data-i18n="Z-A">Z-A</option>
                                     <option data-field="create_date" data-order="desc" data-i18n="Newest">Newest</option>
                                     <option data-field="create_date" data-order="asc" data-i18n="Oldest">Oldest</option>
-                                    <option data-field="date_added" data-order="desc" data-i18n="Date added">Date added</option>
+                                    <!-- SillyBunny: capitalisation by DESIGN.md -->
+                                    <option data-field="date_added" data-order="desc" data-i18n="Date Added">Date Added</option>
                                     <option data-field="fav" data-order="desc" data-rule="boolean" data-i18n="Favorites">Favorites</option>
                                     <option data-field="date_last_chat" data-order="desc" data-i18n="Recent">Recent</option>
                                     <option data-field="chat_size" data-order="desc" data-i18n="Most chats">Most chats</option>

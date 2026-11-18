@@ -482,7 +482,7 @@ function openConversationOverflowMenu(trigger) {
             {
                 items: [
                     ...(avatar ? [{ label: addMemberLabel, icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-member', {}, trigger) }] : []),
-                    { label: 'New chat', icon: 'fa-solid fa-message', disabled: !avatar, onSelect: runFromMenu('new-chat') },
+                    { label: 'New Chat', icon: 'fa-solid fa-message', disabled: !avatar, onSelect: runFromMenu('new-chat') },
                     { label: 'Edit Schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
                     { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
                     // The header gear covers settings in the split and overlay layouts; the pages layout hides the gear, so the menu keeps it there.

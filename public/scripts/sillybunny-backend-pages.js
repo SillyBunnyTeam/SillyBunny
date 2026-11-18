@@ -95,8 +95,8 @@ export function presentFormatting(context) {
     if (Object.values(bodies).some(node => !(node instanceof HTMLElement))) return;
     formatting.dataset.sbFormattingPresented = 'true';
     const searchLabel = t`Search`;
-    const emptyText = t`No results`;
-    const expandLabel = t`Expand the editor`;
+    const emptyText = t`No Results`;
+    const expandLabel = t`Expand the Editor`;
 
     const tokenizerBlock = bodies.tokenizer.querySelector('[name="tokenizerSettingsBlock"]');
     const tokenizer = field('tokenizer', bodies.tokenizer);
@@ -314,7 +314,7 @@ function createTemplateRow({ api, section, select, label, subtitle, labelKey, su
         subtitle: subtitle || undefined,
         field: `template-${api}`,
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
         menuLabel: t`Template Actions`,
         onMenu: trigger => openActionMenu({ trigger, title: label, sections: context.templateMenuSections(holder) }),
     });
@@ -512,7 +512,7 @@ function presentReasoningTemplate(section, context) {
             subtitle: textOf(sourceSubtitle) || titleOf(tooltip) || undefined,
             field: name,
             rows: 3,
-            expandLabel: t`Expand the editor`,
+            expandLabel: t`Expand the Editor`,
         });
         carry(area.row.querySelector('.ds-row-label'), sourceTitle);
         const newSubtitle = area.row.querySelector('.ds-row-subtitle');
@@ -621,7 +621,7 @@ export function createRadioSelectRow(set, name, title) {
         label: title,
         field: name,
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
         mapItem: (item, option) => (option.dataset.hint ? { ...item, subtitle: option.dataset.hint } : item),
         onChange: value => {
             const radio = radios.find(input => input.value === value);
@@ -691,7 +691,7 @@ function presentPrefill(root) {
         const caption = field(labelId, body);
         const container = input?.parentElement;
         if (!(input instanceof HTMLTextAreaElement && caption && container instanceof HTMLElement && container !== body)) continue;
-        const area = createTextAreaField({ input, label: textOf(caption) || caption.dataset.i18n || '', field: name, rows: 3, expandLabel: t`Expand the editor` });
+        const area = createTextAreaField({ input, label: textOf(caption) || caption.dataset.i18n || '', field: name, rows: 3, expandLabel: t`Expand the Editor` });
         carry(area.row.querySelector('.ds-row-label'), caption);
         // The old bar held only the caption and the maximize icon that the field's own Expand button replaces.
         caption.parentElement?.remove();
@@ -716,7 +716,7 @@ function adoptSelectWithNotes(row) {
     if (!notes.length || !notes.every(node => node.matches('.toggle-description'))) return false;
     select.classList.remove('ds-control-flex');
     const subtitle = text.querySelector('.ds-row-subtitle');
-    const built = createSelectRow({ select, label: readRowTitle(caption), subtitle: textOf(subtitle) || undefined, field: select.id, searchLabel: t`Search`, emptyText: t`No results` });
+    const built = createSelectRow({ select, label: readRowTitle(caption), subtitle: textOf(subtitle) || undefined, field: select.id, searchLabel: t`Search`, emptyText: t`No Results` });
     const title = built.row.querySelector('.ds-row-label');
     const key = caption.querySelector('[data-i18n]')?.dataset.i18n ?? caption.dataset.i18n;
     if (key && title instanceof HTMLElement) title.dataset.i18n = key;
@@ -744,7 +744,7 @@ function adoptInlineHelpSelect(container) {
     if (!(select instanceof HTMLSelectElement && copy && caption)) return;
     const notes = [...copy.querySelectorAll('.toggle-description')];
     const [description, ...more] = notes;
-    const built = createSelectRow({ select, label: readRowTitle(caption), subtitle: textOf(description) || undefined, field: select.id, searchLabel: t`Search`, emptyText: t`No results` });
+    const built = createSelectRow({ select, label: readRowTitle(caption), subtitle: textOf(description) || undefined, field: select.id, searchLabel: t`Search`, emptyText: t`No Results` });
     const key = caption.querySelector('[data-i18n]')?.dataset.i18n;
     const title = built.row.querySelector('.ds-row-label');
     if (key && title instanceof HTMLElement) title.dataset.i18n = key;
@@ -858,7 +858,7 @@ function presentNovel(root) {
     const penaltyBlock = penalty.closest('.range-block');
     const penaltyTitle = penaltyBlock?.querySelector('.range-block-title');
     const penaltyGroup = createGroup({ id: 'sb-novel-phrase-penalty', title: textOf(penaltyTitle), titleKey: penaltyTitle?.dataset.i18n });
-    const penaltyRow = createSelectRow({ select: penalty, label: textOf(penaltyTitle), field: 'phrase-rep-pen', searchLabel: t`Search`, emptyText: t`No results` });
+    const penaltyRow = createSelectRow({ select: penalty, label: textOf(penaltyTitle), field: 'phrase-rep-pen', searchLabel: t`Search`, emptyText: t`No Results` });
     carry(penaltyRow.row.querySelector('.ds-row-label'), penaltyTitle);
     penaltyGroup.body.append(penaltyRow.row);
     blocks.push([penaltyBlock, penaltyGroup.section]);
@@ -874,7 +874,7 @@ function presentNovel(root) {
             subtitle: textOf(description) || undefined,
             field: name,
             rows: 3,
-            expandLabel: t`Expand the editor`,
+            expandLabel: t`Expand the Editor`,
         });
         carry(area.row.querySelector('.ds-row-label'), title);
         const newSubtitle = area.row.querySelector('.ds-row-subtitle');

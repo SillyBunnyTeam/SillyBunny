@@ -359,7 +359,7 @@ for (const theme of ['Libadwaita', 'Libadwaita Light']) {
                 expect(Math.abs(samplingHeaderMetrics.titleRowHeight - promptingHeaderMetrics.titleRowHeight)).toBeLessThanOrEqual(1);
                 expect(samplingHeaderMetrics.boxed || promptingHeaderMetrics.boxed).toBe(false);
                 expect(promptingHeaderMetrics.note).toBeNull();
-                expect(samplingHeaderMetrics.note).toBe('Some backends ignore samplers they do not support.');
+                expect(samplingHeaderMetrics.note).toBe('Some backends ignore samplers they do not support');
                 expect(samplingHeaderMetrics.noteWraps).toBe(true);
                 await expectSamplingTaxonomy(sampling, api);
                 await expectNoOverflow(sampling);
@@ -846,7 +846,7 @@ test('Sampling uses one registry order, grouping and styling for every backend',
         await expect(kobold.locator(`[data-sb-sampler-id="${id}"]`)).toBeVisible();
     }
     await expect(kobold.locator('[data-sb-sampler-id="mirostat"] .ds-row-subtitle').first()).not.toHaveText('lorum ipsum');
-    await expect(page.locator('#sb-sampling-kobold .sb-sampling-header-note')).toHaveText('Some backends ignore samplers they do not support.');
+    await expect(page.locator('#sb-sampling-kobold .sb-sampling-header-note')).toHaveText('Some backends ignore samplers they do not support');
 });
 
 test('Text Completions types keep sampler rows visible and swap only backend mechanisms', async ({ page, baseURL }) => {
@@ -1005,7 +1005,7 @@ test('Text Completions template fields expand and write back to the draft, under
     await expect(detail.locator('.sb-prompt-title')).toHaveText('User');
     await expect(detail.locator('.sb-prompt-content-field .sb-editor-label-row .editor_maximize')).toHaveCount(4);
     await expect(detail.locator('.sb-prompt-footer')).toHaveCount(0);
-    await expect(detail.getByRole('button', { name: 'Expand the editor' }).first()).toHaveAccessibleDescription('User Message Prefix');
+    await expect(detail.getByRole('button', { name: 'Expand the Editor' }).first()).toHaveAccessibleDescription('User Message Prefix');
     await expect(detail.locator('.sb-prompt-detail-header .sb-prompt-tokens')).toBeVisible();
 
     const suffix = detail.locator('#sb-prompt-tc-instruct_input_suffix');
@@ -1108,7 +1108,7 @@ test('Agents globals and Connections switches use the shared row semantics', asy
     const prefill = settings.locator('[data-sb-editor-field="helperPrefillMessages"]');
     await expect.poll(() => prefill.evaluate(row => getComputedStyle(row).flexDirection)).toBe('column');
     await expect.poll(() => prefill.locator('textarea').evaluate(field => field.getBoundingClientRect().width)).toBeGreaterThan(280);
-    await expect(prefill.getByRole('button', { name: 'Expand the editor', exact: true })).toHaveCount(1);
+    await expect(prefill.getByRole('button', { name: 'Expand the Editor', exact: true })).toHaveCount(1);
     await expectNoOverflow(agents);
     await expectSwitchGeometry(settings);
     const connections = await openPanel(page, 'connections');

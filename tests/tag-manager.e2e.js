@@ -116,7 +116,7 @@ test('the row subtitle and the search placeholder take the shared muted inks, no
 
 async function openFromList(page) {
     await page.locator('.sb-character-list [data-action-id="more"]').click();
-    await page.getByRole('menuitem', { name: 'Manage tags', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Manage Tags', exact: true }).click();
     await expect(manager(page)).toBeVisible();
     await manager(page).evaluate(async node => {
         await Promise.all(node.getAnimations().map(animation => animation.finished.catch(() => {})));
@@ -209,14 +209,14 @@ for (const width of [1440, 390]) {
                 return field?.hidden && field.getBoundingClientRect().height === 0;
             });
             await expect(searchToggle).toHaveAttribute('aria-expanded', 'false');
-            const addTag = manager(page).getByRole('button', { name: 'Create a new tag', exact: true });
+            const addTag = manager(page).getByRole('button', { name: 'Create a New Tag', exact: true });
             if (width > 450) {
                 await addTag.focus();
                 await page.keyboard.press('Enter');
             } else {
                 await addTag.click();
             }
-            const create = page.locator(`.sb-custom-popover:visible, ${OPEN_ACTION_SHEET}`).getByRole('textbox', { name: 'Create a new tag', exact: true });
+            const create = page.locator(`.sb-custom-popover:visible, ${OPEN_ACTION_SHEET}`).getByRole('textbox', { name: 'Create a New Tag', exact: true });
             await create.fill('QA New');
             const createButton = page.locator(`.sb-custom-popover:visible, ${OPEN_ACTION_SHEET}`).getByRole('button', { name: 'Create', exact: true });
             await expect(createButton).toBeEnabled();
@@ -299,7 +299,7 @@ for (const width of [1440, 390]) {
             await manager(page).locator('.sb-dialog__close').click();
             await expect(manager(page)).toHaveCount(0);
             await page.locator('.sb-character-list .sb-tag-filter-menu-button').click();
-            await page.getByRole('button', { name: 'Manage tags', exact: true }).last().click();
+            await page.getByRole('button', { name: 'Manage Tags', exact: true }).last().click();
             await expect(manager(page)).toBeVisible();
         });
 
@@ -561,7 +561,7 @@ test.describe('selection mode', () => {
 test('desktop Create a new tag trigger closes its open popover on repeat activation', async ({ page }) => {
     await prepare(page, 1440);
     await openFromList(page);
-    const addTag = manager(page).getByRole('button', { name: 'Create a new tag', exact: true });
+    const addTag = manager(page).getByRole('button', { name: 'Create a New Tag', exact: true });
     await addTag.click();
     const popover = page.locator('.sb-custom-popover:visible');
     await expect(popover).toBeVisible();

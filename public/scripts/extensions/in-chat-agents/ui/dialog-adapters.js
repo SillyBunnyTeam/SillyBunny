@@ -119,7 +119,7 @@ export function prepareBulkEditDialog(source) {
                 field: `bulk-edit-${field}`,
                 title: caption,
                 searchLabel: t`Search`,
-                emptyText: t`No results`,
+                emptyText: t`No Results`,
             });
         if (segmentedFields.has(field)) segmented.push(row);
         label.replaceWith(row.row);
@@ -246,7 +246,7 @@ export function prepareRefinePromptDialog(source) {
         field: 'refine-prompt-mode',
         title: textOf(description),
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
     });
     description.remove();
     const customRow = createEntryRow({

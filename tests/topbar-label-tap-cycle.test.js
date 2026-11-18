@@ -56,8 +56,8 @@ describe('topbar label title', () => {
         const groupsSource = getFunctionSource('createTopbarLabelSettingsGroups');
         expect(groupsSource).not.toContain('sb-desktop-setting');
         expect(groupsSource).not.toContain('sb-mobile-setting');
-        expect(groupsSource).toContain('description: \'Choose what the center label shows.\',');
-        expect(groupsSource).toContain('description: \'This only appears in the top bar when the Custom Text switch is enabled above.\',');
+        expect(groupsSource).toContain('description: \'Choose what the center label shows\',');
+        expect(groupsSource).toContain('description: \'This only appears in the top bar when the Custom Text switch is enabled above\',');
         expect(getFunctionSource('createTopbarLabelPartRow')).toContain('createSwitchRow({');
         expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(readTopbarLabelParts()));');
     });
@@ -362,7 +362,7 @@ describe('icons only top bar', () => {
         const rowSource = getFunctionSource('createTopbarIconsOnlyRow');
         expect(rowSource).toContain('id: \'sb-desktop-topbar-icons-only-input\',');
         expect(rowSource).toContain('label: \'Icons Only Top Bar\',');
-        expect(rowSource).toContain('subtitle: \'Show only icons in the desktop top bar.\',');
+        expect(rowSource).toContain('subtitle: \'Show only icons in the desktop top bar\',');
         expect(rowSource).toContain('onChange: checked => setTopbarIconsOnly(\'desktop\', checked),');
         expect(rowSource).not.toContain('\'mobile\'');
         expect(normalizedTabsSource).toContain('const desktopBody = createInterfaceGroupBody(\'sb-desktop-settings-outlet\', [\n        createTopbarIconsOnlyRow(),');

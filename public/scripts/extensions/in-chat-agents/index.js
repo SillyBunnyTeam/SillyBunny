@@ -3456,9 +3456,9 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
 
     const html = $(`
         <div>
-            <p>Choose how to refine this prompt:</p>
+            <p>Choose How to Refine This Prompt:</p>
             ${modeHtml}
-            <label class="checkbox_label"><input type="radio" name="ica-refine-mode" value="custom" /><span>Custom instruction:</span></label>
+            <label class="checkbox_label"><input type="radio" name="ica-refine-mode" value="custom" /><span>Custom Instruction:</span></label>
             <input type="text" id="ica--refine-custom" class="text_pole" placeholder="Your custom refinement instruction…" />
         </div>
     `);

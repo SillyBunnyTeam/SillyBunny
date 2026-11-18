@@ -477,8 +477,8 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
         pane.hidden = true;
         pane.tabIndex = 0;
         const expand = button('', 'menu_button_icon editor_maximize sb-wi-entry-expand');
-        expand.title = t`Expand the editor`;
-        expand.setAttribute('aria-label', t`Expand the editor`);
+        expand.title = t`Expand the Editor`;
+        expand.setAttribute('aria-label', t`Expand the Editor`);
         expand.dataset.for = textarea.id;
         const expandIcon = element('i', 'fa-solid fa-maximize');
         expandIcon.setAttribute('aria-hidden', 'true');
@@ -530,7 +530,7 @@ export function mountWorldInfoEntry({ host, name, data, uid, deps, requestClose,
                     select.append(node);
                 }
                 select.value = value;
-                const row = createSelectRow({ select, label, field: field.id, searchLabel: t`Search`, emptyText: t`No results`, onChange: options.onChange });
+                const row = createSelectRow({ select, label, field: field.id, searchLabel: t`Search`, emptyText: t`No Results`, onChange: options.onChange });
                 selectRows.push(row);
                 return row;
             }

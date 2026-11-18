@@ -51,7 +51,7 @@ const PRESETS = [
     { name: 'Source Serif 4', directory: 'SourceSerif4' },
 ];
 const STACK_TAIL = '\'Adwaita Sans\', system-ui, sans-serif';
-const PRESET_SUBTITLE = 'Pick a locally saved global font for the user interface.';
+const PRESET_SUBTITLE = 'Pick a locally saved global font for the user interface';
 
 /**
  * Answers Google's stylesheet with an empty one, so no test reaches the network, and records every request that goes to
@@ -281,13 +281,13 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             const row = await openFontRow(page);
             await expect(trigger(row)).toHaveText('Lobster Two');
             const subtitle = row.locator('.ds-row-text > .ds-row-subtitle').first();
-            await expect(subtitle).not.toHaveText('Pick a locally saved global font for the user interface.');
+            await expect(subtitle).not.toHaveText('Pick a locally saved global font for the user interface');
             await expect(subtitle).toHaveAttribute('data-sb-copy-placeholder', 'true');
             const list = await openList(page, row);
             await expect(list.locator('.sb-picker__group-heading')).toHaveText(['Presets', 'Google Fonts']);
             await list.getByRole('option', { name: 'Inter', exact: true }).click();
             await expect(trigger(row)).toHaveText('Inter');
-            await expect(subtitle).toHaveText('Pick a locally saved global font for the user interface.');
+            await expect(subtitle).toHaveText('Pick a locally saved global font for the user interface');
             await expect(page.locator('#google-font-style')).toHaveCount(0);
             await expect(page.locator('#sb-preset-font-style')).toHaveAttribute('href', /^webfonts\/Inter\/stylesheet\.css\?v=/);
             const after = googleRequests.length;

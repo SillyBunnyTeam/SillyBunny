@@ -948,7 +948,7 @@ test('the @mention combobox completes fuzzily, scopes the content search, and ke
     await openArchive(page);
     await showList(page);
     const field = await openSearch(page);
-    await expect(field).toHaveAttribute('placeholder', 'Search...');
+    await expect(field).toHaveAttribute('placeholder', 'Search…');
     await expect(field).toHaveAttribute('aria-description', 'Type to search chats. Mention character names with @.');
     const menu = page.getByRole('listbox', { name: 'Character Mentions' });
 

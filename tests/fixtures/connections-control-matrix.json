@@ -2510,7 +2510,7 @@
       "gates": [
         "data-source=openai"
       ],
-      "label": "Bypass API status check Allow generation even if the API status check fails."
+      "label": "Bypass API status check Allow generation even if the API status check fails"
     },
     "#openai_show_external_models": {
       "id": "openai_show_external_models",
@@ -2784,7 +2784,7 @@
       "gates": [
         "data-source=openrouter"
       ],
-      "label": "Group by vendors Group models by vendor in the model selection list."
+      "label": "Group by vendors Group models by vendor in the model selection list"
     },
     "#openrouter_providers_chat": {
       "id": "openrouter_providers_chat",
@@ -3730,7 +3730,7 @@
       "gates": [
         "data-source=electronhub"
       ],
-      "label": "Group by vendors Group models by vendor in the model selection list."
+      "label": "Group by vendors Group models by vendor in the model selection list"
     },
     "chutes_credits_display>a": {
       "id": null,

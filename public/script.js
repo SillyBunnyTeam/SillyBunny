@@ -18408,7 +18408,7 @@ jQuery(async function () {
 
         // SillyBunny: Return must not activate a committed chat-file deletion, so the shared alert focuses Cancel and has no destructive default.
         const result = await openAlert({
-            heading: t`Delete the Chat File?`,
+            heading: t`Delete the chat file?`,
             responses: [
                 { id: 'cancel', label: t`Cancel` },
                 { id: 'delete', label: t`Delete`, appearance: 'destructive' },

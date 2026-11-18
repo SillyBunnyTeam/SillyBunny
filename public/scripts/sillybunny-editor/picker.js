@@ -581,7 +581,7 @@ export function openPicker({
     footer = [],
     selectionCount = null,
     searchLabel = t`Search`,
-    emptyText = t`No results`,
+    emptyText = t`No Results`,
     bounds = null,
     matchTriggerWidth = false,
     renderAsPopover = false,

@@ -1114,7 +1114,7 @@ export function adoptEditorFields(root, { t, entryTextAreas = [] }) {
                 subtitle: caption ? ' ' : undefined,
                 count: counter ? { label: t`Tokens:`, element: counter } : undefined,
                 expand: Boolean(expand),
-                expandLabel: t`Expand the editor`,
+                expandLabel: t`Expand the Editor`,
             });
             const title = view.row.querySelector('.ds-row-textarea__label');
             moveCaption(title, label);

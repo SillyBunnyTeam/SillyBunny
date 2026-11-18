@@ -144,7 +144,7 @@ function menuLabel(item) {
         case 'preview-feedback': return t`Preview Feedback`;
         case 'run-last': return t`Run on Last Message`;
         case 'apply-last': return t`Apply to Last Reply`;
-        case 'apply-target': return t`Apply to…`;
+        case 'apply-target': return t`Apply To…`;
         case 'convert-companion': return t`Convert to Companion`;
         case 'convert-inline': return t`Convert to Inline`;
         case 'duplicate': return t`Duplicate`;

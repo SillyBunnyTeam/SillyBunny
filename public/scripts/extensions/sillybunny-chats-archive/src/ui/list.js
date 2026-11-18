@@ -151,7 +151,7 @@ function paintList(ctx, state, ui) {
         if (state.rows.length === 0) {
             state.matchingRows = [];
             setCount(ui, '');
-            // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+            // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
             showStatusPage(ui, {
                 state: 'loading',
                 title: tr(ctx, 'Loading chats…'),

@@ -315,7 +315,7 @@ async function openPopup(page, options) {
 /** Opens the Tag Manager window from the character list menu. */
 async function openTagManager(page) {
     await openCharacterList(page);
-    await chooseMenuItem(page, '.sb-character-list [data-action-id="more"]', 'Manage tags');
+    await chooseMenuItem(page, '.sb-character-list [data-action-id="more"]', 'Manage Tags');
     await shown(page, '#tag_view_list');
     await settle(page, { root: '#tag_view_list' });
 }

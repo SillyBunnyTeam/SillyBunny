@@ -151,6 +151,24 @@ const FANCY_NAMES = {
     'regex-preset': 'Regex Preset',
 };
 
+// SillyBunny: FANCY_NAMES is in header capitalisation because the View rows and the "Also sets" line use it as titles, but the Edit dialog
+// shows the same names as check labels, which take sentence capitalisation. These ids hold only plain words, so lowering all but the first letter is exact.
+const SENTENCE_CASE_CHECK_IDS = new Set([
+    'custom-endpoint-profile', 'request-images', 'request-image-resolution', 'request-image-aspect-ratio', 'custom-reasoning-preset',
+    'custom-reasoning-param-format', 'custom-reasoning-param-name', 'custom-reasoning-enabled-value', 'custom-reasoning-disabled-value',
+    'custom-include-body', 'custom-exclude-body', 'custom-include-headers',
+]);
+
+/**
+ * The label of a command's check box in the Edit dialog.
+ * @param {string} id Command id
+ * @returns {string}
+ */
+function getCommandCheckLabel(id) {
+    const name = FANCY_NAMES[id];
+    return SENTENCE_CASE_CHECK_IDS.has(id) ? name.charAt(0) + name.slice(1).toLowerCase() : name;
+}
+
 /**
  * A wrapper for the connection manager spinner.
  */
@@ -1837,7 +1855,7 @@ export async function init() {
         const sortByViewOrder = (a, b) => Object.keys(FANCY_NAMES).indexOf(a) - Object.keys(FANCY_NAMES).indexOf(b);
         // SillyBunny: one checkbox per command id (CC lists `api` twice), so a checkbox's value is the id it excludes.
         const commands = getProfileCommandList(profile, { ccCommands: CC_COMMANDS, tcCommands: TC_COMMANDS });
-        const rows = commands.slice().sort(sortByViewOrder).map(id => ({ id, label: FANCY_NAMES[id], checked: !profile.exclude.includes(id) }));
+        const rows = commands.slice().sort(sortByViewOrder).map(id => ({ id, label: getCommandCheckLabel(id), checked: !profile.exclude.includes(id) }));
         const folders = getSortedFolders().map(folder => ({
             ...folder,
             selected: folder.id === profile.folderId,

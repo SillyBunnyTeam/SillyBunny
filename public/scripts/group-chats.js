@@ -2963,9 +2963,10 @@ function getGroupCharacterBlock(character, { draftIndex = -1, grip = false } = {
         disable: t`Temporarily disable automatic replies from this character`,
         enable: t`Enable automatic replies from this character`,
         speak: t`Trigger a message from this character`,
-        up: t`Move up`,
-        down: t`Move down`,
-        view: t`View character card`,
+        // SillyBunny: capitalisation by DESIGN.md
+        up: t`Move Up`,
+        down: t`Move Down`,
+        view: t`View Character Card`,
         remove: t`Remove from group`,
     };
     for (const [action, title] of Object.entries(titles)) {
@@ -3582,9 +3583,10 @@ function onGroupMemberMenuClick(event) {
         ...extra,
     });
     const actions = [];
-    if (openGroupId) actions.push(actionItem(t`Speak now`, 'comment', 'speak'));
+    // SillyBunny: capitalisation by DESIGN.md
+    if (openGroupId) actions.push(actionItem(t`Speak Now`, 'comment', 'speak'));
     // SillyBunny: the row has no chevron, so the menu names the row's press — see docs/ui-migration.md
-    actions.push({ label: t`View character card`, icon: 'fa-solid fa-address-card', onSelect: () => openGroupMemberEditor(avatarId) });
+    actions.push({ label: t`View Character Card`, icon: 'fa-solid fa-address-card', onSelect: () => openGroupMemberEditor(avatarId) });
     actions.push({ label: t`Model Override…`, icon: 'fa-solid fa-microchip', onSelect: () => runGroupEditorAction(() => editGroupMemberModel(member)) });
     const title = member.find('.ch_name').text();
     // SillyBunny: the move items come from the shared reorder helper, which leaves them out at an end of the order and while a search or filter hides members

@@ -356,7 +356,7 @@ function promptEditorDriver(page) {
 
         async createPrompt(fields) {
             await page.getByRole('button', { name: 'Add Prompt', exact: true }).click();
-            await page.getByRole('menuitem', { name: 'New prompt', exact: true }).click();
+            await page.getByRole('menuitem', { name: 'New Prompt', exact: true }).click();
             await expect(page.locator(`${FORM}_name`)).toBeVisible();
             await driver.fill(fields);
             await driver.save();
@@ -865,7 +865,7 @@ test.describe('Prompt Manager characterization', () => {
         await page.locator(`${FORM}_prompt`).fill('Changed utility content');
         await page.getByRole('button', { name: 'Save', exact: true }).click();
         await waitForSavedOai(store, oai => oai.scenario_format === 'Changed utility content');
-        await ui.editorAction('Restore default');
+        await ui.editorAction('Restore Default');
         await waitForSavedOai(store, oai => oai.scenario_format === '{{scenario}}');
         expect((await readLiveOai(page)).prompts).toEqual(baseline.prompts);
         expect((await readLiveOai(page)).prompt_order).toEqual(baseline.prompt_order);
@@ -1003,7 +1003,7 @@ test.describe('Prompt Manager characterization', () => {
         await selectAll.check();
         await selectAll.uncheck();
         await expect(others.evaluateAll(inputs => inputs.map(input => input.checked))).resolves.toEqual(Array(6).fill(false));
-        await expect(page.getByRole('button', { name: /^Triggers:/ })).toContainText('All triggers');
+        await expect(page.getByRole('button', { name: /^Triggers:/ })).toContainText('All Triggers');
     });
 
     test('Preview renders macros from the draft instead of the edit form', async ({ page }) => {

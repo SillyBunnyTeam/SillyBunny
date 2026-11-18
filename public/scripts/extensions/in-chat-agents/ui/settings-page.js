@@ -79,7 +79,7 @@ export function mountAgentSettings({ host, services, onClose, preparePopup }) {
                 suffix.append(input);
                 row.row.append(suffix);
             } else {
-                row = createTextAreaField({ ...options, input, rows: 6, expandLabel: t`Expand the editor` });
+                row = createTextAreaField({ ...options, input, rows: 6, expandLabel: t`Expand the Editor` });
             }
             row.row.title = translate(descriptor.title);
             if (staleCaption) row.row.querySelector('.ds-row-subtitle').dataset.sbCopyPlaceholder = 'true';

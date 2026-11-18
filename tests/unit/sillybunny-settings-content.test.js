@@ -139,8 +139,8 @@ describe('Interface settings groups', () => {
     });
 
     test('titles the first group General, describes Mobile by its button size, and gives Bottom Bar no description', () => {
-        expect(byId('interface')).toMatchObject({ title: 'General', description: 'Choose the splash character and Compact Mode.' });
-        expect(byId('mobile').description).toBe('Adjust the button size on phones.');
+        expect(byId('interface')).toMatchObject({ title: 'General', description: 'Choose the splash character and Compact Mode' });
+        expect(byId('mobile').description).toBe('Adjust the button size on phones');
         expect(byId('bottom-bar')).toMatchObject({ title: 'Bottom Bar', body: '#sb-bottom-bar-settings' });
         expect(byId('bottom-bar').description).toBeUndefined();
     });

@@ -1005,7 +1005,7 @@ async function deleteMessageMedia(messageId, mediaIndex, messageBlock) {
 
     const value = await Popup.show.confirm(t`Delete media from message?`, t`This action can't be undone.`, {
         // SillyBunny: both delete responses are destructive and Return cancels (confirmVerb, is-destructive).
-        ...confirmVerb(t`Delete one`, { destructive: true }),
+        ...confirmVerb(t`Delete One`, { destructive: true }),
         cancelButton: false,
         customButtons: [
             {

@@ -98,8 +98,8 @@ export function attachTagFilterMenu(controls, { title = t`Show Tag List` } = {})
                 labelActions();
             }
             const footer = [
-                ['.clearAllFilters', t`Clear all filters`, 'filter-circle-xmark'],
-                ['.manageTags', t`Manage tags`, 'tags'],
+                ['.clearAllFilters', t`Clear All Filters`, 'filter-circle-xmark'],
+                ['.manageTags', t`Manage Tags`, 'tags'],
             ].filter(([selector]) => controls.querySelector(selector)).map(([selector, label, glyph]) => ({
                 label, icon: `fa-solid fa-${glyph}`, onSelect: () => controls.querySelector(selector)?.click(),
             }));
@@ -204,7 +204,7 @@ export function adoptTagField({ input, list, manage = null, field, jquery }) {
         summarize: items => (items.length ? String(items.length) : ''),
         field,
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
         noneLabel: t`None`,
         mapItem: item => {
             const dot = document.createElement('span');
@@ -222,7 +222,7 @@ export function adoptTagField({ input, list, manage = null, field, jquery }) {
             for (const id of ids.filter(id => !next.includes(id))) remove(id);
         },
         create: { onCreate: add, label: text => t`Create tag ${text}` },
-        footer: manage ? [{ label: t`Manage tags`, icon: 'fa-solid fa-tags', onSelect: () => manage.click() }] : [],
+        footer: manage ? [{ label: t`Manage Tags`, icon: 'fa-solid fa-tags', onSelect: () => manage.click() }] : [],
     });
     row.row.classList.add('sb-tag-field');
     const names = row.row.querySelector('.ds-row-subtitle');

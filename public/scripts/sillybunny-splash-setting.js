@@ -25,7 +25,7 @@ export function createSplashCharacterRow(preferences) {
     const row = createSelectRow({
         select,
         label: 'Splash Character',
-        subtitle: 'Choose who appears while SillyBunny starts.',
+        subtitle: 'Choose who appears while SillyBunny starts',
         field: 'splash-character',
         onChange: choice => preferences.setCharacter(choice),
     });

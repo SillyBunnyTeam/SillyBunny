@@ -109,7 +109,7 @@ export function lorebookSelectOptions(root, { character = false } = {}) {
             if (sentinel) sentinel.hidden = true;
         }
         const noneLabel = auxiliary ? t`No auxiliary Lorebooks set. Click here to select.` : select.options[0].textContent;
-        const row = createSelectRow({ select, label, subtitle: description.textContent.trim(), field: select.classList[0], searchLabel: t`Search`, emptyText: t`No results`, noneLabel });
+        const row = createSelectRow({ select, label, subtitle: description.textContent.trim(), field: select.classList[0], searchLabel: t`Search`, emptyText: t`No Results`, noneLabel });
         if (caption) moveCaption(row.row.querySelector('.ds-row-label'), caption);
         else row.row.querySelector('.ds-row-label').dataset.i18n = 'Lorebook';
         moveCaption(row.row.querySelector('.ds-row-subtitle'), description);

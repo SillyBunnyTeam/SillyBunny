@@ -1403,7 +1403,7 @@ test.describe('Settings entry regressions', () => {
 
                     await openInterface();
                     await expect(page.locator('[data-sb-panel="interface"] #sb-mobile-topbar-icons-only-input')).toHaveCount(0);
-                    await expect(outlet.getByText('Show only icons in the desktop top bar.', { exact: true })).toBeVisible();
+                    await expect(outlet.getByText('Show only icons in the desktop top bar', { exact: true })).toBeVisible();
                     const nextIconsOnly = !(await iconsOnly.isChecked());
                     await iconsOnly.setChecked(nextIconsOnly);
                     await expect(page.locator('html')).toHaveAttribute('data-sb-topbar-icons-only', String(nextIconsOnly));
@@ -1449,8 +1449,8 @@ test.describe('Settings entry regressions', () => {
                 await expect(group).toHaveAttribute('data-sb-description', 'none');
                 await expect(group.locator('.sb-settings-category-header small')).toHaveCount(0);
                 const descriptionOf = id => interfacePanel.locator(`.sb-settings-category[data-sb-category="${id}"] .sb-settings-category-header small`);
-                await expect(descriptionOf('interface')).toHaveText('Choose the splash character and Compact Mode.');
-                await expect(descriptionOf('mobile')).toHaveText('Adjust the button size on phones.');
+                await expect(descriptionOf('interface')).toHaveText('Choose the splash character and Compact Mode');
+                await expect(descriptionOf('mobile')).toHaveText('Adjust the button size on phones');
                 for (const id of ['sb-bottom-bar-scale-input', 'sb-desktop-bottom-bar-visible-input', 'sb-desktop-gg-bar-visible-input']) {
                     await expect(group.locator(`#${id}`)).toBeVisible();
                 }
@@ -1497,7 +1497,7 @@ test.describe('Settings entry regressions', () => {
                     await expect(pin).toHaveAttribute('role', 'switch');
                     const pinRow = pin.locator('xpath=ancestor::*[contains(@class, "ds-row")][1]');
                     await expect(pinRow.locator('.ds-row-label')).toHaveText('Keep Characters Open');
-                    await expect(pinRow.locator('.ds-row-subtitle')).toHaveText('The Characters page stays open after you pick a chat.');
+                    await expect(pinRow.locator('.ds-row-subtitle')).toHaveText('The Characters page stays open after you pick a chat');
                     const next = !(await pin.isChecked());
                     // A reload must find the value in the settings that the page saved.
                     const saved = page.waitForRequest(request => request.url().includes('/api/settings/save'));

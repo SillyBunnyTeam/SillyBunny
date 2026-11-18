@@ -291,7 +291,7 @@ describe('World Info schema form', () => {
         expect(textarea.id).toMatch(/^sb-/);
         expect(textarea.id).not.toBe(control(second.host, 'content').id);
         expect(expand.dataset.for).toBe(textarea.id);
-        expect(expand.getAttribute('aria-label')).toBe('Expand the editor');
+        expect(expand.getAttribute('aria-label')).toBe('Expand the Editor');
         expect(expand.querySelector('.fa-solid.fa-maximize')).not.toBeNull();
         $(textarea).val('Expanded content').trigger('input');
         expect(first.controller.isDirty()).toBe(true);

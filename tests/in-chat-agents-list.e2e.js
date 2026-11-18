@@ -802,7 +802,7 @@ test('new drafts, manual-target cancel, pin, duplicate, import and saved-only ex
     const name = await unused.getAttribute('aria-label');
     await page.locator('#send_textarea').fill('QA composer target');
     await menu(page, unused, 'Agent Menu');
-    await page.getByRole('menuitem', { name: 'Apply to…', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Apply To…', exact: true }).click();
     await expect(page.locator('dialog[open] input[name="ica--run-target"]')).not.toHaveCount(0);
     await page.locator('dialog[open] .popup-button-cancel').click();
     expect(saves()).toHaveLength(0);

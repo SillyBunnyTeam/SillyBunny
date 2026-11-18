@@ -15,7 +15,7 @@ const APPROVED = {
     'public/script.js': ['Delete:destructive', 'Delete:destructive', 'Duplicate', 'Duplicate', 'Rename', 'Save:destructive'],
     'public/scripts/BulkEditOverlay.js': ['Delete:destructive'],
     'public/scripts/RossAscends-mods.js': ['Regenerate'],
-    'public/scripts/bookmarks.js': ['Convert to group'],
+    'public/scripts/bookmarks.js': ['Convert to Group'],
     'public/scripts/extensions/assets/index.js': ['Connect'],
     'public/scripts/extensions/connection-manager/index.js': ['Delete:destructive', 'Delete:destructive', 'Delete:destructive'],
     'public/scripts/extensions/expressions/index.js': ['Continue', 'Continue', 'Continue:destructive', 'Delete:destructive', 'Regenerate:destructive', 'Remove', 'Remove:destructive'],

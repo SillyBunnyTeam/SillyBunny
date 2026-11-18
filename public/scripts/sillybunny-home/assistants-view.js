@@ -51,14 +51,14 @@ function createChatButtons(card, actions, disabled) {
     return [
         createFootButton({
             label: t`Start New Chat`,
-            name: t`Start new chat with ${card.name}`,
+            name: t`Start New Chat With ${card.name}`,
             title: t`Start New Chat With ${card.name}`,
             disabled,
             onActivate: () => void actions.newChat(card),
         }),
         createFootButton({
             label: t`Temporary Chat`,
-            name: t`Temporary Chat with ${card.name}`,
+            name: t`Temporary Chat With ${card.name}`,
             title: t`Temporary Chat With ${card.name}`,
             disabled,
             onActivate: () => void actions.temporaryChat(card),
@@ -205,7 +205,7 @@ function createAssistantCard(card, panel, { actions, getThumbnailUrl, openPicker
 
     element.append(
         createCardAction({
-            name: t`New chat with ${card.name}`,
+            name: t`New Chat With ${card.name}`,
             title: t`New Chat With ${card.name}`,
             disabled,
             subtitleId,

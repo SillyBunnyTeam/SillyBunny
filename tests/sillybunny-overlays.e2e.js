@@ -531,7 +531,7 @@ for (const width of [1440, 390]) {
             await expect(frame).toBeVisible();
             const statusPage = frame.locator('#select_chat_div .sb-status-page');
             await expect(statusPage).toContainText('No Chats');
-            await expect(statusPage).toContainText('Saved chats appear here.');
+            await expect(statusPage).toContainText('Saved chats appear here');
 
             await frame.locator('.sb-dialog__search-toggle').click();
             await frame.getByRole('searchbox', { name: 'Search', exact: true }).fill('missing');

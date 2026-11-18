@@ -499,7 +499,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
     if (!(rowsContainer instanceof HTMLElement)) throw new Error('Character list rows container is missing.');
     const section = node('section', 'sb-character-list');
     section.dataset.view = 'characters';
-    // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+    // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
     const loading = createStatusPage({ state: 'loading', title: t`Loading…`, busy: section });
     const status = node('div', 'sb-character-list__status');
     status.append(loading.element);
@@ -937,8 +937,8 @@ function createCharacterListController(container, dependencies, restoreDOM) {
         if (overflowed.has('search')) sections.push({ items: [makeMenuItem(t`Search`, 'magnifying-glass', () => search.toggle())] });
         sections.push({ items: [makeMenuItem(t`Select`, 'check-double', () => selection.enter(null, trigger), { disabled: bulkBusy || !state.selectableKeys.length })] });
         sections.push({ items: [
-            makeMenuItem(t`Manage tags`, 'tags', () => filter('.manageTags')?.click()),
-            makeMenuItem(t`Clear all filters`, 'filter-circle-xmark', () => filter('.clearAllFilters')?.click()),
+            makeMenuItem(t`Manage Tags`, 'tags', () => filter('.manageTags')?.click()),
+            makeMenuItem(t`Clear All Filters`, 'filter-circle-xmark', () => filter('.clearAllFilters')?.click()),
         ] });
         sections.push({ items: [makeMenuItem(t`Manage Folders`, 'folder', () => globalThis.SillyBunnyFolderManager?.open?.(state.view)
             ?? import('./sillybunny-folder-manager.js').then(module => module.openFolderManager(state.view)))] });
@@ -1002,7 +1002,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
                 globalThis.SillyBunnyCharactersNavigation?.recordCreateOrigin?.(state.view);
                 clickTransport(state.view === 'groups' ? '#rm_button_group_chats' : '#rm_button_create');
             } },
-            { id: 'more', label: t`More...`, icon: 'ellipsis-vertical', menu: true, onActivate: openListMenu },
+            { id: 'more', label: t`More…`, icon: 'ellipsis-vertical', menu: true, onActivate: openListMenu },
         ];
         header = createListHeader({ title: t`Characters`, actions, className: 'sb-character-list__header' });
         extensionSlot = document.getElementById('rm_buttons_container');
@@ -1035,7 +1035,7 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             });
             content = empty.element;
         } else if (!model.entities.length && !hasVisibleFolder) {
-            const empty = createStatusPage({ state: 'no-results', title: t`No Results`, compact: true, actions: [{ label: t`Clear all filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
+            const empty = createStatusPage({ state: 'no-results', title: t`No Results`, compact: true, actions: [{ label: t`Clear All Filters`, onActivate: () => document.querySelector('#rm_characters_block .clearAllFilters')?.click() }] });
             content = empty.element;
         }
         if (revision !== renderRevision) return;
@@ -1423,7 +1423,7 @@ export async function mountCharacterList(container = document.getElementById('rm
         };
         for (const { element } of originalChildren) element.style.setProperty('display', 'none', 'important');
         const section = node('section', 'sb-character-list sb-character-list--loading');
-        // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+        // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
         section.append(createStatusPage({ state: 'loading', title: t`Loading…` }).element);
         container.append(section);
         let mounted;

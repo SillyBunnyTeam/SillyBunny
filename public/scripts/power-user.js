@@ -1759,12 +1759,13 @@ async function saveCurrentThemeCss() {
 }
 
 function buildCustomCssAiPopup(currentCss) {
+    // SillyBunny: the two field labels are in header capitalisation by DESIGN.md
     const content = $(`
         <div class="flex-container flexFlowColumn flexGap5">
             <h3>Generate Custom CSS</h3>
-            <label for="custom_css_ai_instruction"><small>Describe what you want the CSS to change</small></label>
+            <label for="custom_css_ai_instruction"><small>Describe What You Want the CSS to Change</small></label>
             <textarea id="custom_css_ai_instruction" class="text_pole textarea_compact monospace" rows="6" placeholder="Example: Make message cards softer, with rounded corners and subtle accent borders."></textarea>
-            <label for="custom_css_ai_profile"><small>Connection profile</small></label>
+            <label for="custom_css_ai_profile"><small>Connection Profile</small></label>
             <select id="custom_css_ai_profile" class="text_pole margin0 wide100p"></select>
             <div class="flex-container flexFlowColumn flexGap5">
                 <label class="checkbox_label"><input type="radio" name="custom_css_ai_apply_mode" value="replace" checked><span>Replace current CSS</span></label>

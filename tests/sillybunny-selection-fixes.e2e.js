@@ -93,9 +93,9 @@ for (const viewport of VIEWPORTS) {
             await expect(group).toBeVisible();
             await expect(group.locator('.ds-row-switch')).toHaveCount(3);
             await expect(group.locator('.ds-row-check')).toHaveCount(0);
-            await expect(group.locator('.ds-pref-group-subtitle')).toHaveText('Choose what the center label shows.');
+            await expect(group.locator('.ds-pref-group-subtitle')).toHaveText('Choose what the center label shows');
             await expect(appearance.locator('[data-sb-category="topbar-custom-text"] .ds-pref-group-subtitle'))
-                .toHaveText('This only appears in the top bar when the Custom Text switch is enabled above.');
+                .toHaveText('This only appears in the top bar when the Custom Text switch is enabled above');
             await expect(appearance.locator('.sb-topbar-custom-text-input')).toHaveCount(1);
             await expect(page.locator('#sb-topbar-label-mobile-group, #sb-topbar-custom-text-input-mobile')).toHaveCount(0);
             await expect(group.locator('input[type="checkbox"]:checked')).toHaveCount(1);

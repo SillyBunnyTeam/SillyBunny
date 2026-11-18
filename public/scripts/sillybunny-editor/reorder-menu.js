@@ -167,7 +167,7 @@ export function attachSortableKeys(list, { name = null, movable = null, key = nu
 
     const nameOf = row => (name?.(row) ?? row.textContent ?? '').replace(/\s+/g, ' ').trim() || t`Entry`;
     const keyOf = row => (key ? key(row) : (row.id || row.dataset.id || row.dataset.name)) ?? null;
-    const labelOf = row => t`Drag to reorder ${nameOf(row)}`;
+    const labelOf = row => t`Drag to Reorder ${nameOf(row)}`;
 
     const handleOf = (row, sortable) => {
         const handle = sortable.option('handle');

@@ -359,8 +359,8 @@ export const FIELDS = Object.freeze([
         write: (entry, value) => { entry.groupWeight = parseNullableNumber(value, { min: 1, max: MAX_GROUP_WEIGHT, clamp: true }); },
     },
     // Recursion
-    bool('excludeRecursion', 'recursion', 'Non-recursable'),
-    bool('preventRecursion', 'recursion', 'Prevent further recursion'),
+    bool('excludeRecursion', 'recursion', 'Non-Recursable'),
+    bool('preventRecursion', 'recursion', 'Prevent Further Recursion'),
     {
         id: 'delayUntilRecursion', section: 'recursion', control: 'switch', label: 'Delay until recursion', i18n: 'Delay until recursion', keys: ['delayUntilRecursion'],
         read: entry => Boolean(entry.delayUntilRecursion),
@@ -389,7 +389,7 @@ export const FIELDS = Object.freeze([
         write: (entry, value) => { entry.triggers = arrayOf(value); },
     },
     // Advanced
-    bool('ignoreBudget', 'advanced', 'Ignore budget'),
+    bool('ignoreBudget', 'advanced', 'Ignore Budget'),
     bool('agentBlacklisted', 'advanced', 'Agent Blacklisted'),
     { id: 'uid', section: 'advanced', control: 'property', label: 'UID', i18n: 'UID', keys: [], read: entry => String(entry.uid ?? ''), write: null },
 ]);

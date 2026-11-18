@@ -61,7 +61,7 @@ test.describe('World Info sorting controls', () => {
             await expect(entries.first()).toContainText('Alpha');
             const applySorting = async () => {
                 await editor.locator('.sb-wi-list-header button:has(.fa-ellipsis-vertical)').click();
-                await page.locator('.sb-action-menu [role^="menuitem"]', { hasText: 'Apply current sorting as Order' }).click();
+                await page.locator('.sb-action-menu [role^="menuitem"]', { hasText: 'Apply Current Sorting as Order' }).click();
             };
             await applySorting();
 

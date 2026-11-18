@@ -128,7 +128,7 @@ function ensureSheet() {
     title.className = 'sb-bottom-chat-sheet-title';
     title.tabIndex = -1;
     title.textContent = translate('Chat Actions');
-    const closeButton = createBarButton('sb-bottom-chat-sheet-close', 'fa-solid fa-xmark', translate('Close chat actions'));
+    const closeButton = createBarButton('sb-bottom-chat-sheet-close', 'fa-solid fa-xmark', translate('Close Chat Actions'));
     closeButton.addEventListener('click', () => closeSheet());
     header.append(title, closeButton);
 
@@ -179,12 +179,12 @@ function ensureBarControls(bar) {
         chip.append(createIcon('fa-solid fa-comments'), label, createIcon('fa-solid fa-chevron-up'));
         chip.addEventListener('click', () => (isSheetOpen() ? closeSheet() : openSheet()));
 
-        const trayToggle = createBarButton('sb-bottom-chat-tray-toggle', 'fa-solid fa-puzzle-piece', translate('Extension actions'));
+        const trayToggle = createBarButton('sb-bottom-chat-tray-toggle', 'fa-solid fa-puzzle-piece', translate('Extension Actions'));
         trayToggle.hidden = true;
         trayToggle.setAttribute('aria-expanded', 'false');
         trayToggle.addEventListener('click', () => setTrayOpen(!state.trayOpen));
 
-        const searchClose = createBarButton('sb-bottom-chat-search-close', 'fa-solid fa-xmark', translate('Close chat search'));
+        const searchClose = createBarButton('sb-bottom-chat-search-close', 'fa-solid fa-xmark', translate('Close Chat Search'));
         searchClose.addEventListener('click', () => {
             document.querySelector('#sb-bottom-chat-sheet .sb-bottom-chat-search-toggle, #sb-bottom-chat-bar .sb-bottom-chat-search-toggle')?.click();
             state.chip.focus({ preventScroll: true });

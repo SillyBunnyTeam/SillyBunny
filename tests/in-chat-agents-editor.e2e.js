@@ -912,7 +912,7 @@ for (const width of [1440, 390]) {
             expect(editor.saves()).toHaveLength(1);
             const id = editor.saves()[0].id;
             await editor.detail.getByRole('button', {
-                name: 'Expand the editor',
+                name: 'Expand the Editor',
                 exact: true,
             }).click();
             const dialog = page.locator('dialog[open]');

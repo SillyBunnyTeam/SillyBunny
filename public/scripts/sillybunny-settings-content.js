@@ -368,7 +368,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'page-size',
                 title: 'Page Size & Clarity',
-                description: 'Tune page width, global font size, blur strength, and text shadow.',
+                description: 'Tune page width, global font size, blur strength, and text shadow',
                 rows: [
                     '#chat_width_slider',
                     '#font_scale',
@@ -391,7 +391,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'visual-toggles',
                 title: 'Visual Toggles',
-                description: 'Toggle motion, blur, timestamps, and other interface extras.',
+                description: 'Toggle motion, blur, timestamps, and other interface extras',
                 rows: [
                     '#reduced_motion',
                     '#fast_ui_mode',
@@ -428,21 +428,21 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'interface',
                 title: 'General',
-                description: 'Choose the splash character and Compact Mode.',
+                description: 'Choose the splash character and Compact Mode',
                 body: '#sb-interface-settings-body',
             },
             {
                 id: 'desktop',
                 title: 'Desktop',
                 searchAliases: ['Desktop Navigation'],
-                description: 'Adjust desktop navigation and the button size.',
+                description: 'Adjust desktop navigation and the button size',
                 className: 'sb-desktop-setting',
                 body: '#sb-desktop-settings-outlet',
             },
             {
                 id: 'mobile',
                 title: 'Mobile',
-                description: 'Adjust the button size on phones.',
+                description: 'Adjust the button size on phones',
                 className: 'sb-mobile-setting',
                 body: '#sb-mobile-settings-outlet',
             },
@@ -454,7 +454,7 @@ export const SB_SETTINGS_SECTION_ORDER = Object.freeze({
             {
                 id: 'paper-texture',
                 title: 'Paper Texture',
-                description: 'Add a subtle paper grain and wash overlay to the chat background.',
+                description: 'Add a subtle paper grain and wash overlay to the chat background',
                 className: 'sb-mobile-setting',
                 body: '#sb-paper-texture-settings',
             },

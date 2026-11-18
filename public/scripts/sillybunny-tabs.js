@@ -1065,17 +1065,17 @@ const SB_TOPBAR_LABEL_PARTS = Object.freeze([
     {
         id: 'ctx',
         label: 'Context Size',
-        description: 'Show the current total Tokens value from the Prompt page.',
+        description: 'Show the current total Tokens value from the Prompt page',
     },
     {
         id: 'char',
         label: 'Character Name',
-        description: 'Show the active character name, or the group name while a group chat is open.',
+        description: 'Show the active character name, or the group name while a group chat is open',
     },
     {
         id: 'custom',
         label: 'Custom Text',
-        description: 'Show your own short label in the center of the top bar.',
+        description: 'Show your own short label in the center of the top bar',
     },
 ]);
 const SB_TOPBAR_LABEL_PART_ORDER = Object.freeze(SB_TOPBAR_LABEL_PARTS.map(part => part.id));
@@ -1149,7 +1149,7 @@ const SB_CHARACTER_PANEL_TABS = Object.freeze([
         label: 'Import',
         icon: 'fa-file-import',
         tooltip: 'Add or Import New Character Cards',
-        description: 'Directly import character cards here from various sources.',
+        description: 'Directly import character cards here from various sources',
         searchAliases: ['import character', 'import card', 'chub', 'png', 'add character'],
     },
 ]);
@@ -1195,7 +1195,7 @@ const SB_SHELLS = Object.freeze({
                 label: 'Presets',
                 icon: 'fa-sliders',
                 tooltip: 'Change, update, or edit presets and prompts',
-                description: 'Manage presets, templates, and generation settings.',
+                description: 'Manage presets, templates, and generation settings',
                 descriptionI18n: 'Manage presets, templates, and generation settings.',
                 searchPlaceholder: 'Search presets, instruct mode, markdown, or decorators',
                 searchExamples: ['presets', 'instruct', 'markdown', 'decorators'],
@@ -1215,7 +1215,7 @@ const SB_SHELLS = Object.freeze({
                 label: 'Formatting',
                 icon: 'fa-text-height',
                 tooltip: 'Set miscellaneous formatting settings for the model backend',
-                description: 'Adjust token counting, stopping strings, text cleanup, and reasoning display.',
+                description: 'Adjust token counting, stopping strings, text cleanup, and reasoning display',
                 descriptionI18n: 'Adjust token counting, stopping strings, text cleanup, and reasoning display.',
                 searchPlaceholder: 'Search formatting, context templates, regex, or text replacements',
                 searchExamples: ['formatting', 'context', 'advanced formatting', 'regex', 'replacement'],
@@ -1239,7 +1239,7 @@ const SB_SHELLS = Object.freeze({
         proxyIcon: 'fa-gear',
         proxyLabel: 'Customize',
         title: 'Customize',
-        subtitle: 'Personalize your workspace, add/remove extensions, modify server settings, or check logs here.',
+        subtitle: 'Personalize your workspace, add/remove extensions, modify server settings, or check logs here',
         searchPlaceholder: 'Search themes, interface, messages, or extensions',
         searchExamples: ['theme', 'top bar', 'messages', 'extensions'],
         storageKey: SB_STORAGE_KEYS.rightTab,
@@ -1273,7 +1273,7 @@ const SB_SHELLS = Object.freeze({
                 label: 'Interface',
                 icon: 'fa-screwdriver-wrench',
                 tooltip: 'Toggle UI Settings',
-                description: 'Configure interface behavior, power user features, and UI preferences.',
+                description: 'Configure interface behavior, power user features, and UI preferences',
                 searchPlaceholder: 'Search top bar, auto-scroll, power user, or chat features',
                 searchExamples: ['top bar', 'auto-scroll', 'power user'],
                 searchAliases: ['UI', 'behavior', 'stscript'],
@@ -1283,7 +1283,7 @@ const SB_SHELLS = Object.freeze({
                 label: 'Messages',
                 icon: 'fa-message',
                 tooltip: 'View All Chat-Related Settings and Configuration',
-                description: 'Configure message display, actions, swipes, and interaction preferences.',
+                description: 'Configure message display, actions, swipes, and interaction preferences',
                 searchPlaceholder: 'Search message actions, swipes, auto-scroll, or display',
                 searchExamples: ['swipes', 'message actions', 'auto-scroll'],
                 searchAliases: ['chat'],
@@ -1293,7 +1293,7 @@ const SB_SHELLS = Object.freeze({
                 label: 'Data & Security',
                 icon: 'fa-server',
                 tooltip: 'View SillyBunny\'s Server Configuration and Backend',
-                description: 'Manage the SillyBunny backend and server settings here.',
+                description: 'Manage the SillyBunny backend and server settings here',
                 searchPlaceholder: 'Search backup, data path, security, or config.yaml',
                 searchExamples: ['backup', 'data path', 'security'],
                 searchAliases: ['backup', 'restore', 'data path'],
@@ -1303,7 +1303,7 @@ const SB_SHELLS = Object.freeze({
                 label: 'Logs',
                 icon: 'fa-terminal',
                 tooltip: 'View and Gather SillyBunny\'s Backend Logs',
-                description: 'View SillyBunny logs for advanced troubleshooting or bug reporting.',
+                description: 'View SillyBunny logs for advanced troubleshooting or bug reporting',
                 searchPlaceholder: 'Search error, warning, npm, bun, or extension logs',
                 searchExamples: ['error', 'warning', 'npm', 'bun'],
                 searchAliases: ['console', 'console logs', 'errors', 'troubleshooting'],
@@ -1365,6 +1365,8 @@ const SB_SIDEBAR_SECTION_MATCH_SELECTOR = [
 ].join(', ');
 
 const SB_UNIVERSAL_SEARCH_PLACEHOLDER = 'Type to search…';
+// The accessible name is a title (header capitalisation) while the placeholder is hint text (sentence capitalisation).
+const SB_UNIVERSAL_SEARCH_LABEL = 'Type to Search…';
 const SB_UNIVERSAL_SEARCH_IDLE_TITLE = 'Search All Settings';
 const SB_UNIVERSAL_SEARCH_IDLE_HINT = 'Jump to any workspace or customization control from one place.';
 const SB_UNIVERSAL_SEARCH_EMPTY_HINT = 'Could not find query. Try a broader term or a different setting name.';
@@ -4562,7 +4564,7 @@ async function handleRenameChat() {
         return;
     }
 
-    const newChatName = await chatContext.context.Popup?.show?.input?.('Rename chat', 'Enter a new chat name:', currentChatId);
+    const newChatName = await chatContext.context.Popup?.show?.input?.('Rename Chat', 'Enter a new chat name:', currentChatId);
 
     if (!newChatName || String(newChatName).trim() === currentChatId) {
         return;
@@ -6050,7 +6052,7 @@ function setCharacterEditorEmptyState(visible) {
                 icon: 'address-card',
                 // HUMAN: replace — a title in header capitalisation that names the state, and a description that says what to do next.
                 title: t`No Character Selected`,
-                description: t`Please pick a character card from the character menu, or create a new character.`,
+                description: t`Please pick a character card from the character menu, or create a new character`,
                 compact: true,
                 actions: [
                     { id: 'sb_character_empty_browse', label: t`Browse Characters`, primary: true, onActivate: () => { void showCharacterListView(); } },
@@ -6167,7 +6169,7 @@ function revealDeferredCharacterPanel(host, content, mount) {
     const revision = ++state.revision;
     // A fast load shows no loading page, because the page waits like any other. This one keeps its place meanwhile, so that
     // no frame between the old panel and the new one is empty.
-    // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+    // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
     const status = createStatusPage({ state: 'loading', title: t`Loading…`, reserveSpace: true, busy: host });
     status.element.classList.add('sb-character-panel-loading');
     host.after(status.element);
@@ -7102,7 +7104,7 @@ function buildUniversalSearchRow() {
         attrs: {
             type: 'search',
             placeholder: SB_UNIVERSAL_SEARCH_PLACEHOLDER,
-            'aria-label': SB_UNIVERSAL_SEARCH_PLACEHOLDER,
+            'aria-label': SB_UNIVERSAL_SEARCH_LABEL,
             autocomplete: 'off',
             enterkeyhint: 'search',
             spellcheck: 'false',
@@ -7679,7 +7681,7 @@ function createOnDemandShellPanel(shellKey, tabConfig, build) {
     };
     const lifecycle = createDeferredPanel(async () => {
         panel.setAttribute('aria-busy', 'true');
-        // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+        // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
         showStatus({ state: 'loading', title: 'Loading…' });
         try {
             const loaded = await build();
@@ -7767,7 +7769,7 @@ function syncBackgroundSettingsSection() {
             id: 'background',
             elementId: 'sb-background-settings-section',
             title: 'Background',
-            description: 'Choose backgrounds and adjust their size, blur, opacity, and visibility.',
+            description: 'Choose backgrounds and adjust their size, blur, opacity, and visibility',
         });
         group.group.id = 'sb-background-settings-controls';
         const heading = group.section.querySelector('.ds-pref-group-heading');
@@ -7839,13 +7841,13 @@ const SB_SAMPLING_BACKENDS = Object.freeze([
 ]);
 
 const SB_SAMPLING_GROUPS = Object.freeze([
-    { id: 'sampling', title: 'Sampling', description: 'Adjust how the AI chooses tokens and how varied its replies can be.' },
-    { id: 'penalties', title: 'Penalties & Repetition', description: 'Control how the AI reuses tokens and repeats phrases.' },
-    { id: 'algorithms', title: 'Advanced Algorithms', description: 'Use advanced sampling methods to adjust token choices and repetition.' },
-    { id: 'tokens', title: 'Token Control', description: 'Set seeds, token preferences, minimum length, and streaming speed limits.' },
+    { id: 'sampling', title: 'Sampling', description: 'Adjust how the AI chooses tokens and how varied its replies can be' },
+    { id: 'penalties', title: 'Penalties & Repetition', description: 'Control how the AI reuses tokens and repeats phrases' },
+    { id: 'algorithms', title: 'Advanced Algorithms', description: 'Use advanced sampling methods to adjust token choices and repetition' },
+    { id: 'tokens', title: 'Token Control', description: 'Set seeds, token preferences, minimum length, and streaming speed limits' },
     // The group has no description yet; its title keeps the translation key the upstream heading uses.
     { id: 'banned', title: 'Banned Tokens/Strings', i18n: 'Banned Tokens', description: '' },
-    { id: 'output', title: 'Output & Generation', description: 'Adjust sampler order, generation options, and output rules.' },
+    { id: 'output', title: 'Output & Generation', description: 'Adjust sampler order, generation options, and output rules' },
 ]);
 
 /**
@@ -7878,12 +7880,12 @@ const SB_SAMPLER_REGISTRY = Object.freeze([
     { id: 'presence_penalty', group: 'penalties', openai: '#pres_pen_openai', textgenerationwebui: '#presence_pen_textgenerationwebui', novel: '#rep_pen_presence_novel' },
     { id: 'no_repeat_ngram', group: 'penalties', textgenerationwebui: '#no_repeat_ngram_size_textgenerationwebui' },
     // Algorithms
-    { id: 'adaptive_p', group: 'algorithms', textgenerationwebui: '#adaptive_p_block', expander: true, description: 'Adjust token choices toward your chosen level of predictability.' },
+    { id: 'adaptive_p', group: 'algorithms', textgenerationwebui: '#adaptive_p_block', expander: true, description: 'Adjust token choices toward your chosen level of predictability' },
     { id: 'smoothing', group: 'algorithms', textgenerationwebui: '#smoothingBlock', expander: true },
     { id: 'math1_temp', group: 'algorithms', novel: '#math1_temp_novel' },
     { id: 'math1_quad', group: 'algorithms', novel: '#math1_quad_novel' },
     { id: 'math1_quad_entropy_scale', group: 'algorithms', novel: '#math1_quad_entropy_scale_novel' },
-    { id: 'xtc', group: 'algorithms', textgenerationwebui: '#xtc_block', expander: true, description: 'Exclude top token choices to encourage more varied replies.' },
+    { id: 'xtc', group: 'algorithms', textgenerationwebui: '#xtc_block', expander: true, description: 'Exclude top token choices to encourage more varied replies' },
     { id: 'dry', group: 'algorithms', textgenerationwebui: '#dryBlock', expander: true },
     { id: 'dynatemp', group: 'algorithms', textgenerationwebui: '#dynatemp_block_ooba', expander: true },
     { id: 'mirostat', group: 'algorithms', textgenerationwebui: '#mirostat_block_ooba', kobold: '[name="miroStatBlock-kobold"]', expander: true, subtitleSource: '[data-sb-sampling-control="#mirostat_block_ooba"] .ds-row-subtitle' },
@@ -8459,7 +8461,7 @@ async function buildSamplingPanel() {
         });
         section.append(createBackendSectionHeader({
             title: `Backend: ${backend.title}`,
-            note: 'Some backends ignore samplers they do not support.',
+            note: 'Some backends ignore samplers they do not support',
         }));
         for (const group of SB_SAMPLING_GROUPS) {
             const category = createElement('section', {
@@ -9627,7 +9629,7 @@ function createShortcutSettingsGroup() {
             label: SB_SHORTCUT_LABELS[side] || side,
             field: `shortcut-${side}`,
             searchLabel: t`Search`,
-            emptyText: t`No results`,
+            emptyText: t`No Results`,
         });
         rows.push(shortcutRow);
     }
@@ -9684,7 +9686,7 @@ function createCompactModeRow() {
     return createInterfaceSwitchRow({
         id: 'sb-compact-mode-input',
         label: 'Compact Mode',
-        subtitle: 'Reduce spacing, controls, and mobile composer height for denser screens.',
+        subtitle: 'Reduce spacing, controls, and mobile composer height for denser screens',
         field: 'compact-mode',
         dataAttribute: 'data-sb-compact-mode-input',
         onChange: checked => setCompactMode(checked),
@@ -9697,7 +9699,7 @@ function createBottomChatBarRow() {
     return createInterfaceSwitchRow({
         id: 'sb-desktop-bottom-bar-visible-input',
         label: 'Show Bottom Chat Bar',
-        subtitle: 'Display the bottom bar with the chat switcher, persona picker, and chat actions.',
+        subtitle: 'Display the bottom bar with the chat switcher, persona picker, and chat actions',
         field: 'bottom-bar-visible-desktop',
         dataAttribute: 'data-sb-bottom-bar-visible-input',
         dataValue: 'desktop',
@@ -9723,7 +9725,7 @@ function createGuidedGenerationsBarRow() {
     return createInterfaceSwitchRow({
         id: 'sb-desktop-gg-bar-visible-input',
         label: 'Show Guided Generations Bar',
-        subtitle: 'Display the Guided Generations action buttons in the chat composer.',
+        subtitle: 'Display the Guided Generations action buttons in the chat composer',
         field: 'gg-bar-visible-desktop',
         dataAttribute: 'data-sb-gg-bar-visible-input',
         dataValue: 'desktop',
@@ -9736,7 +9738,7 @@ function createTopbarIconsOnlyRow() {
     return createInterfaceSwitchRow({
         id: 'sb-desktop-topbar-icons-only-input',
         label: 'Icons Only Top Bar',
-        subtitle: 'Show only icons in the desktop top bar.',
+        subtitle: 'Show only icons in the desktop top bar',
         field: 'topbar-icons-only',
         onChange: checked => setTopbarIconsOnly('desktop', checked),
     });
@@ -9763,7 +9765,7 @@ function createCharactersPinRow() {
     return createInterfaceSwitchRow({
         id: 'sb-desktop-pin-characters-input',
         label: t`Keep Characters Open`,
-        subtitle: t`The Characters page stays open after you pick a chat.`,
+        subtitle: t`The Characters page stays open after you pick a chat`,
         field: 'pin-characters',
         onChange: checked => setCharactersPin(checked),
     });
@@ -9773,7 +9775,7 @@ function createPaperTextureBody() {
     const toggleRow = createInterfaceSwitchRow({
         id: 'sb-paper-texture-enabled-input',
         label: 'Enable Paper Texture',
-        subtitle: 'Add a paper texture across the mobile interface.',
+        subtitle: 'Add a paper texture across the mobile interface',
         field: 'paper-texture',
         onChange: checked => setPaperTextureEnabled(checked),
     });
@@ -9786,7 +9788,7 @@ function createPaperTextureBody() {
         max: SB_PAPER_TEXTURE_OPACITY.max,
         step: SB_PAPER_TEXTURE_OPACITY.step,
         ariaLabel: 'Paper Texture Opacity',
-        caption: 'Higher values make the paper grain and wash more visible.',
+        caption: 'Higher values make the paper grain and wash more visible',
         onInput: nextValue => setPaperTextureOpacity(nextValue),
     });
 
@@ -9865,7 +9867,7 @@ function createTopbarLabelSettingsGroups() {
         id: 'topbar-label',
         elementId: 'sb-topbar-label-drawer',
         title: 'Top Bar Label',
-        description: 'Choose what the center label shows.',
+        description: 'Choose what the center label shows',
     });
     labelGroup.append(...SB_TOPBAR_LABEL_PARTS.map(part => createTopbarLabelPartRow(part)));
 
@@ -9889,7 +9891,7 @@ function createTopbarLabelSettingsGroups() {
     const customTextGroup = appearanceModule.createAppearanceGroup({
         id: 'topbar-custom-text',
         title: 'Custom Text',
-        description: 'This only appears in the top bar when the Custom Text switch is enabled above.',
+        description: 'This only appears in the top bar when the Custom Text switch is enabled above',
     });
     customTextGroup.append(customTextRow);
     customTextGroup.group.dataset.sbEnabledBy = '#sb-topbar-label-desktop-custom';
@@ -9937,7 +9939,7 @@ function injectThemePicker() {
         max: SB_SURFACE_TRANSPARENCY.max,
         step: SB_SURFACE_TRANSPARENCY.step,
         ariaLabel: 'Background Visibility',
-        caption: 'Higher values make the home and chat surfaces more transparent so your selected background picture shows through.',
+        caption: 'Higher values make the home and chat surfaces more transparent so your selected background picture shows through',
         onInput: nextValue => setSurfaceTransparency(nextValue),
     });
     const bottomBarSliderGroup = createThemeSliderGroup({
@@ -9949,7 +9951,7 @@ function injectThemePicker() {
         max: SB_TOPBAR_SCALE.max,
         step: SB_TOPBAR_SCALE.step,
         ariaLabel: 'Bottom Bar Size',
-        caption: 'Resize the bottom chat bar, send form, and action buttons without editing CSS.',
+        caption: 'Resize the bottom chat bar, send form, and action buttons without editing CSS',
         onInput: nextValue => setBottomBarScale(nextValue),
     });
     const desktopButtonSliderGroup = createThemeSliderGroup({
@@ -9961,7 +9963,7 @@ function injectThemePicker() {
         max: SB_TOPBAR_SCALE.max,
         step: SB_TOPBAR_SCALE.step,
         ariaLabel: 'Desktop Button Size',
-        caption: 'Increase or decrease the desktop top bar and shell navigation buttons without changing mobile controls.',
+        caption: 'Increase or decrease the desktop top bar and shell navigation buttons without changing mobile controls',
         onInput: nextValue => setDesktopButtonScale(nextValue),
     });
     const mobileButtonSliderGroup = createThemeSliderGroup({
@@ -9973,7 +9975,7 @@ function injectThemePicker() {
         max: SB_TOPBAR_SCALE.max,
         step: SB_TOPBAR_SCALE.step,
         ariaLabel: 'Mobile Button Size',
-        caption: 'Increase or decrease the mobile nav and mobile chat tool buttons without changing desktop controls.',
+        caption: 'Increase or decrease the mobile nav and mobile chat tool buttons without changing desktop controls',
         onInput: nextValue => setMobileButtonScale(nextValue),
     });
     const topbarLabelSettingsGroups = createTopbarLabelSettingsGroups();
@@ -12086,10 +12088,10 @@ function buildBottomChatBar() {
     const topBtn = createBottomChatButton({ icon: 'fa-arrow-up', title: 'Go to Top of Chat' }, scrollCurrentChatToTop);
     const bottomBtn = createBottomChatButton({ icon: 'fa-arrow-down', title: 'Go to Bottom of Chat' }, scrollCurrentChatToBottom);
     const chatManagerBtn = createBottomChatButton({ icon: 'fa-address-book', title: 'View chat files' }, handleChatManagerClick);
-    const newBtn = createBottomChatButton({ icon: 'fa-plus', title: 'New chat' }, handleNewChat);
+    const newBtn = createBottomChatButton({ icon: 'fa-plus', title: 'New Chat' }, handleNewChat);
     const massDeleteBtn = createBottomChatButton({ icon: 'fa-list-check', title: 'Mass Delete Chats' }, () => { void handleMassDeleteChats(); });
     const autoNameBtn = createBottomChatButton({ icon: 'fa-wand-magic-sparkles', title: 'Ask the LLM to name this chat' }, () => { void handleAutoNameChat(); });
-    const renameBtn = createBottomChatButton({ icon: 'fa-pencil', title: 'Rename chat' }, () => { void handleRenameChat(); });
+    const renameBtn = createBottomChatButton({ icon: 'fa-pencil', title: 'Rename Chat' }, () => { void handleRenameChat(); });
     const hideBtn = createBottomChatButton({ icon: 'fa-eye-slash', title: 'Hide Bottom Chat Bar' }, () => {
         setBottomChatBarVisible(false);
     });

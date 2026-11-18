@@ -231,7 +231,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await expect(page.getByRole('menuitem', { name: 'Move Down', exact: true })).toHaveAttribute('data-sb-reorder', 'down');
         await expect(page.getByRole('menuitem', { name: 'Remove', exact: true })).toBeVisible();
         await expect(page.getByRole('menuitem', { name: 'View character', exact: true })).toHaveCount(0);
-        await expect(page.getByRole('menuitem', { name: 'Speak now', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('menuitem', { name: 'Speak Now', exact: true })).toHaveCount(0);
         await page.getByRole('menuitem', { name: 'Move Down', exact: true }).click();
         await expect(page.locator('#rm_group_members .group_member').first()).toHaveAttribute('data-avatar', first.avatar);
         await expect(second.row.locator('.sb-group-member-menu')).toBeFocused();
@@ -297,7 +297,7 @@ test('candidate and cloned member tag menus use their live upstream filters', as
     await expect(picker.locator('.sb-picker__search')).toBeFocused();
     await expect(candidateButton.locator('.sb-tag-filter-menu-count')).toHaveText('1');
     await expect(page.locator('#rm_group_add_members .group_member')).toHaveCount(0);
-    await picker.getByRole('button', { name: 'Clear all filters', exact: true }).click();
+    await picker.getByRole('button', { name: 'Clear All Filters', exact: true }).click();
     await expect(picker).toHaveCount(0);
     await expect(candidateButton.locator('.sb-tag-filter-menu-count')).toBeHidden();
 
@@ -511,7 +511,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 
         await expect(members).toHaveCount(2);
         const added = await addFirstCandidate(page);
         await openMemberMenu(page, added.row);
-        await expect(page.getByRole('menuitem', { name: 'Speak now', exact: true })).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: 'Speak Now', exact: true })).toBeVisible();
         await page.getByRole('menuitem', { name: 'Move Down', exact: true }).click();
         await expect(added.row.locator('.sb-group-member-menu')).toBeFocused();
         await openMemberMenu(page, added.row);
@@ -631,7 +631,7 @@ test('member row Enter, Space and pointer activation use object navigation', asy
         await member.getByRole('switch').uncheck();
         expect(await page.evaluate(() => window.__sbMemberNavigationCalls.length)).toBe(3);
         await member.getByRole('button', { name: 'Member Actions', exact: true }).click();
-        await page.getByRole('menuitem', { name: 'View character card', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'View Character Card', exact: true }).click();
         await expect.poll(() => page.evaluate(() => window.__sbMemberNavigationCalls.length)).toBe(4);
         expect(await page.evaluate(() => window.__sbMemberNavigationCalls[3].target)).toEqual({ kind: 'character-editor', id: fixture.members[0], via: 'group-member' });
     } finally {

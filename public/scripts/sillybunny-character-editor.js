@@ -260,7 +260,7 @@ function _mountFolderField() {
         label: t`Folder`,
         field: 'folder',
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`,
         onChange: () => session.changed({ immediate: true }),
     });
     host.replaceChildren(folderSelectRow.row);
@@ -1266,11 +1266,11 @@ function _createGreetingRow(greeting, index, kind, greetingId) {
     actions.setAttribute('role', 'group');
     actions.setAttribute('aria-label', titleText);
 
-    const upButton = _createGreetingButton('fa-arrow-up', t`Move up`, () => _moveGreeting(kind, index, -1));
+    const upButton = _createGreetingButton('fa-arrow-up', t`Move Up`, () => _moveGreeting(kind, index, -1));
     upButton.disabled = index === 0;
-    const downButton = _createGreetingButton('fa-arrow-down', t`Move down`, () => _moveGreeting(kind, index, 1));
+    const downButton = _createGreetingButton('fa-arrow-down', t`Move Down`, () => _moveGreeting(kind, index, 1));
     downButton.disabled = index >= greetingsRef.length - 1;
-    const expandButton = _createGreetingButton('fa-maximize', t`Expand the editor`, null);
+    const expandButton = _createGreetingButton('fa-maximize', t`Expand the Editor`, null);
     // Delegated upstream handler (.editor_maximize[data-for]) opens the large editor
     // and writes back through an input event, which the listener above picks up.
     expandButton.classList.add('editor_maximize');
@@ -1347,7 +1347,7 @@ function _moveGreeting(kind, index, delta) {
     const expander = row && greetingExpanders.get(row);
     if (expander) {
         expander.setOpen(true);
-        const button = row.querySelector(`.sb-greeting-row__btn[aria-label="${CSS.escape(delta < 0 ? t`Move up` : t`Move down`)}"]`);
+        const button = row.querySelector(`.sb-greeting-row__btn[aria-label="${CSS.escape(delta < 0 ? t`Move Up` : t`Move Down`)}"]`);
         const fallback = row.querySelector('textarea');
         (button instanceof HTMLButtonElement && !button.disabled ? button : fallback)?.focus({ preventScroll: true });
     }

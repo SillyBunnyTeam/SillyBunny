@@ -160,7 +160,7 @@ export function initializePromptEditor(column) {
     const searchEntry = createSearchEntry({
         clearLabel: t`Clear Entry`,
         variant: 'bar', className: 'sb-prompt-search-entry', inputClassName: 'sb-prompt-search',
-        placeholder: t`Search...`, label: t`Search Prompts`, clearOnEscape: false,
+        placeholder: t`Search…`, label: t`Search Prompts`, clearOnEscape: false,
     });
     // The sort button ends the search bar, as in the other list editors, so the header keeps its three buttons.
     const sortLabel = t`Sort`;
@@ -551,7 +551,7 @@ export function initializePromptEditor(column) {
             const more = rowButton(t`Actions for ${nameText}`, 'ellipsis-vertical', trigger => textCompletion
                 ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openTextCompletion(prompt)), menuItem(t`Preview`, 'eye', () => openTextCompletion(prompt, 'preview'))]])
                 : utility
-                    ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openUtility(prompt)), model.canRestoreUtility(id) && menuItem(t`Restore default`, 'rotate-left', () => restoreUtility(id))]])
+                    ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openUtility(prompt)), model.canRestoreUtility(id) && menuItem(t`Restore Default`, 'rotate-left', () => restoreUtility(id))]])
                     : promptMenu(trigger, prompt, available), 'sb-prompt-row-menu');
             more.setAttribute('aria-haspopup', 'menu');
             more.setAttribute('aria-expanded', 'false');
@@ -850,7 +850,7 @@ export function initializePromptEditor(column) {
     function openAddMenu(trigger) {
         const count = state.prompts.filter(prompt => !state.order.some(entry => entry.identifier === prompt.identifier)).length;
         menu(trigger, t`Add Prompt`, [[
-            menuItem(t`New prompt`, 'plus', async () => {
+            menuItem(t`New Prompt`, 'plus', async () => {
                 if (!(await allowLeave())) return;
                 await openDraft(model.newDraft(), 'prompt', 'edit', true);
             }),
@@ -1137,7 +1137,7 @@ export function initializePromptEditor(column) {
     }
 
     function triggerSummary() {
-        return draft.injection_trigger?.length ? draft.injection_trigger.map(capitalized).join(', ') : t`All triggers`;
+        return draft.injection_trigger?.length ? draft.injection_trigger.map(capitalized).join(', ') : t`All Triggers`;
     }
 
     function triggersControl() {
@@ -1364,7 +1364,7 @@ export function initializePromptEditor(column) {
                 persisted && !draft.marker && menuItem(t`Send to Agents`, 'robot', () => model.sendToAgents(draft.identifier)),
             ],
             [
-                kind === 'utility' && model.canRestoreUtility(draft.identifier) && menuItem(t`Restore default`, 'rotate-left', () => restoreUtility(draft.identifier)),
+                kind === 'utility' && model.canRestoreUtility(draft.identifier) && menuItem(t`Restore Default`, 'rotate-left', () => restoreUtility(draft.identifier)),
                 permission.reset && menuItem(t`Reset to Default`, 'rotate-left', () => { draft = model.resetDraft(draft); renderEditor(); markDirty(); }),
             ],
             [
@@ -1389,7 +1389,7 @@ export function initializePromptEditor(column) {
         labelRow.append(label);
         field.append(labelRow, body);
         if (textarea) {
-            const expand = headerIconButton(t`Expand the editor`, 'maximize', 'editor_maximize ds-row-textarea__expand sb-prompt-expand');
+            const expand = headerIconButton(t`Expand the Editor`, 'maximize', 'editor_maximize ds-row-textarea__expand sb-prompt-expand');
             expand.dataset.for = textarea.id;
             // A template has several Expand buttons; the field's name tells them apart.
             label.id = `${textarea.id}-label`;

@@ -79,7 +79,7 @@ describe('tag filter menu', () => {
             { value: 'Alpha', label: 'Alpha', muted: false }, { value: 'Beta', label: 'Beta', muted: true },
         ]);
         expect(options.items[0].icon.style.backgroundColor).toBe('rgb(90, 160, 220)');
-        expect(options.footer.map(item => item.label)).toEqual(['Clear all filters', 'Manage tags']);
+        expect(options.footer.map(item => item.label)).toEqual(['Clear All Filters', 'Manage Tags']);
         const clear = jest.fn();
         controls.querySelector('.clearAllFilters').onclick = clear;
         options.footer[0].onSelect();
@@ -214,7 +214,7 @@ describe('editor tag field', () => {
         expect(options.getItemState('t-green')).toBe('selected');
         expect(options.getItemState('t-red')).toBeNull();
         expect(options.items[0].icon.style.getPropertyValue('--sb-tag-color')).toBe('rgb(0, 160, 0)');
-        expect(options.footer.map(item => item.label)).toEqual(['Manage tags']);
+        expect(options.footer.map(item => item.label)).toEqual(['Manage Tags']);
     });
 
     test('ticking adds through upstream, unticking removes the chip, and the row follows', async () => {

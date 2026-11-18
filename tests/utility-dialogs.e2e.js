@@ -86,7 +86,7 @@ for (const viewport of UTILITY_VIEWPORTS) {
         popup = await openUtilityDialog(page, 'secret');
         await popup.locator('.popup-button-ok').click();
         const confirmation = page.locator('dialog.popup[open]').last();
-        await expect(confirmation).toContainText('No value entered');
+        await expect(confirmation).toContainText('No Value Entered');
         await confirmation.locator('.popup-button-cancel').click();
         expect(state.secrets).toHaveLength(1);
     });

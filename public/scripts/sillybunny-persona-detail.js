@@ -205,7 +205,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     folderSelect.setAttribute('aria-label', t`Folder`);
     // A folder is organisation, not persona content: like the lorebook link it applies at once and stays out of the draft.
     const folder = createSelectRow({
-        select: folderSelect, label: t`Folder`, field: 'folder', searchLabel: t`Search`, emptyText: t`No results`, bounds: root,
+        select: folderSelect, label: t`Folder`, field: 'folder', searchLabel: t`Search`, emptyText: t`No Results`, bounds: root,
         onChange: value => {
             if (destroyed || !currentId || missing || !getPersonaRecord(currentId)) return;
             try {
@@ -243,7 +243,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     contentRow.row.querySelector('.ds-row-text').remove();
     const descriptionSection = createPrefGroup({ title: t`Persona Description`, field: 'section-description', rows: [contentRow] });
     descriptionSection.section.dataset.sbSection = 'description';
-    const expand = iconButton(t`Expand the editor`, 'maximize', 'editor_maximize sb-persona-entry-expand');
+    const expand = iconButton(t`Expand the Editor`, 'maximize', 'editor_maximize sb-persona-entry-expand');
     expand.dataset.for = description.id;
     attachToLabelRow(descriptionSection.section, expand);
     body.append(descriptionSection.section);
@@ -256,8 +256,8 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
     body.append(notesSection.section);
 
     // HUMAN: replace — chat lock requires the persona in use.
-    const chatLock = createSwitchRow({ label: t`Persona is locked to the current chat`, subtitle: t`Prevents persona changes in this chat`, field: 'chatLock', onChange: enabled => { void runImmediate(() => setPersonaChatLock(currentId, enabled)); } });
-    const characterConnection = createSwitchRow({ label: t`Persona is locked to the current character`, field: 'characterConnection', onChange: enabled => { void runImmediate(() => setPersonaCharacterConnection(currentId, enabled)); } });
+    const chatLock = createSwitchRow({ label: t`Persona Is Locked to the Current Chat`, subtitle: t`Prevents persona changes in this chat`, field: 'chatLock', onChange: enabled => { void runImmediate(() => setPersonaChatLock(currentId, enabled)); } });
+    const characterConnection = createSwitchRow({ label: t`Persona Is Locked to the Current Character`, field: 'characterConnection', onChange: enabled => { void runImmediate(() => setPersonaCharacterConnection(currentId, enabled)); } });
     const connectionList = element('div', 'sb-persona-connections');
     connectionList.setAttribute('role', 'list');
     connectionList.setAttribute('aria-label', t`Connections`);
@@ -416,7 +416,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             session.changed();
             refreshPreview();
         });
-        const noteBody = createTextAreaField({ label: t`Scenario Note Text`, field: 'appendix-description', input: textarea, rows: 6, expandLabel: t`Expand the editor` });
+        const noteBody = createTextAreaField({ label: t`Scenario Note Text`, field: 'appendix-description', input: textarea, rows: 6, expandLabel: t`Expand the Editor` });
         const active = createSwitchRow({ label: t`Enabled`, field: 'appendix-active', onChange: enabled => {
             void runImmediate(() => {
                 const ids = new Set(getPersonaActiveAppendixIds(currentId));
@@ -621,7 +621,7 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
             { label: useLabel, icon: 'fa-solid fa-circle-check', disabled: states.inUse, onSelect: () => { void runImmediate(() => usePersona(currentId)); } },
             { label: t`Change Persona Image`, icon: 'fa-solid fa-image', onSelect: () => changePersonaImage(currentId) },
             { label: t`Create Character Card From Persona`, icon: 'fa-solid fa-address-card', onSelect: () => { void runImmediate(() => convertPersonaToCharacter(currentId)); } },
-            ...(states.inUse ? [{ label: t`Click to set user name for all messages`, icon: 'fa-solid fa-sync', onSelect: () => document.getElementById('sync_name_button')?.click() }] : []),
+            ...(states.inUse ? [{ label: t`Click to Set User Name for All Messages`, icon: 'fa-solid fa-sync', onSelect: () => document.getElementById('sync_name_button')?.click() }] : []),
             { label: t`Duplicate Persona`, icon: 'fa-solid fa-clone', onSelect: () => { void runImmediate(() => duplicatePersonaRecord(currentId)); } },
             { label: t`Delete Persona`, icon: 'fa-solid fa-trash', danger: true, onSelect: () => {
                 void runImmediate(async () => {

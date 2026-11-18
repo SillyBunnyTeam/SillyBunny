@@ -128,7 +128,7 @@ export const surfaces = [
             await page.evaluate(async () => {
                 const { Popup, POPUP_RESULT } = await import('/scripts/popup.js');
                 void Popup.show.confirm('Delete media from message?', 'This action can\'t be undone.', {
-                    okButton: 'Delete one',
+                    okButton: 'Delete One',
                     defaultResult: POPUP_RESULT.NEGATIVE,
                     onOpening: popup => popup.okButton.classList.add('is-destructive'),
                     cancelButton: false,

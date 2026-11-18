@@ -7,6 +7,9 @@
 import { checkLabel, headerCase } from './capitalisation.js';
 
 const PLACEHOLDER = /^(?:TODO\(copy\)|lorum ipsum)$/i;
+// The maintainer keeps the loading pages' titles in character, a reference to the Touhou Project, so they do not name what
+// loads. They are on purpose and not a violation.
+const IN_CHARACTER_TITLES = new Set(['Loading…', 'Loading chats…', 'Loading chat…']);
 
 /**
  * @param {string} role A role of `capitalisation.js`.
@@ -15,7 +18,7 @@ const PLACEHOLDER = /^(?:TODO\(copy\)|lorum ipsum)$/i;
  */
 export function judgeRendered(role, text) {
     const flat = text.replace(/\s+/g, ' ').trim();
-    if (!/\p{L}/u.test(flat) || PLACEHOLDER.test(flat)) {
+    if (!/\p{L}/u.test(flat) || PLACEHOLDER.test(flat) || (role === 'heading' && IN_CHARACTER_TITLES.has(flat))) {
         return null;
     }
     const result = checkLabel(role, flat);

@@ -116,7 +116,7 @@ export function adaptQuickReplyEditor(root) {
         adoptContextItem(item) {
             const select = item.querySelector('select.qr--set');
             if (!(select instanceof HTMLSelectElement)) throw new TypeError('A Quick Reply context row needs its source set select.');
-            const row = createSelectRow({ select, label: t`Quick Reply Set`, field: 'quick-reply-context-set', searchLabel: t`Search`, emptyText: t`No results` });
+            const row = createSelectRow({ select, label: t`Quick Reply Set`, field: 'quick-reply-context-set', searchLabel: t`Search`, emptyText: t`No Results` });
             const chainedLabel = item.querySelector('.qr--isChainedLabel');
             if (!(chainedLabel instanceof HTMLLabelElement)) throw new TypeError('A Quick Reply context row needs its chain switch.');
             item.insertBefore(row.row, chainedLabel);

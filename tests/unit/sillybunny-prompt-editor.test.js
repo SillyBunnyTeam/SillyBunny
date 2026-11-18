@@ -242,7 +242,7 @@ describe('Prompt editor header', () => {
         const column = await mountEditor();
         column.querySelector('button[aria-label="Add Prompt"]').click();
         const menuItems = openActionMenu.mock.calls.at(-1)[0].sections[0].items;
-        menuItems.find(item => item.label === 'New prompt').onSelect();
+        menuItems.find(item => item.label === 'New Prompt').onSelect();
         await flush();
         await flush();
         const detail = column.querySelector('.sb-prompt-detail');
@@ -362,8 +362,8 @@ describe('Prompt editor token count and Expand', () => {
         expect(labelRow.querySelector('label').htmlFor).toBe(textarea.id);
         const expand = labelRow.querySelector(':scope > .editor_maximize');
         expect(expand.dataset.for).toBe('sb-prompt-form_prompt');
-        expect(expand.title).toBe('Expand the editor');
-        expect(expand.getAttribute('aria-label')).toBe('Expand the editor');
+        expect(expand.title).toBe('Expand the Editor');
+        expect(expand.getAttribute('aria-label')).toBe('Expand the Editor');
         expect(detail.querySelector('.sb-prompt-footer .editor_maximize')).toBeNull();
         detail.querySelector('.sb-prompt-mode-toggle').click();
         await flush();
@@ -462,7 +462,7 @@ describe('Prompt list', () => {
         boxes()[0].checked = false;
         boxes()[0].dispatchEvent(new Event('change', { bubbles: true }));
         expect(boxes().map(box => box.checked)).toEqual(Array(7).fill(false));
-        expect(triggers.textContent).toBe('All triggers');
+        expect(triggers.textContent).toBe('All Triggers');
     });
 
     test('Select in the list menu starts selection mode; Turn Off switches the chosen prompts off', async () => {
@@ -799,7 +799,7 @@ describe('Prompt editor draft', () => {
     test('a new prompt keeps one backup under its own entity and clears it on Save', async () => {
         const first = await mountEditor();
         first.querySelector('button[aria-label="Add Prompt"]').click();
-        openActionMenu.mock.calls.at(-1)[0].sections[0].items.find(item => item.label === 'New prompt').onSelect();
+        openActionMenu.mock.calls.at(-1)[0].sections[0].items.find(item => item.label === 'New Prompt').onSelect();
         await flush();
         await flush();
         const name = first.querySelector('.sb-prompt-title');
@@ -815,7 +815,7 @@ describe('Prompt editor draft', () => {
         global.toastr.info.mockClear();
         const second = await mountEditor();
         second.querySelector('button[aria-label="Add Prompt"]').click();
-        openActionMenu.mock.calls.at(-1)[0].sections[0].items.find(item => item.label === 'New prompt').onSelect();
+        openActionMenu.mock.calls.at(-1)[0].sections[0].items.find(item => item.label === 'New Prompt').onSelect();
         await flush();
         await flush();
         expect(global.toastr.info).toHaveBeenCalledTimes(1);

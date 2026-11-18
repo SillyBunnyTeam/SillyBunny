@@ -178,7 +178,7 @@ export function mountPersonaEditor(container) {
     const searchEntry = createSearchEntry({
         clearLabel: t`Clear Entry`,
         variant: 'bar', className: 'sb-persona-search-entry', inputClassName: 'sb-persona-search',
-        placeholder: t`Search...`, label: t`Search`, clearOnEscape: false,
+        placeholder: t`Search…`, label: t`Search`, clearOnEscape: false,
     });
     // The sort button ends the search bar, so the header keeps its other buttons and the title keeps its room.
     const searchField = element('div', 'sb-persona-search-field sb-list-search-bar');
@@ -380,8 +380,8 @@ export function mountPersonaEditor(container) {
         for (const [shown, glyph, label, accent] of [
             [state.inUse, 'circle-check', t`Current Persona`, true],
             [state.default, 'crown', t`Default Persona`],
-            [state.locked.chat, 'lock', t`Persona is locked to the current chat`],
-            [state.locked.character, 'link', t`Persona is locked to the current character`],
+            [state.locked.chat, 'lock', t`Persona Is Locked to the Current Chat`],
+            [state.locked.character, 'link', t`Persona Is Locked to the Current Character`],
         ]) {
             if (!shown) continue;
             const badge = icon(glyph);

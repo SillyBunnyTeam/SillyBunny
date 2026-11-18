@@ -208,7 +208,7 @@ export const surfaces = [
             await closeDialogs(page);
             await openAuditChat(page);
             await openAgentsList(page);
-            await chooseFromRowMenu(page, FIXTURES.agents.disabled.id, 'Apply to…');
+            await chooseFromRowMenu(page, FIXTURES.agents.disabled.id, 'Apply To…');
             await settleFrame(page, DIALOG_FRAME);
         },
         sources: [`${EXTENSION}/index.js`, `${EXTENSION}/ui/dialog-adapters.js`],

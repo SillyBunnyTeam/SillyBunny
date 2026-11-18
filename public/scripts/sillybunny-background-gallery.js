@@ -182,7 +182,7 @@ function openGalleryMenu(trigger) {
             { items: [item(t`Select`, 'check-double', () => selection.enter(null, trigger), { disabled: bulkBusy || !hooks.getImages().length })] },
             { items: [
                 item(t`Manage Folders`, 'folder', openManager),
-                item(t`Auto-select`, 'wand-magic', () => document.getElementById('auto_background')?.click()),
+                item(t`Auto-Select`, 'wand-magic', () => document.getElementById('auto_background')?.click()),
             ] },
         ],
     });
@@ -429,7 +429,7 @@ function buildHeader() {
 
     const entry = createSearchEntry({
         input: document.getElementById('bg-filter'), variant: 'bar', className: 'sb-bg-search-entry',
-        clearLabel: t`Clear Entry`, placeholder: t`Search...`, clearOnEscape: true,
+        clearLabel: t`Clear Entry`, placeholder: t`Search…`, clearOnEscape: true,
     });
     const sortButton = iconButton(t`Sort`, 'arrow-down-wide-short', openSortMenu, 'sb-bg-sort-button');
     sortButton.setAttribute('aria-haspopup', 'menu');

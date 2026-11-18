@@ -682,7 +682,7 @@ export async function openFontNamingDialog({ fileName, suggestion = guessFromFil
         weightSelect.append(option);
     }
     weightSelect.value = String(normalizeWeight(suggestion.weight) ?? 400);
-    const weight = createSelectRow({ select: weightSelect, label: t`Weight`, field: 'font-weight', searchLabel: t`Search`, emptyText: t`No results` });
+    const weight = createSelectRow({ select: weightSelect, label: t`Weight`, field: 'font-weight', searchLabel: t`Search`, emptyText: t`No Results` });
     let style = suggestion.style === 'italic' ? 'italic' : 'normal';
     const styleRow = createToggleRow({
         label: t`Style`,

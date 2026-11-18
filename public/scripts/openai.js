@@ -830,7 +830,7 @@ async function validateReverseProxy(signal) {
     const skipConfirm = accountStorage.getItem(rememberKey) === 'true';
 
     // SillyBunny: names the response with a verb (confirmVerb).
-    const confirmation = skipConfirm || await Popup.show.confirm(t`Connecting To Proxy`, await renderTemplateAsync('proxyConnectionWarning', { proxyURL: DOMPurify.sanitize(oai_settings.reverse_proxy) }), confirmVerb(t`Connect`));
+    const confirmation = skipConfirm || await Popup.show.confirm(t`Connecting to Proxy`, await renderTemplateAsync('proxyConnectionWarning', { proxyURL: DOMPurify.sanitize(oai_settings.reverse_proxy) }), confirmVerb(t`Connect`));
 
     if (signal?.aborted) {
         return;

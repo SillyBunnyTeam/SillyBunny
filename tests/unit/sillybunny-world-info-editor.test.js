@@ -376,7 +376,7 @@ describe('World Info shell', () => {
     test('an unused book gets an empty picker and WI has no origin Back button', async () => {
         await mount({ name: 'Book A', data: book() });
         await selectMenuAction('Used By…');
-        expect(openPicker).toHaveBeenCalledWith(expect.objectContaining({ items: [], emptyText: 'No results' }));
+        expect(openPicker).toHaveBeenCalledWith(expect.objectContaining({ items: [], emptyText: 'No Results' }));
         expect(container.querySelector('.sb-wi-origin-back')).toBeNull();
         expect(back).not.toHaveBeenCalled();
     });

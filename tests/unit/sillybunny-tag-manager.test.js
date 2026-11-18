@@ -206,13 +206,13 @@ describe('tag manager interactions', () => {
     test('the header plus opens a labelled name popover', () => {
         mount();
         const add = manager.root.querySelector('.sb-tag-manager__add');
-        expect(add.getAttribute('aria-label')).toBe('Create a new tag');
+        expect(add.getAttribute('aria-label')).toBe('Create a New Tag');
         add.click();
         const field = popoverOptions.content.querySelector('input');
         expect(field.placeholder).toBe('');
         expect(popoverOptions.titleInput).toBe(field);
-        expect(popoverOptions.titleLabel.textContent).toBe('Create a new tag');
-        expect(popoverOptions.content.querySelector('strong').textContent).toBe('Create a new tag');
+        expect(popoverOptions.titleLabel.textContent).toBe('Create a New Tag');
+        expect(popoverOptions.content.querySelector('strong').textContent).toBe('Create a New Tag');
     });
 
     test.each(['alphabetical', 'by_entries'])('dragging from %s keeps the grip and switches to manual ordering', mode => {
@@ -548,7 +548,7 @@ describe('tag manager batches, counts and refresh cost', () => {
         const action = manager.root.querySelector('.sb-tag-manager__empty .sb-status-page__action');
         expect(action.textContent).toBe('New');
         action.click();
-        expect(popoverOptions.title).toBe('Create a new tag');
+        expect(popoverOptions.title).toBe('Create a New Tag');
     });
 
     test('a search without a match offers no action', () => {

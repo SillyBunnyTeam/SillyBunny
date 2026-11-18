@@ -386,11 +386,11 @@ export function adoptFieldRow(row, { keepWrapper = false, keepLinks = false, man
     /** @type {{row: HTMLElement}} */
     let built;
     if (kind === 'select') {
-        built = createSelectRow({ ...options, select: /** @type {HTMLSelectElement} */ (control), searchLabel: t`Search`, emptyText: t`No results`, suffix: buttons.length ? buttons : undefined });
+        built = createSelectRow({ ...options, select: /** @type {HTMLSelectElement} */ (control), searchLabel: t`Search`, emptyText: t`No Results`, suffix: buttons.length ? buttons : undefined });
     } else if (kind === 'spin') {
         built = createSpinRow({ ...options, input: /** @type {HTMLInputElement} */ (control), normalize: false });
     } else {
-        built = createTextAreaField({ ...options, input: /** @type {HTMLTextAreaElement} */ (control), expandLabel: t`Expand the editor` });
+        built = createTextAreaField({ ...options, input: /** @type {HTMLTextAreaElement} */ (control), expandLabel: t`Expand the Editor` });
     }
 
     // The new captions take the nodes' content, so the translation keys, macro examples and copy placeholders survive.
@@ -1803,7 +1803,7 @@ function adoptExtensionField(control, kind, found) {
             field,
             noneLabel: control.dataset.placeholder ?? '',
             searchLabel: t`Search`,
-            emptyText: t`No results`,
+            emptyText: t`No Results`,
             suffix: actions,
             mapItem: describeOption,
         });
@@ -1815,7 +1815,7 @@ function adoptExtensionField(control, kind, found) {
             field,
             input: /** @type {HTMLTextAreaElement} */ (control),
             subtitle: subtitle?.textContent?.trim() || undefined,
-            expandLabel: t`Expand the editor`,
+            expandLabel: t`Expand the Editor`,
         });
         // A refresh or restore icon of the old title stays beside the label, ahead of Expand.
         for (const action of actions) row.expand ? row.labelRow.insertBefore(action, row.expand) : row.labelRow.append(action);

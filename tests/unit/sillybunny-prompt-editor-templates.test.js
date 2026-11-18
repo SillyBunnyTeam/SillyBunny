@@ -231,7 +231,7 @@ describe('Text Completion template detail', () => {
             expect(label.htmlFor).toBe(textarea.id);
             const expand = labelRow.querySelector(':scope > .editor_maximize');
             expect(expand.dataset.for).toBe(textarea.id);
-            expect(expand.title).toBe('Expand the editor');
+            expect(expand.title).toBe('Expand the Editor');
             expect(expand.getAttribute('aria-describedby')).toBe(label.id);
         }
         expect(fields.map(field => field.querySelector('label').textContent)).toEqual(['User Message Prefix', 'User Message Suffix']);

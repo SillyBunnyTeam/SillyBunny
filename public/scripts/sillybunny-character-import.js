@@ -88,7 +88,7 @@ export function mountCharacterImport(host) {
     picker.hidden = true;
     // The row is the drop area and the way to browse: a file dragged anywhere over the panel lands on it.
     const drop = createButtonRow({
-        label: t`Import Character from File`, icon: 'file-import', field: 'file-drop', id: 'sb_character_import_drop',
+        label: t`Import Character From File`, icon: 'file-import', field: 'file-drop', id: 'sb_character_import_drop',
         onActivate: () => { if (!busy) picker.click(); },
     });
     drop.row.classList.add('sb-import-drop');
@@ -206,7 +206,7 @@ export function mountCharacterImport(host) {
         drop.setDisabled(true);
         submit.setDisabled(true);
         picker.disabled = true;
-        // HUMAN: replace — loading title that names what loads, in header capitalisation and without an ellipsis.
+        // Kept on purpose by the maintainer: the loading title is in character, a reference to the Touhou Project, so it does not name what loads. Do not reword it.
         results.replaceChildren(createStatusPage({ state: 'loading', title: t`Loading…` }).element);
         summary.textContent = '';
         try {

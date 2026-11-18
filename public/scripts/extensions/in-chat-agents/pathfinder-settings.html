@@ -54,7 +54,7 @@
         </button>
         <div class="pf--section-body" id="pf--lorebook-body">
             <div class="pf--section-desc">
-                Choose which lorebooks Pathfinder can access.
+                Choose which lorebooks Pathfinder can access
             </div>
             <div id="pf--lorebook-list" class="pf--lorebook-list">
                 <div class="pf--empty-state">
@@ -72,14 +72,14 @@
                     <input type="checkbox" id="pf--auto-use-attached" data-pf-setting="autoUseAttachedLorebook" />
                     <span>Automatically Use Attached Character/Chat Lorebooks</span>
                 </label>
-                <div class="pf--setting-help">When enabled, Pathfinder auto-selects lorebooks attached to the active character card or chat.</div>
+                <div class="pf--setting-help">When enabled, Pathfinder auto-selects lorebooks attached to the active character card or chat</div>
             </div>
             <div class="pf--setting-group pf--lorebook-toggle">
                 <label class="checkbox_label">
                     <input type="checkbox" id="pf--auto-sync-lorebooks" data-pf-setting="autoSyncLorebooksOnChatChange" />
                     <span>Reset selections to the current chat/character lorebooks on chat change</span>
                 </label>
-                <div class="pf--setting-help">Prevents a previous chat's lorebook from staying selected when the new chat has no attached lorebook.</div>
+                <div class="pf--setting-help">Prevents a previous chat's lorebook from staying selected when the new chat has no attached lorebook</div>
             </div>
             <div class="pf--setting-group pf--lorebook-toggle">
                 <label class="checkbox_label">
@@ -102,7 +102,7 @@
             <!-- Warning banner when both modes enabled -->
             <div id="pf--dual-mode-warning" class="pf--dual-mode-warning" role="status" aria-live="polite" style="display: none;">
                 <i class="fa-solid fa-triangle-exclamation"></i>
-                <span>Both modes enabled — this uses more tokens but gives the AI both automatic context and active lorebook control.</span>
+                <span>Both modes enabled — this uses more tokens but gives the AI both automatic context and active lorebook control</span>
             </div>
 
             <div class="pf--mode-cards">
@@ -207,7 +207,7 @@
                     <input type="checkbox" id="pf--dedupe-natural-activation" data-pf-setting="dedupeNaturalActivation" />
                     <span>Skip entries already activated by World Info</span>
                 </label>
-                <div class="pf--setting-help">Keeps keyword/constant lore active naturally, then removes those entries from Pathfinder's injected context.</div>
+                <div class="pf--setting-help">Keeps keyword/constant lore active naturally, then removes those entries from Pathfinder's injected context</div>
             </div>
         </div>
     </div>
@@ -237,7 +237,7 @@
                 <div class="pf--setting-group">
                     <label class="pf--setting-label" for="pf--prompt-max-tokens">Max Tokens</label>
                     <input type="number" id="pf--prompt-max-tokens" class="text_pole" min="100" max="200000" value="64000" />
-                    <div class="pf--setting-help">Maximum tokens Pathfinder can receive from this pipeline stage.</div>
+                    <div class="pf--setting-help">Maximum tokens Pathfinder can receive from this pipeline stage</div>
                 </div>
                 <div class="pf--setting-group">
                     <label class="pf--setting-label" for="pf--prompt-user">User Prompt Template</label>
@@ -272,7 +272,7 @@
                     <input type="checkbox" id="pf--enable-summarize-tool" data-tool="Pathfinder_Summarize" />
                     <span>Allow Summary Memory Tool</span>
                 </label>
-                <div class="pf--setting-help">Lets Pathfinder write scene/event summaries into enabled lorebooks with the Summarize tool.</div>
+                <div class="pf--setting-help">Lets Pathfinder write scene/event summaries into enabled lorebooks with the Summarize tool</div>
             </div>
             <div class="pf--setting-row">
                 <div class="pf--setting-group">
@@ -280,12 +280,12 @@
                         <input type="checkbox" id="pf--auto-summary" data-pf-setting="autoSummary" />
                         <span>Auto-Track Summary Interval</span>
                     </label>
-                    <div class="pf--setting-help">Counts sent/received messages toward automatic summary prompts.</div>
+                    <div class="pf--setting-help">Counts sent/received messages toward automatic summary prompts</div>
                 </div>
                 <div class="pf--setting-group">
                     <label class="pf--setting-label" for="pf--auto-summary-interval">Summary Interval</label>
                     <input type="number" id="pf--auto-summary-interval" class="text_pole" min="2" max="200" value="20" data-pf-setting="autoSummaryInterval" />
-                    <div class="pf--setting-help">Messages before Pathfinder should consider writing a memory summary.</div>
+                    <div class="pf--setting-help">Messages before Pathfinder should consider writing a memory summary</div>
                 </div>
             </div>
             <div class="pf--setting-group pf--summary-editor">
@@ -374,7 +374,7 @@
             <span class="pf--badge">Detailed</span>
         </button>
         <div class="pf--section-body" id="pf--retrieval-log-body" style="display: none;">
-            <div class="pf--section-desc">Shows what Pathfinder actually selected or injected, including selected lore entries, stage results, and the prompt payload Pathfinder added before generation.</div>
+            <div class="pf--section-desc">Shows what Pathfinder actually selected or injected, including selected lore entries, stage results, and the prompt payload Pathfinder added before generation</div>
             <div class="pf--log-mode-row">
                 <label class="pf--log-mode-control" for="pf--log-mode">
                     <span>Log Detail</span>

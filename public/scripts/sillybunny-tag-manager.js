@@ -362,7 +362,7 @@ export function createTagManager(adapter) {
             item(t`Background Color`, 'palette', () => showColor(tag, 'color')),
             item(t`Text Color`, 'font', () => showColor(tag, 'color2')),
         ] }, { items: [
-            item(t`Hide on character card`, 'eye-slash', () => mutate(() => tag.is_hidden_on_character_card = !tag.is_hidden_on_character_card), { kind: 'check', checked: Boolean(tag.is_hidden_on_character_card) }),
+            item(t`Hide on Character Card`, 'eye-slash', () => mutate(() => tag.is_hidden_on_character_card = !tag.is_hidden_on_character_card), { kind: 'check', checked: Boolean(tag.is_hidden_on_character_card) }),
         ] }, { items: moves }, { items: [item(t`Delete`, 'trash-can', () => actions.delete(row), { danger: true })] }];
     }
 
@@ -419,7 +419,7 @@ export function createTagManager(adapter) {
                 items,
                 selected: null,
                 searchLabel: t`Search`,
-                emptyText: t`No results`,
+                emptyText: t`No Results`,
                 bounds: frame?.surface ?? null,
                 onSelect: key => {
                     if (assigned.has(key)) return;
@@ -495,7 +495,7 @@ export function createTagManager(adapter) {
         const dot = element('span', 'sb-tag-manager__dot');
         dot.dataset.sbTagId = tag.id;
         dot.setAttribute('aria-hidden', 'true');
-        const more = rowButton(t`Manage tags`, 'ellipsis-vertical', trigger => openMenu(trigger, rowSections(currentTag(), row), currentTag().name), 'sb-tag-manager__row-menu');
+        const more = rowButton(t`Manage Tags`, 'ellipsis-vertical', trigger => openMenu(trigger, rowSections(currentTag(), row), currentTag().name), 'sb-tag-manager__row-menu');
         more.setAttribute('aria-haspopup', 'menu');
         const entity = createEntityRow({
             key: entityKey('tag', tag.id), label: tag.name, title: name, avatar: dot,
@@ -617,7 +617,7 @@ export function createTagManager(adapter) {
         empty.hidden = Boolean(shown);
         if (!shown) {
             empty.replaceChildren(createStatusPage({
-                state: query ? 'no-results' : 'empty', icon: 'tags', title: query ? t`No Results` : t`Create a new tag`, compact: true,
+                state: query ? 'no-results' : 'empty', icon: 'tags', title: query ? t`No Results` : t`Create a New Tag`, compact: true,
                 actions: query ? [] : [{ label: t`New`, primary: true, onActivate: () => openCreatePopover(addButton) }],
             }).element);
         }
@@ -643,7 +643,7 @@ export function createTagManager(adapter) {
 
     function openCreatePopover(trigger) {
         const content = element('div', 'sb-manager-name-popover');
-        const label = element('strong', 'sb-manager-name-popover__label', t`Create a new tag`);
+        const label = element('strong', 'sb-manager-name-popover__label', t`Create a New Tag`);
         const input = element('input', 'text_pole sb-dialog__entry sb-manager-name-popover__input');
         input.type = 'text';
         label.id = 'sb-tag-manager-new-label';
@@ -667,7 +667,7 @@ export function createTagManager(adapter) {
             if (!create.disabled) { event.preventDefault(); create.click(); }
         });
         content.append(label, input, error, create);
-        const popup = openPopover({ trigger, content, title: t`Create a new tag`, titleLabel: label, titleInput: input, bounds: frame?.surface ?? null, initialFocus: () => input });
+        const popup = openPopover({ trigger, content, title: t`Create a New Tag`, titleLabel: label, titleInput: input, bounds: frame?.surface ?? null, initialFocus: () => input });
     }
     const unbindKeyboard = bindListKeyboard(list, {
         keySourceSelector: '.drag-handle',
@@ -705,7 +705,7 @@ export function createTagManager(adapter) {
                 title: t`Tag Management`,
                 className: 'sb-tag-manager',
                 content,
-                search: { placeholder: t`Search...`, label: t`Search`, collapsed: true, escapeClearsFirst: true, closeEmptyOnBlur: true, typeToSearchSelector: '.tag_view_item', debounce: 300, controls: [sortButton], onChange: () => refresh() },
+                search: { placeholder: t`Search…`, label: t`Search`, collapsed: true, escapeClearsFirst: true, closeEmptyOnBlur: true, typeToSearchSelector: '.tag_view_item', debounce: 300, controls: [sortButton], onChange: () => refresh() },
                 // A pending invalid rename blocks the menus as it blocks closing.
                 menu: trigger => (canClose() ? headerSections(trigger) : []),
                 menuLabel: t`Tag Management`,
@@ -731,7 +731,7 @@ export function createTagManager(adapter) {
                 ],
                 onChange: () => syncSelectionState(), onExit: () => syncSelectionState(),
             });
-            const add = createIconButton(t`Create a new tag`, 'plus', 'sb-tag-manager__add');
+            const add = createIconButton(t`Create a New Tag`, 'plus', 'sb-tag-manager__add');
             add.addEventListener('click', () => openCreatePopover(add));
             add.addEventListener('keydown', event => {
                 if (event.key === 'Enter') event.stopPropagation();

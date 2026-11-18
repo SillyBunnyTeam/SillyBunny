@@ -533,7 +533,7 @@ const generateChallenge = (codeVerifier) => {
 async function authorizeOpenRouter() {
     if (secret_state[SECRET_KEYS.OPENROUTER]) {
         // SillyBunny: names the response with a verb (confirmVerb).
-        const confirmed = await Popup.show.confirm(t`OpenRouter API key already exists`, t`Do you really wish to create a new OpenRouter key? Your existing key will not be deleted.`, confirmVerb(t`Authorize`));
+        const confirmed = await Popup.show.confirm(t`OpenRouter API Key Already Exists`, t`Do you really wish to create a new OpenRouter key? Your existing key will not be deleted.`, confirmVerb(t`Authorize`));
         if (!confirmed) {
             return;
         }
@@ -695,7 +695,7 @@ async function openKeyManagerDialog(key) {
                 return;
             }
             // SillyBunny: names the response with a verb (confirmVerb).
-            const allowEmpty = await Popup.show.confirm(t`No value entered`, t`No value was entered for the secret. Do you want to add an empty secret?`, confirmVerb(t`Add`));
+            const allowEmpty = await Popup.show.confirm(t`No Value Entered`, t`No value was entered for the secret. Do you want to add an empty secret?`, confirmVerb(t`Add`));
             if (!allowEmpty) {
                 return;
             }

@@ -54,7 +54,7 @@ describe('attachSortableKeys: focus targets', () => {
         const first = list.children[0];
         expect(first.getAttribute('tabindex')).toBe('0');
         expect(first.getAttribute('role')).toBe('group');
-        expect(first.getAttribute('aria-label')).toBe('Drag to reorder A');
+        expect(first.getAttribute('aria-label')).toBe('Drag to Reorder A');
         expect(first.getAttribute('aria-keyshortcuts')).toBe('Alt+ArrowUp Alt+ArrowDown Alt+Home Alt+End');
     });
 
@@ -70,7 +70,7 @@ describe('attachSortableKeys: focus targets', () => {
         expect(grip.getAttribute('tabindex')).toBe('-1');
         expect(list.children[0].querySelector('.grip').getAttribute('tabindex')).toBe('0');
         expect(grip.getAttribute('role')).toBe('button');
-        expect(grip.getAttribute('aria-label')).toBe('Drag to reorder B');
+        expect(grip.getAttribute('aria-label')).toBe('Drag to Reorder B');
         expect(row.hasAttribute('tabindex')).toBe(false);
     });
 
@@ -82,8 +82,8 @@ describe('attachSortableKeys: focus targets', () => {
 
     test('falls back to the row text, then to a generic name', () => {
         const { list } = makeList({ names: ['Alpha', ''], attach: { name: null } });
-        expect(list.children[0].getAttribute('aria-label')).toBe('Drag to reorder Alpha');
-        expect(list.children[1].getAttribute('aria-label')).toBe('Drag to reorder Entry');
+        expect(list.children[0].getAttribute('aria-label')).toBe('Drag to Reorder Alpha');
+        expect(list.children[1].getAttribute('aria-label')).toBe('Drag to Reorder Entry');
     });
 
     test('is attached once per list', () => {
@@ -432,7 +432,7 @@ describe('attachSortableKeys: rows that arrive later', () => {
 
         list.replaceChildren(...['X', 'Y'].map(name => Object.assign(document.createElement('div'), { textContent: name })));
         await flush();
-        expect([...list.children].map(row => row.getAttribute('aria-label'))).toEqual(['Drag to reorder X', 'Drag to reorder Y']);
+        expect([...list.children].map(row => row.getAttribute('aria-label'))).toEqual(['Drag to Reorder X', 'Drag to Reorder Y']);
     });
 
     test('shows the current name when a row is focused', () => {
@@ -443,7 +443,7 @@ describe('attachSortableKeys: rows that arrive later', () => {
         const row = list.children[0];
         row.querySelector('input').value = 'Renamed';
         row.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
-        expect(row.getAttribute('aria-label')).toBe('Drag to reorder Renamed');
+        expect(row.getAttribute('aria-label')).toBe('Drag to Reorder Renamed');
     });
 });
 
@@ -474,7 +474,7 @@ describe('adoptUpstreamSortables', () => {
         $(listed).sortable({ stop });
         $(other).sortable({ stop });
 
-        expect(listed.children[0].getAttribute('aria-label')).toBe('Drag to reorder Top K');
+        expect(listed.children[0].getAttribute('aria-label')).toBe('Drag to Reorder Top K');
         expect(other.children[0].hasAttribute('tabindex')).toBe(false);
         press(listed.children[0], 'ArrowDown');
         expect(listed.children[1].dataset.id).toBe('0');

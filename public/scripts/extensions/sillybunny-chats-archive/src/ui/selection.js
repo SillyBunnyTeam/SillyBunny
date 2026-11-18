@@ -86,7 +86,7 @@ function openCollectionsMenu(ctx, state, ui, trigger) {
     const mutate = mutation => mutateSelectedChats(ctx, state, ui, mutation);
     const collections = state.organization?.collections ?? [];
     const sections = collections.length === 0
-        ? [{ items: [{ label: tr(ctx, 'None yet.'), disabled: true, onSelect: () => {} }] }]
+        ? [{ items: [{ label: tr(ctx, 'None Yet'), disabled: true, onSelect: () => {} }] }]
         : [
             {
                 title: tr(ctx, 'Add Collection'),

@@ -245,7 +245,7 @@ export function openChatHistoryDialog() {
         content: popup,
         className: 'sb-chat-history-dialog',
         search: {
-            placeholder: searchInput.placeholder || t`Search...`,
+            placeholder: searchInput.placeholder || t`Search…`,
             label: t`Search`,
             collapsed: true,
             onChange(query) {
@@ -389,7 +389,7 @@ export function openChatHistoryDialog() {
         });
     };
     const decorateAllRows = () => chatList.querySelectorAll('.select_chat_block_wrapper').forEach(decorateRow);
-    const emptyState = createStatusPage({ state: 'empty', icon: 'comments', title: t`No Chats`, description: t`Saved chats appear here.`, compact: true });
+    const emptyState = createStatusPage({ state: 'empty', icon: 'comments', title: t`No Chats`, description: t`Saved chats appear here`, compact: true });
     let emptyStateMode = null;
     const syncEmptyState = () => {
         const hasRows = chatList.querySelector('.select_chat_block_wrapper') instanceof HTMLElement;
@@ -404,7 +404,7 @@ export function openChatHistoryDialog() {
                 state: searching ? 'no-results' : 'empty',
                 icon: searching ? 'magnifying-glass' : 'comments',
                 title: searching ? t`No Results` : t`No Chats`,
-                description: searching ? '' : t`Saved chats appear here.`,
+                description: searching ? '' : t`Saved chats appear here`,
             });
         }
         if (!hasRows && !chatList.contains(emptyState.element)) chatList.append(emptyState.element);

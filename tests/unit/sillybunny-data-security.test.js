@@ -136,7 +136,7 @@ describe('Data & Security groups', () => {
         presentDataSecurity(container);
         expect(container.querySelector('#UI-language-block .ds-row-label').dataset.i18n).toBe('UI Language');
         expect(container.querySelector('#UI-language-block .ds-row-label').textContent).toBe('Language');
-        expect(container.querySelector('#UI-language-block .ds-row-subtitle').textContent).toBe('Choose which language is used for menus and settings.');
+        expect(container.querySelector('#UI-language-block .ds-row-subtitle').textContent).toBe('Choose which language is used for menus and settings');
         expect(container.querySelector('#version_display').closest('.ds-row-property').querySelector('.ds-row-subtitle').dataset.i18n).toBe('Version');
     });
 

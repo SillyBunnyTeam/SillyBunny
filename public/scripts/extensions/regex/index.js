@@ -1219,7 +1219,7 @@ async function onRegexDebuggerOpenClick() {
         field: 'regex-debugger-render-mode',
         title: t`Render`,
         searchLabel: t`Search`,
-        emptyText: t`No results`,
+        emptyText: t`No Results`, // SillyBunny: the empty-state title of the picker is in header capitalisation by DESIGN.md
     });
     controlOptions.replaceWith(displayModeRow.row, renderRow.row);
 
@@ -1385,7 +1385,7 @@ async function onRegexDebuggerOpenClick() {
 
         popupContainer.append(navPanel).append(contentPanel);
         // SillyBunny: expanded debugger views are Window-tier pages; the shared frame owns scrolling.
-        callGenericPopup(popupContainer, POPUP_TYPE.TEXT, t`Step-by-step Transformation`, { tier: 'window', title: t`Step-by-step Transformation`, wide: true, allowVerticalScrolling: false });
+        callGenericPopup(popupContainer, POPUP_TYPE.TEXT, t`Step-By-Step Transformation`, { tier: 'window', title: t`Step-By-Step Transformation`, wide: true, allowVerticalScrolling: false });
     });
 
     debuggerHtml.find('#regex_debugger_expand_final').on('click', function () {

@@ -77,7 +77,7 @@ import { PARITY_FAMILIES, PARITY_VIEWPORTS, RULES } from '../helpers/parity/inde
 //   the `sillybunny` section unless SURFACE_COPY_ALLOW_SILLYBUNNY=1 is set too.
 // SURFACE_COPY_FIXTURE=<path> reads and writes that file instead of the committed fixture.
 // SURFACE_COPY_DIR=<directory> sets where every string that the check judged goes (default: <tmp>/surface-copy/<surface>.json).
-// SURFACE_COPY_INJECT=1 puts a button with a label in the wrong case ('Date added', which the tree holds as a menu item; SURFACE_COPY_INJECT=<text>
+// SURFACE_COPY_INJECT=1 puts a button with a label in the wrong case ('Date added', which no surface holds in that case; SURFACE_COPY_INJECT=<text>
 //   names another), and one that shows user data in the wrong case, into every root, to show that the check fails on the label and leaves the
 //   data alone; it cannot be combined with an update.
 const SMOKE_VIEWPORTS = ['1440x900', '390x844'];
