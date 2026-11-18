@@ -18,6 +18,13 @@
     font-family: var(--mainFontFamily);
 }
 
+/* The settings scroller hides a direct child that is `aria-busy` until its module has presented it
+   (`.sb-shell-panel-scroller > [aria-busy='true']` in sillybunny-tabs.css). Here `aria-busy` marks a running import, and the
+   Loading page inside this child is what the user is waiting on, so it stays painted. */
+#sb_character_import_panel > #sb_character_import_content {
+    visibility: visible;
+}
+
 #sb_character_import_content {
     display: flex;
     flex-direction: column;

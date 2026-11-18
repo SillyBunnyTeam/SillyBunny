@@ -123,6 +123,23 @@ test('an import that cannot refresh the character list ends on the Error page, w
     await expect(page.locator('#sb_character_import_content')).toHaveAttribute('aria-busy', 'false');
 });
 
+test('a running import shows its Loading page, which a user sees, and then its results', async ({ page }) => {
+    await bootImport(page);
+    const release = {};
+    const held = new Promise(resolve => { release.go = resolve; });
+    await page.route('**/api/content/importUUID', async route => { await held; await route.fallback(); });
+    await page.locator('#sb_character_import_urls').fill('lorebooks/qa/book');
+    await page.locator('#sb_character_import_url_action').click();
+    const results = page.locator('#sb_character_import_results');
+    // The page is in the document after its short delay; a user sees it only when it is painted.
+    await expect(results.locator('.sb-status-page[data-state="loading"]')).toBeVisible();
+    await expect(page.locator('#sb_character_import_content')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('#sb_character_import_content')).toHaveCSS('visibility', 'visible');
+    release.go();
+    await expect(results.locator('[data-import-kind="lorebook"]')).toBeVisible();
+    await expect(page.locator('#sb_character_import_content')).toHaveAttribute('aria-busy', 'false');
+});
+
 const typography = node => {
     const style = getComputedStyle(node);
     return { fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight, color: style.color };

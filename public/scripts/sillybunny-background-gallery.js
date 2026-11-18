@@ -34,8 +34,8 @@ const LONG_PRESS_SLOP = 8;
 const TOUCH_GRACE_MS = 800;
 
 const STYLESHEETS = [
-    { href: 'css/sillybunny-editor-shell.css?v=20261117zo', id: 'deferred-editor-shell-css' },
-    { href: 'css/sillybunny-character-editor.css?v=20261117zg', id: 'deferred-editor-chrome-css' },
+    { href: 'css/sillybunny-editor-shell.css?v=20261118t', id: 'deferred-editor-shell-css' },
+    { href: 'css/sillybunny-character-editor.css?v=20261118t', id: 'deferred-editor-chrome-css' },
     { href: 'css/sillybunny-entity-list.css?v=20261117s', id: 'deferred-entity-list-css' },
     { href: 'css/sillybunny-background-gallery.css?v=20261118s', id: 'deferred-background-gallery-css' },
 ];
