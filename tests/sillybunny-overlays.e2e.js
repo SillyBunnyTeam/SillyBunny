@@ -691,3 +691,68 @@ for (const width of [1440, 390]) {
         });
     });
 }
+
+/* eslint-disable playwright/no-conditional-in-test, playwright/no-conditional-expect -- The phone has two Settings views; the desktop has one. */
+for (const width of [1440, 390]) {
+    test.describe(`${width}px Settings Close`, () => {
+        test.use({ viewport: { width, height: 844 }, hasTouch: width === 390, isMobile: width === 390 });
+
+        test('the view that shows has a reachable Close, and Escape closes', async ({ page }) => {
+            await prepareCharacterList(page);
+            const settings = page.locator('#sb-settings-page');
+            const contentClose = page.locator('#sb-settings-close');
+            const sidebarClose = page.locator('#sb-settings-sidebar-close');
+            const open = async () => {
+                await page.locator('#sb-left-shell-toggle').click();
+                await expect(settings).toBeVisible();
+            };
+            await open();
+
+            if (width === 390) {
+                if (await settings.evaluate(node => node.classList.contains('sb-settings-page--content'))) {
+                    await page.locator('#sb-settings-back').click();
+                }
+                await expect(settings).not.toHaveClass(/sb-settings-page--content/);
+                // The content header is off screen and inert while the sidebar view shows, so the sidebar header carries Close.
+                await expect(sidebarClose).toBeInViewport({ ratio: 1 });
+                await expect(sidebarClose).toHaveAttribute('aria-label', 'Close Settings');
+                const box = await sidebarClose.boundingBox();
+                expect(box.width).toBeGreaterThanOrEqual(44);
+                expect(box.height).toBeGreaterThanOrEqual(44);
+                // Focus order: the sidebar's own controls come first.
+                await page.locator('#sb-settings-search-toggle').focus();
+                await page.keyboard.press('Tab');
+                await expect(sidebarClose).toBeFocused();
+                await sidebarClose.click();
+                await expect(settings).toBeHidden();
+
+                // Settings reopens on the page that was last shown; a tab press makes sure the content view is the one on screen.
+                await open();
+                if (!await settings.evaluate(node => node.classList.contains('sb-settings-page--content'))) {
+                    await page.locator('.sb-settings-tab').first().click();
+                }
+                await expect(settings).toHaveClass(/sb-settings-page--content/);
+                await expect(contentClose).toBeInViewport({ ratio: 1 });
+                await expect(page.locator('#sb-settings-back')).toBeInViewport({ ratio: 1 });
+                await contentClose.focus();
+                await page.keyboard.press('Escape');
+                await expect(settings).toBeHidden();
+
+                await open();
+                await page.locator('#sb-settings-back').click();
+                await expect(sidebarClose).toBeInViewport({ ratio: 1 });
+                await sidebarClose.focus();
+                await page.keyboard.press('Escape');
+                await expect(settings).toBeHidden();
+            } else {
+                await expect(sidebarClose).toBeHidden();
+                await expect(contentClose).toBeVisible();
+                await expect(contentClose).toHaveAttribute('aria-label', 'Close Settings');
+                await contentClose.focus();
+                await page.keyboard.press('Escape');
+                await expect(settings).toBeHidden();
+            }
+        });
+    });
+}
+/* eslint-enable playwright/no-conditional-in-test, playwright/no-conditional-expect */

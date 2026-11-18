@@ -338,6 +338,34 @@ for (const width of [1440, 390]) {
             await expect(managerWindow).toHaveCount(0);
         });
 
+        test('a long member list keeps its height while it is scrolled to the end', async ({ page }) => {
+            await prepare(page, width);
+            await openFromList(page);
+            await row(page, fixtureTag).locator('.ds-entity-row__avatar').click();
+            const managerWindow = page.locator('.sb-dialog-host:has(> #tag_view_list)');
+            const members = managerWindow.locator('.sb-tag-manager__members');
+            await expect(members.locator('.ds-entity-row')).toHaveCount(1);
+            await members.evaluate(list => {
+                const template = list.firstElementChild;
+                while (list.children.length < 40) list.append(template.cloneNode(true));
+            });
+            const body = members.locator('xpath=ancestor::*[contains(@class, "sb-dialog__body")][1]');
+            const heightBefore = await body.evaluate(node => node.scrollHeight);
+            await body.evaluate(async node => {
+                const frame = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                for (let top = 0; top <= node.scrollHeight; top += node.clientHeight / 3) {
+                    node.scrollTop = top;
+                    await frame();
+                }
+                node.scrollTop = node.scrollHeight;
+                await frame();
+            });
+            // A row that is estimated shorter or taller than it is grows or shrinks when it is first drawn, and the content below moves
+            // under the pointer (WebKit has no scroll anchoring to hide it).
+            await page.waitForTimeout(250);
+            expect(await body.evaluate(node => node.scrollHeight)).toBe(heightBefore);
+        });
+
         test('colour picker updates a list chip immediately, and slash-command writers refresh the open dialog', async ({ page }) => {
             await prepare(page, width);
             await openFromList(page);

@@ -305,6 +305,15 @@
     border-radius: 0;
 }
 
+/* The only entity list that holds hundreds of rows, so the only one that skips the layout of rows off screen: other lists draw every
+   row, because a row that grows when first drawn moves the content below it, and WebKit has no scroll anchoring. The estimate is
+   a content-box height (the row's padding and border come on top), set to the usual row, so that a row drawn later moves its
+   neighbours by a few pixels at most. */
+.sb-character-list__rows > .ds-entity-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+}
+
 .sb-character-list .ds-entity-row.is-activating-entity {
     transition: none;
 }
@@ -531,6 +540,7 @@ body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row
     max-width: none;
     height: auto;
     min-height: 190px;
+    contain-intrinsic-size: auto 242px;
     padding: 12px;
     border: 1px solid var(--sb-shell-border);
     border-radius: var(--sb-radius-card);
@@ -701,6 +711,7 @@ body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row
 
     body.charListGrid .sb-character-list #rm_print_characters_block > .ds-entity-row:not(.sb-folder-row) {
         min-height: 174px;
+        contain-intrinsic-size: auto 203px;
         padding: 8px;
     }
 

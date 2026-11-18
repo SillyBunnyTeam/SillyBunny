@@ -1923,6 +1923,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-13, UI polish sweep (task 2.2). |
 | Owner | `TODO(copy)` |
 
+### `public/index.html` - settings sidebar Close
+| Field | Value |
+| --- | --- |
+| File | `public/index.html` |
+| Area | Settings sidebar header: a second Close button, shown only in the phone layout. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | `initSettingsPageClose()` in `public/scripts/sillybunny-tabs.js`, which binds it to the same `closeSettingsPage()` as `#sb-settings-close`. |
+| Adapter shape | One marked `<button id="sb-settings-sidebar-close">` after the search toggle in `#sb-settings-sidebar-header`; `#sb-settings-close` stays in the content header, and the new button is `display: none` above the phone width. |
+| Protecting tests | `tests/sillybunny-overlays.e2e.js` ("Settings Close"). |
+| Validation | 2026-11-18: the "Settings Close" test at 1440x900 and 390x844 in Chromium and WebKit. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6m). |
+| Owner | `TODO(copy)` |
+
 ### Frontend identity, localization, and static boot assets
 | Field | Value |
 | --- | --- |

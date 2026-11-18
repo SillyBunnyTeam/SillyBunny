@@ -759,13 +759,13 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118zv', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261118zv', id: 'deferred-entity-list-css' },
-        { href: 'css/sillybunny-prompt-editor.css?v=20261118zu', id: 'deferred-prompt-editor-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-prompt-editor.css?v=20261118zza', id: 'deferred-prompt-editor-css' },
     ],
     // SillyBunny: Presets builds the Edit Prompts button row, which the editor shell sheet styles. NovelAI's Logit Bias entries are entity rows, which the entity list sheet styles.
     'left:prompting': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261118zv', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20260829a', id: 'deferred-world-info-css' },
@@ -778,25 +778,25 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         // SillyBunny: persona editor assets stay deferred like World Info
         { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118zv', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261118zv', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261117l', id: 'deferred-persona-editor-css' },
         { href: 'css/sillybunny-persona-detail.css?v=20261118zv', id: 'deferred-persona-detail-css' },
     ],
     'characters:characters': [
         // SillyBunny: the shared list and its selection UI stay deferred until the mount gate resolves.
-        { href: 'css/sillybunny-entity-list.css?v=20261118zv', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118zv', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261118zo', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261118zza', id: 'deferred-character-list-css' },
     ],
     'characters:groups': [
         // SillyBunny: Characters and Groups use the same deferred selection UI.
-        { href: 'css/sillybunny-entity-list.css?v=20261118zv', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261118zv', id: 'deferred-editor-chrome-css' },
-        { href: 'css/sillybunny-character-list.css?v=20261118zo', id: 'deferred-character-list-css' },
+        { href: 'css/sillybunny-character-list.css?v=20261118zza', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261118zv', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261118zg', id: 'deferred-character-import-css' },
     ],
     'left:advanced-formatting': [
@@ -805,7 +805,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     // SillyBunny: the Extensions list builds button, entry and activatable rows, which the editor shell sheet styles. The Regex page lists its scripts as entity rows.
     'right:extensions': [
         { href: 'css/sillybunny-editor-shell.css?v=20261118zv', id: 'deferred-editor-shell-css' },
-        { href: 'css/sillybunny-entity-list.css?v=20261118zv', id: 'deferred-entity-list-css' },
+        { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/extensions-panel.css?v=20261118h', id: 'deferred-extensions-panel-css' },
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
@@ -13798,6 +13798,12 @@ function initSettingsPageClose() {
     if (closeButton instanceof HTMLButtonElement && closeButton.dataset.sbBound !== 'true') {
         closeButton.dataset.sbBound = 'true';
         closeButton.addEventListener('click', closeSettingsPage);
+    }
+
+    const sidebarCloseButton = document.getElementById('sb-settings-sidebar-close');
+    if (sidebarCloseButton instanceof HTMLButtonElement && sidebarCloseButton.dataset.sbBound !== 'true') {
+        sidebarCloseButton.dataset.sbBound = 'true';
+        sidebarCloseButton.addEventListener('click', closeSettingsPage);
     }
 
     // Back button: mobile only — returns from content view to sidebar view.

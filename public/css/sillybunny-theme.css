@@ -2432,11 +2432,6 @@ body.bubblechat #chat .mes[is_user='true']:has(.reasoning_edit_textarea)::before
     border-top: 1px solid var(--sb-shell-border);
 }
 
-/* The window follows its content, and a row that is not drawn yet would keep the shared row's placeholder height, which is shorter than a row with a preview. */
-.swipe_picker_div .swipe_picker_block {
-    content-visibility: visible;
-}
-
 /* Cancels upstream's sticky white hover on touch; hover-capable devices get the flat fill below. */
 .swipe_picker_block:hover {
     background: transparent;

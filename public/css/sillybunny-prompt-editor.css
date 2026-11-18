@@ -149,11 +149,8 @@ body #completion_prompt_manager_popup[data-sb-prompt-owned] {
     display: none;
 }
 
-/* The list holds a few dozen rows, and a row that is not rendered counts as its 52px estimate, which makes the list's
-   height, and so a restored scroll position, differ from what was there. */
 .sb-prompt-row {
     min-height: max(var(--sb-density-floor), calc(52px - 6px * var(--sb-density-t)));
-    content-visibility: visible;
 }
 
 .sb-prompt-row > .ds-entity-row__avatar {

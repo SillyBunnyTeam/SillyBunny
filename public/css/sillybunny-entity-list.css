@@ -45,18 +45,6 @@
     text-align: start;
     box-sizing: border-box;
     font-family: inherit;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 52px;
-}
-
-/* Sortable caches row geometry at drag start; placeholder sizes would shift the drop targets. */
-.ui-sortable > .ds-entity-row {
-    content-visibility: visible;
-}
-
-/* A Window that follows its content would keep the placeholder size through its height lock. */
-.sb-dialog--window:not(.sb-dialog--fill) .ds-entity-row {
-    content-visibility: visible;
 }
 
 .ds-entity-row:last-child {

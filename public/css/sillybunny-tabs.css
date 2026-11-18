@@ -2504,8 +2504,6 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     flex-wrap: nowrap;
     margin: 0;
     padding-block: 6px;
-    /* Rows here are taller than the shared 52px estimate; an undrawn row that grows moves the rows below it, and WebKit has no scroll anchoring. */
-    content-visibility: visible;
 }
 
 /* A tap leaves `:hover` on, and the shared row draws its hover fill only where hover exists. This rule ties with the upstream hover fill and loads after it; the deferred entity sheet loads after this one. */
@@ -3743,6 +3741,11 @@ body.reduced-motion .sb-search-entry {
     color: var(--sb-shell-text-secondary);
     cursor: pointer;
     transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+/* The sidebar header's Close shows only where the sidebar and the content are separate views (the phone layout, below). */
+.sb-settings-sidebar-close {
+    display: none;
 }
 
 @media (pointer: coarse) {
@@ -6655,6 +6658,10 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
     /* Back button shown on mobile only. */
     .sb-settings-back-button {
+        display: inline-flex;
+    }
+
+    .sb-settings-sidebar-close {
         display: inline-flex;
     }
 
