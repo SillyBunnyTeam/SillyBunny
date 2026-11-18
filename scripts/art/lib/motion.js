@@ -8,6 +8,8 @@ const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 const PICTURE_FILE_PATTERN = /^[a-z0-9][a-z0-9-]*\.png$/;
 const BLINK_EYES = Object.freeze(['half', 'closed']);
 const EFFECT_KINDS = Object.freeze(['rings', 'burst', 'puff']);
+const POSES = Object.freeze(['c', 'b']);
+const VARIANTS = Object.freeze(['base', ...BLINK_EYES]);
 // A splash loop's one layer draws the same at any z; the shipped descriptions give it 1.
 const SPLASH_LAYER_Z = 1;
 
@@ -47,7 +49,7 @@ export async function buildPlayerDescription({ root, id }, asset, run) {
     return { description, bytes: Buffer.from(`${JSON.stringify(description, null, 4)}\n`) };
 }
 
-const BUILDERS = Object.freeze({ 'splash-loop': splashDescription });
+const BUILDERS = Object.freeze({ 'splash-loop': splashDescription, 'motion-frames': breathDescription });
 
 /**
  * The `--anim.json` of the splash player: one layer that holds every frame, its timeline with the effects in its own
@@ -101,6 +103,140 @@ async function splashDescription({ root, id, asset, run, fail }) {
         },
         ...(blink ? { blinks: { ...playerBlink(blink), never: blink.never.length > 0 ? { [layer]: [...blink.never] } : {} } } : {}),
     };
+}
+
+/**
+ * The `--breath.json` of the breath player. A scene's figure layers lie at their boxes in the scene's still; a still is
+ * its own one layer, with itself and its blink frames as the pose `c` and its breath frames as the pose `b`.
+ */
+async function breathDescription({ root, id, asset, run, fail }) {
+    const { breath } = run;
+    const rhythm = breath?.rhythm;
+    const validRhythm = isPlainObject(rhythm) && typeof rhythm.cycleSeconds === 'number' && rhythm.cycleSeconds > 0
+        && Number.isInteger(rhythm.breathsPerCycle) && rhythm.breathsPerCycle >= 1;
+    if (!isPlainObject(breath) || !validRhythm) {
+        fail('motion-invalid', 'breath must give the rhythm of the breath, cycleSeconds above 0 and a whole breathsPerCycle of 1 or more, which the breath player needs.');
+    }
+    const blinkFrames = runBlinkFrames(run, fail);
+    const blink = runBlink(run.blink, {}, fail);
+    const { backdrop, layers } = asset.type === 'scene'
+        ? await sceneLayers({ root, asset, breath, fail })
+        : await stillLayers({ root, id, asset, breath, blinkFrames, fail });
+    return {
+        scene: id,
+        grid: gridOf(asset),
+        rhythm: { cycleSeconds: rhythm.cycleSeconds, breathsPerCycle: rhythm.breathsPerCycle },
+        poses: [...POSES],
+        backdrop,
+        layers,
+        ...(blink ? { blinks: playerBlink(blink) } : {}),
+    };
+}
+
+/**
+ * A scene's figure layers. The run cut them on the scene master's canvas, so a layer's place there, less the top left
+ * of the still's frame, must be its box.
+ */
+async function sceneLayers({ root, asset, breath, fail }) {
+    const valid = Array.isArray(breath.layers) && breath.layers.every((layer) => isPlainObject(layer) && NAME_PATTERN.test(layer.id ?? '')
+        && ['z', 'left', 'top', 'width', 'height', 'waist'].every((key) => Number.isInteger(layer[key])) && isPlainObject(layer.images));
+    if (!valid) {
+        fail('motion-invalid', 'breath.layers must give each figure layer with its id, whole z, left, top, width, height and waist, and its images.');
+    }
+    const ids = Object.keys(asset.layers);
+    const given = breath.layers.map(({ id }) => id);
+    if (given.length !== ids.length || !ids.every((id) => given.includes(id))) {
+        fail('motion-mismatch', `the run gives the layers ${given.join(', ')}, but the scene's layers are ${ids.join(', ')}.`);
+    }
+    const master = await readRaster(masterFile(root, asset.master));
+    if (breath.grid?.width !== master.width || breath.grid?.height !== master.height) {
+        fail('motion-mismatch', `the run cut the breath on a ${breath.grid?.width}x${breath.grid?.height} canvas, but the scene's master is ${master.width}x${master.height}.`);
+    }
+    const origin = asset.frame.mode === 'canvas' ? { x: 0, y: 0 } : frameBox(master, asset.frame);
+    if ((breath.backdrop ?? null) !== (asset.backdrop ? posix.basename(asset.backdrop.master) : null)) {
+        fail('motion-mismatch', `the run's backdrop is ${breath.backdrop ?? 'none'}, but the scene's is ${asset.backdrop?.master ?? 'none'}.`);
+    }
+    const layers = breath.layers.map((layer) => {
+        const { box, pictures } = asset.layers[layer.id];
+        const placed = [layer.left - origin.x, layer.top - origin.y, layer.width, layer.height];
+        if (placed.some((value, at) => value !== box[at])) {
+            fail('motion-mismatch', `the run placed the layer ${layer.id} at ${placed.join(', ')} of the scene's still, but its box is ${box.join(', ')}.`);
+        }
+        const namer = pictureNamer(pictures, `the layer ${layer.id}`, fail);
+        const images = Object.fromEntries(POSES.map((pose) => [pose, namedStates(poseFiles(layer.images, pose, `the layer ${layer.id}`, fail), namer.nameOf)]));
+        namer.checkAllMade();
+        return { id: layer.id, z: layer.z, left: box[0], top: box[1], width: box[2], height: box[3], waist: layer.waist, images };
+    });
+    return { backdrop: asset.backdrop ? shippedName(asset.backdrop, 'the backdrop', fail) : null, layers };
+}
+
+/**
+ * A still as its one layer: the pose `c` is the still and its blink frames, and the pose `b` its breath frames. The run
+ * counts the waist in rows of the master, and the shipped still starts at the top of its frame.
+ */
+async function stillLayers({ root, id, asset, breath, blinkFrames, fail }) {
+    if (asset.type !== 'still' || typeof asset.master !== 'string' || !isPlainObject(asset.frames)) {
+        fail('motion-mismatch', `a breath belongs to a scene or to a still with a master and frames, and ${id} is a ${asset.type}${asset.master ? '' : ' with no master'}.`);
+    }
+    if (!Number.isInteger(breath.waist)) {
+        fail('motion-invalid', 'breath must give the still\'s waist row.');
+    }
+    const top = asset.frame.mode === 'canvas' ? 0 : frameBox(await readRaster(masterFile(root, asset.master)), asset.frame).y;
+    const namer = pictureNamer(asset.frames, 'the still', fail);
+    const blinks = Object.fromEntries(Object.values(blinkFrames).filter((frame) => frame.layer === undefined).map(({ eyes, file }) => [eyes, file]));
+    const c = { base: shippedName({ outputs: asset.outputs.filter((output) => output.from === undefined) }, 'the still', fail), ...namedStates(blinks, namer.nameOf) };
+    const b = namedStates(poseFiles(breath.images, 'b', 'the still', fail), namer.nameOf);
+    namer.checkAllMade();
+    const [width, height] = asset.grid;
+    return { backdrop: null, layers: [{ id, z: 0, left: 0, top: 0, width, height, waist: breath.waist - top, images: { c, b } }] };
+}
+
+/** The run's file names of one pose: a base, and a picture for any blink state the run drew. */
+function poseFiles(images, pose, where, fail) {
+    const states = isPlainObject(images) ? images[pose] : undefined;
+    if (!isPlainObject(states) || typeof states.base !== 'string' || !Object.keys(states).every((state) => VARIANTS.includes(state))) {
+        fail('motion-invalid', `${where} needs images of the pose ${pose}: a base and any of ${BLINK_EYES.join(', ')}.`);
+    }
+    return states;
+}
+
+/** The states of a pose with the names the player loads, in the order base, half, closed. */
+const namedStates = (files, nameOf) => Object.fromEntries(VARIANTS.filter((state) => typeof files[state] === 'string').map((state) => [state, nameOf(files[state])]));
+
+/**
+ * Finds the asset's picture for each file the run made by the file name of its master, and gives the name the player
+ * loads for it. `checkAllMade` refuses an asset picture that no file of the run named, which would ship stale.
+ */
+function pictureNamer(pictures, where, fail) {
+    const byFile = new Map(Object.entries(pictures).map(([name, picture]) => [posix.basename(picture.master), { name, picture }]));
+    const made = new Set();
+    return {
+        nameOf(file) {
+            const found = byFile.get(file);
+            if (!found) {
+                fail('motion-mismatch', `the run made ${file} for ${where}, which has no picture with that master.`);
+            }
+            made.add(found.name);
+            return shippedName(found.picture, `${where}'s picture ${found.name}`, fail);
+        },
+        checkAllMade() {
+            const unmade = Object.keys(pictures).filter((name) => !made.has(name));
+            if (unmade.length > 0) {
+                fail('motion-mismatch', `${where} has the pictures ${unmade.join(', ')}, which the run did not make.`);
+            }
+        },
+    };
+}
+
+/** The blink frames of a run of motion frames, each with its picture's file name, its eyes and, in a scene, its layer. */
+function runBlinkFrames(run, fail) {
+    const frames = run.frames ?? {};
+    const valid = isPlainObject(frames) && Object.entries(frames).every(([name, frame]) => NAME_PATTERN.test(name) && isPlainObject(frame)
+        && PICTURE_FILE_PATTERN.test(frame.file ?? '') && BLINK_EYES.includes(frame.eyes) && (frame.layer === undefined || NAME_PATTERN.test(frame.layer)));
+    if (!valid) {
+        fail('motion-invalid', `frames must give each blink frame as { "file": "<name>.png", "eyes": ${BLINK_EYES.join(' or ')} }, with the layer it changes in a scene.`);
+    }
+    return frames;
 }
 
 function runFrames(run, fail) {
