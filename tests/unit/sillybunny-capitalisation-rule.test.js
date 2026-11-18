@@ -26,6 +26,7 @@ describe('headerCase', () => {
         ['a token in brackets stays as written', 'Selfies Through Quick Image Gen ([selfie])'],
         ['a Handlebars helper is not text', '{{#if pinned}}Unpin Chat{{else}}Pin Chat{{/if}}'],
         ['a file extension stays as written', 'Download .md'],
+        ['a command-line flag stays as written', 'Make Sure You Run It With --api Flag'],
         ['a template hole is not a word', 'Modify Tags of ${} ${}'],
         ['a plural marker belongs to its word', 'Import Embedded Lorebooks for ${} Visible Character(s)'],
         ['a code identifier stays as written', 'Sends include_reasoning'],

@@ -1,7 +1,7 @@
 // The capitalisation rule of DESIGN.md (The Capitalisation Rule) and the writing-style rules of its Do's, as pure functions.
 // A computer cannot tell nouns from verbs, so a word of three letters or fewer is capitalised unless it is an article, a
-// conjunction or a short preposition (FUNCTION_WORDS). A name in brackets, a Handlebars helper, a file extension and a
-// template hole are code, not words, and stay as written.
+// conjunction or a short preposition (FUNCTION_WORDS). A name in brackets, a Handlebars helper, a file extension, a
+// command-line flag and a template hole are code, not words, and stay as written.
 
 const FUNCTION_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'but', 'nor', 'for', 'as', 'at', 'by', 'in', 'of', 'to', 'per', 'via', 'vs', 'if']);
 // Ambiguous short words (particles and pronouns) that stay as written inside a phrase.
@@ -31,8 +31,11 @@ function splitToken(token) {
 const isAlphaWord = core => /^[\p{L}][\p{L}'’]*(?:[-/][\p{L}][\p{L}'’]*)*$/u.test(core);
 const capitalize = word => word.charAt(0).toUpperCase() + word.slice(1);
 
-/** A token in brackets (a command such as `([selfie])`) or with a leading dot (a file extension such as `.md`) is code, not a word. */
-const isCodeToken = (lead, trail) => lead.includes('[') || trail.includes(']') || lead.endsWith('.');
+/**
+ * A token in brackets (a command such as `([selfie])`), with a leading dot (a file extension such as `.md`) or with leading dashes
+ * (a flag such as `--api`) is code, not a word.
+ */
+const isCodeToken = (lead, trail) => lead.includes('[') || trail.includes(']') || lead.endsWith('.') || /--?$/.test(lead);
 
 function headerCaseWord(core, isEdge) {
     const parts = core.split(/([-/])/);

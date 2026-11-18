@@ -3,11 +3,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
-    ALLOW_VARIABLE, BASELINE_PATH, FIXTURE_VARIABLE, UPDATE_COMMAND, UPDATE_VARIABLE, compareToBaseline, formatBaseline, formatComparison, isSillyBunnyElement, readBaseline,
+    ALLOW_VARIABLE, BASELINE_PATH, FIXTURE_VARIABLE, UPDATE_COMMAND, UPDATE_VARIABLE, compareToBaseline, formatBaseline, formatComparison, isSillyBunnyElement, normaliseTarget, readBaseline,
     sectionOf, toTriples, updateBaselineFile, withFileLock, writeFileAtomically,
 } from '../helpers/axe-baseline.js';
 import { collectFindings, countIncomplete, writeSummary } from '../helpers/axe-report.js';
 import { AXE_TAGS, DISABLED_RULES, GATED_TAGS, scanStable, trackRequests } from '../helpers/axe-scan.js';
+import {
+    COPY_ALLOW_VARIABLE, COPY_BASELINE_PATH, COPY_FIXTURE_VARIABLE, COPY_UPDATE_COMMAND, COPY_UPDATE_VARIABLE, compareToCopyBaseline, emptyCopyBaseline, formatCopyBaseline, formatCopyComparison,
+    readCopyBaseline, uniqueObservations, updateCopyBaselineFile,
+} from '../helpers/copy-baseline.js';
+import { collectCopy } from '../helpers/copy-collect.js';
+import { createOrigin } from '../helpers/copy-origin.js';
+import { judgeRendered } from '../helpers/copy-judge.js';
 import { THEMES, variantContextOptions, viewportById, viewportsFor } from '../helpers/surface-matrix.js';
 import { visibleContent } from '../helpers/surfaces/content.js';
 import { bootSurfaceApp, openSurface, readySelectors } from '../helpers/surfaces/boot.js';
@@ -37,8 +44,17 @@ import { PARITY_FAMILIES, PARITY_VIEWPORTS, RULES } from '../helpers/parity/inde
 // some surfaces and changed the results of others (a message left in edit mode showed in the Light results), so they differed from a fresh boot.
 // A failure is reported under the label of its check (`smoke:`, `parity:` or `axe:`) with the surface and the cell.
 //
-// SURFACE_CHECKS=smoke,parity,axe chooses the checks (default: all; with SURFACE_AXE_UPDATE=1 and no SURFACE_CHECKS: axe only). A non-default
-// SURFACE_DENSITY or SURFACE_TEXT_SCALE applies to the smoke check only, so with either set only smoke runs.
+//   copy    The Capitalisation Rule of DESIGN.md, judged on the text that the surface renders (headings, buttons, menu items, tabs, row titles and
+//           subtitles, field labels, check and radio labels, placeholders, tooltips and accessible names), each in the form that its rendered role
+//           takes. It runs at the plain open and every state of the Libadwaita boot, at both viewports; a unit's strings are the union of the two, so
+//           what only the phone layout draws is judged and a string that a slow boot misses once is not a new record. A string counts only when a file of the working tree holds it (otherwise it is data, such as a name
+//           or a file) and quick-image-gen and third-party code do not own it. A violation that is in neither section of
+//           tests/fixtures/copy-baseline.json fails the run, and so does a record that no longer occurs. A string that is verbatim in the
+//           upstream base commit goes to the `upstream` section, any other to `sillybunny`.
+//
+// SURFACE_CHECKS=smoke,parity,axe,copy chooses the checks (default: all; with SURFACE_AXE_UPDATE=1 and no SURFACE_CHECKS: axe only; with
+// SURFACE_COPY_UPDATE=1 and no SURFACE_CHECKS: copy only). A non-default SURFACE_DENSITY or SURFACE_TEXT_SCALE applies to the smoke check only,
+// so with either set only smoke runs.
 // SURFACE_FAMILY=<family>[,<family>] and SURFACE_ID=<id>[,<id>] limit the run to those families and surfaces.
 // SURFACE_DENSITY=compact and SURFACE_TEXT_SCALE=<number> run the smoke check in that cell of the variant matrix instead of the default one (the
 //   boot asserts that the app took the setting).
@@ -57,12 +73,27 @@ import { PARITY_FAMILIES, PARITY_VIEWPORTS, RULES } from '../helpers/parity/inde
 // SURFACE_AXE_VERBOSE=1 prints each step of a surface with the time it took.
 // SURFACE_AXE_INJECT=1 puts an image without a text alternative and a low-contrast label into every root before it is scanned, to show
 //   that the scan catches a new violation and names its section; it cannot be combined with an update.
+// SURFACE_COPY_UPDATE=1 writes the copy fixture instead of comparing: it removes the records that no longer occur and refuses to add one to
+//   the `sillybunny` section unless SURFACE_COPY_ALLOW_SILLYBUNNY=1 is set too.
+// SURFACE_COPY_FIXTURE=<path> reads and writes that file instead of the committed fixture.
+// SURFACE_COPY_DIR=<directory> sets where every string that the check judged goes (default: <tmp>/surface-copy/<surface>.json).
+// SURFACE_COPY_INJECT=1 puts a button with a label in the wrong case ('Date added', which the tree holds as a menu item; SURFACE_COPY_INJECT=<text>
+//   names another), and one that shows user data in the wrong case, into every root, to show that the check fails on the label and leaves the
+//   data alone; it cannot be combined with an update.
 const SMOKE_VIEWPORTS = ['1440x900', '390x844'];
 const SCAN_VIEWPORTS = ['1440x900', '390x844'];
-const CHECKS = Object.freeze(['smoke', 'parity', 'axe']);
+const COPY_VIEWPORTS = ['1440x900', '390x844'];
+const CHECKS = Object.freeze(['smoke', 'parity', 'axe', 'copy']);
 const UPDATE = process.env[UPDATE_VARIABLE] === '1';
 const ALLOW_SILLYBUNNY = process.env[ALLOW_VARIABLE] === '1';
 const FIXTURE = process.env[FIXTURE_VARIABLE] ? path.resolve(process.env[FIXTURE_VARIABLE]) : BASELINE_PATH;
+const COPY_UPDATE = process.env[COPY_UPDATE_VARIABLE] === '1';
+const COPY_ALLOW_SILLYBUNNY = process.env[COPY_ALLOW_VARIABLE] === '1';
+const COPY_FIXTURE = process.env[COPY_FIXTURE_VARIABLE] ? path.resolve(process.env[COPY_FIXTURE_VARIABLE]) : COPY_BASELINE_PATH;
+const COPY_OUTPUT = path.resolve(process.env.SURFACE_COPY_DIR || path.join(os.tmpdir(), 'surface-copy'));
+const COPY_INJECT = Boolean(process.env.SURFACE_COPY_INJECT);
+// The probe must be a label that a file of the tree holds in the wrong form, or the check takes it for data. SURFACE_COPY_INJECT=<text> names another.
+const COPY_INJECT_LABEL = process.env.SURFACE_COPY_INJECT === '1' ? 'Date added' : process.env.SURFACE_COPY_INJECT;
 const OUTPUT = path.resolve(process.env.SURFACE_AXE_DIR || path.join(os.tmpdir(), 'surface-axe'));
 const STEP_CAP_MS = 90_000;
 const VERBOSE = process.env.SURFACE_AXE_VERBOSE === '1';
@@ -101,6 +132,18 @@ const SKIPPED_SURFACES = Object.freeze({
     'status.sampling.unavailable': 'its open step waits for the rows of the bias list, which are not always built',
 });
 
+/**
+ * Surfaces that the copy check does not run. Their open steps or their rows are not stable enough for a fixture that the run must equal; a
+ * surface that the axe scan skips only because the scan itself stalls is not listed.
+ */
+const COPY_SKIPPED_SURFACES = Object.freeze({
+    'panel.moving.visual-novel': SKIPPED_SURFACES['panel.moving.visual-novel'],
+    'list.logit-bias': SKIPPED_SURFACES['list.logit-bias'],
+    'status.sampling.unavailable': SKIPPED_SURFACES['status.sampling.unavailable'],
+    // The smoke check fails on it at this commit, so there is no open surface to read.
+    'status.import.loading': 'the status page stays visibility:hidden, so the surface does not open',
+});
+
 /** Regions that an axe scan leaves out of a surface, because another surface covers them. */
 const EXCLUDED_REGIONS = Object.freeze({
     'settings.backend.sampling': ['.openai_logit_bias_list'],
@@ -110,11 +153,12 @@ const listOf = value => String(value ?? '').split(',').map(item => item.trim()).
 const requestedChecks = listOf(process.env.SURFACE_CHECKS);
 const unknownChecks = requestedChecks.filter(name => !CHECKS.includes(name));
 const cellIsSet = Object.keys(CELL).length > 0;
-const wantedChecks = requestedChecks.length ? requestedChecks : UPDATE ? ['axe'] : CHECKS;
+const wantedChecks = requestedChecks.length ? requestedChecks : UPDATE || COPY_UPDATE ? [...(UPDATE ? ['axe'] : []), ...(COPY_UPDATE ? ['copy'] : [])] : CHECKS;
 const ACTIVE = new Set(CHECKS.filter(name => wantedChecks.includes(name) && (!cellIsSet || name === 'smoke')));
 const CHECK_NOTES = [
     ...(cellIsSet ? [`only the smoke check runs, because ${Object.entries(CELL).map(([key, value]) => `${key}=${value}`).join(' ')} applies to it alone (parity and axe judge the default cell)`] : []),
     ...(UPDATE && !requestedChecks.length ? [`only the axe check runs, because ${UPDATE_VARIABLE}=1 is set without SURFACE_CHECKS`] : []),
+    ...(COPY_UPDATE && !requestedChecks.length ? [`only the copy check runs, because ${COPY_UPDATE_VARIABLE}=1 is set without SURFACE_CHECKS`] : []),
 ];
 if (CHECK_NOTES.length && process.env.TEST_WORKER_INDEX === undefined) {
     console.log(`surface-audit: ${CHECK_NOTES.join('; ')}.`);
@@ -148,11 +192,13 @@ function planFor(surface) {
     const skips = {
         parity: familyRules ? (paritySkip ? `not measured: ${paritySkip}` : null) : `the ${surface.family} family has no parity rules`,
         axe: SKIPPED_SURFACES[surface.id] ?? null,
+        copy: COPY_SKIPPED_SURFACES[surface.id] ?? null,
     };
     const runs = {
         smoke: ACTIVE.has('smoke'),
         parity: ACTIVE.has('parity') && !skips.parity,
         axe: ACTIVE.has('axe') && !skips.axe,
+        copy: ACTIVE.has('copy') && !skips.copy,
     };
     const applicable = viewportsFor(surface);
     /** The checks that run at one viewport. */
@@ -160,6 +206,7 @@ function planFor(surface) {
         smoke: runs.smoke && SMOKE_VIEWPORTS.includes(viewport),
         parity: runs.parity && PARITY_VIEWPORTS.includes(viewport),
         axe: runs.axe && SCAN_VIEWPORTS.includes(viewport),
+        copy: runs.copy && COPY_VIEWPORTS.includes(viewport),
     });
     const viewports = applicable.filter(viewport => Object.values(at(viewport)).some(Boolean));
     return { surface, familyRules, skips, runs, at, viewports, any: viewports.length > 0, parityListed: Boolean(paritySkip) };
@@ -212,6 +259,40 @@ if (ACTIVE.has('axe')) {
         expect(AXE_TAGS, 'axe tags').toEqual([...GATED_TAGS, 'best-practice']);
         expect(DISABLED_RULES, 'disabled rules').toEqual(['region']);
     });
+}
+
+if (ACTIVE.has('copy')) {
+    test('an injected copy violation is never written to the baseline', () => {
+        expect(COPY_INJECT && COPY_UPDATE, `${COPY_UPDATE_VARIABLE} and SURFACE_COPY_INJECT cannot be combined`).toBe(false);
+    });
+
+    test('every surface that the copy check skips is registered', () => {
+        expect(Object.keys(COPY_SKIPPED_SURFACES).filter(id => !SURFACES.some(surface => surface.id === id)), 'ids that are not in the registry').toEqual([]);
+    });
+
+    if (!selection.active) {
+        // A full run also judges the records of surfaces that are no longer in the registry.
+        test('the copy baseline names no surface that is gone', async () => {
+            const known = new Set(selection.surfaces.map(surface => surface.id));
+            const baseline = readCopyBaseline(COPY_FIXTURE);
+            if (baseline === null) {
+                return;
+            }
+            const isGone = record => !known.has(record.surface);
+            const gone = [...baseline.upstream, ...baseline.sillybunny].filter(isGone);
+            if (COPY_UPDATE) {
+                await withFileLock(COPY_FIXTURE, () => {
+                    const current = readCopyBaseline(COPY_FIXTURE);
+                    writeFileAtomically(COPY_FIXTURE, formatCopyBaseline({ ...current, upstream: current.upstream.filter(record => !isGone(record)), sillybunny: current.sillybunny.filter(record => !isGone(record)) }));
+                });
+                return;
+            }
+            expect(gone.map(record => `${record.surface}: ${record.role} "${record.text}"`), `copy records of surfaces that are not in the registry. Lock it in with: ${COPY_UPDATE_COMMAND}`).toEqual([]);
+        });
+    }
+}
+
+if (ACTIVE.has('axe')) {
 
     if (!selection.active) {
         // A full run also judges the records of surfaces that are no longer in the registry.
@@ -340,6 +421,77 @@ async function mapLimit(items, limit, work) {
     return results;
 }
 
+let labelOrigin = null;
+/** The sets that decide what is a label and where it comes from are read once for each worker. */
+const copyOrigin = () => (labelOrigin ??= createOrigin());
+
+/**
+ * Judges the strings that one surface's cells collected, writes every string that was checked to `COPY_OUTPUT`, and compares the violations
+ * with the fixture (or updates it). A unit's strings are the union of its desktop and phone boots.
+ * @param {{ id: string, family: string, owner: string }} surface
+ * @param {{ viewport: string, state: string | undefined, items: { role: string, text: string, target: string }[] }[]} collected
+ * @param {string[]} collectErrors
+ */
+async function judgeCopyCheck(surface, collected, collectErrors) {
+    const origin = copyOrigin();
+    // The backends of a surface and its plain open are one unit, and so are the two viewports of a unit, so their entries are merged.
+    const merged = new Map();
+    for (const entry of collected) {
+        const key = JSON.stringify([entry.state ?? '']);
+        const known = merged.get(key) ?? { state: entry.state, items: [] };
+        known.items.push(...entry.items.map(item => ({ ...item, viewport: entry.viewport })));
+        merged.set(key, known);
+    }
+    const digest = { surface: surface.id, family: surface.family, owner: surface.owner, units: [] };
+    const judgedEntries = [...merged.values()].map(entry => {
+        const labels = new Map();
+        const observations = [];
+        // The digest keeps the viewports that show each string, which is how the evidence tells what the phone layout changes.
+        const remember = (key, label, viewport) => labels.set(key, { ...label, viewports: [...new Set([...(labels.get(key)?.viewports ?? []), viewport])].sort() });
+        for (const item of entry.items) {
+            const { origin: where, text } = origin.classify(item.text);
+            if (where === 'foreign' || where === 'data') {
+                remember(JSON.stringify([item.role, item.text]), { role: item.role, text: item.text, origin: where }, item.viewport);
+                continue;
+            }
+            const verdict = judgeRendered(item.role, text);
+            remember(JSON.stringify([item.role, text]), { role: item.role, text, origin: where, ...(verdict && { kind: verdict.kind, expected: verdict.expected }) }, item.viewport);
+            if (verdict) {
+                observations.push({
+                    surface: surface.id,
+                    ...(entry.state && { state: entry.state }),
+                    role: item.role,
+                    text,
+                    expected: verdict.expected,
+                    target: normaliseTarget(item.target),
+                    section: where === 'unknown' ? null : where,
+                    kind: verdict.kind,
+                });
+            }
+        }
+        digest.units.push({ state: entry.state ?? null, labels: [...labels.values()] });
+        return { ...entry, observations: uniqueObservations(observations) };
+    });
+    fs.mkdirSync(COPY_OUTPUT, { recursive: true });
+    fs.writeFileSync(path.join(COPY_OUTPUT, `${surface.id}.json`), `${JSON.stringify(digest, null, 2)}\n`);
+
+    const observed = uniqueObservations(judgedEntries.flatMap(entry => entry.observations));
+    const units = judgedEntries.map(entry => ({ surface: surface.id, ...(entry.state && { state: entry.state }) }));
+    if (origin.upstreamError) {
+        test.info().annotations.push({ type: 'copy', description: `the upstream base commit could not be read, so a string's section is taken from its record: ${origin.upstreamError.message.split('\n')[0]}` });
+    }
+
+    if (COPY_UPDATE) {
+        await updateCopyBaselineFile({ observed, units }, { allowSillybunny: COPY_ALLOW_SILLYBUNNY, file: COPY_FIXTURE });
+        expect.soft(collectErrors, `copy: ${surface.id}: units that could not be collected (their records are left as they are)`).toEqual([]);
+        return;
+    }
+    const baseline = readCopyBaseline(COPY_FIXTURE);
+    expect.soft(baseline, `copy: ${path.basename(COPY_FIXTURE)} is missing. Write it with ${COPY_ALLOW_VARIABLE}=1 and: ${COPY_UPDATE_COMMAND}`).not.toBeNull();
+    const problems = formatCopyComparison(compareToCopyBaseline({ observed, baseline: baseline ?? emptyCopyBaseline(), units }));
+    expect.soft([...collectErrors.map(message => `could not be collected (its records are not judged): ${message}`), ...problems], `copy: ${surface.id} against ${path.basename(COPY_FIXTURE)}`).toEqual([]);
+}
+
 /** The units that one boot opens: each backend of the surface, then each state at the first backend. */
 function unitsAt(surface, viewport) {
     const backends = backendsOf(surface);
@@ -371,13 +523,13 @@ function passesFor(plan, viewport, { axe }) {
     return THEMES.map((theme, index) => {
         const checks = index === 0
             ? { ...here, axe: here.axe && axe }
-            : { smoke: false, parity: false, axe: here.axe && axe };
+            : { smoke: false, parity: false, axe: here.axe && axe, copy: false };
         const first = backendsOf(plan.surface)[0];
         const units = unitsAt(plan.surface, viewport)
-            .filter(unit => checks.smoke || checks.axe || (checks.parity && unit.state === undefined && unit.backend === first))
+            .filter(unit => checks.smoke || checks.axe || checks.copy || (checks.parity && unit.state === undefined && unit.backend === first))
             .map(unit => ({ ...unit, parity: checks.parity && unit.state === undefined && unit.backend === first }));
         return { theme, checks, units };
-    }).filter(pass => pass.checks.smoke || pass.checks.parity || pass.checks.axe);
+    }).filter(pass => pass.checks.smoke || pass.checks.parity || pass.checks.axe || pass.checks.copy);
 }
 
 /** What a surface costs, in boots and opens, so that the longest tests start first and do not end the run alone. */
@@ -422,11 +574,14 @@ for (const { candidate: plan } of heaviestFirst) {
         const retried = [];
         const excluded = new Set();
         const pageErrors = [];
+        /** What the copy check collected, one entry for each viewport and unit, and the units that it could not collect. */
+        const copyCollected = [];
+        const copyErrors = [];
         /** The cell that smoke and parity were judged in, by viewport. */
         const judgedCells = new Map();
         let axeStalled = false;
 
-        const newCell = (viewport, pass) => ({ viewport, pass, theme: pass.theme, smoke: [], parity: null, runs: [], errors: [], retried: [], excluded: new Set(), pageErrors: [], stalled: false });
+        const newCell = (viewport, pass) => ({ viewport, pass, theme: pass.theme, smoke: [], parity: null, copy: [], copyErrors: [], runs: [], errors: [], retried: [], excluded: new Set(), pageErrors: [], stalled: false });
 
         /** Opens each unit of a pass in turn on a page that is booted in the pass's theme, and runs the checks of the pass on it. */
         async function runPass(page, cell) {
@@ -443,7 +598,7 @@ for (const { candidate: plan } of heaviestFirst) {
                     // it is scanned: scripted clicks are stopped from the end of the open until the scan is done. The clicks that the
                     // registry's open steps make have finished by then.
                     const attempt = isFirst => capped(surface, axeLabel, async () => {
-                        const out = { smoke: [], parity: null, scan: null, axeError: null, opened: false };
+                        const out = { smoke: [], parity: null, scan: null, axeError: null, copy: null, copyError: null, opened: false };
                         let root;
                         step(`open ${axeLabel}`);
                         try {
@@ -460,6 +615,7 @@ for (const { candidate: plan } of heaviestFirst) {
                                 out.parity = { failures: [labelled(`${surface.id} at ${viewport}`, briefOf(error))], raw: null };
                             }
                             out.axeError = checks.axe ? error : null;
+                            out.copyError = checks.copy ? error : null;
                             return out;
                         }
                         if (checks.smoke) {
@@ -475,6 +631,17 @@ for (const { candidate: plan } of heaviestFirst) {
                                 out.parity = await measureParity(page, plan, root, viewport);
                             } catch (error) {
                                 out.parity = { failures: [labelled(`${surface.id} at ${viewport}`, briefOf(error))], raw: null };
+                            }
+                        }
+                        if (checks.copy) {
+                            // Reading the text changes nothing on the page, so it needs no click guard; it comes before the scan, which may add nodes.
+                            try {
+                                if (COPY_INJECT) {
+                                    await page.locator(root).first().evaluate((host, label) => host.insertAdjacentHTML('afterbegin', `<button type="button" data-sb-copy-probe>${label}</button><button type="button" data-sb-copy-probe>mAriEl the wanderer</button>`), COPY_INJECT_LABEL);
+                                }
+                                out.copy = await page.locator(root).first().evaluate(collectCopy);
+                            } catch (error) {
+                                out.copyError = error;
                             }
                         }
                         if (checks.axe) {
@@ -499,11 +666,19 @@ for (const { candidate: plan } of heaviestFirst) {
                     const firstOpen = await attempt(true);
                     let out = firstOpen;
                     // A surface that closes itself a moment after it opens is opened once more.
-                    if (checks.axe && out.axeError) {
+                    if ((checks.axe && out.axeError) || (checks.copy && out.copyError)) {
                         cell.retried.push(axeLabel);
                         out = await attempt(false);
                     }
                     opened = out.opened;
+                    if (checks.copy) {
+                        const items = firstOpen.copy ?? out.copy;
+                        if (items) {
+                            cell.copy.push({ state: unit.state, items });
+                        } else {
+                            cell.copyErrors.push(`${axeLabel}: ${briefOf(out.copyError ?? firstOpen.copyError)}`);
+                        }
+                    }
                     // Smoke judges the first open of the unit, as it did when it booted on its own: the reopen that the scan needs does not clear it.
                     cell.smoke.push(...firstOpen.smoke);
                     if (out.parity) {
@@ -577,6 +752,9 @@ for (const { candidate: plan } of heaviestFirst) {
             if (checks.axe) {
                 cell.errors.push(said);
             }
+            if (checks.copy) {
+                cell.copyErrors.push(said);
+            }
         }
 
         /** Boots the app once, in the theme of the pass, and runs the pass in it. Nothing is kept here; the caller decides. */
@@ -619,6 +797,11 @@ for (const { candidate: plan } of heaviestFirst) {
             if (cell.pass.checks.smoke || cell.pass.checks.parity) {
                 judgedCells.set(cell.viewport, cell);
             }
+            // After a stall the rerun boot collects the strings again, so what the stalled boot could not collect is not an error.
+            if (cell.pass.checks.copy) {
+                copyCollected.push(...cell.copy.map(unit => ({ viewport: cell.viewport, ...unit })));
+                copyErrors.push(...(cell.stalled ? [] : cell.copyErrors));
+            }
             for (const run of cell.runs) {
                 fs.writeFileSync(path.join(runDirectory, `${sanitise([run.state ?? 'surface', run.backend ?? '', run.theme, run.viewport].filter(Boolean).join('__'))}.json`), `${JSON.stringify(run, null, 2)}\n`);
             }
@@ -633,8 +816,8 @@ for (const { candidate: plan } of heaviestFirst) {
             }
             let cell = await scanBoot(viewport, pass);
             // A cell whose open step failed (a panel that was not built in time under load) is run once more from a fresh boot.
-            if (cell.errors.length && !cell.stalled) {
-                const first = cell.errors[0];
+            if ((cell.errors.length || cell.copyErrors.length) && !cell.stalled) {
+                const first = cell.errors[0] ?? cell.copyErrors[0];
                 cell = await scanBoot(viewport, pass);
                 cell.retried.unshift(`${pass.theme.id} ${viewport}: whole cell (${first.slice(0, 120)})`);
             }
@@ -642,7 +825,7 @@ for (const { candidate: plan } of heaviestFirst) {
             if (cell.stalled) {
                 axeStalled = true;
                 // The stall leaves the cell's other checks unfinished: they run again in a boot that does not scan.
-                if (pass.checks.smoke || pass.checks.parity) {
+                if (pass.checks.smoke || pass.checks.parity || pass.checks.copy) {
                     rerun = await scanBoot(viewport, passesFor(plan, viewport, { axe: false })[0]);
                 }
             }
@@ -658,6 +841,10 @@ for (const { candidate: plan } of heaviestFirst) {
             if (result.rerun) {
                 judgedCells.set(result.cell.viewport, result.rerun);
                 pageErrors.push(...result.rerun.pageErrors);
+                if (result.rerun.pass.checks.copy) {
+                    copyCollected.push(...result.rerun.copy.map(unit => ({ viewport: result.rerun.viewport, ...unit })));
+                    copyErrors.push(...result.rerun.copyErrors);
+                }
             }
         }
 
@@ -680,6 +867,9 @@ for (const { candidate: plan } of heaviestFirst) {
         }
         if (pageErrors.length) {
             test.info().annotations.push({ type: 'page errors', description: pageErrors.join('\n') });
+        }
+        if (plan.runs.copy) {
+            await judgeCopyCheck(surface, copyCollected, copyErrors);
         }
         if (!plan.runs.axe) {
             return;
