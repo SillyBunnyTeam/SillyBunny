@@ -7,7 +7,7 @@ export const STATUS_PAGE_LOADING_DELAY = 200;
 const DEFAULT_ICONS = Object.freeze({ 'empty': 'inbox', 'no-results': 'magnifying-glass', 'error': 'triangle-exclamation', 'unavailable': 'ban' });
 
 // The page's rules live in the deferred editor shell sheet. This key matches the `LIST_EDITOR_STYLESHEET` call sites.
-const STYLESHEET = Object.freeze({ href: 'css/sillybunny-editor-shell.css?v=20261118t', id: 'deferred-editor-shell-css' });
+const STYLESHEET = Object.freeze({ href: 'css/sillybunny-editor-shell.css?v=20261118zp', id: 'deferred-editor-shell-css' });
 
 let pageCount = 0;
 
@@ -39,6 +39,72 @@ function holdUntilStyled(setUnstyled) {
     Promise.race([loading, loaded])
         .catch(error => console.warn('Failed to load the status page styles.', error))
         .finally(() => setUnstyled(false));
+}
+
+/** Loads the sheet that draws the spinner, unless it has loaded. A spinner has no size until then, so it shows nothing unstyled. */
+export function ensureSpinnerStyles() {
+    const load = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
+    if (!load || stylesheetReady()) return;
+    Promise.resolve(load(STYLESHEET.href, { id: STYLESHEET.id }))
+        .catch(error => console.warn('Failed to load the spinner styles.', error));
+}
+
+const SPINNER_ATTRIBUTES = 'class="sb-spinner sb-spinner--delayed" role="progressbar" aria-busy="true"';
+
+/**
+ * The shared spinner as markup, for a template string. It appears after a short delay (`sb-spinner--delayed`), so a
+ * quick wait shows nothing, and it is announced as a busy progress indicator named by `label`.
+ * @param {string} [label] The task, such as "Updating". It must not hold markup.
+ * @returns {string}
+ */
+export function spinnerMarkup(label) {
+    ensureSpinnerStyles();
+    const name = label ? ` aria-label="${String(label).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')}"` : '';
+    return `<span ${SPINNER_ATTRIBUTES}${name}></span>`;
+}
+
+/**
+ * The shared spinner as an element, for a wait inside a control or beside a label (the status page draws its own).
+ * @param {object} [options]
+ * @param {string} [options.label] The task, such as "Scanning".
+ * @param {boolean} [options.large=false] The `64px` size, for a wait that fills a region.
+ * @returns {HTMLSpanElement}
+ */
+export function createSpinner({ label, large = false } = {}) {
+    ensureSpinnerStyles();
+    const node = document.createElement('span');
+    node.className = `sb-spinner sb-spinner--delayed${large ? ' sb-spinner--large' : ''}`;
+    node.setAttribute('role', 'progressbar');
+    node.setAttribute('aria-busy', 'true');
+    if (label) node.setAttribute('aria-label', label);
+    return node;
+}
+
+/**
+ * Swaps the icon of a control for the shared spinner while the control waits, and puts the icon back after. The icon
+ * stays in the page, hidden, so code that finds it by class or position still does.
+ * @param {Element | null | undefined} icon The `<i>` glyph inside the control.
+ * @param {boolean} busy
+ */
+export function setIconBusy(icon, busy) {
+    if (!icon) return;
+    const current = icon.nextElementSibling?.matches('.sb-spinner[data-sb-icon-spinner]') ? icon.nextElementSibling : null;
+    if (!busy) {
+        current?.remove();
+        if (icon.dataset.sbDisplay !== undefined) {
+            icon.style.display = icon.dataset.sbDisplay;
+            delete icon.dataset.sbDisplay;
+        }
+        return;
+    }
+    if (current) return;
+    const owner = icon.closest('[aria-label], [title]');
+    const spinner = createSpinner({ label: owner?.getAttribute('aria-label') || owner?.getAttribute('title') || undefined });
+    spinner.dataset.sbIconSpinner = '';
+    icon.after(spinner);
+    // `hidden` loses to the `display` that Font Awesome sets on its glyphs.
+    icon.dataset.sbDisplay = icon.style.display;
+    icon.style.display = 'none';
 }
 
 /**

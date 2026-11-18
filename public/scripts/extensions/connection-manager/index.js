@@ -2,6 +2,7 @@ import { DOMPurify, Fuse } from '../../../lib.js';
 
 import { activateSendButtons, deactivateSendButtons, event_types, eventSource, main_api, online_status, saveSettings, saveSettingsDebounced } from '../../../script.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../extensions.js';
+import { ensureSpinnerStyles } from '../../sillybunny-editor/status-page.js'; // SillyBunny: the profile spinner is the shared spinner
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from '../../popup.js';
 import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny: names a confirm's response with a verb.
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
@@ -192,6 +193,7 @@ class ConnectionManagerSpinner {
 
     start() {
         ConnectionManagerSpinner.abortControllers.push(this.abortController);
+        ensureSpinnerStyles();
         this.spinnerElement.classList.remove('hidden');
     }
 

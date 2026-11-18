@@ -1,6 +1,6 @@
 @charset "UTF-8";
 
-@import url(css/animations.css);
+@import url(css/animations.css?v=20261118zp);
 @import url(css/popup.css?v=20261117za);
 @import url(css/promptmanager.css?v=20261112a);
 @import url(css/loader.css?v=20261110a);
@@ -16,7 +16,7 @@
 @import url(css/secrets.css?v=20261118zk);
 @import url(css/backgrounds.css?v=20261118s);
 @import url(css/chat-backups.css?v=20261118zh);
-@import url(css/spacing-system.css?v=20261112l);
+@import url(css/spacing-system.css?v=20261118zp);
 @import url(css/streaming-display.css);
 
 :root {

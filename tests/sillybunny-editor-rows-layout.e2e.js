@@ -105,6 +105,70 @@ test('q56 select and profile row owners toggle on pointer and keyboard without f
     expect(await page.evaluate(() => window.q56Changes)).toBe(0);
 });
 
+test.describe('Caps Lock indicator of a masked field', () => {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+        test(`shows at ${viewport.width}px while Caps Lock is on, the field has focus and its text is masked`, async ({ page }) => {
+            await page.setViewportSize(viewport);
+            await mountRows(page);
+            await page.evaluate(async () => {
+                const { createEntryRow } = await import('/scripts/sillybunny-editor/rows.js');
+                const password = document.createElement('input');
+                password.type = 'password';
+                password.id = 'password_fixture';
+                document.getElementById('group').append(createEntryRow({ label: 'Password', field: 'password', floating: true, input: password }).row);
+            });
+            const indicators = page.getByRole('img', { name: 'Caps Lock On' });
+            const secret = page.locator('#api_key_fixture');
+            const password = page.locator('#password_fixture');
+
+            for (const field of [password, secret]) {
+                await field.focus();
+                await field.press('a');
+                await expect(indicators.locator('visible=true')).toHaveCount(0);
+                // Playwright's own keyboard never sets the lock state of its events, so the test sets it on the event.
+                await field.dispatchEvent('keydown', { key: 'A', modifierCapsLock: true });
+                const indicator = field.locator('xpath=following-sibling::*[contains(@class, "ds-row-entry__caps-lock")]');
+                await expect(indicator).toBeVisible();
+                await expect(indicator).toHaveAttribute('aria-label', 'Caps Lock On');
+                expect(await indicator.evaluate(node => Number(getComputedStyle(node).opacity))).toBeCloseTo(0.3, 2);
+                const box = await indicator.boundingBox();
+                const fieldBox = await field.boundingBox();
+                expect(box.x).toBeGreaterThanOrEqual(fieldBox.x + fieldBox.width - 1);
+                await field.dispatchEvent('keyup', { key: 'A', modifierCapsLock: false });
+                await expect(indicator).toBeHidden();
+                await field.dispatchEvent('keydown', { key: 'A', modifierCapsLock: true });
+                await expect(indicator).toBeVisible();
+                await field.blur();
+                await expect(indicator).toBeHidden();
+            }
+
+            await page.emulateMedia({ contrast: 'more' });
+            await password.focus();
+            await password.dispatchEvent('keydown', { key: 'A', modifierCapsLock: true });
+            const indicator = password.locator('xpath=following-sibling::*[contains(@class, "ds-row-entry__caps-lock")]');
+            expect(await indicator.evaluate(node => Number(getComputedStyle(node).opacity))).toBeCloseTo(0.8, 2);
+        });
+    }
+
+    test('stays hidden while the secret text is revealed, and with a plain text field', async ({ page }) => {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await mountRows(page);
+        const secret = page.locator('#api_key_fixture');
+        await secret.focus();
+        await secret.dispatchEvent('keydown', { key: 'A', modifierCapsLock: true });
+        const indicator = secret.locator('xpath=following-sibling::*[contains(@class, "ds-row-entry__caps-lock")]');
+        await expect(indicator).toBeVisible();
+        await page.getByRole('button', { name: 'Show Key' }).click();
+        await secret.focus();
+        await secret.dispatchEvent('keydown', { key: 'A', modifierCapsLock: true });
+        await expect(indicator).toBeHidden();
+        const plain = page.locator('#filled');
+        await plain.focus();
+        await plain.dispatchEvent('keydown', { key: 'A', modifierCapsLock: true });
+        await expect(page.locator('.ds-row-entry__caps-lock:visible')).toHaveCount(0);
+    });
+});
+
 function geometry(page, id) {
     return page.locator(`#${id}`).evaluate(input => {
         const field = input.closest('.ds-row-entry__field').getBoundingClientRect();

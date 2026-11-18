@@ -6,7 +6,8 @@
                 <span class="fa-solid fa-circle-question note-link-span"></span>
             </a>
         </h3>
-        <i id="connection_profile_spinner" class="fa-solid fa-spinner fa-spin hidden"></i>
+        <!-- SillyBunny: the shared spinner (DESIGN.md Progress) in place of a spinning glyph -->
+        <span id="connection_profile_spinner" class="sb-spinner sb-spinner--delayed hidden" role="progressbar" aria-busy="true" aria-label="Connection Profile"></span>
     </div>
     <div class="flex-container flexFlowColumn connection-profile-picker">
         <select class="text_pole wide100p" id="connection_profiles" aria-label="Connection Profile" aria-describedby="sb-connection-profile-sets" data-i18n="[aria-label]Connection Profile"></select>

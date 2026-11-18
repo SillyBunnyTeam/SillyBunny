@@ -1540,6 +1540,21 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-18, UI polish sweep (task 14.6h). |
 | Owner | `TODO(copy)` |
 
+### Spinners in upstream-origin files, and two unused keyframes
+
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions.js` (the Extensions manager's loading row and its update, sync and move icons); `public/scripts/extensions/assets/index.js` (the download buttons); `public/scripts/macros/engine/MacroBrowser.js`; `public/scripts/power-user.js` (the Custom CSS wand); `public/scripts/templates/dataMaidDialog.html` (the glyph removed; SillyBunny's `data-maid-dialog.js` draws the spinner); `public/scripts/extensions/connection-manager/index.js` and `settings.html` (`#connection_profile_spinner`, same id); `public/css/animations.css` (`@keyframes pulse` and `@keyframes sb-list-item-in` removed). |
+| Area | Busy states; animations. |
+| Divergence reason | `TODO(copy)` |
+| Target seam | The spinner helpers of `public/scripts/sillybunny-editor/status-page.js` (`spinnerMarkup()`, `createSpinner()`, `setIconBusy()`, `ensureSpinnerStyles()`). |
+| Adapter shape | Since 2026-11-18 (UI polish sweep, task 14.6g, F-254): a spinning `fa-spin` glyph is replaced by the shared spinner; the spinner's stylesheet loads on first use, not at startup; a spinner under `.hidden` stops animating. The two keyframes had no user in markup, scripts, extensions, `default/` or tests; custom CSS that named `pulse` loses it. |
+| Protecting tests | `tests/unit/sillybunny-status-page.test.js`; `tests/upstream-template-compatibility.test.js`; `tests/header-icon-button-parity.e2e.js`; the surface audit of Connections, Data Maid and the Extensions manager. |
+| Validation | 2026-11-18: root and tests lint, the full unit run, budgets, contracts and design rules, the audit of eight surfaces, the settings inventory of three pages, the related e2e specs. |
+| Rollback path | `TODO(copy)` |
+| Last reviewed | 2026-11-18, UI polish sweep (task 14.6g). |
+| Owner | `TODO(copy)` |
+
 ### Capitalisation of SillyBunny-written labels in upstream-origin files
 | Field | Value |
 | --- | --- |

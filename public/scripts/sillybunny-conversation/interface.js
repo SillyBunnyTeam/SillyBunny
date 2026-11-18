@@ -35,7 +35,7 @@ import { renderConversationTimeline, updateConversationNotificationSettingsVisib
 import { getActiveTypingParticipants, getLastConversationPreview, updateLastPreviewFromConversation } from './typing.js';
 import { registerConversationRenderer, scheduleInterfaceRefresh, scheduleTimelineRender } from './render-scheduler.js';
 import { hashConversationRenderFingerprint } from './render-utils.js';
-import { createStatusPage } from '../sillybunny-editor/status-page.js';
+import { createSpinner, createStatusPage } from '../sillybunny-editor/status-page.js';
 
 function buildBranchListFingerprint(characterStore, activeBranchId) {
     return Object.entries(characterStore?.branches || {})
@@ -462,8 +462,9 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
     const sourceRevision = getConversationMessageRevision(msg);
 
     if (buttonElement instanceof HTMLElement) {
+        // The button draws its icon with a Font Awesome class, so the spinner is a child while the class is off.
         buttonElement.classList.remove('fa-wand-magic-sparkles');
-        buttonElement.classList.add('fa-spinner', 'fa-spin');
+        buttonElement.append(createSpinner({ label: buttonElement.getAttribute('aria-label') || undefined }));
     }
 
     try {
@@ -499,7 +500,7 @@ export async function handleCharacterMessagePolish(messageId, buttonElement) {
         globalThis.toastr?.error?.('Error polishing character reply');
     } finally {
         if (buttonElement instanceof HTMLElement) {
-            buttonElement.classList.remove('fa-spinner', 'fa-spin');
+            buttonElement.querySelector(':scope > .sb-spinner')?.remove();
             buttonElement.classList.add('fa-wand-magic-sparkles');
         }
     }

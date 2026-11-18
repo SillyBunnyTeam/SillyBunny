@@ -6,6 +6,7 @@
 import { MacroRegistry, MacroCategory } from './MacroRegistry.js';
 import { performFuzzySearch } from '../../power-user.js';
 import { escapeRegex } from '/scripts/utils.js';
+import { spinnerMarkup } from '../../sillybunny-editor/status-page.js'; // SillyBunny: the shared spinner
 
 /** @typedef {import('./MacroRegistry.js').MacroDefinition} MacroDefinition */
 /** @typedef {import('./MacroRegistry.js').MacroValueType} MacroValueType */
@@ -307,7 +308,8 @@ export class MacroBrowser {
  */
 export function getMacrosHelp() {
     // Return a placeholder that will be replaced with the browser
-    return '<div class="macroHelp"><i class="fa-solid fa-spinner fa-spin"></i> Loading macro documentation...</div>';
+    // SillyBunny: the shared spinner in place of a spinning glyph
+    return `<div class="macroHelp">${spinnerMarkup('Loading macro documentation')} Loading macro documentation...</div>`;
 }
 
 /**

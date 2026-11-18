@@ -212,7 +212,7 @@ export function accountFormOptions(source, { title = null, destructive = false }
         input.before(anchor);
         // An Alert is too narrow for a floating label as long as the caption, so the caption stays above the field as body text.
         const alertLabel = oneQuestion && input.placeholder;
-        const row = createEntryRow({ label: alertLabel || textOf(caption), field: input.name, input, type: input.type, floating: true });
+        const row = createEntryRow({ label: alertLabel || textOf(caption), field: input.name, input, type: input.type, floating: true, capsLockLabel: t`Caps Lock On` });
         if (!alertLabel) moveCaption(row.row.querySelector('.ds-row-label'), caption, { copyId: true });
         const group = createPrefGroup({ field: `${input.name}-field`, rows: [row] });
         if (container) container.replaceChildren(group.section);

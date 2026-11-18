@@ -557,10 +557,31 @@ body.reduced-motion .sb-list-editor__divider::before {
     animation: sb-spinner-turn var(--sb-spinner-turn) linear infinite;
 }
 
-.sb-status-page--spinner .sb-spinner {
+.sb-status-page--spinner .sb-spinner,
+.sb-spinner--large {
     --sb-spinner-size: 64px;
     --sb-spinner-stroke: 6px;
+}
+
+.sb-status-page--spinner .sb-spinner {
     margin-block-end: var(--sb-status-page-gap);
+}
+
+/* A spinner drawn by a control or a line of text waits 200ms before it shows, the delay of a loading status page. The
+   second animation only holds the spinner hidden until then, and its space stays reserved. */
+.sb-spinner--delayed {
+    --sb-spinner-delay: 200ms;
+    animation: sb-spinner-turn var(--sb-spinner-turn) linear infinite, sb-spinner-reveal 0s linear var(--sb-spinner-delay) backwards;
+}
+
+@keyframes sb-spinner-reveal {
+    from {
+        visibility: hidden;
+    }
+
+    to {
+        visibility: visible;
+    }
 }
 
 @keyframes sb-spinner-turn {
@@ -569,14 +590,23 @@ body.reduced-motion .sb-list-editor__divider::before {
     }
 }
 
+/* Reduced motion draws the still arc; the delayed spinner keeps its hold, which moves nothing. */
 @media (prefers-reduced-motion: reduce) {
     .sb-spinner {
         animation: none;
+    }
+
+    .sb-spinner--delayed {
+        animation: sb-spinner-reveal 0s linear var(--sb-spinner-delay) backwards;
     }
 }
 
 body.reduced-motion .sb-spinner {
     animation: none;
+}
+
+body.reduced-motion .sb-spinner--delayed {
+    animation: sb-spinner-reveal 0s linear var(--sb-spinner-delay) backwards;
 }
 
 .sb-list-header__titles {

@@ -134,7 +134,7 @@ html > body .stih--history .stih--hidden {
   display: none;
 }
 
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 620px) {
   .stih--buttons,
   .stih--buttons.stih--standalone {
     --stih-mobile-action-size: max(var(--sb-density-floor, 28px), clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px));

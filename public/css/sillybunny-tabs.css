@@ -1788,7 +1788,7 @@ body:not(.movingUI) .drawer-content.maximized {
     gap: var(--sb-shell-space-xs);
 }
 
-@media screen and (max-width: 900px) {
+@media screen and (max-width: 1024px) {
     .sb-server-pill,
     .sb-server-inline-state {
         align-self: flex-start;
@@ -2364,7 +2364,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     }
 }
 
-@media screen and (max-width: 420px) {
+@media screen and (max-width: 450px) {
     #sb-bottom-chat-bar {
         --sb-bottom-chat-mobile-gutter: max(4px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
         --sb-bottom-chat-mobile-width: calc(100% - (var(--sb-bottom-chat-mobile-gutter) * 2));
@@ -2936,7 +2936,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
     font-weight: 700;
 }
 
-@media screen and (max-width: 520px) {
+@media screen and (max-width: 620px) {
     #sb-persona-picker {
         min-width: min(300px, calc(100vw - 16px));
     }
@@ -4444,6 +4444,28 @@ body.reduced-motion .sb-search-entry {
     height: 24px;
     margin-inline: 6px;
     background: var(--sb-shell-border);
+}
+
+/* The Caps Lock icon follows the text of a masked field, quiet at 30% and 80% under more contrast. */
+.ds-row-entry__caps-lock {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    margin-inline-start: 6px;
+    color: var(--sb-shell-text);
+    font-size: 16px;
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.ds-row-entry__caps-lock[hidden] {
+    display: none;
+}
+
+@media (prefers-contrast: more) {
+    .ds-row-entry__caps-lock {
+        opacity: 0.8;
+    }
 }
 
 .ds-row-entry__status[data-state='saved'] {
@@ -6682,7 +6704,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
 
 }
 
-@media screen and (max-width: 420px) {
+@media screen and (max-width: 450px) {
     .sb-settings-body {
         padding: 8px max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
     }

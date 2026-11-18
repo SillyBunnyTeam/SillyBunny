@@ -5,7 +5,7 @@ import { eventSource, event_types } from '../../../events.js';
 import { t } from '../../../i18n.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { registerSidePanel } from '../../../sillybunny-editor/side-panel.js';
-import { createStatusPage } from '../../../sillybunny-editor/status-page.js';
+import { createStatusPage, spinnerMarkup } from '../../../sillybunny-editor/status-page.js';
 import { accountStorage } from '../../../util/AccountStorage.js';
 import { escapeHtml } from '../../../utils.js';
 import {
@@ -566,7 +566,7 @@ function buildCompanionTokenUsagePillsHtml(result = {}) {
 function buildPanelEntryBody(agentId, entry) {
     const status = String(entry.result.status ?? 'done');
     if (status === 'pending') {
-        return '<div class="ica--companion-pending"><i class="fa-solid fa-spinner fa-spin"></i><span>Updating…</span></div>';
+        return `<div class="ica--companion-pending">${spinnerMarkup('Updating')}<span>Updating…</span></div>`;
     }
 
     if (status === 'error') {

@@ -257,7 +257,7 @@
     .sb-color-picker-menu { --sb-picker-target: 44px; }
     .sb-color-picker-field input { font-size: max(16px, calc(var(--mainFontSize) * 0.84)); }
 }
-@media (max-width: 420px) {
+@media (max-width: 450px) {
     .sb-color-picker-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {

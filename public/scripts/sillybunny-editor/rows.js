@@ -623,6 +623,32 @@ function revealToggle(control, label) {
     return button;
 }
 
+/**
+ * The Caps Lock indicator of a masked field (DESIGN.md Text Fields): a quiet icon that shows while the field has focus,
+ * Caps Lock is on and the text is masked. A page cannot read the Caps Lock state without an event, so the icon follows
+ * the modifier state that key and pointer events report. The Tab key that moves focus into the field reports it on its
+ * key release, which the field receives.
+ */
+function capsLockIndicator(control, label) {
+    const indicator = element('span', 'ds-row-entry__caps-lock');
+    indicator.setAttribute('role', 'img');
+    indicator.setAttribute('aria-label', label);
+    indicator.title = label;
+    indicator.hidden = true;
+    const icon = element('i', 'fa-solid fa-arrow-up');
+    icon.setAttribute('aria-hidden', 'true');
+    indicator.append(icon);
+    const masked = () => control.type === 'password' || control.classList.contains('is-masked') || control.classList.contains('masked-secret');
+    const follow = event => {
+        indicator.hidden = !(masked() && event.getModifierState?.('CapsLock'));
+    };
+    for (const type of ['keydown', 'keyup', 'pointerdown']) control.addEventListener(type, follow);
+    control.addEventListener('blur', () => {
+        indicator.hidden = true;
+    });
+    return indicator;
+}
+
 /** The pencil at the end of an entry row's editable area; the stylesheet hides it while the text has focus. */
 export function createEntryEditIcon() {
     const icon = element('i', 'fa-solid fa-pencil ds-row-entry__edit');
@@ -638,7 +664,7 @@ function focusOnPress(row, control) {
     });
 }
 
-function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
+function floatingEntryRow({ label, subtitle, field, control, suffix, secret, capsLock }) {
     prepareFloatingPlaceholder(control);
     const row = element('div', 'ds-row ds-row-entry ds-row-entry--floating');
     markField(row, field);
@@ -650,7 +676,7 @@ function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
     // The key status belongs to the field, before the pencil, where AdwEntryRow keeps its indicator; the buttons after it
     // are separate targets, set apart by the separator the stylesheet draws before them.
     const keyStatus = secret ? secretStatus(control, secret) : null;
-    fieldBox.append(title, control, ...(keyStatus ? [keyStatus.status] : []), createEntryEditIcon());
+    fieldBox.append(title, control, ...(capsLock ? [capsLock] : []), ...(keyStatus ? [keyStatus.status] : []), createEntryEditIcon());
     line.append(fieldBox);
     const trailing = [];
     const reveal = secret ? revealToggle(control, secret.revealLabel) : null;
@@ -684,28 +710,31 @@ function floatingEntryRow({ label, subtitle, field, control, suffix, secret }) {
  * @param {Node|Node[]} [options.suffix]  Trailing controls; `floating` only.
  * @param {{savedText: string, missingText: string, revealLabel: string}} [options.secret]
  *     Mirrors key status from the placeholder and masks where supported; the input type never changes. `floating` only; not for a password input.
+ * @param {string} [options.capsLockLabel='Caps Lock On']  The translated name of the Caps Lock indicator, which a `password` field, a `secret` field and an input with the `masked-secret` class show while Caps Lock is on.
  * @param {(value: string) => void} [options.onInput]
  * @param {(value: string) => void} [options.onChange]
  * @param {HTMLInputElement|HTMLTextAreaElement} [options.input]  Textareas are supported in the stacked layout only.
  * @returns {object}  The row controller, plus `setError(message)` and `clearError()`. `setError` shows the caller's text in a caption under the field and sets `aria-invalid` and `aria-describedby`; an empty message clears.
  */
-export function createEntryRow({ label, subtitle, field, id, value, placeholder, maxLength, type, floating = false, suffix, secret, onInput, onChange, input }) {
+export function createEntryRow({ label, subtitle, field, id, value, placeholder, maxLength, type, floating = false, suffix, secret, capsLockLabel = 'Caps Lock On', onInput, onChange, input }) {
     if ((secret || suffix) && !floating) throw new TypeError('Secret and suffix options need the floating layout.');
     if (secret && (type ?? input?.type) === 'password') throw new TypeError('A password input has its own masking and takes no secret option.');
     const control = floating ? prepareFloatingInput(input, id, type) : prepareEntryInput(input, id, type);
     if (value !== undefined) control.value = value;
     if (placeholder !== undefined) control.placeholder = placeholder;
     if (maxLength !== undefined) control.maxLength = maxLength;
+    const capsLock = secret || control.type === 'password' || control.classList.contains('masked-secret') ? capsLockIndicator(control, capsLockLabel) : null;
     let row;
     let disconnect = () => {};
     if (floating) {
-        ({ row, disconnect } = floatingEntryRow({ label, subtitle, field, control, suffix, secret }));
+        ({ row, disconnect } = floatingEntryRow({ label, subtitle, field, control, suffix, secret, capsLock }));
     } else {
         row = element('div', 'ds-row ds-row-entry');
         markField(row, field);
         const text = textColumn(label, subtitle, control, 'label');
         text.append(control);
         row.append(text);
+        if (capsLock) row.append(capsLock);
     }
     control.addEventListener('input', () => onInput?.(control.value));
     control.addEventListener('change', () => onChange?.(control.value));

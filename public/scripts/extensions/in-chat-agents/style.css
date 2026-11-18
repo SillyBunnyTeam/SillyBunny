@@ -969,7 +969,7 @@ body.reduced-motion :is(.ica--tpanel, .ica--companion-card) .fa-spin {
 }
 
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
     .ica--editor-row.flex-container {
         flex-direction: column;
     }

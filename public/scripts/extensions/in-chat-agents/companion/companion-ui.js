@@ -5,6 +5,7 @@ import { eventSource, event_types } from '../../../events.js';
 import { t } from '../../../i18n.js';
 import { Popup, POPUP_RESULT, POPUP_TYPE } from '../../../popup.js';
 import { escapeHtml } from '../../../utils.js';
+import { spinnerMarkup } from '../../../sillybunny-editor/status-page.js';
 import { attachTextareaFullscreen } from '../textarea-fullscreen.js';
 import {
     areAgentsGloballyEnabled,
@@ -306,7 +307,7 @@ function buildCompanionBody(agentId, result, message) {
     const status = getResultStatus(result);
 
     if (status === 'pending') {
-        return '<div class="ica--companion-pending"><i class="fa-solid fa-spinner fa-spin"></i><span>Companion is writing a note.</span></div>';
+        return `<div class="ica--companion-pending">${spinnerMarkup('Writing a note')}<span>Companion is writing a note.</span></div>`;
     }
 
     if (status === 'error') {

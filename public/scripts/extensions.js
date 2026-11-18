@@ -14,6 +14,7 @@ import { loadStylesheetAsync, prefetchAsset } from './dynamic-styles.js';
 import { createExtensionScriptLoadError, formatExtensionLoadError } from './extension-load-errors.js';
 // SillyBunny: shared rows adopt extension inputs without replacing installation or branch handlers.
 import { installExtensionOptions, switchBranchOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+import { setIconBusy, spinnerMarkup } from './sillybunny-editor/status-page.js'; // SillyBunny: the shared spinner
 import {
     EXTENSION_BOOT_ACTIVATION_ACTION,
     normalizeExtensionBootId,
@@ -1517,7 +1518,7 @@ async function showExtensionsDetails() {
         </div>`);
 
         const htmlLoading = $(`<div class="flex-container alignItemsCenter justifyCenter marginTop10 marginBot5">
-            <i class="fa-solid fa-spinner fa-spin"></i>
+            ${spinnerMarkup(t`Loading third-party extensions`)}
             <span>` + t`Loading third-party extensions... Please wait...` + `</span>
         </div>`);
         // SillyBunny: keep the loading state inside the installed-extension group.
@@ -1721,16 +1722,16 @@ async function onUpdateClick() {
     }
 
     const icon = $(this).find('i');
-    icon.addClass('fa-spin');
+    setIconBusy(icon[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
     await updateExtension(extensionName, false);
     // updateExtension eats the error, but we can at least stop the spinner
-    icon.removeClass('fa-spin');
+    setIconBusy(icon[0], false);
 }
 
 async function onSyncClick() {
     const extensionName = $(this).data('name');
     const icon = $(this).find('i');
-    icon.addClass('fa-spin');
+    setIconBusy(icon[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
 
     try {
         const response = await fetch('/api/extensions/sync', {
@@ -1756,7 +1757,7 @@ async function onSyncClick() {
         console.error('Extension sync error:', error);
         toastr.error(t`Extension sync failed. See browser console for details.`);
     } finally {
-        icon.removeClass('fa-spin');
+        setIconBusy(icon[0], false);
     }
 }
 
@@ -2007,7 +2008,7 @@ async function onMoveClick() {
         return;
     }
 
-    $(this).find('i').addClass('fa-spin');
+    setIconBusy($(this).find('i')[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
     await moveExtension(extensionName, source, destination);
 }
 

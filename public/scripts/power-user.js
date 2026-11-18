@@ -93,6 +93,7 @@ import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALI
 import { configureFolderStore, normalizeFoldersData } from './sillybunny-folders.js';
 // SillyBunny: present the AI form with shared rows; generation and validation stay upstream.
 import { customCssAiOptions } from './sillybunny-editor/adapters/misc-dialogs.js';
+import { setIconBusy } from './sillybunny-editor/status-page.js'; // SillyBunny: the shared spinner
 // SillyBunny: keep debug actions in the shared Window rows without replacing delegated controls.
 import { adaptDebugMenu } from './sillybunny-editor/adapters/window-tools-dialogs.js';
 
@@ -1792,8 +1793,8 @@ function setCustomCssAiWandBusy(isBusy) {
     button.toggleClass('is-busy disabled', isBusy)
         .attr('aria-busy', String(isBusy))
         .attr('aria-disabled', String(isBusy));
-    icon.toggleClass('fa-wand-magic-sparkles', !isBusy)
-        .toggleClass('fa-spinner fa-spin', isBusy);
+    // SillyBunny: the shared spinner in place of a spinning glyph
+    setIconBusy(icon[0], isBusy);
 }
 
 /**

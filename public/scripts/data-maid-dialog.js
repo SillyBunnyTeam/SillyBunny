@@ -2,6 +2,7 @@ import { getRequestHeaders } from '../script.js';
 import { VIDEO_EXTENSIONS } from './constants.js';
 import { t } from './i18n.js';
 import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { createSpinner } from './sillybunny-editor/status-page.js'; // SillyBunny: the shared spinner
 import { renderTemplateAsync } from './templates.js';
 import { humanFileSize, timestampToMoment } from './utils.js';
 
@@ -147,6 +148,8 @@ export class DataMaidDialog {
         const spinner = this.container.querySelector('.dataMaidSpinner');
         const placeholder = this.container.querySelector('.dataMaidPlaceholder');
         placeholder.classList.add('displayNone');
+        // SillyBunny: the shared spinner in place of a spinning glyph; a new one each time restarts its delay.
+        spinner.replaceChildren(createSpinner({ label: t`Scanning`, large: true }));
         spinner.classList.remove('displayNone');
     }
 

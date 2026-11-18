@@ -10,8 +10,34 @@ const coreAssetPaths = [
 
 // Guards against growth in the number of requests a start makes. Lower it when a start makes fewer requests; raise it
 // only when a change adds a request on purpose.
-const STARTUP_RESOURCE_LIMIT = 863;
+const STARTUP_RESOURCE_LIMIT = 861;
 const STARTUP_JS_BYTE_LIMIT = 13 * 1024 * 1024;
+
+// The first start of a day for an admin account asks the server for the install type and then saves the notice stamp
+// to the account settings (`sillybunny-install-notice.js`), so a start that runs before any other start of that
+// account makes two more requests (`/api/server-admin/install-type`, `/api/settings/save`). Which test sees them
+// depends on which start of a shared server came first. This start runs in a separate browser context until the
+// stamp is stored, so the measured start is a repeat start and its count is the same on every run.
+async function storeFirstStartState(browser, baseURL) {
+    const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 } });
+    try {
+        const page = await context.newPage();
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await page.waitForLoadState('load', { timeout: 60000 });
+        await expect.poll(() => page.evaluate(async () => {
+            const { token } = await (await fetch('/csrf-token')).json();
+            const response = await fetch('/api/settings/get', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+                body: '{}',
+            });
+            const body = await response.json();
+            return Boolean(JSON.parse(body.settings || '{}').accountStorage?.sillybunny_install_notice);
+        }), { timeout: 30000, intervals: [500] }).toBe(true);
+    } finally {
+        await context.close();
+    }
+}
 
 async function waitForResourceStability(page) {
     let previousCount = -1;
@@ -33,7 +59,8 @@ test.describe('frontend performance smoke', () => {
     // responses to save server time, and then the same assets transfer more bytes.
     test.use({ extraHTTPHeaders: { 'Accept-Encoding': 'gzip, deflate, br' } });
 
-    test('mobile shell exposes core performance marks and bounded assets', async ({ page }) => {
+    test('mobile shell exposes core performance marks and bounded assets', async ({ page, browser, baseURL }) => {
+        await storeFirstStartState(browser, baseURL);
         await page.setViewportSize({ width: 390, height: 844 });
         await page.addInitScript(() => globalThis.performance.setResourceTimingBufferSize(1000));
         await page.goto('/', { waitUntil: 'domcontentloaded' });

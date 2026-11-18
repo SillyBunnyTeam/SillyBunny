@@ -30,7 +30,6 @@
             "radius-literal": 3,
             "shadow-literal": 1,
             "important": 1,
-            "breakpoint-off-set": 1,
             "spacing-off-scale": 6
         },
         "public/css/sillybunny-conversation.css": {
@@ -112,7 +111,7 @@
             "shadow-literal": 7,
             "duration-literal": 1,
             "important": 264,
-            "breakpoint-off-set": 10,
+            "breakpoint-off-set": 6,
             "focus-outline": 1,
             "spacing-off-scale": 136,
             "spacing-off-scale-fallback": 2
@@ -128,7 +127,7 @@
             "shadow-literal": 25,
             "important": 187,
             "hover-ungated": 4,
-            "breakpoint-off-set": 4,
+            "breakpoint-off-set": 1,
             "focus-outline": 1,
             "spacing-off-scale": 168,
             "spacing-off-scale-fallback": 4
@@ -142,21 +141,15 @@
             "important": 14,
             "spacing-off-scale": 23
         },
-        "public/css/spacing-system.css": {
-            "breakpoint-off-set": 1,
-            "breakpoint-1000": 1
-        },
         "public/scripts/extensions/guided-generations/style.css": {
             "shadow-literal": 1,
             "important": 11,
-            "breakpoint-off-set": 1,
             "spacing-off-scale": 6
         },
         "public/scripts/extensions/in-chat-agents/style.css": {
             "radius-literal": 1,
             "duration-literal": 1,
             "important": 5,
-            "breakpoint-off-set": 1,
             "spacing-off-scale": 86
         },
         "public/scripts/extensions/in-chat-agents/ui/agent-editor.css": {
@@ -165,7 +158,6 @@
         },
         "public/scripts/extensions/input-history/style.css": {
             "important": 11,
-            "breakpoint-off-set": 1,
             "spacing-off-scale": 6
         },
         "public/scripts/extensions/sillybunny-chats-archive/style.css": {

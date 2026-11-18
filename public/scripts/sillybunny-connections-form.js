@@ -265,6 +265,7 @@ export function applyConnectionsFormPass(block, ctx) {
             field: input.id,
             floating: true,
             suffix: safeSuffix,
+            capsLockLabel: t`Caps Lock On`,
             ...(manager ? { secret: {
                 savedText: viewer?.getAttribute('key_saved_text') ?? '',
                 missingText: viewer?.getAttribute('missing_key_text') ?? '',

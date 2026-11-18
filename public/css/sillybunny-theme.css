@@ -3463,7 +3463,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
 
 }
 
-@media screen and (max-width: 520px) {
+@media screen and (max-width: 620px) {
     #left-nav-panel.openDrawer :is(#amount_gen_block, #max_context_block) {
         grid-template-columns: minmax(72px, 0.32fr) minmax(0, 1fr) minmax(46px, auto);
         gap: 6px;
@@ -4080,7 +4080,7 @@ body.reduced-motion input[type='range']::-moz-range-thumb {
     border-radius: var(--sb-radius-md);
 }
 
-@media screen and (max-width: 850px) {
+@media screen and (max-width: 1024px) {
     .sb-setting-inline-copy-center {
         width: 100%;
         min-width: 0;
@@ -4842,7 +4842,7 @@ body.reduced-motion *::after {
     }
 }
 
-@media screen and (max-width: 480px) {
+@media screen and (max-width: 620px) {
     #AdvancedFormatting .title_restorable.standoutHeader {
         gap: 6px;
     }
@@ -7344,7 +7344,7 @@ input::placeholder {
 }
 
 /* .hidden only hides; a spinner under it would otherwise keep running. */
-:is(.fa-spin, .fa-spin-pulse, .fa-pulse).hidden {
+:is(.fa-spin, .fa-spin-pulse, .fa-pulse, .sb-spinner).hidden {
     animation: none;
 }
 

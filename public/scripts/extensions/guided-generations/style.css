@@ -143,7 +143,7 @@
     min-width: 0;
 }
 
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 620px) {
     .gg-action-buttons-container {
         --gg-mobile-action-size: max(var(--sb-density-floor, 28px), clamp(28px, calc(var(--bottomFormBlockSize) * 0.5), 34px));
         --gg-mobile-action-icon-size: clamp(13px, calc(var(--bottomFormIconSize, 20px) * 0.75), 16px);

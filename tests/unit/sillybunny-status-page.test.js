@@ -2,7 +2,7 @@
 /* global globalThis */
 /* eslint-disable playwright/prefer-web-first-assertions -- This suite uses Jest/jsdom, not Playwright locators. */
 import { jest, describe, test, expect, afterEach } from '@jest/globals';
-import { createStatusPage, STATUS_PAGE_LOADING_DELAY, STATUS_PAGE_STATES } from '../../public/scripts/sillybunny-editor/status-page.js';
+import { createSpinner, createStatusPage, setIconBusy, spinnerMarkup, STATUS_PAGE_LOADING_DELAY, STATUS_PAGE_STATES } from '../../public/scripts/sillybunny-editor/status-page.js';
 
 describe('createStatusPage', () => {
     test('builds the status page with decorative icon, title and description', () => {
@@ -302,5 +302,40 @@ describe('createStatusPage states', () => {
         expect(failed.element.style.visibility).toBe('');
         expect(warn).toHaveBeenCalled();
         warn.mockRestore();
+    });
+});
+
+describe('the shared spinner helpers', () => {
+    test('the spinner is a delayed busy progress indicator with a name', () => {
+        const spinner = createSpinner({ label: 'Scanning', large: true });
+        expect(spinner.className).toBe('sb-spinner sb-spinner--delayed sb-spinner--large');
+        expect(spinner.getAttribute('role')).toBe('progressbar');
+        expect(spinner.getAttribute('aria-busy')).toBe('true');
+        expect(spinner.getAttribute('aria-label')).toBe('Scanning');
+        const host = document.createElement('div');
+        host.innerHTML = spinnerMarkup('Say "hi" <b>');
+        expect(host.firstElementChild.className).toBe('sb-spinner sb-spinner--delayed');
+        expect(host.firstElementChild.getAttribute('aria-label')).toBe('Say "hi" <b>');
+        expect(host.querySelector('b')).toBeNull();
+    });
+
+    test('an icon gives way to the spinner while its control waits and comes back after', () => {
+        const button = document.createElement('div');
+        button.setAttribute('aria-label', 'Update');
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid fa-download';
+        icon.style.display = 'inline-block';
+        button.append(icon);
+        setIconBusy(icon, false);
+        expect(icon.style.display).toBe('inline-block');
+        setIconBusy(icon, true);
+        setIconBusy(icon, true);
+        expect(button.querySelectorAll('.sb-spinner')).toHaveLength(1);
+        expect(button.querySelector('.sb-spinner').getAttribute('aria-label')).toBe('Update');
+        expect(icon.style.display).toBe('none');
+        expect(icon.classList.contains('fa-download')).toBe(true);
+        setIconBusy(icon, false);
+        expect(button.querySelector('.sb-spinner')).toBeNull();
+        expect(icon.style.display).toBe('inline-block');
     });
 });

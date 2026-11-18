@@ -12,9 +12,10 @@ const templates = [
 ];
 
 // Classes that a template drops on purpose. Scan is a label-only button (DESIGN.md, Buttons, Content), so its cog icon and
-// the classes of that icon are gone; no upstream code reads the icon.
+// the classes of that icon are gone; no upstream code reads the icon. The scan wait draws the shared spinner, which
+// data-maid-dialog.js builds, so the spinning glyph and its classes are gone too.
 const REMOVED_ON_PURPOSE = {
-    'public/scripts/templates/dataMaidDialog.html': { classes: ['fa', 'fa-cog'] },
+    'public/scripts/templates/dataMaidDialog.html': { classes: ['fa', 'fa-cog', 'fa-solid', 'fa-spinner', 'fa-spin', 'fa-3x'] },
 };
 
 function templateAttributes(html) {

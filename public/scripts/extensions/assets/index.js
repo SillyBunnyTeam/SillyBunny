@@ -11,6 +11,7 @@ import { confirmVerb } from '../../sillybunny-delete-confirm.js'; // SillyBunny:
 import { accountStorage } from '../../util/AccountStorage.js';
 import { escapeHtml, flashHighlight, getStringHash, isValidUrl } from '../../utils.js';
 import { t, translate } from '../../i18n.js';
+import { setIconBusy } from '../../sillybunny-editor/status-page.js'; // SillyBunny: the shared spinner in place of a spinning glyph
 import { SlashCommandParser } from '/scripts/slash-commands/SlashCommandParser.js';
 export { MODULE_NAME };
 
@@ -79,13 +80,13 @@ function createAssetButton(asset, assetType, index) {
     const assetInstall = async function () {
         element.off('click');
         label.removeClass('fa-download');
+        setIconBusy(label[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
         this.classList.add('asset-download-button-loading');
         const result = await installAsset(asset.url, assetType, asset.id);
+        setIconBusy(label[0], false);
         if (!result) {
             this.classList.remove('asset-download-button-loading');
             label.addClass('fa-download');
-            label.removeClass('fa-spinner');
-            label.removeClass('fa-spin');
             element.on('click', assetInstall);
             return;
         }
@@ -485,13 +486,12 @@ async function openCharacterBrowser(forceDefault) {
         const isInstalled = isAssetInstalled('character', character.id);
 
         downloadButton.toggle(!isInstalled).on('click', async () => {
-            downloadButton.toggleClass('fa-download fa-spinner fa-spin');
+            setIconBusy(downloadButton[0], true); // SillyBunny: the shared spinner in place of a spinning glyph
             const result = await installAsset(character.url, 'character', character.id);
+            setIconBusy(downloadButton[0], false);
             if (result) {
                 downloadButton.hide();
                 checkMark.show();
-            } else {
-                downloadButton.toggleClass('fa-download fa-spinner fa-spin');
             }
         });
 
