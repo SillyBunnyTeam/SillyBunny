@@ -394,8 +394,18 @@ function toastEntry(type, message, title, effective, high, { $toast, options }) 
     return entry;
 }
 
+/**
+ * The action layout turns the message boxes into `display: contents`, so the text must be one block that the button can
+ * follow. A message that holds several text blocks beside its button, such as the Getting Started toast, would put
+ * them into the implicit grid columns and squeeze the text column to nothing; it keeps the layout of its own sheet.
+ */
+function hasInlineAction(element) {
+    const buttons = element.querySelectorAll('.toast-message button');
+    return buttons.length === 1 && buttons[0].parentElement.querySelectorAll(':scope > :not(button)').length <= 1;
+}
+
 function markAction(element) {
-    element.classList.toggle(TOAST_ACTION_CLASS, element.querySelectorAll('.toast-message button').length === 1);
+    element.classList.toggle(TOAST_ACTION_CLASS, hasInlineAction(element));
 }
 
 /** Marks the toast now and again when a caller changes its content after it is shown. */

@@ -111,6 +111,10 @@ describe('the action class', () => {
         expect(marked(toastr.info('<div>Queued <button type="button">Undo</button></div>', '', { ...options, timeOut: 5000 }))).toBe(true);
     });
 
+    test('is not set on a toast whose message lays out several text blocks beside its button', () => {
+        expect(marked(toastr.info('<div class="sbHomeToast"><div>Well done.</div><div>Next is Start Chatting.</div><button type="button">Show Me</button></div>', 'Get a Character Card', options))).toBe(false);
+    });
+
     test('follows the content when a caller changes it after the toast is shown', async () => {
         const $toast = toastr.info('<div>Removed</div>', '', options);
         expect(marked($toast)).toBe(false);

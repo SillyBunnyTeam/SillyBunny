@@ -187,6 +187,9 @@ for (const viewport of VIEWPORTS) {
             await openFromToggle(page, 'sb-right-shell-toggle');
             if (viewport.name === 'phone') await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'appearance'));
             await page.evaluate(() => window.SillyBunnyShell.openTab('right', 'backgrounds'));
+            // The Appearance module builds its groups after the page opens and keeps aria-busy until then. Tab before that
+            // walks only the controls that are mounted, passes the last of them and leaves the page for the body.
+            await expect(page.locator('#sb-appearance-content')).not.toHaveAttribute('aria-busy', 'true');
             await page.locator('#sb-settings-content').focus().catch(() => {});
             const stops = [];
             for (let press = 0; press < 70; press++) {
