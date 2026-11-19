@@ -337,6 +337,10 @@
    `data-sb-art-fit` says whether it kept the fixed step, took a smaller one, or was shrunk. */
 .sbHomeBand > .sbHomeHeroArt {
     flex: none;
+    /* The room that balances the picture on its panel (`balancingLead`) goes on a physical side, because the picture is
+       not mirrored in a right-to-left layout. */
+    padding-left: calc(var(--sb-art-pad, 12px) + max(var(--sb-art-lead, 0px), 0px));
+    padding-right: calc(var(--sb-art-pad, 12px) + max(-1 * var(--sb-art-lead, 0px), 0px));
 }
 
 .sbHomeHeroText {

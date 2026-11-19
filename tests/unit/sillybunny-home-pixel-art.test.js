@@ -5,14 +5,15 @@
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import {
     alignToDevicePixels,
+    balancingLead,
     BANNER_SHARE,
     bannerRows,
     createPixelFigure,
     describeFit,
     largestStepThatFits,
+    LAYER_EDGE_BIAS_CSS_PX,
     pixelCssSize,
     pixelStep,
-    LAYER_EDGE_BIAS_CSS_PX,
     placePixelLayer,
     sizePixelFigure,
     watchPixelScale,
@@ -316,5 +317,32 @@ describe('alignToDevicePixels', () => {
         alignToDevicePixels(figure);
 
         expect(figure.style.translate).toBe('');
+    });
+});
+
+describe('balancingLead', () => {
+    test('a picture whose weight lies left of its middle takes room on the left, as much as moves the weight to the middle', () => {
+        // Weight 28 art pixels left of the middle of a 384-pixel picture, two CSS pixels per art pixel.
+        expect(balancingLead({ width: 384, centre: 164, unit: 2, room: 500, ratio: 1 })).toBe(112);
+    });
+
+    test('a picture whose weight lies right of its middle takes room on the right', () => {
+        expect(balancingLead({ width: 100, centre: 60, unit: 1, room: 500, ratio: 1 })).toBe(-20);
+    });
+
+    test('it takes no more room than the container has to spare, and none when the picture fills it', () => {
+        expect(balancingLead({ width: 384, centre: 164, unit: 2, room: 30, ratio: 1 })).toBe(30);
+        expect(balancingLead({ width: 384, centre: 164, unit: 2, room: 0, ratio: 1 })).toBe(0);
+        expect(balancingLead({ width: 384, centre: 164, unit: 2, room: -4, ratio: 1 })).toBe(0);
+    });
+
+    test('the room is an even number of device pixels, never more than the room there is', () => {
+        const lead = balancingLead({ width: 384, centre: 163.7, unit: 1, room: 500, ratio: 1.5 });
+        expect(lead * 1.5).toBe(84);
+        expect(balancingLead({ width: 384, centre: 164, unit: 2, room: 31, ratio: 1 })).toBe(30);
+    });
+
+    test('a picture whose weight lies at its middle takes no room', () => {
+        expect(balancingLead({ width: 384, centre: 192, unit: 2, room: 500, ratio: 2 })).toBe(0);
     });
 });

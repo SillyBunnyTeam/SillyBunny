@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { getPixelArt } from '../public/scripts/sillybunny-home/art-sources.js';
+import { getHeroCentre, getPixelArt } from '../public/scripts/sillybunny-home/art-sources.js';
 import { openQuietChatForSmoke } from './chat-scroll-regression-helpers.js';
 import { installFixtureChats } from './helpers/fixture-chats.js';
 import { protectMaintainerServer } from './helpers/maintainer-server.js';
@@ -10,7 +10,9 @@ import { stubTheme } from './helpers/theme-stub.js';
  * The hero of Home is pixel art on the lavender panel of the art panels. It is drawn at the fixed step of the screen when
  * the band holds it, at the largest whole step that does when it does not, and shrunk by a fraction only when one device
  * pixel per art pixel is still wider than the band. The band has to hold the picture and the padding of the panel, which
- * is 12px at every width. The size of each picture comes from `art-sources.js`
+ * is 12px at every width. What the band has left beyond that goes beside the picture, as much as puts the weight of the
+ * picture at the middle of the panel, in an even number of device pixels. The size and the weight of each picture come
+ * from `art-sources.js`
  * and the rule is written out here, so the test follows a new picture and does not compute its answer with the code
  * under test. These tests use Playwright's `deviceScaleFactor`, which checks sizes and not the evenness of the pixels;
  * `art-pixel-evenness.e2e.js` does that on a browser that runs at the real scale.
@@ -20,8 +22,8 @@ test.use({ serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } 
 test.describe.configure({ timeout: 120_000 });
 
 const STARTUP_TIMEOUT = 30_000;
-const DAY = { hour: 12, art: getPixelArt('hero-duo') };
-const NIGHT = { hour: 21, art: getPixelArt('hero-duo-night') };
+const DAY = { hour: 12, art: getPixelArt('hero-duo'), centre: getHeroCentre('hero-duo') };
+const NIGHT = { hour: 21, art: getPixelArt('hero-duo-night'), centre: getHeroCentre('hero-duo-night') };
 /** The padding of the hero's panel, which is the one of every art panel. */
 const PANEL_PADDING = 12;
 const BACKDROP_FLOOR = 1.1;
@@ -64,6 +66,9 @@ async function readHero(page) {
             figure: [figureBox.width, figureBox.height],
             panel: [panelBox.width, panelBox.height],
             padding: [Number.parseFloat(panelStyle.paddingLeft), Number.parseFloat(panelStyle.paddingTop)],
+            paddingRight: Number.parseFloat(panelStyle.paddingRight),
+            figureLeft: figureBox.left,
+            panelCentre: (panelBox.left + panelBox.right) / 2,
             inner: band.clientWidth - Number.parseFloat(bandStyle.paddingLeft) - Number.parseFloat(bandStyle.paddingRight),
             container: welcome.clientWidth - Number.parseFloat(welcomeStyle.paddingLeft) - Number.parseFloat(welcomeStyle.paddingRight),
             natural: [image.naturalWidth, image.naturalHeight],
@@ -93,6 +98,15 @@ function expectedDrawing({ artWidth, ratio, available }) {
         }
     }
     return { fit: 'smooth', width: available };
+}
+
+/**
+ * The room beside the picture: CSS pixels on the left that move the weight of the picture (`centre`, in art pixels) to
+ * the middle of the panel, as far as the `room` that the band leaves allows, cut down to an even number of device pixels.
+ */
+function expectedLead({ artWidth, centre, unit, room, ratio }) {
+    const wanted = Math.min((artWidth - 2 * centre) * unit, Math.max(room, 0));
+    return (Math.trunc((Math.max(wanted, 0) * ratio) / 2) * 2) / ratio;
 }
 
 /** A whole step is drawn as blocks, and a shrunk picture is sampled smoothly because blocks of uneven size would show as stripes. */
@@ -125,11 +139,20 @@ for (const hero of [DAY, NIGHT]) {
                     const padding = PANEL_PADDING;
                     const expected = expectedDrawing({ artWidth: hero.art.width, ratio, available: read.inner - 2 * padding });
 
+                    const unit = expected.width / hero.art.width;
+                    const lead = expectedLead({ artWidth: hero.art.width, centre: hero.centre, unit, room: read.inner - 2 * padding - expected.width, ratio });
+
                     expectHeroBasics(read, hero, where);
-                    expect(read.padding, `${where}: the panel pads its picture all round`).toEqual([padding, padding]);
+                    // Layout keeps lengths in units of 1/64 CSS px, so a room in thirds of a pixel comes back a hair off.
+                    expect(read.padding[0], `${where}: the panel pads its picture, with the room that balances it on the left`).toBeCloseTo(padding + lead, 1);
+                    expect(read.padding[1], `${where}: the panel pads its picture all round`).toBe(padding);
+                    expect(read.paddingRight, where).toBe(padding);
                     expect(read.fit, where).toBe(expected.fit);
                     expect(read.figure[0], where).toBeCloseTo(expected.width, 1);
-                    expect(read.panel[0], `${where}: the panel is the picture and its padding`).toBeCloseTo(expected.width + 2 * padding, 1);
+                    expect(read.panel[0], `${where}: the panel is the picture, its padding and the room`).toBeCloseTo(expected.width + 2 * padding + lead, 1);
+                    if (lead >= (hero.art.width - 2 * hero.centre) * unit - 2 / ratio) {
+                        expect(Math.abs(read.figureLeft + hero.centre * unit - read.panelCentre), `${where}: the weight of the picture is at the middle of its panel`).toBeLessThanOrEqual(1 / ratio + 0.05);
+                    }
                     expect(read.rendering, `${where}: blocks for a whole step, smooth for a shrunk one`).toBe(renderingOf(expected.fit));
                 }
             });
@@ -151,7 +174,10 @@ test.describe('the hero on a phone', () => {
 
             const read = await settledHero(page);
 
-            expect(read.padding[0], 'the panel keeps the padding of an art panel on a phone').toBe(PANEL_PADDING);
+            expect(read.paddingRight, 'the panel keeps the padding of an art panel on a phone').toBe(PANEL_PADDING);
+            const unit = 2 / 3;
+            const lead = expectedLead({ artWidth: DAY.art.width, centre: DAY.centre, unit, room: read.inner - 2 * PANEL_PADDING - DAY.art.width * unit, ratio: 3 });
+            expect(read.padding[0], 'the smaller step leaves room, which balances the picture').toBeCloseTo(PANEL_PADDING + lead, 2);
             expect(read.inner, 'the band cannot hold the picture at the fixed step').toBeLessThan(DAY.art.width + 16);
             expect(read.fit).toBe('step');
             expect(read.figure[0]).toBeCloseTo((DAY.art.width * 2) / 3, 1);

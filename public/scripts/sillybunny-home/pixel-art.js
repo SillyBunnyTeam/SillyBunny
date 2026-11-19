@@ -82,6 +82,25 @@ export function largestStepThatFits({ widths, gap = 0, step, ratio, availableWid
 }
 
 /**
+ * The room to add beside a picture so that its weight, and not its box, sits at the middle of its panel: CSS pixels on
+ * the left when positive, on the right when negative. It takes no more than `room`, the width that the container has to
+ * spare, so a picture fitted to a narrow container keeps its size. It is a whole number of device pixels, and an even
+ * one, because the container centres the panel and half of the room must not put the picture between two device pixels.
+ * @param {object} input
+ * @param {number} input.width The width of the picture in art pixels.
+ * @param {number} input.centre Where its weight lies, in art pixels from its left edge.
+ * @param {number} input.unit The CSS size of one art pixel.
+ * @param {number} input.room CSS pixels.
+ * @param {number} input.ratio The device pixel ratio.
+ * @returns {number}
+ */
+export function balancingLead({ width, centre, unit, room, ratio }) {
+    const limit = Math.max(room, 0);
+    const lead = Math.max(-limit, Math.min((width - 2 * centre) * unit, limit));
+    return Math.trunc((lead * ratio) / 2) * 2 / ratio;
+}
+
+/**
  * How a scale compares with the fixed one of the screen. Only `smooth` draws an art pixel at a fraction of a device
  * pixel, which the stylesheet must render with `image-rendering: auto` because `pixelated` would show uneven stripes.
  * @param {{ step: number, ratio: number }} scale

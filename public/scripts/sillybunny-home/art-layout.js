@@ -1,9 +1,10 @@
 import { readDialogAside, writeDialogAside } from '../sillybunny-editor/dialog-aside.js';
 import { afterPageMotion, isPageMotionRunning } from '../sillybunny-editor/page-motion.js';
 import { attachArtMotion } from './art-player.js';
-import { getPixelArt } from './art-sources.js';
+import { getHeroCentre, getPixelArt } from './art-sources.js';
 import {
     alignToDevicePixels,
+    balancingLead,
     bannerRows,
     createPixelFigure,
     describeFit,
@@ -379,9 +380,10 @@ function fitBanner(ids, scale, availableWidth) {
 /**
  * The hero is drawn at the fixed step when it fits the band, at the largest step that does when it does not, and
  * shrunk by a fraction only when one device pixel per art pixel is still wider than the band. The lavender panel
- * around the picture takes its padding from the band too, so the picture gets what is left.
+ * around the picture takes its padding from the band too, so the picture gets what is left. What the band has left
+ * after that balances the picture on its panel (`balancingLead`).
  * @param {ArtController} controller
- * @returns {{ kind: 'hero', fit: { step: number, ratio: number }, fixed: { step: number, ratio: number } } | null}
+ * @returns {{ kind: 'hero', fit: { step: number, ratio: number }, fixed: { step: number, ratio: number }, lead: number } | null}
  */
 function measureHero(controller) {
     const band = controller.panel.parentElement;
@@ -403,17 +405,25 @@ function measureHero(controller) {
     }
     const fixed = readFixedScale();
     // The padding is the panel's own, from its style, because a narrow band gives it less than a window's panel has.
+    // One side also holds the room of the last balance, so the side without it is the padding of the panel.
     const panelStyle = getComputedStyle(controller.panel);
-    const availableWidth = bandWidth - Number.parseFloat(panelStyle.paddingInlineStart) - Number.parseFloat(panelStyle.paddingInlineEnd);
-    return { kind: 'hero', fit: largestStepThatFits({ widths: [getPixelArt(controller.ids[0]).width], ...fixed, availableWidth }), fixed };
+    const padding = 2 * Math.min(Number.parseFloat(panelStyle.paddingLeft), Number.parseFloat(panelStyle.paddingRight));
+    const availableWidth = bandWidth - padding;
+    const { id, width } = getPixelArt(controller.ids[0]);
+    const fit = largestStepThatFits({ widths: [width], ...fixed, availableWidth });
+    const unit = pixelCssSize(1, fit.step, fit.ratio);
+    const room = availableWidth - pixelCssSize(width, fit.step, fit.ratio);
+    const lead = balancingLead({ width, centre: getHeroCentre(id), unit, room, ratio: readDevicePixelRatio() });
+    return { kind: 'hero', fit, fixed, lead };
 }
 
 /**
  * @param {ArtController} controller
  * @param {NonNullable<ReturnType<typeof measureHero>>} plan
  */
-function applyHero(controller, { fit, fixed }) {
+function applyHero(controller, { fit, fixed, lead }) {
     sizePixelFigure(controller.figures[0].figure, fit);
+    controller.panel.style.setProperty('--sb-art-lead', `${lead}px`);
     controller.panel.dataset.sbArtFit = describeFit(fit, fixed);
     controller.figures[0].motion?.refresh();
 }

@@ -1,5 +1,5 @@
 import { expect, test as base } from '@playwright/test';
-import { getPixelArt } from '../public/scripts/sillybunny-home/art-sources.js';
+import { getHeroCentre, getPixelArt } from '../public/scripts/sillybunny-home/art-sources.js';
 import { dismissOpenDialogIfPresent, openQuietChatForSmoke, waitForAnimationFrames } from './chat-scroll-regression-helpers.js';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
@@ -1704,7 +1704,19 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
                     background: style.backgroundColor,
                     windowLayer,
                     centre: (box.left + box.right) / 2,
-                    artCentre: centre(bandNode.querySelector(':is([data-sb-art-placeholder="hero-duo"], [data-sb-art-placeholder="hero-duo-night"])')),
+                    panelCentre: centre(bandNode.querySelector('.sbHomeHeroArt')),
+                    panel: (() => {
+                        const panel = bandNode.querySelector('.sbHomeHeroArt');
+                        const panelStyle = getComputedStyle(panel);
+                        return { width: panel.getBoundingClientRect().width, lead: parseFloat(panelStyle.paddingLeft) - parseFloat(panelStyle.paddingRight) };
+                    })(),
+                    inner: bandNode.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+                    ratio: devicePixelRatio,
+                    art: (() => {
+                        const figure = bandNode.querySelector(':is([data-sb-art-placeholder="hero-duo"], [data-sb-art-placeholder="hero-duo-night"])');
+                        const box = figure.getBoundingClientRect();
+                        return { id: figure.dataset.sbArtPlaceholder, left: box.left, width: box.width };
+                    })(),
                     textCentre: centre(bandNode.querySelector('.sbHomeHeroText')),
                     textAlign: getComputedStyle(bandNode.querySelector('.sbHomeHeroText')).textAlign,
                     textWidth: bandNode.querySelector('.sbHomeHeroText').getBoundingClientRect().width,
@@ -1715,7 +1727,17 @@ for (const { name, options } of matrixViewports(VIEWPORTS, [DESKTOP, PHONE, SMAL
             expect(band.border).toBe('1px');
             expect(band.radius).toBe('12px');
             expect(band.background).toBe(band.windowLayer);
-            expect(Math.abs(band.artCentre - band.centre)).toBeLessThanOrEqual(1);
+            expect(Math.abs(band.panelCentre - band.centre), 'the lavender panel is centred in the band').toBeLessThanOrEqual(1);
+            // The panel takes room beside the picture so that the weight of the picture, not its box, is at the middle, as
+            // far as the band has room to spare; a band with too little room has the panel fill it.
+            const unit = band.art.width / getPixelArt(band.art.id).width;
+            const needed = (getPixelArt(band.art.id).width - 2 * getHeroCentre(band.art.id)) * unit;
+            if (band.panel.lead >= needed - 2 / band.ratio) {
+                const weight = band.art.left + getHeroCentre(band.art.id) * unit;
+                expect(Math.abs(weight - band.centre), 'the weight of the picture is centred in the band').toBeLessThanOrEqual(1);
+            } else {
+                expect(band.panel.width, 'a band with too little room for the balance gives the panel all of it').toBeCloseTo(band.inner, 0);
+            }
             expect(Math.abs(band.textCentre - band.centre)).toBeLessThanOrEqual(1);
             expect(band.textAlign).toBe('center');
             expect(band.textWidth, 'readable measure').toBeLessThanOrEqual(band.fontSize * 70);

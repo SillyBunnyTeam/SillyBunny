@@ -27,6 +27,25 @@ const PIXEL_ART = Object.freeze({
 });
 
 /**
+ * Where the weight of each hero picture lies, in art pixels from its left edge: the centroid of the opacity of the
+ * still. The two figures stand left of the middle and the sky fills the right, so a panel centred on the box of the
+ * picture shows it leaning left. Measure it again when a hero picture changes.
+ * @type {Readonly<Record<string, number>>}
+ */
+const HERO_CENTRE = Object.freeze({
+    'hero-duo': 163.7,
+    'hero-duo-night': 161.1,
+});
+
+/**
+ * @param {string} id For example `hero-duo`.
+ * @returns {number} Art pixels from the left edge; the middle of the picture for a picture with no measured centre.
+ */
+export function getHeroCentre(id) {
+    return HERO_CENTRE[id] ?? getPixelArt(id).width / 2;
+}
+
+/**
  * The pixel art that moves, with the description of its motion that `breath-frames.mjs` writes beside the pictures
  * (`<scene>--breath.json`). The description names the pictures of each figure, so nothing else is listed here.
  * @type {Readonly<Record<string, string>>}
