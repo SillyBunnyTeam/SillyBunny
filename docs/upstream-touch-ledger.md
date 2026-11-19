@@ -468,9 +468,9 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Target seam | `public/scripts/chat-render-lifecycle/`.; `public/scripts/sillybunny-home/greeting-art-opening.js` (`shouldHoldChatAtTop`) for the greeting picture's opening hold |
 | Adapter shape | Keep exported compatibility functions in `public/script.js`; delegate initial-load bottom landing, bottom-scroll decisions, scheduling, scroll intent/state, anchor preservation, replacement/media anchoring, off-screen message tracking, and update batching to the lifecycle module. `scrollChatElementToBottom` returns early while `shouldHoldChatAtTop()` holds a freshly opened, greeting-only Reisen or Tewi chat at its top, so the greeting picture and name row are in view on open; the hold is not skipped for `force`, because a chat load's own pins are forced. The resize compensation in `RossAscends-mods.js` skips while held, so a banner that shrinks the chat cannot push it off the top. The hold ends on a second message, user scroll input, a native scroll away from the top, or 3 s (longer than the load lock at `script.js` 2400 + 250 ms). |
 | Protecting tests | `tests/chat-scroll-edges.test.js`, `tests/mobile-streaming.test.js`, `tests/chat-render-lifecycle-index.test.js`, `tests/chat-render-lifecycle-bottom-scroll.test.js`, `tests/chat-render-lifecycle-rollout-guard.test.js`, `tests/chat-render-lifecycle-anchor.test.js`, `tests/chat-render-lifecycle-scheduler.test.js`, `tests/chat-render-lifecycle-scroll-intent.test.js`, `tests/chat-render-lifecycle-scroll-state.test.js`, `tests/chat-render-lifecycle-offscreen-messages.test.js`, `tests/chat-render-lifecycle-script-wiring.test.js`, `tests/chat-scroll-state-machine.e2e.js`, `tests/chat-send-scroll.e2e.js`, `tests/chat-scroll-regressions.e2e.js`, future lifecycle unit tests.; `tests/unit/sillybunny-greeting-art-opening.test.js` (the predicate, every release path, the per-opening refusal, wiring checks that the sink and the resize compensation are guarded and not skipped for `force`, and the hold outlasting the load lock), `tests/greeting-art.e2e.js` (Start New Chat and Temporary Chat open at the top with no frame painted elsewhere; sending, Go to bottom by mouse and keyboard, wheel and PageDown end the hold) |
-| Validation | 2026-11-03 (greeting picture opening hold): unit 87 greeting-picture tests, full unit 8,799 (one environment-only failure); e2e `--workers=1` `greeting-art` 47, `chat-scroll-regressions` 14, `chat-send-scroll` 1, `chat-scroll-state-machine` 1, `temporary-chat` 76, `home-assistants` 130, `home-mode-memory` 36; `check:frontend-budgets`. Earlier: `node --check public/script.js`, focused lifecycle Jest `chat-render-lifecycle-scroll-state.test.js chat-render-lifecycle-script-wiring.test.js`, `npm run check:frontend-budgets`, plus prior lifecycle lint/unit/e2e packs on this stack. |
+| Validation | 2026-11-14 (chat-load bottom pin, `#993`): `npm run lint`, `npm run lint` in `tests/`, lifecycle Jest (`chat-render-lifecycle-script-wiring.test.js`, the other `chat-render-lifecycle-*` suites, `chat-scroll-edges.test.js`, `mobile-streaming.test.js`), `npm run check:frontend-budgets`, e2e `chat-scroll-regressions.e2e.js`, `chat-send-scroll.e2e.js` and `chat-scroll-state-machine.e2e.js`. 2026-11-03 (greeting picture opening hold): unit 87 greeting-picture tests, full unit 8,799 (one environment-only failure); e2e `--workers=1` `greeting-art` 47, `chat-scroll-regressions` 14, `chat-send-scroll` 1, `chat-scroll-state-machine` 1, `temporary-chat` 76, `home-assistants` 130, `home-mode-memory` 36; `check:frontend-budgets`. |
 | Rollback path | Disable affected lifecycle routes with the permanent device-local kill switch while correcting the routed implementation. |
-| Last reviewed | 2026-11-03, PR #870 greeting picture opening hold. |
+| Last reviewed | 2026-11-14 chat-load bottom pin frames that end with the bottom lock (nightly issue `#993`); 2026-11-03, PR #870 greeting picture opening hold. |
 | Owner | Refactor integrator. |
 
 ### `public/script.js` - generation lifecycle
@@ -687,6 +687,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | Revert helper calls in `extensions.js` while leaving extension settings and runtime load paths unchanged. |
 | Last reviewed | 2026-05-28 extension boot lifecycle wiring. |
 | Owner | Refactor integrator and extension runtime owner. |
+
+### `public/scripts/extensions.js` - extension module URLs
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions.js`. |
+| Area | Extension boot, cache and module identity. |
+| Divergence reason | TODO(copy) |
+| Target seam | `buildExtensionModuleUrl()` and `buildExtensionAssetUrl()` in `public/scripts/extension-boot-lifecycle/index.js`. |
+| Adapter shape | `addExtensionScript()` and `callExtensionHook()` load the extension's JavaScript entry module through `buildExtensionModuleUrl()`, which gives a URL with no query. `getExtensionAssetUrl()` calls `buildExtensionAssetUrl()` and keeps the `?v=` client version for templates, stylesheets, manifests and locale files. `prefetchExtensionAsset()` hints a script by its module URL, so the hint matches the URL that the loader uses. Upstream loads the entry module by the same bare path. |
+| Protecting tests | `tests/extension-boot-lifecycle.test.js` (URL choice), `tests/extension-boot-lifecycle-wiring.test.js` (loader call sites), `tests/extension-module-identity.e2e.js` (a TTS provider setting is saved and `tts/index.js` loads once; no bundled extension module loads under two URLs). |
+| Validation | `npm run test:unit --prefix tests -- extension-boot-lifecycle.test.js extension-boot-lifecycle-wiring.test.js extensions-disable.test.js`, `e2e tests/extension-module-identity.e2e.js` (Bun) and the same spec against `npm run start:node`, `npm run lint`, `npm run lint --prefix tests`, `npm run check:frontend-budgets`. |
+| Rollback path | TODO(copy) |
+| Last reviewed | 2026-11-13 F-291, TTS provider settings lost to a second `tts/index.js` instance. |
+| Owner | TODO(copy) |
 
 ### `public/scripts/extensions/quick-reply/` - active set canonicalization
 | Field | Value |

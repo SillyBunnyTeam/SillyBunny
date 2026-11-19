@@ -1,0 +1,105 @@
+name: 🎨 Design Reference
+
+# DESIGN.md and DESIGN.json record the libadwaita release and the GNOME HIG commit they follow. When staging starts a new
+# development version after a stable release, this compares that reference with gitlab.gnome.org, so the new cycle can target
+# a newer libadwaita or HIG. A moved reference opens one issue; a current one closes it.
+
+on:
+  push:
+    branches:
+      - staging
+    paths:
+      - package.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: design-reference
+  cancel-in-progress: false
+
+env:
+  REFERENCE_LABEL: design-reference
+
+jobs:
+  check:
+    name: 🎨 Check the design reference
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Gate on a new development version
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          read_version() { node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version"; }
+          version=$(read_version < package.json)
+          previous=""
+          run=false
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            run=true
+          # Post-Release bumps staging to the next minor X.Y.0-dev; release candidates and hotfixes leave it alone.
+          elif [[ "$version" =~ ^[0-9]+\.[0-9]+\.0-dev$ ]]; then
+            if [[ ! "$BEFORE" =~ ^0+$ ]] && git fetch --quiet --no-tags --depth=1 origin "$BEFORE" 2> /dev/null; then
+              previous=$(git show FETCH_HEAD:package.json | read_version)
+            fi
+            if [ "$previous" != "$version" ]; then
+              run=true
+            fi
+          fi
+          echo "Version $version (before: ${previous:-unknown}); check: $run"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Compare the recorded reference with gitlab.gnome.org
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          status=0
+          node scripts/check-design-reference.js --markdown > "$RUNNER_TEMP/reference.md" || status=$?
+          { echo "## Design reference for $VERSION"; echo; cat "$RUNNER_TEMP/reference.md"; } >> "$GITHUB_STEP_SUMMARY"
+
+          gh label create "$REFERENCE_LABEL" --color 1D76DB > /dev/null 2>&1 || true
+          issue=$(gh issue list --label "$REFERENCE_LABEL" --state open --limit 1 --json number --jq '.[0].number // ""')
+          title="Design reference has moved: review it for $VERSION"
+
+          case "$status" in
+            0)
+              if [ -n "$issue" ]; then
+                gh issue close "$issue" --comment "The recorded reference is current as of $VERSION."
+              fi
+              ;;
+            1)
+              if [ -n "$issue" ]; then
+                gh issue edit "$issue" --title "$title" --body-file "$RUNNER_TEMP/reference.md"
+              else
+                gh issue create --label "$REFERENCE_LABEL" --title "$title" --body-file "$RUNNER_TEMP/reference.md"
+              fi
+              ;;
+            *)
+              echo "::error::The design reference could not be compared; see the job summary."
+              exit 1
+              ;;
+          esac
